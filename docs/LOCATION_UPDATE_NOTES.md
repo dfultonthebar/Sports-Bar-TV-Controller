@@ -39,6 +39,455 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-04-15 — v2.8.4 — LG TV model probe + TV power audit trail + LG clientKey fix
+
+**Risk:** GO — additive features plus one latent-bug fix. No schema change.
+
+**What's in this release:**
+
+1. **LG TV model probe** (`apps/web/src/lib/lg-model-probe.ts` — new file)
+   - Mirror of `samsung-model-probe.ts`: walks every `NetworkTVDevice`
+     where `brand='lg'`, queries SSAP `ssap://system/getSystemInfo`
+     via port 3001 WebSocket using the stored `clientKey`, and
+     updates the `model` column with the real modelName (e.g.
+     `"65UT8000AUA.BUSYLKR"`). Unreachable/unpaired TVs are skipped;
+     previously-set model is never cleared.
+   - Wired into `instrumentation.ts` alongside Samsung probe. Runs
+     60s after boot, then every 4 hours. Staggered 15s behind Samsung
+     to avoid DB write contention.
+   - Manual trigger: `POST /api/tv-discovery/probe-lg-models`
+     (parallels `/api/tv-discovery/probe-models` for Samsung).
+   - **Requires first-run pairing.** Each LG TV must accept a pairing
+     dialog once to populate `clientKey`. Greenville's 19 LG TVs all
+     have keys stored already — verified. Locations adding new LG
+     TVs need to pair them via the bulk-power `on` command or the
+     single-TV power endpoint before the probe can read their model.
+
+2. **TV power audit trail** (reuses existing `AuditLog` table — no
+   schema change)
+   - `POST /api/tv-control/bulk-power` now writes one `AuditLog` row
+     per call with `action='TV_POWER_BULK_ON|OFF|TOGGLE'`,
+     `resource='tv_power'`, and `metadata` JSON containing the full
+     per-device result list (success/fail, brand, IP, message,
+     powerVerified). Fires on both success and error paths. Audit
+     write is fire-and-forget — it never blocks the response or
+     causes the power command to fail.
+   - `POST /api/tv-control/[deviceId]/power` same treatment with
+     `action='TV_POWER_ON|OFF|TOGGLE'`.
+   - New query endpoint: `GET /api/tv-control/audit?hours=24&action=off`
+     returns TV power events for the last N hours (max 30 days),
+     filterable by action family. Rows include parsed metadata for
+     easy "what time did the bartender turn off all the TVs last
+     night" lookups.
+   - Retention uses `cleanupOldAuditLogs()` from `@sports-bar/auth`
+     which already runs with `AUDIT_LOG_RETENTION_DAYS=90`.
+
+3. **LG clientKey latent bug fix** (silent, but real)
+   - Both `/api/tv-control/bulk-power/route.ts` and
+     `/api/tv-control/[deviceId]/power/route.ts` were constructing
+     `LGTVClient` without passing `device.clientKey`. This made
+     every LG power command fall back to PROMPT pairing, which
+     hangs waiting for a TV-side user approval that never comes in
+     automated contexts — commands appeared to "silently fail"
+     without a clear error. Now the clientKey is passed through
+     correctly. If any location has LG TVs where bulk power-off has
+     been unreliable, this is the fix.
+
+**Why this matters:**
+
+- Next time someone asks "what time did the bartender turn off all
+  the TVs last night?", it's answerable via a single API call —
+  the data survives PM2 log rotation indefinitely.
+- LG TV catalog at Greenville (and any LG-heavy location) will stop
+  showing generic "LG WebOS" and will show real model strings,
+  matching how Samsung locations already work.
+- LG power commands that have been unreliable since the client was
+  introduced will start working as intended.
+
+**Manual steps required:** none. Existing LG rows already have
+`clientKey` set from previous pairing; probe will run automatically
+on next startup.
+
+**Verification after update:**
+
+```bash
+# 1. Wait ~90 seconds after PM2 restart, then check LG probe ran:
+pm2 logs sports-bar-tv-controller --nostream --lines 100 | \
+  grep "LG PROBE"
+# Expected: "[INSTRUMENTATION][LG PROBE] probed=N, updated=N, unreachable=0"
+
+# 2. Check real model strings landed:
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "SELECT id, name, ipAddress, model FROM NetworkTVDevice WHERE brand='lg';"
+# Expected: model column shows real strings like "65UT8000AUA.BUSYLKR"
+
+# 3. Smoke-test the audit trail query (after a bulk-power command fires):
+curl -s 'http://localhost:3001/api/tv-control/audit?hours=24' | \
+  head -c 2000
+# Expected: JSON with events array
+```
+
+**Affected files:**
+
+- `apps/web/src/lib/lg-model-probe.ts` (new)
+- `apps/web/src/app/api/tv-discovery/probe-lg-models/route.ts` (new)
+- `apps/web/src/app/api/tv-control/audit/route.ts` (new)
+- `apps/web/src/instrumentation.ts`
+- `apps/web/src/app/api/tv-control/bulk-power/route.ts`
+- `apps/web/src/app/api/tv-control/[deviceId]/power/route.ts`
+- `package.json`
+- `docs/LOCATION_UPDATE_NOTES.md`
+
+---
+
+### 2026-04-15 — v2.8.3 — scheduler: bump updatedAt on ESPN sync, suppress benign WARN spam
+
+**Risk:** GO — two small bugfixes, no schema change, no manual steps.
+
+**What changed:**
+
+1. **`packages/scheduler/src/espn-sync-service.ts`** — the ESPN sync's
+   UPDATE path now bumps `updatedAt` alongside `lastSynced`. Drizzle's
+   schema default only applies at insert time, so `updated_at` was
+   frozen at row-creation and made staleness audits misleading (the
+   row would show "last updated 5 days ago" even when the sync loop
+   had touched it 30 seconds ago). `lastSynced` was always correct;
+   `updatedAt` now matches it on every sync cycle.
+2. **`packages/scheduler/src/scheduler-service.ts`** — the "No TVs to
+   control" message from the AI Game Monitor's 5-minute tick is no
+   longer logged at WARN. It's the expected steady state when no
+   bartender has set active allocations, and it was producing ~288
+   benign warnings per day, drowning real errors. Demoted to DEBUG
+   with a neutral message; real execution failures still warn.
+
+**Why this matters at a location:**
+
+- Monitoring tools and the audit subagent that compute "sync
+  staleness" from `game_schedules.updated_at` will finally show
+  accurate numbers. Previously, anyone running a diff query would
+  wrongly conclude ESPN sync had stalled when it was actually running
+  fine — `lastSynced` was the truth all along, but it's buried in the
+  schema and not the obvious column to check.
+- PM2 logs go from roughly 300 WARN entries/day to zero for this
+  condition, making real scheduler incidents visible.
+
+**What could break:** nothing. `updatedAt` was previously stale for
+every ESPN-synced row anyway; code that read it was either also
+broken or was reading `lastSynced` instead. The log change is pure
+verbosity reduction.
+
+**Manual cleanup (optional, per-location):** if `game_schedules`
+has legacy rows from pre-v2.3.0 with human-readable league labels
+like `"MLB Baseball"`, `"NBA Basketball"`, `"NCAA Hockey"`, they're
+orphaned and safe to delete. The current ESPN sync writes lowercase
+labels (`mlb`, `nba`, `nhl`) and will never touch the legacy rows.
+On Stoneyard Greenville today, those 5 orphan rows have been deleted
+as part of this cleanup. Other locations can check with:
+
+```bash
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "SELECT league, COUNT(*) FROM game_schedules GROUP BY league;"
+```
+
+and delete any row whose league is not a lowercase short code:
+
+```bash
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "DELETE FROM game_schedules WHERE league IN ('MLB Baseball','NBA Basketball','NCAA Hockey');"
+```
+
+**Affected files:**
+
+- `packages/scheduler/src/espn-sync-service.ts`
+- `packages/scheduler/src/scheduler-service.ts`
+- `package.json` (version bump)
+- `docs/LOCATION_UPDATE_NOTES.md`
+
+---
+
+### 2026-04-15 — v2.8.2 — fire TV send-command: DB fallback for missing ipAddress
+
+**Risk:** GO — bugfix, no schema change, no manual steps.
+
+**What changed:**
+
+`POST /api/firetv-devices/send-command` no longer requires `ipAddress`/`port`
+in the request body. When missing (or blank), the route now looks up the
+device row by `deviceId` from the `FireTVDevice` table and uses the DB values
+as the source of truth. Schema fields are marked `.optional()`.
+
+**Why:**
+
+Stoneyard Greenville reported "Amazon 2 can't be controlled" from the
+bartender iPad while Amazon 1 and 3 worked. Backend + physical device were
+healthy — every direct curl to the endpoint succeeded. Root cause was an
+iPad PWA cache holding a stale `/api/devices/all` response from back when
+the FireTV connection-manager UPSERT bug (fixed in v2.5.4) had briefly
+written a phantom row with empty `ipAddress`. The tablet's cached device
+list kept sending `ipAddress: ""` → Zod rejected → fire-and-forget silent
+failure in `FireTVRemote.tsx` → "nothing happens". Hard-refreshing the
+tablet clears the cache, but a permanent fix belongs on the server so no
+tablet can ever get wedged by stale client state again.
+
+**What could break at a location:** nothing — the schema change is strictly
+relaxing validation. Existing clients that DO send a valid ipAddress/port
+keep working unchanged. The only new behavior is the DB fallback on empty.
+
+**Manual steps required:** none. Auto-update handles it.
+
+**Rollback notes:** revert the single commit; no DB changes. Previous
+behavior (strict ipAddress) returns.
+
+**Affected files:**
+
+- `apps/web/src/app/api/firetv-devices/send-command/route.ts`
+- `package.json` (version bump)
+- `docs/LOCATION_UPDATE_NOTES.md`
+
+---
+
+### 2026-04-15 — docs: EXISTING_LOCATION_CLAUDE_PROMPT.md — manual catch-up runbook
+
+**Risk:** GO — docs only, no code change, no version bump.
+
+**What it is:**
+
+A new runbook at `docs/EXISTING_LOCATION_CLAUDE_PROMPT.md` that a
+Claude Code session running on any location's host can follow to
+manually bring that location up to current main. It's the
+command-line equivalent of the Sync-tab "Run Update Now" flow, for
+locations that:
+
+- Don't have `auto-update.sh` wired up yet (no systemd timer, no
+  checkpoint flow), or
+- Are too far behind main to trust their own stale auto-update.sh, or
+- Need a step-by-step recovery path with the operator in the loop
+
+The runbook walks through the same phases as auto-update.sh (fetch →
+merge with LOCATION_PATHS_OURS guard → npm ci → drizzle-kit push →
+build → pm2 delete+start → verify → install timer) but does each
+step explicitly with diagnostic snapshots before and after, so a
+Claude session with zero prior context can execute it cleanly.
+
+**When to reference this:**
+
+- Rolling out the first update at a location that was installed
+  before auto-update.sh became standard (Holmgren Way, Graystone,
+  Lucky's — as of 2026-04-15).
+- Any time a location's own `scripts/auto-update.sh` is broken or
+  missing features like the v2.8.1 schema-push phase.
+- Disaster recovery when the Sync tab refuses to start an update or
+  the checkpoint Claude instance fails to reach a decision.
+
+**How Claude at the remote location uses it:**
+
+The runbook contains both a short two-phase bootstrap prompt (what
+the operator pastes into a fresh Claude session) AND the full
+authoritative step list. The bootstrap fetches the file into `/tmp`
+so the remote Claude is reading from origin/main's version, not
+whatever stale copy is on the location's disk.
+
+**Affected files:**
+
+- `docs/EXISTING_LOCATION_CLAUDE_PROMPT.md` (new, ~550 lines)
+- `docs/LOCATION_UPDATE_NOTES.md` — this entry
+
+**No version bump** — docs-only addition, no code path changes.
+
+---
+
+### 2026-04-15 — v2.8.1 — auto-update.sh now runs drizzle-kit push before build
+
+**Risk:** GO — this fix prevents the silent failure that v2.8.0 would
+have caused at every other location. Read this entry BEFORE deciding on
+the v2.8.0 entry below.
+
+**Background — what was broken in v2.8.0:**
+
+v2.8.0 added a new `ChannelTuneLog` table to the schema. The runbook
+(`docs/NEW_LOCATION_CLAUDE_PROMPT.md` Step 4) explicitly tells fresh
+installs to run `npx drizzle-kit push` between `npm ci` and `npm run
+build`, but **`scripts/auto-update.sh` never had that step**. Result:
+locations pulling v2.8.0 via auto-update would build successfully, PM2
+would restart fine, verify-install would pass, but any call to the new
+`/api/channel-presets/tune/history` endpoints would 500 because the
+table doesn't exist.
+
+We caught it at Stoneyard Greenville during the v2.8.0 merge and
+created the table by hand with `sqlite3`. Without this v2.8.1 patch
+that workaround would be needed at Holmgren, Graystone, Lucky's, and
+every future install.
+
+**What changed in v2.8.1:**
+
+`scripts/auto-update.sh` — new `schema_push` phase between `npm_ci`
+and `checkpoint_b`. It runs `npx drizzle-kit push` and:
+
+- On clean success: logs and continues.
+- On the specific "index/table/column already exists" error class:
+  logs a WARNING and continues. This is the benign case where the DB
+  already has untracked indexes from a prior manual hotfix (e.g., the
+  `AiTvAvailability_matrixOutputId_idx` index that's currently
+  pre-existing at Greenville). drizzle tracks schema by literal CREATE
+  statements not by structural diff, so any untracked-but-present
+  object trips the push even though the schema is already correct.
+- On any OTHER error: aborts the update before checkpoint_b. Real
+  schema corruption / version mismatch / sqlite engine errors all fail
+  loudly so the rollback path triggers.
+
+`scripts/prompts/checkpoint-b.txt` — Claude is now told to:
+1. Read LOCATION_UPDATE_NOTES.md to see if the release added new tables
+2. Grep the run log for `[SCHEMA]` / `WARNING:` / `drizzle` lines
+3. If `packages/database/src/schema.ts` was in the merge diff, run
+   `sqlite3 production.db ".tables"` and verify each new table from
+   the diff actually exists. Missing tables → STOP, manual `sqlite3`
+   CREATE needed before the build is worth running.
+
+**What Claude on other location machines should look for after this
+patch ships:**
+
+1. `[SCHEMA]` lines in the auto-update run log — clean push or benign
+   warning are both fine. Anything else aborts before checkpoint_b.
+2. At checkpoint_b: ALWAYS list `.tables` and compare against any
+   `packages/database/src/schema.ts` changes in the merge diff. New
+   table missing → STOP.
+3. The "WARNING: drizzle-kit push reported pre-existing objects
+   (benign)" message is **expected** at Greenville and probably at
+   Holmgren too — both have manually-created indexes from earlier
+   hotfix sessions. Treat the warning as informational, not a failure.
+
+**Affected files:**
+
+- `scripts/auto-update.sh`
+- `scripts/prompts/checkpoint-b.txt`
+- `package.json` — version bump 2.8.0 → 2.8.1
+
+**Stoneyard Greenville:** the manual `ChannelTuneLog` table from the
+v2.8.0 merge is already in place, so this patch is purely preventative
+here. Other locations get the patch via their next auto-update run,
+which will then itself trigger the schema push for v2.8.0's table on
+the next run after that. (Order matters: v2.8.1 patches the auto-
+updater, then auto-updater can correctly handle v2.8.0+ schema
+changes.)
+
+**Rollback:** trivial — `git revert <sha>` restores the unpatched
+auto-update.sh and the longer checkpoint-b prompt.
+
+---
+
+### 2026-04-15 — v2.8.0 — Samsung power-detection rewrite + tune-history + auto-update CLI fix
+
+**Risk:** CAUTION — most pieces are GO, but **one DB schema change**
+(ChannelTuneLog table) needs `drizzle-kit push` at every location after
+the merge. Auto-update.sh already runs `drizzle-kit push` before
+`npm run build` so a normal auto-update covers it. If you do a manual
+merge, run drizzle-kit push yourself before restarting PM2 or the new
+tune-history endpoints will 500.
+
+**What changed (6 commits cherry-picked from location/stoneyard-appleton
+where they were originally tested):**
+
+1. **Auto-update CLI permissions fix** (`971c377d`) —
+   `scripts/auto-update.sh` adds `--dangerously-skip-permissions` to
+   the headless `claude -p` calls. Previously checkpoint B was hanging
+   on interactive approval for a `sqlite3` command, parsing as
+   UNDETERMINED, and triggering rollback.
+
+2. **Fire TV health reporting fix** (`c09d705e`) — `/api/system/health`
+   was comparing `FireTVDevice.status` against the literal `'connected'`,
+   a value never written anywhere. Every Fire TV showed offline with
+   the absurd issue text "Status: online". Now reads from `isOnline`.
+   Also removed a duplicate `themeColor` from layout.tsx that Next.js
+   16 warns about.
+
+3. **Channel tune history (NEW FEATURE)** (`f8fae17c`) — append-only
+   rolling log of every channel-tune attempt. New table
+   `ChannelTuneLog`, new GET/POST `/api/channel-presets/tune/history`
+   endpoints, intent-event hook in EnhancedChannelGuideBartenderRemote
+   so Watch button clicks are logged independently of downstream
+   success. Cable boxes get a second row tagged `bartender` with
+   success/failure and durationMs.
+
+4. **Bulk-power TV state probe** (`ed6e03ed`) — bulk power-off was
+   reporting success even when Samsung TVs ignored the key. Now probes
+   port 8002 before sending and verifies post-send. **Then superseded**
+   by commit 5 below which replaced the lying 8002 probe with REST
+   PowerState.
+
+5. **Samsung REST PowerState rewrite + model probe** (`f54f25c0`) —
+   replaces port-8002 probe with REST `/api/v2/` `PowerState`. Standby
+   = off (skipped for action='off', WoL'd for action='on'). New model-
+   catalog probe `POST /api/tv-discovery/probe-models` + boot-time
+   refresh in instrumentation.ts (45s after start, every 4h). At
+   Stoneyard Appleton this updated 7 of 20 model rows to their real
+   identity (e.g. `UN55DU7200DXZA`).
+
+6. **NEW_LOCATION_SETUP doc update** (`5c87b7b1`) — adds §9a walking
+   the operator through running the model probe once after configuring
+   TVs, plus rewrites the "Samsung TV keeps turning itself off"
+   troubleshooting step with explicit "do not probe 8002" warning.
+
+**Per-location action after this merge:**
+
+```bash
+# auto-update.sh handles this automatically. Manual merge:
+npx drizzle-kit push --config drizzle.config.ts
+pm2 restart sports-bar-tv-controller
+# Samsung locations: trigger model probe to refresh catalog (after login)
+curl -sS -b cookiejar -X POST http://localhost:3001/api/tv-discovery/probe-models
+```
+
+**Affected files:**
+
+- `scripts/auto-update.sh`
+- `apps/web/src/app/api/system/health/route.ts`
+- `apps/web/src/app/layout.tsx`
+- `apps/web/src/app/api/channel-presets/tune/history/route.ts` (new)
+- `apps/web/src/app/api/channel-presets/tune/route.ts`
+- `apps/web/src/app/api/tv-control/bulk-power/route.ts`
+- `apps/web/src/app/api/tv-discovery/probe-models/route.ts` (new)
+- `apps/web/src/components/EnhancedChannelGuideBartenderRemote.tsx`
+- `apps/web/src/instrumentation.ts`
+- `apps/web/src/lib/samsung-model-probe.ts` (new)
+- `packages/database/src/schema.ts` — adds `channelTuneLog` table
+- `docs/NEW_LOCATION_SETUP.md`
+- `package.json` — version bump 2.7.1 → 2.8.0 (minor: new feature)
+
+**Stoneyard Appleton:** already running these commits (originated
+there). Cherry-picks land them on main with different SHAs — Appleton's
+next merge from main will resolve as duplicates cleanly.
+
+**Rollback:** non-trivial because of the schema change. Best path is
+`git revert <merge sha>` + `pm2 restart`. The new ChannelTuneLog table
+can stay (empty) without affecting anything else.
+
+---
+
+### 2026-04-14 — v2.7.1 — bigger preset logos + logos in input list
+
+**Risk:** GO — pure UI tweak. No behavior change.
+
+**What changed:**
+
+`ChannelPresetGrid.tsx` — preset grid logos went from 20px to 40px
+with a subtle white background tile so SimpleIcons white-monochrome
+variants stay visible against colored card gradients.
+
+`EnhancedChannelGuideBartenderRemote.tsx` — each input row in the
+Guide tab's left panel now shows the currently-tuned channel's logo
+(32px) next to the "Ch X • cable" label. Lookup uses
+`currentChannels[input].channelName` against the same channel-logos
+helper from v2.7.0. Hides on CDN error, falls back to text badge for
+unknown channels.
+
+**Affected files:**
+
+- `apps/web/src/components/ChannelPresetGrid.tsx`
+- `apps/web/src/components/EnhancedChannelGuideBartenderRemote.tsx`
+- `package.json` — version bump 2.7.0 → 2.7.1
+
+---
+
 ### 2026-04-14 — v2.7.0 — channel logos in bartender preset grid
 
 **Risk:** GO — additive UI only. Logos appear next to preset names in

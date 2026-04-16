@@ -154,7 +154,8 @@ export default function GitHubConfigSync() {
       const result = await response.json()
 
       if (result.success) {
-        setLastOperation(`✅ Successfully pushed changes. Commit: ${result.commit.hash}`)
+        const hashBit = result.commit?.hash ? ` (HEAD: ${result.commit.hash})` : ''
+        setLastOperation(`✅ ${result.message || 'Pushed'}${hashBit}`)
         setCommitMessage('')
         await fetchStatus()
       } else {
@@ -243,21 +244,38 @@ export default function GitHubConfigSync() {
             />
           </div>
 
-          {/* Push Button */}
-          <div className="flex gap-2">
-            <Button 
-              onClick={handlePushChanges} 
-              disabled={!gitStatus?.hasChanges || isLoading}
-              className="flex items-center gap-2"
-            >
-              {isLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-              {isLoading ? 'Pushing...' : 'Push Configuration Changes'}
-            </Button>
-            
-            <Button variant="outline" onClick={fetchStatus}>
-              <RefreshCw className="w-4 h-4" />
-            </Button>
-          </div>
+          {/* Push Button — enabled when we have EITHER working-tree changes
+              OR unpushed commits; label reflects which case applies. */}
+          {(() => {
+            const hc = gitStatus?.hasChanges ?? false
+            const hu = gitStatus?.hasUnpushedCommits ?? false
+            const n  = gitStatus?.unpushedCommits.length ?? 0
+            const pluralCommit = n === 1 ? 'Commit' : 'Commits'
+            const buttonLabel = isLoading
+              ? 'Pushing...'
+              : hc && hu
+                ? `Commit & Push Changes (+${n} unpushed)`
+                : hc
+                  ? 'Commit & Push Changes'
+                  : hu
+                    ? `Push ${n} Local ${pluralCommit}`
+                    : 'Nothing to Push'
+            return (
+              <div className="flex gap-2">
+                <Button
+                  onClick={handlePushChanges}
+                  disabled={(!hc && !hu) || isLoading}
+                  className="flex items-center gap-2"
+                >
+                  {isLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                  {buttonLabel}
+                </Button>
+                <Button variant="outline" onClick={fetchStatus}>
+                  <RefreshCw className="w-4 h-4" />
+                </Button>
+              </div>
+            )
+          })()}
 
           {/* Last Operation Status */}
           {lastOperation && (

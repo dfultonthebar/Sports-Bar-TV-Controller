@@ -7,6 +7,8 @@ import { logger } from '@sports-bar/logger'
 import { z } from 'zod'
 import { validateRequestBody, isValidationError } from '@/lib/validation'
 import { enhanceLayout } from '@/lib/layout-enhancer'
+import { db, schema } from '@/db'
+import { eq } from 'drizzle-orm'
 
 const enhanceSchema = z.object({
   provider: z.enum(['ollama', 'claude', 'none']).default('ollama'),
@@ -21,11 +23,23 @@ export async function POST(request: NextRequest) {
   const { provider } = bodyValidation.data
 
   try {
-    // Read current layout from data file
-    const layoutPath = join(process.cwd(), 'data', 'tv-layout.json')
-    const layoutData = JSON.parse(await fs.readFile(layoutPath, 'utf-8'))
+    // Read current layout from DB
+    const row = await db.select().from(schema.bartenderLayouts)
+      .where(eq(schema.bartenderLayouts.isDefault, true))
+      .get()
+      || await db.select().from(schema.bartenderLayouts)
+        .where(eq(schema.bartenderLayouts.isActive, true))
+        .get()
 
-    if (!layoutData.zones || layoutData.zones.length === 0) {
+    if (!row) {
+      return NextResponse.json(
+        { success: false, error: 'No layout found. Upload a layout and detect zones first.' },
+        { status: 400 }
+      )
+    }
+
+    const zones = JSON.parse(row.zones || '[]')
+    if (zones.length === 0) {
       return NextResponse.json(
         { success: false, error: 'No zones defined. Upload a layout and detect zones first.' },
         { status: 400 }
@@ -33,7 +47,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Resolve the original image path on disk
-    const imageUrl = layoutData.imageUrl || ''
+    const imageUrl = row.imageUrl || row.originalFileUrl || ''
     let imagePath = ''
 
     if (imageUrl.startsWith('/api/uploads/')) {
@@ -60,26 +74,27 @@ export async function POST(request: NextRequest) {
     // Run enhancement
     const result = await enhanceLayout(
       imagePath,
-      layoutData.zones,
-      layoutData.name || 'Bar Layout',
+      zones,
+      row.name || 'Bar Layout',
       provider
     )
 
-    // Try to save professionalImageUrl to the layout data file
-    try {
-      layoutData.professionalImageUrl = result.imageUrl
-      await fs.writeFile(layoutPath, JSON.stringify(layoutData, null, 2))
-      logger.info(`[LAYOUT-ENHANCE] Saved professional image URL to layout data: ${result.imageUrl}`)
-    } catch (writeError) {
-      // File may be read-only (root owned) - the UI will save it via the layout save flow
-      logger.warn(`[LAYOUT-ENHANCE] Could not write to layout file (will be saved via UI): ${writeError}`)
-    }
+    // Save professionalImageUrl to DB
+    const now = new Date().toISOString().replace('T', ' ').slice(0, 19)
+    await db.update(schema.bartenderLayouts)
+      .set({
+        professionalImageUrl: result.imageUrl,
+        updatedAt: now,
+      })
+      .where(eq(schema.bartenderLayouts.id, row.id))
+
+    logger.info(`[LAYOUT-ENHANCE] Saved professional image URL to DB: ${result.imageUrl}`)
 
     return NextResponse.json({
       success: true,
       professionalImageUrl: result.imageUrl,
       analysis: result.analysis,
-      provider
+      provider,
     })
   } catch (error: any) {
     logger.error('[LAYOUT-ENHANCE] Enhancement failed:', error)

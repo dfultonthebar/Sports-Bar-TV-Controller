@@ -360,7 +360,16 @@ class SchedulerService {
       if (result.result?.success) {
         logger.info(`[SCHEDULER] ✅ Schedule executed successfully in ${duration}ms - Games: ${result.result.gamesFound || 0}, Channels: ${result.result.channelsSet || 0}`);
       } else {
-        logger.warn(`[SCHEDULER] ⚠️  Schedule execution completed with issues (${duration}ms): ${result.result?.message}`);
+        // "No TVs to control" is a benign condition: the AI Game Monitor
+        // fires every 5 minutes by design, and most of the time there is
+        // no active allocation to act on. Don't spam WARN for this — real
+        // problems are easier to spot without 288 benign entries per day.
+        const msg = result.result?.message;
+        if (msg === 'No TVs to control') {
+          logger.debug(`[SCHEDULER] Schedule tick: no active TV allocations (${duration}ms)`);
+        } else {
+          logger.warn(`[SCHEDULER] ⚠️  Schedule execution completed with issues (${duration}ms): ${msg}`);
+        }
       }
     } catch (error) {
       logger.error(`[SCHEDULER] ❌ Failed to execute schedule ${scheduleId}:`, { error });

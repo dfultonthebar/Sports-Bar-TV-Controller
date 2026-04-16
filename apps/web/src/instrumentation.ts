@@ -131,14 +131,15 @@ export async function register() {
         })
       }, 30_000)
 
-      // Recurring sync every hour
+      // Recurring sync every 10 minutes — fast enough to detect game completion
+      // for the auto-reallocator to revert cable boxes to default channels
       setInterval(() => {
         runEspnSyncAll().catch((err: unknown) => {
           logger.error('[INSTRUMENTATION] Recurring ESPN sync failed:', err)
         })
-      }, 60 * 60 * 1000)
+      }, 10 * 60 * 1000)
 
-      logger.info('[INSTRUMENTATION] ✅ ESPN game schedule sync initialized (every 60 minutes)')
+      logger.info('[INSTRUMENTATION] ✅ ESPN game schedule sync initialized (every 10 minutes)')
     } catch (error) {
       logger.error('[INSTRUMENTATION] ❌ Failed to initialize ESPN sync:', error)
     }
@@ -167,6 +168,34 @@ export async function register() {
       logger.info('[INSTRUMENTATION] ✅ Samsung TV model probe scheduled (every 4 hours)')
     } catch (error) {
       logger.error('[INSTRUMENTATION] ❌ Failed to initialize Samsung model probe:', error)
+    }
+
+    try {
+      // Refresh LG TV model catalog from live SSAP getSystemInfo probes.
+      // Replaces stale/generic strings like "LG WebOS" with the real
+      // modelName (e.g. "65UT8000AUA.BUSYLKR") so the UI shows accurate
+      // hardware. Requires each LG row to have a clientKey from a prior
+      // successful pairing. Staggered 15s after Samsung so both probes
+      // don't contend for DB writes at exactly the same tick.
+      const { refreshLGModelCatalog } = await import('./lib/lg-model-probe')
+
+      const runLGProbe = async () => {
+        try {
+          const r = await refreshLGModelCatalog()
+          logger.info(
+            `[INSTRUMENTATION][LG PROBE] probed=${r.probed}, updated=${r.updated}, unreachable=${r.unreachable}`
+          )
+        } catch (err) {
+          logger.error('[INSTRUMENTATION][LG PROBE] failed:', err)
+        }
+      }
+
+      setTimeout(runLGProbe, 60_000)
+      setInterval(runLGProbe, 4 * 60 * 60 * 1000)
+
+      logger.info('[INSTRUMENTATION] ✅ LG TV model probe scheduled (every 4 hours)')
+    } catch (error) {
+      logger.error('[INSTRUMENTATION] ❌ Failed to initialize LG model probe:', error)
     }
 
     try {

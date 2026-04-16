@@ -119,7 +119,35 @@ export async function sendHTTPCommand(
       headers: { 'Cookie': sessionCookie },
     })
 
-    // Step 2: Send routing command
+    // Step 1c: Query current routing state BEFORE sending the command.
+    // The o2ox command is a TOGGLE — if the route is already set, sending
+    // it again CLEARS the route instead of being a no-op. This was the root
+    // cause of TV 1 randomly going black at multiple locations: the scheduler
+    // or auto-reallocator re-sent the same route, Wolf Pack toggled it off,
+    // and the TV lost its HDMI signal.
+    const queryPath = '/get_json_cmd.php?cmd=o2ox'
+    const queryResponse = await httpRequest({
+      hostname: ipAddress,
+      path: queryPath,
+      method: 'GET',
+      headers: { 'Cookie': sessionCookie },
+    })
+    try {
+      const currentRoutes: number[] = JSON.parse(queryResponse.body)
+      if (currentRoutes[output0Based] === input0Based) {
+        logger.info(`[WOLFPACK-HTTP] Output ${output0Based} already routed to input ${input0Based} — skipping to avoid toggle-off`)
+        return {
+          success: true,
+          command: `HTTP o2ox: ${input0Based},${output0Based} (already set, skipped)`,
+          response: queryResponse.body,
+        }
+      }
+    } catch {
+      // If query fails, proceed with the route command anyway
+      logger.warn(`[WOLFPACK-HTTP] Could not pre-check current routes, proceeding with route command`)
+    }
+
+    // Step 2: Send routing command (only reaches here if route is NOT already set)
     const routePath = `/get_json_cmd.php?cmd=o2ox&prm=${input0Based},${output0Based}`
     logger.info(`[WOLFPACK-HTTP] Routing: input ${input0Based} -> output ${output0Based} (0-based)`)
     logger.info(`[WOLFPACK-HTTP] GET http://${ipAddress}${routePath}`)
@@ -555,15 +583,45 @@ export async function queryWolfpackRouteState(
   // output repeatedly across many seconds of queries with no route commands
   // issued) WOULD indicate a real firmware hang and should be investigated —
   // but you'll need to raise the log level to see it first.
-  const rawArray = routingArray as number[]
-  const normalized = rawArray.map(v => (v === 65535 ? -1 : v))
-  const sentinelIndices = rawArray
-    .map((v, i) => (v === 65535 ? i + 1 : -1))
-    .filter(i => i > 0)
-  if (sentinelIndices.length > 0) {
-    logger.debug(`[WOLFPACK-HTTP] Query returned ${sentinelIndices.length} transient 0xFFFF sentinel(s) at ${config.ipAddress} for output(s) ${sentinelIndices.join(',')} — normalized to -1 (expected during ~500ms post-route settle window)`)
+  let rawArray = routingArray as number[]
+
+  // Wolf Pack firmware quirk: the first o2ox query after login + index.php
+  // often returns 65535 (0xFFFF) for one or more outputs — especially output 1.
+  // This is NOT from a route change; it's the firmware's "session init" settling.
+  // Re-query after a brief delay to get the real state.
+  const hasSentinels = rawArray.some(v => v === 65535)
+  if (hasSentinels) {
+    const sentinelOutputs = rawArray
+      .map((v, i) => (v === 65535 ? i + 1 : -1))
+      .filter(i => i > 0)
+    logger.info(`[WOLFPACK-HTTP] Initial query has 0xFFFF sentinel(s) at output(s) ${sentinelOutputs.join(',')} — re-querying after 600ms settle`)
+
+    await new Promise(resolve => setTimeout(resolve, 600))
+
+    const retryResponse = await httpRequest({
+      hostname: config.ipAddress,
+      path: '/get_json_cmd.php?cmd=o2ox',
+      method: 'GET',
+      headers: { 'Cookie': sessionCookie },
+    })
+
+    try {
+      const retryArray = JSON.parse(retryResponse.body)
+      if (Array.isArray(retryArray) && retryArray.every(v => typeof v === 'number')) {
+        rawArray = retryArray
+        const stillSentinel = rawArray.filter(v => v === 65535).length
+        if (stillSentinel > 0) {
+          logger.warn(`[WOLFPACK-HTTP] Re-query still has ${stillSentinel} sentinel(s) — firmware may be hung`)
+        } else {
+          logger.info(`[WOLFPACK-HTTP] Re-query cleared all sentinels`)
+        }
+      }
+    } catch {
+      logger.warn(`[WOLFPACK-HTTP] Re-query returned non-JSON, using initial result`)
+    }
   }
 
+  const normalized = rawArray.map(v => (v === 65535 ? -1 : v))
   logger.info(`[WOLFPACK-HTTP] Queried route state from ${config.ipAddress}: ${normalized.length} outputs`)
   return normalized
 }

@@ -10,18 +10,17 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { db, schema } from '@/db'
-import { eq, and, sql } from 'drizzle-orm'
+import { eq, and, sql, gte } from 'drizzle-orm'
 import { logger } from '@sports-bar/logger'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { validateQueryParams, z } from '@/lib/validation'
 import { HARDWARE_CONFIG } from '@/lib/hardware-config'
+import { resolveChannelsForGame } from '@/lib/network-channel-resolver'
 
 const OLLAMA_URL = `${HARDWARE_CONFIG.ollama.baseUrl}/api/generate`
-// const OLLAMA_MODEL = 'llama3.1:8b' // Too slow for large prompts
 const OLLAMA_TIMEOUT_MS = HARDWARE_CONFIG.ollama.timeout // 60 seconds
-const OLLAMA_MODEL = HARDWARE_CONFIG.ollama.model // Smaller model for faster responses
-const SPORTS_GUIDE_URL = 'http://localhost:3001/api/sports-guide'
+const OLLAMA_MODEL = HARDWARE_CONFIG.ollama.model
 
 // ---------- types ----------
 
@@ -47,8 +46,9 @@ interface GameListing {
   homeTeam: string
   awayTeam: string
   stations: string[]
-  channelNumber?: string
+  channelNumber?: string   // cable channel
   channelName?: string
+  directvChannel?: string  // directv channel (different numbering)
 }
 
 interface AISuggestion {
@@ -67,131 +67,59 @@ interface AISuggestion {
   reasoning: string
 }
 
-// ---------- helper: fetch upcoming games from sports guide ----------
+// ---------- helper: fetch upcoming games from game_schedules (ESPN data) ----------
+// Uses the same data source as the bartender remote channel guide, resolved
+// through the shared network-channel-resolver for correct per-device-type
+// channel numbers.
 
 async function fetchUpcomingGames(): Promise<GameListing[]> {
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 15_000)
-
   try {
-    const response = await fetch(SPORTS_GUIDE_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ days: 2 }),
-      signal: controller.signal,
-    })
+    const nowUnix = Math.floor(Date.now() / 1000)
+    const twelveHoursLater = nowUnix + 12 * 60 * 60
 
-    if (!response.ok) {
-      logger.error(`[AI-SUGGEST] Sports guide returned ${response.status}`)
-      return []
-    }
+    const rows = await db.select().from(schema.gameSchedules).where(
+      and(
+        gte(schema.gameSchedules.scheduledStart, nowUnix),
+        sql`${schema.gameSchedules.scheduledStart} <= ${twelveHoursLater}`,
+        sql`${schema.gameSchedules.status} != 'completed'`,
+      )
+    )
 
-    const data = await response.json()
-    if (!data.success || !data.data?.listing_groups) {
-      logger.warn('[AI-SUGGEST] Sports guide returned no listing groups')
-      return []
-    }
-
-    const now = new Date()
     const games: GameListing[] = []
+    for (const row of rows) {
+      // Parse broadcast networks from JSON
+      let networks: string[] = []
+      try { networks = JSON.parse(row.broadcastNetworks || '[]') } catch { /* ignore */ }
 
-    for (const group of data.data.listing_groups) {
-      const league = group.group_title || 'Unknown'
+      // Resolve channels using the same resolver as the bartender remote
+      const resolved = await resolveChannelsForGame(
+        { networks, primaryNetwork: networks[0] || null, league: row.league, sport: row.sport },
+        ['cable', 'directv']
+      )
 
-      for (const listing of group.listings || []) {
-        // Parse time — Rail Media returns "7:00 pm" + "Mar 27" format
-        let gameTime: Date | null = null
-        if (listing.time) {
-          const currentYear = new Date().getFullYear()
-          const dateStr = listing.date
-            ? `${listing.date} ${currentYear} ${listing.time}`
-            : `${new Date().toDateString()} ${listing.time}`
-          gameTime = new Date(dateStr)
-          if (isNaN(gameTime.getTime())) gameTime = null
-        }
-        if (!gameTime || gameTime < now) continue // skip past games
+      const gameTime = new Date(row.scheduledStart * 1000)
 
-        // Only include games within the next ~12 hours
-        const hoursAhead = (gameTime.getTime() - now.getTime()) / (1000 * 60 * 60)
-        if (hoursAhead > 12) continue
-
-        // Skip events without team matchups (golf, F1, etc.)
-        const homeTeamCheck = listing.data?.['home team'] || listing.data?.['team'] || ''
-        const awayTeamCheck = listing.data?.['visiting team'] || listing.data?.['opponent'] || ''
-        if (!homeTeamCheck.trim() && !awayTeamCheck.trim()) continue
-
-        // Extract team names from listing data
-        const listingData = listing.data || {}
-        const title = Object.values(listingData).join(' ') || 'Unknown Game'
-
-        // Stations can be an array or an object
-        let stations: string[] = []
-        if (Array.isArray(listing.stations)) {
-          stations = listing.stations
-        } else if (listing.stations && typeof listing.stations === 'object') {
-          stations = Object.keys(listing.stations)
-        }
-
-        // Extract cable channel numbers (CAB lineup) — matches Spectrum presets
-        let channelNumber = ''
-        let channelName = stations[0] || ''
-        if (listing.channel_numbers) {
-          const cabLineup = listing.channel_numbers['CAB'] || listing.channel_numbers['cab'] || {}
-          for (const [station, numbers] of Object.entries(cabLineup)) {
-            if (Array.isArray(numbers) && numbers.length > 0) {
-              // Use the lowest channel number (most common/basic tier)
-              channelNumber = String(Math.min(...(numbers as number[])))
-              channelName = station
-              break
-            }
-          }
-          // Fallback to DRTV if no cable
-          if (!channelNumber) {
-            const dtvLineup = listing.channel_numbers['DRTV'] || listing.channel_numbers['SAT'] || {}
-            for (const [station, numbers] of Object.entries(dtvLineup)) {
-              if (Array.isArray(numbers) && numbers.length > 0) {
-                channelNumber = String(numbers[0])
-                channelName = station
-                break
-              }
-            }
-          }
-        }
-
-        // Extract home/away teams from Rail Media data fields
-        let homeTeam = listingData['home team'] || listingData['team'] || ''
-        let awayTeam = listingData['visiting team'] || listingData['opponent'] || ''
-
-        // Skip games without team names (golf, racing, etc.)
-        if (!homeTeam.trim() && !awayTeam.trim()) continue
-
-        games.push({
-          time: gameTime.toISOString(),
-          date: listing.date,
-          title,
-          league,
-          homeTeam,
-          awayTeam,
-          stations,
-          channelNumber,
-          channelName,
-        })
-      }
+      games.push({
+        time: gameTime.toISOString(),
+        title: `${row.awayTeamName} at ${row.homeTeamName}`,
+        league: row.league || 'Unknown',
+        homeTeam: row.homeTeamName,
+        awayTeam: row.awayTeamName,
+        stations: networks,
+        channelNumber: resolved.cableChannel || '',
+        channelName: resolved.primaryMatch || networks[0] || '',
+        directvChannel: resolved.directvChannel || '',
+      })
     }
 
-    // Cap at 30 games — filtering later will reduce to only those with matching presets
+    // Sort by start time
+    games.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime())
     const capped = games.slice(0, 30)
-    logger.info(`[AI-SUGGEST] Found ${games.length} upcoming games, sending ${capped.length} to AI`)
+    logger.info(`[AI-SUGGEST] Found ${games.length} upcoming games from ESPN data, ${capped.length} capped`)
     return capped
   } catch (err: any) {
-    if (err.name === 'AbortError') {
-      logger.error('[AI-SUGGEST] Sports guide request timed out')
-    } else {
-      logger.error('[AI-SUGGEST] Error fetching sports guide:', err)
-    }
+    logger.error('[AI-SUGGEST] Error fetching games from game_schedules:', err)
     return []
-  } finally {
-    clearTimeout(timeout)
   }
 }
 
@@ -333,24 +261,36 @@ async function callOllama(prompt: string): Promise<string> {
 function buildPrompt(
   games: GameListing[],
   inputSources: any[],
-  channelPresets: any[],
+  _channelPresets: any[],
   tvOutputs: any[],
   patterns: SchedulingPattern[],
-  historicalSummary: string,
+  _historicalSummary: string,
 ): string {
-  const inputList = inputSources.slice(0, 6).map(s =>
-    `${s.name} (${s.type}${s.currentlyAllocated ? ', BUSY' : ''})`
-  ).join(', ')
+  // Group inputs by type so the AI knows which channel number to use
+  const cableInputs = inputSources.filter(s => s.type === 'cable')
+  const directvInputs = inputSources.filter(s => s.type === 'directv' || s.type === 'satellite')
 
-  const gameList = games.map((g, i) =>
-    `${i + 1}. ${g.league}: ${g.awayTeam || '?'} @ ${g.homeTeam || '?'}, ${new Date(g.time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}, ch ${g.channelNumber || '?'} (${g.channelName || '?'})`
-  ).join('\n')
+  const inputLines: string[] = []
+  for (const s of cableInputs) {
+    inputLines.push(`  ${s.name} (cable${s.currentlyAllocated ? ', BUSY' : ''})`)
+  }
+  for (const s of directvInputs) {
+    inputLines.push(`  ${s.name} (directv${s.currentlyAllocated ? ', BUSY' : ''})`)
+  }
 
-  const presetList = channelPresets.slice(0, 20).map((p: any) =>
-    `${p.name}: ch ${p.channelNumber}`
-  ).join(', ')
+  // Build game list showing BOTH channel numbers so the AI uses the right one
+  const gameLines = games.map((g, i) => {
+    const time = new Date(g.time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Chicago' })
+    const cableCh = g.channelNumber ? `cable ch ${g.channelNumber}` : ''
+    const dtvCh = g.directvChannel ? `directv ch ${g.directvChannel}` : ''
+    const channels = [cableCh, dtvCh].filter(Boolean).join(', ')
+    return `${i + 1}. ${g.awayTeam} at ${g.homeTeam} (${g.league}) — ${time} CT — ${channels || 'no channel found'}`
+  }).join('\n')
 
-  // Build pattern hints from learned data
+  const tvCount = tvOutputs.length
+  const totalInputs = inputSources.length
+
+  // Pattern hints
   let patternHints = ''
   if (patterns.length > 0) {
     const routingHints = patterns
@@ -359,40 +299,41 @@ function buildPrompt(
       .map((p: any) => {
         try {
           const d = typeof p.pattern_data === 'string' ? JSON.parse(p.pattern_data) : p.pattern_data
-          const outputs = d.preferredOutputs?.slice(0, 8)?.join(',') || 'unknown'
-          return `${d.teamName || '?'}: Box=${d.preferredInput || '?'}, TVs=[${outputs}]`
+          return `${d.teamName || '?'}: usually on ${d.preferredInput || '?'}`
         } catch { return null }
       })
       .filter(Boolean)
-
     if (routingHints.length > 0) {
-      patternHints = `\nLearned routing (from bartender history):\n${routingHints.join('\n')}`
+      patternHints = `\nPast routing patterns:\n${routingHints.join('\n')}`
     }
   }
 
-  // Build the JSON example using the first actual input source name so the
-  // AI echoes back a name we can resolve. Previously the example used a
-  // hardcoded "Cable Box 1" which doesn't match the real source names at any
-  // of our locations (Stoneyard uses "Cable 1"..."Cable 4"), causing the
-  // post-response lookup to fail and suggestedInputId to be empty.
-  const exampleInputName = inputSources[0]?.name || 'Cable 1'
+  const exampleInput = inputSources[0]?.name || 'DirecTV 1'
 
-  return `Sports bar scheduler. Assign upcoming games to cable boxes and suggest which TVs to show each game on. ONLY use channel numbers from our presets.
+  return `You are a sports bar TV scheduler in Green Bay, Wisconsin. Assign games to inputs and TVs.
 
-Boxes: ${inputList}
+INPUTS (each tunes ONE channel at a time):
+${inputLines.join('\n')}
 
-Our channel presets: ${presetList}
+GAMES (next 12 hours):
+${gameLines}
 
-Games (only ones on our channels):
-${gameList}
-
-Home teams: Packers, Brewers, Bucks, Badgers
+SETUP: ${tvCount} TVs across ${totalInputs} inputs. Home teams: Packers, Brewers, Bucks, Badgers.
 ${patternHints}
 
-Rules: Each box tunes ONE channel. Prioritize home teams. Home team games get more TVs. Use learned routing patterns when available.
-IMPORTANT: The "suggestedInput" field MUST be one of the exact box names listed under "Boxes:" above. Do not invent names.
-Return JSON: {"suggestions":[{"gameIndex":1,"suggestedInput":"${exampleInputName}","channelNumber":"27","suggestedOutputs":[1,2,3,5],"confidence":0.8,"reasoning":"brief reason"}]}
-Only top games. JSON only.`
+RULES:
+1. CRITICAL: Cable inputs MUST use the "cable ch" number. DirecTV inputs MUST use the "directv ch" number. Never mix them.
+2. If a game only has a cable channel, assign it to a cable input. If it only has a directv channel, assign it to a directv input.
+3. If a game has both, prefer whichever input type has more availability.
+4. Home team games (Brewers, Bucks, Packers, Badgers) get top priority and more TVs.
+5. Each input tunes ONE channel — assign different games to different inputs.
+6. Spread games across inputs — don't put everything on one box.
+7. "suggestedInput" MUST be an exact name from the INPUTS list above.
+
+Return ONLY valid JSON:
+{"suggestions":[{"gameIndex":1,"suggestedInput":"${exampleInput}","channelNumber":"669","suggestedOutputs":[1,2,3],"confidence":0.9,"reasoning":"Brewers home game on DirecTV"}]}
+
+Return up to ${Math.min(totalInputs, 6)} suggestions for the best games. JSON only, no other text.`
 }
 
 // ---------- helper: parse Ollama response ----------
@@ -440,16 +381,21 @@ function parseOllamaResponse(
     for (const s of parsed.suggestions || []) {
       const gameIdx = (s.gameIndex || 0) - 1
       const game = games[gameIdx]
+      if (!game) continue
 
       const input = resolveInput(s.suggestedInputId || '', s.suggestedInput || '')
 
-      // Coerce channelNumber to string. The LLM sometimes returns it as a
-      // number ("channelNumber": 40) which then fails Zod validation on
-      // /api/schedules/bartender-schedule (requires string). Same for
-      // any output IDs (must be integers, not strings or mixed).
-      const channelNumberStr = s.channelNumber != null
-        ? String(s.channelNumber)
-        : (game?.channelNumber || '')
+      // CRITICAL: Don't trust the LLM's channel number — it hallucinates.
+      // Use the server-side resolved channel number based on the input type.
+      const inputType = input?.type || 'cable'
+      const isDirectv = inputType === 'directv' || inputType === 'satellite'
+      const channelNumberStr = isDirectv
+        ? (game.directvChannel || game.channelNumber || '')
+        : (game.channelNumber || game.directvChannel || '')
+
+      // Skip if we have no valid channel for this input type
+      if (!channelNumberStr) continue
+
       const suggestedOutputsInt: number[] = Array.isArray(s.suggestedOutputs)
         ? s.suggestedOutputs
             .map((o: any) => (typeof o === 'number' ? o : parseInt(String(o), 10)))
@@ -457,13 +403,13 @@ function parseOllamaResponse(
         : []
 
       suggestions.push({
-        gameId: game ? `game-${gameIdx}` : `game-unknown`,
-        homeTeam: s.homeTeam || game?.homeTeam || 'Unknown',
-        awayTeam: s.awayTeam || game?.awayTeam || 'Unknown',
-        league: s.league || game?.league || 'Unknown',
-        startTime: game?.time || new Date().toISOString(),
+        gameId: `game-${gameIdx}`,
+        homeTeam: game.homeTeam || 'Unknown',
+        awayTeam: game.awayTeam || 'Unknown',
+        league: game.league || 'Unknown',
+        startTime: game.time || new Date().toISOString(),
         channelNumber: channelNumberStr,
-        channelName: s.channelName || game?.channelName || '',
+        channelName: game.channelName || '',
         suggestedInput: input?.name || s.suggestedInput || 'Unknown',
         suggestedInputId: input?.id || '',
         suggestedDeviceId: input?.deviceId || '',
@@ -531,17 +477,9 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    // 2b. Filter games to only those with cable channels matching our presets
-    // Exclude streaming-only channels (MLBEI, ESPN+, MLSDK, NBALP, etc.)
-    const STREAMING_ONLY = new Set(['MLBEI', 'ESPN+', 'MLSDK', 'NBALP', 'TELE', 'NBCUN', 'Netflix', 'Prime'])
-    const cablePresets = channelPresets.filter((p: any) => p.deviceType === 'cable')
-    const presetChannels = new Set(cablePresets.map((p: any) => String(p.channelNumber)))
-    const filteredGames = games.filter(g => {
-      if (STREAMING_ONLY.has(g.channelName)) return false
-      if (g.channelNumber && presetChannels.has(String(g.channelNumber))) return true
-      return false
-    })
-    logger.info(`[AI-SUGGEST] Filtered ${games.length} games to ${filteredGames.length} matching channel presets`)
+    // 2b. Filter to games that have at least one resolved channel (cable or directv)
+    const filteredGames = games.filter(g => g.channelNumber || g.directvChannel)
+    logger.info(`[AI-SUGGEST] Filtered ${games.length} games to ${filteredGames.length} with resolved channels`)
 
     if (filteredGames.length === 0) {
       return NextResponse.json({

@@ -1,12 +1,35 @@
 You are doing post-merge review. The git merge from origin/main onto the
-location branch completed without conflicts, and `npm ci` has finished
-installing dependencies. Before I run `npm run build`, confirm the merged
-state is coherent with this location's configuration.
+location branch completed without conflicts, `npm ci` has finished
+installing dependencies, AND `drizzle-kit push` has run to apply any new
+schema. Before I run `npm run build`, confirm the merged state is coherent
+with this location's configuration.
 
 REQUIRED READS:
+0. Read /home/ubuntu/Sports-Bar-TV-Controller/CLAUDE.md IN FULL before
+   anything else. This is the project's authoritative rulebook — it may
+   have been updated by the merge you're reviewing. Then:
+   a. Read ~/.claude/projects/-home-ubuntu-Sports-Bar-TV-Controller/memory/MEMORY.md
+      to see what's already saved.
+   b. For every section of CLAUDE.md (architecture, conventions, gotchas,
+      deployment workflow, hardware config, version bumping, commit
+      strategy), check if there's a corresponding memory entry. If not,
+      create one. Key items that MUST have memory entries:
+      - Version bumping rules (minor vs patch, required on every push)
+      - Commit strategy (software to main first, location data stays on branch)
+      - Turbo cache gotcha (force rebuild after package changes)
+      - Location data merge risk (main has empty templates)
+      - drizzle-kit push silent failure mode (pre-existing index aborts)
+      - PM2 restart method (delete+start, not restart --update-env)
+      - Request body consumption bug (never call request.json() after validateRequestBody)
+      - CEC vs IR control (Spectrum = IR only)
+      - Current location hardware details (IPs, devices, rooms)
+   c. Update any memories that conflict with what CLAUDE.md now says.
+   d. Remove memories that reference files/features that no longer exist.
 1. The merge commit's diff: run `git -C /home/ubuntu/Sports-Bar-TV-Controller show HEAD`
 2. Any .md docs in /home/ubuntu/Sports-Bar-TV-Controller/docs/ that were
-   modified by the merge — read each in full.
+   modified by the merge — read each in full. LOCATION_UPDATE_NOTES.md
+   especially: a v2.8.0+ entry will tell you whether this release added
+   new tables and what their names are.
 3. Current state of /home/ubuntu/Sports-Bar-TV-Controller/apps/web/data/*.json
    — these should NOT have changed during merge.
 4. The .env file at /home/ubuntu/Sports-Bar-TV-Controller/.env — confirm
@@ -14,18 +37,46 @@ REQUIRED READS:
    introduced). Do NOT log secret values, only confirm key presence.
 5. The ChannelPreset table counts:
    `sqlite3 /home/ubuntu/sports-bar-data/production.db "SELECT COUNT(*), deviceType FROM ChannelPreset GROUP BY deviceType"`
+6. The current run log — grep for lines starting with "WARNING:" or
+   tagged with "drizzle". A clean schema push produces no warnings. A
+   "pre-existing objects (benign)" warning means drizzle-kit hit an
+   already-existing index/table and continued — this is safe and expected
+   at locations that previously had manual hotfix tables. Any OTHER
+   schema-push error would have aborted auto-update.sh before reaching
+   you, so any [SCHEMA] message in the log is the benign branch.
+7. If the merge diff modified `packages/database/src/schema.ts`, verify
+   the new tables actually exist in production.db:
+   `sqlite3 /home/ubuntu/sports-bar-data/production.db ".tables"` and
+   compare against the export names in the schema diff. Missing tables
+   are the most common silent failure mode of this whole pipeline — they
+   make the build succeed but new endpoints 500 at runtime.
 
 DECISION CRITERIA:
 - GO: merged state is coherent, config files intact, no unexpected changes
-  to location-specific paths, ChannelPreset table is populated.
+  to location-specific paths, ChannelPreset table is populated, AND any
+  new schema tables from the diff exist in production.db.
 - CAUTION: merged state is coherent but has warnings (e.g., a new .env
-  variable would be helpful but the app can still start in degraded mode).
+  variable would be helpful but the app can still start in degraded mode,
+  or schema push warned about pre-existing objects but the new tables ARE
+  present in the .tables output).
 - STOP: a location-specific config file was modified by the merge (indicates
   conflict resolution failed), OR a required new .env variable is missing,
-  OR the ChannelPreset table has become empty.
+  OR the ChannelPreset table has become empty, OR a new table that the
+  schema diff added is MISSING from production.db (indicates the schema
+  push step failed silently — needs manual `sqlite3` CREATE before the
+  build is worth running).
 
-OUTPUT FORMAT (first line ONLY):
+OUTPUT FORMAT — CRITICAL:
+Your response MUST contain a line starting with exactly "DECISION: "
+followed by GO, CAUTION, or STOP. The auto-update script parses this
+with grep. If the line is missing, the update is treated as FAILED and
+triggers a full rollback — even if your analysis shows everything is fine.
+
+Do your memory sync and analysis work first, then output:
 DECISION: GO|CAUTION|STOP - <reason>
+
+Put the DECISION line BEFORE any summary text, or on its own line.
+Do NOT bury it inside a paragraph or markdown block.
 
 STOP at Checkpoint B aborts the build and triggers a full rollback
 (git reset --hard to the pre-update tag, npm ci, restore .next.bak).
