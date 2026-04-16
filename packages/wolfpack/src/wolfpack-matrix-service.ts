@@ -119,7 +119,35 @@ export async function sendHTTPCommand(
       headers: { 'Cookie': sessionCookie },
     })
 
-    // Step 2: Send routing command
+    // Step 1c: Query current routing state BEFORE sending the command.
+    // The o2ox command is a TOGGLE — if the route is already set, sending
+    // it again CLEARS the route instead of being a no-op. This was the root
+    // cause of TV 1 randomly going black at multiple locations: the scheduler
+    // or auto-reallocator re-sent the same route, Wolf Pack toggled it off,
+    // and the TV lost its HDMI signal.
+    const queryPath = '/get_json_cmd.php?cmd=o2ox'
+    const queryResponse = await httpRequest({
+      hostname: ipAddress,
+      path: queryPath,
+      method: 'GET',
+      headers: { 'Cookie': sessionCookie },
+    })
+    try {
+      const currentRoutes: number[] = JSON.parse(queryResponse.body)
+      if (currentRoutes[output0Based] === input0Based) {
+        logger.info(`[WOLFPACK-HTTP] Output ${output0Based} already routed to input ${input0Based} — skipping to avoid toggle-off`)
+        return {
+          success: true,
+          command: `HTTP o2ox: ${input0Based},${output0Based} (already set, skipped)`,
+          response: queryResponse.body,
+        }
+      }
+    } catch {
+      // If query fails, proceed with the route command anyway
+      logger.warn(`[WOLFPACK-HTTP] Could not pre-check current routes, proceeding with route command`)
+    }
+
+    // Step 2: Send routing command (only reaches here if route is NOT already set)
     const routePath = `/get_json_cmd.php?cmd=o2ox&prm=${input0Based},${output0Based}`
     logger.info(`[WOLFPACK-HTTP] Routing: input ${input0Based} -> output ${output0Based} (0-based)`)
     logger.info(`[WOLFPACK-HTTP] GET http://${ipAddress}${routePath}`)
