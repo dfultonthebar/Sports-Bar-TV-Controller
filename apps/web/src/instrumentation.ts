@@ -131,14 +131,15 @@ export async function register() {
         })
       }, 30_000)
 
-      // Recurring sync every hour
+      // Recurring sync every 10 minutes — fast enough to detect game completion
+      // for the auto-reallocator to revert cable boxes to default channels
       setInterval(() => {
         runEspnSyncAll().catch((err: unknown) => {
           logger.error('[INSTRUMENTATION] Recurring ESPN sync failed:', err)
         })
-      }, 60 * 60 * 1000)
+      }, 10 * 60 * 1000)
 
-      logger.info('[INSTRUMENTATION] ✅ ESPN game schedule sync initialized (every 60 minutes)')
+      logger.info('[INSTRUMENTATION] ✅ ESPN game schedule sync initialized (every 10 minutes)')
     } catch (error) {
       logger.error('[INSTRUMENTATION] ❌ Failed to initialize ESPN sync:', error)
     }
