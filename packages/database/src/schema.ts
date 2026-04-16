@@ -951,6 +951,39 @@ export const inputCurrentChannels = sqliteTable('InputCurrentChannel', {
   manualOverrideIdx: index('InputCurrentChannel_manualOverrideUntil_idx').on(table.manualOverrideUntil),
 }))
 
+// Per-input channel lists — each matrix input (especially DirecTV) can have
+// its own curated channel list. Falls back to global ChannelPreset if absent.
+export const inputChannelLists = sqliteTable('InputChannelList', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  matrixInputId: integer('matrixInputId').notNull().unique(),
+  name: text('name').notNull(),
+  description: text('description'),
+  isActive: integer('isActive', { mode: 'boolean' }).notNull().default(true),
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+})
+
+export const inputChannelListEntries = sqliteTable('InputChannelListEntry', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  listId: text('listId').notNull().references(() => inputChannelLists.id, { onDelete: 'cascade' }),
+  channelNumber: text('channelNumber').notNull(),
+  channelName: text('channelName').notNull(),
+  callsign: text('callsign'),
+  network: text('network'),
+  category: text('category').notNull().default('sports'),
+  isHD: integer('isHD', { mode: 'boolean' }).notNull().default(false),
+  isActive: integer('isActive', { mode: 'boolean' }).notNull().default(true),
+  displayOrder: integer('displayOrder').notNull().default(0),
+  source: text('source').notNull().default('manual'),
+  lastVerified: text('lastVerified'),
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+}, (table) => ({
+  listIdIdx: index('InputChannelListEntry_listId_idx').on(table.listId),
+  listChannelIdx: uniqueIndex('InputChannelListEntry_listId_channelNumber_key').on(table.listId, table.channelNumber),
+  isActiveIdx: index('InputChannelListEntry_isActive_idx').on(table.isActive),
+}))
+
 // Append-only history of every tune attempt (success or failure).
 // InputCurrentChannel holds only the latest channel per input, so older
 // tunes are lost. This table preserves the full rolling sequence so we can
