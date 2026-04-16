@@ -133,7 +133,7 @@
   },
   {
     "id": "08a321e9-162a-4b92-ab5e-acfe1033e5aa",
-    "name": "NFLNet",
+    "name": "MLB Network",
     "channelNumber": "212",
     "deviceType": "directv",
     "order": 28,
@@ -145,7 +145,7 @@
   },
   {
     "id": "aa1b7543-7338-49dc-8996-83775c9656d2",
-    "name": "MLB Network",
+    "name": "Golf Channel",
     "channelNumber": "213",
     "deviceType": "directv",
     "order": 22,
@@ -193,7 +193,7 @@
   },
   {
     "id": "804C9C819B19BE7C57625AE7B54CAF9B",
-    "name": "NFL Network",
+    "name": "MLB Strike Zone",
     "channelNumber": "217",
     "deviceType": "directv",
     "order": 27,
@@ -218,7 +218,7 @@
   {
     "id": "ca05d614-1d3b-4f95-8b3c-db92f3b48422",
     "name": "Golf",
-    "channelNumber": "218",
+    "channelNumber": "213",
     "deviceType": "directv",
     "order": 20,
     "isActive": 1,
@@ -241,7 +241,7 @@
   },
   {
     "id": "98e10cc7-f6eb-4636-b8e3-1dafc0e564f5",
-    "name": "Peacock/NBC Sports",
+    "name": "NFL Network",
     "channelNumber": "220",
     "deviceType": "directv",
     "order": 35,
@@ -254,7 +254,7 @@
   {
     "id": "fd90ac3a-44fb-413a-baa6-4fc17452eb14",
     "name": "CBS Sports Network",
-    "channelNumber": "221",
+    "channelNumber": "602",
     "deviceType": "directv",
     "order": 6,
     "isActive": 1,
@@ -266,7 +266,7 @@
   {
     "id": "cea7bdcd-d8fe-4650-98b3-6c14a090cd2c",
     "name": "CBS Sports Network",
-    "channelNumber": "221",
+    "channelNumber": "602",
     "deviceType": "directv",
     "order": 7,
     "isActive": 1,
@@ -301,7 +301,7 @@
   },
   {
     "id": "02607b75-6bdc-43dc-a463-4f59fcab67a8",
-    "name": "TruTV",
+    "name": "TBS",
     "channelNumber": "246",
     "deviceType": "directv",
     "order": 45,
@@ -313,7 +313,7 @@
   },
   {
     "id": "4084544d-18df-4419-8ff5-1d601ae48fe4",
-    "name": "TBS",
+    "name": "TruTV",
     "channelNumber": "247",
     "deviceType": "directv",
     "order": 38,
@@ -697,7 +697,7 @@
   },
   {
     "id": "6f54c3ba-15a6-484e-a269-bf457e3d3001",
-    "name": "Bally Sports Wisconsin",
+    "name": "Bally Sports North",
     "channelNumber": "668",
     "deviceType": "directv",
     "order": 3,
@@ -757,7 +757,7 @@
   },
   {
     "id": "f487c79d-2c18-417e-b8e6-b93ea773efd1",
-    "name": "KCROY",
+    "name": "Bally Sports Midwest",
     "channelNumber": "671",
     "deviceType": "directv",
     "order": 64,
@@ -910,5 +910,29 @@
     "lastUsed": "2026-04-13T16:41:33.564Z",
     "createdAt": "2026-03-21 09:00:02",
     "updatedAt": "2026-04-13T16:41:33.564Z"
+  },
+  {
+    "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "name": "Paramount Network",
+    "channelNumber": "248",
+    "deviceType": "directv",
+    "order": 76,
+    "isActive": 1,
+    "usageCount": 0,
+    "lastUsed": null,
+    "createdAt": "2026-04-16 09:00:00",
+    "updatedAt": "2026-04-16 09:00:00"
+  },
+  {
+    "id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+    "name": "NBC Sports",
+    "channelNumber": "296",
+    "deviceType": "directv",
+    "order": 77,
+    "isActive": 1,
+    "usageCount": 0,
+    "lastUsed": null,
+    "createdAt": "2026-04-16 09:00:00",
+    "updatedAt": "2026-04-16 09:00:00"
   }
 ]
