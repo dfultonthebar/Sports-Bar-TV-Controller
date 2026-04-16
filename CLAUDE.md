@@ -550,12 +550,22 @@ pm2 restart sports-bar-tv-controller
 
 ## Development Workflow
 
-### Version Bumping (REQUIRED)
-**Always bump the version in root `package.json` when making code changes:**
-- **Minor bump** (2.1.0 → 2.2.0): Feature additions, migrations, significant changes
-- **Patch bump** (2.1.0 → 2.1.1): Bug fixes, small adjustments
+### Standing Rules (MUST follow in every session)
 
-This is critical for multi-location deployments so each location knows what version they're running.
+1. **Read docs before work, update docs after.** Before starting any non-trivial task, read `CLAUDE.md` and any `/docs/*.md` files relevant to the area being touched. After completing code changes, update the relevant docs — API references if routes changed, hardware guides if device config changed, CLAUDE.md if architecture/conventions changed. If you add a new feature with no matching doc, create one under `/docs/`. Never say "docs updated" unless you actually edited the file.
+
+2. **Always commit and push after completing work.** After a unit of work is verified working (build passes, tests confirm), commit and push to GitHub automatically — do not wait for an explicit "please commit" instruction. Follow the commit strategy below (software to `main` first, then merge to location). Still confirm before destructive git operations (force push, reset, branch delete).
+
+3. **Never break working features during cleanup.** Before deleting anything, establish positive evidence it's unused — zero callers, zero UI references, zero scheduled jobs. When in doubt, hide from UI before deleting code. Stage refactors into small verifiable steps. After each step, confirm build + PM2 restart + core flow sanity check. Never delete DB tables in the same pass as code changes.
+
+4. **Force-rebuild when Turbo cache lies.** If `npm run build` completes in under 1 second with `FULL TURBO` and all tasks cached, the source changes did NOT get compiled. Run `npx turbo run build --force` (or `rm -rf apps/web/.next && npm run build`) to bypass the cache. This commonly happens after switching branches or cherry-picking.
+
+5. **When told to "remember" something, update CLAUDE.md too.** Memory files are per-host — only this machine's future sessions see them. CLAUDE.md is in the shared repo and gets merged to every location. When the user says "remember X", save to local memory AND add the rule to the appropriate section of CLAUDE.md, then commit+push with a version bump. This is how rules propagate to Lucky's, Holmgren, Graystone, Leg Lamp, and any future location.
+
+### Version Bumping (REQUIRED — every commit to main)
+**Every commit pushed to `main` MUST include a version bump in root `package.json`.** Do not push code changes and bump the version separately — include it in the same commit or at minimum the same push. A commit without a version bump means two locations can report the same version while running different code, making debugging impossible.
+- **Minor bump** (2.1.0 → 2.2.0): Feature additions, migrations, significant changes
+- **Patch bump** (2.1.0 → 2.1.1): Bug fixes, docs, small adjustments
 
 ### Making Schema Changes
 ```bash
@@ -891,6 +901,7 @@ pm2 restart sports-bar-tv-controller --update-env
 - **Never merge location branches back into main** — location data must not leak to other locations
 - When making changes on a location branch, always split: software first to main, then merge main into location, then commit location data
 - **If you find yourself editing a software file on a location branch**, stop, cherry-pick the change to main first, push main, then merge main into location. The reconciliation work in commit `7f13fbe7` is what happens when you don't.
+- **Always pull before pushing to main** — run `git fetch origin main && git merge origin/main` before committing and pushing to `main`. Other locations or sessions may have pushed changes while you were working. Pushing without pulling risks rejected pushes or overwrites.
 
 ### Shared Location Reference Docs
 

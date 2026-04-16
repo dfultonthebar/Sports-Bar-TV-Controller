@@ -278,7 +278,14 @@ run_checkpoint() {
   # without ANTHROPIC_API_KEY (persistent login handles auth).
   # --dangerously-skip-permissions: checkpoints need to run sqlite3/git/etc.
   # without hanging on an interactive permission prompt in headless mode.
-  if ! timeout "$timeout_secs" claude -p --dangerously-skip-permissions "$prompt" >"$out_file" 2>&1; then
+  #
+  # `env -u ANTHROPIC_API_KEY` strips any pay-per-token API key that leaked
+  # in from .env/PM2. --dangerously-skip-permissions requires the claude.ai
+  # OAuth credential from ~/.claude/.credentials.json; if Claude Code sees
+  # an API key in env it tries that path and rejects the skip-permissions
+  # flag with "Invalid API key · Fix external API key", failing the
+  # checkpoint in ~2 seconds. Stripping the var forces OAuth mode.
+  if ! env -u ANTHROPIC_API_KEY timeout "$timeout_secs" claude -p --dangerously-skip-permissions "$prompt" >"$out_file" 2>&1; then
     log "Checkpoint $label: Claude Code timed out or errored"
     log "Checkpoint $label output: $(head -40 "$out_file" 2>/dev/null)"
     rm -f "$out_file"

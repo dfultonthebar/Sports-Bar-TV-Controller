@@ -1,4 +1,3 @@
-
 /**
  * API Route: Launch Streaming App
  *
@@ -7,15 +6,13 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { streamingManager } from '@/services/streaming-service-manager'
-import { readFile } from 'fs/promises'
-import { join } from 'path'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { z } from 'zod'
-import { validateRequestBody, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
-
+import { validateRequestBody, ValidationSchemas, isValidationError } from '@/lib/validation'
 import { logger } from '@sports-bar/logger'
-const SUBSCRIBED_APPS_FILE = join(process.cwd(), 'data', 'subscribed-streaming-apps.json')
+import { db, schema } from '@/db'
+import { eq } from 'drizzle-orm'
 
 // Validation schema for launching streaming apps
 const launchAppSchema = z.object({
@@ -29,16 +26,11 @@ const launchAppSchema = z.object({
 
 export async function POST(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.EXTERNAL)
-  if (!rateLimit.allowed) {
-    return rateLimit.response
-  }
+  if (!rateLimit.allowed) return rateLimit.response
 
   try {
-    // Validate request body
     const validation = await validateRequestBody(request, launchAppSchema)
     if (isValidationError(validation)) return validation.error
-
-    const { data } = validation
 
     const {
       deviceId,
@@ -47,29 +39,23 @@ export async function POST(request: NextRequest) {
       port,
       deepLink,
       activityName: providedActivityName
-    } = data
+    } = validation.data
+
     logger.info(`[API] Launching app ${appId} on device ${deviceId}`)
 
-    // Try to get activity name from subscribed apps config if not provided
+    // Try to get activity name from DB if not provided
     let activityName = providedActivityName
     if (!activityName) {
       try {
-        const data = await readFile(SUBSCRIBED_APPS_FILE, 'utf-8')
-        let config
-        try {
-          config = JSON.parse(data || '{}')
-        } catch (parseError) {
-          logger.error('[API] Failed to parse subscribed apps config:', { data: { parseError, data: data?.substring(0, 100) }
-            })
-          config = { subscribedApps: [] }
-        }
-        const appConfig = config.subscribedApps?.find((app: any) => app.appId === appId)
+        const appConfig = await db.select().from(schema.subscribedStreamingApps)
+          .where(eq(schema.subscribedStreamingApps.appId, appId))
+          .get()
         if (appConfig?.activityName) {
           activityName = appConfig.activityName
-          logger.info(`[API] Using activity name from config: ${activityName}`)
+          logger.info(`[API] Using activity name from DB: ${activityName}`)
         }
       } catch (error) {
-        logger.info('[API] Could not load activity name from config')
+        logger.info('[API] Could not load activity name from DB')
       }
     }
 
@@ -77,10 +63,7 @@ export async function POST(request: NextRequest) {
       deviceId,
       ipAddress,
       appId,
-      {
-        deepLink,
-        activityName
-      },
+      { deepLink, activityName },
       port
     )
 
@@ -93,7 +76,7 @@ export async function POST(request: NextRequest) {
       })
     } else {
       return NextResponse.json(
-        { 
+        {
           success: false,
           error: `Failed to launch app ${appId}`,
           deviceId,
@@ -104,9 +87,8 @@ export async function POST(request: NextRequest) {
     }
   } catch (error: any) {
     logger.error('[API] Error launching app:', error)
-    
     return NextResponse.json(
-      { 
+      {
         success: false,
         error: 'Failed to launch app',
         message: error.message
