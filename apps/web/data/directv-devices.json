@@ -1,1 +1,76 @@
-{"devices":[]}
+{
+  "devices": [
+    {
+      "id": "directv_holmgren_1",
+      "name": "DirecTV 1",
+      "ipAddress": "10.11.3.42",
+      "port": 8080,
+      "deviceType": "DirecTV",
+      "inputChannel": 5,
+      "receiverId": "0330 7601 5313",
+      "isOnline": true,
+      "addedAt": "2026-03-25T15:30:00.000Z",
+      "updatedAt": "2026-03-25T15:30:00.000Z"
+    },
+    {
+      "id": "directv_holmgren_2",
+      "name": "DirecTV 2",
+      "ipAddress": "10.11.3.43",
+      "port": 8080,
+      "deviceType": "DirecTV",
+      "inputChannel": 6,
+      "receiverId": "0330 7919 4008",
+      "isOnline": true,
+      "addedAt": "2026-03-25T15:30:00.000Z",
+      "updatedAt": "2026-03-25T15:30:00.000Z"
+    },
+    {
+      "id": "directv_holmgren_3",
+      "name": "DirecTV 3",
+      "ipAddress": "10.11.3.44",
+      "port": 8080,
+      "deviceType": "DirecTV",
+      "inputChannel": 7,
+      "receiverId": "0330 8129 5702",
+      "isOnline": true,
+      "addedAt": "2026-03-25T15:30:00.000Z",
+      "updatedAt": "2026-03-25T15:30:00.000Z"
+    },
+    {
+      "id": "directv_holmgren_4",
+      "name": "DirecTV 4",
+      "ipAddress": "10.11.3.45",
+      "port": 8080,
+      "deviceType": "DirecTV",
+      "inputChannel": 8,
+      "receiverId": "0330 7625 0951",
+      "isOnline": true,
+      "addedAt": "2026-03-25T15:30:00.000Z",
+      "updatedAt": "2026-03-25T15:30:00.000Z"
+    },
+    {
+      "id": "directv_holmgren_5",
+      "name": "DirecTV 5",
+      "ipAddress": "10.11.3.46",
+      "port": 8080,
+      "deviceType": "DirecTV",
+      "inputChannel": 9,
+      "receiverId": "0323 6020 6851",
+      "isOnline": true,
+      "addedAt": "2026-03-25T15:30:00.000Z",
+      "updatedAt": "2026-03-25T15:30:00.000Z"
+    },
+    {
+      "id": "directv_holmgren_6",
+      "name": "DirecTV 6",
+      "ipAddress": "10.11.3.47",
+      "port": 8080,
+      "deviceType": "DirecTV",
+      "inputChannel": 10,
+      "receiverId": "0331 8727 3801",
+      "isOnline": true,
+      "addedAt": "2026-03-25T15:30:00.000Z",
+      "updatedAt": "2026-03-25T15:30:00.000Z"
+    }
+  ]
+}
