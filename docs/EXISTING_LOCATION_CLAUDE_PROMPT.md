@@ -60,7 +60,15 @@ by step. When a step says "STOP and ask the operator", do that. When
 a step says "record this output", keep it in your working notes so
 you can cite it in the final report.
 
-Phase 4 — Report:
+Phase 4 — Sync memory from CLAUDE.md:
+
+  After the update is verified, read the project's CLAUDE.md in full
+  and save key rules/conventions to your memory system so future
+  sessions on this host have the same working knowledge. The runbook's
+  Step 14 has the full list of what to extract. Skip if memory files
+  already exist and are up to date.
+
+Phase 5 — Report:
 
   At the end, tell the operator:
     - The version you started at (BEFORE_VERSION)
@@ -70,6 +78,7 @@ Phase 4 — Report:
     - Whether you cleaned up any phantom FireTVDevice rows
     - Whether verify-install.sh returned PASS 6/6
     - Whether the systemd auto-update timer was installed
+    - Whether memory was synced from CLAUDE.md (or already up to date)
     - Any steps that failed or needed manual intervention
     - URLs for /system-admin and /remote on the LAN IP
 
@@ -514,7 +523,31 @@ git push origin location/<slug>
 Use the actual branch name, not `<slug>`. You can get it from
 `git branch --show-current`.
 
-### Step 14 — Report
+### Step 14 — Sync memory from CLAUDE.md
+
+Read the project's `CLAUDE.md` file in full. Extract any rules,
+conventions, or workflow instructions that should persist across future
+Claude Code sessions on this host and save them to your memory system
+at `~/.claude/projects/-home-ubuntu-Sports-Bar-TV-Controller/memory/`.
+
+Key sections to look for:
+
+- **Commit Strategy** — pull-before-push rule, branch discipline,
+  location-data vs software-change rules
+- **Build & Restart** — always rebuild + restart PM2 after code changes
+- **Common Gotchas** — request body consumption bug, GET vs POST
+  validation, CEC vs IR control
+- **Version Bumping** — always bump root package.json version
+- **Bartender Remote** — iPad/tablet touch target requirements
+
+Also check if any memory files already exist from a prior session
+(`ls ~/.claude/projects/-home-ubuntu-Sports-Bar-TV-Controller/memory/`)
+and avoid creating duplicates — update existing entries instead.
+
+This ensures every location's Claude instance has the same working
+knowledge, not just the host where the rules were originally written.
+
+### Step 15 — Report
 
 Tell the operator:
 
