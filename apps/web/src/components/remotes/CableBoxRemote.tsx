@@ -1,12 +1,12 @@
 
 'use client'
 
-import React, { useState, useRef, useEffect, useCallback } from 'react'
+import React, { useState, useRef } from 'react'
 import { Button } from '../ui/button'
-import {
-  ChevronUp,
-  ChevronDown,
-  ChevronLeft,
+import { 
+  ChevronUp, 
+  ChevronDown, 
+  ChevronLeft, 
   ChevronRight,
   Circle,
   ArrowLeft,
@@ -26,8 +26,7 @@ import {
   RotateCcw,
   Radio,
   Square,
-  Power,
-  X
+  Power
 } from 'lucide-react'
 
 interface CableBoxRemoteProps {
@@ -42,123 +41,56 @@ export default function CableBoxRemote({ deviceId, deviceName, onClose }: CableB
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState<{ type: 'success' | 'error' | null, message: string }>({ type: null, message: '' })
   const [lastCommand, setLastCommand] = useState<string>('')
-
-  // Channel digit buffer state
-  const [channelDigits, setChannelDigits] = useState<string>('')
-  const [channelDisplayState, setChannelDisplayState] = useState<'idle' | 'entering' | 'tuning' | 'tuned' | 'error'>('idle')
-  const [tunedChannel, setTunedChannel] = useState<string>('')
+  const [channelInput, setChannelInput] = useState<string>('')
 
   // Command debouncing to prevent rapid button presses from overwhelming devices
   const lastCommandTimeRef = useRef<number>(0)
   const commandQueueRef = useRef<boolean>(false)
   const COMMAND_DEBOUNCE_MS = 300 // Minimum 300ms between commands for stability
 
-  // Channel buffer timer — fires tune API 2 seconds after last digit
-  const channelTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const CHANNEL_BUFFER_MS = 2000
+  // Digit queue for rapid number entry - processes digits sequentially without blocking UI
+  const digitQueueRef = useRef<string[]>([])
+  const isProcessingDigitsRef = useRef<boolean>(false)
+  const DIGIT_DELAY_MS = 150 // Delay AFTER successful send so cable box has time to process each digit
 
-  // Timer for clearing the "Tuned" confirmation message
-  const tunedClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  // Cleanup timers on unmount
-  useEffect(() => {
-    return () => {
-      if (channelTimerRef.current) clearTimeout(channelTimerRef.current)
-      if (tunedClearTimerRef.current) clearTimeout(tunedClearTimerRef.current)
+  // Digit sender - queues digits and processes sequentially
+  const sendDigitCommand = (digit: string) => {
+    digitQueueRef.current.push(digit)
+    if (!isProcessingDigitsRef.current) {
+      processDigitQueue()
     }
-  }, [])
+  }
 
-  // Send the complete channel number through the unified tune API
-  const tuneChannel = useCallback(async (channelNumber: string) => {
-    setChannelDisplayState('tuning')
+  // Process digit queue sequentially - awaits each send to prevent overlapping TCP connections
+  // to the iTach (which only accepts one connection at a time on each IR port)
+  const processDigitQueue = async () => {
+    if (isProcessingDigitsRef.current) return
+    isProcessingDigitsRef.current = true
 
-    try {
-      const controller = new AbortController()
-      const fetchTimeout = setTimeout(() => controller.abort(), 8000)
+    while (digitQueueRef.current.length > 0) {
+      const digit = digitQueueRef.current.shift()!
 
-      const response = await fetch('/api/channel-presets/tune', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          channelNumber,
-          deviceType: 'cable',
-          cableBoxId: deviceId,
-          presetId: 'manual'
-        }),
-        signal: controller.signal
-      })
+      try {
+        // Await the fetch so digits don't stomp on each other
+        await fetch('/api/ir/commands/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            deviceId,
+            commandName: digit
+          })
+        })
 
-      clearTimeout(fetchTimeout)
-
-      const data = await response.json()
-
-      if (response.ok && data.success) {
-        const padded = channelNumber.padStart(3, '0')
-        setTunedChannel(padded)
-        setChannelDisplayState('tuned')
-        setChannelDigits('')
-
-        // Clear the "Tuned" message after 3 seconds
-        if (tunedClearTimerRef.current) clearTimeout(tunedClearTimerRef.current)
-        tunedClearTimerRef.current = setTimeout(() => {
-          setChannelDisplayState('idle')
-          setTunedChannel('')
-        }, 3000)
-      } else {
-        setChannelDisplayState('error')
-        setStatus({ type: 'error', message: data.error || 'Tune failed' })
-        setTimeout(() => {
-          setChannelDisplayState('idle')
-          setChannelDigits('')
-          setStatus({ type: null, message: '' })
-        }, 3000)
+        if (digitQueueRef.current.length > 0) {
+          await new Promise(resolve => setTimeout(resolve, DIGIT_DELAY_MS))
+        }
+      } catch (error) {
+        console.error('[CableBox] Error sending digit:', error)
       }
-    } catch (error) {
-      setChannelDisplayState('error')
-      const msg = error instanceof DOMException && error.name === 'AbortError'
-        ? 'Tune timed out'
-        : 'Failed to tune channel'
-      setStatus({ type: 'error', message: msg })
-      setTimeout(() => {
-        setChannelDisplayState('idle')
-        setChannelDigits('')
-        setStatus({ type: null, message: '' })
-      }, 3000)
     }
-  }, [deviceId])
 
-  // Handle a digit press: accumulate in buffer, reset 2s timer
-  const handleNumberClick = useCallback((digit: string) => {
-    setChannelDigits(prev => {
-      const updated = prev + digit
-      // Reset the tune timer on each new digit
-      if (channelTimerRef.current) clearTimeout(channelTimerRef.current)
-      channelTimerRef.current = setTimeout(() => {
-        tuneChannel(updated)
-      }, CHANNEL_BUFFER_MS)
-      return updated
-    })
-    setChannelDisplayState('entering')
-
-    // Clear any previous "tuned" display
-    if (tunedClearTimerRef.current) clearTimeout(tunedClearTimerRef.current)
-    setTunedChannel('')
-  }, [tuneChannel])
-
-  // Clear channel entry mid-typing
-  const handleClearChannel = useCallback(() => {
-    if (channelTimerRef.current) clearTimeout(channelTimerRef.current)
-    setChannelDigits('')
-    setChannelDisplayState('idle')
-  }, [])
-
-  // Immediately send the buffered channel (Enter button)
-  const handleChannelEnter = useCallback(() => {
-    if (channelDigits) {
-      if (channelTimerRef.current) clearTimeout(channelTimerRef.current)
-      tuneChannel(channelDigits)
-    }
-  }, [channelDigits, tuneChannel])
+    isProcessingDigitsRef.current = false
+  }
 
   // Standard command sender with debounce and loading state (for non-digit buttons)
   const sendCommand = async (command: string, displayName?: string) => {
@@ -230,6 +162,37 @@ export default function CableBoxRemote({ deviceId, deviceName, onClose }: CableB
     }
   }
 
+  // Auto-clear timeout ref for channel input display
+  const clearTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+
+  const handleNumberClick = (number: string) => {
+    const newChannelInput = channelInput + number
+    setChannelInput(newChannelInput)
+
+    // Send digit immediately using non-blocking queue (no UI blocking!)
+    sendDigitCommand(number)
+
+    // Reset auto-clear timer on each digit press
+    if (clearTimeoutRef.current) {
+      clearTimeout(clearTimeoutRef.current)
+    }
+    clearTimeoutRef.current = setTimeout(() => {
+      setChannelInput('')
+    }, 3000) // 3 seconds to allow entering longer channel numbers
+  }
+
+  const handleChannelEnter = () => {
+    if (channelInput) {
+      // Send Enter command for IR devices
+      sendCommand('OK', 'Enter')
+      setChannelInput('')
+    }
+  }
+
+  const handleClearChannel = () => {
+    setChannelInput('')
+  }
+
   return (
     <div className="relative bg-slate-900 rounded-lg p-6 w-full max-w-md remote-control-container">
       {/* Header */}
@@ -240,69 +203,26 @@ export default function CableBoxRemote({ deviceId, deviceName, onClose }: CableB
 
       {/* Remote Control Layout */}
       <div className="space-y-4">
-        {/* Channel Number Display - Fixed height to prevent layout shift */}
+        {/* Channel Input Display - Fixed height to prevent layout shift */}
         <div className="h-24 flex items-center justify-center">
-          {channelDisplayState === 'entering' && channelDigits && (
-            <div className="bg-blue-500/20 border border-blue-500/30 rounded-lg p-3 w-full">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-slate-400">Ch:</span>
-                  <span className="text-2xl font-bold text-blue-400 tracking-wider">
-                    {channelDigits}
-                    <span className="inline-block w-0.5 h-6 bg-blue-400 ml-0.5 align-middle animate-pulse" />
-                  </span>
-                </div>
-                <Button
-                  onClick={handleClearChannel}
-                  size="sm"
-                  variant="ghost"
-                  className="text-slate-400 hover:text-white hover:bg-slate-700 p-2 min-w-[44px] min-h-[44px]"
-                  aria-label="Clear channel entry"
-                >
-                  <X className="w-5 h-5" />
-                </Button>
-              </div>
-              <div className="flex justify-center mt-2">
+          {channelInput && (
+            <div className="bg-blue-500/20 border border-blue-500/30 rounded-lg p-3 text-center w-full transition-opacity">
+              <div className="text-2xl font-bold text-blue-400">{channelInput}</div>
+              <div className="flex justify-center space-x-2 mt-2">
                 <Button
                   onClick={handleChannelEnter}
                   size="sm"
-                  className="bg-green-600 hover:bg-green-700 min-h-[44px] px-6"
+                  className="bg-green-600 hover:bg-green-700"
                 >
-                  Tune Now
+                  Enter
                 </Button>
-              </div>
-            </div>
-          )}
-
-          {channelDisplayState === 'tuning' && (
-            <div className="bg-yellow-500/20 border border-yellow-500/30 rounded-lg p-3 w-full text-center">
-              <div className="flex items-center justify-center gap-2">
-                <Loader2 className="w-5 h-5 animate-spin text-yellow-400" />
-                <span className="text-2xl font-bold text-yellow-400">
-                  Tuning Ch {channelDigits}...
-                </span>
-              </div>
-            </div>
-          )}
-
-          {channelDisplayState === 'tuned' && tunedChannel && (
-            <div className="bg-green-500/20 border border-green-500/30 rounded-lg p-3 w-full text-center">
-              <div className="flex items-center justify-center gap-2">
-                <CheckCircle className="w-5 h-5 text-green-400" />
-                <span className="text-2xl font-bold text-green-400">
-                  Tuned to Ch {tunedChannel}
-                </span>
-              </div>
-            </div>
-          )}
-
-          {channelDisplayState === 'error' && (
-            <div className="bg-red-500/20 border border-red-500/30 rounded-lg p-3 w-full text-center">
-              <div className="flex items-center justify-center gap-2">
-                <AlertCircle className="w-5 h-5 text-red-400" />
-                <span className="text-lg font-bold text-red-400">
-                  {status.message || 'Tune failed'}
-                </span>
+                <Button
+                  onClick={handleClearChannel}
+                  size="sm"
+                  variant="outline"
+                >
+                  Clear
+                </Button>
               </div>
             </div>
           )}
@@ -411,7 +331,7 @@ export default function CableBoxRemote({ deviceId, deviceName, onClose }: CableB
           </Button>
         </div>
 
-        {/* Number Pad - disabled only while tuning is in progress */}
+        {/* Number Pad - NOT disabled during loading for rapid channel entry */}
         <div className="bg-slate-800 rounded-lg p-3">
           <div className="grid grid-cols-3 gap-2">
             {['1', '2', '3', '4', '5', '6', '7', '8', '9', 'LAST', '0', 'ENTER'].map((btn) => (
@@ -426,16 +346,12 @@ export default function CableBoxRemote({ deviceId, deviceName, onClose }: CableB
                     handleNumberClick(btn)
                   }
                 }}
-                disabled={
-                  channelDisplayState === 'tuning' ||
-                  (btn === 'LAST' && loading) ||
-                  (btn === 'ENTER' && !channelDigits)
-                }
+                disabled={btn === 'LAST' && loading} // Only LAST uses loading state, digits never block
                 className={`${
                   btn === 'ENTER' ? 'bg-green-600 hover:bg-green-700' :
                   btn === 'LAST' ? 'bg-blue-600 hover:bg-blue-700' :
                   'bg-slate-700 hover:bg-slate-600'
-                } text-white p-3 font-bold min-h-[44px]`}
+                } text-white p-3 font-bold`}
               >
                 {btn === 'LAST' ? <RotateCcw className="w-4 h-4" /> : btn}
               </Button>
