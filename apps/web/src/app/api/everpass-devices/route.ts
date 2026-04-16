@@ -1,60 +1,19 @@
 /**
  * EverPass Devices API - CRUD operations
- * Uses JSON file storage (same pattern as Fire TV devices)
+ * Uses database storage (migrated from JSON file)
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { promises as fs } from 'fs'
-import path from 'path'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { logger } from '@sports-bar/logger'
-import { withFileLock } from '@/lib/file-lock'
 import { z } from 'zod'
 import { validateRequestBody, validateQueryParams, isValidationError } from '@/lib/validation'
-import { EverPassDevice, generateEverPassDeviceId } from '@/lib/everpass-utils'
-
-const DATA_FILE = path.join(process.cwd(), 'data', 'everpass-devices.json')
+import { generateEverPassDeviceId } from '@/lib/everpass-utils'
+import { db, schema } from '@/db'
+import { eq } from 'drizzle-orm'
 
 export const dynamic = 'force-dynamic'
-
-async function readDevices(): Promise<{ devices: EverPassDevice[] }> {
-  try {
-    const data = await fs.readFile(DATA_FILE, 'utf-8')
-    return JSON.parse(data)
-  } catch (error) {
-    logger.error('[EVERPASS API] Error reading devices file:', error)
-    return { devices: [] }
-  }
-}
-
-/**
- * Safely perform a read-modify-write operation with file lock.
- * This prevents race conditions when multiple processes modify the file.
- */
-async function modifyDevices(
-  modifier: (data: { devices: EverPassDevice[] }) => { devices: EverPassDevice[] }
-): Promise<{ devices: EverPassDevice[] }> {
-  return await withFileLock(DATA_FILE, async () => {
-    // Read current data inside the lock
-    let data: { devices: EverPassDevice[] }
-    try {
-      const content = await fs.readFile(DATA_FILE, 'utf-8')
-      data = JSON.parse(content)
-    } catch (error) {
-      logger.error('[EVERPASS API] Error reading devices file:', error)
-      data = { devices: [] }
-    }
-
-    // Apply the modification
-    const modified = modifier(data)
-
-    // Write back inside the lock
-    await fs.writeFile(DATA_FILE, JSON.stringify(modified, null, 2), 'utf-8')
-
-    return modified
-  })
-}
 
 // Validation schemas
 const createDeviceSchema = z.object({
@@ -72,27 +31,20 @@ const updateDeviceSchema = z.object({
   deviceModel: z.string().optional(),
   isOnline: z.boolean().default(false),
   lastSeen: z.string().optional(),
-  addedAt: z.string(),
-  updatedAt: z.string().optional(),
 })
 
 // GET - List all EverPass devices
 export async function GET(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
-  if (!rateLimit.allowed) {
-    return rateLimit.response
-  }
+  if (!rateLimit.allowed) return rateLimit.response
 
-  // Query parameter validation
   const queryValidation = validateQueryParams(request, z.record(z.string()).optional())
   if (isValidationError(queryValidation)) return queryValidation.error
 
   try {
-    logger.info('[EVERPASS API] GET request - fetching all devices')
-    const data = await readDevices()
+    const devices = await db.select().from(schema.everpassDevices)
 
-    logger.info(`[EVERPASS API] Found ${data.devices.length} devices`)
-    return NextResponse.json(data, {
+    return NextResponse.json({ devices }, {
       headers: {
         'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
         'Pragma': 'no-cache',
@@ -111,36 +63,29 @@ export async function GET(request: NextRequest) {
 // POST - Add new EverPass device
 export async function POST(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
-  if (!rateLimit.allowed) {
-    return rateLimit.response
-  }
+  if (!rateLimit.allowed) return rateLimit.response
 
-  // Input validation
   const bodyValidation = await validateRequestBody(request, createDeviceSchema)
   if (isValidationError(bodyValidation)) return bodyValidation.error
   const deviceData = bodyValidation.data
 
   try {
-    logger.info('[EVERPASS API] POST request - adding new device')
-
-    const newDevice: EverPassDevice = {
+    const now = new Date().toISOString().replace('T', ' ').slice(0, 19)
+    const newDevice = {
       id: generateEverPassDeviceId(),
       name: deviceData.name,
       cecDevicePath: deviceData.cecDevicePath,
       inputChannel: deviceData.inputChannel,
-      deviceModel: deviceData.deviceModel,
+      deviceModel: deviceData.deviceModel || null,
       isOnline: false,
-      addedAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      lastSeen: null,
+      createdAt: now,
+      updatedAt: now,
     }
 
-    // Use atomic read-modify-write to prevent race conditions
-    await modifyDevices((devicesData) => {
-      devicesData.devices.push(newDevice)
-      return devicesData
-    })
+    await db.insert(schema.everpassDevices).values(newDevice)
 
-    logger.info(`[EVERPASS API] Device added successfully: ${newDevice.name} (${newDevice.id})`)
+    logger.info(`[EVERPASS API] Device added: ${newDevice.name} (${newDevice.id})`)
     return NextResponse.json({ success: true, device: newDevice })
   } catch (error: any) {
     logger.error('[EVERPASS API] POST error:', error)
@@ -154,49 +99,40 @@ export async function POST(request: NextRequest) {
 // PUT - Update existing EverPass device
 export async function PUT(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
-  if (!rateLimit.allowed) {
-    return rateLimit.response
-  }
+  if (!rateLimit.allowed) return rateLimit.response
 
-  // Input validation
   const bodyValidation = await validateRequestBody(request, updateDeviceSchema)
   if (isValidationError(bodyValidation)) return bodyValidation.error
   const deviceData = bodyValidation.data
 
   try {
-    logger.info('[EVERPASS API] PUT request - updating device')
+    const existing = await db.select().from(schema.everpassDevices)
+      .where(eq(schema.everpassDevices.id, deviceData.id))
+      .get()
 
-    const updatedDevice: EverPassDevice = {
-      id: deviceData.id,
-      name: deviceData.name,
-      cecDevicePath: deviceData.cecDevicePath,
-      inputChannel: deviceData.inputChannel,
-      deviceModel: deviceData.deviceModel,
-      isOnline: deviceData.isOnline,
-      lastSeen: deviceData.lastSeen,
-      addedAt: deviceData.addedAt,
-      updatedAt: new Date().toISOString(),
-    }
-
-    // Use atomic read-modify-write to prevent race conditions
-    let deviceFound = false
-    await modifyDevices((devicesData) => {
-      const deviceIndex = devicesData.devices.findIndex((d) => d.id === updatedDevice.id)
-      if (deviceIndex !== -1) {
-        devicesData.devices[deviceIndex] = updatedDevice
-        deviceFound = true
-      }
-      return devicesData
-    })
-
-    if (!deviceFound) {
+    if (!existing) {
       return NextResponse.json({ error: 'Device not found' }, { status: 404 })
     }
 
-    logger.info(
-      `[EVERPASS API] Device updated successfully: ${updatedDevice.name} (${updatedDevice.id})`
-    )
-    return NextResponse.json({ success: true, device: updatedDevice })
+    const now = new Date().toISOString().replace('T', ' ').slice(0, 19)
+    await db.update(schema.everpassDevices)
+      .set({
+        name: deviceData.name,
+        cecDevicePath: deviceData.cecDevicePath,
+        inputChannel: deviceData.inputChannel,
+        deviceModel: deviceData.deviceModel || null,
+        isOnline: deviceData.isOnline,
+        lastSeen: deviceData.lastSeen || null,
+        updatedAt: now,
+      })
+      .where(eq(schema.everpassDevices.id, deviceData.id))
+
+    const updated = await db.select().from(schema.everpassDevices)
+      .where(eq(schema.everpassDevices.id, deviceData.id))
+      .get()
+
+    logger.info(`[EVERPASS API] Device updated: ${deviceData.name} (${deviceData.id})`)
+    return NextResponse.json({ success: true, device: updated })
   } catch (error: any) {
     logger.error('[EVERPASS API] PUT error:', error)
     return NextResponse.json(
@@ -209,36 +145,28 @@ export async function PUT(request: NextRequest) {
 // DELETE - Remove EverPass device
 export async function DELETE(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
-  if (!rateLimit.allowed) {
-    return rateLimit.response
-  }
+  if (!rateLimit.allowed) return rateLimit.response
 
   try {
     const { searchParams } = new URL(request.url)
     const deviceId = searchParams.get('id')
 
-    logger.info(`[EVERPASS API] DELETE request - removing device: ${deviceId}`)
-
     if (!deviceId) {
       return NextResponse.json({ error: 'Device ID required' }, { status: 400 })
     }
 
-    // Use atomic read-modify-write to prevent race conditions
-    let removedDevice: EverPassDevice | null = null
-    await modifyDevices((data) => {
-      const deviceIndex = data.devices.findIndex((d) => d.id === deviceId)
-      if (deviceIndex !== -1) {
-        removedDevice = data.devices[deviceIndex]
-        data.devices.splice(deviceIndex, 1)
-      }
-      return data
-    })
+    const existing = await db.select().from(schema.everpassDevices)
+      .where(eq(schema.everpassDevices.id, deviceId))
+      .get()
 
-    if (!removedDevice) {
+    if (!existing) {
       return NextResponse.json({ error: 'Device not found' }, { status: 404 })
     }
 
-    logger.info(`[EVERPASS API] Device removed successfully: ${removedDevice.name} (${deviceId})`)
+    await db.delete(schema.everpassDevices)
+      .where(eq(schema.everpassDevices.id, deviceId))
+
+    logger.info(`[EVERPASS API] Device removed: ${existing.name} (${deviceId})`)
     return NextResponse.json({ success: true, message: 'Device deleted successfully' })
   } catch (error: any) {
     logger.error('[EVERPASS API] DELETE error:', error)

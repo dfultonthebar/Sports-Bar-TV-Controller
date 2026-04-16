@@ -23,7 +23,10 @@ interface ConfigChange {
   metadata?: any
 }
 
-// Proper validation schema for GitHub push config
+// Proper validation schema for GitHub push config.
+// configChanges is OPTIONAL — when the working tree is clean but there are
+// unpushed commits, the UI sends an empty array and this endpoint only does
+// the push step.
 const pushConfigSchema = z.object({
   commitMessage: z.string().optional(),
   configChanges: z.array(z.object({
@@ -31,7 +34,7 @@ const pushConfigSchema = z.object({
     description: z.string().min(1, 'Description is required'),
     files: z.array(z.string()).min(1, 'At least one file must be specified'),
     metadata: z.any().optional()
-  })).min(1, 'At least one config change is required'),
+  })).optional().default([]),
   autoCommit: z.boolean().optional().default(true)
 })
 
@@ -62,13 +65,49 @@ export async function POST(request: NextRequest) {
 
     const projectPath = '/home/ubuntu/Sports-Bar-TV-Controller'
 
-    // Check if we have changes to commit
+    // Check state: working-tree changes + unpushed commits are handled
+    // independently so "clean tree, unpushed commits" still gets pushed.
     const { stdout: statusOutput } = await git(['status', '--porcelain'], projectPath)
+    const { stdout: branchOutput } = await git(['branch', '--show-current'], projectPath)
+    const branch = branchOutput.trim() || 'main'
+    const hasChanges = !!statusOutput.trim()
 
-    if (!statusOutput.trim()) {
+    // Always fetch the upstream ref before any push decision, so we catch
+    // the case where origin has new commits we don't have locally. Pushing
+    // blind either fails with a "fetch first" rejection (wasteful) or
+    // clobbers remote work in edge cases (dangerous). Refusing to push when
+    // the remote is ahead forces the operator to investigate.
+    try {
+      await git(['fetch', 'origin', branch], projectPath)
+    } catch {
+      // Fetch can fail on a fresh branch that has no remote ref yet — tolerate.
+    }
+
+    let hasUnpushedCommits = false
+    let remoteAhead = 0
+    try {
+      const aheadResult = await git(['rev-list', '--count', '@{u}..HEAD'], projectPath)
+      hasUnpushedCommits = parseInt(aheadResult.stdout.trim() || '0', 10) > 0
+      const behindResult = await git(['rev-list', '--count', 'HEAD..@{u}'], projectPath)
+      remoteAhead = parseInt(behindResult.stdout.trim() || '0', 10)
+    } catch {
+      // No upstream tracking branch configured — treat as no unpushed commits.
+    }
+
+    // Refuse to push when remote has advanced; operator must integrate first.
+    if (remoteAhead > 0) {
       return NextResponse.json({
         success: false,
-        message: 'No changes to commit',
+        message: `origin/${branch} is ${remoteAhead} commit${remoteAhead === 1 ? '' : 's'} ahead of local. Pull/merge first, then retry.`,
+        status: 'behind_remote',
+        remoteAhead
+      }, { status: 409 })
+    }
+
+    if (!hasChanges && !hasUnpushedCommits) {
+      return NextResponse.json({
+        success: false,
+        message: 'Nothing to push — working tree clean and branch up-to-date',
         status: 'clean'
       })
     }
@@ -76,31 +115,41 @@ export async function POST(request: NextRequest) {
     const operations: any[] = []
 
     try {
-      // Add all changes
-      await git(['add', '.'], projectPath)
-      operations.push('Added files to staging')
+      if (hasChanges) {
+        // Add all changes
+        await git(['add', '.'], projectPath)
+        operations.push('Added files to staging')
 
-      // Generate commit message if not provided
-      let finalCommitMessage = commitMessage
-      if (!finalCommitMessage) {
-        const changeTypes = Array.from(new Set(configChanges.map(c => c.type)))
-        const changeDescriptions = configChanges.map(c => c.description).join(', ')
-        finalCommitMessage = `Configuration Update: ${changeTypes.join(', ')} - ${changeDescriptions}`
+        // Generate commit message if not provided
+        let finalCommitMessage = commitMessage
+        if (!finalCommitMessage) {
+          if (configChanges.length > 0) {
+            const changeTypes = Array.from(new Set(configChanges.map(c => c.type)))
+            const changeDescriptions = configChanges.map(c => c.description).join(', ')
+            finalCommitMessage = `Configuration Update: ${changeTypes.join(', ')} - ${changeDescriptions}`
+          } else {
+            finalCommitMessage = `Configuration update from ${branch}`
+          }
+        }
+
+        // Commit changes safely using argument array (no shell escaping needed)
+        await git(['commit', '-m', finalCommitMessage], projectPath)
+        operations.push('Committed changes')
+      } else {
+        operations.push('Working tree clean — skipping commit step')
       }
 
-      // Commit changes safely using argument array (no shell escaping needed)
-      await git(['commit', '-m', finalCommitMessage], projectPath)
-      operations.push('Committed changes')
-
-      // Push to remote (use current branch, not hardcoded main)
-      const { stdout: currentBranch } = await git(['branch', '--show-current'], projectPath)
-      const branch = currentBranch.trim() || 'main'
+      // Push to the CURRENT branch (not hardcoded main, which was broken for
+      // location branches — every location was running on a branch but this
+      // endpoint was trying to push to main, either failing or pushing to
+      // the wrong place).
       await git(['push', 'origin', branch], projectPath)
-      operations.push(`Pushed to GitHub (${branch})`)
+      operations.push(`Pushed to origin/${branch}`)
 
-      // Get the latest commit info
-      const { stdout: commitInfo } = await git(['log', '-1', '--pretty=format:%H|%s|%an|%ad', '--date=iso'], projectPath)
-      const [hash, message, author, date] = commitInfo.split('|')
+      // Get the latest commit info (for display — reflects HEAD after any
+      // new commit we just made, or just the current tip if we only pushed).
+      const { stdout: commitInfoRaw } = await git(['log', '-1', '--pretty=format:%H|%s|%an|%ad', '--date=iso'], projectPath)
+      const [hash, message, author, date] = commitInfoRaw.split('|')
 
       // Log successful push
       await logger.log({
@@ -110,6 +159,9 @@ export async function POST(request: NextRequest) {
         action: 'config_push_success',
         message: 'Successfully pushed configuration changes to GitHub',
         details: {
+          branch,
+          hadWorkingTreeChanges: hasChanges,
+          hadUnpushedCommits: hasUnpushedCommits,
           commitHash: hash,
           commitMessage: message,
           operations,
@@ -120,13 +172,16 @@ export async function POST(request: NextRequest) {
 
       return NextResponse.json({
         success: true,
-        message: 'Configuration changes pushed successfully',
+        message: hasChanges
+          ? 'Configuration changes committed and pushed'
+          : 'Unpushed commits pushed to GitHub',
         commit: {
           hash: hash.substring(0, 8),
           message,
           author,
           date
         },
+        branch,
         operations
       })
 

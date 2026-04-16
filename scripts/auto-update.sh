@@ -93,6 +93,24 @@ for arg in "$@"; do
   esac
 done
 
+# ---------------------------------------------------------------------------
+# Self-update re-exec handler: if we were re-exec'd by a prior version of
+# this script after the merge updated us, restore state and skip to where
+# the prior version left off.
+# ---------------------------------------------------------------------------
+if [ "${AUTO_UPDATE_REEXEC:-}" = "1" ]; then
+  PRE_MERGE_SHA="$AUTO_UPDATE_PRE_MERGE_SHA"
+  PRE_MERGE_VERSION="$AUTO_UPDATE_PRE_MERGE_VERSION"
+  POST_MERGE_SHA="$AUTO_UPDATE_POST_MERGE_SHA"
+  RUN_TS="$AUTO_UPDATE_RUN_TS"
+  LOG_FILE="${AUTO_UPDATE_LOG_FILE:-$LOG_FILE}"
+  ROLLBACK_TAG="${AUTO_UPDATE_ROLLBACK_TAG:-}"
+  HISTORY_ID="${AUTO_UPDATE_HISTORY_ID:-}"
+  BRANCH=$(git -C "$REPO_ROOT" branch --show-current)
+  unset AUTO_UPDATE_REEXEC
+  log "=== RE-EXEC: running updated auto-update.sh from version_check ==="
+fi
+
 case "$TRIGGERED_BY" in
   cron|manual_api|manual_cli) ;;
   *) echo "Invalid --triggered-by: $TRIGGERED_BY" >&2; exit 1 ;;
@@ -278,7 +296,14 @@ run_checkpoint() {
   # without ANTHROPIC_API_KEY (persistent login handles auth).
   # --dangerously-skip-permissions: checkpoints need to run sqlite3/git/etc.
   # without hanging on an interactive permission prompt in headless mode.
-  if ! timeout "$timeout_secs" claude -p --dangerously-skip-permissions "$prompt" >"$out_file" 2>&1; then
+  #
+  # `env -u ANTHROPIC_API_KEY` strips any pay-per-token API key that leaked
+  # in from .env/PM2. --dangerously-skip-permissions requires the claude.ai
+  # OAuth credential from ~/.claude/.credentials.json; if Claude Code sees
+  # an API key in env it tries that path and rejects the skip-permissions
+  # flag with "Invalid API key · Fix external API key", failing the
+  # checkpoint in ~2 seconds. Stripping the var forces OAuth mode.
+  if ! env -u ANTHROPIC_API_KEY timeout "$timeout_secs" claude -p --dangerously-skip-permissions "$prompt" >"$out_file" 2>&1; then
     log "Checkpoint $label: Claude Code timed out or errored"
     log "Checkpoint $label output: $(head -40 "$out_file" 2>/dev/null)"
     rm -f "$out_file"
@@ -286,7 +311,9 @@ run_checkpoint() {
   fi
 
   local decision
-  decision=$(grep -m1 '^DECISION:' "$out_file" || true)
+  # Try line-start first, then fall back to anywhere in the response.
+  # Claude sometimes writes a summary before the DECISION line.
+  decision=$(grep -m1 '^DECISION:' "$out_file" || grep -m1 'DECISION:' "$out_file" || true)
   log "Checkpoint $label: $decision"
   # Also dump full response to log for forensics
   log "--- Checkpoint $label full response ---"
@@ -312,6 +339,15 @@ run_checkpoint() {
   esac
 }
 
+# ===========================================================================
+# Skip to version_check if this is a re-exec after self-update
+# ===========================================================================
+if [ "${AUTO_UPDATE_REEXEC_FROM:-}" = "version_check" ]; then
+  unset AUTO_UPDATE_REEXEC_FROM
+  log "Skipping preflight → merge phases (already completed by prior script version)"
+  # Jump directly to version_check — all prior phases were completed by the
+  # old script before it exec'd us.
+else
 # ===========================================================================
 # PHASE: PRE-FLIGHT
 # ===========================================================================
@@ -482,6 +518,30 @@ POST_MERGE_SHA=$(git rev-parse HEAD)
 log "Post-merge sha: $POST_MERGE_SHA"
 
 # ===========================================================================
+# SELF-UPDATE CHECK: if auto-update.sh itself changed in the merge, re-exec
+# the new version so all subsequent steps (build, checkpoint prompts, etc.)
+# use the latest logic. Without this, a location running an old script gets
+# the new code but builds/verifies with the old script's stale commands.
+# ===========================================================================
+if git diff "$PRE_MERGE_SHA" HEAD --name-only | grep -q '^scripts/auto-update\.sh$'; then
+  log "auto-update.sh was updated by the merge — re-executing new version"
+  log "Re-exec args: $0 $*"
+  # Pass a flag so the re-exec'd script skips phases already completed
+  export AUTO_UPDATE_REEXEC=1
+  export AUTO_UPDATE_REEXEC_FROM="version_check"
+  export AUTO_UPDATE_PRE_MERGE_SHA="$PRE_MERGE_SHA"
+  export AUTO_UPDATE_PRE_MERGE_VERSION="$PRE_MERGE_VERSION"
+  export AUTO_UPDATE_POST_MERGE_SHA="$POST_MERGE_SHA"
+  export AUTO_UPDATE_RUN_TS="$RUN_TS"
+  export AUTO_UPDATE_LOG_FILE="$LOG_FILE"
+  export AUTO_UPDATE_ROLLBACK_TAG="$ROLLBACK_TAG"
+  export AUTO_UPDATE_HISTORY_ID="$HISTORY_ID"
+  exec bash "$REPO_ROOT/scripts/auto-update.sh" "$@"
+fi
+
+fi  # end of "skip to version_check if re-exec" else block
+
+# ===========================================================================
 # PHASE: VERSION REGRESSION CHECK
 # ===========================================================================
 step "version_check"
@@ -545,8 +605,12 @@ else
   if grep -qE "(index|table|column) [\`\"]?[A-Za-z_][A-Za-z0-9_]*[\`\"]? already exists|already exists" "$SCHEMA_PUSH_LOG"; then
     log "WARNING: drizzle-kit push reported pre-existing objects (benign — see $SCHEMA_PUSH_LOG)"
     log "WARNING: this means the DB already had untracked tables/indexes from a prior manual hotfix."
-    log "WARNING: continuing with the update. If this release adds a NEW table that was not pre-created,"
-    log "WARNING: the corresponding endpoints will 500 at runtime — verify-install will catch it."
+    log "WARNING: Running ensure-schema.sh fallback to create any genuinely missing tables/columns..."
+    if bash "$REPO_ROOT/scripts/ensure-schema.sh" "$DB_PATH" 2>&1 | tee -a "$LOG_FILE"; then
+      log "ensure-schema.sh fallback completed successfully"
+    else
+      log "WARNING: ensure-schema.sh had errors — some new tables/columns may be missing"
+    fi
   else
     cat "$SCHEMA_PUSH_LOG" >> "$LOG_FILE"
     fail "drizzle-kit push failed with an unrecognized error — see $SCHEMA_PUSH_LOG" 4
@@ -569,8 +633,9 @@ if [ -d "$REPO_ROOT/apps/web/.next" ]; then
   mv "$REPO_ROOT/apps/web/.next" "$REPO_ROOT/apps/web/.next.bak"
 fi
 
-log "npm run build"
-npm run build 2>&1 | tee -a "$LOG_FILE"
+log "npm run build (--force to bypass Turbo cache for package changes)"
+rm -rf "$REPO_ROOT/.turbo" "$REPO_ROOT/node_modules/.cache"
+npx turbo run build --force 2>&1 | tee -a "$LOG_FILE"
 if [ "${PIPESTATUS[0]}" -ne 0 ]; then
   fail "npm run build failed" 4
 fi
