@@ -519,9 +519,14 @@ export async function GET(request: NextRequest) {
 
 ### 3. PM2 Requires Rebuild After Code Changes
 ```bash
-npm run build  # Required before restart
-pm2 restart sports-bar-tv-controller
+# CRITICAL: Use --force to bypass Turbo cache for package changes
+rm -rf apps/web/.next .turbo node_modules/.cache
+npx turbo run build --force
+pm2 delete sports-bar-tv-controller && pm2 start ecosystem.config.js
 ```
+**Why `--force`:** Turbo caches package builds. If you change code in `packages/*/src/`, plain `npm run build` may serve the old compiled version. This caused the Wolf Pack routing pre-check fix (v2.11.7) to not take effect at Holmgren Way despite correct source code.
+
+**Why `delete` + `start` instead of `restart`:** `pm2 restart` and `--update-env` do NOT re-read `.env` via `ecosystem.config.js`. Only `delete` + `start` forces PM2 to re-execute `require('dotenv').config()` and pick up new env variables like `LOCATION_ID`.
 
 ### 4. Database Location Mismatch
 - Development: May use different database
@@ -539,6 +544,24 @@ pm2 restart sports-bar-tv-controller
 - All CRUD operations go through `apps/web/src/lib/device-db.ts`
 - To re-seed from JSON: delete rows from the DB table, restart the app
 - The `@sports-bar/directv` package still reads JSON for guide fetching (known tech debt)
+
+### 7. drizzle-kit push Fails Silently on Pre-Existing Indexes
+`npx drizzle-kit push` aborts entirely when it hits an index that already exists (e.g., `ApiKey_provider_keyName_key already exists`). Any tables or columns scheduled to be created AFTER that index in the push order are silently skipped. **Always verify new columns/tables exist after push:**
+```bash
+sqlite3 /home/ubuntu/sports-bar-data/production.db "PRAGMA table_info(TableName);"
+sqlite3 /home/ubuntu/sports-bar-data/production.db ".tables"
+```
+If a column is missing, add it manually with `ALTER TABLE ... ADD COLUMN`.
+
+### 8. Location Data Files Get Blanked on Merge from Main
+Main has empty template JSON files (`tv-layout.json` = 61 bytes, `directv-devices.json` = 15 bytes). When merging main into a location branch, git can silently overwrite real data with these templates if there's no conflict. **After every merge from main, verify:**
+```bash
+wc -c apps/web/data/tv-layout.json  # Must be >500 bytes at a configured location
+```
+If blanked, restore: `git show HEAD~1:apps/web/data/tv-layout.json > apps/web/data/tv-layout.json`
+
+### 9. BartenderLayout Must Include Rooms
+The bartender Video tab reads both `zones` and `rooms` from the `BartenderLayout` DB table (migrated from `tv-layout.json` in v2.11.0). If `rooms` is empty or the column is missing, the room filter tabs won't appear. The auto-seeder in `seed-from-json.ts` handles this for fresh installs. For existing locations, ensure the `rooms` column exists and is populated.
 
 ## Development Workflow
 

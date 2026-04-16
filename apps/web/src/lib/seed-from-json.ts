@@ -296,11 +296,13 @@ async function seedBartenderLayout(): Promise<{ seeded: boolean; count: number }
     const data = JSON.parse(raw)
     const zones = data.zones || (Array.isArray(data) ? data : [])
     if (zones.length === 0) return { seeded: false, count: 0 }
+    const rooms = data.rooms || []
 
     const now = new Date().toISOString().replace('T', ' ').slice(0, 19)
     await db.insert(schema.bartenderLayouts).values({
       name: data.name || 'Bar Layout',
       zones: JSON.stringify(zones),
+      rooms: JSON.stringify(rooms),
       isDefault: true,
       isActive: true,
       displayOrder: 0,
