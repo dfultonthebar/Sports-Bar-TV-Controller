@@ -2,41 +2,31 @@
 
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Tv,
-  Radio,
   Power,
-  VolumeX,
   Volume2,
-  ChevronUp,
-  ChevronDown,
-  RotateCcw,
-  Settings,
-  MapPin,
   Zap,
-  Volume1,
-  VolumeIcon,
-  Sliders,
-  Speaker,
   Calendar,
   Music2,
   Gamepad2,
   Lightbulb,
+  Music,
   Monitor,
   Loader2
 } from 'lucide-react'
-import Image from 'next/image'
-import SportsGuide from '@/components/SportsGuide'
-import TVGuide from '@/components/TVGuide'
 import EnhancedChannelGuideBartenderRemote from '@/components/EnhancedChannelGuideBartenderRemote'
 import BartenderMusicControl from '@/components/BartenderMusicControl'
 import BartenderRemoteAudioPanel from '@/components/BartenderRemoteAudioPanel'
 import InteractiveBartenderLayout from '@/components/InteractiveBartenderLayout'
-import FireTVAppShortcuts from '@/components/FireTVAppShortcuts'
 import BartenderRemoteSelector from '@/components/BartenderRemoteSelector'
 import DMXLightingRemote from '@/components/dmx/DMXLightingRemote'
+import DJControlPanel from '@/components/DJControlPanel'
+import ScheduledGamesPanel from '@/components/ScheduledGamesPanel'
+import RecoveryConfirmationPopup from '@/components/RecoveryConfirmationPopup'
 import { CommercialLightingRemote } from '@/components/commercial-lighting'
+import AtmosphereControl from '@/components/AtmosphereControl'
 
 import { logger } from '@sports-bar/logger'
 interface MatrixInput {
@@ -108,35 +98,6 @@ interface TVLayout {
   zones: TVLayoutZone[]
 }
 
-interface RemoteCommand {
-  display: string
-  command: string
-  icon?: any
-  color?: string
-}
-
-const CHANNEL_COMMANDS: RemoteCommand[] = [
-  { display: '1', command: '1' },
-  { display: '2', command: '2' },
-  { display: '3', command: '3' },
-  { display: '4', command: '4' },
-  { display: '5', command: '5' },
-  { display: '6', command: '6' },
-  { display: '7', command: '7' },
-  { display: '8', command: '8' },
-  { display: '9', command: '9' },
-  { display: '0', command: '0' },
-  { display: 'CH+', command: 'CH_UP', icon: ChevronUp },
-  { display: 'CH-', command: 'CH_DOWN', icon: ChevronDown },
-]
-
-const CONTROL_COMMANDS: RemoteCommand[] = [
-  { display: 'Power', command: 'POWER', icon: Power, color: 'bg-red-500' },
-  { display: 'Vol+', command: 'VOL_UP', icon: Volume2, color: 'bg-blue-500' },
-  { display: 'Vol-', command: 'VOL_DOWN', icon: VolumeX, color: 'bg-blue-500' },
-  { display: 'Mute', command: 'MUTE', icon: VolumeX, color: 'bg-orange-500' },
-]
-
 export default function BartenderRemotePage() {
   const [inputs, setInputs] = useState<MatrixInput[]>([])
   const [irDevices, setIRDevices] = useState<IRDevice[]>([])
@@ -144,8 +105,7 @@ export default function BartenderRemotePage() {
   const [firetvDevices, setFiretvDevices] = useState<FireTVDevice[]>([])
   const [selectedInput, setSelectedInput] = useState<number | null>(null)
   const [selectedDevice, setSelectedDevice] = useState<AllDeviceTypes | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected'>('disconnected')
+  const [, setConnectionStatus] = useState<'connected' | 'disconnected'>('disconnected')
   const [commandStatus, setCommandStatus] = useState<string>('')
   const [tvLayout, setTVLayout] = useState<TVLayout>({
     name: 'Bar Layout',
@@ -155,8 +115,17 @@ export default function BartenderRemotePage() {
   const [matrixConfig, setMatrixConfig] = useState<any>(null)
   const [currentSources, setCurrentSources] = useState<Map<number, number>>(new Map()) // outputNumber -> inputNumber
 
+  // Multi-view card state
+  const [multiViewMode, setMultiViewMode] = useState<number>(0)
+  const [multiViewCardId, setMultiViewCardId] = useState<string | null>(null)
+  const [multiViewLoading, setMultiViewLoading] = useState(false)
+
+  // Channel digit buffer for tracking manual channel entry
+  const digitBufferRef = useRef<string>('')
+  const digitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   // Audio processor state
-  const [audioProcessorIp, setAudioProcessorIp] = useState<string>('192.168.5.101')
+  const [audioProcessorIp, setAudioProcessorIp] = useState<string>('')
   const [audioProcessorId, setAudioProcessorId] = useState<string | undefined>(undefined)
   const [audioProcessorType, setAudioProcessorType] = useState<string>('atlas')
 
@@ -172,13 +141,14 @@ export default function BartenderRemotePage() {
   const [assigningOutput, setAssigningOutput] = useState<string | null>(null)
   const [pairingTVId, setPairingTVId] = useState<string | null>(null)
 
-  // Lighting visibility settings
+  // Bartender remote visibility settings
   const [dmxLightingEnabled, setDmxLightingEnabled] = useState(false)
   const [commercialLightingEnabled, setCommercialLightingEnabled] = useState(false)
+  const [djControlsEnabled, setDjControlsEnabled] = useState(false)
   const lightingEnabled = dmxLightingEnabled || commercialLightingEnabled
 
   // Tab state
-  const [activeTab, setActiveTab] = useState<'video' | 'audio' | 'power' | 'guide' | 'music' | 'remote' | 'routing' | 'lighting'>('video')
+  const [activeTab, setActiveTab] = useState<'video' | 'audio' | 'power' | 'guide' | 'music' | 'remote' | 'routing' | 'dj' | 'lighting' | 'schedule'>('video')
 
   // System time state - initialize with null to avoid hydration mismatch
   const [currentTime, setCurrentTime] = useState<string | null>(null)
@@ -205,6 +175,7 @@ export default function BartenderRemotePage() {
       if (result.success && result.data) {
         setDmxLightingEnabled(result.data.dmxLightingEnabled)
         setCommercialLightingEnabled(result.data.commercialLightingEnabled)
+        setDjControlsEnabled(result.data.djControlsEnabled ?? false)
       }
     } catch (error) {
       logger.error('Failed to fetch lighting settings:', error)
@@ -242,6 +213,7 @@ export default function BartenderRemotePage() {
     // Also fetch matrix data on initial load
     fetchMatrixData()
     loadCurrentChannels()
+    loadMultiViewCard()
 
     // Establish persistent connection on component mount
     establishPersistentConnection()
@@ -268,6 +240,50 @@ export default function BartenderRemotePage() {
 
     return () => clearInterval(interval)
   }, [activeTab])
+
+  // Route state and channel data have different cost profiles and need
+  // different poll strategies:
+  //
+  // - loadCurrentRoutes() → hits /api/matrix/routes → on cache miss that
+  //   path queries the Wolf Pack over HTTP (login + index.php + o2ox), and
+  //   the Wolf Pack firmware beeps on every authenticated HTTP request.
+  //   With the iPad always on and the page always in the Video tab, a 15s
+  //   background interval here means a beep every 30-something seconds
+  //   (first poll misses cache, next hits, next misses...). Bartenders
+  //   understandably hate this. Fix: NO interval. Load once on mount and
+  //   on tab switch, then rely on:
+  //     * `routeInputToOutput` updating local `currentSources` on a route
+  //       click (no re-fetch needed),
+  //     * the server-side `updateRoutesCache()` in the POST handler
+  //       keeping the cache fresh when we know the new state,
+  //     * the existing Refresh button in the Routing tab for explicit
+  //       operator refreshes.
+  //
+  // - loadCurrentChannels() → hits /api/matrix/current-channels → pure
+  //   SQLite read from the InputCurrentChannel table, no hardware I/O.
+  //   Cheap, no beep. Polling every 15s here is fine — the bartender
+  //   wants to see live channel changes for scheduled games.
+  useEffect(() => {
+    if (activeTab !== 'routing' && activeTab !== 'video') return
+
+    loadCurrentRoutes()
+    loadCurrentChannels()
+    const interval = setInterval(() => {
+      loadCurrentChannels()
+    }, 15000)
+
+    return () => clearInterval(interval)
+  }, [activeTab])
+
+  // Clear digit buffer when the selected input changes (user switches cable boxes)
+  // to prevent stale digits from firing a tune on the newly selected device
+  useEffect(() => {
+    if (digitTimerRef.current) {
+      clearTimeout(digitTimerRef.current)
+      digitTimerRef.current = null
+    }
+    digitBufferRef.current = ''
+  }, [selectedInput])
 
   useEffect(() => {
     // Re-fetch matrix data when layout zones change (but skip initial empty state)
@@ -347,6 +363,46 @@ export default function BartenderRemotePage() {
   const loadInputs = async () => {
     // Matrix inputs are loaded via fetchMatrixData()
     // This function is kept for compatibility
+  }
+
+  const loadMultiViewCard = async () => {
+    try {
+      const response = await fetch('/api/wolfpack/multiview')
+      if (response.ok) {
+        const data = await response.json()
+        if (data.cards?.length > 0) {
+          setMultiViewCardId(data.cards[0].id)
+          setMultiViewMode(data.cards[0].currentMode ?? 0)
+        }
+      }
+    } catch (error) {
+      logger.error('Error loading multi-view card:', error)
+    }
+  }
+
+  const toggleMultiView = async () => {
+    if (!multiViewCardId) return
+    const newMode = multiViewMode === 0 ? 6 : 0 // Toggle between single and equal quad (mode 6)
+    setMultiViewLoading(true)
+    try {
+      const response = await fetch(`/api/wolfpack/multiview/${multiViewCardId}/mode`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: newMode })
+      })
+      const data = await response.json()
+      if (data.success) {
+        setMultiViewMode(newMode)
+        setCommandStatus(newMode === 7 ? 'Quad View enabled' : 'Single View enabled')
+      } else {
+        setCommandStatus(`Multi-view error: ${data.error}`)
+      }
+    } catch (error) {
+      setCommandStatus('Failed to switch multi-view')
+    } finally {
+      setMultiViewLoading(false)
+      setTimeout(() => setCommandStatus(''), 3000)
+    }
   }
 
   const loadAudioProcessor = async () => {
@@ -485,45 +541,6 @@ export default function BartenderRemotePage() {
     }
   }
 
-  const selectInput = async (inputNumber: number) => {
-    setSelectedInput(inputNumber)
-    
-    // Find the corresponding device for this input from all device types
-    let device: AllDeviceTypes | null = null
-
-    // Check IR devices first
-    device = irDevices.find(d => d.matrixInput === inputNumber && d.isActive) || null  // Fixed: use matrixInput for IR devices
-    
-    // Check DirecTV devices if no IR device found
-    if (!device) {
-      device = directvDevices.find(d => d.inputChannel === inputNumber) || null
-    }
-    
-    // Check Fire TV devices if no other device found
-    if (!device) {
-      device = firetvDevices.find(d => d.inputChannel === inputNumber) || null
-    }
-    
-    setSelectedDevice(device || null)
-    
-    const input = inputs.find(i => i.channelNumber === inputNumber)
-    
-    if (device) {
-      const deviceBrand = 'brand' in device ? device.brand : (device.deviceType === 'DirecTV' ? 'DirecTV' : 'Amazon Fire TV')
-      const controlType = device.controlMethod === 'IP' ? 'IP Control' : 'IR Control'
-      setCommandStatus(`Selected: ${input?.label || `Input ${inputNumber}`} → ${device.name} (${deviceBrand} - ${controlType})`)
-    } else {
-      setCommandStatus(`Selected: ${input?.label || `Input ${inputNumber}`} ⚠️ No control device configured for this input`)
-    }
-    
-    // Auto-clear status after 5 seconds
-    setTimeout(() => {
-      if (commandStatus.includes(input?.label || `Input ${inputNumber}`)) {
-        setCommandStatus('')
-      }
-    }, 5000)
-  }
-
   const routeInputToOutput = async (inputNumber: number, outputNumber: number) => {
     // Allow routing attempt even if connection status shows disconnected
     // The actual routing API will handle connection failures gracefully
@@ -558,137 +575,6 @@ export default function BartenderRemotePage() {
     }
   }
 
-  const handleLabelUpdate = async (zoneId: string, newLabel: string) => {
-    try {
-      // Update local state immediately for responsive UI
-      const updatedZones = tvLayout.zones.map(zone =>
-        zone.id === zoneId ? { ...zone, label: newLabel } : zone
-      )
-      setTVLayout({ ...tvLayout, zones: updatedZones })
-
-      // Save to backend if layout has an ID
-      if (tvLayout.id) {
-        await fetch('/api/bartender/layout', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            layoutId: tvLayout.id,
-            zones: updatedZones
-          })
-        })
-      }
-    } catch (error) {
-      logger.error('Error updating label:', error)
-    }
-  }
-
-  const handleZoneClick = (zone: TVLayoutZone) => {
-    if (selectedInput && inputs.length > 0) {
-      const input = inputs.find(i => i.channelNumber === selectedInput)
-      if (input) {
-        routeInputToOutput(input.channelNumber, zone.outputNumber)
-      }
-    } else {
-      setCommandStatus('⚠️ Please select an input first')
-      setTimeout(() => setCommandStatus(''), 3000)
-    }
-  }
-
-  const sendIRCommand = async (command: string) => {
-    if (!selectedDevice) {
-      setCommandStatus('No device selected')
-      return
-    }
-
-    setLoading(true)
-    setCommandStatus(`Sending ${command}...`)
-
-    try {
-      let response;
-      
-      // Handle DirecTV devices
-      if (selectedDevice.deviceType === 'DirecTV') {
-        const directvDevice = selectedDevice as DirecTVDevice
-        response = await fetch('/api/directv-devices/send-command', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            deviceId: directvDevice.id,
-            command: command,
-            ipAddress: directvDevice.ipAddress,
-            port: directvDevice.port
-          })
-        })
-      }
-      // Handle Fire TV devices  
-      else if ('deviceType' in selectedDevice && selectedDevice.deviceType !== 'DirecTV') {
-        const firetvDevice = selectedDevice as FireTVDevice
-        response = await fetch('/api/firetv-devices/send-command', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            deviceId: firetvDevice.id,
-            command: command,
-            ipAddress: firetvDevice.ipAddress,
-            port: firetvDevice.port
-          })
-        })
-      }
-      // Handle IR devices (original logic)
-      else if (selectedDevice.controlMethod === 'IP' && 'deviceIpAddress' in selectedDevice && selectedDevice.deviceIpAddress) {
-        const irDevice = selectedDevice as IRDevice
-        response = await fetch('/api/ir-devices/send-ip-command', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            deviceId: irDevice.id,
-            command: command,
-            ipAddress: irDevice.deviceIpAddress,
-            port: irDevice.ipControlPort || 80
-          })
-        })
-      } else if ('iTachAddress' in selectedDevice && selectedDevice.iTachAddress) {
-        const irDevice = selectedDevice as IRDevice
-        response = await fetch('/api/ir-devices/send-command', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            deviceId: irDevice.id,
-            command: command,
-            iTachAddress: irDevice.iTachAddress
-          })
-        })
-      } else {
-        setCommandStatus('Device not configured')
-        setLoading(false)
-        return
-      }
-
-      const result = await response.json()
-      
-      if (response.ok) {
-        setCommandStatus(`✓ Sent ${command} to ${selectedDevice.name}`)
-      } else {
-        setCommandStatus(`✗ Failed: ${result.error}`)
-      }
-    } catch (error) {
-      logger.error('Error sending command:', error)
-      setCommandStatus(`✗ Error sending ${command}`)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const getInputIcon = (inputType: string) => {
-    switch (inputType.toLowerCase()) {
-      case 'cable': return '📺'
-      case 'satellite': return '🛰️'
-      case 'streaming': return '📱'
-      case 'gaming': return '🎮'
-      default: return '📺'
-    }
-  }
-
   const loadCurrentChannels = async () => {
     try {
       const response = await fetch('/api/matrix/current-channels')
@@ -709,36 +595,36 @@ export default function BartenderRemotePage() {
       const response = await fetch('/api/matrix/routes')
       if (response.ok) {
         const data = await response.json()
-        const routeMap = new Map<number, number>()
-        data.routes?.forEach((route: any) => {
-          routeMap.set(route.outputNum, route.inputNum)
+        // MERGE into the existing currentSources map rather than replacing.
+        //
+        // When /api/matrix/routes transiently drops an entry for an output —
+        // which can happen if the Wolf Pack returns the 0xFFFF "settling"
+        // sentinel during the ~500ms window right after a route command, and
+        // the server-side filter strips that output from the response — a
+        // plain map-replace would wipe the checkmark from the UI for one
+        // poll cycle. Merging preserves the last-known-good value for any
+        // output missing from this particular response, so the UI stays
+        // stable while the hardware finishes settling.
+        //
+        // Trade-off: a genuinely-unrouted output (e.g., someone manually
+        // clears a route via the Wolf Pack's own front panel) will show the
+        // stale value until the next successful poll returns real data for
+        // it. For a bar that's a strictly better UX than the checkmark
+        // flicker this fixes — out-of-band unroutes are rare, transient
+        // sentinels under bartender-driven poll cadence are common.
+        setCurrentSources(prev => {
+          const next = new Map(prev)
+          data.routes?.forEach((route: any) => {
+            next.set(route.outputNum, route.inputNum)
+          })
+          return next
         })
-        setCurrentSources(routeMap)
       }
     } catch (error) {
       logger.error('Error loading routes:', error)
     } finally {
       setLoadingRoutes(false)
     }
-  }
-
-  const getInputLabelWithChannel = (inputNum: number): string => {
-    const input = inputs.find(i => i.channelNumber === inputNum)
-    if (!input) return `IN ${inputNum}`
-
-    // Check if this input has current channel info
-    const channelInfo = currentChannels[inputNum]
-    if (channelInfo) {
-      if (channelInfo.channelName) {
-        // Show preset name if available (e.g., "ESPN")
-        return channelInfo.channelName
-      } else {
-        // Show channel number if no preset name (e.g., "Ch 40")
-        return `Ch ${channelInfo.channelNumber}`
-      }
-    }
-
-    return input.label
   }
 
   const loadNetworkTVs = async () => {
@@ -922,15 +808,18 @@ export default function BartenderRemotePage() {
 
       {/* Main Content Area - Changes based on active tab */}
       <div className="flex-1 px-4 pb-24 overflow-y-auto"> {/* pb-24 to make room for bottom tabs */}
+        <RecoveryConfirmationPopup />
         {activeTab === 'video' && (
-          <div className="w-full max-w-7xl lg:max-w-full mx-auto space-y-4 px-2 sm:px-4 lg:px-8">
+          <div className="w-full mx-auto space-y-4 px-1">
             <InteractiveBartenderLayout
               layout={tvLayout}
               onInputSelect={routeInputToOutput}
               currentSources={currentSources}
               inputs={inputs}
               currentChannels={currentChannels}
+              onRefreshRoutes={loadCurrentRoutes}
             />
+            {selectedInput === 11 && <AtmosphereControl />}
           </div>
         )}
 
@@ -1134,6 +1023,19 @@ export default function BartenderRemotePage() {
                   <h3 className="text-lg font-semibold text-slate-100">Quick Routing Matrix</h3>
                   <p className="text-xs text-slate-400 mt-1">Tap a cell to route an input to an output</p>
                 </div>
+                {multiViewCardId && (
+                  <button
+                    onClick={toggleMultiView}
+                    disabled={multiViewLoading}
+                    className={`px-4 py-2 rounded-lg text-sm font-bold transition-colors ${
+                      multiViewMode === 6
+                        ? 'bg-purple-600 text-white hover:bg-purple-700'
+                        : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                    } ${multiViewLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    {multiViewLoading ? '...' : multiViewMode === 6 ? '■ Single View' : '⊞ Quad View'}
+                  </button>
+                )}
                 <button
                   onClick={loadCurrentRoutes}
                   disabled={loadingRoutes}
@@ -1189,7 +1091,7 @@ export default function BartenderRemotePage() {
                   </thead>
                   <tbody>
                     {matrixConfig?.outputs
-                      ?.filter((output: any) => output.isActive && output.channelNumber <= 32)
+                      ?.filter((output: any) => output.isActive)
                       .map((output: any) => {
                         const currentInput = currentSources.get(output.channelNumber)
 
@@ -1255,10 +1157,22 @@ export default function BartenderRemotePage() {
           </div>
         )}
 
+        {activeTab === 'dj' && djControlsEnabled && (
+          <div className="max-w-7xl mx-auto pt-4">
+            <DJControlPanel />
+          </div>
+        )}
+
         {activeTab === 'lighting' && lightingEnabled && (
           <div className="max-w-7xl mx-auto pt-4 space-y-4">
             {commercialLightingEnabled && <CommercialLightingRemote />}
             {dmxLightingEnabled && <DMXLightingRemote />}
+          </div>
+        )}
+
+        {activeTab === 'schedule' && (
+          <div className="max-w-7xl mx-auto pt-4">
+            <ScheduledGamesPanel />
           </div>
         )}
       </div>
@@ -1341,6 +1255,32 @@ export default function BartenderRemotePage() {
             <Gamepad2 className="w-4 h-4" />
             <span className="text-xs font-medium">Remote</span>
           </button>
+
+          <button
+            onClick={() => setActiveTab('schedule')}
+            className={`flex flex-col items-center space-y-1 px-2 py-2 rounded-lg transition-all ${
+              activeTab === 'schedule'
+                ? 'bg-orange-500/30 text-orange-300'
+                : 'text-slate-500 hover:text-white hover:bg-sportsBar-800/5'
+            }`}
+          >
+            <Calendar className="w-4 h-4" />
+            <span className="text-xs font-medium">Schedule</span>
+          </button>
+
+          {djControlsEnabled && (
+            <button
+              onClick={() => setActiveTab('dj')}
+              className={`flex flex-col items-center space-y-1 px-2 py-2 rounded-lg transition-all ${
+                activeTab === 'dj'
+                  ? 'bg-orange-500/30 text-orange-300'
+                  : 'text-slate-500 hover:text-white hover:bg-sportsBar-800/5'
+              }`}
+            >
+              <Music className="w-4 h-4" />
+              <span className="text-xs font-medium">DJ</span>
+            </button>
+          )}
 
           {lightingEnabled && (
             <button

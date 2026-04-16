@@ -25,6 +25,7 @@ import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { z } from 'zod'
 import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
+import { HARDWARE_CONFIG } from '@/lib/hardware-config'
 
 interface RouteContext {
   params: Promise<{
@@ -311,10 +312,10 @@ async function getInputGainSettings(processor: any): Promise<any[]> {
     const gainSettings: any[] = []
     let responseBuffer = ''
 
-    atlasLogger.connectionAttempt(processor.ipAddress, 5321)
+    atlasLogger.connectionAttempt(processor.ipAddress, HARDWARE_CONFIG.atlas.tcpPort)
 
-    client.connect(5321, processor.ipAddress, () => {
-      atlasLogger.connectionSuccess(processor.ipAddress, 5321)
+    client.connect(HARDWARE_CONFIG.atlas.tcpPort, processor.ipAddress, () => {
+      atlasLogger.connectionSuccess(processor.ipAddress, HARDWARE_CONFIG.atlas.tcpPort)
 
       // Query gain for inputs (0-based indexing as per Atlas protocol)
       // AZMP8 has 10 inputs, AZMP4 has 4 inputs, AZM8 has 8 inputs
@@ -375,12 +376,12 @@ async function getInputGainSettings(processor: any): Promise<any[]> {
     })
 
     client.on('close', () => {
-      atlasLogger.connectionClosed(processor.ipAddress, 5321)
+      atlasLogger.connectionClosed(processor.ipAddress, HARDWARE_CONFIG.atlas.tcpPort)
       resolve(gainSettings)
     })
 
     client.on('error', (error) => {
-      atlasLogger.connectionFailure(processor.ipAddress, 5321, error)
+      atlasLogger.connectionFailure(processor.ipAddress, HARDWARE_CONFIG.atlas.tcpPort, error)
       reject(error)
     })
 
@@ -400,7 +401,7 @@ async function setInputGain(processor: any, inputNumber: number, gain: number): 
     let timeoutHandle: NodeJS.Timeout
     let resolved = false // Track if promise has been resolved/rejected
 
-    atlasLogger.connectionAttempt(processor.ipAddress, 5321)
+    atlasLogger.connectionAttempt(processor.ipAddress, HARDWARE_CONFIG.atlas.tcpPort)
 
     // Timeout after 7 seconds (increased for more reliable communication)
     timeoutHandle = setTimeout(() => {
@@ -417,8 +418,8 @@ async function setInputGain(processor: any, inputNumber: number, gain: number): 
       }
     }, 7000)
 
-    client.connect(5321, processor.ipAddress, () => {
-      atlasLogger.connectionSuccess(processor.ipAddress, 5321)
+    client.connect(HARDWARE_CONFIG.atlas.tcpPort, processor.ipAddress, () => {
+      atlasLogger.connectionSuccess(processor.ipAddress, HARDWARE_CONFIG.atlas.tcpPort)
       atlasLogger.inputGainAdjustment(inputNumber, gain, processor.ipAddress)
 
       // Convert 1-based UI input number to 0-based Atlas index
@@ -520,16 +521,16 @@ async function setInputGain(processor: any, inputNumber: number, gain: number): 
       if (!resolved) {
         resolved = true
         clearTimeout(timeoutHandle)
-        atlasLogger.connectionFailure(processor.ipAddress, 5321, error)
-        
+        atlasLogger.connectionFailure(processor.ipAddress, HARDWARE_CONFIG.atlas.tcpPort, error)
+
         // Provide more helpful error messages
         let errorMsg = `Connection error: ${error.message}`
         if (error.message.includes('ECONNREFUSED')) {
-          errorMsg = `Cannot connect to Atlas processor at ${processor.ipAddress}:5321. Is the processor powered on and connected to the network?`
+          errorMsg = `Cannot connect to Atlas processor at ${processor.ipAddress}:${HARDWARE_CONFIG.atlas.tcpPort}. Is the processor powered on and connected to the network?`
         } else if (error.message.includes('ETIMEDOUT')) {
-          errorMsg = `Connection to Atlas processor at ${processor.ipAddress}:5321 timed out. Check network connectivity.`
+          errorMsg = `Connection to Atlas processor at ${processor.ipAddress}:${HARDWARE_CONFIG.atlas.tcpPort} timed out. Check network connectivity.`
         } else if (error.message.includes('EHOSTUNREACH')) {
-          errorMsg = `Atlas processor at ${processor.ipAddress}:5321 is unreachable. Check network configuration.`
+          errorMsg = `Atlas processor at ${processor.ipAddress}:${HARDWARE_CONFIG.atlas.tcpPort} is unreachable. Check network configuration.`
         }
         
         reject(new Error(errorMsg))
@@ -539,7 +540,7 @@ async function setInputGain(processor: any, inputNumber: number, gain: number): 
     client.on('close', () => {
       if (!resolved) {
         clearTimeout(timeoutHandle)
-        atlasLogger.connectionClosed(processor.ipAddress, 5321)
+        atlasLogger.connectionClosed(processor.ipAddress, HARDWARE_CONFIG.atlas.tcpPort)
         
         // If we got here without resolving, check if we have a partial response
         if (responseBuffer && responseBuffer.trim()) {

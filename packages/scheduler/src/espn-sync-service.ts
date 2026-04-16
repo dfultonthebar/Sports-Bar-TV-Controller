@@ -220,6 +220,10 @@ class ESPNSyncService {
       isPriorityGame: false,
 
       lastSynced: nowTimestamp,
+      // Also bump updatedAt so staleness monitors (and future audits) can
+      // tell when a row was last touched. Drizzle doesn't auto-bump this
+      // on update — the schema default only applies at insert time.
+      updatedAt: nowTimestamp,
     };
 
     if (existing.length > 0) {

@@ -10,6 +10,7 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { logger } from '@sports-bar/logger'
 import { z } from 'zod'
 import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
+import { HARDWARE_CONFIG } from '@/lib/hardware-config'
 // Global map to track active subscriptions
 const activeSubscriptions = new Map<string, Set<string>>()
 
@@ -116,7 +117,7 @@ async function startInputLevelMonitoring(processor: any, inputMeter: any) {
     // NO duplicate UDP server creation - the AtlasTCPClient handles all UDP communication
     const atlasClient = await getAtlasClient(processor.id, {
       ipAddress: processor.ipAddress,
-      tcpPort: processor.port || 5321,
+      tcpPort: processor.port || HARDWARE_CONFIG.atlas.tcpPort,
       udpPort: processor.udpPort || 3131
     })
     

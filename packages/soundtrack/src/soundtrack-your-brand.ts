@@ -54,6 +54,7 @@ export interface SoundtrackSoundZone {
 export interface NowPlaying {
   nowPlaying?: {
     track?: {
+      id: string
       title: string
       artist: string
       album?: string
@@ -135,7 +136,7 @@ export class SoundtrackYourBrandAPI {
     return `Basic ${base64Credentials}`
   }
 
-  private async request(endpoint: string, options: RequestInit = {}) {
+  private async request(endpoint: string, options: RequestInit = {}): Promise<any> {
     await this.rateLimiter.waitIfNeeded()
 
     const url = `${this.baseUrl}${endpoint}`
@@ -189,7 +190,7 @@ export class SoundtrackYourBrandAPI {
     return response.json()
   }
 
-  private async graphql(query: string, variables: any = {}) {
+  private async graphql(query: string, variables: any = {}): Promise<any> {
     return this.request('', {
       method: 'POST',
       body: JSON.stringify({ query, variables })
@@ -413,8 +414,8 @@ export class SoundtrackYourBrandAPI {
   }
 
   async listStations(accountId?: string): Promise<SoundtrackStation[]> {
-    // Query playlists from sound zones' playFrom field
-    // This gets all currently assigned playlists across all sound zones
+    // Query ALL playlists from the account's music library + schedules
+    // This fetches everything available, not just what's currently assigned to zones
     const query = `
       query {
         me {
@@ -423,23 +424,28 @@ export class SoundtrackYourBrandAPI {
               edges {
                 node {
                   id
-                  soundZones(first: 100) {
-                    edges {
-                      node {
-                        playFrom {
-                          __typename
-                          ... on Playlist {
-                            id
-                            name
+                  musicLibrary {
+                    playlists(first: 100) {
+                      edges {
+                        node {
+                          id
+                          name
+                          type
+                          shortDescription
+                          display {
+                            image {
+                              size(width: 200, height: 200)
+                            }
                           }
-                          ... on Schedule {
-                            id
-                            name
-                          }
-                          ... on Soundtrack {
-                            id
-                            name
-                          }
+                        }
+                      }
+                    }
+                    schedules(first: 50) {
+                      edges {
+                        node {
+                          id
+                          name
+                          shortDescription
                         }
                       }
                     }
@@ -454,37 +460,94 @@ export class SoundtrackYourBrandAPI {
 
     const result = await this.graphql(query)
 
-    if (result.errors) {
-      logger.error('[Soundtrack] Error fetching playlists:', { data: JSON.stringify(result.errors, null, 2) })
-      return []
+    if (result.errors && !result.data) {
+      logger.error('[Soundtrack] Error fetching music library:', { data: JSON.stringify(result.errors, null, 2) })
+      // Fall back to the old zone-based query if musicLibrary is not available
+      return this.listStationsFromZones()
     }
 
     const accounts = result.data?.me?.accounts?.edges || []
-    const uniquePlaylists = new Map<string, SoundtrackStation>()
+    const stations: SoundtrackStation[] = []
 
     for (const accountEdge of accounts) {
       const account = accountEdge?.node
-      if (!account || !account.id) continue
+      if (!account) continue
 
-      const soundZones = account.soundZones?.edges || []
+      // Add playlists
+      const playlists = account.musicLibrary?.playlists?.edges || []
+      for (const edge of playlists) {
+        const node = edge?.node
+        if (!node?.id || !node?.name) continue
+        stations.push({
+          id: node.id,
+          name: node.name,
+          description: node.shortDescription || undefined,
+          imageUrl: node.display?.image?.size || undefined,
+          genre: node.type === 'station' ? 'Station' : 'Playlist',
+        })
+      }
 
-      for (const zoneEdge of soundZones) {
-        const zone = zoneEdge?.node
-        if (!zone || !zone.playFrom) continue
-
-        const playFrom = zone.playFrom
-        if (playFrom.id && playFrom.name) {
-          uniquePlaylists.set(playFrom.id, {
-            id: playFrom.id,
-            name: playFrom.name,
-            description: `Type: ${playFrom.__typename}`
-          })
-        }
+      // Add schedules
+      const schedules = account.musicLibrary?.schedules?.edges || []
+      for (const edge of schedules) {
+        const node = edge?.node
+        if (!node?.id || !node?.name) continue
+        stations.push({
+          id: node.id,
+          name: node.name,
+          description: node.shortDescription || undefined,
+          genre: 'Schedule',
+        })
       }
     }
 
-    logger.info(`[Soundtrack] Found ${uniquePlaylists.size} unique playlists`)
-    return Array.from(uniquePlaylists.values())
+    logger.info(`[Soundtrack] Found ${stations.length} playlists/schedules in music library`)
+    return stations
+  }
+
+  /** Fallback: get playlists from sound zone assignments only */
+  private async listStationsFromZones(): Promise<SoundtrackStation[]> {
+    const query = `
+      query {
+        me {
+          ... on PublicAPIClient {
+            accounts(first: 10) {
+              edges {
+                node {
+                  id
+                  soundZones(first: 100) {
+                    edges {
+                      node {
+                        playFrom {
+                          __typename
+                          ... on Playlist { id name }
+                          ... on Schedule { id name }
+                          ... on Soundtrack { id name }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    `
+    const result = await this.graphql(query)
+    if (result.errors) return []
+
+    const accounts = result.data?.me?.accounts?.edges || []
+    const unique = new Map<string, SoundtrackStation>()
+    for (const ae of accounts) {
+      for (const ze of ae?.node?.soundZones?.edges || []) {
+        const pf = ze?.node?.playFrom
+        if (pf?.id && pf?.name) {
+          unique.set(pf.id, { id: pf.id, name: pf.name, genre: pf.__typename })
+        }
+      }
+    }
+    return Array.from(unique.values())
   }
 
   async updateSoundZone(soundZoneId: string, data: {
@@ -604,12 +667,16 @@ export class SoundtrackYourBrandAPI {
         query GetNowPlaying($id: ID!) {
           nowPlaying(soundZone: $id) {
             track {
+              id
               name
               artists {
                 name
               }
               album {
                 name
+                image {
+                  url
+                }
               }
             }
             startedAt
@@ -630,12 +697,14 @@ export class SoundtrackYourBrandAPI {
       }
 
       // Return just the inner object for the component
-      // Component expects: { track: { title, artist, album }, startedAt }
+      // Component expects: { track: { id, title, artist, album }, startedAt }
       return {
         track: {
+          id: nowPlaying.track?.id || '',
           title: nowPlaying.track?.name || '',
           artist: nowPlaying.track?.artists?.map((a: any) => a.name).join(', ') || '',
-          album: nowPlaying.track?.album?.name
+          album: nowPlaying.track?.album?.name,
+          albumArt: nowPlaying.track?.album?.image?.url || undefined
         },
         startedAt: nowPlaying.startedAt
       } as any
@@ -643,6 +712,53 @@ export class SoundtrackYourBrandAPI {
       logger.error('[Soundtrack] getNowPlaying exception:', error)
       return null
     }
+  }
+
+  async skipTrack(soundZoneId: string): Promise<void> {
+    const mutation = `
+      mutation SkipTrack($input: SkipTrackInput!) {
+        skipTrack(input: $input) {
+          status
+        }
+      }
+    `
+
+    const result = await this.graphql(mutation, {
+      input: { soundZone: soundZoneId }
+    })
+
+    if (result.errors) {
+      logger.error('[Soundtrack] skipTrack error:', { data: JSON.stringify(result.errors, null, 2) })
+      throw new Error(result.errors[0]?.message || 'Failed to skip track')
+    }
+
+    logger.info(`[Soundtrack] Skipped track for zone ${soundZoneId}, status: ${result.data?.skipTrack?.status}`)
+  }
+
+  async blockTrack(soundZoneId: string, trackId: string, reason: 'dislike' | 'explicit' | 'bad_context' | 'other' = 'dislike'): Promise<void> {
+    const mutation = `
+      mutation BlockTrack($input: BlockTrackInput!) {
+        blockTrack(input: $input) {
+          parent
+          source
+        }
+      }
+    `
+
+    const result = await this.graphql(mutation, {
+      input: {
+        parent: soundZoneId,
+        source: trackId,
+        reasons: [reason]
+      }
+    })
+
+    if (result.errors) {
+      logger.error('[Soundtrack] blockTrack error:', { data: JSON.stringify(result.errors, null, 2) })
+      throw new Error(result.errors[0]?.message || 'Failed to block track')
+    }
+
+    logger.info(`[Soundtrack] Blocked track ${trackId} for zone ${soundZoneId}, reason: ${reason}`)
   }
 }
 

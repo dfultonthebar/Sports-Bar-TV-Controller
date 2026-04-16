@@ -14,6 +14,7 @@ export enum TVBrand {
   VIZIO = 'Vizio',
   SHARP = 'Sharp',
   HISENSE = 'Hisense',
+  VAVA = 'VAVA',
 }
 
 /**

@@ -204,9 +204,6 @@ export const ENDPOINT_RATE_LIMITS = {
 
   // Sports Data Endpoints
   '/api/sports-guide': 'SPORTS',
-  '/api/sports-guide/scheduled': 'SPORTS',
-  '/api/tv-guide/unified': 'SPORTS',
-  '/api/unified-guide': 'SPORTS',
 
   // Device Control Endpoints
   '/api/directv-devices': 'DEVICE_CONTROL',

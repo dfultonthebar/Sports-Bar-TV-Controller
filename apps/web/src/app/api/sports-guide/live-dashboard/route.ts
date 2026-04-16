@@ -12,6 +12,8 @@ import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { logger } from '@sports-bar/logger'
 import { espnScoreboardAPI } from '@/lib/sports-apis/espn-scoreboard-api'
+import { HARDWARE_CONFIG } from '@/lib/hardware-config'
+import { resolveChannelsForGame } from '@/lib/network-channel-resolver'
 
 // ── ESPN sports (same list as live-by-channel) ──────────────────────────
 const ESPN_SPORTS = [
@@ -31,51 +33,20 @@ const ESPN_SPORTS = [
   { sport: 'racing', league: 'f1', name: 'Formula 1' },
 ]
 
-// ── Network → DirecTV channel ───────────────────────────────────────────
-const NETWORK_TO_DIRECTV: Record<string, string> = {
-  'ESPN': '206', 'ESPN2': '209', 'ESPNU': '208', 'ESPNEWS': '207', 'ESPN+': '206',
-  'ESPN Deportes': '466',
-  'FOX': '11', 'FS1': '219', 'FS2': '618', 'FOX Sports 1': '219', 'FOX Sports 2': '618',
-  'Fox Deportes': '463', 'FOX Deportes': '463',
-  'CBS': '5', 'NBC': '2', 'CBS Sports Network': '221', 'CBSSN': '221',
-  'Peacock': '206',
-  'TNT': '245', 'TBS': '247', 'truTV': '246', 'TruTV': '246',
-  'NFL Network': '212', 'NFL RedZone': '211', 'Red Zone': '211', 'NFLN': '212',
-  'NBA TV': '216', 'NBATV': '216',
-  'MLB Network': '213', 'MLBN': '213',
-  'NHL Network': '215', 'NHLN': '215',
-  'Big Ten Network': '610', 'BTN': '610',
-  'SEC Network': '611', 'SECN': '611',
-  'ACC Network': '612', 'ACCN': '612',
-  'Pac-12 Network': '613', 'Pac-12': '613',
-  'USA': '242', 'USA Network': '242',
-  'Golf Channel': '218', 'Golf': '218', 'GOLF': '218',
-  'Tennis Channel': '217', 'Tennis': '217', 'TENNIS': '217',
-  'NBCSN': '220', 'NBC Sports': '220',
-  'beIN Sports': '620', 'beIN SPORTS': '620', 'BEIN': '620',
-  'Amazon Prime Video': '9550', 'Prime Video': '9550',
-  'Apple TV+': '9528', 'Paramount+': '247',
-  'ABC': '7',
-}
-
-// ── Network → Cable (Spectrum) channel — Madison Spectrum (Lucky's 1313) ──
-const NETWORK_TO_CABLE: Record<string, string> = {
-  'ESPN': '24', 'ESPN2': '23', 'ESPNU': '310', 'ESPNEWS': '304', 'ESPN+': '24',
-  'FOX': '8', 'FS1': '27', 'FS2': '305', 'FOX Sports 1': '27', 'FOX Sports 2': '305',
-  'CBS': '9', 'NBC': '5', 'ABC': '7',
-  'CBS Sports Network': '306', 'CBSSN': '306',
-  'Peacock': '28', 'NBC Sports': '28', 'NBCSN': '28',
-  'TNT': '32', 'TBS': '32', 'truTV': '56', 'TruTV': '56',
-  'NBA TV': '338', 'NBATV': '338',
-  'MLB Network': '84', 'MLBN': '84',
-  'NHL Network': '326', 'NHLN': '326',
-  'Big Ten Network': '73', 'BTN': '73',
-  'SEC Network': '333', 'SECN': '333',
-  'USA': '34', 'USA Network': '34',
-  'Golf Channel': '22', 'Golf': '22', 'GOLF': '22',
-  'Tennis Channel': '313', 'Tennis': '313', 'TENNIS': '313',
-  'beIN Sports': '243', 'beIN SPORTS': '243', 'BEIN': '243',
-}
+// ── Network → Cable / DirecTV channel resolution ────────────────────────
+//
+// As of v2.5.0 (Phase 2 of channel-resolver consolidation), the hardcoded
+// NETWORK_TO_CABLE and NETWORK_TO_DIRECTV dicts that used to live here have
+// been removed. Cable + DirecTV resolution is now handled by the shared
+// `resolveChannelsForGame()` helper in `@/lib/network-channel-resolver`,
+// which reads from the `channel_presets` + `station_aliases` tables. This
+// preserves the Wisconsin RSN split (FanDuelWI ch 40 for Bucks vs
+// BallyWIPlus ch 308 for Brewers) and removes per-location channel-number
+// drift. See docs/CHANNEL_RESOLVER_CONSOLIDATION_PLAN.md.
+//
+// Streaming (NETWORK_TO_STREAMING_APP) is still resolved locally because
+// the bartender remote needs the full {appId, name, packageName} shape for
+// Fire TV app launch, which the shared helper does not yet provide.
 
 // ── Network → Streaming app ID (for Fire TV launch) ────────────────────
 const NETWORK_TO_STREAMING_APP: Record<string, { appId: string; name: string; packageName: string }> = {
@@ -148,7 +119,7 @@ export async function GET(request: NextRequest) {
         if (seenGameIds.has(gameId)) continue
         seenGameIds.add(gameId)
 
-        const entry = buildDashboardEntry(game, cfg.name)
+        const entry = await buildDashboardEntry(game, cfg.name, cfg.sport)
         const gameTime = new Date(game.date).getTime()
         const isLive = espnScoreboardAPI.isLive(game)
         const isCompleted = espnScoreboardAPI.isCompleted(game)
@@ -195,7 +166,7 @@ export async function GET(request: NextRequest) {
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
-function buildDashboardEntry(game: any, league: string) {
+async function buildDashboardEntry(game: any, league: string, sport?: string) {
   const networks = espnScoreboardAPI.getAllNetworks(game)
   const primaryNetwork = networks[0] || null
   const isLive = espnScoreboardAPI.isLive(game)
@@ -206,15 +177,36 @@ function buildDashboardEntry(game: any, league: string) {
     hour: 'numeric',
     minute: '2-digit',
     hour12: true,
-    timeZone: 'America/Chicago',
+    timeZone: HARDWARE_CONFIG.venue.timezone,
   })
 
-  // Channel mappings
-  const direcTVChannel = primaryNetwork ? findChannel(primaryNetwork, NETWORK_TO_DIRECTV) : null
-  const cableChannel = primaryNetwork ? findChannel(primaryNetwork, NETWORK_TO_CABLE) : null
+  // Channel mappings — resolved via the shared DB-backed helper. Walks the
+  // full networks array, primary first (preserving the "ESPN often returns
+  // a placeholder like 'MLB.TV' as the first entry but the real RSN like
+  // 'Brewers.TV' later" behavior — `resolveChannelsForGame` orders
+  // primaryNetwork first, then iterates through the rest).
+  //
+  // Wisconsin RSN safety: the helper preserves the FanDuelWI ch 40 (Bucks)
+  // vs BallyWIPlus ch 308 (Brewers) split via the station_aliases table.
+  // This cannot be verified live without an active Bucks/Brewers game in
+  // the response, but is covered by the helper's unit tests
+  // (apps/web/src/lib/__tests__/network-channel-resolver.test.ts).
+  const resolved = await resolveChannelsForGame(
+    {
+      networks,
+      primaryNetwork,
+      league,
+      sport: sport ?? null,
+    },
+    ['cable', 'directv']
+  )
+  const cableChannel = resolved.cableChannel
+  const direcTVChannel = resolved.directvChannel
 
-  // Streaming app mapping
-  const streamingApp = primaryNetwork ? findStreamingApp(primaryNetwork) : null
+  // Streaming app mapping — still uses the local hardcoded map because the
+  // bartender remote needs the {appId, name, packageName} shape for Fire TV
+  // app launch, which the shared helper does not yet expose.
+  const streamingApp = findStreamingAppFromNetworks(networks)
 
   // Minutes until start
   const minutesUntilStart = Math.max(0, Math.round((gameDate.getTime() - Date.now()) / 60000))
@@ -245,20 +237,20 @@ function buildDashboardEntry(game: any, league: string) {
   }
 }
 
-function findChannel(network: string, mapping: Record<string, string>): string | null {
-  if (mapping[network]) return mapping[network]
-  const lower = network.toLowerCase()
-  for (const [key, value] of Object.entries(mapping)) {
-    if (key.toLowerCase() === lower) return value
-  }
-  return null
-}
-
 function findStreamingApp(network: string): { appId: string; name: string; packageName: string } | null {
   if (NETWORK_TO_STREAMING_APP[network]) return NETWORK_TO_STREAMING_APP[network]
   const lower = network.toLowerCase()
   for (const [key, value] of Object.entries(NETWORK_TO_STREAMING_APP)) {
     if (key.toLowerCase() === lower) return value
+  }
+  return null
+}
+
+function findStreamingAppFromNetworks(networks: string[]): { appId: string; name: string; packageName: string } | null {
+  for (const network of networks) {
+    if (!network) continue
+    const hit = findStreamingApp(network)
+    if (hit) return hit
   }
   return null
 }

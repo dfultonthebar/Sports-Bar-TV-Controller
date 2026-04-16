@@ -9,6 +9,7 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { logger } from '@sports-bar/logger'
 import { z } from 'zod'
 import { validateRequestBody, validateQueryParams, isValidationError } from '@/lib/validation'
+import { HARDWARE_CONFIG } from '@/lib/hardware-config'
 const CONFIG_DIR = path.join(process.cwd(), 'data', 'atlas-configs')
 
 // Ensure config directory exists
@@ -41,7 +42,7 @@ export async function GET(request: NextRequest) {
       try {
         const client = new AtlasTCPClient({
           ipAddress: processorIp,
-          tcpPort: 5321,
+          tcpPort: HARDWARE_CONFIG.atlas.tcpPort,
           timeout: 5000
         })
 

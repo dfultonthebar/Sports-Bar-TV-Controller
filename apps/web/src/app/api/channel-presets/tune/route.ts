@@ -11,6 +11,46 @@ import { validateRequestBody, validateQueryParams, validatePathParams, Validatio
 import { operationLogger } from '@sports-bar/data'
 
 
+type TuneLogEntry = {
+  inputNum: number | null
+  inputLabel: string | null
+  deviceType: string
+  deviceId: string | null
+  cableBoxId: string | null
+  channelNumber: string
+  channelName: string | null
+  presetId: string | null
+  success: boolean
+  errorMessage: string | null
+  durationMs: number
+  correlationId: string
+}
+
+async function appendTuneLog(entry: TuneLogEntry): Promise<void> {
+  try {
+    const { db } = await import('@/db')
+    await db.insert(schema.channelTuneLogs).values({
+      id: crypto.randomUUID(),
+      inputNum: entry.inputNum ?? undefined,
+      inputLabel: entry.inputLabel ?? undefined,
+      deviceType: entry.deviceType,
+      deviceId: entry.deviceId ?? undefined,
+      cableBoxId: entry.cableBoxId ?? undefined,
+      channelNumber: entry.channelNumber,
+      channelName: entry.channelName ?? undefined,
+      presetId: entry.presetId ?? undefined,
+      triggeredBy: 'bartender',
+      success: entry.success,
+      errorMessage: entry.errorMessage ?? undefined,
+      durationMs: entry.durationMs,
+      correlationId: entry.correlationId,
+      tunedAt: new Date().toISOString(),
+    })
+  } catch (logError) {
+    logger.error('[TUNE API] Failed to append ChannelTuneLog entry:', logError)
+  }
+}
+
 // POST /api/channel-presets/tune - Send channel change command
 export async function POST(request: NextRequest) {
   const startTime = Date.now()
@@ -37,7 +77,7 @@ export async function POST(request: NextRequest) {
   try {
     const { data: body } = bodyValidation
     logger.info(`[TUNE API] Request body: ${JSON.stringify(body)}`)
-    let { channelNumber, deviceType, deviceIp, presetId, cableBoxId, directTVId } = body
+    let { channelNumber, deviceType, deviceIp, presetId, cableBoxId, directTVId, trackOnly } = body
 
     // If presetId is provided but channelNumber/deviceType are missing, fetch the preset
     if (presetId && presetId !== 'manual' && (!channelNumber || !deviceType)) {
@@ -91,27 +131,26 @@ export async function POST(request: NextRequest) {
 
     let result: any = { success: false }
 
-    if (deviceTypeStr === 'directv') {
+    // trackOnly mode: skip the actual tune, just update channel tracking below
+    if (trackOnly) {
+      result = { success: true, message: 'Track-only mode — channel tracking updated without tuning' }
+    } else if (deviceTypeStr === 'directv') {
       // DirecTV uses IP control - need either deviceIp or directTVId to look up the IP
       let targetIp = deviceIpStr
       const directTVIdStr = directTVId ? String(directTVId) : undefined
 
-      // If directTVId is provided but no IP, look up the IP from the devices file
+      // If directTVId is provided but no IP, look up the IP from the database
       if (!targetIp && directTVIdStr) {
         try {
-          const { readFile } = await import('fs/promises')
-          const { join } = await import('path')
-          const direcTvData = JSON.parse(
-            await readFile(join(process.cwd(), 'data', 'directv-devices.json'), 'utf8')
-          )
-          const direcTvDevice = direcTvData.devices?.find((d: any) => d.id === directTVIdStr)
+          const { getDirecTVDeviceById } = await import('@/lib/device-db')
+          const direcTvDevice = await getDirecTVDeviceById(directTVIdStr)
 
           if (direcTvDevice?.ipAddress) {
             targetIp = direcTvDevice.ipAddress
             logger.info(`[TUNE API] Resolved DirecTV ID ${directTVIdStr} to IP ${targetIp}`)
           }
-        } catch (fileError) {
-          logger.error('[TUNE API] Could not load DirecTV devices to resolve ID:', fileError)
+        } catch (dbError) {
+          logger.error('[TUNE API] Could not load DirecTV device from database to resolve ID:', dbError)
         }
       }
 
@@ -176,6 +215,11 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      // Variables captured from channel tracking, reused for ChannelTuneLog below
+      let trackedInputNum: number | null = null
+      let trackedInputLabel: string | null = null
+      let trackedChannelName: string | null = null
+
       // Update current channel tracking for the input
       try {
         const { findFirst } = await import('@/lib/db-helpers')
@@ -192,13 +236,13 @@ export async function POST(request: NextRequest) {
                 .from(schema.irDevices)
                 .where(and(
                   eq(schema.irDevices.id, cableBoxIdStr),
-                  eq(schema.irDevices.deviceType, 'Cable Box')
+                  or(eq(schema.irDevices.deviceType, 'Cable Box'), eq(schema.irDevices.deviceType, 'CableBox'))
                 ))
                 .limit(1)
                 .get()
             : await db.select()
                 .from(schema.irDevices)
-                .where(eq(schema.irDevices.deviceType, 'Cable Box'))
+                .where(or(eq(schema.irDevices.deviceType, 'Cable Box'), eq(schema.irDevices.deviceType, 'CableBox')))
                 .limit(1)
                 .get()
 
@@ -207,28 +251,23 @@ export async function POST(request: NextRequest) {
             inputLabel = irDevice.matrixInputLabel || irDevice.name
           }
         } else if (deviceTypeStr === 'directv') {
-          // For DirecTV, try to load from JSON file to get input channel
-          // Can look up by IP address or device ID
+          // For DirecTV, look up from database to get input channel
           const directTVIdForTracking = directTVId ? String(directTVId) : undefined
           try {
-            const { readFile } = await import('fs/promises')
-            const { join } = await import('path')
-            const direcTvData = JSON.parse(
-              await readFile(join(process.cwd(), 'data', 'directv-devices.json'), 'utf8')
-            )
+            const { getDirecTVDeviceById, getDirecTVDeviceByIp } = await import('@/lib/device-db')
             // Find device by ID first, then by IP
             const direcTvDevice = directTVIdForTracking
-              ? direcTvData.devices?.find((d: any) => d.id === directTVIdForTracking)
+              ? await getDirecTVDeviceById(directTVIdForTracking)
               : deviceIpStr
-                ? direcTvData.devices?.find((d: any) => d.ipAddress === deviceIpStr)
+                ? await getDirecTVDeviceByIp(deviceIpStr)
                 : null
 
             if (direcTvDevice?.inputChannel) {
               inputNum = direcTvDevice.inputChannel
               inputLabel = direcTvDevice.name || 'DirecTV'
             }
-          } catch (fileError) {
-            logger.warn('[Channel Tracking] Could not load DirecTV devices:', fileError)
+          } catch (dbError) {
+            logger.warn('[Channel Tracking] Could not load DirecTV devices from database:', dbError)
           }
         }
 
@@ -305,6 +344,10 @@ export async function POST(request: NextRequest) {
           logger.info(`[MANUAL OVERRIDE] Input ${inputNum} protected until ${manualOverrideUntil.toISOString()} (${overrideResult.durationMinutes} minutes)`)
 
           logger.debug(`[Channel Tracking] Updated input ${inputNum} to channel ${channelNumberStr}${channelName ? ` (${channelName})` : ''}`)
+
+          trackedInputNum = inputNum
+          trackedInputLabel = inputLabel
+          trackedChannelName = channelName
         }
       } catch (error) {
         logger.error('[Channel Tracking] Failed to update current channel:', error)
@@ -324,6 +367,22 @@ export async function POST(request: NextRequest) {
         },
         user: 'bartender',
         success: true,
+      })
+
+      // Append to rolling tune history (success)
+      await appendTuneLog({
+        inputNum: trackedInputNum,
+        inputLabel: trackedInputLabel,
+        deviceType: deviceTypeStr,
+        deviceId: cableBoxIdStr || deviceIpStr || null,
+        cableBoxId: cableBoxIdStr || null,
+        channelNumber: channelNumberStr,
+        channelName: trackedChannelName,
+        presetId: (presetId && presetId !== 'manual') ? String(presetId) : null,
+        success: true,
+        errorMessage: null,
+        durationMs,
+        correlationId,
       })
 
       return NextResponse.json({
@@ -352,6 +411,22 @@ export async function POST(request: NextRequest) {
           presetId: presetId || null,
           details: result.details,
         }
+      })
+
+      // Append to rolling tune history (failure)
+      await appendTuneLog({
+        inputNum: null,
+        inputLabel: null,
+        deviceType: deviceTypeStr,
+        deviceId: cableBoxIdStr || deviceIpStr || null,
+        cableBoxId: cableBoxIdStr || null,
+        channelNumber: channelNumberStr,
+        channelName: null,
+        presetId: (presetId && presetId !== 'manual') ? String(presetId) : null,
+        success: false,
+        errorMessage: result.error || 'Failed to change channel',
+        durationMs,
+        correlationId,
       })
 
       return NextResponse.json(
@@ -472,7 +547,7 @@ async function sendCableBoxChannelChange(channelNumber: string, cableBoxId?: str
     const irDevices = await db
       .select()
       .from(schema.irDevices)
-      .where(eq(schema.irDevices.deviceType, 'Cable Box'))
+      .where(or(eq(schema.irDevices.deviceType, 'Cable Box'), eq(schema.irDevices.deviceType, 'CableBox')))
       .execute()
 
     if (irDevices.length === 0) {
@@ -549,8 +624,14 @@ async function sendCableBoxChannelChange(channelNumber: string, cableBoxId?: str
     logger.info(`[CHANNEL TUNE] Channel number type: ${typeof channelNumber}, value: "${channelNumber}", length: ${channelNumber.length}`)
     logger.info(`[CHANNEL TUNE] Sending ${channelNumber.length} digits: ${channelNumber.split('').join(', ')}`)
 
+    // Pad channel number to 3 digits for Spectrum cable boxes
+    // Single digit "6" → "006", double digit "27" → "027", triple "303" stays "303"
+    // This prevents the cable box from waiting for more digits or misinterpreting
+    const paddedChannel = channelNumber.padStart(3, '0')
+    logger.info(`[CHANNEL TUNE] Padded channel: "${channelNumber}" → "${paddedChannel}"`)
+
     // Send each digit via IR
-    const digits = channelNumber.split('')
+    const digits = paddedChannel.split('')
     let digitsSent = 0
 
     for (const digit of digits) {
@@ -586,7 +667,17 @@ async function sendCableBoxChannelChange(channelNumber: string, cableBoxId?: str
         }, timeout)
 
         client.on('connect', () => {
-          client.write(command.irCode + '\r')
+          // Replace the port/connector in the IR code with the device's actual port
+          // IR codes are in format: sendir,MODULE:PORT,ID,...
+          // e.g., sendir,1:1,1,... needs to become sendir,1:2,1,... for port 2
+          let adjustedCode = command.irCode
+          if (targetDevice.globalCachePortNumber) {
+            adjustedCode = adjustedCode.replace(
+              /^(sendir,\d+:)\d+/,
+              `$1${targetDevice.globalCachePortNumber}`
+            )
+          }
+          client.write(adjustedCode + '\r')
         })
 
         client.on('data', (data) => {

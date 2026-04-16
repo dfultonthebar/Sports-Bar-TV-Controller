@@ -7,12 +7,11 @@ import Link from 'next/link'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import ApiKeysManager from '@/components/ApiKeysManager'
 import DeviceAIAssistant from '@/components/DeviceAIAssistant'
-import SmartDeviceOptimizer from '@/components/SmartDeviceOptimizer'
-import IntelligentTroubleshooter from '@/components/IntelligentTroubleshooter'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/cards'
-import { Badge } from '@/components/ui/badge'
 
 import { logger } from '@sports-bar/logger'
+
+const N8N_BASE_URL = process.env.NEXT_PUBLIC_N8N_URL || 'http://24.123.87.42:5678'
+
 interface IndexStats {
   totalFiles: number
   indexed: number
@@ -60,7 +59,6 @@ export default function AIHubPage() {
 
   // AI Configuration state
   const [providersStatus, setProvidersStatus] = useState<AIProvidersStatus | null>(null)
-  const [isLoadingProviders, setIsLoadingProviders] = useState(true)
   const [isRefreshing, setIsRefreshing] = useState(false)
 
   // AI Enhanced Devices state
@@ -184,7 +182,6 @@ export default function AIHubPage() {
     } catch (error) {
       logger.error('Error testing AI providers:', error)
     } finally {
-      setIsLoadingProviders(false)
       setIsRefreshing(false)
     }
   }
@@ -475,7 +472,7 @@ export default function AIHubPage() {
                     type="text"
                     value={chatMessage}
                     onChange={(e) => setChatMessage(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
                     placeholder="Ask about your code, troubleshoot issues, or request help..."
                     className="flex-1 px-4 py-2 bg-slate-800 border border-slate-600 rounded-lg text-slate-100 placeholder-slate-400 focus:outline-none focus:border-blue-500"
                     disabled={isChatting}
@@ -699,7 +696,7 @@ export default function AIHubPage() {
                   
                   <div className="relative" style={{ height: '600px' }}>
                     <iframe
-                      src="http://24.123.87.42:5678"
+                      src={N8N_BASE_URL}
                       className="w-full h-full border-0"
                       title="n8n Workflow Automation"
                       allow="clipboard-read; clipboard-write"
@@ -741,7 +738,7 @@ export default function AIHubPage() {
                   <h4 className="font-medium text-slate-200 mb-3">Quick Access</h4>
                   <div className="flex flex-wrap gap-3">
                     <a
-                      href="http://24.123.87.42:5678"
+                      href={N8N_BASE_URL}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm transition-colors flex items-center gap-2"

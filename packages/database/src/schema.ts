@@ -5,15 +5,45 @@ import { sql } from 'drizzle-orm'
 const timestamp = (name: string) => text(name)
 const timestampNow = () => sql`CURRENT_TIMESTAMP`
 
-// FireTV Device Model
+// FireTV Device Model (expanded to be single source of truth — replaces firetv-devices.json)
 export const fireTVDevices = sqliteTable('FireTVDevice', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   name: text('name').notNull(),
   ipAddress: text('ipAddress').notNull().unique(),
+  port: integer('port').notNull().default(5555),
   macAddress: text('macAddress'),
+  deviceType: text('deviceType').notNull().default('Fire TV Cube'), // 'Fire TV Cube', 'Atmosphere TV', 'Epson Projector', etc.
+  inputChannel: integer('inputChannel'), // Wolf Pack matrix input number
   location: text('location'),
+  isOnline: integer('isOnline', { mode: 'boolean' }).notNull().default(false),
+  disabled: integer('disabled', { mode: 'boolean' }).notNull().default(false),
+  adbEnabled: integer('adbEnabled', { mode: 'boolean' }),
+  serialNumber: text('serialNumber'),
+  deviceModel: text('deviceModel'),
+  softwareVersion: text('softwareVersion'),
+  model: text('model'), // Hardware model (e.g. 'HA90' for Epson)
+  keepAwakeEnabled: integer('keepAwakeEnabled', { mode: 'boolean' }),
+  keepAwakeStart: text('keepAwakeStart'),
+  keepAwakeEnd: text('keepAwakeEnd'),
   status: text('status').notNull().default('offline'),
   lastSeen: timestamp('lastSeen'),
+  addedAt: timestamp('addedAt'),
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+})
+
+// DirecTV Device Model (single source of truth — replaces directv-devices.json)
+export const direcTVDevices = sqliteTable('DirecTVDevice', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  name: text('name').notNull(),
+  ipAddress: text('ipAddress').notNull().unique(),
+  port: integer('port').notNull().default(8080),
+  deviceType: text('deviceType').notNull().default('DirecTV'),
+  inputChannel: integer('inputChannel'), // Wolf Pack matrix input number
+  receiverId: text('receiverId'), // Receiver ID (e.g. '0330 7601 5313')
+  receiverType: text('receiverType').default('Genie HD DVR'),
+  isOnline: integer('isOnline', { mode: 'boolean' }).notNull().default(false),
+  addedAt: timestamp('addedAt'),
   createdAt: timestamp('createdAt').notNull().default(timestampNow()),
   updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
 })
@@ -213,6 +243,7 @@ export const matrixConfigs = sqliteTable('MatrixConfig', {
 // Matrix Configuration Model
 export const matrixConfigurations = sqliteTable('MatrixConfiguration', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  chassisId: text('chassisId'), // Links to wolfpack-devices.json entry (nullable for backward compat)
   name: text('name').notNull(),
   model: text('model').notNull().default('WP-36X36'), // Wolf Pack model (WP-4X4, WP-8X8, WP-16X16, WP-18X18, WP-36X36, WP-64X64)
   ipAddress: text('ipAddress').notNull(),
@@ -435,6 +466,7 @@ export const testLogs = sqliteTable('TestLog', {
 // Wolfpack Matrix Routing Model
 export const wolfpackMatrixRoutings = sqliteTable('WolfpackMatrixRouting', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  chassisId: text('chassisId'), // Links to wolfpack-devices.json chassis entry (nullable for backward compat)
   matrixOutputNumber: integer('matrixOutputNumber').notNull().unique(),
   wolfpackInputNumber: integer('wolfpackInputNumber').notNull(),
   wolfpackInputLabel: text('wolfpackInputLabel').notNull(),
@@ -448,6 +480,7 @@ export const wolfpackMatrixRoutings = sqliteTable('WolfpackMatrixRouting', {
 // Wolfpack Matrix State Model
 export const wolfpackMatrixStates = sqliteTable('WolfpackMatrixState', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  chassisId: text('chassisId'), // Links to wolfpack-devices.json chassis entry (nullable for backward compat)
   matrixOutputNumber: integer('matrixOutputNumber').notNull(),
   wolfpackInputNumber: integer('wolfpackInputNumber').notNull(),
   wolfpackInputLabel: text('wolfpackInputLabel').notNull(),
@@ -880,6 +913,7 @@ export const channelPresets = sqliteTable('ChannelPreset', {
 // Matrix Route Model (for tracking matrix routing)
 export const matrixRoutes = sqliteTable('MatrixRoute', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  chassisId: text('chassisId'), // Links to wolfpack-devices.json chassis entry (nullable for backward compat)
   inputNum: integer('inputNum').notNull(),
   outputNum: integer('outputNum').notNull().unique(),
   isActive: integer('isActive', { mode: 'boolean' }).notNull().default(true),
@@ -915,6 +949,32 @@ export const inputCurrentChannels = sqliteTable('InputCurrentChannel', {
   inputNumIdx: index('InputCurrentChannel_inputNum_idx').on(table.inputNum),
   deviceTypeIdx: index('InputCurrentChannel_deviceType_idx').on(table.deviceType),
   manualOverrideIdx: index('InputCurrentChannel_manualOverrideUntil_idx').on(table.manualOverrideUntil),
+}))
+
+// Append-only history of every tune attempt (success or failure).
+// InputCurrentChannel holds only the latest channel per input, so older
+// tunes are lost. This table preserves the full rolling sequence so we can
+// answer "what changed on input N after 4pm?" after the fact.
+export const channelTuneLogs = sqliteTable('ChannelTuneLog', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  inputNum: integer('inputNum'),
+  inputLabel: text('inputLabel'),
+  deviceType: text('deviceType').notNull(),
+  deviceId: text('deviceId'),
+  cableBoxId: text('cableBoxId'),
+  channelNumber: text('channelNumber').notNull(),
+  channelName: text('channelName'),
+  presetId: text('presetId'),
+  triggeredBy: text('triggeredBy').notNull().default('bartender'),
+  success: integer('success', { mode: 'boolean' }).notNull(),
+  errorMessage: text('errorMessage'),
+  durationMs: integer('durationMs'),
+  correlationId: text('correlationId'),
+  tunedAt: timestamp('tunedAt').notNull().default(timestampNow()),
+}, (table) => ({
+  tunedAtIdx: index('ChannelTuneLog_tunedAt_idx').on(table.tunedAt),
+  inputNumIdx: index('ChannelTuneLog_inputNum_idx').on(table.inputNum),
+  deviceTypeIdx: index('ChannelTuneLog_deviceType_idx').on(table.deviceType),
 }))
 
 // AI Gain Configuration Model
@@ -1564,6 +1624,11 @@ export const inputSourceAllocations = sqliteTable('input_source_allocations', {
   preemptedByAllocationId: text('preempted_by_allocation_id').references(() => inputSourceAllocations.id, { onDelete: 'set null' }),
   preemptedReason: text('preempted_reason'),
 
+  // Audio routing
+  audioSourceIndex: integer('audio_source_index'),
+  audioSourceName: text('audio_source_name'),
+  audioZoneIds: text('audio_zone_ids'), // JSON array of zone numbers
+
   // Quality of Service
   allocationQuality: text('allocation_quality'), // 'optimal', 'suboptimal', 'degraded'
   qualityNotes: text('quality_notes'), // explanation of quality rating
@@ -2190,6 +2255,7 @@ export const bartenderLayouts = sqliteTable('BartenderLayout', {
   // Floor plan image
   imageUrl: text('imageUrl'),
   originalFileUrl: text('originalFileUrl'),
+  professionalImageUrl: text('professionalImageUrl'),
   
   // TV zone configuration (JSON array of Zone objects)
   // Each zone: { id, outputNumber, x, y, width, height, label, confidence }
@@ -2282,3 +2348,237 @@ export const schedulerMetrics = sqliteTable('SchedulerMetrics', {
   periodStartIdx: index('SchedulerMetrics_periodStart_idx').on(table.periodStart),
   metricTypePeriodStartIdx: uniqueIndex('SchedulerMetrics_type_period_start_idx').on(table.metricType, table.period, table.periodStart),
 }))
+
+// ============================================================================
+// WOLFPACK AI LEARNING TABLES
+// ============================================================================
+
+// Wolfpack Learning Events - Records routing outcomes for pattern learning
+export const wolfpackLearningEvents = sqliteTable('WolfpackLearningEvent', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  eventType: text('eventType').notNull(), // 'route_success', 'route_failure', 'connection_error', 'connection_timeout', 'latency_spike', 'recovery'
+  chassisId: text('chassisId'),
+  inputNum: integer('inputNum'),
+  outputNum: integer('outputNum'),
+  inputLabel: text('inputLabel'),
+  outputLabel: text('outputLabel'),
+  success: integer('success', { mode: 'boolean' }).notNull(),
+  durationMs: integer('durationMs'),
+  errorMessage: text('errorMessage'),
+  dayOfWeek: integer('dayOfWeek').notNull(), // 0-6 (Sunday-Saturday)
+  hourOfDay: integer('hourOfDay').notNull(), // 0-23
+  protocol: text('protocol'),
+  retryCount: integer('retryCount').notNull().default(0),
+  wasRetrySuccessful: integer('wasRetrySuccessful', { mode: 'boolean' }),
+  metadata: text('metadata'), // JSON
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+}, (table) => ({
+  eventTypeIdx: index('WolfpackLearningEvent_eventType_idx').on(table.eventType),
+  chassisIdIdx: index('WolfpackLearningEvent_chassisId_idx').on(table.chassisId),
+  createdAtIdx: index('WolfpackLearningEvent_createdAt_idx').on(table.createdAt),
+  timePatternIdx: index('WolfpackLearningEvent_time_pattern_idx').on(table.dayOfWeek, table.hourOfDay),
+  successIdx: index('WolfpackLearningEvent_success_idx').on(table.success),
+}))
+
+// ============================================================================
+// ATLAS AI LEARNING TABLES
+// ============================================================================
+
+// Atlas Learning Events - Records audio gain, clipping, zone, and connection outcomes for pattern learning
+export const atlasLearningEvents = sqliteTable('AtlasLearningEvent', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  eventType: text('eventType').notNull(), // 'gain_adjustment', 'gain_adjustment_failed', 'clipping_detected', 'zone_volume_change', 'zone_mute_toggle', 'zone_source_change', 'connection_online', 'connection_offline', 'signal_snapshot'
+  processorId: text('processorId').notNull(),
+  inputNumber: integer('inputNumber'),
+  zoneNumber: integer('zoneNumber'),
+  success: integer('success', { mode: 'boolean' }).notNull(),
+  previousGain: real('previousGain'),
+  newGain: real('newGain'),
+  currentLevel: real('currentLevel'),
+  targetLevel: real('targetLevel'),
+  adjustmentMode: text('adjustmentMode'), // 'fast' | 'slow'
+  movedTowardTarget: integer('movedTowardTarget', { mode: 'boolean' }),
+  previousVolume: integer('previousVolume'),
+  newVolume: integer('newVolume'),
+  muted: integer('muted', { mode: 'boolean' }),
+  signalLevels: text('signalLevels'), // JSON
+  clippingInputs: text('clippingInputs'), // JSON
+  errorMessage: text('errorMessage'),
+  dayOfWeek: integer('dayOfWeek').notNull(), // 0-6 (Sunday-Saturday)
+  hourOfDay: integer('hourOfDay').notNull(), // 0-23
+  durationMs: integer('durationMs'),
+  metadata: text('metadata'), // JSON
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+}, (table) => ({
+  eventTypeIdx: index('AtlasLearningEvent_eventType_idx').on(table.eventType),
+  processorIdIdx: index('AtlasLearningEvent_processorId_idx').on(table.processorId),
+  createdAtIdx: index('AtlasLearningEvent_createdAt_idx').on(table.createdAt),
+  timePatternIdx: index('AtlasLearningEvent_time_pattern_idx').on(table.dayOfWeek, table.hourOfDay),
+  successIdx: index('AtlasLearningEvent_success_idx').on(table.success),
+  inputNumberIdx: index('AtlasLearningEvent_inputNumber_idx').on(table.inputNumber),
+}))
+
+// ============================================================================
+// AI Scheduling Intelligence Tables
+// ============================================================================
+
+export const schedulingPreferences = sqliteTable('scheduling_preferences', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  preferenceType: text('preference_type').notNull(),
+  teamId: text('team_id').references(() => homeTeams.id, { onDelete: 'cascade' }),
+  teamName: text('team_name'),
+  league: text('league'),
+  preferenceData: text('preference_data').notNull(),
+  weight: integer('weight').notNull().default(50),
+  confidence: real('confidence').notNull().default(0.5),
+  source: text('source').notNull().default('learned'),
+  isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
+  createdAt: integer('created_at').notNull().default(sql`(strftime('%s', 'now'))`),
+  updatedAt: integer('updated_at').notNull().default(sql`(strftime('%s', 'now'))`),
+}, (table) => ({
+  preferenceTypeIdx: index('SchedulingPreference_preferenceType_idx').on(table.preferenceType),
+  teamIdIdx: index('SchedulingPreference_teamId_idx').on(table.teamId),
+  leagueIdx: index('SchedulingPreference_league_idx').on(table.league),
+  isActiveIdx: index('SchedulingPreference_isActive_idx').on(table.isActive),
+  typeTeamIdx: index('SchedulingPreference_type_team_idx').on(table.preferenceType, table.teamId),
+}))
+
+export const aiScheduleSuggestions = sqliteTable('ai_schedule_suggestions', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  batchId: text('batch_id').notNull(),
+  gameScheduleId: text('game_schedule_id').notNull().references(() => gameSchedules.id, { onDelete: 'cascade' }),
+  suggestedInputSourceId: text('suggested_input_source_id').references(() => inputSources.id, { onDelete: 'set null' }),
+  suggestedChannelNumber: text('suggested_channel_number'),
+  suggestedAppName: text('suggested_app_name'),
+  suggestedTvOutputIds: text('suggested_tv_output_ids'),
+  suggestedTvCount: integer('suggested_tv_count').default(0),
+  confidenceScore: real('confidence_score').notNull().default(0.5),
+  reasoning: text('reasoning').notNull(),
+  reasoningFactors: text('reasoning_factors'),
+  gamePriorityScore: integer('game_priority_score').default(0),
+  conflictsDetected: text('conflicts_detected'),
+  status: text('status').notNull().default('suggested'),
+  reviewedBy: text('reviewed_by'),
+  reviewedAt: integer('reviewed_at'),
+  reviewNotes: text('review_notes'),
+  modifiedInputSourceId: text('modified_input_source_id'),
+  modifiedChannelNumber: text('modified_channel_number'),
+  modifiedTvOutputIds: text('modified_tv_output_ids'),
+  appliedAllocationId: text('applied_allocation_id').references(() => inputSourceAllocations.id, { onDelete: 'set null' }),
+  createdAt: integer('created_at').notNull().default(sql`(strftime('%s', 'now'))`),
+  updatedAt: integer('updated_at').notNull().default(sql`(strftime('%s', 'now'))`),
+  expiresAt: integer('expires_at'),
+}, (table) => ({
+  batchIdIdx: index('AIScheduleSuggestion_batchId_idx').on(table.batchId),
+  gameScheduleIdIdx: index('AIScheduleSuggestion_gameScheduleId_idx').on(table.gameScheduleId),
+  statusIdx: index('AIScheduleSuggestion_status_idx').on(table.status),
+  statusCreatedIdx: index('AIScheduleSuggestion_status_createdAt_idx').on(table.status, table.createdAt),
+}))
+
+export const schedulingPatterns = sqliteTable('scheduling_patterns', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  patternType: text('pattern_type').notNull(),
+  patternKey: text('pattern_key').notNull(),
+  patternData: text('pattern_data').notNull(),
+  observationCount: integer('observation_count').notNull().default(1),
+  sampleSize: integer('sample_size').notNull().default(0),
+  firstObserved: integer('first_observed').notNull().default(sql`(strftime('%s', 'now'))`),
+  lastObserved: integer('last_observed').notNull().default(sql`(strftime('%s', 'now'))`),
+  confidence: real('confidence').notNull().default(0.0),
+  isStale: integer('is_stale', { mode: 'boolean' }).notNull().default(false),
+  lastAnalyzedAt: integer('last_analyzed_at').default(sql`(strftime('%s', 'now'))`),
+  createdAt: integer('created_at').notNull().default(sql`(strftime('%s', 'now'))`),
+  updatedAt: integer('updated_at').notNull().default(sql`(strftime('%s', 'now'))`),
+}, (table) => ({
+  patternTypeIdx: index('SchedulingPattern_patternType_idx').on(table.patternType),
+  typeKeyIdx: uniqueIndex('SchedulingPattern_type_key_idx').on(table.patternType, table.patternKey),
+  confidenceIdx: index('SchedulingPattern_confidence_idx').on(table.confidence),
+  lastObservedIdx: index('SchedulingPattern_lastObserved_idx').on(table.lastObserved),
+}))
+
+// Audio Volume Log - Tracks every volume change with context for AI learning
+// Local Channel Overrides - team-specific channel mappings (e.g., Brewers → ch 308)
+export const localChannelOverrides = sqliteTable('local_channel_overrides', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  teamName: text('team_name').notNull(),
+  channelNumber: integer('channel_number').notNull(),
+  channelName: text('channel_name').notNull(),
+  deviceType: text('device_type').default('cable'),
+  isActive: integer('is_active', { mode: 'boolean' }).default(true),
+  createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
+})
+
+export const audioVolumeLogs = sqliteTable('audio_volume_logs', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  processorId: text('processor_id').notNull(),
+  zoneNumber: integer('zone_number').notNull(),
+  zoneName: text('zone_name'),
+  previousVolume: integer('previous_volume'),
+  newVolume: integer('new_volume').notNull(),
+  changedBy: text('changed_by').notNull().default('bartender'), // 'bartender', 'scheduler', 'ai', 'system'
+
+  // Game context (what was playing when volume changed)
+  activeGameId: text('active_game_id'),
+  activeLeague: text('active_league'),
+  activeHomeTeam: text('active_home_team'),
+  activeAwayTeam: text('active_away_team'),
+  isHomeGame: integer('is_home_game', { mode: 'boolean' }),
+
+  // Time context
+  dayOfWeek: text('day_of_week'), // 'monday', 'tuesday', etc.
+  hourOfDay: integer('hour_of_day'), // 0-23
+  timeSlot: text('time_slot'), // 'morning', 'lunch', 'afternoon', 'prime_time', 'late_night'
+
+  // Audio context
+  currentSource: text('current_source'), // 'dj', 'game_audio', 'jukebox', 'spotify', etc.
+  isDJMode: integer('is_dj_mode', { mode: 'boolean' }).default(false),
+
+  createdAt: integer('created_at').notNull().default(sql`(strftime('%s', 'now'))`),
+}, (table) => ({
+  zoneIdx: index('AudioVolumeLog_zone_idx').on(table.zoneNumber),
+  changedByIdx: index('AudioVolumeLog_changedBy_idx').on(table.changedBy),
+  leagueIdx: index('AudioVolumeLog_league_idx').on(table.activeLeague),
+  timeSlotIdx: index('AudioVolumeLog_timeSlot_idx').on(table.timeSlot),
+  createdAtIdx: index('AudioVolumeLog_createdAt_idx').on(table.createdAt),
+}))
+
+// Station Aliases Model (for channel guide station name matching)
+export const stationAliases = sqliteTable('station_aliases', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  standardName: text('standard_name').notNull().unique(),
+  aliases: text('aliases').notNull(), // JSON array of alias strings
+  createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
+})
+
+// Auto-Update singleton state (always id=1). Written by scripts/auto-update.sh
+// via sqlite3 CLI and read by the Sync tab UI via Drizzle. See
+// docs/AUTO_UPDATE_SETUP.md §2 for the state-location decision record.
+export const autoUpdateState = sqliteTable('auto_update_state', {
+  id: integer('id').primaryKey().default(1),
+  enabled: integer('enabled', { mode: 'boolean' }).notNull().default(false),
+  scheduleCron: text('schedule_cron').notNull().default('30 2 * * *'),
+  lastRunAt: text('last_run_at'),
+  lastResult: text('last_result'), // 'pass' | 'fail' | 'rolled_back' | 'in_progress'
+  lastCommitShaBefore: text('last_commit_sha_before'),
+  lastCommitShaAfter: text('last_commit_sha_after'),
+  lastError: text('last_error'),
+  lastDurationSecs: integer('last_duration_secs'),
+  updatedAt: text('updated_at').notNull().default(sql`CURRENT_TIMESTAMP`),
+})
+
+// Auto-Update append-only history. Each run inserts one row on start, updates
+// it on each phase boundary, and finalizes it at success/fail/rollback. The
+// Sync tab UI pages through the last N rows for the history table.
+export const autoUpdateHistory = sqliteTable('auto_update_history', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  startedAt: text('started_at').notNull(),
+  finishedAt: text('finished_at'),
+  result: text('result').notNull(), // 'pass' | 'fail' | 'rolled_back' | 'in_progress'
+  commitShaBefore: text('commit_sha_before').notNull(),
+  commitShaAfter: text('commit_sha_after'),
+  branch: text('branch').notNull(),
+  durationSecs: integer('duration_secs'),
+  verifyResultJson: text('verify_result_json'),
+  errorMessage: text('error_message'),
+  triggeredBy: text('triggered_by').notNull(), // 'cron' | 'manual_api' | 'manual_cli'
+})

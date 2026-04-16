@@ -6,6 +6,7 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { logger } from '@sports-bar/logger'
 import { z } from 'zod'
 import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
+import { HARDWARE_CONFIG } from '@/lib/hardware-config'
 export async function GET(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
   if (!rateLimit.allowed) {
@@ -29,7 +30,7 @@ export async function GET(request: NextRequest) {
 
     const client = new AtlasTCPClient({
       ipAddress: processorIp,
-      tcpPort: 5321,
+      tcpPort: HARDWARE_CONFIG.atlas.tcpPort,
       timeout: 3000,      // 3 seconds for UI responsiveness
       maxRetries: 1       // Single retry
     })
@@ -154,7 +155,7 @@ export async function POST(request: NextRequest) {
 
     const client = new AtlasTCPClient({
       ipAddress: processorIp,
-      tcpPort: 5321,
+      tcpPort: HARDWARE_CONFIG.atlas.tcpPort,
       timeout: 3000,      // 3 seconds for faster failure
       maxRetries: 1       // Single retry for UI responsiveness
     })

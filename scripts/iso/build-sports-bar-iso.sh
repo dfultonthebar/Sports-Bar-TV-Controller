@@ -1,12 +1,11 @@
 #!/bin/bash
 #
-# Sports Bar TV Controller - ISO Builder v2.0
+# Sports Bar TV Controller - ISO Builder v3.0
 #
-# Creates a bootable ISO with dual install modes:
-#   1. Fresh Install  - clones from GitHub + empty DB
-#   2. Snapshot       - baked-in app code + DB from build time
-#   3. Live (No Install) - boot into RAM for testing
-#   4. Safe Mode      - nomodeset for display compatibility
+# Creates a bootable ISO with install modes:
+#   1. Install        - clones from GitHub + setup wizard
+#   2. Live (No Install) - boot into RAM for testing
+#   3. Safe Mode      - nomodeset for display compatibility
 #
 # Usage:
 #   sudo ./build-sports-bar-iso.sh [--skip-snapshot] [--no-upload] [--build-dir /path]
@@ -33,7 +32,7 @@ step() { echo -e "\n${BOLD}${GREEN}=== $* ===${NC}"; }
 
 # ─── Configuration ────────────────────────────────────────────────────────────
 BUILD_DATE=$(date +%Y-%m-%d)
-VERSION="v2.0"
+VERSION="v3.0"
 ISO_NAME="sports-bar-tv-controller-${VERSION}-${BUILD_DATE}.iso"
 
 BUILD_DIR="${BUILD_DIR:-/home/ubuntu/iso-build}"
@@ -283,6 +282,7 @@ chr "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     net-tools \
     iputils-ping \
     iproute2 \
+    nmap \
     2>&1" | tail -20
 
 # adb and cec-utils installed separately (universe, may be named differently)
@@ -290,8 +290,20 @@ log "Installing adb and cec-utils..."
 chr "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends adb 2>&1 || true"
 chr "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends cec-utils 2>&1 || true"
 
-log "Installing Node.js 20 (NodeSource)..."
-chr "curl -fsSL https://deb.nodesource.com/setup_20.x | bash -"
+# Realtek WiFi drivers + wireless tools
+log "Installing Realtek WiFi drivers and wireless tools..."
+chr "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    linux-firmware \
+    rtl8821ce-dkms \
+    r8168-dkms \
+    wpasupplicant \
+    wireless-tools \
+    rfkill \
+    2>&1 || true"
+# Note: rtl8812au-dkms fails in chroot (needs running kernel) — installed on first boot instead
+
+log "Installing Node.js 22 (NodeSource)..."
+chr "curl -fsSL https://deb.nodesource.com/setup_22.x | bash -"
 chr "DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs"
 
 log "Node.js version: $(chr "node --version")"
@@ -299,6 +311,17 @@ log "npm version:     $(chr "npm --version")"
 
 log "Installing PM2 globally..."
 chr "npm install -g pm2"
+
+log "Installing Ollama AI runtime..."
+chr "curl -fsSL https://ollama.com/install.sh | sh" || warn "Ollama install failed (non-fatal)"
+
+log "Installing Claude Code CLI (native)..."
+chr "curl -fsSL https://claude.ai/install.sh | sh" || warn "Claude Code CLI install failed (non-fatal)"
+
+log "Installing GitHub CLI (gh)..."
+chr "curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg" || true
+chr "echo 'deb [arch=amd64 signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main' > /etc/apt/sources.list.d/github-cli.list" || true
+chr "apt-get update -qq && apt-get install -y gh" || warn "GitHub CLI install failed (non-fatal)"
 
 log "Cleaning up APT cache..."
 chr "apt-get clean"
@@ -348,6 +371,8 @@ step "Step 5/10: Installing first-boot systemd service"
 # Copy first-boot scripts
 install -m 755 "${SCRIPTS_SOURCE}/first-boot-fresh.sh"    "${CHROOT_DIR}/usr/local/bin/first-boot-fresh.sh"
 install -m 755 "${SCRIPTS_SOURCE}/first-boot-snapshot.sh" "${CHROOT_DIR}/usr/local/bin/first-boot-snapshot.sh"
+install -m 755 "${SCRIPTS_SOURCE}/location-setup-wizard.sh" "${CHROOT_DIR}/usr/local/bin/location-setup-wizard.sh"
+install -m 755 "${SCRIPTS_SOURCE}/disk-installer.sh"       "${CHROOT_DIR}/usr/local/bin/disk-installer.sh"
 
 # Dispatcher script: reads kernel cmdline to pick fresh vs snapshot
 cat > "${CHROOT_DIR}/usr/local/bin/sports-bar-first-boot.sh" << 'DISPATCHER_EOF'
@@ -373,6 +398,14 @@ MODE=$(grep -oP 'sports_bar_mode=\K\S+' /proc/cmdline || echo "fresh")
 echo "[$(date)] Boot mode: $MODE"
 
 case "$MODE" in
+    install)
+        # Disk install mode — launch interactive installer on tty1
+        echo "[$(date)] Install mode detected — launching disk installer on tty1"
+        # The disk-installer systemd service handles TTY access
+        systemctl start sports-bar-disk-installer.service 2>/dev/null || \
+            /usr/local/bin/disk-installer.sh
+        exit 0
+        ;;
     snapshot)
         exec /usr/local/bin/first-boot-snapshot.sh
         ;;
@@ -406,56 +439,37 @@ SERVICE_EOF
 # Enable the service
 chr "systemctl enable sports-bar-first-boot.service"
 
-log "First-boot service installed and enabled."
+# Disk installer service (interactive on tty1, for install mode)
+cat > "${CHROOT_DIR}/etc/systemd/system/sports-bar-disk-installer.service" << 'DISKEOF'
+[Unit]
+Description=Sports Bar TV Controller - Disk Installer
+After=multi-user.target
+ConditionKernelCommandLine=sports_bar_mode=install
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/disk-installer.sh
+StandardInput=tty
+StandardOutput=tty
+StandardError=tty
+TTYPath=/dev/tty1
+TTYReset=yes
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+DISKEOF
+
+chr "systemctl enable sports-bar-disk-installer.service"
+
+log "First-boot and disk-installer services installed and enabled."
 
 # ═════════════════════════════════════════════════════════════════════════════
 # STEP 6: Snapshot - Bake in App Code + Database
 # ═════════════════════════════════════════════════════════════════════════════
-step "Step 6/10: Baking in snapshot (app code + database)"
-
-if [ "$SKIP_SNAPSHOT" = true ]; then
-    warn "Skipping snapshot (--skip-snapshot flag set). Only fresh install mode available."
-else
-    SNAPSHOT_CHROOT_DIR="${CHROOT_DIR}${SNAPSHOT_DIR}"
-    mkdir -p "${SNAPSHOT_CHROOT_DIR}/app"
-
-    log "Copying app code from $APP_SOURCE..."
-    # Exclude build artifacts, node_modules (npm install will re-run on first boot... wait no,
-    # for snapshot we want the full pre-built app — include .next/ and node_modules)
-    rsync -a --delete \
-        --exclude='.git/' \
-        --exclude='*.log' \
-        --exclude='.env.local' \
-        --exclude='/apps/web/.next/cache/' \
-        "${APP_SOURCE}/" \
-        "${SNAPSHOT_CHROOT_DIR}/app/"
-
-    log "App code copied ($(du -sh "${SNAPSHOT_CHROOT_DIR}/app" | cut -f1))"
-
-    # Bake in database if available
-    if [ -f "$DB_SOURCE" ]; then
-        log "Copying production database ($DB_SOURCE)..."
-        cp "$DB_SOURCE" "${SNAPSHOT_CHROOT_DIR}/production.db"
-        DB_SIZE=$(du -h "${SNAPSHOT_CHROOT_DIR}/production.db" | cut -f1)
-        log "Database baked in ($DB_SIZE)"
-    else
-        warn "No production database found at $DB_SOURCE — snapshot installs will start with empty DB."
-    fi
-
-    # Metadata file
-    cat > "${SNAPSHOT_CHROOT_DIR}/snapshot-info.txt" << EOF
-Sports Bar TV Controller - Snapshot Build Info
-=============================================
-Build Date:   $(date '+%Y-%m-%d %H:%M:%S UTC')
-Build Host:   $(hostname)
-Git Branch:   $(git -C "$APP_SOURCE" branch --show-current 2>/dev/null || echo "unknown")
-Git Commit:   $(git -C "$APP_SOURCE" rev-parse --short HEAD 2>/dev/null || echo "unknown")
-DB Source:    $DB_SOURCE
-DB Exists:    $([ -f "$DB_SOURCE" ] && echo "yes" || echo "no")
-EOF
-
-    log "Snapshot baked in at ${SNAPSHOT_DIR}"
-fi
+step "Step 6/10: Snapshot Mode (DISABLED in v3.0)"
+log "Snapshot mode removed in v3.0 — this ISO is location-independent."
+log "The setup wizard will configure devices after first boot."
 
 # ═════════════════════════════════════════════════════════════════════════════
 # STEP 7: Clean up chroot
@@ -552,23 +566,18 @@ fi
 set menu_color_normal=white/black
 set menu_color_highlight=black/light-gray
 
-menuentry "1. Fresh Install  (GitHub pull + empty database)" {
-    linux  /casper/vmlinuz boot=casper quiet splash sports_bar_mode=fresh ---
+menuentry "1. Install to Disk  (full OS + app install)" {
+    linux  /casper/vmlinuz boot=casper quiet splash sports_bar_mode=install ---
     initrd /casper/initrd
 }
 
-menuentry "2. Snapshot Install  (baked-in app + database)" {
-    linux  /casper/vmlinuz boot=casper quiet splash sports_bar_mode=snapshot ---
-    initrd /casper/initrd
-}
-
-menuentry "3. Live (No Install)  - boot into RAM for testing" {
+menuentry "2. Live (No Install)  - boot into RAM for testing" {
     linux  /casper/vmlinuz boot=casper toram quiet splash sports_bar_mode=fresh ---
     initrd /casper/initrd
 }
 
-menuentry "4. Safe Mode  (nomodeset, for display issues)" {
-    linux  /casper/vmlinuz boot=casper nomodeset quiet splash sports_bar_mode=fresh ---
+menuentry "3. Safe Mode  (nomodeset, for display issues)" {
+    linux  /casper/vmlinuz boot=casper nomodeset quiet splash sports_bar_mode=install ---
     initrd /casper/initrd
 }
 GRUB_EOF
@@ -618,25 +627,20 @@ DEFAULT vesamenu.c32
 TIMEOUT 300
 PROMPT 0
 
-MENU TITLE Sports Bar TV Controller v2.0
+MENU TITLE Sports Bar TV Controller v3.0
 
-LABEL fresh
-  MENU LABEL 1. Fresh Install  (GitHub pull + empty database)
+LABEL install
+  MENU LABEL 1. Install to Disk  (full OS + app install)
   KERNEL /casper/vmlinuz
-  APPEND initrd=/casper/initrd boot=casper quiet splash sports_bar_mode=fresh ---
-
-LABEL snapshot
-  MENU LABEL 2. Snapshot Install  (baked-in app + database)
-  KERNEL /casper/vmlinuz
-  APPEND initrd=/casper/initrd boot=casper quiet splash sports_bar_mode=snapshot ---
+  APPEND initrd=/casper/initrd boot=casper quiet splash sports_bar_mode=install ---
 
 LABEL live
-  MENU LABEL 3. Live (No Install) - boot into RAM
+  MENU LABEL 2. Live (No Install) - boot into RAM
   KERNEL /casper/vmlinuz
   APPEND initrd=/casper/initrd boot=casper toram quiet splash sports_bar_mode=fresh ---
 
 LABEL safe
-  MENU LABEL 4. Safe Mode (nomodeset)
+  MENU LABEL 3. Safe Mode (nomodeset)
   KERNEL /casper/vmlinuz
   APPEND initrd=/casper/initrd boot=casper nomodeset quiet splash sports_bar_mode=fresh ---
 ISOLINUX_EOF
@@ -741,25 +745,23 @@ Checksums:
   SHA256: ${SHA256_HASH}
 
 Boot Modes:
-  1. Fresh Install    - pulls latest from GitHub, empty DB
-  2. Snapshot Install - baked-in app + DB from build time
-  3. Live (No Install)- run from RAM for testing
-  4. Safe Mode        - nomodeset for display compatibility
-
-Snapshot Mode:
-  Snapshot included:  $([ "$SKIP_SNAPSHOT" = false ] && echo "YES" || echo "NO")
-  App source:         ${APP_SOURCE}
-  DB source:          ${DB_SOURCE}
-  DB found:           $([ -f "$DB_SOURCE" ] && echo "YES" || echo "NO")
+  1. Install          - pulls latest from GitHub + runs setup wizard
+  2. Live (No Install)- run from RAM for testing
+  3. Safe Mode        - nomodeset for display compatibility
 
 Software Installed:
   - Ubuntu 22.04 LTS (jammy) - clean debootstrap base
-  - Node.js 20.x + npm
+  - Node.js 22.x + npm
   - PM2 process manager
+  - Ollama AI runtime
+  - Claude Code CLI (native install via claude.ai)
+  - GitHub CLI (gh)
   - SQLite3
   - OpenSSH Server
   - ADB (Android Debug Bridge - Fire TV control)
   - cec-utils (HDMI-CEC cable box control)
+  - nmap (network scanning)
+  - Location Setup Wizard
   - git, curl, logrotate
 
 VM Testing:

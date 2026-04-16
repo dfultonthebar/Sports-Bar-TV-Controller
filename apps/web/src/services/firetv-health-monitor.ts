@@ -6,12 +6,10 @@
  */
 
 import { connectionManager, FireTVDevice } from './firetv-connection-manager'
-import { promises as fs } from 'fs'
-import path from 'path'
 import { getFireTVConfig, calculateBackoffDelay } from '@/config/firetv-config'
+import { loadFireTVDevices } from '@/lib/device-db'
 
 import { logger } from '@sports-bar/logger'
-const DATA_FILE = path.join(process.cwd(), 'data', 'firetv-devices.json')
 const config = getFireTVConfig()
 
 export interface HealthCheckResult {
@@ -166,6 +164,12 @@ class FireTVHealthMonitor {
    * Check health of a single device
    */
   private async checkDeviceHealth(device: FireTVDevice): Promise<void> {
+    // Skip rows that lack an IP — phantom rows from earlier upsert paths
+    // would otherwise generate endless `Failed to connect to :5555` noise.
+    if (!device.ipAddress || device.ipAddress.trim() === '') {
+      return
+    }
+
     const deviceAddress = `${device.ipAddress}:${device.port}`
 
     try {
@@ -378,9 +382,8 @@ class FireTVHealthMonitor {
    */
   private async loadDevices(): Promise<FireTVDevice[]> {
     try {
-      const data = await fs.readFile(DATA_FILE, 'utf-8')
-      const parsed = JSON.parse(data)
-      return parsed.devices || []
+      const { devices } = await loadFireTVDevices()
+      return devices as unknown as FireTVDevice[]
     } catch (error) {
       logger.error('[HEALTH MONITOR] Error loading devices:', error)
       return []

@@ -209,8 +209,9 @@ export class SamsungTVClient extends BaseTVClient {
   }
 
   /**
-   * Power on via Wake-on-LAN magic packet
-   * Doesn't need WebSocket since the TV is off
+   * Power on via Wake-on-LAN + KEY_POWER
+   * WoL wakes the network interface, then KEY_POWER turns the screen on.
+   * Some Samsung TVs (especially on ethernet) need both steps.
    */
   async powerOn(): Promise<CommandResult> {
     try {
@@ -220,10 +221,49 @@ export class SamsungTVClient extends BaseTVClient {
       }
 
       logger.info(`[SAMSUNG] Sending WOL to ${mac} for ${this.config.ipAddress}`)
-
       await this.sendWOL(mac)
 
-      return { success: true, message: 'Wake-on-LAN packet sent' }
+      // Wait for the TV to become reachable, then check if screen is actually on
+      // Some Samsung TVs fully power on from WoL alone; others need KEY_POWER too.
+      // Check PowerState via REST API to avoid toggling an already-on TV back off.
+      for (let attempt = 0; attempt < 10; attempt++) {
+        await new Promise(resolve => setTimeout(resolve, 1500))
+        try {
+          const controller = new AbortController()
+          const timeout = setTimeout(() => controller.abort(), 2000)
+          const response = await fetch(`http://${this.config.ipAddress}:${REST_PORT}/api/v2/`, {
+            signal: controller.signal,
+          })
+          clearTimeout(timeout)
+          if (response.ok) {
+            const data = await response.json()
+            const powerState = data?.device?.PowerState
+            logger.info(`[SAMSUNG] TV reachable after WOL, PowerState=${powerState} for ${this.config.ipAddress}`)
+
+            if (powerState === 'on' || !powerState) {
+              // WoL fully powered on the TV — no KEY_POWER needed.
+              // Some older Samsung TVs (Series 6) don't report PowerState at all,
+              // but if the REST API is reachable after WoL, the TV is on.
+              return { success: true, message: `WOL powered on TV (attempt ${attempt + 1})` }
+            }
+
+            if (powerState === 'standby') {
+              // TV is explicitly in standby — send KEY_POWER to wake the screen
+              logger.info(`[SAMSUNG] TV in standby, sending KEY_POWER to ${this.config.ipAddress}`)
+              await this.sendKey('KEY_POWER')
+              return { success: true, message: `WOL + KEY_POWER sent (attempt ${attempt + 1})` }
+            }
+
+            // Unknown power state — safer to just return WoL success
+            return { success: true, message: `WOL sent, PowerState=${powerState} (attempt ${attempt + 1})` }
+          }
+        } catch {
+          logger.debug(`[SAMSUNG] TV not yet reachable (attempt ${attempt + 1}/10)`)
+        }
+      }
+
+      // WoL sent but couldn't confirm TV is reachable
+      return { success: true, message: 'Wake-on-LAN packet sent (TV not yet reachable for status check)' }
     } catch (error) {
       return this.handleError('Failed to power on', error)
     }
@@ -264,15 +304,17 @@ export class SamsungTVClient extends BaseTVClient {
   }
 
   /**
-   * Switch HDMI input (1-4)
+   * Switch HDMI input
+   * Samsung TU/NU series don't support KEY_HDMI1-4 directly.
+   * KEY_HDMI cycles through HDMI inputs reliably on all models.
    */
   async switchInput(input: number): Promise<CommandResult> {
     if (input < 1 || input > 4) {
       return { success: false, error: `Invalid HDMI input: ${input}. Must be 1-4.` }
     }
 
-    logger.info(`[SAMSUNG] Switching to HDMI ${input} on ${this.config.ipAddress}`)
-    return this.sendKey(`KEY_HDMI${input}`)
+    logger.info(`[SAMSUNG] Switching to HDMI ${input} on ${this.config.ipAddress} (using KEY_HDMI)`)
+    return this.sendKey('KEY_HDMI')
   }
 
   /**
@@ -456,7 +498,10 @@ export class SamsungTVClient extends BaseTVClient {
       })
 
       // Send WOL to multiple broadcast addresses for reliability
-      const broadcastAddresses = ['255.255.255.255', '10.11.3.255', this.config.ipAddress]
+      // Derive subnet broadcast from device IP (replace last octet with 255)
+      const ipParts = this.config.ipAddress.split('.')
+      const subnetBroadcast = `${ipParts[0]}.${ipParts[1]}.${ipParts[2]}.255`
+      const broadcastAddresses = ['255.255.255.255', subnetBroadcast, this.config.ipAddress]
 
       client.bind(() => {
         client.setBroadcast(true)

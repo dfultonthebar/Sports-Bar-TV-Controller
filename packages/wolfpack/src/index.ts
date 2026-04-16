@@ -29,6 +29,27 @@ export {
   routeWolfpackToMatrix,
   sendHTTPCommand,
   getMatrixRoutingState,
+  queryWolfpackRouteState,
   type MatrixConfiguration,
   type RoutingResult,
 } from './wolfpack-matrix-service'
+
+// Chassis Configuration Types
+export type {
+  WolfpackChassisConfig,
+  WolfpackChassisInput,
+  WolfpackChassisOutput,
+  WolfpackChassisCredentials,
+  WolfpackDevicesFile,
+} from './chassis-config'
+
+// Model Profiles
+export {
+  WOLFPACK_MODELS,
+  getWolfpackModel,
+  type WolfpackModelProfile,
+} from './models'
+
+// Learning System
+export { runLearningCycle, getLearningStats, getLearnedPatterns, getLastRunTimestamp } from './wolfpack-pattern-learner'
+export { recordRouteSuccess, recordRouteFailure, recordConnectionError } from './wolfpack-learning-collector'

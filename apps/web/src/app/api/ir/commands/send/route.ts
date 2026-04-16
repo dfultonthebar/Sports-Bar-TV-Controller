@@ -118,11 +118,23 @@ export async function POST(request: NextRequest) {
     logger.info('   IP:', { data: globalCacheDevice.ipAddress })
     logger.info('   Port:', { data: globalCacheDevice.port })
 
+    // Adjust IR code port to match the device's actual Global Cache port
+    let adjustedIrCode = command.irCode
+    if (device.globalCachePortNumber) {
+      adjustedIrCode = command.irCode.replace(
+        /^(sendir,\d+:)\d+/,
+        `$1${device.globalCachePortNumber}`
+      )
+      if (adjustedIrCode !== command.irCode) {
+        logger.info(`[IR SEND] Adjusted port: ${command.irCode.substring(0, 15)}... → port ${device.globalCachePortNumber}`)
+      }
+    }
+
     // Send the IR command
     const result = await sendIRCommand(
       globalCacheDevice.ipAddress,
       globalCacheDevice.port,
-      command.irCode
+      adjustedIrCode
     )
 
     if (result.success) {

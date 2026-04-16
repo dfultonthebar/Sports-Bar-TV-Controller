@@ -8,11 +8,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { connectionManager } from '@/services/firetv-connection-manager'
-import { promises as fs } from 'fs'
-import path from 'path'
+import { getFireTVDeviceById } from '@/lib/device-db'
 import { logger } from '@sports-bar/logger'
-
-const DATA_FILE = path.join(process.cwd(), 'data', 'firetv-devices.json')
 
 // Known streaming app package names with friendly names
 const APP_NAMES: Record<string, string> = {
@@ -25,7 +22,7 @@ const APP_NAMES: Record<string, string> = {
   'com.hbo.hbonow': 'HBO Max',
   'com.wbd.stream': 'Max',
   'com.espn.gtv': 'ESPN',
-  'com.fox.now': 'Fox Sports',
+  'com.foxsports.videogo': 'Fox Sports',
   'com.cbs.app': 'Paramount+',
   'com.peacocktv.peacockandroid': 'Peacock',
   'com.tubitv': 'Tubi',
@@ -58,10 +55,8 @@ export async function GET(
   const { deviceId } = await params
 
   try {
-    // Look up device info from data file
-    const data = await fs.readFile(DATA_FILE, 'utf-8')
-    const parsed = JSON.parse(data)
-    const device = parsed.devices?.find((d: any) => d.id === deviceId)
+    // Look up device info from database
+    const device = await getFireTVDeviceById(deviceId)
 
     if (!device) {
       return NextResponse.json({

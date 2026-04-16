@@ -32,6 +32,7 @@ interface TVLayout {
   name: string
   imageUrl?: string
   originalFileUrl?: string
+  professionalImageUrl?: string
   zones: Zone[]
   rooms?: Room[]
 }
@@ -93,9 +94,11 @@ export default function LayoutEditor({
   }, [zones, originalZones, rooms, originalRooms])
 
   // Get the current image to display based on room filter
+  // Prefer professional (enhanced) image when available
+  const baseImageUrl = layout.professionalImageUrl || layout.imageUrl
   const currentImageUrl = selectedRoomFilter === 'all'
-    ? layout.imageUrl
-    : rooms.find(r => r.id === selectedRoomFilter)?.imageUrl || layout.imageUrl
+    ? baseImageUrl
+    : rooms.find(r => r.id === selectedRoomFilter)?.imageUrl || baseImageUrl
 
   // Handle room image upload
   const handleRoomImageUpload = async (roomId: string, file: File) => {
@@ -323,13 +326,15 @@ export default function LayoutEditor({
       y: 40 + (Math.random() * 20),
       width: 8,
       height: 8,
-      label: `TV ${String(nextNumber).padStart(2, '0')}`
+      label: `TV ${String(nextNumber).padStart(2, '0')}`,
+      // Assign to the currently selected room if one is active
+      ...(selectedRoomFilter !== 'all' ? { room: selectedRoomFilter } : {})
     }
 
     setZones(prev => [...prev, newZone])
     setSelectedZone(newZone)
     setShowPropertiesPanel(true)
-  }, [zones])
+  }, [zones, selectedRoomFilter])
 
   const handleReset = useCallback(() => {
     if (confirm('Reset all changes? This will revert to the original layout.')) {
@@ -559,7 +564,7 @@ export default function LayoutEditor({
                 <img
                   src={currentImageUrl}
                   alt="Floor plan"
-                  className="absolute inset-0 w-full h-full object-contain layout-background opacity-50"
+                  className="absolute inset-0 w-full h-full object-fill layout-background opacity-50"
                   draggable={false}
                 />
               )}

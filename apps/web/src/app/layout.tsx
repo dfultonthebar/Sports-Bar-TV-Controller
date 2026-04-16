@@ -11,7 +11,6 @@ export const metadata: Metadata = {
   title: 'Sports Bar TV Controller',
   description: 'Professional TV and audio control system for sports bars',
   manifest: '/manifest.json',
-  themeColor: '#7c3aed',
   icons: {
     icon: '/icon-192x192.png',
     apple: '/icon-192x192.png',

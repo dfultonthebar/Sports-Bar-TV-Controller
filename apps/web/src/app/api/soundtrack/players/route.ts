@@ -138,26 +138,47 @@ export async function PATCH(request: NextRequest) {
   if (isValidationError(queryValidation)) return queryValidation.error
 
   try {
-    const { playerId, playing, stationId, volume } = body
+    const { playerId, playing, stationId, volume, action, trackId } = body
 
     if (!playerId) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Player ID is required' 
+      return NextResponse.json({
+        success: false,
+        error: 'Player ID is required'
       }, { status: 400 })
     }
 
     // Get CACHED API key from database
     const config = await findFirst('soundtrackConfigs')
     if (!config) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Soundtrack not configured' 
+      return NextResponse.json({
+        success: false,
+        error: 'Soundtrack not configured'
       }, { status: 404 })
     }
 
     // Use cached token - no authentication needed
     const api = getSoundtrackAPI(config.apiKey)
+
+    // Handle skip and block actions
+    if (action === 'skip') {
+      await api.skipTrack(String(playerId))
+      cacheManager.clearType('soundtrack-data')
+      return NextResponse.json({ success: true, action: 'skip' })
+    }
+
+    if (action === 'block') {
+      if (!trackId) {
+        return NextResponse.json({
+          success: false,
+          error: 'Track ID is required for blocking'
+        }, { status: 400 })
+      }
+      await api.blockTrack(String(playerId), String(trackId))
+      // Also skip past the blocked track
+      await api.skipTrack(String(playerId))
+      cacheManager.clearType('soundtrack-data')
+      return NextResponse.json({ success: true, action: 'block' })
+    }
 
     // Update the sound zone with the provided parameters
     const updatedData: any = {}

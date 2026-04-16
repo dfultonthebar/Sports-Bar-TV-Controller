@@ -17,7 +17,10 @@ const VENUE_TIMEZONE = 'America/Chicago'
 
 class SchedulerService {
   private intervalId: NodeJS.Timeout | null = null;
+  private tvStatusIntervalId: NodeJS.Timeout | null = null;
+  private fastPollIntervalId: NodeJS.Timeout | null = null;
   private isRunning = false;
+  private hasDelayedGames = false;
   private lastCleanup: Date | null = null;
   private executingSchedules = new Set<string>();
 
@@ -50,16 +53,39 @@ class SchedulerService {
       clearInterval(this.intervalId);
     }
 
-    // On startup, recover any bartender-scheduled tunes that may have been missed during downtime
-    this.recoverMissedBartenderSchedules();
+    // On startup, flag any missed bartender-scheduled tunes for confirmation FIRST,
+    // then start the regular check cycle. This prevents a race condition where
+    // checkAndExecuteBartenderSchedules could pick up past-due pending allocations
+    // and auto-tune them before flagMissedBartenderSchedules can flag them for confirmation.
+    this.flagMissedBartenderSchedules().then(() => {
+      // Only start the regular schedule checks after missed schedules are flagged
+      // Check every minute for schedules to execute
+      this.intervalId = setInterval(() => {
+        this.checkAndExecuteSchedules();
+      }, 60000); // 60 seconds
 
-    // Check every minute for schedules to execute
-    this.intervalId = setInterval(() => {
+      // Also check immediately now that missed schedules have been flagged
       this.checkAndExecuteSchedules();
-    }, 60000); // 60 seconds
 
-    // Also check immediately on start
-    this.checkAndExecuteSchedules();
+      logger.info('[SCHEDULER] Regular schedule checks started (after missed-schedule flagging)');
+    }).catch((error) => {
+      // Even if flagging fails, start the regular checks so the scheduler isn't dead
+      logger.error('[SCHEDULER] Error flagging missed schedules, starting checks anyway:', { error });
+      this.intervalId = setInterval(() => {
+        this.checkAndExecuteSchedules();
+      }, 60000);
+      this.checkAndExecuteSchedules();
+    });
+
+    // Poll TV status every 5 minutes
+    if (this.tvStatusIntervalId) {
+      clearInterval(this.tvStatusIntervalId);
+    }
+    this.tvStatusIntervalId = setInterval(() => {
+      this.pollTVStatus();
+    }, 300000); // 5 minutes
+    // Run first poll after 30 seconds (let app fully start)
+    setTimeout(() => this.pollTVStatus(), 30000);
 
     schedulerLogger.info(
       'scheduler-service',
@@ -70,30 +96,19 @@ class SchedulerService {
   }
 
   /**
-   * Recover bartender-scheduled tunes that may have been missed during system downtime
-   * This handles the case where:
-   * 1. A bartender scheduled a tune for 2:00 PM
-   * 2. The system was rebooted at 2:15 PM (past the scheduled time)
-   * 3. On startup, we should still tune to that channel if the game is still ongoing
+   * Flag missed bartender-scheduled tunes for confirmation instead of auto-recovering.
+   * Sets status to 'needs_confirmation' so the bartender remote can show a popup
+   * asking whether to resume these schedules.
    */
-  private async recoverMissedBartenderSchedules() {
+  private async flagMissedBartenderSchedules() {
     const correlationId = schedulerLogger.generateCorrelationId();
-    const startTime = Date.now();
 
     try {
-      const now = new Date();
-      const nowUnix = Math.floor(now.getTime() / 1000);
-
-      await schedulerLogger.info(
-        'scheduler-service',
-        'recover',
-        'Starting recovery check for missed bartender-scheduled tunes',
-        correlationId
-      );
+      const nowUnix = Math.floor(Date.now() / 1000);
 
       logger.info('[SCHEDULER] 🔄 Checking for missed bartender-scheduled tunes after startup...');
 
-      // Find all pending bartender allocations that are past due
+      // Find pending bartender allocations that are past due
       const pendingAllocations = await db.select({
         allocation: schema.inputSourceAllocations,
         inputSource: schema.inputSources,
@@ -105,158 +120,86 @@ class SchedulerService {
       .where(eq(schema.inputSourceAllocations.status, 'pending'))
       .all();
 
-      // Also find 'active' bartender allocations that may not have actually tuned
-      // (e.g., AUTO-REALLOCATOR marked them active before the fix)
-      const activeAllocations = await db.select({
-        allocation: schema.inputSourceAllocations,
-        inputSource: schema.inputSources,
-        game: schema.gameSchedules,
-      })
-      .from(schema.inputSourceAllocations)
-      .innerJoin(schema.inputSources, eq(schema.inputSourceAllocations.inputSourceId, schema.inputSources.id))
-      .innerJoin(schema.gameSchedules, eq(schema.inputSourceAllocations.gameScheduleId, schema.gameSchedules.id))
-      .where(eq(schema.inputSourceAllocations.status, 'active'))
-      .all();
-
-      // Filter to bartender-scheduled allocations that are past due and games still ongoing
-      const allAllocations = [...pendingAllocations, ...activeAllocations];
-      const missedAllocations = allAllocations.filter((r) => {
-        // Only bartender-scheduled
+      const missedAllocations = pendingAllocations.filter((r) => {
         if (r.allocation.scheduledBy !== 'bartender') return false;
-        // Past the scheduled tune time
+        // Only flag allocations whose scheduled time has passed (overdue)
         if ((r.allocation.allocatedAt || 0) > nowUnix) return false;
-        // Game hasn't ended yet (check estimatedEnd with 30 min buffer)
-        const gameEndBuffer = (r.game.estimatedEnd || 0) + 30 * 60;
-        if (gameEndBuffer > 0 && nowUnix > gameEndBuffer) return false;
+        // Skip allocations where the game is already over (estimatedEnd + 30 min buffer)
+        const estimatedEnd = r.game.estimatedEnd || 0;
+        if (estimatedEnd > 0) {
+          const gameEndBuffer = estimatedEnd + 30 * 60;
+          if (nowUnix > gameEndBuffer) return false;
+        }
         return true;
       });
 
       if (missedAllocations.length === 0) {
-        logger.info('[SCHEDULER] ✅ No missed bartender-scheduled tunes to recover');
-        await schedulerLogger.info(
-          'scheduler-service',
-          'recover',
-          'No missed bartender-scheduled tunes to recover',
-          correlationId,
-          { durationMs: Date.now() - startTime }
-        );
+        logger.info('[SCHEDULER] ✅ No missed bartender-scheduled tunes');
+        await schedulerLogger.info('scheduler-service', 'recover', 'No missed bartender-scheduled tunes to recover', correlationId);
         return;
       }
 
-      await schedulerLogger.info(
-        'scheduler-service',
-        'recover',
-        `Found ${missedAllocations.length} potentially missed bartender-scheduled tunes to recover`,
-        correlationId,
-        { metadata: { missedCount: missedAllocations.length } }
-      );
-
-      logger.info(`[SCHEDULER] 🎯 Found ${missedAllocations.length} potentially missed bartender-scheduled tunes to recover`);
-
+      // Flag them as needs_confirmation instead of auto-tuning
       for (const { allocation, inputSource, game } of missedAllocations) {
-        const tuneStartTime = Date.now();
-        try {
-          logger.info(`[SCHEDULER] 📺 Recovering scheduled tune: ${inputSource.name} to channel ${allocation.channelNumber} for ${game.homeTeamName} vs ${game.awayTeamName}`);
+        await db.update(schema.inputSourceAllocations)
+          .set({ status: 'needs_confirmation', updatedAt: nowUnix })
+          .where(eq(schema.inputSourceAllocations.id, allocation.id));
 
-          // Call the channel tune API
-          const response = await fetch(`http://localhost:${API_PORT}/api/channel-presets/tune`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              channelNumber: allocation.channelNumber,
-              deviceType: allocation.inputSourceType,
-              cableBoxId: allocation.inputSourceType === 'cable' ? inputSource.deviceId : undefined,
-              directTVId: allocation.inputSourceType === 'directv' ? inputSource.deviceId : undefined,
-              fireTVId: allocation.inputSourceType === 'firetv' ? inputSource.deviceId : undefined,
-            })
-          });
-
-          const result = await response.json();
-          const tuneDurationMs = Date.now() - tuneStartTime;
-
-          if (result.success || response.ok) {
-            // Ensure allocation is marked as active
-            await db.update(schema.inputSourceAllocations)
-              .set({
-                status: 'active',
-                updatedAt: nowUnix,
-              })
-              .where(eq(schema.inputSourceAllocations.id, allocation.id));
-
-            await schedulerLogger.info(
-              'scheduler-service',
-              'recover',
-              `Recovered tune: ${inputSource.name} to channel ${allocation.channelNumber}`,
-              correlationId,
-              {
-                gameId: game.id,
-                inputSourceId: inputSource.id,
-                allocationId: allocation.id,
-                channelNumber: allocation.channelNumber,
-                deviceType: allocation.inputSourceType as 'cable' | 'directv' | 'firetv',
-                durationMs: tuneDurationMs,
-              }
-            );
-
-            logger.info(`[SCHEDULER] ✅ Recovered: Successfully tuned ${inputSource.name} to channel ${allocation.channelNumber}`);
-          } else {
-            await schedulerLogger.log({
-              correlationId,
-              component: 'scheduler-service',
-              operation: 'recover',
-              level: 'error',
-              message: `Failed to recover tune for ${inputSource.name}`,
-              gameId: game.id,
-              inputSourceId: inputSource.id,
-              allocationId: allocation.id,
-              channelNumber: allocation.channelNumber,
-              deviceType: allocation.inputSourceType as 'cable' | 'directv' | 'firetv',
-              success: false,
-              durationMs: tuneDurationMs,
-              errorMessage: result.error || result.message || 'Unknown error',
-            });
-
-            logger.error(`[SCHEDULER] ❌ Failed to recover tune for ${inputSource.name}: ${result.error || result.message}`);
-          }
-        } catch (tuneError: any) {
-          await schedulerLogger.error(
-            'scheduler-service',
-            'recover',
-            `Error recovering scheduled tune for ${inputSource.name}`,
-            correlationId,
-            tuneError,
-            {
-              gameId: game.id,
-              inputSourceId: inputSource.id,
-              allocationId: allocation.id,
-              channelNumber: allocation.channelNumber,
-              deviceType: allocation.inputSourceType as 'cable' | 'directv' | 'firetv',
-              durationMs: Date.now() - tuneStartTime,
-            }
-          );
-
-          logger.error(`[SCHEDULER] ❌ Error recovering scheduled tune for ${inputSource.name}:`, { error: tuneError });
-        }
+        logger.info(`[SCHEDULER] 🔔 Flagged for confirmation: ${inputSource.name} → ch ${allocation.channelNumber} (${game.homeTeamName} vs ${game.awayTeamName})`);
       }
 
       await schedulerLogger.info(
-        'scheduler-service',
-        'recover',
-        `Recovery complete - processed ${missedAllocations.length} missed allocations`,
-        correlationId,
-        { durationMs: Date.now() - startTime }
+        'scheduler-service', 'recover',
+        `Flagged ${missedAllocations.length} missed schedules for bartender confirmation`,
+        correlationId
       );
     } catch (error: any) {
-      await schedulerLogger.error(
-        'scheduler-service',
-        'recover',
-        'Error recovering missed bartender schedules',
-        correlationId,
-        error,
-        { durationMs: Date.now() - startTime }
-      );
+      logger.error('[SCHEDULER] ❌ Error flagging missed schedules:', { error });
+    }
+  }
 
-      logger.error('[SCHEDULER] ❌ Error recovering missed bartender schedules:', { error });
+  /**
+   * Poll all TV statuses via the status check API
+   * Runs every 5 minutes to keep the bartender remote's TV status accurate
+   * Also pings the VAVA projector to prevent deep sleep
+   */
+  private async pollTVStatus() {
+    try {
+      const response = await fetch(`http://127.0.0.1:${API_PORT}/api/tv-discovery/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        logger.debug(`[TV-POLL] Status check: ${data.online}/${data.count} TVs online`);
+      }
+    } catch (error) {
+      logger.debug('[TV-POLL] Status check failed (app may still be starting)');
+    }
+
+    // Keep VAVA projector alive - send a harmless volume query to prevent deep sleep
+    // VAVA shuts down all network services when it sleeps, making it uncontrollable
+    try {
+      const vavaDevices = await db.select()
+        .from(schema.networkTVDevices)
+        .where(eq(schema.networkTVDevices.brand, 'VAVA'))
+        .all();
+
+      for (const vava of vavaDevices) {
+        try {
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 3000);
+          await fetch(`http://${vava.ipAddress}:${vava.port || 8000}/remote/get_volume`, {
+            signal: controller.signal,
+          });
+          clearTimeout(timeout);
+          logger.debug(`[TV-POLL] VAVA keep-alive ping sent to ${vava.ipAddress}`);
+        } catch {
+          // VAVA may already be in deep sleep — nothing we can do
+        }
+      }
+    } catch {
+      // Ignore errors
     }
   }
 
@@ -269,6 +212,14 @@ class SchedulerService {
     if (this.intervalId) {
       clearInterval(this.intervalId);
       this.intervalId = null;
+    }
+    if (this.tvStatusIntervalId) {
+      clearInterval(this.tvStatusIntervalId);
+      this.tvStatusIntervalId = null;
+    }
+    if (this.fastPollIntervalId) {
+      clearInterval(this.fastPollIntervalId);
+      this.fastPollIntervalId = null;
     }
     this.isRunning = false;
 
@@ -292,12 +243,37 @@ class SchedulerService {
     try {
       const now = new Date();
 
+      // Reset delayed flag — will be set again if any games are still delayed
+      this.hasDelayedGames = false;
+
       // Check for pending bartender-scheduled channel tunes
       await this.checkAndExecuteBartenderSchedules(now);
 
-      // Hourly cleanup: Remove games that started 2+ hours ago
+      // Manage fast polling: when games are delayed, check every 15s instead of 60s
+      if (this.hasDelayedGames && !this.fastPollIntervalId) {
+        logger.info('[SCHEDULER] 🔄 Enabling fast polling (15s) — games are delayed');
+        this.fastPollIntervalId = setInterval(() => {
+          this.checkAndExecuteBartenderSchedules(new Date());
+        }, 15000);
+      } else if (!this.hasDelayedGames && this.fastPollIntervalId) {
+        logger.info('[SCHEDULER] ✅ Disabling fast polling — no more delayed games');
+        clearInterval(this.fastPollIntervalId);
+        this.fastPollIntervalId = null;
+      }
+
+      // Hourly tasks
       if (!this.lastCleanup || (now.getTime() - this.lastCleanup.getTime()) >= 3600000) {
+        // Cleanup: Remove games that started 2+ hours ago
         this.cleanupOldGames();
+
+        // Run pattern analysis on scheduling history (learns from bartender TV routing)
+        try {
+          const { patternAnalyzer } = await import('./pattern-analyzer');
+          patternAnalyzer.analyzeAll().then(result => {
+            logger.info(`[SCHEDULER] Pattern analysis: ${result.teamRouting?.length || 0} team, ${result.leaguePriority?.length || 0} league, ${result.timeSlot?.length || 0} timeslot patterns`);
+          }).catch(() => {});
+        } catch {}
+
         this.lastCleanup = now;
       }
 
@@ -384,7 +360,16 @@ class SchedulerService {
       if (result.result?.success) {
         logger.info(`[SCHEDULER] ✅ Schedule executed successfully in ${duration}ms - Games: ${result.result.gamesFound || 0}, Channels: ${result.result.channelsSet || 0}`);
       } else {
-        logger.warn(`[SCHEDULER] ⚠️  Schedule execution completed with issues (${duration}ms): ${result.result?.message}`);
+        // "No TVs to control" is a benign condition: the AI Game Monitor
+        // fires every 5 minutes by design, and most of the time there is
+        // no active allocation to act on. Don't spam WARN for this — real
+        // problems are easier to spot without 288 benign entries per day.
+        const msg = result.result?.message;
+        if (msg === 'No TVs to control') {
+          logger.debug(`[SCHEDULER] Schedule tick: no active TV allocations (${duration}ms)`);
+        } else {
+          logger.warn(`[SCHEDULER] ⚠️  Schedule execution completed with issues (${duration}ms): ${msg}`);
+        }
       }
     } catch (error) {
       logger.error(`[SCHEDULER] ❌ Failed to execute schedule ${scheduleId}:`, { error });
@@ -577,9 +562,12 @@ class SchedulerService {
       .where(eq(schema.inputSourceAllocations.status, 'pending'))
       .all();
 
-      // Filter to allocations that are due (allocatedAt <= now)
+      // Filter to allocations that are due (5-minute early buffer: allocatedAt - 300 <= now)
+      const EARLY_BUFFER_SECONDS = 300; // 5 minutes before scheduled time
+      const MAX_DELAY_SECONDS = 1800; // 30 minutes max delay for live game protection
+
       const dueAllocations = pendingAllocations.filter(
-        (r) => (r.allocation.allocatedAt || 0) <= nowUnix
+        (r) => ((r.allocation.allocatedAt || 0) - EARLY_BUFFER_SECONDS) <= nowUnix
       );
 
       if (dueAllocations.length === 0) {
@@ -601,26 +589,36 @@ class SchedulerService {
         try {
           logger.info(`[SCHEDULER] 🎯 Checking if ready to tune: ${inputSource.name} to channel ${allocation.channelNumber} for ${game.homeTeamName} vs ${game.awayTeamName}`);
 
-          // Check if there's a game currently on this input that's still in progress
+          // Check if there's a scheduled game currently on this input that's still in progress
           const currentGameStatus = await this.checkCurrentGameStatus(inputSource.id);
+          const timePastScheduled = nowUnix - (allocation.allocatedAt || 0);
+          const forceOverride = timePastScheduled >= MAX_DELAY_SECONDS;
 
-          if (currentGameStatus.gameInProgress) {
+          if (currentGameStatus.gameInProgress && !forceOverride) {
             await schedulerLogger.info(
               'scheduler-service',
               'tune',
-              `Delaying tune - current game still in progress: ${currentGameStatus.gameDescription}`,
+              `Delaying tune - scheduled game still in progress: ${currentGameStatus.gameDescription} (${Math.round(timePastScheduled / 60)}min past scheduled)`,
               correlationId,
               {
                 gameId: game.id,
                 inputSourceId: inputSource.id,
                 allocationId: allocation.id,
-                metadata: { status: currentGameStatus.status },
+                metadata: { status: currentGameStatus.status, timePastScheduled },
               }
             );
 
-            logger.info(`[SCHEDULER] ⏳ Delaying tune - current game still in progress: ${currentGameStatus.gameDescription} (${currentGameStatus.status})`);
+            logger.info(`[SCHEDULER] ⏳ Delaying tune - scheduled game still in progress: ${currentGameStatus.gameDescription} (${currentGameStatus.status}) - ${Math.round(timePastScheduled / 60)}min past scheduled`);
+
+            // Enable fast polling (every 15s) while games are delayed
+            this.hasDelayedGames = true;
+
             // Skip this allocation for now, will check again next cycle
             continue;
+          }
+
+          if (currentGameStatus.gameInProgress && forceOverride) {
+            logger.info(`[SCHEDULER] ⚠️ Force-tuning after ${MAX_DELAY_SECONDS / 60}min delay - overriding active game: ${currentGameStatus.gameDescription}`);
           }
 
           logger.info(`[SCHEDULER] ✅ Ready to execute tune - no game in progress or game has ended`);
@@ -667,6 +665,137 @@ class SchedulerService {
             );
 
             logger.info(`[SCHEDULER] ✅ Successfully tuned ${inputSource.name} to channel ${allocation.channelNumber}`);
+
+            // Route matrix inputs to TV outputs if tvOutputIds is set
+            if (allocation.tvOutputIds && inputSource.matrixInputId) {
+              try {
+                const outputIds: number[] = JSON.parse(allocation.tvOutputIds);
+                const matrixInput = parseInt(inputSource.matrixInputId, 10);
+
+                if (outputIds.length > 0 && !isNaN(matrixInput)) {
+                  // Check for conflicting active allocations that claim the same outputs
+                  const otherActiveAllocations = await db.select()
+                    .from(schema.inputSourceAllocations)
+                    .where(eq(schema.inputSourceAllocations.status, 'active'))
+                    .all();
+
+                  const claimedOutputs = new Set<number>();
+                  for (const other of otherActiveAllocations) {
+                    if (other.id === allocation.id) continue; // Skip self
+                    if (other.tvOutputIds) {
+                      try {
+                        const otherOutputs: number[] = JSON.parse(other.tvOutputIds);
+                        otherOutputs.forEach(o => claimedOutputs.add(o));
+                      } catch {}
+                    }
+                  }
+
+                  // Filter out outputs already claimed by other active games
+                  const safeOutputs = outputIds.filter(o => !claimedOutputs.has(o));
+                  const skippedOutputs = outputIds.filter(o => claimedOutputs.has(o));
+
+                  if (skippedOutputs.length > 0) {
+                    logger.info(`[SCHEDULER] ⚠️ Skipping outputs [${skippedOutputs.join(', ')}] — already claimed by another active game`);
+                  }
+
+                  logger.info(`[SCHEDULER] 🔀 Routing matrix input ${matrixInput} to ${safeOutputs.length} TV outputs: [${safeOutputs.join(', ')}]${skippedOutputs.length > 0 ? ` (skipped ${skippedOutputs.length} conflicting)` : ''}`);
+
+                  for (const outputNumber of safeOutputs) {
+                    try {
+                      const routeResponse = await fetch(`http://127.0.0.1:${API_PORT}/api/matrix/route`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          input: matrixInput,
+                          output: outputNumber,
+                        }),
+                      });
+
+                      if (routeResponse.ok) {
+                        logger.info(`[SCHEDULER] ✅ Routed matrix input ${matrixInput} → output ${outputNumber}`);
+                      } else {
+                        const routeResult = await routeResponse.json().catch(() => ({}));
+                        logger.error(`[SCHEDULER] ❌ Failed to route matrix input ${matrixInput} → output ${outputNumber}: ${routeResult.error || routeResponse.statusText}`);
+                      }
+                    } catch (routeError: any) {
+                      logger.error(`[SCHEDULER] ❌ Error routing matrix input ${matrixInput} → output ${outputNumber}:`, { error: routeError });
+                    }
+                  }
+
+                  await schedulerLogger.info(
+                    'scheduler-service',
+                    'tune',
+                    `Matrix routing complete: input ${matrixInput} → outputs [${outputIds.join(', ')}]`,
+                    correlationId,
+                    {
+                      gameId: game.id,
+                      inputSourceId: inputSource.id,
+                      allocationId: allocation.id,
+                      metadata: { matrixInput, outputIds },
+                    }
+                  );
+                }
+              } catch (parseError: any) {
+                logger.error(`[SCHEDULER] ❌ Error parsing tvOutputIds for allocation ${allocation.id}:`, { error: parseError, tvOutputIds: allocation.tvOutputIds });
+              }
+            }
+
+            // Switch audio zones if audio source is configured
+            if (allocation.audioSourceIndex != null && allocation.audioZoneIds) {
+              try {
+                const audioZones: number[] = JSON.parse(allocation.audioZoneIds);
+                if (audioZones.length > 0) {
+                  // Look up the active audio processor from the database instead of hardcoding an ID
+                  const processor = await db.select().from(schema.audioProcessors).get();
+                  if (!processor) {
+                    logger.error('[SCHEDULER] ❌ No audio processor found in database — skipping audio zone switching');
+                  } else {
+                    logger.info(`[SCHEDULER] 🔊 Switching ${audioZones.length} audio zone(s) to source ${allocation.audioSourceIndex}${allocation.audioSourceName ? ` (${allocation.audioSourceName})` : ''}`);
+
+                    for (const zoneNumber of audioZones) {
+                      try {
+                        const audioResponse = await fetch(`http://127.0.0.1:${API_PORT}/api/audio-processor/control`, {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            processorId: processor.id,
+                            command: {
+                              action: 'source',
+                              zone: zoneNumber + 1,
+                              value: allocation.audioSourceIndex,
+                            },
+                          }),
+                        });
+
+                        if (audioResponse.ok) {
+                          logger.info(`[SCHEDULER] ✅ Audio zone ${zoneNumber} → source ${allocation.audioSourceIndex}`);
+                        } else {
+                          const audioResult = await audioResponse.json().catch(() => ({}));
+                          logger.error(`[SCHEDULER] ❌ Failed to switch audio zone ${zoneNumber}: ${(audioResult as any).error || audioResponse.statusText}`);
+                        }
+                      } catch (audioError: any) {
+                        logger.error(`[SCHEDULER] ❌ Error switching audio zone ${zoneNumber}:`, { error: audioError });
+                      }
+                    }
+
+                    await schedulerLogger.info(
+                      'scheduler-service',
+                      'tune',
+                      `Audio zone switching complete: zones [${audioZones.join(', ')}] → source ${allocation.audioSourceIndex}`,
+                      correlationId,
+                      {
+                        gameId: game.id,
+                        inputSourceId: inputSource.id,
+                        allocationId: allocation.id,
+                        metadata: { audioSourceIndex: allocation.audioSourceIndex, audioZones },
+                      }
+                    );
+                  }
+                }
+              } catch (audioParseError: any) {
+                logger.error(`[SCHEDULER] ❌ Error parsing audioZoneIds for allocation ${allocation.id}:`, { error: audioParseError, audioZoneIds: allocation.audioZoneIds });
+              }
+            }
           } else {
             await schedulerLogger.log({
               correlationId,

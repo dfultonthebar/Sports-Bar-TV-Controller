@@ -7,7 +7,9 @@ import { db } from '@/db'
 import { schema } from '@/db'
 import { eq } from 'drizzle-orm'
 import { operationLogger } from '@sports-bar/data'
-import { SamsungTVClient, SharpTVClient, TVBrand } from '@sports-bar/tv-network-control'
+import { SamsungTVClient, SharpTVClient, VavaTVClient, LGTVClient, TVBrand } from '@sports-bar/tv-network-control'
+import { persistSamsungTokenIfChanged } from '@/lib/samsung-token-persist'
+import { logAuditAction } from '@sports-bar/auth'
 
 /**
  * TV Power Control API
@@ -78,7 +80,18 @@ export async function POST(
         result = await controlSharpPower(device, action)
         break
 
+      case 'vava':
+        result = await controlVavaPower(device, action)
+        break
+
+      case 'epson':
+        result = await controlEpsonPower(device, action)
+        break
+
       case 'lg':
+        result = await controlLGPower(device, action)
+        break
+
       case 'sony':
       case 'vizio':
         return NextResponse.json(
@@ -94,9 +107,21 @@ export async function POST(
     }
 
     if (result.success) {
-      // Update last seen timestamp
+      // Determine new power status based on action taken
+      let newStatus: string | undefined
+      if (action === 'on') {
+        newStatus = 'online'
+      } else if (action === 'off') {
+        newStatus = 'standby'
+      } else if (action === 'toggle') {
+        // Toggle flips the current status
+        newStatus = device.status === 'online' ? 'standby' : 'online'
+      }
+
+      // Update status and last seen timestamp
       await db.update(schema.networkTVDevices)
         .set({
+          ...(newStatus ? { status: newStatus } : {}),
           lastSeen: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         })
@@ -123,6 +148,27 @@ export async function POST(
       success: result.success,
     })
 
+    // Persistent audit trail (survives PM2 log rotation, queryable forever)
+    logAuditAction({
+      action: `TV_POWER_${action.toUpperCase()}`,
+      resource: 'tv_power',
+      resourceId: deviceId,
+      endpoint: `/api/tv-control/${deviceId}/power`,
+      method: 'POST',
+      ipAddress: request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || request.headers.get('x-real-ip') || 'unknown',
+      userAgent: request.headers.get('user-agent') || undefined,
+      requestData: { action },
+      responseStatus: result.success ? 200 : 500,
+      success: result.success,
+      errorMessage: result.error || undefined,
+      metadata: {
+        deviceName: device.name,
+        brand: device.brand,
+        ipAddress: device.ipAddress,
+        message: result.message,
+      },
+    }).catch(err => logger.warn('[TV-CONTROL] Audit log write failed (non-fatal):', err))
+
     return NextResponse.json({
       success: result.success,
       message: result.message || `Power ${action} ${result.success ? 'successful' : 'failed'}`,
@@ -134,6 +180,19 @@ export async function POST(
 
   } catch (error: any) {
     logger.error('[TV-CONTROL] Power control error:', error)
+    logAuditAction({
+      action: `TV_POWER_${action.toUpperCase()}`,
+      resource: 'tv_power',
+      resourceId: deviceId,
+      endpoint: `/api/tv-control/${deviceId}/power`,
+      method: 'POST',
+      ipAddress: request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || request.headers.get('x-real-ip') || 'unknown',
+      userAgent: request.headers.get('user-agent') || undefined,
+      requestData: { action },
+      responseStatus: 500,
+      success: false,
+      errorMessage: error.message || 'Power control failed',
+    }).catch(err => logger.warn('[TV-CONTROL] Audit log write failed (non-fatal):', err))
     return NextResponse.json(
       { success: false, error: error.message || 'Power control failed' },
       { status: 500 }
@@ -209,15 +268,22 @@ async function controlSamsungPower(
   try {
     let result: { success: boolean; message?: string; error?: string }
 
-    if (action === 'on') {
-      // Explicit power on — try WebSocket first, fall back to WOL
-      result = await client.sendKey('KEY_POWER').catch(async () => {
-        logger.info(`[TV-CONTROL] WebSocket failed for power on, falling back to WOL for ${device.ipAddress}`)
-        return client.powerOn()
-      })
-    } else {
-      // off or toggle — send KEY_POWER via WebSocket (works in both on and standby)
+    if (action === 'on' || action === 'toggle') {
+      // Try KEY_POWER via WebSocket first (works if TV is on/standby with network)
       result = await client.sendKey('KEY_POWER')
+
+      // If WebSocket failed (TV is fully off), fall back to WoL
+      if (!result.success && device.macAddress) {
+        logger.info(`[TV-CONTROL] KEY_POWER failed for ${device.ipAddress}, falling back to WoL`)
+        result = await client.powerOn()
+      }
+    } else {
+      // off — check if already off before sending toggle
+      if (device.status === 'offline' || device.status === 'standby') {
+        result = { success: true, message: 'TV already off — skipped' }
+      } else {
+        result = await client.sendKey('KEY_POWER')
+      }
     }
 
     // Wait for the TV to process the command before disconnecting
@@ -225,15 +291,51 @@ async function controlSamsungPower(
 
     return result
   } catch (error: any) {
-    // Last resort: try WOL if WebSocket completely failed
+    // Last resort: try WOL if everything failed
     if (action !== 'off' && device.macAddress) {
-      logger.info(`[TV-CONTROL] Falling back to WOL for ${device.ipAddress}`)
+      logger.info(`[TV-CONTROL] Exception fallback to WOL for ${device.ipAddress}`)
       try {
         return await client.powerOn()
       } catch {
         // WOL also failed
       }
     }
+    return { success: false, error: error.message }
+  } finally {
+    await persistSamsungTokenIfChanged(device, client)
+    client.disconnect()
+  }
+}
+
+/**
+ * Control LG TV power via WebOS WebSocket (port 3001)
+ */
+async function controlLGPower(
+  device: any,
+  action: 'on' | 'off' | 'toggle'
+): Promise<{ success: boolean; message?: string; error?: string }> {
+  // clientKey is REQUIRED — without it, LGTVClient.register() falls back
+  // to PROMPT pairing which silently hangs in automated contexts.
+  const client = new LGTVClient({
+    ipAddress: device.ipAddress,
+    port: device.port || 3001,
+    brand: TVBrand.LG,
+    clientKey: device.clientKey || undefined,
+    macAddress: device.macAddress,
+  })
+
+  try {
+    switch (action) {
+      case 'on':
+        return await client.powerOn()
+      case 'off':
+        return await client.powerOff()
+      case 'toggle': {
+        const isOn = device.status === 'online'
+        return isOn ? await client.powerOff() : await client.powerOn()
+      }
+    }
+  } catch (error: any) {
     return { success: false, error: error.message }
   } finally {
     client.disconnect()
@@ -264,6 +366,76 @@ async function controlSharpPower(
         const isOn = await client.getPowerState()
         return isOn ? await client.powerOff() : await client.powerOn()
       }
+    }
+  } catch (error: any) {
+    return { success: false, error: error.message }
+  }
+}
+
+/**
+ * Control VAVA projector power via EShare HTTP API + WOL
+ */
+async function controlVavaPower(
+  device: any,
+  action: 'on' | 'off' | 'toggle'
+): Promise<{ success: boolean; message?: string; error?: string }> {
+  const client = new VavaTVClient({
+    ipAddress: device.ipAddress,
+    port: device.port || 8000,
+    brand: TVBrand.VAVA,
+    macAddress: device.macAddress,
+  })
+
+  try {
+    // For toggle, use DB status instead of live query — avoids double-sleep causing full shutdown
+    if (action === 'toggle') {
+      const isOn = device.status === 'online'
+      return isOn ? await client.powerOff() : await client.powerOn()
+    }
+    return action === 'on' ? await client.powerOn() : await client.powerOff()
+  } catch (error: any) {
+    return { success: false, error: error.message }
+  }
+}
+
+/**
+ * Control Epson projector power via ADB (SLEEP/WAKEUP)
+ * On power-on, automatically switches to HDMI 1 input
+ */
+async function controlEpsonPower(
+  device: any,
+  action: 'on' | 'off' | 'toggle'
+): Promise<{ success: boolean; message?: string; error?: string }> {
+  const { exec } = require('child_process')
+  const { promisify } = require('util')
+  const execAsync = promisify(exec)
+  const adbTarget = `${device.ipAddress}:${device.port || 5555}`
+
+  try {
+    // Ensure ADB connection
+    await execAsync(`adb connect ${adbTarget}`, { timeout: 5000 })
+
+    let shouldPowerOn: boolean
+    if (action === 'toggle') {
+      shouldPowerOn = device.status !== 'online'
+    } else {
+      shouldPowerOn = action === 'on'
+    }
+
+    if (shouldPowerOn) {
+      // Wake up
+      await execAsync(`adb -s ${adbTarget} shell input keyevent KEYCODE_WAKEUP`, { timeout: 5000 })
+      // Wait for projector to initialize, then switch to HDMI 1
+      await new Promise(resolve => setTimeout(resolve, 2000))
+      await execAsync(
+        `adb -s ${adbTarget} shell am start -a android.intent.action.VIEW -d "content://android.media.tv/passthrough/com.droidlogic.tvinput%2F.services.Hdmi3InputService%2FHW7"`,
+        { timeout: 5000 }
+      )
+      return { success: true, message: 'Epson powered on + HDMI 3 selected' }
+    } else {
+      // Sleep — note: this kills NIC, projector can only be powered back on with physical remote
+      await execAsync(`adb -s ${adbTarget} shell input keyevent KEYCODE_SLEEP`, { timeout: 5000 })
+      return { success: true, message: 'Epson powered off (standby) — use physical remote to turn back on' }
     }
   } catch (error: any) {
     return { success: false, error: error.message }

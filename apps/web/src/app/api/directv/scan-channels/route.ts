@@ -7,18 +7,7 @@ import { z } from 'zod'
 import { db } from '@/db'
 import { schema } from '@/db'
 import { eq } from 'drizzle-orm'
-import { readFile } from 'fs/promises'
-import { join } from 'path'
-import { existsSync } from 'fs'
-
-const DIRECTV_DEVICES_FILE = join(process.cwd(), 'data', 'directv-devices.json')
-
-interface DirecTVDevice {
-  id: string
-  name: string
-  ipAddress: string
-  port?: number
-}
+import { loadDirecTVDevices as loadDevicesFromDB } from '@/lib/device-db'
 
 interface ChannelScanResult {
   channelNumber: string
@@ -29,19 +18,10 @@ interface ChannelScanResult {
   presetName: string | null
 }
 
-// Load DirecTV devices from file
-async function loadDirecTVDevices(): Promise<DirecTVDevice[]> {
-  try {
-    if (!existsSync(DIRECTV_DEVICES_FILE)) {
-      return []
-    }
-    const data = await readFile(DIRECTV_DEVICES_FILE, 'utf8')
-    const parsed = JSON.parse(data)
-    return parsed.devices || []
-  } catch (error) {
-    logger.error('[DIRECTV-SCAN] Error loading DirecTV devices:', error)
-    return []
-  }
+// Load DirecTV devices from database
+async function loadDirecTVDevices() {
+  const data = await loadDevicesFromDB()
+  return data.devices
 }
 
 // Fetch program info from DirecTV device without tuning

@@ -7,8 +7,7 @@ import { db } from '@/db'
 import { schema } from '@/db'
 import { eq } from 'drizzle-orm'
 import { findFirst, update } from '@/lib/db-helpers'
-import fs from 'fs/promises'
-import path from 'path'
+import { getDirecTVDeviceById } from '@/lib/device-db'
 
 /**
  * DirecTV Channel Tune API
@@ -19,16 +18,6 @@ import path from 'path'
  * API Documentation: http://{receiver-ip}:8080/info/getOptions
  * Tune Command: http://{receiver-ip}:8080/tv/tune?major={channel}
  */
-
-interface DirecTVDevice {
-  id: string
-  name: string
-  ipAddress: string
-  port: number
-  receiverType?: string
-  isOnline?: boolean
-  inputChannel?: number
-}
 
 // Helper to get current program info from DirecTV device
 async function getCurrentProgramInfo(ipAddress: string, port: number): Promise<{ title?: string; callsign?: string } | null> {
@@ -86,7 +75,7 @@ async function updateInputCurrentChannel(
 
     logger.debug(`[DIRECTV] Updated input ${inputNum} current channel to ${channelNumber}${channelName ? ` (${channelName})` : ''}`)
   } catch (error) {
-    logger.error('[DIRECTV] Failed to update input current channel:', error)
+    logger.error('[DIRECTV] Failed to update input current channel', { error: error instanceof Error ? error : new Error(String(error)) })
   }
 }
 
@@ -130,13 +119,8 @@ export async function POST(
   }
 
   try {
-    // Load DirecTV devices from JSON file
-    const devicesPath = path.join(process.cwd(), 'data', 'directv-devices.json')
-    const devicesJson = await fs.readFile(devicesPath, 'utf-8')
-    const devicesData = JSON.parse(devicesJson)
-
-    // Find device by ID
-    const device = devicesData.devices.find((d: DirecTVDevice) => d.id === deviceId)
+    // Load DirecTV device from database
+    const device = await getDirecTVDeviceById(deviceId)
 
     if (!device) {
       logger.error(`[DIRECTV] Device not found: ${deviceId}`)
@@ -249,7 +233,7 @@ export async function POST(
     })
 
   } catch (error: any) {
-    logger.error('[DIRECTV] Tune API error:', error)
+    logger.error('[DIRECTV] Tune API error', { error: error instanceof Error ? error : new Error(String(error)) })
     return NextResponse.json(
       {
         success: false,

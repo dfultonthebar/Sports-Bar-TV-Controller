@@ -1,0 +1,155 @@
+You are doing pre-update analysis for the Sports Bar TV Controller.
+
+Decide whether the pending git merge from origin/main onto the current
+location branch is safe to proceed with.
+
+## How this fits into the update flow
+
+The auto-updater script (`scripts/auto-update.sh`) runs a 5-field
+`LOCATION_PATHS_OURS` auto-resolver BEFORE it ever tries to build. Any
+conflict on these paths is automatically resolved by keeping the
+LOCATION version (never the main version):
+
+```
+LOCATION_PATHS_OURS=(
+  "apps/web/data/tv-layout.json"
+  "apps/web/data/directv-devices.json"
+  "apps/web/data/firetv-devices.json"
+  "apps/web/data/device-subscriptions.json"
+  "apps/web/data/wolfpack-devices.json"
+  "apps/web/data/atlas-configs"
+  "apps/web/data/channel-presets-cable.json"
+  "apps/web/data/channel-presets-directv.json"
+  "apps/web/public/uploads/layouts"
+  "data"
+  ".env"
+)
+```
+
+**This means:** modifications to files in the list above in the incoming
+diff are NOT a reason to STOP. The script will auto-resolve them by
+discarding main's changes and keeping the location's data. Flagging
+them is a false positive that wastes a run.
+
+The script separately takes `--theirs` (main's version) for:
+```
+LOCATION_PATHS_THEIRS=(
+  "package-lock.json"
+  "package.json"
+)
+```
+Those are dependency-lockfile sync files — main always wins here, again
+without human intervention needed.
+
+## Your actual job
+
+Read the REAL diff from origin/main and flag ONLY the things the script
+cannot auto-handle. Do not flag things in LOCATION_PATHS_OURS or
+LOCATION_PATHS_THEIRS — those are already handled.
+
+### Step 1 — run and read this diff
+
+```
+cd /home/ubuntu/Sports-Bar-TV-Controller
+git log --oneline HEAD..origin/main
+git diff --stat HEAD..origin/main
+git log -p HEAD..origin/main
+```
+
+If `git log --oneline HEAD..origin/main` is empty, return `DECISION: GO`
+immediately (nothing to merge).
+
+Base your decision ONLY on what appears in the `git log -p` output as
+`diff --git a/<path>` lines. Do not speculate from CLAUDE.md content or
+general repo knowledge.
+
+### Step 1.5 — read the per-commit update notes (REQUIRED)
+
+The file `docs/LOCATION_UPDATE_NOTES.md` is a curated per-commit
+"what could break at a location" changelog. Every significant push
+to main is supposed to have an entry keyed by commit SHA. Each entry
+has a "Risk" level, a "What changed" section, a "What could break at
+a location" section, a "Manual steps required" section, and an
+"Affected files" list.
+
+For EVERY commit in the output of `git log --oneline HEAD..origin/main`:
+
+1. Take the short SHA (the 7-8 char hex at the start of each line).
+2. Search `docs/LOCATION_UPDATE_NOTES.md` for an entry whose header
+   contains that SHA. Headers look like:
+   `### YYYY-MM-DD — \`SHA\` — one-line summary`
+3. If a matching entry exists, read it IN FULL. Pay specific attention
+   to the "What could break at a location" and "Manual steps required"
+   sections.
+4. If a matching entry does NOT exist, it means the author skipped
+   documenting that commit. This is not a STOP condition by itself,
+   but it lowers your confidence — note it in your reasoning.
+
+**The update-notes entries are authoritative for risk assessment.**
+If an entry says `Risk: high` and describes a breaking change that
+matches something in the diff, raise a CAUTION or STOP citing the
+entry's SHA. If all entries are `Risk: low` and describe additive
+changes, default to GO.
+
+If an entry says "Manual steps required" is anything other than
+"None", include that list in your response body (after the DECISION
+line) so the operator can see it when the run fails or during the
+post-update review. Do NOT STOP solely because manual steps are
+required — the script should still proceed; the operator runs the
+steps afterward.
+
+### Step 2 — decide
+
+`DECISION: GO` — default when none of the STOP conditions below are met.
+The diff only touches source code, docs, config, scripts, or
+location-auto-resolved data files.
+
+`DECISION: CAUTION - <reason>` — proceed but watch Checkpoints B/C:
+- The diff adds a new DB column or table (additive schema change).
+- The diff changes an API contract in a way that could affect callers.
+- The diff bumps a minor/patch dep with no documented breaking change.
+
+`DECISION: STOP - <reason citing the exact diff --git path>` — abort
+before any on-disk change. Only return STOP when you see ONE of:
+
+1. **A non-additive Drizzle schema migration** in
+   `packages/database/src/schema.ts` or `apps/web/src/db/schema.ts` —
+   specifically: a new NOT NULL column without a default, a renamed
+   column, or a dropped table that still has rows on this location.
+   Additive changes (new nullable column, new table) are GO or CAUTION,
+   not STOP.
+
+2. **A dependency bump with a known breaking change for this project.**
+   E.g., Next.js major version bump where the changelog explicitly
+   marks features this app uses as removed/changed. Minor/patch bumps
+   are not STOP.
+
+3. **A diff line touching a path OUTSIDE all the LOCATION_PATHS lists
+   that looks like accidentally-committed secrets.** e.g.,
+   `config/prod-keys.json`, `*.pem`, hardcoded API tokens in source.
+
+4. **An obvious pre-merge infrastructure problem** — e.g., the diff
+   deletes `scripts/verify-install.sh` or `scripts/auto-update.sh`
+   itself, or modifies `packages/auth/src/config.ts` in a way that
+   would lock out all admins.
+
+Do NOT STOP for:
+- Any path in LOCATION_PATHS_OURS being modified (auto-resolved)
+- Any path in LOCATION_PATHS_THEIRS being modified (auto-resolved)
+- New files being added (always safe)
+- Existing files being edited, even heavily, as long as they're
+  software not secrets
+- New routes, components, or packages appearing
+- docs/*.md files changing (they're just documentation)
+
+## Output format — first line ONLY, no text before it
+
+```
+DECISION: GO
+DECISION: CAUTION - <one-sentence reason with diff --git path if applicable>
+DECISION: STOP - <one-sentence reason citing the exact diff --git path>
+```
+
+The auto-updater parses this with `grep -m1 '^DECISION:'`. Put any
+additional reasoning on subsequent lines — the log preserves it but
+only the first line drives the decision.

@@ -8,7 +8,8 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { logger } from '@sports-bar/logger'
 import { z } from 'zod'
 import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
-const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
+import { HARDWARE_CONFIG } from '@/lib/hardware-config'
+const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || HARDWARE_CONFIG.ollama.baseUrl;
 
 export async function POST(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.AI)
@@ -26,7 +27,7 @@ export async function POST(request: NextRequest) {
       hours = 24,
       category,
       includeKnowledge = true,
-      model = 'llama3.2:3b',
+      model = HARDWARE_CONFIG.ollama.model,
       focusArea
     } = bodyValidation.data;
 

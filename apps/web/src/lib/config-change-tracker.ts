@@ -93,11 +93,7 @@ const tracker = createConfigChangeTracker({
   autoSyncClient: new WebAppAutoSyncClient(),
   projectRoot: '/home/ubuntu/Sports-Bar-TV-Controller/apps/web',
   configFiles: [
-    'src/data/matrix-config.json',
-    'src/data/device-mappings.json',
     'src/data/ir-devices.json',
-    'src/data/audio-zones.json',
-    'src/data/directv-channels.json',
     '.env.local',
     'config/auto-sync.json'
   ],

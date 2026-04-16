@@ -15,6 +15,7 @@ import {
 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/cards'
 import { logger } from '@sports-bar/logger'
+import { HARDWARE_CONFIG } from '@/lib/hardware-config'
 
 interface LocationData {
   id: string
@@ -58,7 +59,7 @@ export default function LocationSettings() {
     city: '',
     state: '',
     zipCode: '',
-    timezone: 'America/Chicago',
+    timezone: HARDWARE_CONFIG.venue.timezone,
     gitBranch: '',
     isActive: true,
     createdAt: '',

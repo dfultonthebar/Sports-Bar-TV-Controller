@@ -1,85 +1,21 @@
 
-// Fire TV Devices API - CRUD operations (No Prisma, uses JSON file storage)
+// Fire TV Devices API - CRUD operations (Database-backed, single source of truth)
 
 import { NextRequest, NextResponse } from 'next/server'
-import { promises as fs } from 'fs'
-import path from 'path'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
 import { logger } from '@sports-bar/logger'
-import { withFileLock } from '@/lib/file-lock'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
-
-const DATA_FILE = path.join(process.cwd(), 'data', 'firetv-devices.json')
-
-interface FireTVDevice {
-  id: string
-  name: string
-  ipAddress: string
-  port: number
-  deviceType: string
-  isOnline: boolean
-  adbEnabled?: boolean
-  addedAt: string
-  updatedAt?: string
-  inputChannel?: number
-  serialNumber?: string
-  deviceModel?: string
-  softwareVersion?: string
-  lastSeen?: string
-  keepAwakeEnabled?: boolean
-  keepAwakeStart?: string
-  keepAwakeEnd?: string
-}
-
-async function readDevices(): Promise<{ devices: FireTVDevice[] }> {
-  try {
-    const data = await fs.readFile(DATA_FILE, 'utf-8')
-    return JSON.parse(data)
-  } catch (error) {
-    logger.error('Error reading devices file:', error)
-    return { devices: [] }
-  }
-}
-
-async function writeDevices(data: { devices: FireTVDevice[] }): Promise<void> {
-  try {
-    await withFileLock(DATA_FILE, async () => {
-      await fs.writeFile(DATA_FILE, JSON.stringify(data, null, 2), 'utf-8')
-    })
-  } catch (error) {
-    logger.error('Error writing devices file:', error)
-    throw error
-  }
-}
-
-/**
- * Safely perform a read-modify-write operation with file lock.
- * This prevents race conditions when multiple processes modify the file.
- */
-async function modifyDevices(modifier: (data: { devices: FireTVDevice[] }) => { devices: FireTVDevice[] }): Promise<{ devices: FireTVDevice[] }> {
-  return await withFileLock(DATA_FILE, async () => {
-    // Read current data inside the lock
-    let data: { devices: FireTVDevice[] }
-    try {
-      const content = await fs.readFile(DATA_FILE, 'utf-8')
-      data = JSON.parse(content)
-    } catch (error) {
-      logger.error('Error reading devices file:', error)
-      data = { devices: [] }
-    }
-
-    // Apply the modification
-    const modified = modifier(data)
-
-    // Write back inside the lock
-    await fs.writeFile(DATA_FILE, JSON.stringify(modified, null, 2), 'utf-8')
-
-    return modified
-  })
-}
+import { validateRequestBody, validateQueryParams, isValidationError } from '@/lib/validation'
+import {
+  loadFireTVDevices,
+  getFireTVDeviceById,
+  saveFireTVDevice,
+  deleteFireTVDevice,
+} from '@/lib/device-db'
+import { db, schema } from '@/db'
+import { eq } from 'drizzle-orm'
 
 // GET - List all Fire TV devices
 export async function GET(request: NextRequest) {
@@ -95,8 +31,8 @@ export async function GET(request: NextRequest) {
 
   try {
     logger.info('[FIRETV API] GET request - fetching all devices')
-    const data = await readDevices()
-    
+    const data = await loadFireTVDevices()
+
     logger.info(`[FIRETV API] Found ${data.devices.length} devices`)
     return NextResponse.json(data, {
       headers: {
@@ -130,20 +66,28 @@ export async function POST(request: NextRequest) {
 
   try {
     logger.info('[FIRETV API] POST request - adding new device')
-    const newDevice: FireTVDevice = data as any
+    const newDevice = data as any
 
-    // Set timestamps
-    newDevice.addedAt = new Date().toISOString()
-    newDevice.updatedAt = new Date().toISOString()
+    const now = new Date().toISOString()
+    const device = {
+      id: newDevice.id || `firetv_${Date.now()}`,
+      name: newDevice.name,
+      ipAddress: newDevice.ipAddress,
+      port: newDevice.port || 5555,
+      deviceType: newDevice.deviceType || 'Fire TV Cube',
+      inputChannel: newDevice.inputChannel ?? null,
+      isOnline: newDevice.isOnline || false,
+      disabled: newDevice.disabled || false,
+      adbEnabled: newDevice.adbEnabled ?? null,
+      model: newDevice.model ?? null,
+      addedAt: now,
+      updatedAt: now,
+    }
 
-    // Use atomic read-modify-write to prevent race conditions
-    await modifyDevices((devicesData) => {
-      devicesData.devices.push(newDevice)
-      return devicesData
-    })
+    await saveFireTVDevice(device)
 
-    logger.info(`[FIRETV API] Device added successfully: ${newDevice.name} (${newDevice.id})`)
-    return NextResponse.json({ success: true, device: newDevice })
+    logger.info(`[FIRETV API] Device added successfully: ${device.name} (${device.id})`)
+    return NextResponse.json({ success: true, device })
   } catch (error: any) {
     logger.error('[FIRETV API] POST error:', error)
     return NextResponse.json(
@@ -169,31 +113,42 @@ export async function PUT(request: NextRequest) {
 
   try {
     logger.info('[FIRETV API] PUT request - updating device')
-    const updatedDevice: FireTVDevice = data as any
+    const updatedDevice = data as any
 
-    // Update timestamp
-    updatedDevice.updatedAt = new Date().toISOString()
-
-    // Use atomic read-modify-write to prevent race conditions
-    let deviceFound = false
-    await modifyDevices((devicesData) => {
-      const deviceIndex = devicesData.devices.findIndex(d => d.id === updatedDevice.id)
-      if (deviceIndex !== -1) {
-        devicesData.devices[deviceIndex] = updatedDevice
-        deviceFound = true
-      }
-      return devicesData
-    })
-
-    if (!deviceFound) {
+    const existing = await getFireTVDeviceById(updatedDevice.id)
+    if (!existing) {
       return NextResponse.json(
         { error: 'Device not found' },
         { status: 404 }
       )
     }
 
-    logger.info(`[FIRETV API] Device updated successfully: ${updatedDevice.name} (${updatedDevice.id})`)
-    return NextResponse.json({ success: true, device: updatedDevice })
+    const now = new Date().toISOString()
+    await db.update(schema.fireTVDevices)
+      .set({
+        ...(updatedDevice.name !== undefined && { name: updatedDevice.name }),
+        ...(updatedDevice.ipAddress !== undefined && { ipAddress: updatedDevice.ipAddress }),
+        ...(updatedDevice.port !== undefined && { port: updatedDevice.port }),
+        ...(updatedDevice.deviceType !== undefined && { deviceType: updatedDevice.deviceType }),
+        ...(updatedDevice.inputChannel !== undefined && { inputChannel: updatedDevice.inputChannel }),
+        ...(updatedDevice.isOnline !== undefined && { isOnline: updatedDevice.isOnline }),
+        ...(updatedDevice.isOnline !== undefined && { status: updatedDevice.isOnline ? 'online' : 'offline' }),
+        ...(updatedDevice.disabled !== undefined && { disabled: updatedDevice.disabled }),
+        ...(updatedDevice.adbEnabled !== undefined && { adbEnabled: updatedDevice.adbEnabled }),
+        ...(updatedDevice.lastSeen !== undefined && { lastSeen: updatedDevice.lastSeen }),
+        ...(updatedDevice.model !== undefined && { model: updatedDevice.model }),
+        ...(updatedDevice.keepAwakeEnabled !== undefined && { keepAwakeEnabled: updatedDevice.keepAwakeEnabled }),
+        ...(updatedDevice.keepAwakeStart !== undefined && { keepAwakeStart: updatedDevice.keepAwakeStart }),
+        ...(updatedDevice.keepAwakeEnd !== undefined && { keepAwakeEnd: updatedDevice.keepAwakeEnd }),
+        ...(updatedDevice.serialNumber !== undefined && { serialNumber: updatedDevice.serialNumber }),
+        ...(updatedDevice.deviceModel !== undefined && { deviceModel: updatedDevice.deviceModel }),
+        ...(updatedDevice.softwareVersion !== undefined && { softwareVersion: updatedDevice.softwareVersion }),
+        updatedAt: now,
+      })
+      .where(eq(schema.fireTVDevices.id, updatedDevice.id))
+
+    logger.info(`[FIRETV API] Device updated successfully: ${updatedDevice.name || existing.name} (${updatedDevice.id})`)
+    return NextResponse.json({ success: true, device: { ...existing, ...updatedDevice, updatedAt: now } })
   } catch (error: any) {
     logger.error('[FIRETV API] PUT error:', error)
     return NextResponse.json(
@@ -223,25 +178,17 @@ export async function DELETE(request: NextRequest) {
       )
     }
 
-    // Use atomic read-modify-write to prevent race conditions
-    let removedDevice: FireTVDevice | null = null
-    await modifyDevices((data) => {
-      const deviceIndex = data.devices.findIndex(d => d.id === deviceId)
-      if (deviceIndex !== -1) {
-        removedDevice = data.devices[deviceIndex]
-        data.devices.splice(deviceIndex, 1)
-      }
-      return data
-    })
-
-    if (!removedDevice) {
+    const existing = await getFireTVDeviceById(deviceId)
+    if (!existing) {
       return NextResponse.json(
         { error: 'Device not found' },
         { status: 404 }
       )
     }
 
-    logger.info(`[FIRETV API] Device removed successfully: ${removedDevice.name} (${deviceId})`)
+    await deleteFireTVDevice(deviceId)
+
+    logger.info(`[FIRETV API] Device removed successfully: ${existing.name} (${deviceId})`)
     return NextResponse.json({ success: true, message: 'Device deleted successfully' })
   } catch (error: any) {
     logger.error('[FIRETV API] DELETE error:', error)

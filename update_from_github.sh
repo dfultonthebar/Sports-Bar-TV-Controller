@@ -20,6 +20,31 @@ readonly LOG_FILE="$PROJECT_DIR/update.log"
 readonly PM2_APP_NAME="sports-bar-tv-controller"
 readonly BACKUP_DIR="$HOME/sports-bar-backups"
 
+# Drizzle (current) DB path — used for pre-update DB snapshot
+readonly DB_PATH="/home/ubuntu/sports-bar-data/production.db"
+readonly DB_BACKUP_DIR="/home/ubuntu/sports-bar-data/backups"
+
+# Location-specific files whose local version must always win on merge conflict.
+# These live on location branches (location/graystone, location/holmgren-way,
+# location/stoneyard-greenville, location/lucky-s-1313) and must never be
+# overwritten by merges from main. Paths not present on disk are harmless —
+# `git checkout --ours` is a no-op when the path isn't in the conflict set.
+readonly LOCATION_PATHS_OURS=(
+    "apps/web/data/tv-layout.json"
+    "apps/web/data/directv-devices.json"
+    "apps/web/data/firetv-devices.json"
+    "apps/web/data/device-subscriptions.json"
+    "apps/web/data/wolfpack-devices.json"
+    "apps/web/data/channel-presets-cable.json"
+    "apps/web/data/channel-presets-directv.json"
+    "data/tv-layout.json"
+    "data/directv-devices.json"
+    "data/firetv-devices.json"
+    "data/device-subscriptions.json"
+    "data/wolfpack-devices.json"
+    ".env"
+)
+
 # Color codes for output
 readonly RED='\033[0;31m'
 readonly GREEN='\033[0;32m'
@@ -60,18 +85,22 @@ log_info() {
 # =============================================================================
 cleanup_on_error() {
     local exit_code=$?
-    log_error "Update failed with exit code: $exit_code"
+    local failed_line="${1:-unknown}"
+    log_error "Script failed at line $failed_line (exit code: $exit_code)"
     log_error "Check $LOG_FILE for details"
-    
+
     # If we have a backup, mention it
     if [ -n "${BACKUP_FILE:-}" ] && [ -f "$BACKUP_FILE" ]; then
         log_info "Your configuration backup: $BACKUP_FILE"
     fi
-    
+    if [ -n "${DB_BACKUP_FILE:-}" ] && [ -f "$DB_BACKUP_FILE" ]; then
+        log_info "Your database backup: $DB_BACKUP_FILE"
+    fi
+
     exit $exit_code
 }
 
-trap cleanup_on_error ERR
+trap 'cleanup_on_error $LINENO' ERR
 
 # =============================================================================
 # PREREQUISITE CHECKS
@@ -147,48 +176,132 @@ validate_directory() {
 # =============================================================================
 create_backup() {
     log_info "Creating backup of configuration and database..."
-    
+
     mkdir -p "$BACKUP_DIR"
-    
-    local timestamp=$(date +%Y%m%d-%H%M%S)
+    mkdir -p "$DB_BACKUP_DIR"
+
+    local timestamp=$(date +%Y-%m-%d-%H-%M-%S)
     BACKUP_FILE="$BACKUP_DIR/config-backup-$timestamp.tar.gz"
-    
-    # Backup critical files
+    DB_BACKUP_FILE="$DB_BACKUP_DIR/pre-update-$timestamp.db"
+
+    # --- Config / location-data tarball (best-effort) -----------------------
     tar -czf "$BACKUP_FILE" \
-        config/*.local.json \
         .env \
-        prisma/data/sports_bar.db \
+        apps/web/data/*.json \
         data/*.json \
         2>/dev/null || true
-    
+
     if [ -f "$BACKUP_FILE" ]; then
         local backup_size=$(du -h "$BACKUP_FILE" | cut -f1)
-        log_success "Backup created: $BACKUP_FILE ($backup_size)"
-        
-        # Keep only last 7 backups
+        log_success "Config backup created: $BACKUP_FILE ($backup_size)"
+
+        # Keep only last 7 config backups
         cd "$BACKUP_DIR"
         ls -t config-backup-*.tar.gz 2>/dev/null | tail -n +8 | xargs rm -f 2>/dev/null || true
         cd - > /dev/null
     else
         log_warning "No configuration to backup (first run?)"
     fi
+
+    # --- Drizzle production DB snapshot -------------------------------------
+    # Use sqlite3 .backup (not cp) — the DB may have open WAL connections from
+    # the running PM2 process, and cp would produce a corrupt copy.
+    if [ -f "$DB_PATH" ]; then
+        log_info "Backing up Drizzle DB to $DB_BACKUP_FILE"
+        if command -v sqlite3 &> /dev/null; then
+            if sqlite3 "$DB_PATH" ".backup '$DB_BACKUP_FILE'" 2>&1 | tee -a "$LOG_FILE"; then
+                local db_size=$(du -h "$DB_BACKUP_FILE" | cut -f1)
+                log_success "DB backup created: $DB_BACKUP_FILE ($db_size)"
+                # Keep only last 14 DB backups
+                cd "$DB_BACKUP_DIR"
+                ls -t pre-update-*.db 2>/dev/null | tail -n +15 | xargs rm -f 2>/dev/null || true
+                cd - > /dev/null
+            else
+                log_warning "sqlite3 .backup failed — continuing without DB snapshot"
+            fi
+        else
+            log_warning "sqlite3 not installed — cannot snapshot DB safely (refusing to cp live WAL DB)"
+        fi
+    else
+        log_warning "DB not found at $DB_PATH — skipping backup (fresh install?)"
+    fi
 }
 
 # =============================================================================
 # GIT OPERATIONS
 # =============================================================================
+#
+# Auto-resolve merge conflicts on known location-specific paths.
+# - Files in LOCATION_PATHS_OURS: keep the local (location-branch) version.
+# - package-lock.json: always take the version from main (we want latest lock).
+# Any OTHER unresolved conflict is a real conflict — bail out with a clear msg.
+#
+auto_resolve_location_conflicts() {
+    local unresolved_before
+    unresolved_before=$(git status --porcelain | grep -c '^UU ' || true)
+    if [ "$unresolved_before" -eq 0 ]; then
+        return 0
+    fi
+
+    log_warning "Merge produced $unresolved_before conflict(s) — attempting auto-resolution"
+
+    # 1. Location paths → keep ours
+    for path in "${LOCATION_PATHS_OURS[@]}"; do
+        if git status --porcelain -- "$path" 2>/dev/null | grep -q '^UU '; then
+            log_info "Conflict on $path — keeping location version (--ours)"
+            git checkout --ours -- "$path"
+            git add -- "$path"
+        fi
+    done
+
+    # 2. package-lock.json → take theirs (main is authoritative for lockfile)
+    if git status --porcelain -- package-lock.json 2>/dev/null | grep -q '^UU '; then
+        log_info "Conflict on package-lock.json — taking main version (--theirs)"
+        git checkout --theirs -- package-lock.json
+        git add -- package-lock.json
+    fi
+
+    # 3. Anything still unresolved is a genuine code conflict — refuse to proceed
+    local still_unresolved
+    still_unresolved=$(git status --porcelain | grep '^UU ' || true)
+    if [ -n "$still_unresolved" ]; then
+        log_error "Unresolved merge conflicts outside LOCATION_PATHS_OURS:"
+        echo "$still_unresolved" | tee -a "$LOG_FILE"
+        log_error "Aborting merge. Resolve manually or run: git merge --abort"
+        git merge --abort 2>&1 | tee -a "$LOG_FILE" || true
+        exit 1
+    fi
+
+    # 4. Finalize the merge
+    log_info "All conflicts auto-resolved — finalizing merge commit"
+    if ! git commit --no-edit 2>&1 | tee -a "$LOG_FILE"; then
+        log_error "Failed to finalize merge commit after auto-resolution"
+        exit 1
+    fi
+    log_success "Merge conflicts auto-resolved and committed"
+}
+
 pull_latest_code() {
-    log_info "Pulling latest code from GitHub..."
-    
+    log_info "Merging latest code from origin/main into current branch..."
+
+    # --- Detect current branch (refuse detached HEAD) -----------------------
+    local CURRENT_BRANCH
+    CURRENT_BRANCH=$(git branch --show-current)
+    if [ -z "$CURRENT_BRANCH" ]; then
+        log_error "Detached HEAD — refusing to update"
+        log_error "Check out a branch first: git checkout main  (or a location/* branch)"
+        exit 1
+    fi
+    log_info "Current branch: $CURRENT_BRANCH"
+
+    # --- Stash any uncommitted local changes --------------------------------
     local has_stashed=false
     local stash_name="auto-stash-$(date +%Y%m%d-%H%M%S)"
-    
-    # Check for uncommitted changes
-    if ! git diff-index --quiet HEAD -- 2>/dev/null; then
+
+    if ! git diff-index --quiet HEAD -- 2>/dev/null || [ -n "$(git ls-files --others --exclude-standard)" ]; then
         log_warning "Detected uncommitted local changes"
-        log_info "Stashing local changes before pull..."
-        
-        # Stash changes including untracked files
+        log_info "Stashing local changes before merge..."
+
         if git stash push -u -m "$stash_name" 2>&1 | tee -a "$LOG_FILE"; then
             has_stashed=true
             log_success "Local changes stashed successfully"
@@ -200,38 +313,44 @@ pull_latest_code() {
     else
         log_info "No local changes detected"
     fi
-    
-    # Pull from GitHub
-    log_info "Fetching latest changes from GitHub..."
-    if git pull origin main 2>&1 | tee -a "$LOG_FILE"; then
-        log_success "Successfully pulled latest changes"
-    else
-        log_error "Failed to pull changes from GitHub"
-        
-        # If we stashed changes, try to restore them
-        if [ "$has_stashed" = true ]; then
-            log_warning "Attempting to restore stashed changes..."
-            git stash pop 2>&1 | tee -a "$LOG_FILE" || true
-        fi
-        
-        log_error "Please resolve any issues manually"
+
+    # --- Fetch origin -------------------------------------------------------
+    log_info "Fetching latest changes from origin..."
+    if ! git fetch origin 2>&1 | tee -a "$LOG_FILE"; then
+        log_error "git fetch origin failed"
         exit 1
     fi
-    
-    # Reapply stashed changes if we stashed them
+
+    # --- Merge origin/main into current branch ------------------------------
+    # This works whether CURRENT_BRANCH is main (fast-forward) or a location/*
+    # branch (real merge). We do NOT use `git pull origin main`, which would
+    # silently overwrite location-branch work when run on a location branch.
+    log_info "Merging origin/main into $CURRENT_BRANCH..."
+    set +e
+    git merge origin/main --no-edit -m "chore: auto-merge main into $CURRENT_BRANCH" 2>&1 | tee -a "$LOG_FILE"
+    local merge_exit=${PIPESTATUS[0]}
+    set -e
+
+    if [ "$merge_exit" -ne 0 ]; then
+        # Merge stopped — most likely due to conflicts. Try auto-resolution.
+        auto_resolve_location_conflicts
+    else
+        log_success "Merge completed cleanly (no conflicts)"
+    fi
+
+    # --- Reapply stashed changes --------------------------------------------
     if [ "$has_stashed" = true ]; then
         log_info "Reapplying stashed local changes..."
-        
+
         if git stash pop 2>&1 | tee -a "$LOG_FILE"; then
             log_success "Local changes reapplied successfully"
         else
-            log_error "Conflict detected while reapplying local changes"
+            log_error "Conflict detected while reapplying stashed changes"
             log_error "Your changes are still in the stash: $stash_name"
             log_error "To view stashed changes: git stash list"
-            log_error "To manually apply: git stash pop"
-            log_error "To see conflicts: git status"
+            log_error "To manually apply:        git stash pop"
             log_warning "Continuing with update, but you'll need to resolve conflicts manually"
-            # Don't exit - let the update continue, user can fix conflicts later
+            # Don't exit — let the update continue; user can fix conflicts later
         fi
     fi
 }
@@ -317,7 +436,7 @@ verify_drizzle_schema() {
     else
         log_error "Failed to regenerate Prisma client"
         log_error "This may cause runtime errors with database operations"
-        log_warning "You may need to run 'echo "Drizzle schema ready (no generation needed)"' manually"
+        log_warning 'You may need to run `echo "Drizzle schema ready (no generation needed)"` manually'
         # Don't exit - let the update continue, but warn the user
     fi
 }
@@ -342,6 +461,21 @@ build_application() {
         fi
         log_error "Check the output above for details"
         return 1
+    fi
+}
+
+# =============================================================================
+# DATABASE SCHEMA PUSH
+# =============================================================================
+push_database_schema() {
+    log_info "Pushing database schema changes (creating new tables if needed)..."
+
+    if npx drizzle-kit push --config drizzle.config.ts 2>&1 | tee -a "$LOG_FILE"; then
+        log_success "Database schema pushed successfully"
+    else
+        log_warning "Database schema push failed - new tables may not exist"
+        log_warning "You can retry manually: npx drizzle-kit push --config drizzle.config.ts"
+        # Don't exit - the app may still work with existing tables
     fi
 }
 
@@ -507,7 +641,11 @@ main() {
         exit 1
     fi
     log ""
-    
+
+    # Step 8.5: Push DB schema changes (creates new tables if any)
+    push_database_schema
+    log ""
+
     # Step 9: Stop all PM2 processes
     stop_all_pm2_processes
     log ""

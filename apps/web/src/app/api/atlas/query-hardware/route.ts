@@ -11,6 +11,7 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { logger } from '@sports-bar/logger'
 import { z } from 'zod'
 import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
+import { HARDWARE_CONFIG } from '@/lib/hardware-config'
 const CONFIG_DIR = path.join(process.cwd(), 'data', 'atlas-configs')
 
 /**
@@ -53,10 +54,10 @@ export async function POST(request: NextRequest) {
 
     // Use correct ports for Atlas communication
     // - HTTP port (default 80): For web interface and configuration discovery
-    // - TCP port (default 5321): For JSON-RPC control commands
+    // - TCP port (default HARDWARE_CONFIG.atlas.tcpPort): For JSON-RPC control commands
     const ipAddress = processor.ipAddress
-    const httpPort = processor.port || 80
-    const tcpPort = processor.tcpPort || 5321  // Changed default from 23 to 5321
+    const httpPort = processor.port || HARDWARE_CONFIG.atlas.httpPort
+    const tcpPort = processor.tcpPort || HARDWARE_CONFIG.atlas.tcpPort
     const username = processor.username || undefined
     const password = processor.password || undefined
 

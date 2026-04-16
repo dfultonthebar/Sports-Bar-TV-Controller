@@ -45,5 +45,14 @@
             </intent-filter>
         </receiver>
 
+        <receiver
+            android:name=".ConfigReceiver"
+            android:exported="true"
+            android:enabled="true">
+            <intent-filter>
+                <action android:name="com.sportsbar.scout.CONFIG" />
+            </intent-filter>
+        </receiver>
+
     </application>
 </manifest>

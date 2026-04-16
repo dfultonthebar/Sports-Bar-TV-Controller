@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
 import { schema } from '@/db'
-import { eq, and } from 'drizzle-orm'
+import { eq, and, or } from 'drizzle-orm'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { logger } from '@sports-bar/logger'
@@ -66,9 +66,30 @@ export async function POST(request: NextRequest) {
     })
 
     if (plan.games.length === 0 || plan.games[0].assignments.length === 0) {
+      // Build an actionable error message so the bartender sees WHY it
+      // failed instead of a generic "no available TVs" that doesn't tell
+      // them whether the problem is the game, the inputs, or the channels.
+      const reasons: string[] = []
+      if (!game.channelNumber && !game.cableChannel && !game.directvChannel) {
+        reasons.push('game has no channel assigned on any device')
+      }
+      if (!allowedInputs || allowedInputs.length === 0) {
+        reasons.push('no inputs selected in Auto Pilot allowed-inputs settings')
+      }
+      if (!allowedOutputs || allowedOutputs.length === 0) {
+        reasons.push('no outputs selected in Auto Pilot allowed-outputs settings')
+      }
+      if (reasons.length === 0) {
+        reasons.push(
+          `none of the ${allowedInputs?.length || 0} allowed inputs can tune channel ${game.channelNumber || game.cableChannel || game.directvChannel || '?'}, or all allowed TVs are already busy`
+        )
+      }
+      logger.warn(
+        `[SINGLE_GAME] Cannot schedule ${game.homeTeam} vs ${game.awayTeam}: ${reasons.join('; ')}`
+      )
       return NextResponse.json({
         success: false,
-        error: 'No available TVs or inputs to schedule this game'
+        error: `Cannot schedule this game: ${reasons.join('; ')}`
       }, { status: 400 })
     }
 
@@ -103,13 +124,13 @@ export async function POST(request: NextRequest) {
 
       const deviceType = matrixInput.deviceType || ''
 
-      if (deviceType === 'Cable Box') {
+      if (deviceType === 'Cable Box' || deviceType === 'CableBox') {
         // Find IR device and tune cable box
         const irDevice = await db.select()
           .from(schema.irDevices)
           .where(
             and(
-              eq(schema.irDevices.deviceType, 'Cable Box'),
+              or(eq(schema.irDevices.deviceType, 'Cable Box'), eq(schema.irDevices.deviceType, 'CableBox')),
               eq(schema.irDevices.name, matrixInput.label)
             )
           )
@@ -134,15 +155,10 @@ export async function POST(request: NextRequest) {
           }
         }
       } else if (deviceType === 'DirecTV') {
-        // Load DirecTV devices and tune
-        const fs = await import('fs/promises')
-        const path = await import('path')
-        const devicesPath = path.join(process.cwd(), 'data', 'directv-devices.json')
-
+        // Load DirecTV device from database and tune
         try {
-          const devicesJson = await fs.readFile(devicesPath, 'utf-8')
-          const devicesData = JSON.parse(devicesJson)
-          const direcTVDevice = devicesData.devices.find((d: any) => d.name === matrixInput.label)
+          const { getDirecTVDeviceByName } = await import('@/lib/device-db')
+          const direcTVDevice = await getDirecTVDeviceByName(matrixInput.label)
 
           if (direcTVDevice) {
             const tuneResponse = await fetch(`http://localhost:3001/api/directv/${direcTVDevice.id}/tune`, {
