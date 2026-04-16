@@ -137,13 +137,13 @@ async function pingDevice(ip: string, brand: string, port: number, deviceId?: st
         // JSON parse failure — still reachable
       }
 
-      // Attempt Samsung token refresh via quick WebSocket connection.
-      // The ms.channel.connect response may include a refreshed token.
-      if (deviceId) {
-        refreshSamsungToken(ip, deviceId, authToken).catch(() => {
-          // Swallow errors — token refresh is best-effort
-        })
-      }
+      // NOTE: Samsung token refresh via WebSocket (port 8002) was removed
+      // from the status check. Opening a WebSocket to samsung.remote.control
+      // causes Samsung TVs to switch away from their current HDMI input to
+      // Samsung TV Plus / Smart Hub — this was the root cause of TV 1 going
+      // black at Stoneyard, Holmgren, and Appleton. Token refresh should
+      // only happen when we actually need to send a remote command, not
+      // during routine status polling.
     }
 
     return 'on'
