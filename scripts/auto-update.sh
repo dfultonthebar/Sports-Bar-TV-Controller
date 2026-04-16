@@ -311,7 +311,9 @@ run_checkpoint() {
   fi
 
   local decision
-  decision=$(grep -m1 '^DECISION:' "$out_file" || true)
+  # Try line-start first, then fall back to anywhere in the response.
+  # Claude sometimes writes a summary before the DECISION line.
+  decision=$(grep -m1 '^DECISION:' "$out_file" || grep -m1 'DECISION:' "$out_file" || true)
   log "Checkpoint $label: $decision"
   # Also dump full response to log for forensics
   log "--- Checkpoint $label full response ---"
