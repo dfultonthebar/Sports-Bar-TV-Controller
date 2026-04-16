@@ -37,8 +37,7 @@ CAPTURE_SCRIPT="$REPO_ROOT/scripts/capture-tv-macs.sh"
 # timezone token at the end of OnCalendar expressions). Change the zone if a
 # location is in a different timezone.
 SCHEDULES=(
-  "*-*-* 15:00:00 America/Chicago"
-  "*-*-* 22:00:00 America/Chicago"
+  "*-*-* 18:00:00 America/Chicago"
 )
 
 # Per-run timeout and polling interval. The script exits early once all
