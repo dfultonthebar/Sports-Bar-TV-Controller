@@ -298,11 +298,18 @@ async function seedBartenderLayout(): Promise<{ seeded: boolean; count: number }
     if (zones.length === 0) return { seeded: false, count: 0 }
     const rooms = data.rooms || []
 
+    // Normalize image URLs: JSON may use /api/uploads/ prefix, DB stores /uploads/
+    const normalizeImageUrl = (url?: string) =>
+      url ? url.replace('/api/uploads/', '/uploads/') : null
+
     const now = new Date().toISOString().replace('T', ' ').slice(0, 19)
     await db.insert(schema.bartenderLayouts).values({
       name: data.name || 'Bar Layout',
       zones: JSON.stringify(zones),
       rooms: JSON.stringify(rooms),
+      imageUrl: normalizeImageUrl(data.imageUrl),
+      originalFileUrl: normalizeImageUrl(data.imageUrl),
+      professionalImageUrl: normalizeImageUrl(data.professionalImageUrl),
       isDefault: true,
       isActive: true,
       displayOrder: 0,
