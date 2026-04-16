@@ -381,16 +381,21 @@ function parseOllamaResponse(
     for (const s of parsed.suggestions || []) {
       const gameIdx = (s.gameIndex || 0) - 1
       const game = games[gameIdx]
+      if (!game) continue
 
       const input = resolveInput(s.suggestedInputId || '', s.suggestedInput || '')
 
-      // Coerce channelNumber to string. The LLM sometimes returns it as a
-      // number ("channelNumber": 40) which then fails Zod validation on
-      // /api/schedules/bartender-schedule (requires string). Same for
-      // any output IDs (must be integers, not strings or mixed).
-      const channelNumberStr = s.channelNumber != null
-        ? String(s.channelNumber)
-        : (game?.channelNumber || '')
+      // CRITICAL: Don't trust the LLM's channel number — it hallucinates.
+      // Use the server-side resolved channel number based on the input type.
+      const inputType = input?.type || 'cable'
+      const isDirectv = inputType === 'directv' || inputType === 'satellite'
+      const channelNumberStr = isDirectv
+        ? (game.directvChannel || game.channelNumber || '')
+        : (game.channelNumber || game.directvChannel || '')
+
+      // Skip if we have no valid channel for this input type
+      if (!channelNumberStr) continue
+
       const suggestedOutputsInt: number[] = Array.isArray(s.suggestedOutputs)
         ? s.suggestedOutputs
             .map((o: any) => (typeof o === 'number' ? o : parseInt(String(o), 10)))
@@ -398,13 +403,13 @@ function parseOllamaResponse(
         : []
 
       suggestions.push({
-        gameId: game ? `game-${gameIdx}` : `game-unknown`,
-        homeTeam: s.homeTeam || game?.homeTeam || 'Unknown',
-        awayTeam: s.awayTeam || game?.awayTeam || 'Unknown',
-        league: s.league || game?.league || 'Unknown',
-        startTime: game?.time || new Date().toISOString(),
+        gameId: `game-${gameIdx}`,
+        homeTeam: game.homeTeam || 'Unknown',
+        awayTeam: game.awayTeam || 'Unknown',
+        league: game.league || 'Unknown',
+        startTime: game.time || new Date().toISOString(),
         channelNumber: channelNumberStr,
-        channelName: s.channelName || game?.channelName || '',
+        channelName: game.channelName || '',
         suggestedInput: input?.name || s.suggestedInput || 'Unknown',
         suggestedInputId: input?.id || '',
         suggestedDeviceId: input?.deviceId || '',
