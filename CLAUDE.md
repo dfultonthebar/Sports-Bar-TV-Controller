@@ -278,27 +278,19 @@ logger.debug('[COMPONENT] Debug info')
 **Enhanced Logging:** `packages/logger/src/enhanced-logger.ts` - Stores logs in database for System Admin analytics
 **Component Tags:** Use `[COMPONENT]` prefix for searchable log filtering (e.g., `[CEC]`, `[MATRIX]`, `[IR]`)
 
-#### 5. CEC Cable Box Control (Important for sports bars)
-**Problem:** Spectrum/Charter cable boxes have CEC disabled in firmware
-**Solution:** Must use IR control (iTach IP2IR) instead of CEC for Spectrum boxes
-**CEC Support:** Works with Xfinity/Comcast cable boxes, but NOT Spectrum
+#### 5. Cable Box Control (IR only — CEC is deprecated)
+**The Wolf Pack HDMI matrix does NOT pass CEC signals.** All cable box control uses IR via Global Cache iTach IP2IR devices. CEC code exists in the codebase from earlier development but is non-functional at all current locations and should be removed.
 
-**CEC Service:** `apps/web/src/lib/cable-box-cec-service.ts`
-- Channel tuning via HDMI-CEC user control codes
-- Power management
-- Pulse-Eight USB CEC adapter support (multiple adapters at `/dev/ttyACM*`)
-
-**Channel Tuning Flow:**
-1. Frontend sends channel number to `/api/channel-presets/tune`
-2. API looks up cable box CEC device path
-3. Builds digit sequence (e.g., "27" → ["2", "7", "ENTER"])
-4. Sends CEC user control codes via `cec-client` command
-5. Logs success/failure to `CECCommandLog` table
+**Cable Box Control Method:** IR commands via Global Cache iTach IP2IR
+- Channel tuning sends learned IR codes for each digit
+- Power management via IR power toggle
+- IR codes stored in `IRCommand` table, learned via the IR Learning Panel
 
 **Important Files:**
-- `apps/web/src/lib/cec-commands.ts` - CEC user control code mappings
-- `apps/web/src/components/remotes/CableBoxRemote.tsx` - Smart routing (CEC vs IR)
+- `apps/web/src/components/remotes/CableBoxRemote.tsx` - Cable box remote (IR path)
 - `apps/web/src/components/BartenderRemoteSelector.tsx` - Channel preset UI
+
+**Legacy CEC code (to be removed):** `cable-box-cec-service.ts`, `cec-commands.ts`, CEC API routes, `CECCommandLog` table writes, EverPass CEC commands. These are dead code — the Wolf Pack matrix blocks CEC passthrough, and Spectrum boxes have CEC disabled in firmware.
 
 #### 6. Crestron Matrix Switcher Control
 **Package:** `packages/crestron/`
@@ -536,10 +528,10 @@ pm2 restart sports-bar-tv-controller
 - Production: Always `/home/ubuntu/sports-bar-data/production.db`
 - Configured in: `drizzle.config.ts` and environment variables
 
-### 5. CEC vs IR Control
-- **Spectrum cable boxes:** CEC is disabled by firmware → Use IR control
-- **Xfinity cable boxes:** CEC works
-- **Check device type** before assuming CEC support
+### 5. No CEC — IR Only
+- **Wolf Pack matrix does NOT pass CEC signals** — CEC cannot work at any location using the matrix
+- **All cable box control uses IR** via Global Cache iTach IP2IR
+- **CEC code is legacy dead weight** — do not add new CEC features, plan to remove existing CEC code
 
 ### 6. Device Data: DB is Source of Truth
 - Devices are now stored in database tables (`DirecTVDevice`, `FireTVDevice`), not JSON files
