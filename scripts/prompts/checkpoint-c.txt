@@ -113,6 +113,35 @@ it undoes a successful update and wastes 2-3 minutes. The
 deterministic verify layer already protected the app before you saw
 this prompt; your job is a second opinion, not a veto of the first.
 
+## CLAUDE.md feedback loop — write field discoveries back
+
+After making your GO/CAUTION decision but BEFORE outputting it, check
+if this update session surfaced any lessons that should be documented
+in CLAUDE.md for all locations. Examples:
+
+- A new gotcha discovered during this update (e.g., a column drizzle-kit
+  missed, a cache issue, a data file that got blanked)
+- A convention that was violated and caused a problem
+- A new table or feature that needs a "Common Gotchas" entry
+- Hardware behavior that contradicts what CLAUDE.md says
+
+If you find something worth adding:
+1. Read the relevant section of CLAUDE.md
+2. Add or update the entry (keep it concise — one paragraph max)
+3. `git add CLAUDE.md && git commit -m "docs: update CLAUDE.md with field discovery from auto-update"`
+4. Do NOT push — the auto-update script handles the push after you finish
+
+Also check your memory files at
+~/.claude/projects/-home-ubuntu-Sports-Bar-TV-Controller/memory/
+for any learnings that should be promoted to CLAUDE.md (they apply to
+all locations, not just this host). If a memory contains a universal
+rule, add it to CLAUDE.md's Common Gotchas or Development Workflow
+section and note in the memory that it's now documented in CLAUDE.md.
+
+This makes CLAUDE.md a living document — field experience flows back
+into the authoritative rulebook so every location and every future
+session benefits.
+
 ## OUTPUT FORMAT — first line ONLY
 
 ```

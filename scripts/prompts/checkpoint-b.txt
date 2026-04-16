@@ -5,6 +5,26 @@ schema. Before I run `npm run build`, confirm the merged state is coherent
 with this location's configuration.
 
 REQUIRED READS:
+0. Read /home/ubuntu/Sports-Bar-TV-Controller/CLAUDE.md IN FULL before
+   anything else. This is the project's authoritative rulebook — it may
+   have been updated by the merge you're reviewing. Then:
+   a. Read ~/.claude/projects/-home-ubuntu-Sports-Bar-TV-Controller/memory/MEMORY.md
+      to see what's already saved.
+   b. For every section of CLAUDE.md (architecture, conventions, gotchas,
+      deployment workflow, hardware config, version bumping, commit
+      strategy), check if there's a corresponding memory entry. If not,
+      create one. Key items that MUST have memory entries:
+      - Version bumping rules (minor vs patch, required on every push)
+      - Commit strategy (software to main first, location data stays on branch)
+      - Turbo cache gotcha (force rebuild after package changes)
+      - Location data merge risk (main has empty templates)
+      - drizzle-kit push silent failure mode (pre-existing index aborts)
+      - PM2 restart method (delete+start, not restart --update-env)
+      - Request body consumption bug (never call request.json() after validateRequestBody)
+      - CEC vs IR control (Spectrum = IR only)
+      - Current location hardware details (IPs, devices, rooms)
+   c. Update any memories that conflict with what CLAUDE.md now says.
+   d. Remove memories that reference files/features that no longer exist.
 1. The merge commit's diff: run `git -C /home/ubuntu/Sports-Bar-TV-Controller show HEAD`
 2. Any .md docs in /home/ubuntu/Sports-Bar-TV-Controller/docs/ that were
    modified by the merge — read each in full. LOCATION_UPDATE_NOTES.md

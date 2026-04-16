@@ -2291,9 +2291,13 @@ export const bartenderLayouts = sqliteTable('BartenderLayout', {
   professionalImageUrl: text('professionalImageUrl'),
   
   // TV zone configuration (JSON array of Zone objects)
-  // Each zone: { id, outputNumber, x, y, width, height, label, confidence }
+  // Each zone: { id, outputNumber, x, y, width, height, label, room, confidence }
   zones: text('zones').notNull().default('[]'),
-  
+
+  // Room definitions (JSON array of Room objects)
+  // Each room: { id, name, color, imageUrl? }
+  rooms: text('rooms').notNull().default('[]'),
+
   // Layout settings
   isDefault: integer('isDefault', { mode: 'boolean' }).notNull().default(false),
   isActive: integer('isActive', { mode: 'boolean' }).notNull().default(true),

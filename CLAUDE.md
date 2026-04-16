@@ -278,27 +278,19 @@ logger.debug('[COMPONENT] Debug info')
 **Enhanced Logging:** `packages/logger/src/enhanced-logger.ts` - Stores logs in database for System Admin analytics
 **Component Tags:** Use `[COMPONENT]` prefix for searchable log filtering (e.g., `[CEC]`, `[MATRIX]`, `[IR]`)
 
-#### 5. CEC Cable Box Control (Important for sports bars)
-**Problem:** Spectrum/Charter cable boxes have CEC disabled in firmware
-**Solution:** Must use IR control (iTach IP2IR) instead of CEC for Spectrum boxes
-**CEC Support:** Works with Xfinity/Comcast cable boxes, but NOT Spectrum
+#### 5. Cable Box Control (IR only — CEC is deprecated)
+**The Wolf Pack HDMI matrix does NOT pass CEC signals.** All cable box control uses IR via Global Cache iTach IP2IR devices. CEC code exists in the codebase from earlier development but is non-functional at all current locations and should be removed.
 
-**CEC Service:** `apps/web/src/lib/cable-box-cec-service.ts`
-- Channel tuning via HDMI-CEC user control codes
-- Power management
-- Pulse-Eight USB CEC adapter support (multiple adapters at `/dev/ttyACM*`)
-
-**Channel Tuning Flow:**
-1. Frontend sends channel number to `/api/channel-presets/tune`
-2. API looks up cable box CEC device path
-3. Builds digit sequence (e.g., "27" → ["2", "7", "ENTER"])
-4. Sends CEC user control codes via `cec-client` command
-5. Logs success/failure to `CECCommandLog` table
+**Cable Box Control Method:** IR commands via Global Cache iTach IP2IR
+- Channel tuning sends learned IR codes for each digit
+- Power management via IR power toggle
+- IR codes stored in `IRCommand` table, learned via the IR Learning Panel
 
 **Important Files:**
-- `apps/web/src/lib/cec-commands.ts` - CEC user control code mappings
-- `apps/web/src/components/remotes/CableBoxRemote.tsx` - Smart routing (CEC vs IR)
+- `apps/web/src/components/remotes/CableBoxRemote.tsx` - Cable box remote (IR path)
 - `apps/web/src/components/BartenderRemoteSelector.tsx` - Channel preset UI
+
+**Legacy CEC code (to be removed):** `cable-box-cec-service.ts`, `cec-commands.ts`, CEC API routes, `CECCommandLog` table writes, EverPass CEC commands. These are dead code — the Wolf Pack matrix blocks CEC passthrough, and Spectrum boxes have CEC disabled in firmware.
 
 #### 6. Crestron Matrix Switcher Control
 **Package:** `packages/crestron/`
@@ -527,19 +519,24 @@ export async function GET(request: NextRequest) {
 
 ### 3. PM2 Requires Rebuild After Code Changes
 ```bash
-npm run build  # Required before restart
-pm2 restart sports-bar-tv-controller
+# CRITICAL: Use --force to bypass Turbo cache for package changes
+rm -rf apps/web/.next .turbo node_modules/.cache
+npx turbo run build --force
+pm2 delete sports-bar-tv-controller && pm2 start ecosystem.config.js
 ```
+**Why `--force`:** Turbo caches package builds. If you change code in `packages/*/src/`, plain `npm run build` may serve the old compiled version. This caused the Wolf Pack routing pre-check fix (v2.11.7) to not take effect at Holmgren Way despite correct source code.
+
+**Why `delete` + `start` instead of `restart`:** `pm2 restart` and `--update-env` do NOT re-read `.env` via `ecosystem.config.js`. Only `delete` + `start` forces PM2 to re-execute `require('dotenv').config()` and pick up new env variables like `LOCATION_ID`.
 
 ### 4. Database Location Mismatch
 - Development: May use different database
 - Production: Always `/home/ubuntu/sports-bar-data/production.db`
 - Configured in: `drizzle.config.ts` and environment variables
 
-### 5. CEC vs IR Control
-- **Spectrum cable boxes:** CEC is disabled by firmware → Use IR control
-- **Xfinity cable boxes:** CEC works
-- **Check device type** before assuming CEC support
+### 5. No CEC — IR Only
+- **Wolf Pack matrix does NOT pass CEC signals** — CEC cannot work at any location using the matrix
+- **All cable box control uses IR** via Global Cache iTach IP2IR
+- **CEC code is legacy dead weight** — do not add new CEC features, plan to remove existing CEC code
 
 ### 6. Device Data: DB is Source of Truth
 - Devices are now stored in database tables (`DirecTVDevice`, `FireTVDevice`), not JSON files
@@ -547,6 +544,24 @@ pm2 restart sports-bar-tv-controller
 - All CRUD operations go through `apps/web/src/lib/device-db.ts`
 - To re-seed from JSON: delete rows from the DB table, restart the app
 - The `@sports-bar/directv` package still reads JSON for guide fetching (known tech debt)
+
+### 7. drizzle-kit push Fails Silently on Pre-Existing Indexes
+`npx drizzle-kit push` aborts entirely when it hits an index that already exists (e.g., `ApiKey_provider_keyName_key already exists`). Any tables or columns scheduled to be created AFTER that index in the push order are silently skipped. **Always verify new columns/tables exist after push:**
+```bash
+sqlite3 /home/ubuntu/sports-bar-data/production.db "PRAGMA table_info(TableName);"
+sqlite3 /home/ubuntu/sports-bar-data/production.db ".tables"
+```
+If a column is missing, add it manually with `ALTER TABLE ... ADD COLUMN`.
+
+### 8. Location Data Files Get Blanked on Merge from Main
+Main has empty template JSON files (`tv-layout.json` = 61 bytes, `directv-devices.json` = 15 bytes). When merging main into a location branch, git can silently overwrite real data with these templates if there's no conflict. **After every merge from main, verify:**
+```bash
+wc -c apps/web/data/tv-layout.json  # Must be >500 bytes at a configured location
+```
+If blanked, restore: `git show HEAD~1:apps/web/data/tv-layout.json > apps/web/data/tv-layout.json`
+
+### 9. BartenderLayout Must Include Rooms
+The bartender Video tab reads both `zones` and `rooms` from the `BartenderLayout` DB table (migrated from `tv-layout.json` in v2.11.0). If `rooms` is empty or the column is missing, the room filter tabs won't appear. The auto-seeder in `seed-from-json.ts` handles this for fresh installs. For existing locations, ensure the `rooms` column exists and is populated.
 
 ## Development Workflow
 
@@ -560,12 +575,14 @@ pm2 restart sports-bar-tv-controller
 
 4. **Force-rebuild when Turbo cache lies.** If `npm run build` completes in under 1 second with `FULL TURBO` and all tasks cached, the source changes did NOT get compiled. Run `npx turbo run build --force` (or `rm -rf apps/web/.next && npm run build`) to bypass the cache. This commonly happens after switching branches or cherry-picking.
 
-### Version Bumping (REQUIRED)
-**Always bump the version in root `package.json` when making code changes:**
-- **Minor bump** (2.1.0 → 2.2.0): Feature additions, migrations, significant changes
-- **Patch bump** (2.1.0 → 2.1.1): Bug fixes, small adjustments
+5. **When told to "remember" something, update CLAUDE.md too.** Memory files are per-host — only this machine's future sessions see them. CLAUDE.md is in the shared repo and gets merged to every location. When the user says "remember X", save to local memory AND add the rule to the appropriate section of CLAUDE.md, then commit+push with a version bump. This is how rules propagate to Lucky's, Holmgren, Graystone, Leg Lamp, and any future location.
 
-This is critical for multi-location deployments so each location knows what version they're running.
+6. **Always use `scripts/auto-update.sh` for updates.** When asked to update a location or "auto update yourself", run `bash scripts/auto-update.sh --triggered-by=manual_cli`. Never manually merge main, run npm ci, or restart PM2 — the script handles conflict resolution, DB schema push, backup creation, Turbo cache busting, PM2 restart, verify-install checks, and Claude checkpoint reviews. Manual updates skip safety checks and are error-prone.
+
+### Version Bumping (REQUIRED — every commit to main)
+**Every commit pushed to `main` MUST include a version bump in root `package.json`.** Do not push code changes and bump the version separately — include it in the same commit or at minimum the same push. A commit without a version bump means two locations can report the same version while running different code, making debugging impossible.
+- **Minor bump** (2.1.0 → 2.2.0): Feature additions, migrations, significant changes
+- **Patch bump** (2.1.0 → 2.1.1): Bug fixes, docs, small adjustments
 
 ### Making Schema Changes
 ```bash

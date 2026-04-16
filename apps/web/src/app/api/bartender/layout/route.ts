@@ -42,6 +42,7 @@ export async function GET(request: NextRequest) {
       const layout = {
         name: anyActive.name,
         zones: JSON.parse(anyActive.zones || '[]'),
+        rooms: JSON.parse((anyActive as any).rooms || '[]'),
         // InteractiveBartenderLayout reads layout.imageUrl / .professionalImageUrl.
         // Keep backgroundImage for older consumers (the layout-editor page).
         imageUrl: anyActive.imageUrl || null,
@@ -55,6 +56,7 @@ export async function GET(request: NextRequest) {
     const layout = {
       name: row.name,
       zones: JSON.parse(row.zones || '[]'),
+      rooms: JSON.parse((row as any).rooms || '[]'),
       imageUrl: row.imageUrl || null,
       professionalImageUrl: row.professionalImageUrl || null,
       backgroundImage: row.imageUrl || row.professionalImageUrl || null,
@@ -75,6 +77,7 @@ export async function POST(request: NextRequest) {
     layout: z.object({
       name: z.string().optional().default('Bar Layout'),
       zones: z.array(z.any()).optional().default([]),
+      rooms: z.array(z.any()).optional().default([]),
       backgroundImage: z.string().nullable().optional(),
       id: z.string().optional(),
     }),
@@ -91,6 +94,7 @@ export async function POST(request: NextRequest) {
         .set({
           name: layout.name,
           zones: JSON.stringify(layout.zones),
+          rooms: JSON.stringify(layout.rooms),
           imageUrl: layout.backgroundImage || null,
           updatedAt: now,
         })
