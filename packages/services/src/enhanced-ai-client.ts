@@ -4,6 +4,7 @@
  */
 
 import { logger } from '@sports-bar/logger'
+import { HARDWARE_CONFIG } from '@sports-bar/config'
 
 export interface ScriptGenerationRequest {
   description: string
@@ -28,7 +29,7 @@ export interface AIResponse {
 }
 
 // Local Ollama configuration
-const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || 'http://localhost:11434'
+const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || HARDWARE_CONFIG.ollama.baseUrl
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'llama3.2'
 
 // Health check cache configuration

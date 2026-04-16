@@ -10,6 +10,7 @@
 import { NextRequest } from 'next/server'
 import { atlasMeterManager } from '@/lib/atlas-meter-manager'
 import { logger } from '@sports-bar/logger'
+import { HARDWARE_CONFIG } from '@/lib/hardware-config'
 
 // Store zone metadata (names, mute states) - refreshed periodically
 const zoneMetadataCache = new Map<string, {
@@ -38,7 +39,7 @@ async function fetchZoneMetadata(processorIp: string): Promise<{ names: string[]
     const { getAtlasClient, releaseAtlasClient } = await import('@/lib/atlas-client-manager')
     const client = await getAtlasClient(
       `processor-${processorIp}`,
-      { ipAddress: processorIp, tcpPort: 5321, timeout: 5000 }
+      { ipAddress: processorIp, tcpPort: HARDWARE_CONFIG.atlas.tcpPort, timeout: 5000 }
     )
 
     const names: string[] = []
@@ -72,7 +73,7 @@ async function fetchZoneMetadata(processorIp: string): Promise<{ names: string[]
       muteStates.push(muted)
     }
 
-    releaseAtlasClient(processorIp, 5321)
+    releaseAtlasClient(processorIp, HARDWARE_CONFIG.atlas.tcpPort)
 
     // Cache the metadata
     zoneMetadataCache.set(processorIp, {
@@ -104,7 +105,7 @@ async function fetchSourceMetadata(processorIp: string, sourceCount: number = 14
     const { getAtlasClient, releaseAtlasClient } = await import('@/lib/atlas-client-manager')
     const client = await getAtlasClient(
       `processor-${processorIp}`,
-      { ipAddress: processorIp, tcpPort: 5321, timeout: 5000 }
+      { ipAddress: processorIp, tcpPort: HARDWARE_CONFIG.atlas.tcpPort, timeout: 5000 }
     )
 
     const names: string[] = []
@@ -129,7 +130,7 @@ async function fetchSourceMetadata(processorIp: string, sourceCount: number = 14
       names.push(name)
     }
 
-    releaseAtlasClient(processorIp, 5321)
+    releaseAtlasClient(processorIp, HARDWARE_CONFIG.atlas.tcpPort)
 
     // Cache the metadata
     sourceMetadataCache.set(processorIp, {
@@ -178,30 +179,26 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // Pre-fetch zone metadata
-  let zoneNames: string[] = []
-  let muteStates: boolean[] = []
-  try {
-    const metadata = await fetchZoneMetadata(processorIp)
+  // Start with default names — fetch real metadata in background so SSE stream isn't blocked
+  let zoneNames: string[] = Array.from({ length: 8 }, (_, i) => `Zone ${i + 1}`)
+  let muteStates: boolean[] = Array(8).fill(false)
+  let sourceNames: string[] = Array.from({ length: 14 }, (_, i) => `Input ${i + 1}`)
+
+  // Fetch metadata asynchronously (updates names after first successful fetch)
+  fetchZoneMetadata(processorIp).then(metadata => {
     zoneNames = metadata.names
     muteStates = metadata.muteStates
-  } catch (error) {
+  }).catch(error => {
     logger.error(`[METER_STREAM] Failed to fetch zone metadata:`, error)
-    zoneNames = Array.from({ length: 8 }, (_, i) => `Zone ${i + 1}`)
-    muteStates = Array(8).fill(false)
-  }
+  })
 
-  // Pre-fetch source/input metadata
-  let sourceNames: string[] = []
-  try {
-    const sourceMetadata = await fetchSourceMetadata(processorIp, 14)
+  fetchSourceMetadata(processorIp, 14).then(sourceMetadata => {
     sourceNames = sourceMetadata.names
-  } catch (error) {
+  }).catch(error => {
     logger.error(`[METER_STREAM] Failed to fetch source metadata:`, error)
-    sourceNames = Array.from({ length: 14 }, (_, i) => `Input ${i + 1}`)
-  }
+  })
 
-  // Create a TransformStream for SSE - more reliable than ReadableStream
+  // Create a ReadableStream for SSE
   const encoder = new TextEncoder()
 
   const stream = new ReadableStream({

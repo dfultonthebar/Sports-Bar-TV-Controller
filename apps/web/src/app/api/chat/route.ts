@@ -19,6 +19,7 @@ import {
   createDefaultContext,
   ToolDefinition,
 } from '@/lib/ai-tools'
+import { HARDWARE_CONFIG } from '@/lib/hardware-config'
 
 interface ChatMessage {
   role: 'user' | 'assistant' | 'system' | 'tool'
@@ -47,7 +48,7 @@ interface AIResponse {
 }
 
 // Local Ollama configuration
-const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || 'http://localhost:11434'
+const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || HARDWARE_CONFIG.ollama.baseUrl
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'phi3:mini' // OPTIMIZED: Faster model
 
 export async function POST(request: NextRequest) {

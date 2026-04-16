@@ -5,6 +5,7 @@
 
 import { db, schema, eq, and, lt } from '@sports-bar/database'
 import { logger } from '@sports-bar/logger'
+import { recordClippingEvent, recordSignalSnapshot } from './atlas-learning-collector'
 
 interface MeterReading {
   inputNumber: number
@@ -16,6 +17,8 @@ interface MeterReading {
 
 export class AtlasMeterService {
   private monitoringIntervals: Map<string, NodeJS.Timeout> = new Map()
+  private lastSnapshotTime: Map<string, number> = new Map()
+  private static SNAPSHOT_INTERVAL_MS = 5 * 60 * 1000 // 5 minutes
 
   /**
    * Start monitoring input levels for a processor
@@ -130,6 +133,35 @@ export class AtlasMeterService {
         .run()
 
       logger.debug(`Stored ${meterReadings.length} meter readings for ${processor.name}`)
+
+      // Record clipping events for learning (fire-and-forget)
+      for (const reading of meterReadings) {
+        if (reading.clipping) {
+          recordClippingEvent({
+            processorId: processor.id,
+            inputNumber: reading.inputNumber,
+            level: reading.level,
+            peak: reading.peak,
+          })
+        }
+      }
+
+      // Record periodic signal snapshot (throttled to every 5 minutes)
+      const lastSnapshot = this.lastSnapshotTime.get(processor.id) || 0
+      if (Date.now() - lastSnapshot >= AtlasMeterService.SNAPSHOT_INTERVAL_MS) {
+        this.lastSnapshotTime.set(processor.id, Date.now())
+        const signalLevels: Record<number, number> = {}
+        const clippingInputs: number[] = []
+        for (const reading of meterReadings) {
+          signalLevels[reading.inputNumber] = reading.level
+          if (reading.clipping) clippingInputs.push(reading.inputNumber)
+        }
+        recordSignalSnapshot({
+          processorId: processor.id,
+          signalLevels,
+          clippingInputs,
+        })
+      }
 
     } catch (error) {
       logger.error(`Failed to collect meter data for ${processorId}`, { error })

@@ -5,6 +5,7 @@ import { logger } from '@sports-bar/logger'
 import { z } from 'zod'
 import { validateQueryParams, isValidationError } from '@/lib/validation'
 import { atlasMeterManager } from '@/lib/atlas-meter-manager'
+import { HARDWARE_CONFIG } from '@/lib/hardware-config'
 
 export async function GET(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
@@ -49,7 +50,7 @@ export async function GET(request: NextRequest) {
       `processor-${processorIp}`,
       {
         ipAddress: processorIp,
-        tcpPort: 5321,
+        tcpPort: HARDWARE_CONFIG.atlas.tcpPort,
         timeout: 5000
       }
     )
@@ -69,7 +70,7 @@ export async function GET(request: NextRequest) {
 
     // Don't disconnect - this is a shared persistent client
     // Just release our reference so it can be cleaned up later if idle
-    releaseAtlasClient(processorIp, 5321)
+    releaseAtlasClient(processorIp, HARDWARE_CONFIG.atlas.tcpPort)
 
     // Add names to meter data
     const metersWithNames = meters.map((meter, index) => {

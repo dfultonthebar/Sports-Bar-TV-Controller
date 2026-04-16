@@ -96,6 +96,9 @@ ecosystem.config.js
 *.bak
 *.backup
 *.backup.*
+*.backup[0-9]*
+*.orig
+*.old
 core
 
 # Git files
@@ -122,11 +125,27 @@ rag-data/
 /log/
 
 # FireStick Scout build artifacts
+# Android build outputs (firestick-scout)
 firestick-scout/.gradle/
 firestick-scout/gradle-dist/
 firestick-scout/gradle.zip
 firestick-scout/app/build/
+firestick-scout/build/
 firestick-scout/local.properties
+firestick-scout/*.apk
+firestick-scout/app/release/
+firestick-scout/app/debug/
+
+# Binary blobs — never commit these
+*.apk
+*.zip
+*.sqlite
+*.sqlite-journal
+*.db-journal
+database_backups/
+
+# Claude Code session-local settings (per-user, never ship on main)
+.claude/settings.local.json
 
 # Playwright screenshots (regenerated during testing)
 playwright-screenshots/

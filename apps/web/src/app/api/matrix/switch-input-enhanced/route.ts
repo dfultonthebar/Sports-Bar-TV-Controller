@@ -6,6 +6,8 @@ import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { z } from 'zod'
 import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
+import { db, schema } from '@/db'
+import { eq } from 'drizzle-orm'
 
 interface MatrixSwitchRequest {
   input: number
@@ -81,9 +83,22 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Get Wolf Pack configuration
-    const wolfPackHost = process.env.WOLFPACK_HOST || '192.168.1.100'
-    const wolfPackPort = parseInt(process.env.WOLFPACK_PORT || '23')
+    // Get Wolf Pack configuration from DB
+    const matrixConfig = await db
+      .select()
+      .from(schema.matrixConfigurations)
+      .where(eq(schema.matrixConfigurations.isActive, true))
+      .limit(1)
+      .get()
+
+    if (!matrixConfig?.ipAddress) {
+      return NextResponse.json(
+        { error: 'No active Wolf Pack matrix is configured. Configure one in Matrix Control before routing.' },
+        { status: 503 }
+      )
+    }
+    const wolfPackHost = matrixConfig.ipAddress
+    const wolfPackPort = matrixConfig.tcpPort
 
     await enhancedLogger.info(
       'hardware',
@@ -289,11 +304,23 @@ export async function GET(request: NextRequest) {
       'Matrix status check requested'
     )
 
-    // Return current matrix status (this would be enhanced to read actual status)
+    const matrixConfig = await db
+      .select()
+      .from(schema.matrixConfigurations)
+      .where(eq(schema.matrixConfigurations.isActive, true))
+      .limit(1)
+      .get()
+
+    if (!matrixConfig?.ipAddress) {
+      return NextResponse.json(
+        { status: 'unconfigured', error: 'No active Wolf Pack matrix in MatrixConfiguration' },
+        { status: 503 }
+      )
+    }
     return NextResponse.json({
       status: 'online',
-      host: process.env.WOLFPACK_HOST || '192.168.1.100',
-      port: parseInt(process.env.WOLFPACK_PORT || '23'),
+      host: matrixConfig.ipAddress,
+      port: matrixConfig.tcpPort,
       lastUpdated: new Date().toISOString()
     })
   } catch (error) {

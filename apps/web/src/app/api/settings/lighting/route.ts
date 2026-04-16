@@ -13,12 +13,14 @@ import { logger } from '@sports-bar/logger'
 const SETTING_KEYS = {
   DMX_ENABLED: 'dmx_lighting_enabled',
   COMMERCIAL_ENABLED: 'commercial_lighting_enabled',
+  DJ_ENABLED: 'dj_controls_enabled',
 }
 
 // Default values if settings don't exist
 const DEFAULTS = {
   [SETTING_KEYS.DMX_ENABLED]: 'false',
   [SETTING_KEYS.COMMERCIAL_ENABLED]: 'false',
+  [SETTING_KEYS.DJ_ENABLED]: 'false',
 }
 
 async function getSetting(key: string): Promise<string> {
@@ -59,9 +61,10 @@ async function setSetting(key: string, value: string, description?: string): Pro
 
 export async function GET() {
   try {
-    const [dmxEnabled, commercialEnabled] = await Promise.all([
+    const [dmxEnabled, commercialEnabled, djEnabled] = await Promise.all([
       getSetting(SETTING_KEYS.DMX_ENABLED),
       getSetting(SETTING_KEYS.COMMERCIAL_ENABLED),
+      getSetting(SETTING_KEYS.DJ_ENABLED),
     ])
 
     return NextResponse.json({
@@ -69,6 +72,7 @@ export async function GET() {
       data: {
         dmxLightingEnabled: dmxEnabled === 'true',
         commercialLightingEnabled: commercialEnabled === 'true',
+        djControlsEnabled: djEnabled === 'true',
       },
     })
   } catch (error: any) {
@@ -83,7 +87,7 @@ export async function GET() {
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json()
-    const { dmxLightingEnabled, commercialLightingEnabled } = body
+    const { dmxLightingEnabled, commercialLightingEnabled, djControlsEnabled } = body
 
     const updates: Promise<void>[] = []
 
@@ -107,17 +111,29 @@ export async function PUT(request: NextRequest) {
       )
     }
 
+    if (typeof djControlsEnabled === 'boolean') {
+      updates.push(
+        setSetting(
+          SETTING_KEYS.DJ_ENABLED,
+          djControlsEnabled.toString(),
+          'Enable DJ controls on Bartender Remote'
+        )
+      )
+    }
+
     await Promise.all(updates)
 
     // Fetch updated values
-    const [dmxEnabled, commercialEnabled] = await Promise.all([
+    const [dmxEnabled, commercialEnabled, djEnabled] = await Promise.all([
       getSetting(SETTING_KEYS.DMX_ENABLED),
       getSetting(SETTING_KEYS.COMMERCIAL_ENABLED),
+      getSetting(SETTING_KEYS.DJ_ENABLED),
     ])
 
-    logger.info('[SETTINGS] Lighting settings updated', {
+    logger.info('[SETTINGS] Bartender remote settings updated', {
       dmxLightingEnabled: dmxEnabled === 'true',
       commercialLightingEnabled: commercialEnabled === 'true',
+      djControlsEnabled: djEnabled === 'true',
     })
 
     return NextResponse.json({
@@ -125,6 +141,7 @@ export async function PUT(request: NextRequest) {
       data: {
         dmxLightingEnabled: dmxEnabled === 'true',
         commercialLightingEnabled: commercialEnabled === 'true',
+        djControlsEnabled: djEnabled === 'true',
       },
     })
   } catch (error: any) {

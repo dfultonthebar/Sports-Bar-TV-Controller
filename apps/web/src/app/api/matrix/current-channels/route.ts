@@ -6,6 +6,73 @@ import { logger } from '@sports-bar/logger'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
+import { findFirst, update as dbUpdate } from '@/lib/db-helpers'
+import { loadDirecTVDevices } from '@/lib/device-db'
+
+// Poll all DirecTV receivers for their current channel and update the DB
+async function pollDirecTVChannels() {
+  try {
+    const devicesData = await loadDirecTVDevices()
+
+    await Promise.allSettled(
+      (devicesData.devices || []).map(async (device: any) => {
+        if (!device.ipAddress || !device.inputChannel) return
+
+        try {
+          const controller = new AbortController()
+          const timeout = setTimeout(() => controller.abort(), 2000)
+          const response = await fetch(`http://${device.ipAddress}:${device.port || 8080}/tv/getTuned`, {
+            signal: controller.signal,
+          })
+          clearTimeout(timeout)
+
+          if (!response.ok) return
+          const data = await response.json()
+          if (data.status?.code !== 200 || !data.major) return
+
+          const channelNumber = String(data.major)
+          const channelName = data.callsign || null
+          const inputNum = device.inputChannel
+          const now = new Date().toISOString()
+
+          const existing = await findFirst('inputCurrentChannels', {
+            where: eq(schema.inputCurrentChannels.inputNum, inputNum)
+          })
+
+          if (existing) {
+            // Only update if channel changed
+            if (existing.channelNumber !== channelNumber) {
+              await dbUpdate('inputCurrentChannels', eq(schema.inputCurrentChannels.id, existing.id), {
+                channelNumber,
+                channelName,
+                deviceType: 'directv',
+                lastTuned: now,
+                updatedAt: now,
+              })
+            }
+          } else {
+            await db.insert(schema.inputCurrentChannels).values({
+              id: crypto.randomUUID(),
+              inputNum,
+              inputLabel: device.name,
+              deviceType: 'directv',
+              deviceId: device.id,
+              channelNumber,
+              channelName,
+              lastTuned: now,
+              updatedAt: now,
+            })
+          }
+        } catch {
+          // Skip unreachable receivers
+        }
+      })
+    )
+  } catch {
+    // Ignore errors
+  }
+}
+
 // GET /api/matrix/current-channels - Get current channel info for all inputs
 export async function GET(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.DEFAULT)
@@ -14,6 +81,9 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    // Poll DirecTV receivers for live channel data (fire-and-forget update to DB)
+    pollDirecTVChannels().catch(() => {})
+
     // Get all current channel records
     const currentChannels = await db
       .select()

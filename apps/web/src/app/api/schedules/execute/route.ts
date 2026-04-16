@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db'
 import { findMany, inArray } from '@/lib/db-helpers'
 import { schema } from '@/db'
-import { eq, and, sql } from 'drizzle-orm'
+import { eq, and, or, sql } from 'drizzle-orm'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
@@ -1164,6 +1164,7 @@ async function changeChannel(input: any, channel: string) {
     const deviceType = input.deviceType || input.inputType;
     switch (deviceType) {
       case 'Cable Box':
+      case 'CableBox':
         return await changeCableBoxChannel(input, channel);
 
       case 'DirecTV':
@@ -1189,7 +1190,7 @@ async function changeCableBoxChannel(input: any, channel: string) {
       .from(schema.irDevices)
       .where(
         and(
-          eq(schema.irDevices.deviceType, 'Cable Box'),
+          or(eq(schema.irDevices.deviceType, 'Cable Box'), eq(schema.irDevices.deviceType, 'CableBox')),
           eq(schema.irDevices.name, input.label)
         )
       )
@@ -1315,15 +1316,9 @@ async function changeCableBoxChannel(input: any, channel: string) {
 
 async function changeDirectTVChannel(input: any, channel: string) {
   try {
-    // Load DirecTV devices from JSON file
-    const fs = await import('fs/promises');
-    const path = await import('path');
-    const devicesPath = path.join(process.cwd(), 'data', 'directv-devices.json');
-    const devicesJson = await fs.readFile(devicesPath, 'utf-8');
-    const devicesData = JSON.parse(devicesJson);
-
-    // Find DirecTV device by matching input label
-    const direcTVDevice = devicesData.devices.find((d: any) => d.name === input.label);
+    // Load DirecTV device from database by matching input label
+    const { getDirecTVDeviceByName } = await import('@/lib/device-db');
+    const direcTVDevice = await getDirecTVDeviceByName(input.label);
 
     if (!direcTVDevice) {
       logger.error(`No DirecTV device found for: ${input.label}`);

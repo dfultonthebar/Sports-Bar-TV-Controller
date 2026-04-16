@@ -8,6 +8,7 @@ import { z } from 'zod'
 import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 import { db, schema } from '@/db'
 import { eq } from 'drizzle-orm'
+import { updateRoutesCache } from '@/app/api/matrix/routes/route'
 
 
 export async function POST(request: NextRequest) {
@@ -38,10 +39,20 @@ export async function POST(request: NextRequest) {
 
   try {
 
+    // Get active matrix config for port limits
+    const activeConfig = await db.select()
+      .from(schema.matrixConfigurations)
+      .where(eq(schema.matrixConfigurations.isActive, true))
+      .limit(1)
+      .get()
+
+    const maxInput = activeConfig?.inputCount || 48
+    const maxOutput = activeConfig?.outputCount || 48
+
     // Validate input parameters
-    if (!inputNum || !outputNum || inputNum < 1 || outputNum < 1 || inputNum > 36 || outputNum > 36) {
+    if (!inputNum || !outputNum || inputNum < 1 || outputNum < 1 || inputNum > maxInput || outputNum > maxOutput) {
       return NextResponse.json(
-        { error: 'Invalid input or output channel' },
+        { error: `Invalid input (max ${maxInput}) or output (max ${maxOutput}) channel` },
         { status: 400 }
       )
     }
@@ -55,6 +66,19 @@ export async function POST(request: NextRequest) {
         success: false
       }, { status: 500 })
     }
+
+    // Update the /api/matrix/routes cache in-place with the new state we
+    // just applied, and refresh its TTL. This means the bartender remote's
+    // next poll (which fires every 15s while the Video or Routing tab is
+    // open) returns the already-correct state from cache and does NOT hit
+    // the Wolf Pack hardware again — eliminating the double-beep pattern
+    // where a click caused one beep for the route command itself and a
+    // second beep seconds later when the client polled and the cache was
+    // invalidated. We know the new state locally; no need to re-ask the
+    // Wolf Pack and no need for the o2ox read-query quirk to risk a
+    // 0xFFFF settling-window sentinel that could briefly blank the
+    // Routing tab checkmark.
+    updateRoutesCache(outputNum, inputNum)
 
     // Track routing in MatrixRoute table and set manual override for bartender changes
     try {

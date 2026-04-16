@@ -11,7 +11,9 @@ import {
   RefreshCw,
   AlertCircle,
   Radio,
-  Disc
+  Disc,
+  SkipForward,
+  Ban
 } from 'lucide-react'
 import Image from 'next/image'
 
@@ -29,6 +31,8 @@ interface AvailablePlaylist {
   id: string
   name: string
   description?: string
+  imageUrl?: string
+  genre?: string // 'Playlist' | 'Station' | 'Schedule'
 }
 
 interface SoundtrackPlayer {
@@ -43,6 +47,7 @@ interface SoundtrackPlayer {
 
 interface NowPlaying {
   track: {
+    id?: string
     title: string
     artist: string
     album?: string
@@ -64,6 +69,8 @@ export default function BartenderMusicControl() {
   const [actionLoading, setActionLoading] = useState(false)
   const [availablePlaylists, setAvailablePlaylists] = useState<AvailablePlaylist[]>([])
   const [playlistsLoading, setPlaylistsLoading] = useState(false)
+  const [skipLoading, setSkipLoading] = useState(false)
+  const [blockConfirm, setBlockConfirm] = useState(false)
 
   // Load data once on mount
   useEffect(() => {
@@ -196,6 +203,72 @@ export default function BartenderMusicControl() {
     }
   }
 
+  const handleSkip = async () => {
+    if (!selectedPlayer || skipLoading) return
+
+    setSkipLoading(true)
+    try {
+      const response = await fetch('/api/soundtrack/players', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          playerId: selectedPlayer.id,
+          action: 'skip'
+        })
+      })
+
+      if (response.ok) {
+        // Wait a moment for the next track to start, then refresh
+        setTimeout(() => {
+          updateNowPlaying(selectedPlayer.id)
+          setSkipLoading(false)
+        }, 1500)
+      } else {
+        setSkipLoading(false)
+      }
+    } catch (err) {
+      logger.error('Failed to skip track:', err)
+      setSkipLoading(false)
+    }
+  }
+
+  const handleBlock = async () => {
+    if (!selectedPlayer || !nowPlaying?.track?.id || skipLoading) return
+
+    if (!blockConfirm) {
+      setBlockConfirm(true)
+      // Auto-reset confirmation after 4 seconds
+      setTimeout(() => setBlockConfirm(false), 4000)
+      return
+    }
+
+    setBlockConfirm(false)
+    setSkipLoading(true)
+    try {
+      const response = await fetch('/api/soundtrack/players', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          playerId: selectedPlayer.id,
+          action: 'block',
+          trackId: nowPlaying.track.id
+        })
+      })
+
+      if (response.ok) {
+        setTimeout(() => {
+          updateNowPlaying(selectedPlayer.id)
+          setSkipLoading(false)
+        }, 1500)
+      } else {
+        setSkipLoading(false)
+      }
+    } catch (err) {
+      logger.error('Failed to block track:', err)
+      setSkipLoading(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="max-w-4xl mx-auto">
@@ -323,6 +396,36 @@ export default function BartenderMusicControl() {
               )}
             </div>
           </div>
+
+          {/* Skip & Block Controls */}
+          <div className="flex items-center gap-3 mt-4">
+            <button
+              onClick={handleSkip}
+              disabled={skipLoading}
+              className="flex-1 group relative backdrop-blur-xl bg-white/5 border-2 border-white/10 rounded-xl py-3 px-4 text-white font-semibold hover:border-blue-400/50 hover:bg-blue-500/10 transition-all duration-300 active:scale-95 disabled:opacity-50"
+            >
+              <div className="flex items-center justify-center">
+                <SkipForward className={`w-5 h-5 mr-2 ${skipLoading ? 'animate-pulse' : ''}`} />
+                Skip
+              </div>
+            </button>
+            {nowPlaying.track.id && (
+              <button
+                onClick={handleBlock}
+                disabled={skipLoading}
+                className={`group relative backdrop-blur-xl border-2 rounded-xl py-3 px-4 font-semibold transition-all duration-300 active:scale-95 disabled:opacity-50 ${
+                  blockConfirm
+                    ? 'bg-red-500/20 border-red-400/50 text-red-200'
+                    : 'bg-white/5 border-white/10 text-white hover:border-red-400/50 hover:bg-red-500/10'
+                }`}
+              >
+                <div className="flex items-center justify-center">
+                  <Ban className="w-5 h-5 mr-2" />
+                  {blockConfirm ? 'Tap to confirm' : 'Block Song'}
+                </div>
+              </button>
+            )}
+          </div>
         </div>
       )}
 
@@ -385,36 +488,97 @@ export default function BartenderMusicControl() {
         </div>
 
         {/* Playlist Selector */}
-        {availablePlaylists.length > 0 && (
-          <div className="mt-6">
-            <div className="flex items-center text-slate-400 text-sm mb-3">
-              <Radio className="w-4 h-4 mr-2" />
-              <span className="font-medium">Switch Playlist</span>
-            </div>
+        {availablePlaylists.length > 0 && (() => {
+          // Group by type
+          const playlists = availablePlaylists.filter(p => p.genre === 'Playlist' || !p.genre)
+          const stations = availablePlaylists.filter(p => p.genre === 'Station')
+          const schedules = availablePlaylists.filter(p => p.genre === 'Schedule')
+
+          const renderPlaylistGrid = (items: AvailablePlaylist[]) => (
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              {availablePlaylists.map((playlist) => (
-                <button
-                  key={playlist.id}
-                  onClick={() => handlePlaylistChange(playlist.id)}
-                  disabled={actionLoading}
-                  className={`group relative p-4 rounded-xl border-2 transition-all duration-300 text-left ${
-                    actionLoading
-                      ? 'opacity-50 cursor-not-allowed'
-                      : 'backdrop-blur-xl bg-white/5 border-white/10 hover:border-purple-400/50 hover:scale-105 hover:shadow-lg'
-                  }`}
-                >
-                  <div className="absolute inset-0 bg-gradient-to-br from-purple-500/10 to-pink-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-xl"></div>
-                  <div className="relative z-10">
-                    <div className="font-semibold text-sm text-white mb-1">{playlist.name}</div>
-                    {playlist.description && (
-                      <div className="text-xs text-slate-400">{playlist.description}</div>
-                    )}
-                  </div>
-                </button>
-              ))}
+              {items.map((playlist) => {
+                const isActive = selectedPlayer?.currentStation?.id === playlist.id
+                return (
+                  <button
+                    key={playlist.id}
+                    onClick={() => handlePlaylistChange(playlist.id)}
+                    disabled={actionLoading}
+                    className={`group relative rounded-xl border-2 transition-all duration-300 text-left overflow-hidden ${
+                      actionLoading
+                        ? 'opacity-50 cursor-not-allowed'
+                        : isActive
+                          ? 'backdrop-blur-xl bg-gradient-to-br from-pink-500/20 to-purple-500/20 border-pink-400/50 shadow-xl'
+                          : 'backdrop-blur-xl bg-white/5 border-white/10 hover:border-purple-400/50 hover:shadow-lg active:scale-95'
+                    }`}
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-br from-purple-500/10 to-pink-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                    <div className="relative z-10 flex items-center gap-3 p-3">
+                      {playlist.imageUrl ? (
+                        <div className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 border border-white/10">
+                          <img
+                            src={playlist.imageUrl}
+                            alt=""
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                      ) : (
+                        <div className="w-12 h-12 rounded-lg flex-shrink-0 bg-gradient-to-br from-purple-500/30 to-pink-500/30 border border-white/10 flex items-center justify-center">
+                          <Music2 className="w-5 h-5 text-purple-300" />
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-sm text-white truncate">{playlist.name}</div>
+                        {playlist.description && (
+                          <div className="text-xs text-slate-400 truncate mt-0.5">{playlist.description}</div>
+                        )}
+                      </div>
+                      {isActive && (
+                        <div className="flex-shrink-0">
+                          <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+                        </div>
+                      )}
+                    </div>
+                  </button>
+                )
+              })}
             </div>
-          </div>
-        )}
+          )
+
+          return (
+            <div className="mt-6 space-y-5">
+              {playlists.length > 0 && (
+                <div>
+                  <div className="flex items-center text-slate-400 text-sm mb-3">
+                    <Radio className="w-4 h-4 mr-2" />
+                    <span className="font-medium">Playlists</span>
+                    <span className="ml-2 text-xs text-slate-500">({playlists.length})</span>
+                  </div>
+                  {renderPlaylistGrid(playlists)}
+                </div>
+              )}
+              {stations.length > 0 && (
+                <div>
+                  <div className="flex items-center text-slate-400 text-sm mb-3">
+                    <Disc className="w-4 h-4 mr-2" />
+                    <span className="font-medium">Stations</span>
+                    <span className="ml-2 text-xs text-slate-500">({stations.length})</span>
+                  </div>
+                  {renderPlaylistGrid(stations)}
+                </div>
+              )}
+              {schedules.length > 0 && (
+                <div>
+                  <div className="flex items-center text-slate-400 text-sm mb-3">
+                    <Music2 className="w-4 h-4 mr-2" />
+                    <span className="font-medium">Schedules</span>
+                    <span className="ml-2 text-xs text-slate-500">({schedules.length})</span>
+                  </div>
+                  {renderPlaylistGrid(schedules)}
+                </div>
+              )}
+            </div>
+          )
+        })()}
 
         {/* Refresh Button */}
         <div className="mt-6 text-center">

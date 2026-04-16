@@ -1,12 +1,12 @@
 
 'use client'
 
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { Button } from '../ui/button'
-import { 
-  ChevronUp, 
-  ChevronDown, 
-  ChevronLeft, 
+import {
+  ChevronUp,
+  ChevronDown,
+  ChevronLeft,
   ChevronRight,
   Circle,
   ArrowLeft,
@@ -26,7 +26,8 @@ import {
   LogOut,
   RotateCcw,
   Radio,
-  Square
+  Square,
+  X
 } from 'lucide-react'
 
 interface DirecTVRemoteProps {
@@ -41,62 +42,74 @@ export default function DirecTVRemote({ deviceId, deviceName, ipAddress, port, o
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState<{ type: 'success' | 'error' | null, message: string }>({ type: null, message: '' })
   const [lastCommand, setLastCommand] = useState<string>('')
-  const [channelInput, setChannelInput] = useState<string>('')
+
+  // Channel digit buffer - collects digits, sends complete channel number via tune API
+  const [channelBuffer, setChannelBuffer] = useState<string>('')
+  const [channelStatus, setChannelStatus] = useState<'idle' | 'collecting' | 'tuning' | 'tuned' | 'error'>('idle')
+  const [tunedChannel, setTunedChannel] = useState<string>('')
+  const tuneTimerRef = useRef<NodeJS.Timeout | null>(null)
+  const TUNE_DELAY_MS = 2000 // 2 seconds after last digit before sending tune
 
   // Command debouncing to prevent rapid button presses from overwhelming DirecTV boxes
   const lastCommandTimeRef = useRef<number>(0)
   const commandQueueRef = useRef<boolean>(false)
   const COMMAND_DEBOUNCE_MS = 300 // Minimum 300ms between commands for DirecTV stability
 
-  // Digit queue for rapid number entry - processes digits sequentially without blocking UI
-  const digitQueueRef = useRef<string[]>([])
-  const isProcessingDigitsRef = useRef<boolean>(false)
-  const clearTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-  const DIGIT_DELAY_MS = 100 // Delay between digits for DirecTV
-
-  // Fire-and-forget digit sender - queues digits and processes without blocking UI
-  const sendDigitCommand = (digit: string) => {
-    // Add digit to queue
-    digitQueueRef.current.push(digit)
-
-    // Start processing if not already running
-    if (!isProcessingDigitsRef.current) {
-      processDigitQueue()
+  // Clean up timer on unmount
+  useEffect(() => {
+    return () => {
+      if (tuneTimerRef.current) clearTimeout(tuneTimerRef.current)
     }
-  }
+  }, [])
 
-  // Process digit queue sequentially with minimal delay
-  const processDigitQueue = async () => {
-    if (isProcessingDigitsRef.current) return
-    isProcessingDigitsRef.current = true
+  // Send the complete channel number through the unified tune API
+  const tuneToChannel = useCallback(async (channel: string) => {
+    if (!channel) return
 
-    while (digitQueueRef.current.length > 0) {
-      const digit = digitQueueRef.current.shift()!
+    setChannelStatus('tuning')
 
-      try {
-        // Send digit without waiting for response (fire-and-forget style)
-        fetch('/api/directv-devices/send-command', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            deviceId,
-            command: digit,
-            ipAddress,
-            port
-          })
-        }).catch(err => console.error('[DirecTV] Digit send error:', err))
+    try {
+      const response = await fetch('/api/channel-presets/tune', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          channelNumber: channel,
+          deviceType: 'directv',
+          directTVId: deviceId,
+        })
+      })
 
-        // Small delay between digits for DirecTV receiver to process
-        if (digitQueueRef.current.length > 0) {
-          await new Promise(resolve => setTimeout(resolve, DIGIT_DELAY_MS))
-        }
-      } catch (error) {
-        console.error('[DirecTV] Error sending digit:', error)
+      const data = await response.json()
+
+      if (response.ok && data.success) {
+        setTunedChannel(channel)
+        setChannelStatus('tuned')
+        setChannelBuffer('')
+        // Clear tuned confirmation after 3 seconds
+        setTimeout(() => {
+          setChannelStatus('idle')
+          setTunedChannel('')
+        }, 3000)
+      } else {
+        setChannelStatus('error')
+        setStatus({ type: 'error', message: data.error || `Failed to tune Ch ${channel}` })
+        // Clear error state after 3 seconds
+        setTimeout(() => {
+          setChannelStatus('idle')
+          setChannelBuffer('')
+          setStatus({ type: null, message: '' })
+        }, 3000)
       }
+    } catch (error) {
+      setChannelStatus('error')
+      setStatus({ type: 'error', message: `Failed to tune Ch ${channel}` })
+      setTimeout(() => {
+        setChannelStatus('idle')
+        setChannelBuffer('')
+        setStatus({ type: null, message: '' })
+      }, 3000)
     }
-
-    isProcessingDigitsRef.current = false
-  }
+  }, [deviceId])
 
   // Standard command sender with debounce and loading state (for non-digit buttons)
   const sendCommand = async (command: string, displayName?: string) => {
@@ -152,29 +165,36 @@ export default function DirecTVRemote({ deviceId, deviceName, ipAddress, port, o
     }
   }
 
-  const handleNumberClick = (number: string) => {
-    setChannelInput(prev => prev + number)
-    // Send digit immediately using non-blocking queue (no UI blocking!)
-    sendDigitCommand(number)
-
-    // Reset auto-clear timer on each digit press
-    if (clearTimeoutRef.current) {
-      clearTimeout(clearTimeoutRef.current)
-    }
-    clearTimeoutRef.current = setTimeout(() => {
-      setChannelInput('')
-    }, 3000) // 3 seconds to allow entering longer channel numbers
+  // Collect digit into buffer and reset the 2-second tune timer
+  const handleNumberClick = (digit: string) => {
+    setChannelBuffer(prev => {
+      const updated = prev + digit
+      // Reset the tune timer every time a digit is pressed
+      if (tuneTimerRef.current) clearTimeout(tuneTimerRef.current)
+      tuneTimerRef.current = setTimeout(() => {
+        tuneToChannel(updated)
+      }, TUNE_DELAY_MS)
+      return updated
+    })
+    setChannelStatus('collecting')
+    // Clear any previous tuned confirmation
+    setTunedChannel('')
   }
 
-  const handleChannelEnter = () => {
-    if (channelInput) {
-      sendCommand('ENTER', 'Enter')
-      setChannelInput('')
-    }
-  }
-
+  // Cancel mid-entry: clear the buffer and cancel the pending tune
   const handleClearChannel = () => {
-    setChannelInput('')
+    if (tuneTimerRef.current) clearTimeout(tuneTimerRef.current)
+    setChannelBuffer('')
+    setChannelStatus('idle')
+    setTunedChannel('')
+  }
+
+  // Immediately tune the current buffer (Enter button)
+  const handleChannelEnter = () => {
+    if (channelBuffer) {
+      if (tuneTimerRef.current) clearTimeout(tuneTimerRef.current)
+      tuneToChannel(channelBuffer)
+    }
   }
 
   return (
@@ -187,28 +207,63 @@ export default function DirecTVRemote({ deviceId, deviceName, ipAddress, port, o
 
       {/* Remote Control Layout */}
       <div className="space-y-4">
-        {/* Channel Input Display */}
-        {channelInput && (
-          <div className="bg-blue-500/20 border border-blue-500/30 rounded-lg p-3 text-center">
-            <div className="text-2xl font-bold text-blue-400">{channelInput}</div>
-            <div className="flex justify-center space-x-2 mt-2">
-              <Button
-                onClick={handleChannelEnter}
-                size="sm"
-                className="bg-green-600 hover:bg-green-700"
-              >
-                Enter
-              </Button>
-              <Button
-                onClick={handleClearChannel}
-                size="sm"
-                variant="outline"
-              >
-                Clear
-              </Button>
+        {/* Channel Number Display - always visible */}
+        <div className={`rounded-lg p-3 text-center border ${
+          channelStatus === 'collecting'
+            ? 'bg-blue-500/20 border-blue-500/30'
+            : channelStatus === 'tuning'
+              ? 'bg-yellow-500/20 border-yellow-500/30'
+              : channelStatus === 'tuned'
+                ? 'bg-green-500/20 border-green-500/30'
+                : channelStatus === 'error'
+                  ? 'bg-red-500/20 border-red-500/30'
+                  : 'bg-slate-800/50 border-slate-700'
+        }`}>
+          {channelStatus === 'collecting' && channelBuffer ? (
+            <>
+              <div className="flex items-center justify-center gap-2">
+                <span className="text-sm text-blue-300">Ch:</span>
+                <span className="text-2xl font-bold text-blue-400 font-mono">{channelBuffer}</span>
+                <span className="inline-block w-0.5 h-6 bg-blue-400 animate-pulse" />
+              </div>
+              <div className="flex justify-center gap-3 mt-2">
+                <Button
+                  onClick={handleChannelEnter}
+                  className="bg-green-600 hover:bg-green-700 text-white min-h-[44px] min-w-[80px] text-sm font-semibold"
+                >
+                  <CheckCircle className="w-4 h-4 mr-1" />
+                  Tune
+                </Button>
+                <Button
+                  onClick={handleClearChannel}
+                  variant="outline"
+                  className="border-slate-500 text-slate-300 hover:bg-slate-700 min-h-[44px] min-w-[80px] text-sm font-semibold"
+                >
+                  <X className="w-4 h-4 mr-1" />
+                  Clear
+                </Button>
+              </div>
+              <p className="text-xs text-blue-300/70 mt-1">Auto-tunes in 2s</p>
+            </>
+          ) : channelStatus === 'tuning' ? (
+            <div className="flex items-center justify-center gap-2">
+              <Loader2 className="w-5 h-5 text-yellow-400 animate-spin" />
+              <span className="text-lg font-semibold text-yellow-400">Tuning to Ch {channelBuffer}...</span>
             </div>
-          </div>
-        )}
+          ) : channelStatus === 'tuned' && tunedChannel ? (
+            <div className="flex items-center justify-center gap-2">
+              <CheckCircle className="w-5 h-5 text-green-400" />
+              <span className="text-lg font-semibold text-green-400">Tuned to Ch {tunedChannel}</span>
+            </div>
+          ) : channelStatus === 'error' ? (
+            <div className="flex items-center justify-center gap-2">
+              <AlertCircle className="w-5 h-5 text-red-400" />
+              <span className="text-sm font-semibold text-red-400">{status.message || 'Tune failed'}</span>
+            </div>
+          ) : (
+            <span className="text-sm text-slate-500">Enter channel number</span>
+          )}
+        </div>
 
         {/* Top Row: Menu, Guide, List, Info */}
         <div className="grid grid-cols-4 gap-2">
@@ -302,30 +357,33 @@ export default function DirecTVRemote({ deviceId, deviceName, ipAddress, port, o
           </Button>
         </div>
 
-        {/* Number Pad - NOT disabled during loading for rapid channel entry */}
+        {/* Number Pad - digits are buffered and sent as complete channel via tune API */}
         <div className="bg-slate-800 rounded-lg p-3">
           <div className="grid grid-cols-3 gap-2">
-            {['1', '2', '3', '4', '5', '6', '7', '8', '9', 'DASH', '0', 'ENTER'].map((btn) => (
+            {['1', '2', '3', '4', '5', '6', '7', '8', '9', 'CLR', '0', 'GO'].map((btn) => (
               <Button
                 key={btn}
                 onClick={() => {
-                  if (btn === 'ENTER') {
+                  if (btn === 'GO') {
                     handleChannelEnter()
-                  } else if (btn === 'DASH') {
-                    // DASH for sub-channels like "210-1" - use non-blocking queue
-                    setChannelInput(prev => prev + '-')
-                    sendDigitCommand('DASH')
+                  } else if (btn === 'CLR') {
+                    handleClearChannel()
                   } else {
                     handleNumberClick(btn)
                   }
                 }}
+                disabled={
+                  (btn === 'GO' && !channelBuffer) ||
+                  (btn === 'CLR' && !channelBuffer) ||
+                  channelStatus === 'tuning'
+                }
                 className={`${
-                  btn === 'ENTER' ? 'bg-green-600 hover:bg-green-700' :
-                  btn === 'DASH' ? 'bg-blue-600 hover:bg-blue-700' :
+                  btn === 'GO' ? 'bg-green-600 hover:bg-green-700 disabled:bg-green-900/30' :
+                  btn === 'CLR' ? 'bg-red-600/70 hover:bg-red-700 disabled:bg-red-900/30' :
                   'bg-slate-700 hover:bg-slate-600'
-                } text-white p-3 font-bold`}
+                } text-white min-h-[48px] p-3 font-bold text-lg`}
               >
-                {btn === 'DASH' ? '-' : btn}
+                {btn}
               </Button>
             ))}
           </div>

@@ -11,6 +11,7 @@
  * - TeamNameMatcher: Fuzzy matching for team names from guide data
  * - FireTVContentDetector: Detects streaming-exclusive games
  * - SmartOverride: Calculates intelligent override durations
+ * - VolumeSafetyManager: Enforces safe volume transitions for automated audio
  */
 
 // Distribution Engine - Main scheduling logic
@@ -126,3 +127,22 @@ export {
   type LogLevel,
   type SchedulerLogEntry
 } from './scheduler-logger'
+
+// Pattern Analyzer - Scheduling history pattern extraction for AI suggestions
+export {
+  patternAnalyzer,
+  PatternAnalyzer,
+  type TeamRoutingPattern,
+  type LeaguePriorityPattern,
+  type TimeSlotPattern,
+  type AudioVolumePattern,
+  type PatternAnalysisResult
+} from './pattern-analyzer'
+
+// Volume Safety Manager - Safe volume transitions for automated audio control
+export {
+  VolumeSafetyManager,
+  volumeSafetyManager,
+  type SafetyCheckResult,
+  type RampPlan
+} from './volume-safety'

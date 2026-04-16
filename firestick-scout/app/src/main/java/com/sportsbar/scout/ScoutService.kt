@@ -17,7 +17,6 @@ class ScoutService : Service() {
 
     private val handler = Handler(Looper.getMainLooper())
     private lateinit var appDetector: AppDetector
-    private lateinit var apiClient: ScoutApiClient
 
     private val heartbeatRunnable = object : Runnable {
         override fun run() {
@@ -29,7 +28,6 @@ class ScoutService : Service() {
     override fun onCreate() {
         super.onCreate()
         appDetector = AppDetector(this)
-        apiClient = ScoutApiClient(MainActivity.SERVER_URL)
         createNotificationChannel()
     }
 
@@ -71,6 +69,9 @@ class ScoutService : Service() {
                     scoutVersion = MainActivity.VERSION
                 )
 
+                // Re-read the server URL on every heartbeat so a broadcast-triggered
+                // URL change takes effect within one heartbeat interval (30s).
+                val apiClient = ScoutApiClient(MainActivity.getServerUrl(this))
                 val success = apiClient.sendHeartbeat(heartbeat)
                 if (success) {
                     Log.d(TAG, "Heartbeat sent successfully")

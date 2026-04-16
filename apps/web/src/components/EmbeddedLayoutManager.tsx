@@ -7,7 +7,7 @@
  */
 
 import { useState, useEffect, useRef } from 'react'
-import { Upload, Save, RefreshCw, Edit2, Eye, Trash2, Plus, Image, Home, X, Palette } from 'lucide-react'
+import { Upload, Save, RefreshCw, Edit2, Eye, Trash2, Plus, Image, Home, X, Palette, Wand2, Bot, Cloud, Sparkles } from 'lucide-react'
 import LayoutEditor from './layout/LayoutEditor'
 import { type Zone, type Room } from './layout/DraggableZone'
 import { logger } from '@sports-bar/logger'
@@ -47,6 +47,8 @@ export default function EmbeddedLayoutManager() {
   const [newRoomColor, setNewRoomColor] = useState(ROOM_COLORS[0])
   const [showAddRoom, setShowAddRoom] = useState(false)
   const [roomToDelete, setRoomToDelete] = useState<string | null>(null)
+  const [enhancing, setEnhancing] = useState(false)
+  const [enhanceProvider, setEnhanceProvider] = useState<'ollama' | 'claude' | 'none'>('ollama')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -229,6 +231,42 @@ export default function EmbeddedLayoutManager() {
     loadLayout() // Reload to discard changes
   }
 
+  const handleEnhanceLayout = async () => {
+    if (!layout?.imageUrl || !layout?.zones?.length) return
+
+    setEnhancing(true)
+    setMessage(null)
+
+    try {
+      const response = await fetch('/api/bartender/layout/enhance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider: enhanceProvider })
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        // Update layout with professional image and save
+        const updatedLayout = { ...layout, professionalImageUrl: data.professionalImageUrl }
+        await handleSaveLayout(updatedLayout as Layout)
+        // Enter edit mode so user can adjust zone positions on the new clean floor plan
+        setIsEditing(true)
+        setMessage({
+          type: 'success',
+          text: `Professional floor plan generated! Opening editor — drag TV zones to their correct positions.`
+        })
+      } else {
+        setMessage({ type: 'error', text: data.error || 'Enhancement failed' })
+      }
+    } catch (error) {
+      logger.error('[EmbeddedLayoutManager] Enhance error:', error)
+      setMessage({ type: 'error', text: 'Failed to enhance layout' })
+    } finally {
+      setEnhancing(false)
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center p-12">
@@ -298,6 +336,80 @@ export default function EmbeddedLayoutManager() {
           )}
         </button>
       </div>
+
+      {/* AI Enhance Section */}
+      {layout?.imageUrl && layout?.zones?.length > 0 && (
+        <div className="p-6 bg-slate-800 rounded-lg border border-slate-700">
+          <h3 className="text-lg font-semibold text-white mb-2 flex items-center gap-2">
+            <Wand2 className="w-5 h-5 text-purple-400" />
+            AI Layout Enhancement
+          </h3>
+          <p className="text-slate-400 text-sm mb-4">
+            Generate a professional floor plan using AI to analyze your layout image and identify rooms
+          </p>
+
+          <div className="flex flex-wrap gap-2 mb-4">
+            <button
+              onClick={() => setEnhanceProvider('ollama')}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all ${
+                enhanceProvider === 'ollama'
+                  ? 'bg-purple-600/30 border border-purple-500 text-purple-200'
+                  : 'bg-slate-700/50 border border-slate-600 text-slate-400 hover:bg-slate-700'
+              }`}
+            >
+              <Bot className="w-4 h-4" />
+              Ollama (Local)
+            </button>
+            <button
+              onClick={() => setEnhanceProvider('claude')}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all ${
+                enhanceProvider === 'claude'
+                  ? 'bg-blue-600/30 border border-blue-500 text-blue-200'
+                  : 'bg-slate-700/50 border border-slate-600 text-slate-400 hover:bg-slate-700'
+              }`}
+            >
+              <Cloud className="w-4 h-4" />
+              Claude (Cloud)
+            </button>
+            <button
+              onClick={() => setEnhanceProvider('none')}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all ${
+                enhanceProvider === 'none'
+                  ? 'bg-slate-600/30 border border-slate-500 text-slate-200'
+                  : 'bg-slate-700/50 border border-slate-600 text-slate-400 hover:bg-slate-700'
+              }`}
+            >
+              <Sparkles className="w-4 h-4" />
+              Basic (No AI)
+            </button>
+          </div>
+
+          <button
+            onClick={handleEnhanceLayout}
+            disabled={enhancing}
+            className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-600/50 text-white rounded-lg transition-colors flex items-center gap-2"
+          >
+            {enhancing ? (
+              <>
+                <RefreshCw className="w-4 h-4 animate-spin" />
+                Generating...
+              </>
+            ) : (
+              <>
+                <Wand2 className="w-4 h-4" />
+                Generate Professional Layout
+              </>
+            )}
+          </button>
+
+          {(layout as any).professionalImageUrl && (
+            <div className="mt-3 p-3 bg-green-500/10 border border-green-500/30 rounded-lg text-sm text-green-400 flex items-center gap-2">
+              <Sparkles className="w-4 h-4" />
+              Professional layout active — bartender remote will use the enhanced version
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Room Management */}
       <div className="p-6 bg-slate-800 rounded-lg border border-slate-700">

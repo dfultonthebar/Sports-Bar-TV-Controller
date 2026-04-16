@@ -222,7 +222,7 @@ export const KNOWN_SPORTS_APPS: KnownSportsApp[] = [
     iconUrl: '/icons/nhl.png'
   },
   {
-    packageName: 'com.fox.now',
+    packageName: 'com.foxsports.videogo',
     displayName: 'FOX Sports',
     category: 'Sports',
     subscriptionCheckMethod: 'shared_prefs',

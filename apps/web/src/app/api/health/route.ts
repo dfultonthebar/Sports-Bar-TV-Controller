@@ -25,6 +25,7 @@ import { db, schema } from '@/db'
 import { sql, eq } from 'drizzle-orm'
 import { existsSync, statSync } from 'fs'
 import path from 'path'
+import { loadFireTVDevices } from '@/lib/device-db'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 
@@ -301,34 +302,16 @@ async function checkFireTVStatus(): Promise<any> {
       connections: connectionDetails
     }
   } catch (error: any) {
-    // Fallback to file-based check if health monitor not available
+    // Fallback to database check if health monitor not available
     try {
-      const firetvPath = path.resolve(process.cwd(), 'data/firetv-devices.json')
-
-      if (!existsSync(firetvPath)) {
-        return {
-          status: 'unknown',
-          reason: 'FireTV devices file not found'
-        }
-      }
-
-      const fs = require('fs')
-      const fileContent = fs.readFileSync(firetvPath, 'utf-8')
-      let firetvData
-      try {
-        firetvData = JSON.parse(fileContent || '{}')
-      } catch (parseError) {
-        logger.error('[Health] Failed to parse FireTV devices file:', { data: { parseError, content: fileContent?.substring(0, 100) } })
-        firetvData = { devices: [] }
-      }
-      const devices = firetvData.devices || []
+      const { devices } = await loadFireTVDevices()
       const onlineDevices = devices.filter((d: any) => d.isOnline).length
 
       return {
         status: devices.length > 0 ? 'healthy' : 'unknown',
         devices: devices.length,
         devicesOnline: onlineDevices,
-        reason: 'Health monitor not available - using fallback'
+        reason: 'Health monitor not available - using database fallback'
       }
     } catch (fallbackError: any) {
       return {

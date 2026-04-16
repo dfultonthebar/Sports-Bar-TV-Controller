@@ -3,47 +3,27 @@
  *
  * Returns the games that the AI scheduler found and which inputs/TVs they're scheduled for
  * NOW USING FRESH DATA FROM THE RAIL MEDIA API
+ * ENHANCED WITH LEARNED SCHEDULING PATTERNS
  */
 
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
 import { schema } from '@/db'
-import { eq, inArray } from 'drizzle-orm'
+import { eq, inArray, or, sql } from 'drizzle-orm'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { logger } from '@sports-bar/logger'
 import { espnScoreboardAPI } from '@/lib/sports-apis/espn-scoreboard-api'
 import { findMany } from '@/lib/db-helpers'
+import { resolveChannelsForGame, getStreamingAppInfoForStation } from '@/lib/network-channel-resolver'
 
-// Streaming station codes to app mapping
-// Maps Rail Media station codes to Fire TV app package names and display names
-const STREAMING_STATION_MAP: Record<string, { appName: string; packages: string[] }> = {
-  'NBALP': { appName: 'NBA League Pass', packages: ['com.nba.leaguepass', 'com.nba.app'] },
-  'NHLCI': { appName: 'NHL Center Ice', packages: ['com.nhl.gc', 'com.nhl.gc1415'] },
-  'MLBEI': { appName: 'MLB.TV', packages: ['com.mlb.android', 'com.mlb.atbat'] },
-  'ESPND': { appName: 'ESPN+', packages: ['com.espn.score_center', 'com.espn.gtv', 'com.espn'] },
-  'ESPN+': { appName: 'ESPN+', packages: ['com.espn.score_center', 'com.espn.gtv', 'com.espn'] },
-  'NBCUN': { appName: 'Peacock', packages: ['com.peacocktv.peacockandroid', 'com.peacock.peacockfiretv'] },
-  'PEACOCK': { appName: 'Peacock', packages: ['com.peacocktv.peacockandroid', 'com.peacock.peacockfiretv'] },
-  'PRIME': { appName: 'Prime Video', packages: ['com.amazon.avod'] },
-  'AMZN': { appName: 'Prime Video', packages: ['com.amazon.avod'] },
-  'FOXD': { appName: 'Fox Sports', packages: ['com.foxsports.android', 'com.foxsports.android.foxsportsgo'] },
-  'APPLETV': { appName: 'Apple TV+', packages: ['com.apple.atve.amazon.appletv'] },
-  'MLSDK': { appName: 'MLS Season Pass', packages: ['tv.mls', 'com.apple.atve.amazon.appletv'] },
-  'BSNOR+': { appName: 'Bally Sports', packages: ['com.bfrapp', 'com.ballysports.ftv'] },
-  'B10+': { appName: 'Big Ten+', packages: ['com.foxsports.bigten.android'] },
-}
-
-// Check if a station is streaming-only (no cable/satellite channel)
-function isStreamingStation(station: string): boolean {
-  const streamingOnly = ['NBALP', 'NHLCI', 'MLBEI', 'ESPND', 'ESPN+', 'MLSDK', 'BSNOR+', 'B10+', 'APPLETV', 'PRIME', 'AMZN']
-  return streamingOnly.includes(station.toUpperCase())
-}
-
-// Get streaming app info for a station
-function getStreamingAppInfo(station: string): { appName: string; packages: string[] } | null {
-  return STREAMING_STATION_MAP[station.toUpperCase()] || null
-}
+// Streaming station resolution is centralized in the shared helper via
+// `getStreamingAppInfoForStation(code, sport?)` from
+// `@/lib/network-channel-resolver`. This file used to maintain its own
+// STREAMING_STATION_MAP + isStreamingStation + getStreamingAppInfo helpers;
+// all deleted in Phase 4.5. The helper also handles sport-gating for
+// league-specific codes (MLBEI / NHLCI / NBALP / MLSDK), so the sport arg
+// is passed on the call site below.
 
 // Map league names to ESPN API parameters
 function mapLeagueToESPN(league: string): { sport: string; league: string } | null {
@@ -98,6 +78,194 @@ function matchGameByTeams(espnGames: any[], homeTeam: string, awayTeam: string):
   return null
 }
 
+// ============================================================================
+// Scheduling Pattern Types
+// ============================================================================
+
+interface TeamRoutingPatternData {
+  team: string;
+  preferredInput: string;
+  preferredInputId: string;
+  preferredOutputs: number[];
+  frequency: number;
+}
+
+interface LeaguePriorityPatternData {
+  league: string;
+  avgTVs: number;
+  scheduleCount: number;
+}
+
+interface LoadedPattern {
+  patternType: string;
+  patternKey: string;
+  patternData: any;
+  confidence: number;
+  sampleSize: number;
+}
+
+interface SchedulingPatterns {
+  teamRouting: Map<string, { data: TeamRoutingPatternData; confidence: number }>;
+  leaguePriority: Map<string, { data: LeaguePriorityPatternData; confidence: number }>;
+  tvZonePreference: Map<string, { preferredOutputs: number[]; confidence: number }>;
+}
+
+/**
+ * Load learned scheduling patterns from the database.
+ * Returns parsed patterns organized by type, or null if no patterns exist.
+ */
+async function loadSchedulingPatterns(): Promise<SchedulingPatterns | null> {
+  try {
+    const rows = await db.all(sql`
+      SELECT pattern_type, pattern_key, pattern_data, confidence, sample_size
+      FROM scheduling_patterns
+      WHERE is_stale = 0
+      ORDER BY confidence DESC
+    `) as Array<{
+      pattern_type: string;
+      pattern_key: string;
+      pattern_data: string;
+      confidence: number;
+      sample_size: number;
+    }>
+
+    if (!rows || rows.length === 0) {
+      logger.info('[AI-GAMEPLAN] No scheduling patterns found in database, using default allocation logic')
+      return null
+    }
+
+    logger.info(`[AI-GAMEPLAN] Loaded ${rows.length} scheduling patterns from database`)
+
+    const patterns: SchedulingPatterns = {
+      teamRouting: new Map(),
+      leaguePriority: new Map(),
+      tvZonePreference: new Map(),
+    }
+
+    for (const row of rows) {
+      let parsedData: any
+      try {
+        parsedData = JSON.parse(row.pattern_data)
+      } catch {
+        logger.warn(`[AI-GAMEPLAN] Failed to parse pattern data for ${row.pattern_type}/${row.pattern_key}`)
+        continue
+      }
+
+      switch (row.pattern_type) {
+        case 'team_routing': {
+          const teamData = parsedData as TeamRoutingPatternData
+          patterns.teamRouting.set(row.pattern_key.toLowerCase(), {
+            data: teamData,
+            confidence: row.confidence,
+          })
+          // Also populate tv zone preferences from team routing data
+          if (teamData.preferredOutputs && teamData.preferredOutputs.length > 0) {
+            patterns.tvZonePreference.set(row.pattern_key.toLowerCase(), {
+              preferredOutputs: teamData.preferredOutputs,
+              confidence: row.confidence,
+            })
+          }
+          logger.info(`[AI-GAMEPLAN] Using learned pattern: ${row.pattern_key} → ${teamData.preferredInput} (confidence: ${row.confidence.toFixed(2)})`)
+          break
+        }
+        case 'league_priority': {
+          const leagueData = parsedData as LeaguePriorityPatternData
+          patterns.leaguePriority.set(row.pattern_key.toLowerCase(), {
+            data: leagueData,
+            confidence: row.confidence,
+          })
+          logger.info(`[AI-GAMEPLAN] Using learned pattern: League ${row.pattern_key} avgTVs=${leagueData.avgTVs} (confidence: ${row.confidence.toFixed(2)})`)
+          break
+        }
+        case 'tv_zone_preference': {
+          // Direct tv_zone_preference patterns (if stored separately from team_routing)
+          if (parsedData.preferredOutputs) {
+            patterns.tvZonePreference.set(row.pattern_key.toLowerCase(), {
+              preferredOutputs: parsedData.preferredOutputs,
+              confidence: row.confidence,
+            })
+          }
+          break
+        }
+        default:
+          // Other pattern types (time_slot, etc.) are informational only for now
+          break
+      }
+    }
+
+    const teamCount = patterns.teamRouting.size
+    const leagueCount = patterns.leaguePriority.size
+    const zoneCount = patterns.tvZonePreference.size
+    logger.info(`[AI-GAMEPLAN] Parsed patterns: ${teamCount} team routings, ${leagueCount} league priorities, ${zoneCount} TV zone preferences`)
+
+    return patterns
+  } catch (error: any) {
+    // Table might not exist yet — that's okay, fall back to default logic
+    logger.warn(`[AI-GAMEPLAN] Could not load scheduling patterns: ${error.message}`)
+    return null
+  }
+}
+
+/**
+ * Apply team routing patterns to enhance a game with preferred input info.
+ * Returns the preferred input label/id if a pattern exists for either team.
+ */
+function getTeamPreferredInput(
+  game: any,
+  patterns: SchedulingPatterns
+): { inputLabel: string; inputId: string; confidence: number } | null {
+  // Check home team first, then away team
+  for (const teamName of [game.homeTeam, game.awayTeam]) {
+    if (!teamName) continue
+    const key = teamName.toLowerCase()
+    const routing = patterns.teamRouting.get(key)
+    if (routing && routing.confidence >= 0.3) {
+      return {
+        inputLabel: routing.data.preferredInput,
+        inputId: routing.data.preferredInputId,
+        confidence: routing.confidence,
+      }
+    }
+  }
+  return null
+}
+
+/**
+ * Get the league priority score from patterns.
+ * Higher avgTVs = higher priority when competing for limited inputs.
+ */
+function getLeaguePriorityScore(
+  league: string,
+  patterns: SchedulingPatterns
+): number {
+  if (!league) return 0
+  const key = league.toLowerCase()
+  const priority = patterns.leaguePriority.get(key)
+  if (priority) {
+    return priority.data.avgTVs * priority.confidence
+  }
+  return 0
+}
+
+/**
+ * Get preferred TV outputs for a team from patterns.
+ */
+function getPreferredOutputs(
+  game: any,
+  patterns: SchedulingPatterns
+): { outputs: number[]; confidence: number } | null {
+  for (const teamName of [game.homeTeam, game.awayTeam]) {
+    if (!teamName) continue
+    const key = teamName.toLowerCase()
+    const pref = patterns.tvZonePreference.get(key)
+    if (pref && pref.confidence >= 0.3) {
+      return { outputs: pref.preferredOutputs, confidence: pref.confidence }
+    }
+  }
+  return null
+}
+
+
 /**
  * Fetch fresh games from The Rail Media API
  * Replicates the logic from /api/schedules/execute/route.ts searchForGames function
@@ -123,65 +291,18 @@ async function fetchFreshGamesFromRailMedia(homeTeams: any[]): Promise<any[]> {
         .map(p => p.channelNumber.toLowerCase())
     )
 
-    // Create cross-reference maps based on preset names
-    // This allows us to find the equivalent channel on the other device type
-    const cableChannelToName = new Map<string, string>()
-    const directvChannelToName = new Map<string, string>()
-    const nameToCableChannel = new Map<string, string>()
-    const nameToDirectvChannel = new Map<string, string>()
+    // As of v2.5.0 (Phase 4 of channel-resolver consolidation), the inline
+    // network-name lookup maps + cross-reference maps that used to be built
+    // here have been removed. Cable + DirecTV resolution is now handled by
+    // the shared `resolveChannelsForGame()` helper in
+    // `@/lib/network-channel-resolver`, which reads from the
+    // `channel_presets` + `station_aliases` tables and preserves the
+    // Wisconsin RSN split (FanDuelWI ch 40 Bucks vs BallyWIPlus ch 308
+    // Brewers). The `cableChannels` / `directvChannels` Sets above are
+    // STILL used by the Rail Media direct-channel-number fallback below.
+    // See docs/CHANNEL_RESOLVER_CONSOLIDATION_PLAN.md.
 
-    for (const preset of channelPresets) {
-      const normalizedName = preset.name.toLowerCase().trim()
-      const channelNum = preset.channelNumber.toLowerCase()
-
-      if (preset.deviceType === 'cable') {
-        cableChannelToName.set(channelNum, normalizedName)
-        // Only set if not already set (first match wins)
-        if (!nameToCableChannel.has(normalizedName)) {
-          nameToCableChannel.set(normalizedName, preset.channelNumber)
-        }
-      } else if (preset.deviceType === 'directv') {
-        directvChannelToName.set(channelNum, normalizedName)
-        if (!nameToDirectvChannel.has(normalizedName)) {
-          nameToDirectvChannel.set(normalizedName, preset.channelNumber)
-        }
-      }
-    }
-
-    // Normalize network names for matching Rail Media station names to preset names
-    // Rail Media uses compact names like "NBATV", presets use names like "NBA TV"
-    const normalizeNetworkName = (name: string): string => {
-      return name
-        .toLowerCase()
-        .replace(/\s+/g, '') // Remove all spaces
-        .replace(/network/gi, '') // Remove "network"
-        .replace(/channel/gi, '') // Remove "channel"
-        .replace(/hd$/i, '') // Remove HD suffix
-        .trim()
-    }
-
-    // Build network name lookup maps (normalized name -> preset channel number)
-    const networkToCableChannel = new Map<string, string>()
-    const networkToDirectvChannel = new Map<string, string>()
-
-    for (const preset of channelPresets) {
-      const normalizedNetwork = normalizeNetworkName(preset.name)
-
-      if (preset.deviceType === 'cable') {
-        if (!networkToCableChannel.has(normalizedNetwork)) {
-          networkToCableChannel.set(normalizedNetwork, preset.channelNumber)
-        }
-      } else if (preset.deviceType === 'directv') {
-        if (!networkToDirectvChannel.has(normalizedNetwork)) {
-          networkToDirectvChannel.set(normalizedNetwork, preset.channelNumber)
-        }
-      }
-    }
-
-    logger.info(`[AI_GAME_PLAN] Network lookup maps: ${networkToCableChannel.size} cable networks, ${networkToDirectvChannel.size} DirecTV networks`)
-
-    logger.info(`[AI_GAME_PLAN] Loaded ${cableChannels.size} cable channels and ${directvChannels.size} DirecTV channels from presets`)
-    logger.info(`[AI_GAME_PLAN] Cross-reference maps: ${nameToCableChannel.size} cable names, ${nameToDirectvChannel.size} DirecTV names`)
+    logger.info(`[AI_GAME_PLAN] Loaded ${cableChannels.size} cable channels and ${directvChannels.size} DirecTV channels from presets (used by Rail Media CAB/DRTV fallback)`)
 
     // Fetch sports guide data from The Rail Media API (1 day = today's games)
     const guideResponse = await fetch('http://localhost:3001/api/sports-guide', {
@@ -223,46 +344,54 @@ async function fetchFreshGamesFromRailMedia(homeTeams: any[]): Promise<any[]> {
           eventDate = new Date(`${new Date().toDateString()} ${listing.time}`)
         }
 
-        // Extract BOTH cable and DirecTV channel numbers
-        // PRIMARY METHOD: Use network/station name to look up channel from our presets
-        // FALLBACK: Try direct channel number matching if network name doesn't match
+        // Extract BOTH cable and DirecTV channel numbers via the shared
+        // resolver. This walks the station_aliases + channel_presets tables
+        // and preserves the Wisconsin RSN split (FanDuelWI ch 40 Bucks vs
+        // BallyWIPlus ch 308 Brewers). See network-channel-resolver.ts.
+        //
+        // FALLBACK below: Rail Media's own CAB/DRTV lineup channel numbers
+        // are matched directly against our preset Sets — this handles cases
+        // where a station has no name match but Rail provides the channel
+        // number explicitly.
         let cableChannelNumber = ''
         let directvChannelNumber = ''
         let matchedNetworkName = ''
 
-        // First, try to match by station/network name (most reliable method)
-        // Rail Media provides station names like "ESPN", "NBATV", "FOX", etc.
-        if (listing.stations && Array.isArray(listing.stations)) {
-          for (const station of listing.stations) {
-            const normalizedStation = normalizeNetworkName(station)
-
-            // Look up cable channel by network name
-            if (!cableChannelNumber) {
-              const cableChannel = networkToCableChannel.get(normalizedStation)
-              if (cableChannel) {
-                cableChannelNumber = cableChannel
-                matchedNetworkName = station
-                logger.debug(`[AI_GAME_PLAN] Matched station "${station}" to cable channel ${cableChannel}`)
+        // PRIMARY: shared resolver — preset/alias lookup keyed by station name.
+        if (listing.stations) {
+          const stationsArray: string[] = Array.isArray(listing.stations)
+            ? listing.stations
+            : Object.values(listing.stations).filter((s): s is string => typeof s === 'string')
+          if (stationsArray.length > 0) {
+            try {
+              const resolved = await resolveChannelsForGame(
+                {
+                  networks: stationsArray,
+                  primaryNetwork: stationsArray[0] ?? null,
+                  league: group.group_title ?? null,
+                  sport: group.group_title ?? null,
+                },
+                ['cable', 'directv']
+              )
+              if (resolved.cableChannel) {
+                cableChannelNumber = resolved.cableChannel
+                matchedNetworkName = resolved.primaryMatch || stationsArray[0]
+                logger.debug(`[AI_GAME_PLAN] Resolver matched "${matchedNetworkName}" to cable ch ${cableChannelNumber} (via ${resolved.resolvedVia})`)
               }
-            }
-
-            // Look up DirecTV channel by network name
-            if (!directvChannelNumber) {
-              const directvChannel = networkToDirectvChannel.get(normalizedStation)
-              if (directvChannel) {
-                directvChannelNumber = directvChannel
-                matchedNetworkName = station
-                logger.debug(`[AI_GAME_PLAN] Matched station "${station}" to DirecTV channel ${directvChannel}`)
+              if (resolved.directvChannel) {
+                directvChannelNumber = resolved.directvChannel
+                if (!matchedNetworkName) matchedNetworkName = resolved.primaryMatch || stationsArray[0]
+                logger.debug(`[AI_GAME_PLAN] Resolver matched "${matchedNetworkName}" to DirecTV ch ${directvChannelNumber} (via ${resolved.resolvedVia})`)
               }
+            } catch (resolverErr: any) {
+              logger.warn(`[AI_GAME_PLAN] resolveChannelsForGame failed, continuing with Rail Media lineup fallback: ${resolverErr?.message}`)
             }
-
-            // If we found both, stop looking
-            if (cableChannelNumber && directvChannelNumber) break
           }
         }
 
-        // FALLBACK: If network name matching didn't work, try direct channel number matching
-        // Extract cable channels and match against presets
+        // FALLBACK: direct channel number matching against our presets.
+        // Extract cable channels from Rail Media's CAB lineup and match
+        // against our local cable preset channel numbers.
         if (!cableChannelNumber && listing.channel_numbers?.CAB) {
           const cabChannels = listing.channel_numbers.CAB
           for (const providerChannels of Object.values(cabChannels)) {
@@ -283,14 +412,16 @@ async function fetchFreshGamesFromRailMedia(homeTeams: any[]): Promise<any[]> {
           }
         }
 
-        // Extract satellite/DirecTV channels and match against presets (fallback)
-        if (!directvChannelNumber && listing.channel_numbers?.SAT) {
-          const satChannels = listing.channel_numbers.SAT
-          for (const providerChannels of Object.values(satChannels)) {
+        // Rail Media uses "DRTV" as the DirecTV lineup key (not "SAT" as
+        // some docs suggest). Previously this fallback checked `.SAT` which
+        // never matched anything; fixed to `.DRTV` to match actual Rail API
+        // response shape.
+        if (!directvChannelNumber && listing.channel_numbers?.DRTV) {
+          const drtvChannels = listing.channel_numbers.DRTV
+          for (const providerChannels of Object.values(drtvChannels)) {
             const channels = providerChannels as any
             const channelList = Array.isArray(channels) ? channels : [channels]
 
-            // Find first channel that exists in our DirecTV presets
             for (const ch of channelList) {
               if (ch) {
                 const chStr = String(ch).toLowerCase()
@@ -304,29 +435,10 @@ async function fetchFreshGamesFromRailMedia(homeTeams: any[]): Promise<any[]> {
           }
         }
 
-        // Cross-reference: If we only have one channel type, try to find the equivalent for the other
-        // This allows games to be scheduled on either cable OR DirecTV inputs
-        if (cableChannelNumber && !directvChannelNumber) {
-          // We have cable, try to find matching DirecTV channel by preset name
-          const presetName = cableChannelToName.get(cableChannelNumber.toLowerCase())
-          if (presetName) {
-            const matchingDirectv = nameToDirectvChannel.get(presetName)
-            if (matchingDirectv) {
-              directvChannelNumber = matchingDirectv
-              logger.debug(`[AI_GAME_PLAN] Cross-referenced cable ${cableChannelNumber} (${presetName}) to DirecTV ${directvChannelNumber}`)
-            }
-          }
-        } else if (directvChannelNumber && !cableChannelNumber) {
-          // We have DirecTV, try to find matching cable channel by preset name
-          const presetName = directvChannelToName.get(directvChannelNumber.toLowerCase())
-          if (presetName) {
-            const matchingCable = nameToCableChannel.get(presetName)
-            if (matchingCable) {
-              cableChannelNumber = matchingCable
-              logger.debug(`[AI_GAME_PLAN] Cross-referenced DirecTV ${directvChannelNumber} (${presetName}) to cable ${cableChannelNumber}`)
-            }
-          }
-        }
+        // Cross-reference (cable<->DirecTV equivalent lookup) was removed in
+        // Phase 4: `resolveChannelsForGame()` already returns BOTH device
+        // types in a single call when both deviceTypesAvailable are passed,
+        // so the equivalent-by-preset-name fallback is no longer needed.
 
         // Check for streaming-only availability
         // Extract all station codes and check for streaming services
@@ -341,19 +453,21 @@ async function fetchFreshGamesFromRailMedia(homeTeams: any[]): Promise<any[]> {
             ? stationList
             : Object.values(stationList).filter((s): s is string => typeof s === 'string')
 
+          // The shared helper handles sport-gating for league-specific
+          // codes (MLBEI/NHLCI/NBALP/MLSDK) — pass group.group_title as
+          // the sport hint and it will return null for mismatched codes.
+          const sportHint = group.group_title || null
           for (const station of stations) {
-            const appInfo = getStreamingAppInfo(station)
+            const appInfo = getStreamingAppInfoForStation(station, sportHint)
             if (appInfo) {
-              streamingApp = appInfo.appName
+              streamingApp = appInfo.app
               streamingPackages = appInfo.packages
-              // Check if this is a streaming-only station (no traditional TV channel)
-              if (isStreamingStation(station)) {
-                isStreamingOnly = !cableChannelNumber && !directvChannelNumber
-              }
-              logger.debug(`[AI_GAME_PLAN] Found streaming option: ${station} -> ${appInfo.appName}`)
+              logger.debug(`[AI_GAME_PLAN] Found streaming option: ${station} -> ${appInfo.app}`)
               break // Use first matching streaming app
             }
           }
+          // Streaming-only if no linear channel was resolved for this listing
+          isStreamingOnly = !!streamingApp && !cableChannelNumber && !directvChannelNumber
         }
 
         // Add game if we have cable/satellite channel OR streaming availability
@@ -457,8 +571,8 @@ export async function GET(request: NextRequest) {
   try {
     logger.info('[AI_GAME_PLAN] Fetching fresh game data from The Rail Media API')
 
-    // Get the AI Game Monitor schedule
-    const aiSchedule = await db
+    // Get the AI Game Monitor schedule (auto-create if missing)
+    let aiSchedule = await db
       .select()
       .from(schema.schedules)
       .where(eq(schema.schedules.scheduleType, 'continuous'))
@@ -466,10 +580,68 @@ export async function GET(request: NextRequest) {
       .get()
 
     if (!aiSchedule) {
-      return NextResponse.json({
-        success: false,
-        error: 'AI Game Monitor schedule not found'
-      }, { status: 404 })
+      logger.info('[AI_GAME_PLAN] No continuous schedule found — auto-creating "AI Game Monitor"')
+
+      // Look up home team IDs for Packers, Bucks, Brewers, Badgers
+      let defaultHomeTeamIds: string[] = []
+      try {
+        const matchedTeams = await db
+          .select({ id: schema.homeTeams.id, teamName: schema.homeTeams.teamName })
+          .from(schema.homeTeams)
+          .where(
+            or(
+              sql`LOWER(${schema.homeTeams.teamName}) LIKE '%packers%'`,
+              sql`LOWER(${schema.homeTeams.teamName}) LIKE '%bucks%'`,
+              sql`LOWER(${schema.homeTeams.teamName}) LIKE '%brewers%'`,
+              sql`LOWER(${schema.homeTeams.teamName}) LIKE '%badgers%'`
+            )
+          )
+          .all()
+        defaultHomeTeamIds = matchedTeams.map((t) => t.id)
+        if (defaultHomeTeamIds.length === 0) {
+          logger.warn('[AI_GAME_PLAN] No matching home teams (Packers/Bucks/Brewers/Badgers) found in HomeTeam table — home-team prioritization will be inactive until teams are configured')
+        }
+      } catch (lookupErr: any) {
+        logger.warn('[AI_GAME_PLAN] Home team lookup failed during schedule auto-create:', lookupErr)
+        defaultHomeTeamIds = []
+      }
+
+      try {
+        await db
+          .insert(schema.schedules)
+          .values({
+            name: 'AI Game Monitor',
+            description: 'Auto-created continuous home-team monitoring schedule. Edit to change priorities.',
+            scheduleType: 'continuous',
+            enabled: true,
+            recurring: false,
+            monitorHomeTeams: true,
+            autoFindGames: true,
+            homeTeamIds: JSON.stringify(defaultHomeTeamIds),
+          })
+          .run()
+      } catch (insertErr: any) {
+        // Concurrency-safe: another request may have inserted one simultaneously.
+        logger.warn('[AI_GAME_PLAN] Insert of continuous schedule failed (possibly race); will re-fetch:', insertErr?.message || insertErr)
+      }
+
+      // Re-fetch (handles both our insert and any concurrent insert that won the race)
+      aiSchedule = await db
+        .select()
+        .from(schema.schedules)
+        .where(eq(schema.schedules.scheduleType, 'continuous'))
+        .limit(1)
+        .get()
+
+      if (!aiSchedule) {
+        logger.error('[AI_GAME_PLAN] Failed to auto-create continuous schedule')
+        return NextResponse.json({
+          success: false,
+          error: 'Failed to auto-create AI Game Monitor schedule'
+        }, { status: 500 })
+      }
+
+      logger.info(`[AI_GAME_PLAN] Auto-created continuous 'AI Game Monitor' schedule with ${defaultHomeTeamIds.length} home teams`)
     }
 
     // Get home teams to identify which games are priority
@@ -484,6 +656,56 @@ export async function GET(request: NextRequest) {
     const freshGames = await fetchFreshGamesFromRailMedia(homeTeamsList)
 
     logger.info(`[AI_GAME_PLAN] Fetched ${freshGames.length} fresh games from Rail Media API`)
+
+    // =========================================================================
+    // Load learned scheduling patterns for smarter allocation decisions
+    // =========================================================================
+    const schedulingPatterns = await loadSchedulingPatterns()
+
+    // If patterns exist, enrich games with pattern-based hints
+    if (schedulingPatterns) {
+      for (const game of freshGames) {
+        // Attach preferred input from team routing patterns
+        const preferredInput = getTeamPreferredInput(game, schedulingPatterns)
+        if (preferredInput) {
+          game.patternPreferredInput = preferredInput.inputLabel
+          game.patternPreferredInputId = preferredInput.inputId
+          game.patternInputConfidence = preferredInput.confidence
+        }
+
+        // Attach league priority score
+        const leagueScore = getLeaguePriorityScore(game.league, schedulingPatterns)
+        if (leagueScore > 0) {
+          game.patternLeaguePriority = leagueScore
+        }
+
+        // Attach preferred TV outputs (zone preferences)
+        const preferredOutputs = getPreferredOutputs(game, schedulingPatterns)
+        if (preferredOutputs) {
+          game.patternPreferredOutputs = preferredOutputs.outputs
+          game.patternOutputConfidence = preferredOutputs.confidence
+        }
+      }
+
+      // Sort upcoming/unassigned games using league priority patterns
+      // Higher league priority games should be considered first for allocation
+      freshGames.sort((a: any, b: any) => {
+        // Home team games always come first
+        if (a.isHomeTeamGame && !b.isHomeTeamGame) return -1
+        if (!a.isHomeTeamGame && b.isHomeTeamGame) return 1
+
+        // Then sort by pattern league priority (higher = more important)
+        const aPriority = a.patternLeaguePriority || 0
+        const bPriority = b.patternLeaguePriority || 0
+        if (aPriority !== bPriority) return bPriority - aPriority
+
+        // Fall back to start time
+        if (a.startTime && b.startTime) {
+          return new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+        }
+        return 0
+      })
+    }
 
     // Fetch Fire TV device statuses for streaming capability matching
     let fireTVDevices: any[] = []
@@ -566,6 +788,16 @@ export async function GET(request: NextRequest) {
     // Create a map of input ID to current game/program by matching current channels against fresh games
     const inputGameMap = new Map<string, any>()
 
+    // =========================================================================
+    // Build an input-label lookup for pattern-based routing hints
+    // =========================================================================
+    const inputsByLabel = new Map<string, any>()
+    for (const input of inputs) {
+      if (input.label) {
+        inputsByLabel.set(input.label.toLowerCase(), input)
+      }
+    }
+
     // Process all current channel entries (cable boxes, DirecTV, Fire TV - everything)
     for (const channelInfo of currentChannels) {
       if (channelInfo.channelNumber) {
@@ -584,8 +816,14 @@ export async function GET(request: NextRequest) {
           })
 
           if (gameOnChannel) {
-            // We found a game on this channel - add it to the map
-            inputGameMap.set(input.id, {
+            // We found a game on this channel - add it to the map.
+            // Propagate cableChannel/directvChannel/streamingApp from the
+            // matched fresh game so the UI's getChannelMapping helper can
+            // render "Bally Sports WI -> Ch 308 (Cable)" instead of
+            // "No channel available". Without these fields the Brewers
+            // game would show as "No channel available" even though it
+            // correctly resolved to cable 308 upstream.
+            const gameEntry: any = {
               inputLabel: channelInfo.inputLabel || input.label,
               inputNumber: input.channelNumber,
               deviceType: channelInfo.deviceType,
@@ -595,11 +833,37 @@ export async function GET(request: NextRequest) {
               gameTime: gameOnChannel.gameTime,
               channelNumber: channelInfo.channelNumber,
               channelName: channelInfo.channelName,
+              cableChannel: gameOnChannel.cableChannel || '',
+              directvChannel: gameOnChannel.directvChannel || '',
+              streamingApp: gameOnChannel.streamingApp || null,
+              streamingPackages: gameOnChannel.streamingPackages || [],
               venue: gameOnChannel.venue,
               startTime: gameOnChannel.startTime,
               isHomeTeamGame: gameOnChannel.isHomeTeamGame,
               lastTuned: channelInfo.lastTuned
-            })
+            }
+
+            // Enrich with pattern data if available
+            if (schedulingPatterns) {
+              const preferredInput = getTeamPreferredInput(gameOnChannel, schedulingPatterns)
+              if (preferredInput) {
+                gameEntry.patternPreferredInput = preferredInput.inputLabel
+                gameEntry.patternMatchesPreferred = (
+                  (channelInfo.inputLabel || input.label || '').toLowerCase() === preferredInput.inputLabel.toLowerCase()
+                )
+                if (gameEntry.patternMatchesPreferred) {
+                  logger.info(`[AI-GAMEPLAN] Pattern match confirmed: ${gameOnChannel.homeTeam || gameOnChannel.awayTeam} on preferred input ${preferredInput.inputLabel}`)
+                }
+              }
+
+              const preferredOutputs = getPreferredOutputs(gameOnChannel, schedulingPatterns)
+              if (preferredOutputs) {
+                gameEntry.patternPreferredOutputs = preferredOutputs.outputs
+                gameEntry.patternOutputConfidence = preferredOutputs.confidence
+              }
+            }
+
+            inputGameMap.set(input.id, gameEntry)
             logger.debug(`[AI_GAME_PLAN] Matched ${channelInfo.inputLabel} (${channelInfo.deviceType}) on channel ${channelInfo.channelNumber} to ${gameOnChannel.homeTeam} vs ${gameOnChannel.awayTeam}`)
           } else {
             // No game found, but still show what's tuned
@@ -742,6 +1006,14 @@ export async function GET(request: NextRequest) {
         // Put live games first, then sort by start time
         if (a.liveData?.isLive && !b.liveData?.isLive) return -1
         if (!a.liveData?.isLive && b.liveData?.isLive) return 1
+
+        // Use pattern-based league priority for secondary sort
+        if (schedulingPatterns) {
+          const aPriority = a.patternLeaguePriority || 0
+          const bPriority = b.patternLeaguePriority || 0
+          if (aPriority !== bPriority) return bPriority - aPriority
+        }
+
         if (a.startTime && b.startTime) {
           return new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
         }
@@ -751,6 +1023,30 @@ export async function GET(request: NextRequest) {
     // Count streaming games
     const streamingOnlyGames = freshGames.filter((g: any) => g.streamingOnly).length
     const gamesWithStreaming = freshGames.filter((g: any) => g.streamingApp).length
+
+    // Build pattern summary for the response
+    const patternSummary = schedulingPatterns ? {
+      loaded: true,
+      teamRoutingCount: schedulingPatterns.teamRouting.size,
+      leaguePriorityCount: schedulingPatterns.leaguePriority.size,
+      tvZonePreferenceCount: schedulingPatterns.tvZonePreference.size,
+      teamRoutings: Array.from(schedulingPatterns.teamRouting.entries()).map(([team, info]) => ({
+        team,
+        preferredInput: info.data.preferredInput,
+        confidence: info.confidence,
+      })),
+      leaguePriorities: Array.from(schedulingPatterns.leaguePriority.entries()).map(([league, info]) => ({
+        league,
+        avgTVs: info.data.avgTVs,
+        scheduleCount: info.data.scheduleCount,
+        confidence: info.confidence,
+      })),
+    } : {
+      loaded: false,
+      teamRoutingCount: 0,
+      leaguePriorityCount: 0,
+      tvZonePreferenceCount: 0,
+    }
 
     return NextResponse.json({
       success: true,
@@ -770,6 +1066,7 @@ export async function GET(request: NextRequest) {
       })),
       dataSource: 'The Rail Media API (Fresh)',
       fetchedAt: new Date().toISOString(),
+      schedulingPatterns: patternSummary,
       summary: {
         totalGames: freshGames.length,
         homeTeamGames: freshGames.filter((g: any) => g.isHomeTeamGame).length,
@@ -778,7 +1075,8 @@ export async function GET(request: NextRequest) {
         streamingOnlyGames,
         gamesWithStreaming,
         fireTVDevicesOnline: fireTVDevices.filter(d => d.isOnline).length,
-        leagues: [...new Set(freshGames.map((g: any) => g.league))].filter(Boolean)
+        leagues: [...new Set(freshGames.map((g: any) => g.league))].filter(Boolean),
+        patternsLoaded: !!schedulingPatterns,
       }
     })
 

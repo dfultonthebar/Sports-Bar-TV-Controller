@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db, schema } from '@/db'
 import { eq, gte, desc, and } from 'drizzle-orm'
 import { logger } from '@sports-bar/logger'
+import { atlasAIAnalyzer } from '@sports-bar/atlas'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { z } from 'zod'
@@ -82,8 +83,8 @@ export async function POST(request: NextRequest) {
     // Collect real-time monitoring data
     const monitoringData = await collectAtlasMonitoringData(processorWithData)
 
-    // Perform AI analysis
-    const analysis = await analyzeAtlasData(monitoringData, processorWithData)
+    // Perform AI analysis with learned patterns
+    const analysis = await atlasAIAnalyzer.analyzeWithLearning(monitoringData)
 
     return NextResponse.json({
       success: true,

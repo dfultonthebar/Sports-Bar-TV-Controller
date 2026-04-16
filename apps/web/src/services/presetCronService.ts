@@ -1,8 +1,11 @@
 import cron, { ScheduledTask } from 'node-cron'
 import { reorderAllPresets } from './presetReorderService'
+import { syncPresetsFromGuide } from '@/lib/sports-guide-channel-sync'
 
 import { logger } from '@sports-bar/logger'
+import { HARDWARE_CONFIG } from '@/lib/hardware-config'
 let cronJob: ScheduledTask | null = null
+let syncCronJob: ScheduledTask | null = null
 
 /**
  * Initialize the monthly preset reordering cron job
@@ -26,20 +29,54 @@ export function initializePresetCronJob() {
       logger.error('[Preset Cron] Error during monthly reordering:', error)
     }
   }, {
-    timezone: 'America/New_York' // Adjust to your timezone
+    timezone: HARDWARE_CONFIG.venue.timezone
   })
 
   logger.info('[Preset Cron] Monthly preset reordering cron job initialized (runs at 3:00 AM on 1st of each month)')
 }
 
 /**
- * Stop the cron job (useful for testing or shutdown)
+ * Initialize the daily channel sync from Rail Media Sports Guide API.
+ * Runs every day at 4:00 AM Central.
+ */
+export function initializeChannelSyncCronJob() {
+  if (syncCronJob) {
+    logger.info('[Channel Sync Cron] Cron job already initialized')
+    return
+  }
+
+  syncCronJob = cron.schedule('0 4 * * *', async () => {
+    logger.info('[Channel Sync Cron] Running daily channel preset sync from Sports Guide...')
+    try {
+      const result = await syncPresetsFromGuide()
+      logger.info('[Channel Sync Cron] Daily sync completed:', {
+        created: result.created,
+        updated: result.updated,
+        unchanged: result.unchanged,
+      })
+    } catch (error) {
+      logger.error('[Channel Sync Cron] Error during daily sync:', error)
+    }
+  }, {
+    timezone: HARDWARE_CONFIG.venue.timezone
+  })
+
+  logger.info('[Channel Sync Cron] Daily channel sync initialized (runs at 4:00 AM Central)')
+}
+
+/**
+ * Stop all cron jobs
  */
 export function stopPresetCronJob() {
   if (cronJob) {
     cronJob.stop()
     cronJob = null
     logger.info('[Preset Cron] Cron job stopped')
+  }
+  if (syncCronJob) {
+    syncCronJob.stop()
+    syncCronJob = null
+    logger.info('[Channel Sync Cron] Cron job stopped')
   }
 }
 

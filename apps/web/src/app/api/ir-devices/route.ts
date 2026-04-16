@@ -6,8 +6,37 @@ import { logger } from '@sports-bar/logger'
 import { z } from 'zod'
 import { validateRequestBody, validateQueryParams, isValidationError, isValidationSuccess} from '@/lib/validation'
 import { db } from '@/db'
-import { irDevices } from '@/db/schema'
+import { irDevices, globalCacheDevices } from '@/db/schema'
 import { eq } from 'drizzle-orm'
+
+// Map raw DB IR device to frontend-compatible format
+async function mapIRDevice(device: any, gcDeviceCache: Map<string, any>) {
+  let iTachAddress: string | undefined
+  let iTachPort = 4998
+
+  if (device.globalCacheDeviceId) {
+    let gcDevice = gcDeviceCache.get(device.globalCacheDeviceId)
+    if (!gcDevice) {
+      gcDevice = await db.query.globalCacheDevices.findFirst({
+        where: eq(globalCacheDevices.id, device.globalCacheDeviceId),
+      })
+      if (gcDevice) gcDeviceCache.set(device.globalCacheDeviceId, gcDevice)
+    }
+    if (gcDevice) {
+      iTachAddress = gcDevice.ipAddress
+      iTachPort = gcDevice.port || 4998
+    }
+  }
+
+  return {
+    ...device,
+    inputChannel: device.matrixInput,
+    controlMethod: iTachAddress ? 'GlobalCache' : 'IR',
+    iTachAddress,
+    iTachPort,
+    isActive: device.status === 'active',
+  }
+}
 
 export async function GET(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
@@ -22,6 +51,7 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const deviceId = searchParams.get('id')
+    const gcDeviceCache = new Map<string, any>()
 
     if (deviceId) {
       // Get specific device
@@ -33,8 +63,7 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: 'Device not found' }, { status: 404 })
       }
 
-      // Map matrixInput to inputChannel for frontend compatibility
-      const mappedDevice = { ...device, inputChannel: device.matrixInput }
+      const mappedDevice = await mapIRDevice(device, gcDeviceCache)
       return NextResponse.json({ devices: [mappedDevice] }, {
         headers: {
           'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
@@ -45,8 +74,7 @@ export async function GET(request: NextRequest) {
     } else {
       // Get all devices
       const devices = await db.query.irDevices.findMany()
-      // Map matrixInput to inputChannel for frontend compatibility
-      const mappedDevices = devices.map(d => ({ ...d, inputChannel: d.matrixInput }))
+      const mappedDevices = await Promise.all(devices.map(d => mapIRDevice(d, gcDeviceCache)))
       return NextResponse.json({ devices: mappedDevices }, {
         headers: {
           'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',

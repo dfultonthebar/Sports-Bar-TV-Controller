@@ -7,6 +7,7 @@
 
 import { db, schema, eq, findMany, findFirst, update } from '@sports-bar/database'
 import { logger } from '@sports-bar/logger'
+import { recordGainAdjustment, recordGainAdjustmentFailure } from './atlas-learning-collector'
 import * as net from 'net'
 
 const { audioProcessors, aiGainConfigurations, aiGainAdjustmentLogs } = schema
@@ -223,6 +224,17 @@ export class AIGainService {
         `(level: ${currentLevel.toFixed(1)}dB, target: ${targetLevel.toFixed(1)}dB, mode: ${adjustmentMode})`
       )
 
+      // Record learning event (fire-and-forget)
+      recordGainAdjustment({
+        processorId: processor.id,
+        inputNumber: config.inputNumber,
+        previousGain: currentGain,
+        newGain,
+        currentLevel,
+        targetLevel,
+        adjustmentMode: adjustmentMode as 'fast' | 'slow',
+      })
+
     } catch (error) {
       logger.error(`Failed to adjust gain for input ${config.inputNumber}`, { error })
 
@@ -236,6 +248,15 @@ export class AIGainService {
         adjustment: newGain - currentGain,
         reason: error instanceof Error ? error.message : 'Unknown error'
       }).returning().get()
+
+      // Record learning event (fire-and-forget)
+      recordGainAdjustmentFailure({
+        processorId: processor.id,
+        inputNumber: config.inputNumber,
+        previousGain: currentGain,
+        newGain,
+        errorMessage: error instanceof Error ? error.message : 'Unknown error',
+      })
     }
   }
 

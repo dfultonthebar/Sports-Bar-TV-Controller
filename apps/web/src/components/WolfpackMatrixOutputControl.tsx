@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { Monitor, Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
 
 import { logger } from '@sports-bar/logger'
+import { HARDWARE_CONFIG } from '@/lib/hardware-config'
 interface MatrixInput {
   id: string
   channelNumber: number
@@ -26,6 +27,7 @@ export default function WolfpackMatrixOutputControl({ processorIp }: WolfpackMat
   const [inputs, setInputs] = useState<MatrixInput[]>([])
   const [routings, setRoutings] = useState<MatrixRouting[]>([])
   const [audioOutputCount, setAudioOutputCount] = useState(4)
+  const [audioOutputStart, setAudioOutputStart] = useState(HARDWARE_CONFIG.wolfpack.audioOutputStart)
   const [selectedOutput, setSelectedOutput] = useState<number | null>(null)
   const [loading, setLoading] = useState(false)
   const [routing, setRouting] = useState(false)
@@ -50,6 +52,18 @@ export default function WolfpackMatrixOutputControl({ processorIp }: WolfpackMat
           setInputs(matrixInputs)
           if (activeConfig.audioOutputCount) {
             setAudioOutputCount(activeConfig.audioOutputCount)
+          }
+          // Find audio output start from outputs labeled "Matrix Audio"
+          const audioOutputs = (activeConfig.outputs || [])
+            .filter((o: any) => o.label?.toLowerCase().includes('matrix audio') || o.label?.toLowerCase().includes('audio'))
+            .map((o: any) => o.channelNumber)
+            .sort((a: number, b: number) => a - b)
+          if (audioOutputs.length > 0) {
+            setAudioOutputStart(audioOutputs[0])
+          } else {
+            // Fallback: audio outputs start after video outputs
+            const inputCount = activeConfig.inputCount || 36
+            setAudioOutputStart(inputCount + 1)
           }
         }
       }
@@ -163,7 +177,7 @@ export default function WolfpackMatrixOutputControl({ processorIp }: WolfpackMat
 
       {/* Matrix Outputs */}
       <div className="space-y-3">
-        {Array.from({ length: audioOutputCount }, (_, i) => i + 1).map((outputNumber) => {
+        {Array.from({ length: audioOutputCount }, (_, i) => audioOutputStart + i).map((outputNumber) => {
           const currentRouting = getCurrentRouting(outputNumber)
           const isSelected = selectedOutput === outputNumber
 
@@ -185,7 +199,7 @@ export default function WolfpackMatrixOutputControl({ processorIp }: WolfpackMat
                       {outputNumber}
                     </div>
                     <div className="text-left">
-                      <div className="font-medium text-white">Matrix {outputNumber}</div>
+                      <div className="font-medium text-white">Matrix Audio {outputNumber - audioOutputStart + 1}</div>
                       {currentRouting ? (
                         <div className="text-xs text-blue-300">
                           → {currentRouting.wolfpackInputLabel}
@@ -207,7 +221,7 @@ export default function WolfpackMatrixOutputControl({ processorIp }: WolfpackMat
               {isSelected && (
                 <div className="bg-slate-900/50 rounded-lg p-3 border border-slate-700">
                   <div className="text-xs font-medium text-slate-400 mb-2">
-                    Select Input for Matrix {outputNumber}:
+                    Select Input for Matrix Audio {outputNumber - audioOutputStart + 1}:
                   </div>
                   <div className="grid grid-cols-2 gap-2 max-h-64 overflow-y-auto">
                     {inputs.map((input) => (
