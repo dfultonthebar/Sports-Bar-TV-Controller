@@ -6,10 +6,10 @@
     "deviceType": "directv",
     "order": 50,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-03-26 16:38:13",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "7a42956a-3628-43eb-ae41-42c810f3bff9",
@@ -18,10 +18,10 @@
     "deviceType": "directv",
     "order": 53,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-03-19 16:05:38",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "fb2cc135-2625-4d08-b8a3-ba2f0ab6f046",
@@ -30,10 +30,10 @@
     "deviceType": "directv",
     "order": 55,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-03-19 16:05:38",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "78d8e418-831a-40b0-b35d-ea4fab1fc1ea",
@@ -42,10 +42,10 @@
     "deviceType": "directv",
     "order": 51,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-03-19 16:05:38",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "48714e75-d026-4b71-be2c-77d7f1df7b39",
@@ -54,10 +54,10 @@
     "deviceType": "directv",
     "order": 54,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-03-19 16:05:38",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "943ae935-2a16-417b-bda0-254684f0fb9b",
@@ -66,10 +66,10 @@
     "deviceType": "directv",
     "order": 49,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-03-19 16:05:38",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "ca896fa6-efd8-464d-bb9e-f30d228a2007",
@@ -78,10 +78,10 @@
     "deviceType": "directv",
     "order": 75,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-04-08 09:00:02",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "4ad53245-b394-409d-bb6b-c03b1996f672",
@@ -90,10 +90,10 @@
     "deviceType": "directv",
     "order": 8,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-03-19 16:05:38",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "181f6da5-64ef-4e36-a918-d8f5b6658e67",
@@ -102,10 +102,10 @@
     "deviceType": "directv",
     "order": 10,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-03-19 16:05:38",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "6d820482-cd3b-4dd3-bbec-f2503a26a85f",
@@ -114,10 +114,10 @@
     "deviceType": "directv",
     "order": 11,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-03-19 16:05:38",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "e56ff24e-72fd-4a65-ac39-5f4201f28538",
@@ -126,10 +126,10 @@
     "deviceType": "directv",
     "order": 13,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-03-19 16:05:38",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "08a321e9-162a-4b92-ab5e-acfe1033e5aa",
@@ -138,10 +138,10 @@
     "deviceType": "directv",
     "order": 28,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-03-30 09:00:02",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "aa1b7543-7338-49dc-8996-83775c9656d2",
@@ -150,10 +150,10 @@
     "deviceType": "directv",
     "order": 22,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-03-19 16:05:38",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "3D2ACAC0770C2C51DD4DAAD34F77BA94",
@@ -162,10 +162,10 @@
     "deviceType": "directv",
     "order": 56,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-03-26 16:38:13",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "b4446d89-9000-470c-93a5-9bde9f853e11",
@@ -174,10 +174,10 @@
     "deviceType": "directv",
     "order": 30,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-03-19 16:05:38",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "32e928ab-d29d-4032-878b-d60cb3ad02b6",
@@ -186,10 +186,10 @@
     "deviceType": "directv",
     "order": 25,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-03-19 16:05:38",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "804C9C819B19BE7C57625AE7B54CAF9B",
@@ -198,34 +198,10 @@
     "deviceType": "directv",
     "order": 27,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-03-26 16:38:13",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
-  },
-  {
-    "id": "ffc56e34-5a30-46b7-8673-c7688290d5c7",
-    "name": "Tennis",
-    "channelNumber": "217",
-    "deviceType": "directv",
-    "order": 44,
-    "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
-    "createdAt": "2026-03-30 09:00:02",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
-  },
-  {
-    "id": "ca05d614-1d3b-4f95-8b3c-db92f3b48422",
-    "name": "Golf",
-    "channelNumber": "213",
-    "deviceType": "directv",
-    "order": 20,
-    "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
-    "createdAt": "2026-03-19 16:05:38",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "7e24723f-f3fa-4c87-8629-34892451b120",
@@ -234,10 +210,10 @@
     "deviceType": "directv",
     "order": 16,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-03-19 16:05:38",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "98e10cc7-f6eb-4636-b8e3-1dafc0e564f5",
@@ -246,34 +222,10 @@
     "deviceType": "directv",
     "order": 35,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-03-19 16:05:38",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
-  },
-  {
-    "id": "fd90ac3a-44fb-413a-baa6-4fc17452eb14",
-    "name": "CBS Sports Network",
-    "channelNumber": "602",
-    "deviceType": "directv",
-    "order": 6,
-    "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
-    "createdAt": "2026-03-19 16:05:38",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
-  },
-  {
-    "id": "cea7bdcd-d8fe-4650-98b3-6c14a090cd2c",
-    "name": "CBS Sports Network",
-    "channelNumber": "602",
-    "deviceType": "directv",
-    "order": 7,
-    "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
-    "createdAt": "2026-03-29 18:31:19",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "edddf2e8-d997-453e-8398-ea1009be391d",
@@ -282,10 +234,10 @@
     "deviceType": "directv",
     "order": 47,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-03-19 16:05:38",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "a90bab28-ab59-4ef9-8a74-eb287aa34c4b",
@@ -294,46 +246,58 @@
     "deviceType": "directv",
     "order": 39,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-03-19 16:05:38",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "02607b75-6bdc-43dc-a463-4f59fcab67a8",
-    "name": "TBS",
+    "name": "TruTV",
     "channelNumber": "246",
     "deviceType": "directv",
     "order": 45,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-03-19 16:05:38",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "4084544d-18df-4419-8ff5-1d601ae48fe4",
-    "name": "TruTV",
+    "name": "TBS",
     "channelNumber": "247",
     "deviceType": "directv",
     "order": 38,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-03-19 16:05:38",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
-    "id": "83d975f1-eca0-419f-94f4-cd386c6328b1",
-    "name": "OT",
-    "channelNumber": "305",
+    "id": "525ec179-32ac-4ff2-9f48-8d16e52f50ca",
+    "name": "Paramount Network",
+    "channelNumber": "248",
     "deviceType": "directv",
-    "order": 33,
+    "order": 248,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
-    "createdAt": "2026-03-30 09:00:02",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "usageCount": 0,
+    "lastUsed": null,
+    "createdAt": "2026-04-16 16:01:40",
+    "updatedAt": "2026-04-16 16:01:40"
+  },
+  {
+    "id": "f5e2e89c-707f-420d-8955-103f48188406",
+    "name": "NBC Sports",
+    "channelNumber": "296",
+    "deviceType": "directv",
+    "order": 296,
+    "isActive": 1,
+    "usageCount": 0,
+    "lastUsed": null,
+    "createdAt": "2026-04-16 16:01:40",
+    "updatedAt": "2026-04-16 16:01:40"
   },
   {
     "id": "64addb3e-373e-46be-b2d0-db81e9b9e1b1",
@@ -342,10 +306,10 @@
     "deviceType": "directv",
     "order": 34,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-03-29 18:31:19",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "17af2a23-3396-4b2b-85b2-bb8d22f21d79",
@@ -354,10 +318,10 @@
     "deviceType": "directv",
     "order": 52,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-03-30 09:00:02",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "bac8021c-77f3-4dbb-bf4c-0f071aeb7fdf",
@@ -366,10 +330,10 @@
     "deviceType": "directv",
     "order": 73,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-04-04 09:00:02",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "a3dc427d-4b51-4aac-8fc9-d18abacd05b3",
@@ -378,10 +342,10 @@
     "deviceType": "directv",
     "order": 46,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-03-22 09:00:02",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "7292bb4a-07ce-4cc8-b9dc-62559c409e9a",
@@ -390,10 +354,10 @@
     "deviceType": "directv",
     "order": 43,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-03-29 18:31:19",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "34c176c0-6dec-40ad-a111-b25a852cd4d6",
@@ -402,10 +366,10 @@
     "deviceType": "directv",
     "order": 48,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-03-29 18:31:19",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "2344155e-80d9-42a0-9abf-a1a15532b00a",
@@ -414,10 +378,10 @@
     "deviceType": "directv",
     "order": 26,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-03-29 18:31:19",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "2fa428d7-9a2a-42cd-9fb8-763bbf122868",
@@ -426,10 +390,10 @@
     "deviceType": "directv",
     "order": 31,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-03-30 09:00:02",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "6a7ca9e2-f71f-43a7-949a-9ddb474eeac0",
@@ -438,10 +402,10 @@
     "deviceType": "directv",
     "order": 72,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-04-04 09:00:02",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "71e9921e-614f-4657-8f05-3cdacb9b8ce1",
@@ -450,10 +414,10 @@
     "deviceType": "directv",
     "order": 5,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-03-30 09:00:02",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "05336252-76d0-4348-9be9-6fcfbd3a9cae",
@@ -462,10 +426,10 @@
     "deviceType": "directv",
     "order": 40,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-03-29 18:31:19",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "c77c4e37-368e-4b17-95fc-8f766c1851b9",
@@ -474,10 +438,10 @@
     "deviceType": "directv",
     "order": 15,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-03-29 18:31:19",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "47b5f32b-06d1-453a-a1fa-59f81963cada",
@@ -486,10 +450,10 @@
     "deviceType": "directv",
     "order": 9,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-03-29 18:31:19",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "e4f158ce-1fe4-4fb4-b79a-19ef053f42c7",
@@ -498,10 +462,22 @@
     "deviceType": "directv",
     "order": 42,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-03-30 09:00:02",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
+  },
+  {
+    "id": "b8e5c2b0-7f08-4429-992d-2b3849f334e4",
+    "name": "CBS Sports Network",
+    "channelNumber": "602",
+    "deviceType": "directv",
+    "order": 602,
+    "isActive": 1,
+    "usageCount": 0,
+    "lastUsed": null,
+    "createdAt": "2026-04-16 16:01:40",
+    "updatedAt": "2026-04-16 16:01:40"
   },
   {
     "id": "f17867b1-3617-445a-8b61-36604623cc55",
@@ -510,10 +486,10 @@
     "deviceType": "directv",
     "order": 4,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-03-30 09:00:02",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "0c3101b0-f88c-465f-bb36-ab60399a3d9c",
@@ -522,10 +498,10 @@
     "deviceType": "directv",
     "order": 37,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-03-19 16:05:38",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "2344a6e1-2a80-4fa8-8bca-8067546b697f",
@@ -534,22 +510,10 @@
     "deviceType": "directv",
     "order": 0,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-03-29 18:31:19",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
-  },
-  {
-    "id": "2f373e0b-9702-4475-8375-6bd564ec9604",
-    "name": "ACCN",
-    "channelNumber": "612",
-    "deviceType": "directv",
-    "order": 1,
-    "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
-    "createdAt": "2026-03-19 16:05:38",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "c3c2f583-b830-4fb4-bd50-6299f283dace",
@@ -558,10 +522,10 @@
     "deviceType": "directv",
     "order": 17,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-03-19 16:05:38",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "39deff06-ea69-467e-8f86-faf71f288807",
@@ -570,22 +534,10 @@
     "deviceType": "directv",
     "order": 18,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-03-19 16:05:38",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
-  },
-  {
-    "id": "a29eb05d-47e4-48ac-ad63-d5cef6b65907",
-    "name": "Fox Sports Prime",
-    "channelNumber": "621",
-    "deviceType": "directv",
-    "order": 19,
-    "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
-    "createdAt": "2026-03-29 18:31:19",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "c93ab17e-6e1e-4a5e-ba71-073ed4775eab",
@@ -594,10 +546,10 @@
     "deviceType": "directv",
     "order": 57,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-04-01 09:00:02",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "5e201c4c-9665-4fc3-bada-6c120ea6df4d",
@@ -606,10 +558,10 @@
     "deviceType": "directv",
     "order": 23,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-03-30 09:00:02",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "2f3da8fc-f0ef-4f3b-bdc1-016328361044",
@@ -618,10 +570,10 @@
     "deviceType": "directv",
     "order": 58,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-04-02 09:00:02",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "0b4615b4-1fae-43f0-880e-092f1effbf8a",
@@ -630,10 +582,10 @@
     "deviceType": "directv",
     "order": 61,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-04-02 09:00:02",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "641f3f1c-88c8-407a-a6b4-49cc3f82389a",
@@ -642,10 +594,10 @@
     "deviceType": "directv",
     "order": 65,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-04-02 09:00:02",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "bcff1f0b-5264-4b23-937a-381285c360c5",
@@ -654,10 +606,10 @@
     "deviceType": "directv",
     "order": 63,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-04-02 09:00:02",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "f35c1b5c-aae2-4e55-adec-edb97a91da00",
@@ -666,10 +618,10 @@
     "deviceType": "directv",
     "order": 66,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-04-02 09:00:02",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "522eedf2-535a-4cb4-8e01-e688112063ab",
@@ -678,10 +630,10 @@
     "deviceType": "directv",
     "order": 67,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-04-02 09:00:02",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "e2a12797-59ca-4da9-a4f1-756c885d6840",
@@ -690,10 +642,10 @@
     "deviceType": "directv",
     "order": 70,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-04-03 09:00:02",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "6f54c3ba-15a6-484e-a269-bf457e3d3001",
@@ -702,10 +654,10 @@
     "deviceType": "directv",
     "order": 3,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-03-29 18:31:19",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "22eea46e-f906-4566-92a5-b66adeb38f5b",
@@ -714,10 +666,10 @@
     "deviceType": "directv",
     "order": 59,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-04-02 09:00:02",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "3f1992f4-b8f7-4359-bd27-e54bfaec2330",
@@ -726,10 +678,10 @@
     "deviceType": "directv",
     "order": 69,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-04-02 09:00:02",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "085781ca-675b-496d-af4b-731133c0d2f8",
@@ -738,10 +690,10 @@
     "deviceType": "directv",
     "order": 14,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-03-19 16:05:38",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "a2f65618-3b56-4cd1-ae88-2c3f7437d320",
@@ -750,10 +702,10 @@
     "deviceType": "directv",
     "order": 68,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-04-02 09:00:02",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "f487c79d-2c18-417e-b8e6-b93ea773efd1",
@@ -762,10 +714,10 @@
     "deviceType": "directv",
     "order": 64,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-04-02 09:00:02",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "b9f213c5-f5ab-4ebd-8896-ff559b16a219",
@@ -774,10 +726,10 @@
     "deviceType": "directv",
     "order": 62,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-04-02 09:00:02",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "a903d2fe-ff81-46a4-aefa-3a5cc94e4c3f",
@@ -786,22 +738,10 @@
     "deviceType": "directv",
     "order": 60,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-04-02 09:00:02",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
-  },
-  {
-    "id": "138d0534-7736-4e54-988f-f58baff0d8e1",
-    "name": "MLB Extra Innings",
-    "channelNumber": "721",
-    "deviceType": "directv",
-    "order": 21,
-    "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
-    "createdAt": "2026-03-29 18:31:19",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "d6107359-06b5-45d4-a345-207e22c79f11",
@@ -810,10 +750,10 @@
     "deviceType": "directv",
     "order": 24,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-03-29 18:31:19",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "874cdc92-a6c8-4b43-bebf-a2b83e932f42",
@@ -822,10 +762,10 @@
     "deviceType": "directv",
     "order": 29,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-03-29 18:31:19",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "466b0050-d995-4abc-b67d-2d1ed0f2d3bd",
@@ -834,10 +774,10 @@
     "deviceType": "directv",
     "order": 41,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-03-30 09:00:02",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "1b97a22a-a7c2-47a1-9f64-201cf3948637",
@@ -846,10 +786,10 @@
     "deviceType": "directv",
     "order": 74,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-04-06 09:00:02",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "4892be51-54e1-4420-984c-ff69d67e64cd",
@@ -858,10 +798,10 @@
     "deviceType": "directv",
     "order": 12,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-03-19 16:05:38",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "b92b4031-043a-4ffa-93ff-e9c281902c47",
@@ -870,10 +810,10 @@
     "deviceType": "directv",
     "order": 2,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-03-28 09:00:02",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "27e01c4f-a473-4b96-987c-73220c1f703a",
@@ -882,10 +822,10 @@
     "deviceType": "directv",
     "order": 71,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-04-03 09:00:02",
-    "updatedAt": "2026-04-16T09:00:02.151Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "876a8fe0-479f-44a2-9160-9822fdf57bb8",
@@ -894,10 +834,10 @@
     "deviceType": "directv",
     "order": 32,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-03-26 09:00:02",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   },
   {
     "id": "841a3a65-5772-443a-ab88-55a15d3deea7",
@@ -906,33 +846,9 @@
     "deviceType": "directv",
     "order": 36,
     "isActive": 1,
-    "usageCount": 38,
-    "lastUsed": "2026-04-13T16:41:33.564Z",
+    "usageCount": 40,
+    "lastUsed": "2026-04-16T15:47:51.691Z",
     "createdAt": "2026-03-21 09:00:02",
-    "updatedAt": "2026-04-13T16:41:33.564Z"
-  },
-  {
-    "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-    "name": "Paramount Network",
-    "channelNumber": "248",
-    "deviceType": "directv",
-    "order": 76,
-    "isActive": 1,
-    "usageCount": 0,
-    "lastUsed": null,
-    "createdAt": "2026-04-16 09:00:00",
-    "updatedAt": "2026-04-16 09:00:00"
-  },
-  {
-    "id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
-    "name": "NBC Sports",
-    "channelNumber": "296",
-    "deviceType": "directv",
-    "order": 77,
-    "isActive": 1,
-    "usageCount": 0,
-    "lastUsed": null,
-    "createdAt": "2026-04-16 09:00:00",
-    "updatedAt": "2026-04-16 09:00:00"
+    "updatedAt": "2026-04-16T15:47:51.691Z"
   }
 ]
