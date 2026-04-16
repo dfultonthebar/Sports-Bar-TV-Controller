@@ -570,52 +570,42 @@ fi
 step "schema_push"
 log "npx drizzle-kit push (apply pending schema changes)"
 SCHEMA_PUSH_LOG="$LOG_DIR/drizzle-push-$(date +%s).log"
-if NODE_ENV=development npx drizzle-kit push 2>&1 | tee "$SCHEMA_PUSH_LOG" | tee -a "$LOG_FILE"; then
-  log "drizzle-kit push completed cleanly"
-else
-  if grep -qE "(index|table|column) [\`\"]?[A-Za-z_][A-Za-z0-9_]*[\`\"]? already exists|already exists" "$SCHEMA_PUSH_LOG"; then
-    # Pre-existing-object error. DANGER: drizzle-kit push is atomic — hitting
-    # this error rolls back EVERY statement in the same transaction, which
-    # means any NEW ALTER TABLE / CREATE TABLE statements from the release
-    # silently never land. Past runs treated this as "benign and continue",
-    # which worked until a release (v2.11.7 BartenderLayout.rooms column)
-    # depended on a new ALTER that got silently dropped, causing runtime
-    # 500s. The fix: drop ALL user-defined indexes (they carry no data — only
-    # metadata) and re-run the push so drizzle can recreate them fresh as
-    # part of a clean transaction that also includes the new ALTERs/CREATEs.
-    log "WARNING: drizzle-kit push reported pre-existing objects (benign — see $SCHEMA_PUSH_LOG)"
-    log "WARNING: retrying after dropping all user-defined indexes so the atomic push can complete"
 
-    INDEX_COUNT=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name NOT LIKE 'sqlite_autoindex%';" 2>/dev/null || echo 0)
-    log "[SCHEMA] user-defined indexes to drop: $INDEX_COUNT"
-
-    # Build one BEGIN/COMMIT transaction that drops every non-autoindex.
-    DROP_SQL=$(mktemp)
-    {
-      echo "BEGIN;"
-      sqlite3 "$DB_PATH" "SELECT name FROM sqlite_master WHERE type='index' AND name NOT LIKE 'sqlite_autoindex%';" \
-        | awk 'NF {printf "DROP INDEX IF EXISTS \"%s\";\n", $0}'
-      echo "COMMIT;"
-    } > "$DROP_SQL"
-    if ! sqlite3 "$DB_PATH" < "$DROP_SQL" >>"$LOG_FILE" 2>&1; then
-      rm -f "$DROP_SQL"
-      cat "$SCHEMA_PUSH_LOG" >> "$LOG_FILE"
-      fail "failed to drop pre-existing indexes before drizzle-kit push retry" 4
-    fi
-    rm -f "$DROP_SQL"
-
-    SCHEMA_PUSH_LOG2="$LOG_DIR/drizzle-push-retry-$(date +%s).log"
-    if NODE_ENV=development npx drizzle-kit push 2>&1 | tee "$SCHEMA_PUSH_LOG2" | tee -a "$LOG_FILE"; then
-      RECREATED=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name NOT LIKE 'sqlite_autoindex%';" 2>/dev/null || echo 0)
-      log "[SCHEMA] retry succeeded — indexes recreated: $RECREATED (was $INDEX_COUNT before drop)"
-    else
-      cat "$SCHEMA_PUSH_LOG2" >> "$LOG_FILE"
-      fail "drizzle-kit push retry failed even after dropping pre-existing indexes — see $SCHEMA_PUSH_LOG2" 4
-    fi
-  else
-    cat "$SCHEMA_PUSH_LOG" >> "$LOG_FILE"
-    fail "drizzle-kit push failed with an unrecognized error — see $SCHEMA_PUSH_LOG" 4
+# Iterative retry loop. drizzle-kit push is NOT atomic: it commits statements
+# one-at-a-time, so a conflict partway through leaves earlier CREATE INDEX
+# statements committed in the DB. The winning pattern is to drop only the
+# ONE conflicting index per iteration and retry — duplicate conflicts get
+# resolved one-by-one while successful CREATEs accumulate. Any pending
+# ALTER TABLE / CREATE TABLE statements eventually land once the duplicate
+# conflicts ahead of them are cleared. Cap iterations so a genuine
+# non-duplicate error can't trap us in an infinite loop.
+SCHEMA_MAX_ITERATIONS=350
+SCHEMA_ITER=0
+while [ "$SCHEMA_ITER" -lt "$SCHEMA_MAX_ITERATIONS" ]; do
+  SCHEMA_ITER=$((SCHEMA_ITER + 1))
+  if NODE_ENV=development npx drizzle-kit push > "$SCHEMA_PUSH_LOG" 2>&1; then
+    tail -20 "$SCHEMA_PUSH_LOG" >> "$LOG_FILE"
+    log "[SCHEMA] drizzle-kit push succeeded after $SCHEMA_ITER iteration(s)"
+    break
   fi
+  # Identify the offending object: "index X already exists"
+  DUP_IDX=$(grep -oE "(index|table|column) [A-Za-z_][A-Za-z0-9_]* already exists" "$SCHEMA_PUSH_LOG" | head -1 | awk '{print $2}')
+  if [ -n "$DUP_IDX" ]; then
+    # Drop the single offending object. Try both INDEX and TABLE forms —
+    # sqlite silently no-ops the one that doesn't match the object's type.
+    sqlite3 "$DB_PATH" "DROP INDEX IF EXISTS \"$DUP_IDX\"; DROP TABLE IF EXISTS \"$DUP_IDX\";" >>"$LOG_FILE" 2>&1
+    # Log every 25 iterations so the log stays readable on long runs.
+    [ $((SCHEMA_ITER % 25)) -eq 0 ] && log "[SCHEMA] iter=$SCHEMA_ITER last-dropped=$DUP_IDX"
+    continue
+  fi
+  # Non-duplicate error — surface it and abort.
+  cat "$SCHEMA_PUSH_LOG" >> "$LOG_FILE"
+  fail "drizzle-kit push failed with an unrecognized error (iteration $SCHEMA_ITER) — see $SCHEMA_PUSH_LOG" 4
+done
+
+if [ "$SCHEMA_ITER" -ge "$SCHEMA_MAX_ITERATIONS" ]; then
+  cat "$SCHEMA_PUSH_LOG" >> "$LOG_FILE"
+  fail "drizzle-kit push did not converge after $SCHEMA_MAX_ITERATIONS iterations — investigate schema" 4
 fi
 
 # ===========================================================================
