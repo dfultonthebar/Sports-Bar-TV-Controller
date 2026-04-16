@@ -560,12 +560,10 @@ pm2 restart sports-bar-tv-controller
 
 4. **Force-rebuild when Turbo cache lies.** If `npm run build` completes in under 1 second with `FULL TURBO` and all tasks cached, the source changes did NOT get compiled. Run `npx turbo run build --force` (or `rm -rf apps/web/.next && npm run build`) to bypass the cache. This commonly happens after switching branches or cherry-picking.
 
-### Version Bumping (REQUIRED)
-**Always bump the version in root `package.json` when making code changes:**
+### Version Bumping (REQUIRED — every commit to main)
+**Every commit pushed to `main` MUST include a version bump in root `package.json`.** Do not push code changes and bump the version separately — include it in the same commit or at minimum the same push. A commit without a version bump means two locations can report the same version while running different code, making debugging impossible.
 - **Minor bump** (2.1.0 → 2.2.0): Feature additions, migrations, significant changes
-- **Patch bump** (2.1.0 → 2.1.1): Bug fixes, small adjustments
-
-This is critical for multi-location deployments so each location knows what version they're running.
+- **Patch bump** (2.1.0 → 2.1.1): Bug fixes, docs, small adjustments
 
 ### Making Schema Changes
 ```bash
