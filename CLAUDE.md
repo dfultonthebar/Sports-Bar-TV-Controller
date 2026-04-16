@@ -550,6 +550,16 @@ pm2 restart sports-bar-tv-controller
 
 ## Development Workflow
 
+### Standing Rules (MUST follow in every session)
+
+1. **Read docs before work, update docs after.** Before starting any non-trivial task, read `CLAUDE.md` and any `/docs/*.md` files relevant to the area being touched. After completing code changes, update the relevant docs — API references if routes changed, hardware guides if device config changed, CLAUDE.md if architecture/conventions changed. If you add a new feature with no matching doc, create one under `/docs/`. Never say "docs updated" unless you actually edited the file.
+
+2. **Always commit and push after completing work.** After a unit of work is verified working (build passes, tests confirm), commit and push to GitHub automatically — do not wait for an explicit "please commit" instruction. Follow the commit strategy below (software to `main` first, then merge to location). Still confirm before destructive git operations (force push, reset, branch delete).
+
+3. **Never break working features during cleanup.** Before deleting anything, establish positive evidence it's unused — zero callers, zero UI references, zero scheduled jobs. When in doubt, hide from UI before deleting code. Stage refactors into small verifiable steps. After each step, confirm build + PM2 restart + core flow sanity check. Never delete DB tables in the same pass as code changes.
+
+4. **Force-rebuild when Turbo cache lies.** If `npm run build` completes in under 1 second with `FULL TURBO` and all tasks cached, the source changes did NOT get compiled. Run `npx turbo run build --force` (or `rm -rf apps/web/.next && npm run build`) to bypass the cache. This commonly happens after switching branches or cherry-picking.
+
 ### Version Bumping (REQUIRED)
 **Always bump the version in root `package.json` when making code changes:**
 - **Minor bump** (2.1.0 → 2.2.0): Feature additions, migrations, significant changes
