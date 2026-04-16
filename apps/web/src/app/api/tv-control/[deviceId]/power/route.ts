@@ -8,6 +8,8 @@ import { schema } from '@/db'
 import { eq } from 'drizzle-orm'
 import { operationLogger } from '@sports-bar/data'
 import { SamsungTVClient, SharpTVClient, VavaTVClient, LGTVClient, TVBrand } from '@sports-bar/tv-network-control'
+import { persistSamsungTokenIfChanged } from '@/lib/samsung-token-persist'
+import { logAuditAction } from '@sports-bar/auth'
 
 /**
  * TV Power Control API
@@ -146,6 +148,27 @@ export async function POST(
       success: result.success,
     })
 
+    // Persistent audit trail (survives PM2 log rotation, queryable forever)
+    logAuditAction({
+      action: `TV_POWER_${action.toUpperCase()}`,
+      resource: 'tv_power',
+      resourceId: deviceId,
+      endpoint: `/api/tv-control/${deviceId}/power`,
+      method: 'POST',
+      ipAddress: request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || request.headers.get('x-real-ip') || 'unknown',
+      userAgent: request.headers.get('user-agent') || undefined,
+      requestData: { action },
+      responseStatus: result.success ? 200 : 500,
+      success: result.success,
+      errorMessage: result.error || undefined,
+      metadata: {
+        deviceName: device.name,
+        brand: device.brand,
+        ipAddress: device.ipAddress,
+        message: result.message,
+      },
+    }).catch(err => logger.warn('[TV-CONTROL] Audit log write failed (non-fatal):', err))
+
     return NextResponse.json({
       success: result.success,
       message: result.message || `Power ${action} ${result.success ? 'successful' : 'failed'}`,
@@ -157,6 +180,19 @@ export async function POST(
 
   } catch (error: any) {
     logger.error('[TV-CONTROL] Power control error:', error)
+    logAuditAction({
+      action: `TV_POWER_${action.toUpperCase()}`,
+      resource: 'tv_power',
+      resourceId: deviceId,
+      endpoint: `/api/tv-control/${deviceId}/power`,
+      method: 'POST',
+      ipAddress: request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || request.headers.get('x-real-ip') || 'unknown',
+      userAgent: request.headers.get('user-agent') || undefined,
+      requestData: { action },
+      responseStatus: 500,
+      success: false,
+      errorMessage: error.message || 'Power control failed',
+    }).catch(err => logger.warn('[TV-CONTROL] Audit log write failed (non-fatal):', err))
     return NextResponse.json(
       { success: false, error: error.message || 'Power control failed' },
       { status: 500 }
@@ -266,6 +302,7 @@ async function controlSamsungPower(
     }
     return { success: false, error: error.message }
   } finally {
+    await persistSamsungTokenIfChanged(device, client)
     client.disconnect()
   }
 }
@@ -277,10 +314,13 @@ async function controlLGPower(
   device: any,
   action: 'on' | 'off' | 'toggle'
 ): Promise<{ success: boolean; message?: string; error?: string }> {
+  // clientKey is REQUIRED — without it, LGTVClient.register() falls back
+  // to PROMPT pairing which silently hangs in automated contexts.
   const client = new LGTVClient({
     ipAddress: device.ipAddress,
     port: device.port || 3001,
     brand: TVBrand.LG,
+    clientKey: device.clientKey || undefined,
     macAddress: device.macAddress,
   })
 

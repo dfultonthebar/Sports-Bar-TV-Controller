@@ -61,6 +61,7 @@ interface AISuggestion {
   channelName: string
   suggestedInput: string
   suggestedInputId: string
+  suggestedDeviceId: string
   suggestedOutputs: number[]
   confidence: number
   reasoning: string
@@ -257,6 +258,7 @@ async function loadInputSources() {
     id: s.id,
     name: s.name,
     type: s.type,
+    deviceId: s.deviceId,
     matrixInputId: s.matrixInputId,
     currentlyAllocated: s.currentlyAllocated,
     currentChannel: s.currentChannel,
@@ -368,6 +370,13 @@ function buildPrompt(
     }
   }
 
+  // Build the JSON example using the first actual input source name so the
+  // AI echoes back a name we can resolve. Previously the example used a
+  // hardcoded "Cable Box 1" which doesn't match the real source names at any
+  // of our locations (Stoneyard uses "Cable 1"..."Cable 4"), causing the
+  // post-response lookup to fail and suggestedInputId to be empty.
+  const exampleInputName = inputSources[0]?.name || 'Cable 1'
+
   return `Sports bar scheduler. Assign upcoming games to cable boxes and suggest which TVs to show each game on. ONLY use channel numbers from our presets.
 
 Boxes: ${inputList}
@@ -381,7 +390,8 @@ Home teams: Packers, Brewers, Bucks, Badgers
 ${patternHints}
 
 Rules: Each box tunes ONE channel. Prioritize home teams. Home team games get more TVs. Use learned routing patterns when available.
-Return JSON: {"suggestions":[{"gameIndex":1,"suggestedInput":"Cable Box 1","channelNumber":"27","suggestedOutputs":[1,2,3,5],"confidence":0.8,"reasoning":"brief reason"}]}
+IMPORTANT: The "suggestedInput" field MUST be one of the exact box names listed under "Boxes:" above. Do not invent names.
+Return JSON: {"suggestions":[{"gameIndex":1,"suggestedInput":"${exampleInputName}","channelNumber":"27","suggestedOutputs":[1,2,3,5],"confidence":0.8,"reasoning":"brief reason"}]}
 Only top games. JSON only.`
 }
 
@@ -396,14 +406,55 @@ function parseOllamaResponse(
     const parsed = JSON.parse(raw)
     const suggestions: AISuggestion[] = []
 
+    // Helper: find the best matching input source for a suggested name.
+    // Tries exact id, exact name, case-insensitive normalized name, then
+    // substring / digit matching as a last resort. Finally falls back to
+    // the first cable input source of the right type so approve never
+    // ends up with an empty inputSourceId when at least one cable input
+    // exists.
+    const normalize = (s: string) => (s || '').toLowerCase().replace(/\s+/g, '').replace(/box/g, '')
+    const digitsOf = (s: string) => (s || '').match(/\d+/)?.[0] || ''
+    const cableSources = inputSources.filter((src: any) => src.type === 'cable')
+    const resolveInput = (suggestedId: string, suggestedName: string) => {
+      if (!suggestedId && !suggestedName) return cableSources[0] || null
+      // 1. Exact id match
+      const byId = inputSources.find((src: any) => src.id && src.id === suggestedId)
+      if (byId) return byId
+      // 2. Exact name match
+      const byName = inputSources.find((src: any) => src.name === suggestedName)
+      if (byName) return byName
+      // 3. Normalized name match (strips "box", spaces, casing)
+      const nsug = normalize(suggestedName)
+      const byNormName = inputSources.find((src: any) => normalize(src.name) === nsug)
+      if (byNormName) return byNormName
+      // 4. Digit match — "Cable Box 1" and "Cable 1" share "1"
+      const dsug = digitsOf(suggestedName)
+      if (dsug) {
+        const byDigit = cableSources.find((src: any) => digitsOf(src.name) === dsug)
+        if (byDigit) return byDigit
+      }
+      // 5. Fall back to first cable input so approve can proceed
+      return cableSources[0] || null
+    }
+
     for (const s of parsed.suggestions || []) {
       const gameIdx = (s.gameIndex || 0) - 1
       const game = games[gameIdx]
 
-      // Validate the suggested input exists
-      const input = inputSources.find(
-        (src: any) => src.id === s.suggestedInputId || src.name === s.suggestedInput
-      )
+      const input = resolveInput(s.suggestedInputId || '', s.suggestedInput || '')
+
+      // Coerce channelNumber to string. The LLM sometimes returns it as a
+      // number ("channelNumber": 40) which then fails Zod validation on
+      // /api/schedules/bartender-schedule (requires string). Same for
+      // any output IDs (must be integers, not strings or mixed).
+      const channelNumberStr = s.channelNumber != null
+        ? String(s.channelNumber)
+        : (game?.channelNumber || '')
+      const suggestedOutputsInt: number[] = Array.isArray(s.suggestedOutputs)
+        ? s.suggestedOutputs
+            .map((o: any) => (typeof o === 'number' ? o : parseInt(String(o), 10)))
+            .filter((n: number) => Number.isFinite(n) && n >= 0)
+        : []
 
       suggestions.push({
         gameId: game ? `game-${gameIdx}` : `game-unknown`,
@@ -411,11 +462,12 @@ function parseOllamaResponse(
         awayTeam: s.awayTeam || game?.awayTeam || 'Unknown',
         league: s.league || game?.league || 'Unknown',
         startTime: game?.time || new Date().toISOString(),
-        channelNumber: s.channelNumber || game?.channelNumber || '',
+        channelNumber: channelNumberStr,
         channelName: s.channelName || game?.channelName || '',
-        suggestedInput: s.suggestedInput || input?.name || 'Unknown',
-        suggestedInputId: input?.id || s.suggestedInputId || '',
-        suggestedOutputs: Array.isArray(s.suggestedOutputs) ? s.suggestedOutputs : [],
+        suggestedInput: input?.name || s.suggestedInput || 'Unknown',
+        suggestedInputId: input?.id || '',
+        suggestedDeviceId: input?.deviceId || '',
+        suggestedOutputs: suggestedOutputsInt,
         confidence: typeof s.confidence === 'number' ? Math.min(1, Math.max(0, s.confidence)) : 0.5,
         reasoning: s.reasoning || 'No reasoning provided',
       })

@@ -119,6 +119,10 @@ export const atlasLogger = {
    * Log response received from processor
    */
   responseReceived(response: any, ipAddress: string) {
+    // Skip meter subscription responses — bulk telemetry, not loggable
+    const params = response?.result?.params || response?.params
+    if (Array.isArray(params) && params.some((p: any) => String(p?.param || '').includes('Meter'))) return
+
     writeLog('DEBUG', 'RESPONSE', `Received response from Atlas processor`, {
       ipAddress,
       response: response,
@@ -139,8 +143,13 @@ export const atlasLogger = {
 
   /**
    * Log parameter update (from subscription)
+   * NOTE: Meter updates are suppressed — they fire ~30/sec and were
+   * responsible for 68 GB of log growth. Only non-meter updates are logged.
    */
   parameterUpdate(param: string, value: any, ipAddress: string) {
+    // Skip meter readings — these are real-time telemetry, not loggable events
+    if (param.includes('Meter')) return
+
     writeLog('DEBUG', 'UPDATE', `Parameter update received`, {
       ipAddress,
       parameter: param,

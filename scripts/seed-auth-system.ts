@@ -13,8 +13,12 @@ import { eq } from 'drizzle-orm'
 import { hashPIN } from '../src/lib/auth/pin'
 import { hashApiKey, generateApiKey } from '../src/lib/auth/api-key'
 
-const DEFAULT_LOCATION_ID = 'default-location'
-const DEFAULT_LOCATION_NAME = 'Sports Bar'
+// Location binding — single source of truth. Set LOCATION_ID in .env
+// (or the env that ecosystem.config.js loads). If unset, a deterministic
+// 'default-location' is used so single-location deployments Just Work.
+// Multi-location hosts MUST set LOCATION_ID per location.
+const DEFAULT_LOCATION_ID = process.env.LOCATION_ID || 'default-location'
+const DEFAULT_LOCATION_NAME = process.env.LOCATION_NAME || 'Sports Bar'
 
 // Default PINs (change these in production!)
 const DEFAULT_STAFF_PIN = '1234'

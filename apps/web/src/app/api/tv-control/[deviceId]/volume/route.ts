@@ -8,6 +8,7 @@ import { schema } from '@/db'
 import { eq } from 'drizzle-orm'
 import { operationLogger } from '@sports-bar/data'
 import { SamsungTVClient, TVBrand } from '@sports-bar/tv-network-control'
+import { persistSamsungTokenIfChanged } from '@/lib/samsung-token-persist'
 
 /**
  * TV Volume Control API
@@ -241,6 +242,7 @@ async function controlSamsungVolume(
   } catch (error: any) {
     return { success: false, error: error.message }
   } finally {
+    await persistSamsungTokenIfChanged(device, client)
     client.disconnect()
   }
 }

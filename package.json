@@ -1,6 +1,6 @@
 {
   "name": "sports-bar-tv-controller",
-  "version": "2.2.0",
+  "version": "2.9.0",
   "private": true,
   "packageManager": "npm@10.8.2",
   "workspaces": [
@@ -23,6 +23,7 @@
   },
   "devDependencies": {
     "baseline-browser-mapping": "^2.9.14",
+    "playwright": "^1.59.1",
     "serialport": "^13.0.0",
     "turbo": "^2.6.3"
   },

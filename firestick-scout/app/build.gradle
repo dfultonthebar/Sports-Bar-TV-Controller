@@ -3,6 +3,27 @@ plugins {
     id 'org.jetbrains.kotlin.android'
 }
 
+// Resolve the Scout server URL at build time in priority order:
+//   1. -PscoutServerUrl=... on the gradlew command line
+//   2. scoutServerUrl=... in firestick-scout/local.properties (gitignored,
+//      per-location default baked into the APK at build time)
+//   3. The non-routable RFC 5737 TEST-NET-1 placeholder, so a mis-built APK
+//      fails loudly instead of silently pinging a random LAN device.
+// At runtime this compile-time default can still be overridden by a
+// SharedPreferences value set via the ConfigReceiver broadcast intent.
+def resolveScoutServerUrl() {
+    def cmdLine = project.findProperty('scoutServerUrl')
+    if (cmdLine) return cmdLine
+    def localPropsFile = rootProject.file('local.properties')
+    if (localPropsFile.exists()) {
+        def props = new Properties()
+        localPropsFile.withInputStream { props.load(it) }
+        def fromLocal = props.getProperty('scoutServerUrl')
+        if (fromLocal) return fromLocal
+    }
+    return 'http://192.0.2.1:3001/api/firestick-scout'
+}
+
 android {
     namespace 'com.sportsbar.scout'
     compileSdk 33
@@ -11,8 +32,9 @@ android {
         applicationId "com.sportsbar.scout"
         minSdk 22
         targetSdk 33
-        versionCode 140
-        versionName "1.4.0-bar-20251205"
+        versionCode 210
+        versionName "2.1.0-runtime-config"
+        buildConfigField "String", "SERVER_URL_DEFAULT", "\"${resolveScoutServerUrl()}\""
     }
 
     buildTypes {
@@ -20,6 +42,10 @@ android {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     compileOptions {

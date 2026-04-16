@@ -91,8 +91,14 @@ export async function POST(request: NextRequest) {
       .limit(1)
       .get()
 
-    const wolfPackHost = matrixConfig?.ipAddress || process.env.WOLFPACK_HOST || '192.168.1.100'
-    const wolfPackPort = matrixConfig?.port || parseInt(process.env.WOLFPACK_PORT || '23')
+    if (!matrixConfig?.ipAddress) {
+      return NextResponse.json(
+        { error: 'No active Wolf Pack matrix is configured. Configure one in Matrix Control before routing.' },
+        { status: 503 }
+      )
+    }
+    const wolfPackHost = matrixConfig.ipAddress
+    const wolfPackPort = matrixConfig.tcpPort
 
     await enhancedLogger.info(
       'hardware',
@@ -305,11 +311,16 @@ export async function GET(request: NextRequest) {
       .limit(1)
       .get()
 
-    // Return current matrix status (this would be enhanced to read actual status)
+    if (!matrixConfig?.ipAddress) {
+      return NextResponse.json(
+        { status: 'unconfigured', error: 'No active Wolf Pack matrix in MatrixConfiguration' },
+        { status: 503 }
+      )
+    }
     return NextResponse.json({
       status: 'online',
-      host: matrixConfig?.ipAddress || process.env.WOLFPACK_HOST || '192.168.1.100',
-      port: matrixConfig?.port || parseInt(process.env.WOLFPACK_PORT || '23'),
+      host: matrixConfig.ipAddress,
+      port: matrixConfig.tcpPort,
       lastUpdated: new Date().toISOString()
     })
   } catch (error) {

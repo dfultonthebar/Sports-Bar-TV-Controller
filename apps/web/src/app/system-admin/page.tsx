@@ -22,13 +22,13 @@ import {
   ListTodo,
   LayoutGrid,
   MapPin,
-  Calendar,
   BarChart3,
 } from 'lucide-react'
 import Link from 'next/link'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import LogAnalyticsDashboard from '@/components/LogAnalyticsDashboard'
 import GitHubConfigSync from '@/components/GitHubConfigSync'
+import AutoUpdatePanel from '@/components/AutoUpdatePanel'
 import SystemControlPanel from '@/components/SystemControlPanel'
 import TodoList from '@/components/TodoList'
 import TodoForm from '@/components/TodoForm'
@@ -38,7 +38,6 @@ import { Badge } from '@/components/ui/badge'
 import SportsBarLayout from '@/components/SportsBarLayout'
 import { SystemResourceMonitor } from '@/components/system/SystemResourceMonitor'
 import LocationSettings from '@/components/LocationSettings'
-import { SchedulerLogsDashboard } from '@/components/SchedulerLogsDashboard'
 import { SystemLogsViewer } from '@/components/SystemLogsViewer'
 import EmbeddedLayoutManager from '@/components/EmbeddedLayoutManager'
 
@@ -85,7 +84,217 @@ interface TestSummary {
   duration: number
 }
 
+const VALID_TABS = ['power', 'location', 'layout', 'logs', 'backup', 'sync', 'tests', 'todos'] as const
+type TabId = (typeof VALID_TABS)[number]
+
+/**
+ * Always-visible version strip at the top of the System Admin page.
+ * Hits /api/system/version on mount and shows the running version,
+ * commit SHA, commit date, build date, and branch. Refreshes once
+ * per minute in case a hot-redeploy happens while the operator's
+ * browser is open.
+ */
+function VersionBadge() {
+  const [info, setInfo] = useState<{
+    version?: string
+    branch?: string
+    commitShaShort?: string
+    commitDate?: string
+    commitSubject?: string
+    buildDate?: string | null
+    uptimeSecs?: number
+  } | null>(null)
+
+  useEffect(() => {
+    let mounted = true
+    const load = () =>
+      fetch('/api/system/version', { cache: 'no-store' })
+        .then(r => r.json())
+        .then(d => mounted && setInfo(d))
+        .catch(() => {})
+    load()
+    const t = setInterval(load, 60000)
+    return () => {
+      mounted = false
+      clearInterval(t)
+    }
+  }, [])
+
+  const fmtLocal = (iso?: string | null): string => {
+    if (!iso) return '—'
+    try {
+      const d = new Date(iso)
+      if (Number.isNaN(d.getTime())) return '—'
+      return d.toLocaleString(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    } catch {
+      return '—'
+    }
+  }
+
+  if (!info) {
+    return (
+      <div className="mb-2 text-xs text-slate-500 font-mono">
+        version: loading…
+      </div>
+    )
+  }
+
+  return (
+    <div className="mb-2 rounded border border-slate-800 bg-slate-900/60 px-3 py-2 text-xs text-slate-400 font-mono flex items-center justify-between flex-wrap gap-2">
+      <span>
+        <span className="text-slate-200">v{info.version}</span>
+        {info.branch ? (
+          <>
+            {' · '}
+            <span className="text-blue-400">{info.branch}</span>
+          </>
+        ) : null}
+        {info.commitShaShort ? (
+          <>
+            {' · '}
+            <span className="text-amber-300">{info.commitShaShort}</span>
+          </>
+        ) : null}
+      </span>
+      <span className="text-slate-500">
+        commit: {fmtLocal(info.commitDate)}
+        {info.buildDate ? (
+          <>
+            {' · '}
+            build: {fmtLocal(info.buildDate)}
+          </>
+        ) : null}
+      </span>
+      {info.commitSubject ? (
+        <span className="basis-full text-slate-500 truncate" title={info.commitSubject}>
+          last commit: {info.commitSubject}
+        </span>
+      ) : null}
+    </div>
+  )
+}
+
+/**
+ * Always-visible auth banner at the top of the System Admin page. Hits
+ * /api/auth/whoami on mount and reports the session state regardless of
+ * which tab is active, so operators can see whether their login cookie
+ * was actually persisted and sent back to the server.
+ */
+function AuthStatusBanner() {
+  const [state, setState] = useState<{
+    loading: boolean
+    authenticated: boolean
+    role?: string
+    reason?: string
+  }>({ loading: true, authenticated: false })
+
+  useEffect(() => {
+    let mounted = true
+    fetch('/api/auth/whoami', { credentials: 'include', cache: 'no-store' })
+      .then(r => r.json())
+      .then(data => {
+        if (!mounted) return
+        setState({
+          loading: false,
+          authenticated: !!data.authenticated,
+          role: data.role,
+          reason: data.reason,
+        })
+      })
+      .catch(() => mounted && setState({ loading: false, authenticated: false, reason: 'network error' }))
+    return () => {
+      mounted = false
+    }
+  }, [])
+
+  if (state.loading) {
+    return (
+      <div className="mb-6 rounded-lg border border-slate-700 bg-slate-900/40 p-3 text-slate-400 text-sm">
+        Checking session…
+      </div>
+    )
+  }
+
+  if (state.authenticated) {
+    const handleLogout = async () => {
+      try {
+        await fetch('/api/auth/logout', {
+          method: 'POST',
+          credentials: 'include',
+        })
+      } catch {
+        // Even if the POST fails, send the user to /login. The worst
+        // case is a stale cookie that's about to be reset on next login.
+      }
+      window.location.href = '/login'
+    }
+    return (
+      <div className="mb-6 rounded-lg border border-green-700 bg-green-900/20 p-3 text-green-300 text-sm flex items-center justify-between">
+        <span>
+          ✓ Signed in as <strong className="text-green-200">{state.role}</strong>
+        </span>
+        <button
+          type="button"
+          onClick={handleLogout}
+          className="text-xs text-green-400 hover:text-green-200 underline"
+        >
+          sign out
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="mb-6 rounded-lg border border-amber-700 bg-amber-900/20 p-3 text-amber-200 text-sm flex items-center justify-between">
+      <span>
+        ⚠ Not signed in {state.reason ? `— ${state.reason}` : ''}. Admin-only
+        panels (Sync) will not load.
+      </span>
+      <a
+        href="/login?redirect=/system-admin%3Ftab%3Dsync"
+        className="text-xs bg-amber-700 hover:bg-amber-600 text-white px-3 py-1 rounded"
+      >
+        Log in
+      </a>
+    </div>
+  )
+}
+
+function readTabFromWindow(): TabId | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const params = new URLSearchParams(window.location.search)
+    const requested = params.get('tab') || ''
+    return (VALID_TABS as readonly string[]).includes(requested)
+      ? (requested as TabId)
+      : null
+  } catch {
+    return null
+  }
+}
+
 export default function SystemAdminPage() {
+  // Controlled tab state. The page is static-rendered at build time with
+  // 'power' as the default, then a post-mount useEffect reads ?tab=<id>
+  // from the current URL and switches the active tab on the client. This
+  // avoids the useSearchParams Suspense-boundary requirement and any
+  // hydration mismatch warnings.
+  const [activeTab, setActiveTab] = useState<TabId>('power')
+
+  useEffect(() => {
+    const fromUrl = readTabFromWindow()
+    if (fromUrl && fromUrl !== activeTab) {
+      setActiveTab(fromUrl)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // Backup state
   const [backups, setBackups] = useState<Backup[]>([])
   const [loadingBackups, setLoadingBackups] = useState(true)
@@ -398,7 +607,9 @@ export default function SystemAdminPage() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <Tabs defaultValue="power" className="space-y-6">
+        <VersionBadge />
+        <AuthStatusBanner />
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabId)} className="space-y-6">
           <TabsList className="grid w-full grid-cols-9 bg-sportsBar-800/50 p-1">
             <TabsTrigger value="power" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
               <Power className="w-4 h-4 mr-2" />
@@ -415,10 +626,6 @@ export default function SystemAdminPage() {
             <TabsTrigger value="logs" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
               <FileText className="w-4 h-4 mr-2" />
               Logs
-            </TabsTrigger>
-            <TabsTrigger value="scheduler" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
-              <Calendar className="w-4 h-4 mr-2" />
-              Scheduler
             </TabsTrigger>
             <TabsTrigger value="backup" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
               <HardDrive className="w-4 h-4 mr-2" />
@@ -477,11 +684,6 @@ export default function SystemAdminPage() {
               </h3>
               <LogAnalyticsDashboard />
             </div>
-          </TabsContent>
-
-          {/* Scheduler Tab */}
-          <TabsContent value="scheduler" className="space-y-6">
-            <SchedulerLogsDashboard />
           </TabsContent>
 
           {/* Backup/Restore Tab */}
@@ -653,9 +855,9 @@ export default function SystemAdminPage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-                    <h4 className="font-semibold text-blue-900 mb-2">📊 Tracked Configurations</h4>
-                    <ul className="text-sm text-blue-800 space-y-1">
+                  <div className="bg-slate-900/40 p-4 rounded-lg border border-slate-700 border-l-4 border-l-blue-500">
+                    <h4 className="font-semibold text-white mb-2">📊 Tracked Configurations</h4>
+                    <ul className="text-sm text-slate-300 space-y-1">
                       <li>• Matrix routing settings</li>
                       <li>• Audio zone configurations</li>
                       <li>• IR device mappings</li>
@@ -663,10 +865,10 @@ export default function SystemAdminPage() {
                       <li>• TV layout positions</li>
                     </ul>
                   </div>
-                  
-                  <div className="bg-green-50 p-4 rounded-lg border border-green-200">
-                    <h4 className="font-semibold text-green-900 mb-2">⚡ Auto-Sync Features</h4>
-                    <ul className="text-sm text-green-800 space-y-1">
+
+                  <div className="bg-slate-900/40 p-4 rounded-lg border border-slate-700 border-l-4 border-l-green-500">
+                    <h4 className="font-semibold text-white mb-2">⚡ Auto-Sync Features</h4>
+                    <ul className="text-sm text-slate-300 space-y-1">
                       <li>• Real-time change detection</li>
                       <li>• Automatic commit generation</li>
                       <li>• Smart conflict resolution</li>
@@ -674,10 +876,10 @@ export default function SystemAdminPage() {
                       <li>• Version history tracking</li>
                     </ul>
                   </div>
-                  
-                  <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
-                    <h4 className="font-semibold text-purple-900 mb-2">🔄 Sync Benefits</h4>
-                    <ul className="text-sm text-purple-800 space-y-1">
+
+                  <div className="bg-slate-900/40 p-4 rounded-lg border border-slate-700 border-l-4 border-l-purple-500">
+                    <h4 className="font-semibold text-white mb-2">🔄 Sync Benefits</h4>
+                    <ul className="text-sm text-slate-300 space-y-1">
                       <li>• Configuration backup</li>
                       <li>• Multi-location sync</li>
                       <li>• Change auditing</li>
@@ -690,6 +892,9 @@ export default function SystemAdminPage() {
             </Card>
 
             <GitHubConfigSync />
+
+            {/* Phase 3a: Auto Update System panel */}
+            <AutoUpdatePanel />
           </TabsContent>
 
           {/* Tests Tab */}

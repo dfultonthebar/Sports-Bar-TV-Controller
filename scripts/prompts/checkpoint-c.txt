@@ -1,0 +1,126 @@
+You are doing post-restart verification. The Sports Bar TV Controller
+application has been rebuilt and restarted via PM2. The deterministic
+`verify-install.sh` layers already ran before this prompt fired and
+their result is authoritative — if verify-install.sh reported PASS
+(6/6 checks), the app is healthy at a deterministic level (PM2 online,
+HTTP health 200, metrics endpoint OK, bartender proxy 302, critical
+DB tables populated, no crash patterns in PM2 error logs in the last
+100 lines).
+
+## How this fits into the pipeline
+
+The calling script has ALREADY:
+1. Run `bash scripts/verify-install.sh --json` and captured the result.
+2. Passed (or failed) the deterministic 6-check layer.
+3. If it failed, the script would have triggered rollback WITHOUT
+   calling you — you only see this prompt if the deterministic layer
+   passed.
+
+Your job is a HOLISTIC sanity check on top of the passing
+deterministic checks. You are looking for subtle issues that the 6
+checks might miss: fresh error patterns in logs that aren't crashes,
+scheduler errors that the crash_logs layer wouldn't catch, a
+degraded mode that's technically healthy but about to cascade.
+
+## Your authoritative input: the current run's log file
+
+The auto-update script has been streaming its full progress to a log
+file under `/home/ubuntu/sports-bar-data/update-logs/` named
+`auto-update-YYYY-MM-DD-HH-MM.log`. Read the most recent one via:
+
+```
+ls -t /home/ubuntu/sports-bar-data/update-logs/auto-update-*.log | head -1
+```
+
+Then `cat` that file. It contains:
+- Every STEP the pipeline traversed
+- Checkpoint A and B decisions
+- The verify-install.sh --json output (look for the `verify-install.sh output:` line)
+- Any errors from npm ci, build, pm2 restart
+
+**The verify-install.sh JSON output in that log is authoritative** for
+the deterministic health layer. If it shows `"status":"PASS"` with
+all 6 layers passing, that's proof the app came up cleanly.
+
+## Optional supplementary checks (use if available, don't STOP if denied)
+
+The following commands give you additional signal BUT Claude's sandbox
+may deny some of them. **That is expected and is NOT a STOP condition.**
+If a command is denied, proceed on the evidence you DO have:
+
+- `pm2 logs sports-bar-tv-controller --lines 100 --nostream` — recent
+  runtime logs. If denied, fall back to the verify-install.sh
+  `crash_logs` layer result in the run log.
+- `sqlite3 /home/ubuntu/sports-bar-data/production.db "SELECT
+  datetime(createdAt,'unixepoch','localtime'), level, component,
+  operation, message FROM SchedulerLog ORDER BY createdAt DESC LIMIT 20"`
+  — recent scheduler activity. If denied, this layer is simply not
+  checked and doesn't affect the decision.
+- `curl -sS http://localhost:3001/api/system/health` — live health.
+  If denied OR if it doesn't resolve because you can't reach localhost
+  from the Claude Code sandbox, fall back to the verify-install.sh
+  `health_http` layer.
+- `curl -sS http://localhost:3001/remote` — bartender remote HTML.
+  Same fallback.
+
+**Permission-denied or sandbox failures on the supplementary checks
+are NOT evidence of a broken app.** They are evidence only about the
+sandbox itself. Do not STOP on them.
+
+## Decision criteria
+
+### DECISION: GO — default when none of the STOP conditions below are met.
+
+If the run log shows verify-install.sh reported PASS 6/6, that's
+sufficient for GO. Any supplementary check that passed is a bonus
+confidence boost. Any supplementary check that was denied is
+ignored.
+
+### DECISION: CAUTION - <reason>
+
+Return CAUTION only if you have POSITIVE EVIDENCE of a minor issue:
+- `verify-install.sh` reported a "degraded" (not "healthy") state,
+  OR
+- You were able to read PM2 logs and saw `warn`-level messages that
+  weren't there before this update (not errors, just warnings), OR
+- You were able to read SchedulerLog and saw a new warn-level entry
+  in the last 2 minutes that references the update.
+
+If you only have "couldn't verify" as the reason, do NOT return
+CAUTION — return GO and note in the free-form body that some
+supplementary checks were inconclusive.
+
+### DECISION: STOP - <reason citing exact evidence>
+
+Return STOP ONLY with positive evidence of a real failure:
+- `verify-install.sh` reported FAIL in its --json output (but if that
+  happened, the script would not have called you — so you should
+  never actually see this).
+- You successfully ran `curl /api/system/health` and got a non-200 or
+  `"status":"critical"`.
+- You successfully read PM2 logs and saw a fresh fatal error / stack
+  trace from after the PM2 restart timestamp.
+- You successfully ran `curl /remote` and got 5xx or HTML missing
+  the `<BartenderRemote` component markers.
+
+**Do NOT return STOP if your only reason is that you couldn't run a
+command.** That is an infrastructure-level "I don't know", not
+evidence of failure. When in doubt, GO.
+
+STOP at Checkpoint C triggers rollback: `mv .next.bak .next`, PM2
+restart, re-run of verify-install.sh. A false STOP here is costly —
+it undoes a successful update and wastes 2-3 minutes. The
+deterministic verify layer already protected the app before you saw
+this prompt; your job is a second opinion, not a veto of the first.
+
+## OUTPUT FORMAT — first line ONLY
+
+```
+DECISION: GO
+DECISION: CAUTION - <one-sentence reason with positive evidence>
+DECISION: STOP - <one-sentence reason with positive evidence of a failure>
+```
+
+The auto-updater parses with `grep -m1 '^DECISION:'`. Put any
+reasoning or unverified supplementary-check notes on subsequent
+lines — they're preserved in the log but don't affect the decision.

@@ -107,7 +107,7 @@ class AutoReallocator {
         if (shouldEnd.shouldEnd) {
           const endStartTime = Date.now();
           try {
-            await this.endAllocation(allocation, inputSource, game, shouldEnd.reason);
+            await this.endAllocation(allocation, inputSource, game, shouldEnd.reason, correlationId);
             stats.allocationsCompleted++;
             stats.inputSourcesFreed++;
 
@@ -254,7 +254,8 @@ class AutoReallocator {
     allocation: any,
     inputSource: any,
     game: any,
-    reason: string
+    reason: string,
+    correlationId?: string
   ): Promise<void> {
     const now = Math.floor(Date.now() / 1000); // Unix timestamp
 
@@ -281,7 +282,7 @@ class AutoReallocator {
     );
 
     // Revert TVs to default sources after game ends
-    await this.revertTVsToDefaults(allocation, inputSource, game);
+    await this.revertTVsToDefaults(allocation, inputSource, game, correlationId);
   }
 
   /**
@@ -293,8 +294,10 @@ class AutoReallocator {
   private async revertTVsToDefaults(
     allocation: any,
     inputSource: any,
-    game: any
+    game: any,
+    correlationId?: string
   ): Promise<void> {
+    const cid = correlationId || schedulerLogger.generateCorrelationId();
     try {
       const now = Math.floor(Date.now() / 1000);
       const thirtyMinutesFromNow = now + 30 * 60;
@@ -325,6 +328,13 @@ class AutoReallocator {
       });
 
       if (hasUpcomingGame) {
+        await schedulerLogger.info(
+          'auto-reallocator',
+          'reallocate',
+          `Skipped revert for ${inputSource.name} — another game starts within 30 min`,
+          cid,
+          { inputSourceId: inputSource.id, allocationId: allocation.id, gameId: game.id }
+        );
         logger.info(
           `[AUTO-REALLOC] Game ended for ${game.awayTeamName} @ ${game.homeTeamName}, but another game starts within 30 min on ${inputSource.name} — skipping revert`
         );
@@ -436,34 +446,98 @@ class AutoReallocator {
         }
       }
 
-      // Step 6: Tune cable box back to its default channel
-      if (defaults.cableBoxDefaults && inputSource.deviceId) {
-        const cableBoxDefault = defaults.cableBoxDefaults[inputSource.deviceId];
-        if (cableBoxDefault) {
-          try {
-            const tuneResponse = await fetch(`http://127.0.0.1:${API_PORT}/api/channel-presets/tune`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                channelNumber: cableBoxDefault.channelNumber,
-                deviceType: inputSource.type,
-                cableBoxId: inputSource.type === 'cable' ? inputSource.deviceId : undefined,
-                directTVId: inputSource.type === 'directv' ? inputSource.deviceId : undefined,
-              }),
-            });
+      // Step 6: Tune cable box back to its default channel.
+      // cableBoxDefaults is keyed by matrix input number (stringified), so we
+      // must resolve the IR device first to find its matrixInput — the
+      // inputSource.deviceId (e.g. "ir-cable-4") is NOT the key.
+      if (
+        inputSource.type === 'cable' &&
+        inputSource.deviceId &&
+        defaults.cableBoxDefaults &&
+        Object.keys(defaults.cableBoxDefaults).length > 0
+      ) {
+        const irDevice = await db
+          .select()
+          .from(schema.irDevices)
+          .where(eq(schema.irDevices.id, inputSource.deviceId))
+          .limit(1)
+          .get();
 
-            if (tuneResponse.ok) {
-              logger.info(
-                `[AUTO-REALLOC] Game ended, tuning ${inputSource.name} back to default channel ${cableBoxDefault.channelNumber}${cableBoxDefault.channelName ? ' (' + cableBoxDefault.channelName + ')' : ''}`
+        if (!irDevice || irDevice.matrixInput == null) {
+          await schedulerLogger.warn(
+            'auto-reallocator',
+            'reallocate',
+            `Cannot tune ${inputSource.name} to default: IR device not found or missing matrixInput`,
+            cid,
+            { inputSourceId: inputSource.id, deviceId: inputSource.deviceId }
+          );
+        } else {
+          const cableBoxDefault = defaults.cableBoxDefaults[String(irDevice.matrixInput)];
+          if (!cableBoxDefault || !cableBoxDefault.channelNumber) {
+            await schedulerLogger.info(
+              'auto-reallocator',
+              'reallocate',
+              `No default channel configured for ${inputSource.name} (matrix input ${irDevice.matrixInput})`,
+              cid,
+              { inputSourceId: inputSource.id }
+            );
+          } else {
+            try {
+              const tuneResponse = await fetch(`http://127.0.0.1:${API_PORT}/api/channel-presets/tune`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  channelNumber: cableBoxDefault.channelNumber,
+                  deviceType: 'cable',
+                  cableBoxId: inputSource.deviceId,
+                  presetId: 'default',
+                }),
+              });
+
+              if (tuneResponse.ok) {
+                const label = cableBoxDefault.channelName
+                  ? `${cableBoxDefault.channelNumber} (${cableBoxDefault.channelName})`
+                  : cableBoxDefault.channelNumber;
+                await schedulerLogger.info(
+                  'auto-reallocator',
+                  'reallocate',
+                  `Tuned ${inputSource.name} back to default channel ${label}`,
+                  cid,
+                  {
+                    inputSourceId: inputSource.id,
+                    channelNumber: cableBoxDefault.channelNumber,
+                    deviceType: 'cable',
+                    deviceId: inputSource.deviceId,
+                  }
+                );
+                logger.info(
+                  `[AUTO-REALLOC] Game ended, tuning ${inputSource.name} back to default channel ${label}`
+                );
+              } else {
+                const errorData = await tuneResponse.json().catch(() => ({ error: 'Unknown error' }));
+                await schedulerLogger.error(
+                  'auto-reallocator',
+                  'reallocate',
+                  `Failed to tune ${inputSource.name} back to default channel`,
+                  cid,
+                  new Error(errorData.error || tuneResponse.statusText),
+                  { inputSourceId: inputSource.id, channelNumber: cableBoxDefault.channelNumber }
+                );
+                logger.warn(
+                  `[AUTO-REALLOC] Failed to tune ${inputSource.name} back to default channel: ${errorData.error || tuneResponse.statusText}`
+                );
+              }
+            } catch (tuneError: any) {
+              await schedulerLogger.error(
+                'auto-reallocator',
+                'reallocate',
+                `Error tuning ${inputSource.name} back to default channel`,
+                cid,
+                tuneError,
+                { inputSourceId: inputSource.id, channelNumber: cableBoxDefault.channelNumber }
               );
-            } else {
-              const errorData = await tuneResponse.json().catch(() => ({ error: 'Unknown error' }));
-              logger.warn(
-                `[AUTO-REALLOC] Failed to tune ${inputSource.name} back to default channel: ${errorData.error || tuneResponse.statusText}`
-              );
+              logger.error(`[AUTO-REALLOC] Error tuning ${inputSource.name} back to default channel:`, { error: tuneError.message });
             }
-          } catch (tuneError: any) {
-            logger.error(`[AUTO-REALLOC] Error tuning ${inputSource.name} back to default channel:`, { error: tuneError.message });
           }
         }
       }

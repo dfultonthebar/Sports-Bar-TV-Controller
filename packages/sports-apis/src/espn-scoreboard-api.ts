@@ -148,11 +148,28 @@ class ESPNScoreboardAPIService {
 
       return games;
     } catch (error: any) {
-      logger.error(`[ESPN SCOREBOARD] Error fetching games for ${sport}/${league} on ${date}:`, error);
-      logger.error(`[ESPN SCOREBOARD] Error stack:`, error.stack);
+      logger.error(`[ESPN SCOREBOARD] Error fetching games for ${sport}/${league} on ${date}`, {
+        error,
+        data: {
+          message: error instanceof Error ? error.message : String(error),
+          name: error instanceof Error ? error.name : typeof error,
+          stack: error instanceof Error ? error.stack : undefined,
+        },
+      });
       return [];
     }
   }
+
+  /**
+   * Leagues whose ESPN scoreboard endpoint does NOT accept YYYYMMDD-YYYYMMDD
+   * date ranges — they 404 with `{"code":404,"message":"Failed to get events endpoint."}`
+   * when a range is passed, but work fine with a single YYYYMMDD date.
+   * Verified 2026-04-14 against site.api.espn.com.
+   */
+  private static readonly LEAGUES_REQUIRING_SINGLE_DATE = new Set<string>([
+    'mens-college-basketball',
+    'womens-college-basketball',
+  ]);
 
   /**
    * Get games for a date range
@@ -173,21 +190,33 @@ class ESPNScoreboardAPIService {
     }
 
     try {
-      const url = `${this.baseUrl}/${sport}/${league}/scoreboard?dates=${startDate}-${endDate}`;
-      logger.info(`[ESPN SCOREBOARD] Fetching games from ${url}`);
+      // Some leagues (notably mens-/womens-college-basketball) reject YYYYMMDD-YYYYMMDD
+      // range params and return 404 "Failed to get events endpoint." We fall back to
+      // iterating single dates across the range and concatenating results.
+      let games: ESPNGame[];
+      if (ESPNScoreboardAPIService.LEAGUES_REQUIRING_SINGLE_DATE.has(league)) {
+        logger.info(`[ESPN SCOREBOARD] ${league} requires per-day fetches; iterating ${startDate}..${endDate}`);
+        games = await this.fetchRangeByDay(sport, league, startDate, endDate);
+      } else {
+        const url = `${this.baseUrl}/${sport}/${league}/scoreboard?dates=${startDate}-${endDate}`;
+        logger.info(`[ESPN SCOREBOARD] Fetching games from ${url}`);
 
-      const response = await fetch(url, {
-        headers: {
-          'Accept': 'application/json',
-        },
-      });
+        const response = await fetch(url, {
+          headers: {
+            'Accept': 'application/json',
+          },
+        });
 
-      if (!response.ok) {
-        throw new Error(`ESPN API error: ${response.status} ${response.statusText}`);
+        if (!response.ok) {
+          const bodySnippet = await response.text().catch(() => '');
+          throw new Error(
+            `ESPN API error: ${response.status} ${response.statusText} url=${url} body=${bodySnippet.slice(0, 200)}`
+          );
+        }
+
+        const data: ESPNScoreboardResponse = await response.json();
+        games = this.parseScoreboardResponse(data);
       }
-
-      const data: ESPNScoreboardResponse = await response.json();
-      const games = this.parseScoreboardResponse(data);
 
       logger.info(`[ESPN SCOREBOARD] Fetched ${games.length} games for ${sport}/${league} from ${startDate} to ${endDate}`);
 
@@ -196,15 +225,84 @@ class ESPNScoreboardAPIService {
         cacheManager.set('sports-data', cacheKey, games, 60 * 60 * 1000);
         logger.debug(`[ESPN SCOREBOARD] Cached ${games.length} games for range`);
       } catch (cacheError) {
-        logger.error(`[ESPN SCOREBOARD] Cache set error:`, cacheError);
+        logger.error(`[ESPN SCOREBOARD] Cache set error`, { error: cacheError });
       }
 
       return games;
     } catch (error: any) {
-      logger.error(`[ESPN SCOREBOARD] Error fetching games for ${sport}/${league} range ${startDate}-${endDate}:`, error);
-      logger.error(`[ESPN SCOREBOARD] Error stack:`, error.stack);
+      logger.error(`[ESPN SCOREBOARD] Error fetching games for ${sport}/${league} range ${startDate}-${endDate}`, {
+        error,
+        data: {
+          message: error instanceof Error ? error.message : String(error),
+          name: error instanceof Error ? error.name : typeof error,
+          stack: error instanceof Error ? error.stack : undefined,
+        },
+      });
       return [];
     }
+  }
+
+  /**
+   * Fetch a date range by iterating one YYYYMMDD at a time and merging results.
+   * Used for ESPN leagues whose scoreboard endpoint rejects range params.
+   * Deduplicates by event id in case ESPN returns the same game on adjacent days.
+   */
+  private async fetchRangeByDay(
+    sport: string,
+    league: string,
+    startDate: string,
+    endDate: string
+  ): Promise<ESPNGame[]> {
+    const parseYmd = (s: string): Date => {
+      const y = parseInt(s.slice(0, 4), 10);
+      const m = parseInt(s.slice(4, 6), 10) - 1;
+      const d = parseInt(s.slice(6, 8), 10);
+      return new Date(Date.UTC(y, m, d));
+    };
+    const formatYmd = (d: Date): string => {
+      const y = d.getUTCFullYear();
+      const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+      const day = String(d.getUTCDate()).padStart(2, '0');
+      return `${y}${m}${day}`;
+    };
+
+    const start = parseYmd(startDate);
+    const end = parseYmd(endDate);
+    const seen = new Set<string>();
+    const merged: ESPNGame[] = [];
+
+    for (let d = new Date(start); d.getTime() <= end.getTime(); d.setUTCDate(d.getUTCDate() + 1)) {
+      const ymd = formatYmd(d);
+      const url = `${this.baseUrl}/${sport}/${league}/scoreboard?dates=${ymd}`;
+      try {
+        const response = await fetch(url, { headers: { Accept: 'application/json' } });
+        if (!response.ok) {
+          const bodySnippet = await response.text().catch(() => '');
+          logger.warn(
+            `[ESPN SCOREBOARD] per-day fetch non-OK for ${sport}/${league} ${ymd}: ${response.status} ${response.statusText} body=${bodySnippet.slice(0, 200)}`
+          );
+          continue;
+        }
+        const data: ESPNScoreboardResponse = await response.json();
+        const dayGames = this.parseScoreboardResponse(data);
+        for (const g of dayGames) {
+          if (!seen.has(g.id)) {
+            seen.add(g.id);
+            merged.push(g);
+          }
+        }
+      } catch (dayError: any) {
+        logger.warn(`[ESPN SCOREBOARD] per-day fetch threw for ${sport}/${league} ${ymd}`, {
+          error: dayError,
+          data: {
+            message: dayError instanceof Error ? dayError.message : String(dayError),
+          },
+        });
+        // Continue with other days rather than aborting the whole range
+      }
+    }
+
+    return merged;
   }
 
   /**

@@ -105,13 +105,13 @@ export default function Home() {
                 </a>
 
                 <a
-                  href="/sports-guide"
+                  href="/sports-guide-admin"
                   className="group relative block p-6 backdrop-blur-xl bg-gradient-to-br from-orange-500/20 to-red-500/20 rounded-xl border-2 border-orange-400/30 hover:border-orange-400/50 hover:scale-105 transition-all duration-300 shadow-xl hover:shadow-2xl overflow-hidden"
                 >
                   <div className="absolute inset-0 bg-gradient-to-br from-orange-500/10 to-red-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                   <div className="relative z-10">
                     <h3 className="font-bold text-orange-200 mb-2 text-lg">📺 Sports Guide</h3>
-                    <p className="text-orange-100/90 text-sm">Find where to watch sports</p>
+                    <p className="text-orange-100/90 text-sm">Schedule, channels, home teams &amp; more</p>
                   </div>
                 </a>
 

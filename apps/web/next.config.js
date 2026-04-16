@@ -143,6 +143,18 @@ const nextConfig = {
     // Use unoptimized images to avoid validation issues with local uploads
     unoptimized: true,
   },
+  // Sports Guide admin consolidation (v2.4.0 Phase C)
+  // Redirect old admin URLs to the corresponding tab on the consolidated
+  // /sports-guide-admin page. Old page files remain on disk until Phase D
+  // deletes them after the trial period.
+  async redirects() {
+    return [
+      { source: '/sports-guide',        destination: '/sports-guide-admin?tab=guide',         permanent: false },
+      { source: '/sports-guide-config', destination: '/sports-guide-admin?tab=configuration', permanent: false },
+      { source: '/ai-gameplan',         destination: '/sports-guide-admin?tab=schedule',      permanent: false },
+      { source: '/scheduling',          destination: '/sports-guide-admin?tab=games',         permanent: false },
+    ]
+  },
   webpack: (config, { isServer }) => {
     // Exclude native modules from webpack bundling
     if (isServer) {

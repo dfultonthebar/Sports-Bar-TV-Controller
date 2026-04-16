@@ -257,8 +257,9 @@ Device configuration has been migrated from JSON files to database tables:
 | Fire TV devices | `data/firetv-devices.json` | Database | `FireTVDevice` | `apps/web/src/lib/device-db.ts` |
 | Station aliases | Hardcoded in channel-guide route | Database | `station_aliases` | Cached DB query in channel-guide |
 | Channel overrides | Hardcoded in channel-guide route | Database | `local_channel_overrides` | Cached DB query in channel-guide |
+| Channel presets | Hardcoded dicts in routes | Database | `ChannelPreset` | Seeded from `data/channel-presets-{cable,directv}.json` |
 
-**Auto-Seed on First Startup:** When the app starts and device tables are empty, it automatically seeds from JSON files (`data/directv-devices.json`, `data/firetv-devices.json`). This ensures locations pulling the code update don't lose their devices. See `apps/web/src/lib/seed-from-json.ts`.
+**Auto-Seed on First Startup:** When the app starts and device/preset tables are empty, it automatically seeds from JSON files (`data/directv-devices.json`, `data/firetv-devices.json`, `data/channel-presets-cable.json`, `data/channel-presets-directv.json`). This ensures locations pulling the code update don't lose their devices or channel presets. See `apps/web/src/lib/seed-from-json.ts`. The channel-preset JSON files are per-location (committed on the location branch) and seed the `ChannelPreset` table only when it's empty — after that the DB is the source of truth.
 
 **Centralized Hardware Config:** `apps/web/src/lib/hardware-config.ts` contains all device IPs, ports, and processor IDs. Update this file when hardware changes — no more hunting through 15+ files.
 
@@ -720,6 +721,22 @@ const result = await queryDocs({
 
 **Spectrum Cable Box Note:** Spectrum/Charter disables CEC in firmware. IR learning is the ONLY way to control Spectrum boxes.
 
+#### 8a. Sports Guide Admin Consolidation (v2.4.0, April 2026)
+
+The admin UI for Sports Guide, Smart Scheduler, and AI Game Plan is being consolidated into a single `/sports-guide-admin` page with 8 tabs (Guide, Games, Schedule, Home Teams, Channels, Providers, Configuration, Logs). The bartender remote at `/remote` is **not** affected. See `docs/SPORTS_GUIDE_ADMIN_CONSOLIDATION.md` for the full plan and per-item disposition.
+
+**Phase A completed in v2.4.0** — dead-weight cleanup. 16 unused API routes deleted, 7 orphaned components/pages deleted, 1 stale bootstrap script deleted, broken `/scheduler` nav link fixed to point at `/scheduling`, Leagues tab hidden in `/sports-guide-config`. Net change: 4,961 lines deleted, 12 added, zero regressions.
+
+**Deleted routes** (never reintroduce these unless designing something new): `/api/scheduler/{status,manage,settings,system-state,test-match,distribution-plan}`, `/api/schedules/{logs,by-game}`, `/api/scheduling/{analyze,auto-reallocate}`, `/api/sports-guide/{test-providers,current-time,channels,ollama/query,scheduled}`, `/api/channel-presets/statistics`.
+
+**Kept despite zero UI callers** (internal cron callers in `packages/scheduler/src/scheduler-service.ts`): `/api/sports-guide/cleanup-old` (line 516), `/api/scheduling/live-status` (line 885). Do not delete these without updating the caller.
+
+**Phase B completed in v2.4.0** — new `/sports-guide-admin` page with 8 tabs wrapping existing components. Old pages still live on disk unchanged.
+
+**Phase C completed in v2.4.1** — navigation consolidated to a single "Sports Guide" entry pointing at `/sports-guide-admin`. Next.js `redirects()` forward `/sports-guide`, `/sports-guide-config`, `/ai-gameplan`, `/scheduling` to the corresponding tabs (307 temporary redirects). Admin page honors `?tab=` query param for deep links. Dashboard home card updated.
+
+**Phase D completed in v2.4.4** — old page files deleted (`/sports-guide`, `/sports-guide-config`, `/ai-gameplan`, `/scheduling`), the orphaned `LegacySchedulingManager.tsx` (1,314 unused lines) removed, and the `/system-admin` Scheduler tab deleted. Old URLs still work as bookmarks because the Next.js `redirects()` rules in `next.config.js` are preserved — they fire before page resolution. **Consolidation is now complete.**
+
 #### 9. AI Scheduling Intelligence
 **Purpose:** Smart scheduling recommendations using pattern analysis and local AI (Ollama)
 
@@ -734,6 +751,22 @@ const result = await queryDocs({
 - `GET/POST /api/scheduling/preferences` - Manage scheduling preferences
 - `GET /api/scheduling/suggestions` - Get AI-powered scheduling suggestions
 - `POST /api/scheduling/apply` - Apply a scheduling suggestion
+
+**AI Game Monitor Schedule (auto-created):** The AI Auto Pilot feature (`GET /api/schedules/ai-game-plan`) requires a row in the `Schedule` table with `scheduleType='continuous'`. As of v2.3.0, this row is **auto-created on first use** if missing — no manual setup required. The auto-create looks up home team IDs from the `HomeTeam` table by case-insensitive name match for Packers/Bucks/Brewers/Badgers. If `HomeTeam` is empty, the row is still created but with `homeTeamIds: "[]"` and Auto Pilot runs without home-team prioritization. Populate the `HomeTeam` table to enable prioritization. See `docs/SCHEDULER_FIXES_APRIL_2026.md` for full details.
+
+**ESPN Sync (automatic):** As of v2.3.0, ESPN game data is synced automatically on startup (30s after Next.js boot) and then every 60 minutes. This is wired into `apps/web/src/instrumentation.ts` via `espnSyncService.syncLeague()` from `@sports-bar/scheduler`, covering MLB, NBA, NHL, NFL, college football, men's college basketball, and women's college basketball. Data lands in the `game_schedules` table with lowercase league labels (e.g. `"mlb"`, `"nba"`). Prior to this fix, the sync existed but was never invoked — new installations had empty `game_schedules` until someone manually hit `POST /api/scheduling/sync`.
+
+**Bartender-Schedule POST — tvOutputIds handling:** `POST /api/schedules/bartender-schedule` accepts `tvOutputIds: number[]` in the body (the matrix output channel numbers the bartender is assigning). This field is **optional** — the bartender-remote Guide tab flow creates the allocation without it and then PATCHes outputs from a prior allocation on the same device. The AI-suggestion approve flow sends outputs inline. Prior to v2.3.0 this field was silently dropped entirely and the insert hardcoded `JSON.stringify([])`, which broke the downstream allocator and auto-revert flows. If the team-name + start-time lookup against `game_schedules` fails, the route now returns 404 with a clear message pointing at the sync as the likely cause.
+
+**Channel Guide fallback to game_schedules:** `POST /api/channel-guide` (used by the bartender remote's Guide tab) is primarily backed by The Rail Media API (`guide.thedailyrail.com`), which only covers nationally-televised games and a subset of RSN broadcasts — it misses many regional games (e.g., the Brewers game on Brewers.TV when Rail doesn't include it). As of v2.3.0, after the Rail Media loop the route queries our local `game_schedules` table for games in the same time window and injects any whose `broadcast_networks` array resolves to a user preset via the `stationToPreset` lookup (with station-alias fallback). Deduped against Rail programs by channel + team matchup. See `docs/SCHEDULER_FIXES_APRIL_2026.md` section 5 for details.
+
+**Station alias conventions for Wisconsin RSNs:** Green Bay area Spectrum cable has TWO Wisconsin RSN channels that must be kept separate:
+- **Channel 40** ("Fan Duel" preset) — main WI RSN, carries Bucks and general WI sports. ESPN and The Rail Media use station code `FSWI`. Aliases live under the `FanDuelWI` standard_name in the `station_aliases` table.
+- **Channel 308** ("Bally Sports WI" preset) — **Brewers-only** overflow feed. ESPN tags these broadcasts as `Brewers.TV`. Aliases live under the `BallyWIPlus` standard_name.
+
+Never combine them into a single alias bundle or Bucks games will wrongly route to 308. See `apps/web/src/lib/seed-from-json.ts` for the canonical alias lists that seed new installations.
+
+**channel_guide normalizeStation:** The helper strips `HD`, `NETWORK`, `CHANNEL`, and `-TV` suffixes, and removes spaces and dashes, before matching. If adding new alias entries, ensure at least one alias in the list normalizes to the target preset's name (also normalized) so the preset-build loop can link the alias to the preset.
 
 #### 9a. Live Channel Mapping (Network → Channel)
 **Purpose:** Map ESPN broadcast network names to local channel numbers for live game display
@@ -785,36 +818,79 @@ This system supports multiple sports bar locations. Each location runs its own i
 
 ### Location-Specific Files (empty templates on main)
 
-These files are replaced with real data on location branches:
-- `apps/web/data/tv-layout.json` — Floor plan, TV zones, rooms
-- `apps/web/data/directv-devices.json` — DirecTV receiver configs (Seed-only input — DB is source of truth after first run)
-- `apps/web/data/firetv-devices.json` — Fire TV device configs (Seed-only input — DB is source of truth after first run)
-- `apps/web/data/device-subscriptions.json` — Device streaming subscriptions
-- `apps/web/data/wolfpack-devices.json` — Wolf Pack multi-chassis configs (empty `{"chassis":[]}` on main)
-- `apps/web/data/atlas-configs/` — Audio processor configs (gitignored)
+These files are replaced with real data on location branches. On `main`
+they exist as empty templates that `seed-from-json.ts` handles gracefully
+(no-ops) so a fresh clone starts clean. **Never commit populated versions
+to `main`** — see the reconciliation commit `7f13fbe7` (2026-04-14) for
+the history of what happens when this rule gets broken.
+
+- `apps/web/data/tv-layout.json` — `{"name":"Bar Layout","zones":[],"tvPositions":[],"rooms":[]}`
+- `apps/web/data/directv-devices.json` — `{"devices":[]}` (seed-only input; DB is source of truth after first run)
+- `apps/web/data/firetv-devices.json` — `{"devices":[]}` (seed-only input)
+- `apps/web/data/device-subscriptions.json` — `{"devices":[]}`
+- `apps/web/data/wolfpack-devices.json` — `{"chassis":[]}`
+- `apps/web/data/channel-presets-cable.json` — `{"presets":[]}` (seeds ChannelPreset table on first run, per-location)
+- `apps/web/data/channel-presets-directv.json` — `{"presets":[]}` (same)
+- `apps/web/data/everpass-devices.json` — `{"devices":[]}` (if present)
+- `apps/web/data/atlas-configs/` — Audio processor configs (gitignored, never on main)
 - `apps/web/public/uploads/layouts/` — Floor plan images (gitignored)
-- `data/` mirrors — Root copies of the above
-- `.env` — `SPORTS_GUIDE_USER_ID`, API keys (gitignored)
+- `data/` mirrors at repo root — Root copies of the above (gitignored via `data/*.json` with `!data/*.template.json` exception)
+- `.env` — `LOCATION_ID`, `LOCATION_NAME`, `AUTH_COOKIE_SECURE`, `SPORTS_GUIDE_USER_ID`, API keys (gitignored)
+
+### Auth bootstrap (critical per-location step)
+
+Per-location install also requires seeding the `Location` row and
+`AuthPin` rows in `production.db`, plus setting `LOCATION_ID` in `.env`,
+or every login attempt returns "Invalid PIN". See
+`docs/NEW_LOCATION_SETUP.md` for the full runbook and use
+`scripts/bootstrap-new-location.sh` to automate steps 4-5:
+
+```bash
+bash scripts/bootstrap-new-location.sh \
+  --name "Your Bar Name" \
+  --admin-pin 7819 \
+  --staff-pin 1234
+```
+
+The script is idempotent — safe to re-run. It creates the Location row
+if missing, seeds STAFF and ADMIN PINs if missing, and writes
+`LOCATION_ID` / `AUTH_COOKIE_SECURE=false` into `.env`. `AUTH_COOKIE_SECURE`
+must be `false` on HTTP-only LAN deployments; browsers silently drop
+`Secure` cookies on `http://` origins, so setting it `true` on HTTP
+causes login to "succeed" but every subsequent request to look
+unauthenticated.
 
 ### Workflow: Pulling Code Updates to a Location
 
+**Preferred:** let `scripts/auto-update.sh` handle it. The orchestrator
+has a `LOCATION_PATHS_OURS` conflict auto-resolver that keeps the
+location's data files and applies main's software changes, backed up by
+Claude Code CLI review at three checkpoints. Configure and enable it
+via the Sync tab UI. See `docs/AUTO_UPDATE_SYSTEM_PLAN.md`.
+
+**Manual fallback** (when auto-update isn't available):
+
 ```bash
 git checkout location/<name>
-git merge main
-# On conflict with data files → keep the location version (git checkout --ours <file>)
-npm install
+git fetch origin
+git merge origin/main
+# On conflict with data files → keep the location version:
+#   git checkout --ours apps/web/data/<file>
+#   git checkout --theirs package-lock.json package.json
+npm ci
 npx drizzle-kit push --config drizzle.config.ts  # Create any new DB tables
 npm run build
-pm2 restart sports-bar-tv-controller
+pm2 restart sports-bar-tv-controller --update-env
 # Check logs for auto-seed: pm2 logs sports-bar-tv-controller --lines 20
 # Look for: "[SEED] Seeded X DirecTV devices from JSON"
 ```
 
-### Commit Strategy (IMPORTANT)
-- **Software changes** (code in `apps/web/src/`, `packages/`, docs) → commit to `main` branch, then merge into location branches
-- **Location-specific data** (device IPs, configs in `apps/web/data/*.json`, `.env`, layout images) → commit ONLY to location branch
+### Commit Strategy (IMPORTANT — this was broken historically and led to the v2.4.x drift)
+- **Software changes** (code in `apps/web/src/`, `packages/`, docs, scripts) → commit to `main` first, then merge into location branches
+- **Location-specific data** (device IPs, configs in `apps/web/data/*.json`, `.env`, layout images) → commit ONLY to the location branch
 - **Never merge location branches back into main** — location data must not leak to other locations
 - When making changes on a location branch, always split: software first to main, then merge main into location, then commit location data
+- **If you find yourself editing a software file on a location branch**, stop, cherry-pick the change to main first, push main, then merge main into location. The reconciliation work in commit `7f13fbe7` is what happens when you don't.
 
 ### Shared Location Reference Docs
 
