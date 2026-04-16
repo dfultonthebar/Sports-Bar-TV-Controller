@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "createdAt": "2026-03-05T18:42:36.907Z",
+  "createdAt": "2026-04-16T14:40:52.563Z",
   "location": {
     "id": "fd8d5821-4b7e-4e70-873b-0ffec0285f3e",
     "name": "Leg Lamp",
@@ -43,7 +43,19 @@
     {
       "name": "IRCommand",
       "rowCount": 81
+    },
+    {
+      "name": "ChannelPreset",
+      "rowCount": 36
+    },
+    {
+      "name": "input_sources",
+      "rowCount": 1
+    },
+    {
+      "name": "InputCurrentChannel",
+      "rowCount": 3
     }
   ],
-  "totalRows": 138
+  "totalRows": 178
 }

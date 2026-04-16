@@ -1,7 +1,7 @@
 # Location Backup Restore Instructions
 
 ## Location: Leg Lamp
-## Backup Date: 2026-03-05T18:42:36.908Z
+## Backup Date: 2026-04-16T14:40:52.567Z
 ## Location ID: fd8d5821-4b7e-4e70-873b-0ffec0285f3e
 
 ## To restore this backup:
@@ -24,3 +24,6 @@
 - GlobalCachePort: 3 rows
 - IRDevice: 3 rows
 - IRCommand: 81 rows
+- ChannelPreset: 36 rows
+- input_sources: 1 rows
+- InputCurrentChannel: 3 rows
