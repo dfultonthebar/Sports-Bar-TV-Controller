@@ -278,27 +278,19 @@ logger.debug('[COMPONENT] Debug info')
 **Enhanced Logging:** `packages/logger/src/enhanced-logger.ts` - Stores logs in database for System Admin analytics
 **Component Tags:** Use `[COMPONENT]` prefix for searchable log filtering (e.g., `[CEC]`, `[MATRIX]`, `[IR]`)
 
-#### 5. CEC Cable Box Control (Important for sports bars)
-**Problem:** Spectrum/Charter cable boxes have CEC disabled in firmware
-**Solution:** Must use IR control (iTach IP2IR) instead of CEC for Spectrum boxes
-**CEC Support:** Works with Xfinity/Comcast cable boxes, but NOT Spectrum
+#### 5. Cable Box Control (IR only — CEC is deprecated)
+**The Wolf Pack HDMI matrix does NOT pass CEC signals.** All cable box control uses IR via Global Cache iTach IP2IR devices. CEC code exists in the codebase from earlier development but is non-functional at all current locations and should be removed.
 
-**CEC Service:** `apps/web/src/lib/cable-box-cec-service.ts`
-- Channel tuning via HDMI-CEC user control codes
-- Power management
-- Pulse-Eight USB CEC adapter support (multiple adapters at `/dev/ttyACM*`)
-
-**Channel Tuning Flow:**
-1. Frontend sends channel number to `/api/channel-presets/tune`
-2. API looks up cable box CEC device path
-3. Builds digit sequence (e.g., "27" → ["2", "7", "ENTER"])
-4. Sends CEC user control codes via `cec-client` command
-5. Logs success/failure to `CECCommandLog` table
+**Cable Box Control Method:** IR commands via Global Cache iTach IP2IR
+- Channel tuning sends learned IR codes for each digit
+- Power management via IR power toggle
+- IR codes stored in `IRCommand` table, learned via the IR Learning Panel
 
 **Important Files:**
-- `apps/web/src/lib/cec-commands.ts` - CEC user control code mappings
-- `apps/web/src/components/remotes/CableBoxRemote.tsx` - Smart routing (CEC vs IR)
+- `apps/web/src/components/remotes/CableBoxRemote.tsx` - Cable box remote (IR path)
 - `apps/web/src/components/BartenderRemoteSelector.tsx` - Channel preset UI
+
+**Legacy CEC code (to be removed):** `cable-box-cec-service.ts`, `cec-commands.ts`, CEC API routes, `CECCommandLog` table writes, EverPass CEC commands. These are dead code — the Wolf Pack matrix blocks CEC passthrough, and Spectrum boxes have CEC disabled in firmware.
 
 #### 6. Crestron Matrix Switcher Control
 **Package:** `packages/crestron/`
@@ -536,10 +528,10 @@ pm2 restart sports-bar-tv-controller
 - Production: Always `/home/ubuntu/sports-bar-data/production.db`
 - Configured in: `drizzle.config.ts` and environment variables
 
-### 5. CEC vs IR Control
-- **Spectrum cable boxes:** CEC is disabled by firmware → Use IR control
-- **Xfinity cable boxes:** CEC works
-- **Check device type** before assuming CEC support
+### 5. No CEC — IR Only
+- **Wolf Pack matrix does NOT pass CEC signals** — CEC cannot work at any location using the matrix
+- **All cable box control uses IR** via Global Cache iTach IP2IR
+- **CEC code is legacy dead weight** — do not add new CEC features, plan to remove existing CEC code
 
 ### 6. Device Data: DB is Source of Truth
 - Devices are now stored in database tables (`DirecTVDevice`, `FireTVDevice`), not JSON files
@@ -550,12 +542,22 @@ pm2 restart sports-bar-tv-controller
 
 ## Development Workflow
 
-### Version Bumping (REQUIRED)
-**Always bump the version in root `package.json` when making code changes:**
-- **Minor bump** (2.1.0 → 2.2.0): Feature additions, migrations, significant changes
-- **Patch bump** (2.1.0 → 2.1.1): Bug fixes, small adjustments
+### Standing Rules (MUST follow in every session)
 
-This is critical for multi-location deployments so each location knows what version they're running.
+1. **Read docs before work, update docs after.** Before starting any non-trivial task, read `CLAUDE.md` and any `/docs/*.md` files relevant to the area being touched. After completing code changes, update the relevant docs — API references if routes changed, hardware guides if device config changed, CLAUDE.md if architecture/conventions changed. If you add a new feature with no matching doc, create one under `/docs/`. Never say "docs updated" unless you actually edited the file.
+
+2. **Always commit and push after completing work.** After a unit of work is verified working (build passes, tests confirm), commit and push to GitHub automatically — do not wait for an explicit "please commit" instruction. Follow the commit strategy below (software to `main` first, then merge to location). Still confirm before destructive git operations (force push, reset, branch delete).
+
+3. **Never break working features during cleanup.** Before deleting anything, establish positive evidence it's unused — zero callers, zero UI references, zero scheduled jobs. When in doubt, hide from UI before deleting code. Stage refactors into small verifiable steps. After each step, confirm build + PM2 restart + core flow sanity check. Never delete DB tables in the same pass as code changes.
+
+4. **Force-rebuild when Turbo cache lies.** If `npm run build` completes in under 1 second with `FULL TURBO` and all tasks cached, the source changes did NOT get compiled. Run `npx turbo run build --force` (or `rm -rf apps/web/.next && npm run build`) to bypass the cache. This commonly happens after switching branches or cherry-picking.
+
+5. **When told to "remember" something, update CLAUDE.md too.** Memory files are per-host — only this machine's future sessions see them. CLAUDE.md is in the shared repo and gets merged to every location. When the user says "remember X", save to local memory AND add the rule to the appropriate section of CLAUDE.md, then commit+push with a version bump. This is how rules propagate to Lucky's, Holmgren, Graystone, Leg Lamp, and any future location.
+
+### Version Bumping (REQUIRED — every commit to main)
+**Every commit pushed to `main` MUST include a version bump in root `package.json`.** Do not push code changes and bump the version separately — include it in the same commit or at minimum the same push. A commit without a version bump means two locations can report the same version while running different code, making debugging impossible.
+- **Minor bump** (2.1.0 → 2.2.0): Feature additions, migrations, significant changes
+- **Patch bump** (2.1.0 → 2.1.1): Bug fixes, docs, small adjustments
 
 ### Making Schema Changes
 ```bash
@@ -891,6 +893,7 @@ pm2 restart sports-bar-tv-controller --update-env
 - **Never merge location branches back into main** — location data must not leak to other locations
 - When making changes on a location branch, always split: software first to main, then merge main into location, then commit location data
 - **If you find yourself editing a software file on a location branch**, stop, cherry-pick the change to main first, push main, then merge main into location. The reconciliation work in commit `7f13fbe7` is what happens when you don't.
+- **Always pull before pushing to main** — run `git fetch origin main && git merge origin/main` before committing and pushing to `main`. Other locations or sessions may have pushed changes while you were working. Pushing without pulling risks rejected pushes or overwrites.
 
 ### Shared Location Reference Docs
 

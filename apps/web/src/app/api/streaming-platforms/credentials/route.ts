@@ -1,97 +1,36 @@
 /**
  * Streaming Credentials API
- * ENHANCED: Now uses AES-256-GCM encryption for storing credentials
+ * Uses database storage with AES-256-GCM encryption for passwords
  */
 
-import { NextRequest, NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
-import { encrypt, decrypt, encryptToString, decryptFromString } from '@/lib/security/encryption';
-import { withRateLimit, addRateLimitHeaders } from '@/lib/rate-limiting/middleware';
-
+import { NextRequest, NextResponse } from 'next/server'
+import { encryptToString, decryptFromString } from '@/lib/security/encryption'
+import { withRateLimit, addRateLimitHeaders } from '@/lib/rate-limiting/middleware'
 import { logger } from '@sports-bar/logger'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
-export const dynamic = 'force-dynamic';
+import { validateRequestBody, ValidationSchemas, isValidationError } from '@/lib/validation'
+import { db, schema } from '@/db'
+import { eq } from 'drizzle-orm'
 
-const CREDENTIALS_FILE = path.join(process.cwd(), 'data', 'streaming-credentials.json');
-
-interface StreamingCredential {
-  id: string;
-  platformId: string;
-  username: string;
-  passwordHash: string; // Now encrypted with AES-256-GCM
-  encrypted: boolean; // Always true with new encryption
-  encryptionVersion: string; // Track encryption version
-  lastUpdated: string;
-  status: 'active' | 'expired' | 'error';
-  lastSync?: string;
-}
-
-// Ensure data directory exists
-function ensureDataDirectory() {
-  const dataDir = path.join(process.cwd(), 'data');
-  if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir, { recursive: true });
-  }
-}
-
-// Load credentials from file
-function loadCredentials(): StreamingCredential[] {
-  try {
-    ensureDataDirectory();
-    if (fs.existsSync(CREDENTIALS_FILE)) {
-      const data = fs.readFileSync(CREDENTIALS_FILE, 'utf8');
-      return JSON.parse(data);
-    }
-    return [];
-  } catch (error) {
-    logger.error('Error loading credentials:', error);
-    return [];
-  }
-}
-
-// Save credentials to file
-function saveCredentials(credentials: StreamingCredential[]): boolean {
-  try {
-    ensureDataDirectory();
-    fs.writeFileSync(CREDENTIALS_FILE, JSON.stringify(credentials, null, 2));
-    return true;
-  } catch (error) {
-    logger.error('Error saving credentials:', error);
-    return false;
-  }
-}
+export const dynamic = 'force-dynamic'
 
 /**
  * Decrypt password from stored credential
  * Handles both old base64 encoding and new AES-256-GCM encryption
  */
-function decryptPassword(credential: StreamingCredential): string {
+function decryptPassword(credential: { passwordHash: string; encryptionVersion: string | null; encrypted: boolean | null }): string {
   try {
-    // New encryption method (AES-256-GCM)
     if (credential.encryptionVersion === 'aes-256-gcm') {
-      return decryptFromString(credential.passwordHash);
+      return decryptFromString(credential.passwordHash)
     }
-
-    // Legacy base64 encoding (for backwards compatibility)
     if (credential.encrypted && credential.passwordHash) {
-      return Buffer.from(credential.passwordHash, 'base64').toString();
+      return Buffer.from(credential.passwordHash, 'base64').toString()
     }
-
-    // Plain text (should not happen in production)
-    return credential.passwordHash;
+    return credential.passwordHash
   } catch (error) {
-    logger.error('Error decrypting password:', error);
-    throw new Error('Failed to decrypt password');
+    logger.error('Error decrypting password:', error)
+    throw new Error('Failed to decrypt password')
   }
-}
-
-/**
- * Encrypt password using AES-256-GCM
- */
-function encryptPassword(password: string): string {
-  return encryptToString(password);
 }
 
 /**
@@ -100,30 +39,26 @@ function encryptPassword(password: string): string {
  */
 export async function GET(request: NextRequest) {
   try {
-    const credentials = loadCredentials();
+    const rows = await db.select().from(schema.streamingCredentials)
 
-    // Return credentials without sensitive data
-    const safeCredentials = credentials.map(cred => ({
+    const safeCredentials = rows.map(cred => ({
       id: cred.id,
       platformId: cred.platformId,
       username: cred.username,
       encrypted: cred.encrypted,
       encryptionVersion: cred.encryptionVersion,
-      lastUpdated: cred.lastUpdated,
+      lastUpdated: cred.updatedAt,
       status: cred.status,
       lastSync: cred.lastSync,
-    }));
+    }))
 
-    return NextResponse.json({
-      success: true,
-      credentials: safeCredentials,
-    });
+    return NextResponse.json({ success: true, credentials: safeCredentials })
   } catch (error) {
-    logger.error('Error getting credentials:', error);
+    logger.error('Error getting credentials:', error)
     return NextResponse.json(
       { success: false, error: 'Failed to load credentials' },
       { status: 500 }
-    );
+    )
   }
 }
 
@@ -132,90 +67,82 @@ export async function GET(request: NextRequest) {
  * Add or update streaming platform credentials
  */
 export async function POST(request: NextRequest) {
-  // QUICK WIN 3: Apply rate limiting to authentication endpoint
   const rateLimitCheck = await withRateLimit(request, 'AUTH')
+  if (!rateLimitCheck.allowed) return rateLimitCheck.response!
 
-  if (!rateLimitCheck.allowed) {
-    return rateLimitCheck.response!
-  }
-
-
-  // Input validation
   const bodyValidation = await validateRequestBody(request, ValidationSchemas.streamingCredentials)
   if (isValidationError(bodyValidation)) return bodyValidation.error
 
+  const { platformId, username, password } = bodyValidation.data
 
-  // Security: use validated data
-  const { data } = bodyValidation
-  const { platformId, username, password, rememberMe } = data
   try {
-    ;
-
     if (!platformId || !username || !password) {
       return NextResponse.json(
         { success: false, error: 'Missing required fields' },
         { status: 400 }
-      );
+      )
     }
 
-    // Validate encryption is configured
     if (!process.env.ENCRYPTION_KEY) {
       return NextResponse.json(
-        {
-          success: false,
-          error: 'Encryption not configured. Please set ENCRYPTION_KEY environment variable.'
-        },
-        { status: 500 }
-      );
-    }
-
-    const credentials = loadCredentials();
-    const existingIndex = credentials.findIndex(c => c.platformId === platformId);
-
-    // Encrypt the password using AES-256-GCM
-    const encryptedPassword = encryptPassword(password);
-
-    const newCredential: StreamingCredential = {
-      id: existingIndex >= 0 ? credentials[existingIndex].id : `cred_${Date.now()}`,
-      platformId,
-      username,
-      passwordHash: encryptedPassword,
-      encrypted: true,
-      encryptionVersion: 'aes-256-gcm', // Track encryption version
-      lastUpdated: new Date().toISOString(),
-      status: 'active',
-      lastSync: new Date().toISOString(),
-    };
-
-    if (existingIndex >= 0) {
-      credentials[existingIndex] = newCredential;
-    } else {
-      credentials.push(newCredential);
-    }
-
-    if (saveCredentials(credentials)) {
-      const jsonResponse = NextResponse.json({
-        success: true,
-        credential: {
-          id: newCredential.id,
-          platformId: newCredential.platformId,
-          username: newCredential.username,
-          encrypted: newCredential.encrypted,
-          encryptionVersion: newCredential.encryptionVersion,
-          lastUpdated: newCredential.lastUpdated,
-          status: newCredential.status,
-        },
-      })
-      return addRateLimitHeaders(jsonResponse, rateLimitCheck.result)
-    } else {
-      const jsonResponse = NextResponse.json(
-        { success: false, error: 'Failed to save credentials' },
+        { success: false, error: 'Encryption not configured. Please set ENCRYPTION_KEY environment variable.' },
         { status: 500 }
       )
-      return addRateLimitHeaders(jsonResponse, rateLimitCheck.result)
     }
+
+    const encryptedPassword = encryptToString(password)
+    const now = new Date().toISOString().replace('T', ' ').slice(0, 19)
+
+    const existing = await db.select().from(schema.streamingCredentials)
+      .where(eq(schema.streamingCredentials.platformId, platformId))
+      .get()
+
+    let credentialId: string
+
+    if (existing) {
+      await db.update(schema.streamingCredentials)
+        .set({
+          username,
+          passwordHash: encryptedPassword,
+          encrypted: true,
+          encryptionVersion: 'aes-256-gcm',
+          status: 'active',
+          lastSync: now,
+          updatedAt: now,
+        })
+        .where(eq(schema.streamingCredentials.platformId, platformId))
+      credentialId = existing.id
+    } else {
+      credentialId = `cred_${Date.now()}`
+      await db.insert(schema.streamingCredentials).values({
+        id: credentialId,
+        platformId,
+        username,
+        passwordHash: encryptedPassword,
+        encrypted: true,
+        encryptionVersion: 'aes-256-gcm',
+        status: 'active',
+        lastSync: now,
+        createdAt: now,
+        updatedAt: now,
+      })
+    }
+
+    const jsonResponse = NextResponse.json({
+      success: true,
+      credential: {
+        id: credentialId,
+        platformId,
+        username,
+        encrypted: true,
+        encryptionVersion: 'aes-256-gcm',
+        lastUpdated: now,
+        status: 'active',
+      },
+    })
+    return addRateLimitHeaders(jsonResponse, rateLimitCheck.result)
   } catch (error) {
-    logger.error('Error saving credentials:', error);
+    logger.error('Error saving credentials:', error)
     const jsonResponse = NextResponse.json(
       {
         success: false,
@@ -233,82 +160,67 @@ export async function POST(request: NextRequest) {
  * Remove streaming platform credentials
  */
 export async function DELETE(request: NextRequest) {
-  // Input validation
   const bodyValidation = await validateRequestBody(request, z.object({
     platformId: z.string().min(1)
   }))
   if (isValidationError(bodyValidation)) return bodyValidation.error
 
   try {
-    const { platformId } = bodyValidation.data;
+    const { platformId } = bodyValidation.data
 
-    const credentials = loadCredentials();
-    const filteredCredentials = credentials.filter(c => c.platformId !== platformId);
+    await db.delete(schema.streamingCredentials)
+      .where(eq(schema.streamingCredentials.platformId, platformId))
 
-    if (saveCredentials(filteredCredentials)) {
-      return NextResponse.json({
-        success: true,
-        message: 'Credentials removed successfully',
-      });
-    } else {
-      return NextResponse.json(
-        { success: false, error: 'Failed to remove credentials' },
-        { status: 500 }
-      );
-    }
+    return NextResponse.json({
+      success: true,
+      message: 'Credentials removed successfully',
+    })
   } catch (error) {
-    logger.error('Error removing credentials:', error);
+    logger.error('Error removing credentials:', error)
     return NextResponse.json(
       { success: false, error: 'Failed to remove credentials' },
       { status: 500 }
-    );
+    )
   }
 }
 
 /**
- * PUT /api/streaming-platforms/credentials/verify
+ * PUT /api/streaming-platforms/credentials
  * Verify that credentials can be decrypted
- * Used for testing and migration
  */
 export async function PUT(request: NextRequest) {
-  // Input validation
   const bodyValidation = await validateRequestBody(request, ValidationSchemas.streamingCredentials)
   if (isValidationError(bodyValidation)) return bodyValidation.error
 
+  const { platformId } = bodyValidation.data
 
-  // Security: use validated data
-  const { data } = bodyValidation
-  const { platformId } = data
   try {
-    ;
-
     if (!platformId) {
       return NextResponse.json(
         { success: false, error: 'Platform ID is required' },
         { status: 400 }
-      );
+      )
     }
 
-    const credentials = loadCredentials();
-    const credential = credentials.find(c => c.platformId === platformId);
+    const credential = await db.select().from(schema.streamingCredentials)
+      .where(eq(schema.streamingCredentials.platformId, platformId))
+      .get()
 
     if (!credential) {
       return NextResponse.json(
         { success: false, error: 'Credentials not found' },
         { status: 404 }
-      );
+      )
     }
 
     try {
-      // Attempt to decrypt the password
-      const decrypted = decryptPassword(credential);
-
+      decryptPassword(credential)
       return NextResponse.json({
         success: true,
         message: 'Credentials verified successfully',
         encryptionVersion: credential.encryptionVersion,
         canDecrypt: true,
-      });
+      })
     } catch (error) {
       return NextResponse.json({
         success: false,
@@ -316,13 +228,13 @@ export async function PUT(request: NextRequest) {
         encryptionVersion: credential.encryptionVersion,
         canDecrypt: false,
         details: error instanceof Error ? error.message : 'Unknown error',
-      });
+      })
     }
   } catch (error) {
-    logger.error('Error verifying credentials:', error);
+    logger.error('Error verifying credentials:', error)
     return NextResponse.json(
       { success: false, error: 'Failed to verify credentials' },
       { status: 500 }
-    );
+    )
   }
 }

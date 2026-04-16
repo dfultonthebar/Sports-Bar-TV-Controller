@@ -1,116 +1,34 @@
-
-
 import { NextRequest, NextResponse } from 'next/server'
-import fs from 'fs'
-import path from 'path'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
-
 import { logger } from '@sports-bar/logger'
 import { z } from 'zod'
-import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
+import { validateRequestBody, ValidationSchemas, isValidationError } from '@/lib/validation'
+import { db, schema } from '@/db'
+import { eq } from 'drizzle-orm'
+
 export const dynamic = 'force-dynamic'
 
-const CREDENTIALS_FILE = path.join(process.cwd(), 'data', 'streaming-credentials.json')
-
-interface StreamingCredential {
-  id: string
-  platformId: string
-  username: string
-  passwordHash: string
-  encrypted: boolean
-  lastUpdated: string
-  status: 'active' | 'expired' | 'error'
-  lastSync?: string
-}
-
-// Simple encryption helper
+// Simple encryption helper (legacy — new credentials use AES-256-GCM via /credentials route)
 function simpleEncrypt(text: string): string {
   return Buffer.from(text).toString('base64')
 }
 
-function simpleDecrypt(encryptedText: string): string {
-  return Buffer.from(encryptedText, 'base64').toString()
-}
-
-// Ensure data directory exists
-function ensureDataDirectory() {
-  const dataDir = path.join(process.cwd(), 'data')
-  if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir, { recursive: true })
-  }
-}
-
-// Load credentials from file
-function loadCredentials(): StreamingCredential[] {
-  try {
-    ensureDataDirectory()
-    if (fs.existsSync(CREDENTIALS_FILE)) {
-      const data = fs.readFileSync(CREDENTIALS_FILE, 'utf8')
-      return JSON.parse(data)
-    }
-    return []
-  } catch (error) {
-    logger.error('Error loading credentials:', error)
-    return []
-  }
-}
-
-// Save credentials to file
-function saveCredentials(credentials: StreamingCredential[]): boolean {
-  try {
-    ensureDataDirectory()
-    fs.writeFileSync(CREDENTIALS_FILE, JSON.stringify(credentials, null, 2))
-    return true
-  } catch (error) {
-    logger.error('Error saving credentials:', error)
-    return false
-  }
-}
-
-// Mock authentication function (in production, integrate with actual APIs)
+// Mock authentication function
 async function authenticateWithPlatform(platformId: string, username: string, password: string): Promise<{ success: boolean; error?: string }> {
   try {
-    logger.info(`🔐 Authenticating with ${platformId} for user: ${username}`)
-    
-    // Mock authentication logic
-    // In production, this would make actual API calls to each platform
+    logger.info(`[STREAMING AUTH] Authenticating with ${platformId} for user: ${username}`)
+
     switch (platformId) {
       case 'youtube-tv':
-        // Mock YouTube TV authentication
-        if (username.includes('@') && password.length >= 6) {
-          return { success: true }
-        }
+        if (username.includes('@') && password.length >= 6) return { success: true }
         return { success: false, error: 'Invalid YouTube TV credentials' }
-        
       case 'hulu-live':
-        // Mock Hulu authentication
-        if (username && password) {
-          return { success: true }
-        }
-        return { success: false, error: 'Invalid Hulu credentials' }
-        
       case 'paramount-plus':
-        // Mock Paramount+ authentication
-        if (username && password) {
-          return { success: true }
-        }
-        return { success: false, error: 'Invalid Paramount+ credentials' }
-        
       case 'peacock':
-        // Mock Peacock authentication
-        if (username && password) {
-          return { success: true }
-        }
-        return { success: false, error: 'Invalid Peacock credentials' }
-        
       case 'amazon-prime':
-        // Mock Amazon Prime authentication
-        if (username && password) {
-          return { success: true }
-        }
-        return { success: false, error: 'Invalid Amazon Prime credentials' }
-        
+        if (username && password) return { success: true }
+        return { success: false, error: `Invalid ${platformId} credentials` }
       default:
         return { success: false, error: 'Unsupported platform' }
     }
@@ -122,22 +40,14 @@ async function authenticateWithPlatform(platformId: string, username: string, pa
 
 export async function POST(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.AUTH)
-  if (!rateLimit.allowed) {
-    return rateLimit.response
-  }
+  if (!rateLimit.allowed) return rateLimit.response
 
-
-  // Input validation
   const bodyValidation = await validateRequestBody(request, ValidationSchemas.streamingCredentials)
   if (isValidationError(bodyValidation)) return bodyValidation.error
 
+  const { platformId, username, password } = bodyValidation.data
 
-  // Security: use validated data
-  const { data } = bodyValidation
-  const { platformId, username, password, rememberMe } = data
   try {
-    
-
     if (!platformId || !username || !password) {
       return NextResponse.json(
         { success: false, error: 'Missing required fields' },
@@ -145,11 +55,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    logger.info(`🔐 Processing authentication for ${platformId}`)
-
-    // Attempt authentication with the platform
     const authResult = await authenticateWithPlatform(platformId, username, password)
-    
+
     if (!authResult.success) {
       return NextResponse.json(
         { success: false, error: authResult.error || 'Authentication failed' },
@@ -157,49 +64,57 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // If authentication succeeds, save credentials
-    const credentials = loadCredentials()
-    const existingIndex = credentials.findIndex(c => c.platformId === platformId)
+    const now = new Date().toISOString().replace('T', ' ').slice(0, 19)
+    const existing = await db.select().from(schema.streamingCredentials)
+      .where(eq(schema.streamingCredentials.platformId, platformId))
+      .get()
 
-    const newCredential: StreamingCredential = {
-      id: existingIndex >= 0 ? credentials[existingIndex].id : `cred_${Date.now()}`,
-      platformId,
-      username,
-      passwordHash: simpleEncrypt(password),
-      encrypted: true,
-      lastUpdated: new Date().toISOString(),
-      status: 'active',
-      lastSync: new Date().toISOString()
-    }
+    let credentialId: string
 
-    if (existingIndex >= 0) {
-      credentials[existingIndex] = newCredential
+    if (existing) {
+      await db.update(schema.streamingCredentials)
+        .set({
+          username,
+          passwordHash: simpleEncrypt(password),
+          encrypted: true,
+          encryptionVersion: 'base64',
+          status: 'active',
+          lastSync: now,
+          updatedAt: now,
+        })
+        .where(eq(schema.streamingCredentials.platformId, platformId))
+      credentialId = existing.id
     } else {
-      credentials.push(newCredential)
-    }
-
-    if (saveCredentials(credentials)) {
-      logger.info(`✅ Successfully authenticated and saved credentials for ${platformId}`)
-      
-      return NextResponse.json({
-        success: true,
-        message: 'Authentication successful',
-        credential: {
-          id: newCredential.id,
-          platformId: newCredential.platformId,
-          username: newCredential.username,
-          encrypted: newCredential.encrypted,
-          lastUpdated: newCredential.lastUpdated,
-          status: newCredential.status,
-          lastSync: newCredential.lastSync
-        }
+      credentialId = `cred_${Date.now()}`
+      await db.insert(schema.streamingCredentials).values({
+        id: credentialId,
+        platformId,
+        username,
+        passwordHash: simpleEncrypt(password),
+        encrypted: true,
+        encryptionVersion: 'base64',
+        status: 'active',
+        lastSync: now,
+        createdAt: now,
+        updatedAt: now,
       })
-    } else {
-      return NextResponse.json(
-        { success: false, error: 'Failed to save credentials' },
-        { status: 500 }
-      )
     }
+
+    logger.info(`[STREAMING AUTH] Authenticated and saved credentials for ${platformId}`)
+
+    return NextResponse.json({
+      success: true,
+      message: 'Authentication successful',
+      credential: {
+        id: credentialId,
+        platformId,
+        username,
+        encrypted: true,
+        lastUpdated: now,
+        status: 'active',
+        lastSync: now,
+      },
+    })
   } catch (error) {
     logger.error('Error in authentication:', error)
     return NextResponse.json(
@@ -211,11 +126,8 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.AUTH)
-  if (!rateLimit.allowed) {
-    return rateLimit.response
-  }
+  if (!rateLimit.allowed) return rateLimit.response
 
-  // Input validation for DELETE request
   const bodyValidation = await validateRequestBody(request, z.object({
     platformId: z.string()
   }))
@@ -231,24 +143,15 @@ export async function DELETE(request: NextRequest) {
       )
     }
 
-    logger.info(`🔓 Logging out from ${platformId}`)
+    await db.delete(schema.streamingCredentials)
+      .where(eq(schema.streamingCredentials.platformId, platformId))
 
-    const credentials = loadCredentials()
-    const filteredCredentials = credentials.filter(c => c.platformId !== platformId)
+    logger.info(`[STREAMING AUTH] Logged out from ${platformId}`)
 
-    if (saveCredentials(filteredCredentials)) {
-      logger.info(`✅ Successfully logged out from ${platformId}`)
-      
-      return NextResponse.json({
-        success: true,
-        message: 'Successfully logged out'
-      })
-    } else {
-      return NextResponse.json(
-        { success: false, error: 'Failed to remove credentials' },
-        { status: 500 }
-      )
-    }
+    return NextResponse.json({
+      success: true,
+      message: 'Successfully logged out',
+    })
   } catch (error) {
     logger.error('Error during logout:', error)
     return NextResponse.json(
