@@ -93,6 +93,24 @@ for arg in "$@"; do
   esac
 done
 
+# ---------------------------------------------------------------------------
+# Self-update re-exec handler: if we were re-exec'd by a prior version of
+# this script after the merge updated us, restore state and skip to where
+# the prior version left off.
+# ---------------------------------------------------------------------------
+if [ "${AUTO_UPDATE_REEXEC:-}" = "1" ]; then
+  PRE_MERGE_SHA="$AUTO_UPDATE_PRE_MERGE_SHA"
+  PRE_MERGE_VERSION="$AUTO_UPDATE_PRE_MERGE_VERSION"
+  POST_MERGE_SHA="$AUTO_UPDATE_POST_MERGE_SHA"
+  RUN_TS="$AUTO_UPDATE_RUN_TS"
+  LOG_FILE="${AUTO_UPDATE_LOG_FILE:-$LOG_FILE}"
+  ROLLBACK_TAG="${AUTO_UPDATE_ROLLBACK_TAG:-}"
+  HISTORY_ID="${AUTO_UPDATE_HISTORY_ID:-}"
+  BRANCH=$(git -C "$REPO_ROOT" branch --show-current)
+  unset AUTO_UPDATE_REEXEC
+  log "=== RE-EXEC: running updated auto-update.sh from version_check ==="
+fi
+
 case "$TRIGGERED_BY" in
   cron|manual_api|manual_cli) ;;
   *) echo "Invalid --triggered-by: $TRIGGERED_BY" >&2; exit 1 ;;
@@ -320,6 +338,15 @@ run_checkpoint() {
 }
 
 # ===========================================================================
+# Skip to version_check if this is a re-exec after self-update
+# ===========================================================================
+if [ "${AUTO_UPDATE_REEXEC_FROM:-}" = "version_check" ]; then
+  unset AUTO_UPDATE_REEXEC_FROM
+  log "Skipping preflight → merge phases (already completed by prior script version)"
+  # Jump directly to version_check — all prior phases were completed by the
+  # old script before it exec'd us.
+else
+# ===========================================================================
 # PHASE: PRE-FLIGHT
 # ===========================================================================
 step "preflight"
@@ -487,6 +514,30 @@ fi
 
 POST_MERGE_SHA=$(git rev-parse HEAD)
 log "Post-merge sha: $POST_MERGE_SHA"
+
+# ===========================================================================
+# SELF-UPDATE CHECK: if auto-update.sh itself changed in the merge, re-exec
+# the new version so all subsequent steps (build, checkpoint prompts, etc.)
+# use the latest logic. Without this, a location running an old script gets
+# the new code but builds/verifies with the old script's stale commands.
+# ===========================================================================
+if git diff "$PRE_MERGE_SHA" HEAD --name-only | grep -q '^scripts/auto-update\.sh$'; then
+  log "auto-update.sh was updated by the merge — re-executing new version"
+  log "Re-exec args: $0 $*"
+  # Pass a flag so the re-exec'd script skips phases already completed
+  export AUTO_UPDATE_REEXEC=1
+  export AUTO_UPDATE_REEXEC_FROM="version_check"
+  export AUTO_UPDATE_PRE_MERGE_SHA="$PRE_MERGE_SHA"
+  export AUTO_UPDATE_PRE_MERGE_VERSION="$PRE_MERGE_VERSION"
+  export AUTO_UPDATE_POST_MERGE_SHA="$POST_MERGE_SHA"
+  export AUTO_UPDATE_RUN_TS="$RUN_TS"
+  export AUTO_UPDATE_LOG_FILE="$LOG_FILE"
+  export AUTO_UPDATE_ROLLBACK_TAG="$ROLLBACK_TAG"
+  export AUTO_UPDATE_HISTORY_ID="$HISTORY_ID"
+  exec bash "$REPO_ROOT/scripts/auto-update.sh" "$@"
+fi
+
+fi  # end of "skip to version_check if re-exec" else block
 
 # ===========================================================================
 # PHASE: VERSION REGRESSION CHECK
