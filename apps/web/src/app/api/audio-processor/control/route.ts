@@ -1,6 +1,6 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import { findUnique, findMany, update, eq, and, db } from '@/lib/db-helpers'
+import { findUnique, findMany, findFirst, update, eq, and, db } from '@/lib/db-helpers'
 import { schema } from '@/db'
 import { executeAtlasCommand } from '@/lib/atlasClient'
 import { getDbxControlService } from '@/lib/dbxControlService'
@@ -83,6 +83,13 @@ export async function POST(request: NextRequest) {
         logVolumeChange(processorId, command.zone, command.value as number, 'bartender')
           .catch(err => logger.error(`[AUDIO-VOLUME-LOG] Failed to log dbx volume change: ${err?.message || err}`))
       }
+
+      // Persist zone state to database so it survives tab switches
+      if (command.zone && (command.action === 'volume' || command.action === 'mute' || command.action === 'source')) {
+        persistZoneState(processorId, command).catch(err =>
+          logger.error(`[AUDIO-CONTROL] Failed to persist zone state: ${err?.message || err}`)
+        )
+      }
       return NextResponse.json({
         success: true,
         result: { action: command.action, zone: command.zone },
@@ -157,6 +164,7 @@ export async function POST(request: NextRequest) {
         muted: command.action === 'mute' ? (command.value as boolean) : undefined,
         sourceValue: command.action === 'source' ? (command.value as string) : undefined,
       })
+      await persistZoneState(processorId, command)
     }
 
     logger.api.response('POST', '/api/audio-processor/control', 200, { success: true })
@@ -569,6 +577,45 @@ async function playMessage(processor: any, messageId: number, zones?: number[]):
   })
   
   return { messageId, zones: targetZones, timestamp: new Date(), atlasResponse: result }
+}
+
+/**
+ * Persist zone state (volume, source, mute) to the database
+ * so the UI can restore last-known values when switching tabs
+ */
+async function persistZoneState(processorId: string, command: ControlCommand): Promise<void> {
+  if (!command.zone) return
+
+  const zone = await findFirst('audioZones', {
+    where: and(
+      eq(schema.audioZones.processorId, processorId),
+      eq(schema.audioZones.zoneNumber, command.zone)
+    )
+  })
+
+  if (!zone) {
+    logger.warn(`[AUDIO-CONTROL] No audioZone found for processor=${processorId} zone=${command.zone}, skipping state persist`)
+    return
+  }
+
+  const updateData: Record<string, any> = {
+    updatedAt: new Date().toISOString()
+  }
+
+  switch (command.action) {
+    case 'volume':
+      updateData.volume = command.value as number
+      break
+    case 'mute':
+      updateData.muted = command.value as boolean
+      break
+    case 'source':
+      updateData.currentSource = String(command.value)
+      break
+  }
+
+  await update('audioZones', eq(schema.audioZones.id, zone.id), updateData)
+  logger.info(`[AUDIO-CONTROL] Persisted zone ${command.zone} ${command.action}=${command.value}`)
 }
 
 /**
