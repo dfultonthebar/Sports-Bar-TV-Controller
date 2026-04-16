@@ -29,10 +29,15 @@ module.exports = {
         NODE_ENV: 'production',
         PORT: 3001,
         ADB_VENDOR_KEYS: '/home/ubuntu/.android',
-        // Sports Guide API (The Rail Media) — Lucky's location credentials
-        SPORTS_GUIDE_API_KEY: '2RK0000000a62be883dfd4b71e13a28dd62',
-        SPORTS_GUIDE_USER_ID: '261253',
-        SPORTS_GUIDE_API_URL: 'https://guide.thedailyrail.com/api/v1',
+        // All location-specific credentials come from .env via dotenv above.
+        // Never hardcode location values here — every location branch would
+        // merge a different file, creating conflicts on auto-update. The
+        // real source of truth is .env, which is gitignored and per-location.
+        //
+        // Sports Guide API (The Rail Media) — per-location subscription.
+        SPORTS_GUIDE_API_KEY: process.env.SPORTS_GUIDE_API_KEY,
+        SPORTS_GUIDE_USER_ID: process.env.SPORTS_GUIDE_USER_ID,
+        SPORTS_GUIDE_API_URL: process.env.SPORTS_GUIDE_API_URL || 'https://guide.thedailyrail.com/api/v1',
         // Auth system — bind to the location row in the DB. Without this,
         // validatePIN() falls back to AUTH_CONFIG.LOCATION_ID='default-location'
         // and every login fails with "Invalid PIN".

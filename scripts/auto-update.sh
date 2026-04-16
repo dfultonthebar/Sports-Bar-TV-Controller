@@ -99,6 +99,25 @@ case "$TRIGGERED_BY" in
 esac
 
 # ---------------------------------------------------------------------------
+# Re-exec resume: if we were exec'd from an earlier version of this script
+# after the merge updated us, restore state and skip to npm_ci. The trigger
+# exports state vars; we read them here to avoid repeating preflight/merge.
+# ---------------------------------------------------------------------------
+REEXEC_RESUMED=0
+if [ "${AUTO_UPDATE_REEXEC:-}" = "1" ]; then
+  PRE_MERGE_SHA="${AUTO_UPDATE_PRE_MERGE_SHA:-}"
+  PRE_MERGE_VERSION="${AUTO_UPDATE_PRE_MERGE_VERSION:-}"
+  POST_MERGE_SHA="${AUTO_UPDATE_POST_MERGE_SHA:-}"
+  RUN_TS="${AUTO_UPDATE_RUN_TS:-$RUN_TS}"
+  LOG_FILE="${AUTO_UPDATE_LOG_FILE:-$LOG_FILE}"
+  ROLLBACK_TAG="${AUTO_UPDATE_ROLLBACK_TAG:-}"
+  HISTORY_ID="${AUTO_UPDATE_HISTORY_ID:-}"
+  BRANCH=$(git -C "$REPO_ROOT" branch --show-current)
+  unset AUTO_UPDATE_REEXEC
+  REEXEC_RESUMED=1
+fi
+
+# ---------------------------------------------------------------------------
 # Setup
 # ---------------------------------------------------------------------------
 mkdir -p "$LOG_DIR" "$BACKUP_DIR"
@@ -344,8 +363,13 @@ run_checkpoint() {
 }
 
 # ===========================================================================
-# PHASE: PRE-FLIGHT
+# PHASE: PRE-FLIGHT through VERSION_CHECK
 # ===========================================================================
+# Skip these phases if we just re-exec'd ourselves after the merge updated
+# auto-update.sh on disk. State is restored from env vars by the re-exec
+# handler above. Resume directly at npm_ci.
+if [ "$REEXEC_RESUMED" -eq 0 ]; then
+
 step "preflight"
 log "Triggered by: $TRIGGERED_BY (dry-run=$DRY_RUN)"
 
@@ -533,6 +557,42 @@ if [ "$PRE_MERGE_VERSION" != "unknown" ] && [ "$POST_MERGE_VERSION" != "unknown"
   if [ "$CMP" = "less" ]; then
     fail "version regression: $POST_MERGE_VERSION < $PRE_MERGE_VERSION" 4
   fi
+fi
+
+# ---------------------------------------------------------------------------
+# SELF-UPDATE RE-EXEC — critical to prevent mid-run script corruption
+# ---------------------------------------------------------------------------
+# When the merge step updates scripts/auto-update.sh itself, bash keeps
+# reading the file line-by-line from disk. The portions after the current
+# read position may be completely different code than what was compiled into
+# the bash process's state so far, producing bizarre failures like "schema_push
+# exits immediately with code 1" that don't match any code path in either
+# the pre-merge or post-merge script. The bug is self-modifying scripts,
+# not a specific bug in either version.
+#
+# Fix: if the merge changed auto-update.sh, re-exec self with the new copy
+# so bash loads a consistent version from start. Pass state via env vars so
+# the re-exec's handler block at the top of the script can resume from here
+# instead of re-running preflight/fetch/merge.
+if [ -n "$PRE_MERGE_SHA" ] && [ -n "$POST_MERGE_SHA" ] && [ "$PRE_MERGE_SHA" != "$POST_MERGE_SHA" ]; then
+  if git -C "$REPO_ROOT" diff --name-only "$PRE_MERGE_SHA" "$POST_MERGE_SHA" 2>/dev/null | grep -qx 'scripts/auto-update.sh'; then
+    log "auto-update.sh was updated by the merge — re-exec'ing with new version"
+    export AUTO_UPDATE_REEXEC=1
+    export AUTO_UPDATE_PRE_MERGE_SHA="$PRE_MERGE_SHA"
+    export AUTO_UPDATE_PRE_MERGE_VERSION="$PRE_MERGE_VERSION"
+    export AUTO_UPDATE_POST_MERGE_SHA="$POST_MERGE_SHA"
+    export AUTO_UPDATE_RUN_TS="$RUN_TS"
+    export AUTO_UPDATE_LOG_FILE="$LOG_FILE"
+    export AUTO_UPDATE_ROLLBACK_TAG="$ROLLBACK_TAG"
+    export AUTO_UPDATE_HISTORY_ID="$HISTORY_ID"
+    exec "$0" "$@"
+  fi
+fi
+
+fi # end of: if [ "$REEXEC_RESUMED" -eq 0 ] — pre-flight through version_check block
+if [ "$REEXEC_RESUMED" -eq 1 ]; then
+  log "=== RESUMED from re-exec — skipped preflight/fetch/checkpoint_a/backup/merge/version_check ==="
+  log "Pre-merge: $PRE_MERGE_SHA  /  Post-merge: $POST_MERGE_SHA  /  Rollback tag: $ROLLBACK_TAG"
 fi
 
 # ===========================================================================
