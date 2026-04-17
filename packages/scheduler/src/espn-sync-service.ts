@@ -183,6 +183,38 @@ class ESPNSyncService {
     const estimatedEndTimestamp = Math.floor(estimatedEnd.getTime() / 1000);
     const nowTimestamp = Math.floor(Date.now() / 1000);
 
+    // Preserve existing actualStart / actualEnd — these should ONLY be set
+    // once, at the first sync that observed the status transition. Before
+    // v2.18.3 we overwrote actualStart with scheduledStart on every sync,
+    // which meant duration math was always relative to the scheduled (not
+    // real) start. Now: actualStart is stamped the first time we see
+    // status='in_progress' (or preserved if already set), and actualEnd is
+    // stamped the first time we see status='completed'. Duration is then
+    // computed from those two real timestamps.
+    const existingRow = existing[0];
+    const priorActualStart = existingRow?.actualStart ?? null;
+    const priorActualEnd = existingRow?.actualEnd ?? null;
+
+    let actualStart: number | null = priorActualStart;
+    let actualEnd: number | null = priorActualEnd;
+    if (actualStart === null && (status === 'in_progress' || status === 'completed')) {
+      actualStart = nowTimestamp;
+    }
+    if (actualEnd === null && status === 'completed') {
+      actualEnd = nowTimestamp;
+    }
+    // Compute duration only when both timestamps are known and non-absurd.
+    // ESPN sometimes reports status='completed' on games that never
+    // actually aired (cancelled, postponed-to-future with status cleared),
+    // producing zero-length durations. Clamp to 20–360 minutes — the
+    // realistic range across every sport we track — and leave NULL
+    // otherwise so the per-league average isn't polluted with garbage.
+    let durationMinutes: number | null = null;
+    if (actualStart !== null && actualEnd !== null) {
+      const mins = Math.round((actualEnd - actualStart) / 60);
+      if (mins >= 20 && mins <= 360) durationMinutes = mins;
+    }
+
     const gameData = {
       espnEventId: game.id,
       espnCompetitionId: game.competitionId,
@@ -198,8 +230,9 @@ class ESPNSyncService {
 
       scheduledStart: scheduledStartTimestamp,
       estimatedEnd: estimatedEndTimestamp,
-      actualStart: status === 'in_progress' || status === 'completed' ? scheduledStartTimestamp : null,
-      actualEnd: status === 'completed' ? nowTimestamp : null,
+      actualStart,
+      actualEnd,
+      durationMinutes,
 
       status,
       statusDetail: game.status.type.detail,

@@ -37,6 +37,63 @@ is the archive.
 
 ## Current entries
 
+### v2.19.0 — Per-league duration learning + Atlas endpoint guards
+**Released:** 2026-04-17
+
+**What changed (two independent features, bundled at minor bump):**
+
+1. **Atlas endpoint guards.** Every `/api/atlas/*` endpoint that opens a
+   TCP client now calls `requireAtlasProcessor()` before touching the
+   processorIp. Locations using dbx ZonePRO or BSS London (but not Atlas)
+   no longer get endless reconnect-loop errors when the audio UI is open —
+   the endpoint returns 404 and the Atlas client is never constructed.
+   New helper: `apps/web/src/lib/atlas-guard.ts`.
+
+2. **Per-league game duration learning.** ESPN sync now populates
+   `game_schedules.duration_minutes` when both `actual_start` and
+   `actual_end` timestamps are known. The scheduler's bartender-schedule
+   endpoint uses the per-league historical average (5+ samples required,
+   5-minute cache) to default `expected_free_at` instead of the hardcoded
+   3-hour value. New helper: `apps/web/src/lib/game-duration-stats.ts`.
+   Each sport converges to its real duration over a few completed games,
+   which gives the scheduler tighter allocation windows (NBA ~2h15m
+   instead of 3h, NFL ~3h30m instead of 3h, etc.).
+
+**Schema changes:** None. Uses existing `duration_minutes` column.
+
+**Required manual steps:**
+- [ ] **Backfill historical durations** (one-time, safe):
+  ```bash
+  DB=/home/ubuntu/sports-bar-data/production.db
+  sqlite3 "$DB" "UPDATE game_schedules
+    SET duration_minutes = CAST(ROUND((actual_end - actual_start)/60.0) AS INTEGER)
+    WHERE actual_start IS NOT NULL AND actual_end IS NOT NULL
+      AND duration_minutes IS NULL
+      AND (actual_end - actual_start)/60 BETWEEN 20 AND 360;"
+  ```
+  Rows outside 20-360 min are treated as outliers (cancelled / sync
+  glitches) and left NULL. Durations will accrue naturally from new
+  games going forward.
+
+**Verification:**
+```bash
+# Show current per-league averages once enough samples exist:
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "SELECT league, COUNT(*) AS n, ROUND(AVG(duration_minutes),0) AS avg_min
+   FROM game_schedules WHERE duration_minutes IS NOT NULL
+   GROUP BY league HAVING n >= 5 ORDER BY n DESC;"
+```
+
+**Caveats:**
+- Before v2.19.0 ESPN sync overwrote `actual_start` with `scheduled_start`
+  on every sync. Historical durations are relative to scheduled time, not
+  real tune-in time, and will be slightly inflated (often 20-40 min) for
+  late-starting games. Data from v2.19.0+ is accurate.
+- First 5 completed games per league use the 3-hour default; after that
+  the learned average kicks in.
+
+---
+
 ### v2.18.0 — Override-learn hook for bartender matrix changes
 **Released:** 2026-04-17
 
@@ -303,6 +360,39 @@ to diagnose. Format:
 The goal: every other location inheriting this file from main should find
 the answer here instead of re-debugging from scratch. Per CLAUDE.md Rule
 8, you MUST add an entry when you fix a non-trivial error.
+
+### Atlas endpoint reconnect loop on dbx/BSS locations
+
+- **Symptom:** PM2 error log fills with thousands of
+  `[ERROR] [CONNECTION] Failed to connect to Atlas processor at X.X.X.X:5321`
+  messages per minute. Happens at locations that use **dbx ZonePRO** or
+  **BSS Soundweb London** for audio (not Atlas). The X.X.X.X is the
+  real audio processor's IP, but port 5321 is the Atlas TCP port — the
+  non-Atlas device rejects the connection immediately and the Atlas
+  client-manager retries forever.
+- **Root cause:** Atlas endpoints (`/api/atlas/meters/stream`,
+  `/api/atlas/output-meters`, etc.) didn't check the AudioProcessor's
+  `processorType` before handing the IP to `getAtlasClient()`. Any
+  component that polled `/api/atlas/*` on page load (audio meters,
+  sources UI) started a persistent retry loop.
+- **Fix (code — v2.19.0):** new helper `apps/web/src/lib/atlas-guard.ts`
+  added to every Atlas endpoint. It looks up the AudioProcessor row by
+  IP and returns 404 unless `processorType='atlas'`. Eliminates the
+  loop at the source — no Atlas client is ever constructed for a
+  non-Atlas processor.
+- **Verification:**
+  ```bash
+  # After restart, count Atlas errors in the last minute. Should be 0:
+  pm2 logs sports-bar-tv-controller --err --lines 500 --nostream \
+    | awk -v ts="$(date -u -d '-1 minute' '+%Y-%m-%d %H:%M:')" '$0 >= ts' \
+    | grep -c "Atlas processor"
+  ```
+- **Applies to:** any location whose audio processor is NOT Atlas.
+  Atlas-using locations are unaffected (the guard passes when the
+  AudioProcessor row has `processorType='atlas'`).
+- **First seen:** 2026-04-17 at Lucky's 1313 (dbx ZonePRO 1260m at
+  192.168.10.50 — the Atlas client was hammering port 5321 on that IP
+  while the dbx answered on 3804).
 
 ### Scheduler tunes the right channel but TVs never switch to the right input
 

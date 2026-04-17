@@ -6,6 +6,7 @@ import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { z } from 'zod'
 import { validateRequestBody, isValidationError } from '@/lib/validation'
+import { getExpectedDurationSeconds } from '@/lib/game-duration-stats'
 import crypto from 'crypto'
 
 // Schema for creating a bartender schedule
@@ -91,9 +92,25 @@ export async function POST(request: NextRequest) {
     // 2. Find or create game schedule
     const tuneAtUnix = Math.floor(new Date(tuneAt).getTime() / 1000)
     const startTimeUnix = Math.floor(new Date(gameInfo.startTime).getTime() / 1000)
-    const endTimeUnix = gameInfo.endTime
-      ? Math.floor(new Date(gameInfo.endTime).getTime() / 1000)
-      : startTimeUnix + (3 * 60 * 60) // Default 3 hour game
+    // endTime derivation order: explicit caller value > learned per-league
+    // average from historical durations > 3h fallback. The per-league
+    // average comes from `game_schedules.duration_minutes` rows populated
+    // by ESPN sync — see apps/web/src/lib/game-duration-stats.ts and
+    // CLAUDE.md §9. Before v2.18.3 every sport used the same 3h default,
+    // which over-reserved TVs for short sports (NBA ~2h15m, college
+    // basketball ~2h) and under-reserved for NFL (~3h30m).
+    let endTimeUnix: number
+    if (gameInfo.endTime) {
+      endTimeUnix = Math.floor(new Date(gameInfo.endTime).getTime() / 1000)
+    } else {
+      const leagueForDuration = gameInfo.league ?? null
+      const { durationSeconds, source, sampleCount } = await getExpectedDurationSeconds(leagueForDuration)
+      endTimeUnix = startTimeUnix + durationSeconds
+      logger.debug(
+        `[BARTENDER-SCHEDULE] endTime defaulted for ${leagueForDuration || 'unknown league'}: ` +
+        `${Math.round(durationSeconds / 60)}min (${source}${source === 'learned' ? `, n=${sampleCount}` : ''})`
+      )
+    }
 
     let gameSchedule = null
 
