@@ -134,16 +134,32 @@ function DefaultSourceSettings() {
         setChannelPresets(allPresets)
       }
 
-      // Load Atlas audio sources — fetch processor IP from database
+      // Load Atlas audio sources — but only if the configured processor is
+      // actually an Atlas. Locations on dbx ZonePRO (or other non-Atlas
+      // brands) would otherwise hang this fetch forever because the Atlas
+      // HiQnet probe doesn't get a response, and without a timeout the UI
+      // spinner never resolves. AbortController caps the wait at 5s even
+      // on well-configured Atlas processors so a transient network blip
+      // doesn't hold up the whole settings page.
       try {
         const processorRes = await fetch('/api/audio-processor')
         const processorData = await processorRes.json()
-        if (processorData.processors?.length > 0) {
-          const processorIp = processorData.processors[0].ipAddress
-          const audioRes = await fetch(`/api/atlas/sources?processorIp=${encodeURIComponent(processorIp)}`)
-          if (audioRes.ok) {
-            const audioData = await audioRes.json()
-            setAudioSources(audioData.sources || [])
+        const proc = processorData.processors?.[0]
+        const isAtlas = proc && (!proc.processorType || proc.processorType === 'atlas')
+        if (proc && isAtlas) {
+          const ctrl = new AbortController()
+          const t = setTimeout(() => ctrl.abort(), 5000)
+          try {
+            const audioRes = await fetch(
+              `/api/atlas/sources?processorIp=${encodeURIComponent(proc.ipAddress)}`,
+              { signal: ctrl.signal }
+            )
+            if (audioRes.ok) {
+              const audioData = await audioRes.json()
+              setAudioSources(audioData.sources || [])
+            }
+          } finally {
+            clearTimeout(t)
           }
         }
       } catch (audioErr) {
