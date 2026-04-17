@@ -304,6 +304,95 @@ The goal: every other location inheriting this file from main should find
 the answer here instead of re-debugging from scratch. Per CLAUDE.md Rule
 8, you MUST add an entry when you fix a non-trivial error.
 
+### Scheduler tunes the right channel but TVs never switch to the right input
+
+- **Symptom:** A scheduled game fires — `scheduler-service/tune` log
+  shows success, the cable box is confirmed on the correct channel —
+  but the TVs that were assigned to that allocation are displaying
+  something completely different (another sport, a menu, the previous
+  input). The bartender has to go to the Video tab and manually move
+  each TV onto the right input for every single scheduled game. This
+  has been silently broken for the entire life of the bartender-
+  scheduling feature; no one caught it because the tune itself always
+  logged success and the channel change was visible on the cable box
+  LEDs / TV-it-happened-to-land-on.
+- **Root cause:** In `packages/scheduler/src/scheduler-service.ts` the
+  matrix-routing loop inside `checkAndExecuteBartenderSchedules` did:
+  ```ts
+  const matrixInput = parseInt(inputSource.matrixInputId, 10);
+  ```
+  But `inputSource.matrixInputId` is a **UUID foreign key** to
+  `MatrixInput.id`, not the physical input channel number.
+  `parseInt("a9a2828b9eb...", 10)` returns `NaN`, and
+  `parseInt("99ad5b127e...", 10)` returns `99` (reads leading digits
+  until the letter). Either result gets passed as `input:` to
+  `/api/matrix/route`. The Wolf Pack silently rejects NaN / out-of-range
+  values OR routes the output to an unrelated physical input. Either
+  way the TV ends up on the wrong source.
+- **Detection:** Check whether any output claimed by an active
+  scheduled allocation is actually routed to that allocation's source:
+  ```bash
+  DB=/home/ubuntu/sports-bar-data/production.db
+  sqlite3 "$DB" <<'SQL'
+  WITH alloc_outputs AS (
+    SELECT s.name AS src, mi.channelNumber AS expected_input, j.value AS output
+    FROM input_source_allocations a
+    JOIN input_sources s ON s.id = a.input_source_id
+    JOIN MatrixInput mi ON mi.id = s.matrix_input_id
+    JOIN json_each(a.tv_output_ids) j
+    WHERE a.status = 'active'
+  )
+  SELECT ao.src, ao.output, ao.expected_input AS expected, mr.inputNum AS actual,
+         CASE WHEN ao.expected_input = mr.inputNum THEN 'ok' ELSE 'MIS-ROUTED' END AS state
+  FROM alloc_outputs ao
+  LEFT JOIN MatrixRoute mr ON mr.outputNum = ao.output
+  ORDER BY ao.src, ao.output;
+  SQL
+  ```
+  Any row showing `MIS-ROUTED` means the scheduler's matrix loop failed.
+- **Fix (code — v2.18.2):** Replace the broken parseInt with a DB
+  lookup that resolves the UUID to the actual `channelNumber`:
+  ```ts
+  const matrixInputRow = await db.select({
+      channelNumber: schema.matrixInputs.channelNumber,
+    })
+    .from(schema.matrixInputs)
+    .where(eq(schema.matrixInputs.id, inputSource.matrixInputId))
+    .limit(1)
+    .all();
+  const matrixInput = matrixInputRow[0]?.channelNumber ?? NaN;
+  ```
+  After deploying v2.18.2, every future scheduled tune routes TVs
+  correctly without bartender rescue.
+- **Fix (live state for active games, tonight only):** While the new
+  code only helps the NEXT tune, existing active games are still on
+  the wrong inputs. Patch them directly via `/api/matrix/route` per
+  output, using the correct input channel from `input_sources` →
+  `MatrixInput.channelNumber`. Example for Cable Box 1 (input 1):
+  ```bash
+  for out in 1 3 5 6 8 10 12 13 14 16; do
+    curl -s -X POST http://localhost:3001/api/matrix/route \
+      -H 'Content-Type: application/json' \
+      -d "{\"input\":1,\"output\":$out,\"source\":\"system\"}"
+  done
+  ```
+- **Verification:** re-run the detection query above; `state` should
+  be `ok` for every row. Also watch the next scheduled tune in
+  `SchedulerLog`: `[OVERRIDE-LEARN]` entries will STOP appearing
+  immediately after a schedule fires, because the bartender no longer
+  needs to correct TVs — a quiet log here means the scheduler is
+  doing its job.
+- **Applies to:** all locations running any version prior to v2.18.2.
+  The bug has been there for the entire life of the bartender-schedule
+  feature — silently defeating every scheduled tune at every
+  location.
+- **First seen:** 2026-04-17 at Lucky's 1313. Noticed when investigating
+  why the Brewers allocation on 10 TVs was only actually landing on 3,
+  and confirmed on the SE Louisiana tune at 18:25 CDT — the channel
+  fired correctly but all 4 TVs stayed on their prior inputs. The
+  LSU tune earlier the same evening was partially correct by pure
+  coincidence (one TV had already been manually routed to input 2).
+
 ### Scheduler shows cable box as "Idle" while a game is actively tuned on it
 
 - **Symptom:** On the Sports Guide admin scheduler page, a Cable Box card

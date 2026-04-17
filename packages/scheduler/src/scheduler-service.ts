@@ -681,11 +681,27 @@ class SchedulerService {
 
             logger.info(`[SCHEDULER] ✅ Successfully tuned ${inputSource.name} to channel ${allocation.channelNumber}`);
 
-            // Route matrix inputs to TV outputs if tvOutputIds is set
+            // Route matrix inputs to TV outputs if tvOutputIds is set.
+            // inputSource.matrixInputId is a UUID FK to MatrixInput.id, NOT the
+            // physical input channel. Prior to v2.18.2 this code did
+            // parseInt(matrixInputId, 10), which returned NaN for UUIDs that
+            // start with a letter and garbage numbers for UUIDs that start
+            // with digits (e.g., "99ad..." parsed to 99). Either way the
+            // Wolf Pack either rejected the route silently or landed TVs on
+            // unrelated inputs, and the bartender had to rescue every
+            // scheduled tune by hand. Fix: resolve the UUID to the physical
+            // channelNumber via MatrixInput.
             if (allocation.tvOutputIds && inputSource.matrixInputId) {
               try {
                 const outputIds: number[] = JSON.parse(allocation.tvOutputIds);
-                const matrixInput = parseInt(inputSource.matrixInputId, 10);
+                const matrixInputRow = await db.select({
+                    channelNumber: schema.matrixInputs.channelNumber,
+                  })
+                  .from(schema.matrixInputs)
+                  .where(eq(schema.matrixInputs.id, inputSource.matrixInputId))
+                  .limit(1)
+                  .all();
+                const matrixInput = matrixInputRow[0]?.channelNumber ?? NaN;
 
                 if (outputIds.length > 0 && !isNaN(matrixInput)) {
                   // Check for conflicting active allocations that claim the same outputs
