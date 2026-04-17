@@ -101,14 +101,42 @@ export async function register() {
       // channel guide has live game data to display.
       const { espnSyncService } = await import('@sports-bar/scheduler')
 
+      // Comprehensive sports bar lineup. Each league adds one ESPN HTTP call
+      // per sync cycle (every 10 min). Any league that 404s on ESPN just
+      // returns an empty game list and logs an error — the sync continues.
       const ESPN_SYNC_LEAGUES: Array<{ sport: string; league: string }> = [
+        // Baseball / Softball
         { sport: 'baseball', league: 'mlb' },
+        { sport: 'baseball', league: 'college-baseball' },
+        { sport: 'softball', league: 'college-softball' },
+        // Basketball
         { sport: 'basketball', league: 'nba' },
-        { sport: 'hockey', league: 'nhl' },
-        { sport: 'football', league: 'nfl' },
-        { sport: 'football', league: 'college-football' },
+        { sport: 'basketball', league: 'wnba' },
         { sport: 'basketball', league: 'mens-college-basketball' },
         { sport: 'basketball', league: 'womens-college-basketball' },
+        // Hockey
+        { sport: 'hockey', league: 'nhl' },
+        { sport: 'hockey', league: 'mens-college-hockey' },
+        // Football — NFL + college + UFL spring league
+        { sport: 'football', league: 'nfl' },
+        { sport: 'football', league: 'college-football' },
+        { sport: 'football', league: 'ufl' },
+        // Soccer — MLS, Premier League, Champions League
+        { sport: 'soccer', league: 'usa.1' },
+        { sport: 'soccer', league: 'eng.1' },
+        { sport: 'soccer', league: 'uefa.champions' },
+        // Racing — F1, NASCAR Cup, IndyCar
+        { sport: 'racing', league: 'f1' },
+        { sport: 'racing', league: 'nascar-premier' },
+        { sport: 'racing', league: 'irl' },
+        // Golf
+        { sport: 'golf', league: 'pga' },
+        { sport: 'golf', league: 'lpga' },
+        // Combat
+        { sport: 'mma', league: 'ufc' },
+        // Tennis — ATP/WTA tours
+        { sport: 'tennis', league: 'atp' },
+        { sport: 'tennis', league: 'wta' },
       ]
 
       const runEspnSyncAll = async () => {
