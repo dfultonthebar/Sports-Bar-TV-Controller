@@ -77,7 +77,7 @@ export async function POST(request: NextRequest) {
   try {
     const { data: body } = bodyValidation
     logger.info(`[TUNE API] Request body: ${JSON.stringify(body)}`)
-    let { channelNumber, deviceType, deviceIp, presetId, cableBoxId, directTVId, trackOnly } = body
+    let { channelNumber, deviceType, deviceIp, presetId, cableBoxId, directTVId, fireTVId, trackOnly } = body
 
     // If presetId is provided but channelNumber/deviceType are missing, fetch the preset
     if (presetId && presetId !== 'manual' && (!channelNumber || !deviceType)) {
@@ -119,21 +119,67 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate deviceType
-    if (!['cable', 'directv'].includes(deviceTypeStr)) {
+    if (!['cable', 'directv', 'firetv'].includes(deviceTypeStr)) {
       return NextResponse.json(
-        { 
-          success: false, 
-          error: 'Invalid deviceType. Must be "cable" or "directv"' 
+        {
+          success: false,
+          error: 'Invalid deviceType. Must be "cable", "directv", or "firetv"'
         },
         { status: 400 }
       )
     }
+
+    const fireTVIdStr = fireTVId ? String(fireTVId) : undefined
 
     let result: any = { success: false }
 
     // trackOnly mode: skip the actual tune, just update channel tracking below
     if (trackOnly) {
       result = { success: true, message: 'Track-only mode — channel tracking updated without tuning' }
+    } else if (deviceTypeStr === 'firetv') {
+      // Fire TV routing: channelNumber carries the streaming app name (e.g.
+      // "Prime Video", "Apple TV+"). Look up the Fire TV's IP + the app's
+      // package/activity and launch via the streaming manager.
+      if (!fireTVIdStr) {
+        result = { success: false, error: 'fireTVId is required for firetv tune' }
+      } else {
+        try {
+          const { db } = await import('@/db')
+          const ftRow = await db.select().from(schema.fireTVDevices)
+            .where(eq(schema.fireTVDevices.id, fireTVIdStr)).get()
+          if (!ftRow?.ipAddress) {
+            result = { success: false, error: `Fire TV device not found: ${fireTVIdStr}` }
+          } else {
+            // Match the app name ("Prime Video", "Apple TV+") to the streaming-
+            // apps database by name (substring, case-insensitive). streamingManager
+            // expects the DB id (e.g. "amazon-prime"), not the package name.
+            const { STREAMING_APPS_DATABASE } = await import('@sports-bar/streaming')
+            const target = channelNumberStr.toLowerCase().replace(/[\s+]/g, '')
+            const app = STREAMING_APPS_DATABASE.find((a: any) => {
+              const name = a.name.toLowerCase().replace(/[\s+]/g, '')
+              return name.includes(target) || target.includes(name)
+            })
+            if (!app) {
+              result = { success: false, error: `Unknown streaming app: ${channelNumberStr}` }
+            } else {
+              const { streamingManager } = await import('@/services/streaming-service-manager')
+              const ok = await streamingManager.launchApp(
+                fireTVIdStr,
+                ftRow.ipAddress,
+                app.id,
+                {},
+                ftRow.port || 5555
+              )
+              result = ok
+                ? { success: true, message: `Launched ${app.name} on ${ftRow.name}` }
+                : { success: false, error: `Failed to launch ${app.name} on ${ftRow.name} — check ADB connection and app installation` }
+            }
+          }
+        } catch (err: any) {
+          logger.error(`[TUNE API] firetv launch error: ${err.message}`)
+          result = { success: false, error: `firetv launch error: ${err.message}` }
+        }
+      }
     } else if (deviceTypeStr === 'directv') {
       // DirecTV uses IP control - need either deviceIp or directTVId to look up the IP
       let targetIp = deviceIpStr
@@ -182,7 +228,7 @@ export async function POST(request: NextRequest) {
         level: 'info',
         message: `Tuned to channel ${channelNumberStr} on ${deviceTypeStr}`,
         channelNumber: channelNumberStr,
-        deviceType: deviceTypeStr as 'cable' | 'directv',
+        deviceType: deviceTypeStr as 'cable' | 'directv' | 'firetv',
         deviceId: cableBoxIdStr || deviceIpStr || undefined,
         success: true,
         durationMs,
@@ -402,7 +448,7 @@ export async function POST(request: NextRequest) {
         level: 'error',
         message: `Failed to tune channel ${channelNumberStr} on ${deviceTypeStr}: ${result.error}`,
         channelNumber: channelNumberStr,
-        deviceType: deviceTypeStr as 'cable' | 'directv',
+        deviceType: deviceTypeStr as 'cable' | 'directv' | 'firetv',
         deviceId: cableBoxIdStr || deviceIpStr || undefined,
         success: false,
         durationMs,

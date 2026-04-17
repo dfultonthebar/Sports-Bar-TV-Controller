@@ -8,7 +8,15 @@
 export interface StreamingApp {
   id: string
   name: string
+  /** Primary package name — the most common Fire TV/Android TV build. */
   packageName: string
+  /**
+   * Alternate package names to try when the primary isn't installed. Fire TV
+   * Cubes often ship Amazon-specific builds (e.g. com.apple.atve.amazon.appletv)
+   * while generic Android TVs use the androidtv build. Ordered most-to-least
+   * likely.
+   */
+  packageAliases?: string[]
   category: 'sports' | 'general' | 'live-tv'
   hasPublicApi: boolean
   apiDocUrl?: string
@@ -242,7 +250,8 @@ export const STREAMING_APPS_DATABASE: StreamingApp[] = [
   {
     id: 'amazon-prime',
     name: 'Amazon Prime Video',
-    packageName: 'com.amazon.avod.thirdpartyclient',
+    packageName: 'com.amazon.avod',
+    packageAliases: ['com.amazon.avod.thirdpartyclient'],
     category: 'general',
     hasPublicApi: false,
     deepLinkSupport: true,
@@ -257,7 +266,8 @@ export const STREAMING_APPS_DATABASE: StreamingApp[] = [
   {
     id: 'apple-tv',
     name: 'Apple TV',
-    packageName: 'com.apple.atve.androidtv.appletv',
+    packageName: 'com.apple.atve.amazon.appletv',
+    packageAliases: ['com.apple.atve.androidtv.appletv'],
     category: 'general',
     hasPublicApi: false,
     deepLinkSupport: true,
