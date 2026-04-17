@@ -649,6 +649,21 @@ class SchedulerService {
               })
               .where(eq(schema.inputSourceAllocations.id, allocation.id));
 
+            // Mirror the active state onto the input_sources row so the
+            // scheduler UI (which reads currentlyAllocated / currentChannel)
+            // shows the game against the correct cable box / fire TV. Prior
+            // to v2.18.0 only the auto-reallocator did this, but it only
+            // fires on still-pending allocations — once scheduler-service
+            // flipped to 'active' first, the source row never got updated
+            // and the UI showed "no game" on that box until restart.
+            await db.update(schema.inputSources)
+              .set({
+                currentlyAllocated: true,
+                currentChannel: allocation.channelNumber,
+                updatedAt: nowUnix,
+              })
+              .where(eq(schema.inputSources.id, inputSource.id));
+
             await schedulerLogger.info(
               'scheduler-service',
               'tune',
