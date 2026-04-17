@@ -16,6 +16,35 @@ FireStick Scout is a lightweight Android/Fire OS app that runs on Fire TV device
 - **Heartbeat Interval:** 30 seconds
 - **Timeout:** 10 seconds
 
+## Runtime Configuration
+
+As of v2.0.0, the Scout server URL is runtime-configurable — operators no longer need to edit Kotlin source or rebuild per location.
+
+**Compile-time default:** comes from the `scoutServerUrl` Gradle property. If unset at build time, the default falls back to `http://192.0.2.1:3001/api/firestick-scout` — an RFC 5737 TEST-NET-1 address that doesn't route anywhere real, so a misconfigured install fails loudly at first launch instead of silently hitting a random LAN device.
+
+**Per-location build setup:** Each location should set the property in `firestick-scout/local.properties` (gitignored) before running `./gradlew assembleDebug`:
+
+```properties
+scoutServerUrl=http://10.40.10.100:3001/api/firestick-scout
+```
+
+Alternatively, pass it on the command line:
+
+```bash
+./gradlew assembleDebug -PscoutServerUrl=http://10.40.10.100:3001/api/firestick-scout
+```
+
+**Runtime override (no rebuild required):** An operator can change the URL on an installed APK via ADB:
+
+```bash
+adb shell am broadcast \
+  -a com.sportsbar.scout.CONFIG \
+  --es server_url "http://10.40.10.100:3001/api/firestick-scout" \
+  -n com.sportsbar.scout/.ConfigReceiver
+```
+
+The `ConfigReceiver` writes the URL to `SharedPreferences("scout_config")` under the key `server_url`. `ScoutService` re-reads this preference on every heartbeat tick, so the new URL takes effect within one heartbeat interval (30 seconds) — no app restart, no reinstall.
+
 ## Device IDs
 Each Fire TV device should have a unique ID configured. Suggested naming:
 - `fire-tv-1` through `fire-tv-6` for bar TVs

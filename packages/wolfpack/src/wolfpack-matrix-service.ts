@@ -119,7 +119,35 @@ export async function sendHTTPCommand(
       headers: { 'Cookie': sessionCookie },
     })
 
-    // Step 2: Send routing command
+    // Step 1c: Query current routing state BEFORE sending the command.
+    // The o2ox command is a TOGGLE — if the route is already set, sending
+    // it again CLEARS the route instead of being a no-op. This was the root
+    // cause of TV 1 randomly going black at multiple locations: the scheduler
+    // or auto-reallocator re-sent the same route, Wolf Pack toggled it off,
+    // and the TV lost its HDMI signal.
+    const queryPath = '/get_json_cmd.php?cmd=o2ox'
+    const queryResponse = await httpRequest({
+      hostname: ipAddress,
+      path: queryPath,
+      method: 'GET',
+      headers: { 'Cookie': sessionCookie },
+    })
+    try {
+      const currentRoutes: number[] = JSON.parse(queryResponse.body)
+      if (currentRoutes[output0Based] === input0Based) {
+        logger.info(`[WOLFPACK-HTTP] Output ${output0Based} already routed to input ${input0Based} — skipping to avoid toggle-off`)
+        return {
+          success: true,
+          command: `HTTP o2ox: ${input0Based},${output0Based} (already set, skipped)`,
+          response: queryResponse.body,
+        }
+      }
+    } catch {
+      // If query fails, proceed with the route command anyway
+      logger.warn(`[WOLFPACK-HTTP] Could not pre-check current routes, proceeding with route command`)
+    }
+
+    // Step 2: Send routing command (only reaches here if route is NOT already set)
     const routePath = `/get_json_cmd.php?cmd=o2ox&prm=${input0Based},${output0Based}`
     logger.info(`[WOLFPACK-HTTP] Routing: input ${input0Based} -> output ${output0Based} (0-based)`)
     logger.info(`[WOLFPACK-HTTP] GET http://${ipAddress}${routePath}`)
@@ -475,7 +503,133 @@ async function sendUDPCommand(
 }
 
 /**
- * Gets the current routing state for all Matrix outputs
+ * Query the Wolf Pack matrix for its full live routing state via the HTTP API.
+ *
+ * Calls `/get_json_cmd.php?cmd=o2ox` with NO `prm` parameter — on the Wolf Pack
+ * FM36S and similar, this is a read-only state query that returns the current
+ * routing array without toggling anything. When `prm` is present the command
+ * applies (or toggles) a route; when absent it reports.
+ *
+ * Returns an array of length `outputCount` where each element is the 0-based
+ * input currently routed to that 0-based output position. Callers convert to
+ * 1-based numbering and apply `outputOffset` themselves if needed.
+ *
+ * Throws on network failure, login failure, or malformed response so the
+ * caller can fall back to a DB cache or surface the error. Do NOT swallow
+ * errors here — the "Routing tab shows stale cache" problem we had before
+ * was exactly because failures were silently returning an empty state.
+ */
+export async function queryWolfpackRouteState(
+  config: Pick<MatrixConfiguration, 'ipAddress' | 'credentials'>
+): Promise<number[]> {
+  const creds = config.credentials || { username: 'admin', password: 'admin' }
+
+  const loginResponse = await httpRequest({
+    hostname: config.ipAddress,
+    path: '/login.php',
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: `username=${encodeURIComponent(creds.username)}&password=${encodeURIComponent(creds.password)}`,
+  })
+
+  const setCookieHeader = loginResponse.headers['set-cookie']
+  const setCookie = Array.isArray(setCookieHeader) ? setCookieHeader.join(', ') : (setCookieHeader || '')
+  const sessionMatch = setCookie.match(/PHPSESSID=([^;]+)/)
+  if (!sessionMatch) {
+    throw new Error(`[WOLFPACK-HTTP] Login failed - no PHPSESSID in response from ${config.ipAddress}`)
+  }
+  const sessionCookie = `PHPSESSID=${sessionMatch[1]}`
+
+  await httpRequest({
+    hostname: config.ipAddress,
+    path: '/index.php',
+    method: 'GET',
+    headers: { 'Cookie': sessionCookie },
+  })
+
+  const queryResponse = await httpRequest({
+    hostname: config.ipAddress,
+    path: '/get_json_cmd.php?cmd=o2ox',
+    method: 'GET',
+    headers: { 'Cookie': sessionCookie },
+  })
+
+  let routingArray: unknown
+  try {
+    routingArray = JSON.parse(queryResponse.body)
+  } catch {
+    throw new Error(`[WOLFPACK-HTTP] Query returned non-JSON body: ${queryResponse.body.slice(0, 200)}`)
+  }
+
+  if (!Array.isArray(routingArray) || routingArray.some(v => typeof v !== 'number')) {
+    throw new Error(`[WOLFPACK-HTTP] Query returned unexpected shape: ${queryResponse.body.slice(0, 200)}`)
+  }
+
+  // Wolf Pack firmware quirk: immediately after a route change, the o2ox array
+  // can return 65535 (0xFFFF) at the just-changed output's index as a "pending /
+  // not yet committed" sentinel while the internal HDMI crossbar settles
+  // (~500ms window per switch). If we pass that through to the UI it becomes
+  // inputNum 65536, which matches no real input and makes the output look
+  // unrouted. Normalize 65535 to -1 so /api/matrix/routes can filter those
+  // positions out of its response.
+  //
+  // The sentinel is benign and self-clearing — the next query (once the
+  // firmware commits) returns the real input index. Logging was originally at
+  // WARN level while we were diagnosing the stuck-output-1 symptom at Stoneyard
+  // Appleton; now that we understand this is normal firmware behavior during
+  // the ~500ms post-route settling window, it's been demoted to DEBUG so it
+  // stops spamming the PM2 log. If you need to see it, set LOG_LEVEL=DEBUG in
+  // .env (ecosystem.config.js reads that through). Persistent 65535 (same
+  // output repeatedly across many seconds of queries with no route commands
+  // issued) WOULD indicate a real firmware hang and should be investigated —
+  // but you'll need to raise the log level to see it first.
+  let rawArray = routingArray as number[]
+
+  // Wolf Pack firmware quirk: the first o2ox query after login + index.php
+  // often returns 65535 (0xFFFF) for one or more outputs — especially output 1.
+  // This is NOT from a route change; it's the firmware's "session init" settling.
+  // Re-query after a brief delay to get the real state.
+  const hasSentinels = rawArray.some(v => v === 65535)
+  if (hasSentinels) {
+    const sentinelOutputs = rawArray
+      .map((v, i) => (v === 65535 ? i + 1 : -1))
+      .filter(i => i > 0)
+    logger.info(`[WOLFPACK-HTTP] Initial query has 0xFFFF sentinel(s) at output(s) ${sentinelOutputs.join(',')} — re-querying after 600ms settle`)
+
+    await new Promise(resolve => setTimeout(resolve, 600))
+
+    const retryResponse = await httpRequest({
+      hostname: config.ipAddress,
+      path: '/get_json_cmd.php?cmd=o2ox',
+      method: 'GET',
+      headers: { 'Cookie': sessionCookie },
+    })
+
+    try {
+      const retryArray = JSON.parse(retryResponse.body)
+      if (Array.isArray(retryArray) && retryArray.every(v => typeof v === 'number')) {
+        rawArray = retryArray
+        const stillSentinel = rawArray.filter(v => v === 65535).length
+        if (stillSentinel > 0) {
+          logger.warn(`[WOLFPACK-HTTP] Re-query still has ${stillSentinel} sentinel(s) — firmware may be hung`)
+        } else {
+          logger.info(`[WOLFPACK-HTTP] Re-query cleared all sentinels`)
+        }
+      }
+    } catch {
+      logger.warn(`[WOLFPACK-HTTP] Re-query returned non-JSON, using initial result`)
+    }
+  }
+
+  const normalized = rawArray.map(v => (v === 65535 ? -1 : v))
+  logger.info(`[WOLFPACK-HTTP] Queried route state from ${config.ipAddress}: ${normalized.length} outputs`)
+  return normalized
+}
+
+/**
+ * Legacy 4-output state shim — kept for compatibility with older callers that
+ * only cared about the 4 Atlas-feed outputs. New callers should use
+ * queryWolfpackRouteState() directly and index by the full output range.
  */
 export async function getMatrixRoutingState(): Promise<{
   [matrixOutput: number]: {
@@ -483,8 +637,6 @@ export async function getMatrixRoutingState(): Promise<{
     inputLabel: string | null
   }
 }> {
-  // This would query the Wolfpack device for current routing state
-  // For now, return empty state
   return {
     1: { wolfpackInput: null, inputLabel: null },
     2: { wolfpackInput: null, inputLabel: null },

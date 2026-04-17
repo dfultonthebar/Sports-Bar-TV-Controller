@@ -217,6 +217,7 @@ export default function ScheduledGamesPanel() {
   const [approvingId, setApprovingId] = useState<string | null>(null)
   const [skippedIds, setSkippedIds] = useState<Set<string>>(new Set())
   const [approvedIds, setApprovedIds] = useState<Set<string>>(new Set())
+  const [approvedAllocations, setApprovedAllocations] = useState<Record<string, string>>({}) // gameId → allocationId
   const [approvingAll, setApprovingAll] = useState(false)
   const [modifyingId, setModifyingId] = useState<string | null>(null)
   const [modifyOutputs, setModifyOutputs] = useState<Record<string, number[]>>({})
@@ -539,11 +540,16 @@ export default function ScheduledGamesPanel() {
     setApprovingId(suggestion.gameId)
     try {
       const outputIds = modifyOutputs[suggestion.gameId] ?? suggestion.suggestedOutputs
+      // Send BOTH inputSourceId and deviceId when available — the
+      // bartender-schedule route accepts either and the ai-suggest route
+      // does its best to resolve the matching input source for us.
       const res = await fetch('/api/schedules/bartender-schedule', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           inputSourceId: suggestion.suggestedInputId || undefined,
+          deviceId: (suggestion as any).suggestedDeviceId || undefined,
+          deviceName: suggestion.suggestedInput || undefined,
           deviceType: 'cable',
           channelNumber: suggestion.channelNumber,
           channelName: suggestion.channelName,
@@ -559,7 +565,12 @@ export default function ScheduledGamesPanel() {
       })
 
       if (res.ok) {
+        const resData = await res.json().catch(() => ({}))
         setApprovedIds((prev) => new Set(prev).add(suggestion.gameId))
+        // Store the allocation ID so the TV picker can use it
+        if (resData.allocationId) {
+          setApprovedAllocations((prev) => ({ ...prev, [suggestion.gameId]: resData.allocationId }))
+        }
         // Refresh the manual schedule too
         fetchSchedule()
       } else {
@@ -1317,76 +1328,70 @@ export default function ScheduledGamesPanel() {
                       {suggestion.reasoning}
                     </p>
 
-                    {/* Modify TV picker inline */}
-                    {isModifying && (
-                      <div className="rounded-lg border border-blue-500/30 bg-blue-950/20 p-3 space-y-2">
-                        <p className="text-xs text-blue-400 font-medium">
-                          Edit TV outputs (comma-separated output numbers):
-                        </p>
-                        <input
-                          type="text"
-                          defaultValue={(modifyOutputs[suggestion.gameId] ?? suggestion.suggestedOutputs).join(', ')}
-                          onChange={(e) => {
-                            const nums = e.target.value
-                              .split(',')
-                              .map((s) => parseInt(s.trim(), 10))
-                              .filter((n) => !isNaN(n))
-                            setModifyOutputs((prev) => ({
-                              ...prev,
-                              [suggestion.gameId]: nums,
-                            }))
-                          }}
-                          className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          placeholder="e.g. 1, 2, 5, 8"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setModifyingId(null)}
-                          className="text-xs text-blue-400 hover:text-blue-300"
-                        >
-                          Done
-                        </button>
-                      </div>
+                    {/* TV & Audio picker (same as manual scheduling) */}
+                    {isModifying && approvedAllocations[suggestion.gameId] && (
+                      <ScheduledGameTVPicker
+                        allocationId={approvedAllocations[suggestion.gameId]}
+                        currentOutputIds={modifyOutputs[suggestion.gameId] ?? suggestion.suggestedOutputs}
+                        onUpdate={(outputIds) => {
+                          setModifyOutputs((prev) => ({
+                            ...prev,
+                            [suggestion.gameId]: outputIds,
+                          }))
+                        }}
+                      />
                     )}
 
                     {/* Action buttons */}
-                    {!isApproved && (
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <button
-                          type="button"
-                          onClick={() => approveSuggestion(suggestion)}
-                          disabled={isApproving}
-                          className="flex items-center gap-1.5 rounded-lg border border-green-600 bg-green-700 hover:bg-green-600 active:bg-green-800 text-white py-2.5 px-4 text-sm font-medium transition-colors disabled:opacity-50"
-                        >
-                          {isApproving ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Check className="h-4 w-4" />
-                          )}
-                          {isApproving ? 'Approving...' : 'Approve'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setModifyingId(isModifying ? null : suggestion.gameId)
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {!isApproved && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => approveSuggestion(suggestion)}
+                            disabled={isApproving}
+                            className="flex items-center gap-1.5 rounded-lg border border-green-600 bg-green-700 hover:bg-green-600 active:bg-green-800 text-white py-2.5 px-4 text-sm font-medium transition-colors disabled:opacity-50"
+                          >
+                            {isApproving ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Check className="h-4 w-4" />
+                            )}
+                            {isApproving ? 'Approving...' : 'Approve'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setSkippedIds((prev) => new Set(prev).add(suggestion.gameId))
+                            }
+                            className="flex items-center gap-1.5 rounded-lg border border-slate-600 bg-slate-700 hover:bg-slate-600 text-slate-300 py-2.5 px-4 text-sm font-medium transition-colors"
+                          >
+                            <SkipForward className="h-4 w-4" />
+                            Skip
+                          </button>
+                        </>
+                      )}
+                      {/* Modify: approve first if needed, then toggle TV/Audio picker */}
+                      <button
+                        type="button"
+                        disabled={isApproving}
+                        onClick={async () => {
+                          if (isModifying) {
+                            setModifyingId(null)
+                            return
                           }
-                          className="flex items-center gap-1.5 rounded-lg border border-blue-600 bg-blue-700 hover:bg-blue-600 active:bg-blue-800 text-white py-2.5 px-4 text-sm font-medium transition-colors"
-                        >
-                          <Pencil className="h-4 w-4" />
-                          Modify
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setSkippedIds((prev) => new Set(prev).add(suggestion.gameId))
+                          // Approve first if not yet approved
+                          if (!isApproved) {
+                            await approveSuggestion(suggestion)
                           }
-                          className="flex items-center gap-1.5 rounded-lg border border-slate-600 bg-slate-700 hover:bg-slate-600 text-slate-300 py-2.5 px-4 text-sm font-medium transition-colors"
-                        >
-                          <SkipForward className="h-4 w-4" />
-                          Skip
-                        </button>
-                      </div>
-                    )}
+                          setModifyingId(suggestion.gameId)
+                        }}
+                        className="flex items-center gap-1.5 rounded-lg border border-blue-600 bg-blue-700 hover:bg-blue-600 active:bg-blue-800 text-white py-2.5 px-4 text-sm font-medium transition-colors disabled:opacity-50"
+                      >
+                        <Pencil className="h-4 w-4" />
+                        {isModifying ? 'Done' : 'Modify TVs & Audio'}
+                      </button>
+                    </div>
                   </div>
                 )
               })}

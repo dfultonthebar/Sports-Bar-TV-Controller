@@ -3,6 +3,7 @@ package com.sportsbar.scout
 import android.content.Context
 import android.content.Intent
 import android.net.wifi.WifiManager
+import com.sportsbar.scout.BuildConfig
 import android.os.Bundle
 import android.provider.Settings
 import android.text.format.Formatter
@@ -20,21 +21,27 @@ class MainActivity : AppCompatActivity() {
     private lateinit var stopButton: Button
 
     companion object {
-        const val SERVER_URL = "http://10.11.3.100:3001/api/firestick-scout"
         const val HEARTBEAT_INTERVAL_MS = 30000L
-        const val VERSION = "1.8.0-holmgren-20260325"
+        val VERSION: String get() = BuildConfig.VERSION_NAME
+
+        fun getServerUrl(context: Context): String {
+            return context.getSharedPreferences("scout_config", Context.MODE_PRIVATE)
+                .getString("server_url", BuildConfig.SERVER_URL_DEFAULT)
+                ?: BuildConfig.SERVER_URL_DEFAULT
+        }
 
         // Android ID to Device ID mapping (primary - most reliable)
         private val ANDROID_ID_MAP = mapOf(
-            "5aec52ddccc80e2e" to Pair("amazon-2", "Amazon 2"),
-            "669d2018260bfe55" to Pair("amazon-3", "Amazon 3")
+            "269b00cbf863c6ab" to Pair("firetv-1", "Fire TV 1"),
+            "6f5baa80b48bfc75" to Pair("firetv-2", "Fire TV 2"),
+            "546fb1d1cff87eab" to Pair("firetv-3", "Fire TV 3")
         )
 
         // IP to Device ID mapping (fallback)
         private val IP_DEVICE_MAP = mapOf(
-            "10.11.3.49" to Pair("amazon-1", "Amazon 1"),
-            "10.11.3.50" to Pair("amazon-2", "Amazon 2"),
-            "10.11.3.51" to Pair("amazon-3", "Amazon 3")
+            "10.40.10.92" to Pair("firetv-1", "Fire TV 1"),
+            "10.40.10.93" to Pair("firetv-2", "Fire TV 2"),
+            "10.40.10.94" to Pair("firetv-3", "Fire TV 3")
         )
 
         var deviceId: String = "fire-tv-unknown"
@@ -83,7 +90,7 @@ class MainActivity : AppCompatActivity() {
                         if (!addr.isLoopbackAddress && addr.hostAddress?.contains('.') == true) {
                             val ip = addr.hostAddress
                             // Only return 192.168.x.x addresses
-                            if (ip?.startsWith("10.11.3.") == true || ip?.startsWith("192.168.") == true) {
+                            if (ip?.startsWith("10.40.10.") == true || ip?.startsWith("192.168.") == true) {
                                 return ip
                             }
                         }

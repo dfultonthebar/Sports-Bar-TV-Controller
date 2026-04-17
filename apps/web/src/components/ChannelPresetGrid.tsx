@@ -3,6 +3,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Star, TrendingUp, Tv, Radio, Zap } from 'lucide-react'
+import { getChannelLogoOrBadge } from '@/lib/channel-logos'
 
 import { logger } from '@sports-bar/logger'
 interface ChannelPreset {
@@ -41,12 +42,14 @@ interface ChannelPresetGridProps {
   deviceType: 'cable' | 'directv'
   onPresetClick: (preset: ChannelPreset) => void
   maxVisible?: number
+  matrixInputId?: number
 }
 
 export default function ChannelPresetGrid({
   deviceType,
   onPresetClick,
-  maxVisible = 6
+  maxVisible = 6,
+  matrixInputId
 }: ChannelPresetGridProps) {
   const [presets, setPresets] = useState<ChannelPreset[]>([])
   const [loading, setLoading] = useState(true)
@@ -78,7 +81,7 @@ export default function ChannelPresetGrid({
     }
   }, [deviceType])
 
-  // Load everything when device type changes - single effect to avoid race conditions
+  // Load everything when device type or matrixInputId changes - single effect to avoid race conditions
   useEffect(() => {
     let cancelled = false
 
@@ -90,18 +93,56 @@ export default function ChannelPresetGrid({
       setError(null)
 
       try {
-        // First, load presets
-        const presetsResponse = await fetch(`/api/channel-presets/by-device?deviceType=${deviceType}`)
-        const presetsData = await presetsResponse.json()
+        let loadedPresets: ChannelPreset[] = []
 
-        if (cancelled) return // Component unmounted or device type changed
+        // If matrixInputId is provided, try per-input channel list first
+        if (matrixInputId != null) {
+          try {
+            const listResponse = await fetch(`/api/input-channel-lists?matrixInputId=${matrixInputId}`)
+            const listData = await listResponse.json()
 
-        if (!presetsData.success) {
-          setError(presetsData.error || 'Failed to load presets')
-          return
+            if (cancelled) return
+
+            if (listData.lists && listData.lists.length > 0) {
+              const listId = listData.lists[0].id
+              const entriesResponse = await fetch(`/api/input-channel-lists/${listId}/entries?active=true`)
+              const entriesData = await entriesResponse.json()
+
+              if (cancelled) return
+
+              if (entriesData.entries && entriesData.entries.length > 0) {
+                loadedPresets = entriesData.entries.map((entry: any) => ({
+                  id: entry.id,
+                  name: entry.channelName,
+                  channelNumber: entry.channelNumber,
+                  deviceType,
+                  order: entry.displayOrder,
+                  usageCount: 0,
+                  lastUsed: null
+                }))
+              }
+            }
+          } catch (err) {
+            // Per-input list fetch failed, fall back to global presets
+            logger.error('Error loading per-input channel list, falling back to global presets:', err)
+          }
         }
 
-        const loadedPresets = presetsData.presets || []
+        // Fall back to global presets if no per-input list was found
+        if (loadedPresets.length === 0) {
+          const presetsResponse = await fetch(`/api/channel-presets/by-device?deviceType=${deviceType}`)
+          const presetsData = await presetsResponse.json()
+
+          if (cancelled) return
+
+          if (!presetsData.success) {
+            setError(presetsData.error || 'Failed to load presets')
+            return
+          }
+
+          loadedPresets = presetsData.presets || []
+        }
+
         setPresets(loadedPresets)
         setLoading(false)
 
@@ -136,7 +177,7 @@ export default function ChannelPresetGrid({
     return () => {
       cancelled = true
     }
-  }, [deviceType])
+  }, [deviceType, matrixInputId])
 
   // Refresh live game data periodically (every hour)
   useEffect(() => {
@@ -307,12 +348,40 @@ export default function ChannelPresetGrid({
               }`}
             >
               <div className="flex flex-col items-start text-left">
-                {/* Channel name and number */}
-                <div className="flex items-center justify-between w-full mb-1">
-                  <div className="text-xs font-medium opacity-90 truncate max-w-[70%]">
-                    {preset.name}
+                {/* Channel name + logo + number */}
+                <div className="flex items-center justify-between w-full mb-1 gap-2">
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    {(() => {
+                      const { src, badge, alt } = getChannelLogoOrBadge(preset.name)
+                      return src ? (
+                        <img
+                          src={src}
+                          alt={alt}
+                          title={alt}
+                          className="h-10 w-10 object-contain flex-shrink-0 opacity-95 bg-white/10 rounded p-1"
+                          loading="lazy"
+                          onError={(e) => {
+                            // CDN hiccup — hide the broken img and the
+                            // surrounding flex keeps the text aligned
+                            const img = e.currentTarget as HTMLImageElement
+                            img.style.display = 'none'
+                          }}
+                        />
+                      ) : (
+                        <span
+                          title={alt}
+                          className="inline-flex items-center justify-center h-10 px-2 rounded text-[11px] font-bold flex-shrink-0 tracking-tight"
+                          style={{ backgroundColor: badge.bg, color: badge.fg, minWidth: '40px' }}
+                        >
+                          {badge.text}
+                        </span>
+                      )
+                    })()}
+                    <div className="text-xs font-medium opacity-90 truncate">
+                      {preset.name}
+                    </div>
                   </div>
-                  <div className="text-xs font-bold opacity-75">
+                  <div className="text-xs font-bold opacity-75 flex-shrink-0">
                     Ch {preset.channelNumber}
                   </div>
                 </div>

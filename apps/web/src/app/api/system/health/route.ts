@@ -118,19 +118,20 @@ export async function GET(request: NextRequest) {
       .all()
 
     for (const ftv of firetvDevices) {
+      const isOnline = Boolean(ftv.isOnline)
       const device: DeviceStatus = {
         id: `firetv-${ftv.id}`,
         name: ftv.name,
         type: 'cable_box',
-        status: ftv.status === 'connected' ? 'online' : 'offline',
-        health: ftv.status === 'connected' ? 100 : 0,
+        status: isOnline ? 'online' : 'offline',
+        health: isOnline ? 100 : 0,
         lastSeen: ftv.lastSeen ? new Date(ftv.lastSeen) : undefined,
         issues: [],
         quickActions: []
       }
 
-      if (ftv.status !== 'connected') {
-        device.issues.push(`Status: ${ftv.status}`)
+      if (!isOnline) {
+        device.issues.push(`Offline (last seen ${ftv.lastSeen ?? 'never'})`)
         report.overall.activeIssues++
       }
 

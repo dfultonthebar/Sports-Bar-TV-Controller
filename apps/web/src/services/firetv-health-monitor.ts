@@ -164,6 +164,12 @@ class FireTVHealthMonitor {
    * Check health of a single device
    */
   private async checkDeviceHealth(device: FireTVDevice): Promise<void> {
+    // Skip rows that lack an IP — phantom rows from earlier upsert paths
+    // would otherwise generate endless `Failed to connect to :5555` noise.
+    if (!device.ipAddress || device.ipAddress.trim() === '') {
+      return
+    }
+
     const deviceAddress = `${device.ipAddress}:${device.port}`
 
     try {

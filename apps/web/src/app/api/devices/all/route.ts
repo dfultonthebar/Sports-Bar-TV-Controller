@@ -13,15 +13,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { asc, eq } from 'drizzle-orm'
 import { db, schema } from '@/db'
-import { promises as fs } from 'fs'
-import path from 'path'
 import { logger } from '@sports-bar/logger'
 import { loadDirecTVDevices, loadFireTVDevices } from '@/lib/device-db'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { getActiveChassisConfig } from '@/lib/wolfpack/get-active-chassis'
-
-const EVERPASS_DEVICES_FILE = path.join(process.cwd(), 'data', 'everpass-devices.json')
 
 export const dynamic = 'force-dynamic'
 
@@ -124,11 +120,9 @@ async function loadIRDevices() {
 
 async function loadEverPassDevices() {
   try {
-    const data = await fs.readFile(EVERPASS_DEVICES_FILE, 'utf-8')
-    const parsed = JSON.parse(data)
-    return parsed.devices || []
+    return await db.select().from(schema.everpassDevices)
   } catch (error) {
-    // File might not exist yet, return empty array
+    logger.error('[DEVICES-ALL] Error loading EverPass devices:', error)
     return []
   }
 }

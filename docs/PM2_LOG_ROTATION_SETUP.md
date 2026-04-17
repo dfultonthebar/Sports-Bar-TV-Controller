@@ -288,5 +288,16 @@ echo "✓ PM2 log rotation configured successfully!"
 
 ---
 
-**Last Updated:** November 2, 2025
+**Last Updated:** April 9, 2026
 **Tested On:** Ubuntu Server with PM2 v6.0.13
+
+---
+
+## Incident: 68 GB Log Growth (April 2026)
+
+**Root cause:** Atlas audio processor meter telemetry (~30 readings/sec) was logged to both PM2 stdout and `atlas-communication.log` via `atlasLogger.parameterUpdate()` and `atlasLogger.responseReceived()`. Each reading produced 4-5 lines of pretty-printed JSON, generating ~490 GB/day.
+
+**Fix applied (v2.2.1):**
+- `packages/atlas/src/atlas-logger.ts`: Meter readings (params containing "Meter") are now suppressed from both `parameterUpdate()` and `responseReceived()` methods.
+- `pm2-logrotate` installed with 10 MB max size, 5 retained files, gzip compression.
+- Log growth reduced from ~170 MB/30s to ~4 KB/30s (17,000x reduction).

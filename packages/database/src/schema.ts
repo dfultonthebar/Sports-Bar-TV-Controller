@@ -951,6 +951,65 @@ export const inputCurrentChannels = sqliteTable('InputCurrentChannel', {
   manualOverrideIdx: index('InputCurrentChannel_manualOverrideUntil_idx').on(table.manualOverrideUntil),
 }))
 
+// Per-input channel lists — each matrix input (especially DirecTV) can have
+// its own curated channel list. Falls back to global ChannelPreset if absent.
+export const inputChannelLists = sqliteTable('InputChannelList', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  matrixInputId: integer('matrixInputId').notNull().unique(),
+  name: text('name').notNull(),
+  description: text('description'),
+  isActive: integer('isActive', { mode: 'boolean' }).notNull().default(true),
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+})
+
+export const inputChannelListEntries = sqliteTable('InputChannelListEntry', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  listId: text('listId').notNull().references(() => inputChannelLists.id, { onDelete: 'cascade' }),
+  channelNumber: text('channelNumber').notNull(),
+  channelName: text('channelName').notNull(),
+  callsign: text('callsign'),
+  network: text('network'),
+  category: text('category').notNull().default('sports'),
+  isHD: integer('isHD', { mode: 'boolean' }).notNull().default(false),
+  isActive: integer('isActive', { mode: 'boolean' }).notNull().default(true),
+  displayOrder: integer('displayOrder').notNull().default(0),
+  source: text('source').notNull().default('manual'),
+  lastVerified: text('lastVerified'),
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+}, (table) => ({
+  listIdIdx: index('InputChannelListEntry_listId_idx').on(table.listId),
+  listChannelIdx: uniqueIndex('InputChannelListEntry_listId_channelNumber_key').on(table.listId, table.channelNumber),
+  isActiveIdx: index('InputChannelListEntry_isActive_idx').on(table.isActive),
+}))
+
+// Append-only history of every tune attempt (success or failure).
+// InputCurrentChannel holds only the latest channel per input, so older
+// tunes are lost. This table preserves the full rolling sequence so we can
+// answer "what changed on input N after 4pm?" after the fact.
+export const channelTuneLogs = sqliteTable('ChannelTuneLog', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  inputNum: integer('inputNum'),
+  inputLabel: text('inputLabel'),
+  deviceType: text('deviceType').notNull(),
+  deviceId: text('deviceId'),
+  cableBoxId: text('cableBoxId'),
+  channelNumber: text('channelNumber').notNull(),
+  channelName: text('channelName'),
+  presetId: text('presetId'),
+  triggeredBy: text('triggeredBy').notNull().default('bartender'),
+  success: integer('success', { mode: 'boolean' }).notNull(),
+  errorMessage: text('errorMessage'),
+  durationMs: integer('durationMs'),
+  correlationId: text('correlationId'),
+  tunedAt: timestamp('tunedAt').notNull().default(timestampNow()),
+}, (table) => ({
+  tunedAtIdx: index('ChannelTuneLog_tunedAt_idx').on(table.tunedAt),
+  inputNumIdx: index('ChannelTuneLog_inputNum_idx').on(table.inputNum),
+  deviceTypeIdx: index('ChannelTuneLog_deviceType_idx').on(table.deviceType),
+}))
+
 // AI Gain Configuration Model
 export const aiGainConfigurations = sqliteTable('AIGainConfiguration', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -2232,9 +2291,13 @@ export const bartenderLayouts = sqliteTable('BartenderLayout', {
   professionalImageUrl: text('professionalImageUrl'),
   
   // TV zone configuration (JSON array of Zone objects)
-  // Each zone: { id, outputNumber, x, y, width, height, label, confidence }
+  // Each zone: { id, outputNumber, x, y, width, height, label, room, confidence }
   zones: text('zones').notNull().default('[]'),
-  
+
+  // Room definitions (JSON array of Room objects)
+  // Each room: { id, name, color, imageUrl? }
+  rooms: text('rooms').notNull().default('[]'),
+
   // Layout settings
   isDefault: integer('isDefault', { mode: 'boolean' }).notNull().default(false),
   isActive: integer('isActive', { mode: 'boolean' }).notNull().default(true),
@@ -2522,4 +2585,104 @@ export const stationAliases = sqliteTable('station_aliases', {
   standardName: text('standard_name').notNull().unique(),
   aliases: text('aliases').notNull(), // JSON array of alias strings
   createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
+})
+
+// Auto-Update singleton state (always id=1). Written by scripts/auto-update.sh
+// via sqlite3 CLI and read by the Sync tab UI via Drizzle. See
+// docs/AUTO_UPDATE_SETUP.md §2 for the state-location decision record.
+export const autoUpdateState = sqliteTable('auto_update_state', {
+  id: integer('id').primaryKey().default(1),
+  enabled: integer('enabled', { mode: 'boolean' }).notNull().default(false),
+  scheduleCron: text('schedule_cron').notNull().default('30 2 * * *'),
+  lastRunAt: text('last_run_at'),
+  lastResult: text('last_result'), // 'pass' | 'fail' | 'rolled_back' | 'in_progress'
+  lastCommitShaBefore: text('last_commit_sha_before'),
+  lastCommitShaAfter: text('last_commit_sha_after'),
+  lastError: text('last_error'),
+  lastDurationSecs: integer('last_duration_secs'),
+  updatedAt: text('updated_at').notNull().default(sql`CURRENT_TIMESTAMP`),
+})
+
+// Auto-Update append-only history. Each run inserts one row on start, updates
+// it on each phase boundary, and finalizes it at success/fail/rollback. The
+// Sync tab UI pages through the last N rows for the history table.
+export const autoUpdateHistory = sqliteTable('auto_update_history', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  startedAt: text('started_at').notNull(),
+  finishedAt: text('finished_at'),
+  result: text('result').notNull(), // 'pass' | 'fail' | 'rolled_back' | 'in_progress'
+  commitShaBefore: text('commit_sha_before').notNull(),
+  commitShaAfter: text('commit_sha_after'),
+  branch: text('branch').notNull(),
+  durationSecs: integer('duration_secs'),
+  verifyResultJson: text('verify_result_json'),
+  errorMessage: text('error_message'),
+  triggeredBy: text('triggered_by').notNull(), // 'cron' | 'manual_api' | 'manual_cli'
+})
+
+// ============================================================================
+// EVERPASS DEVICE TABLE (replaces everpass-devices.json)
+// ============================================================================
+
+export const everpassDevices = sqliteTable('EverPassDevice', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  cecDevicePath: text('cecDevicePath').notNull(), // e.g. "/dev/ttyACM0"
+  inputChannel: integer('inputChannel').notNull(), // Matrix input number
+  deviceModel: text('deviceModel'),
+  isOnline: integer('isOnline', { mode: 'boolean' }).notNull().default(false),
+  lastSeen: timestamp('lastSeen'),
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+})
+
+// ============================================================================
+// DEVICE SUBSCRIPTION POLLING TABLE (replaces device-subscriptions.json)
+// ============================================================================
+
+export const deviceSubscriptions = sqliteTable('DeviceSubscription', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  deviceId: text('deviceId').notNull(),
+  deviceType: text('deviceType').notNull(), // 'firetv' | 'directv'
+  deviceName: text('deviceName').notNull(),
+  subscriptions: text('subscriptions').notNull().default('[]'), // JSON array
+  lastPolled: timestamp('lastPolled'),
+  pollStatus: text('pollStatus').notNull().default('pending'), // 'success' | 'error' | 'pending'
+  error: text('error'),
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+}, (table) => ({
+  deviceIdIdx: uniqueIndex('DeviceSubscription_deviceId_idx').on(table.deviceId),
+  deviceTypeIdx: index('DeviceSubscription_deviceType_idx').on(table.deviceType),
+}))
+
+// ============================================================================
+// STREAMING CREDENTIALS TABLE (replaces streaming-credentials.json)
+// ============================================================================
+
+export const streamingCredentials = sqliteTable('StreamingCredential', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  platformId: text('platformId').notNull().unique(),
+  username: text('username').notNull(),
+  passwordHash: text('passwordHash').notNull(), // AES-256-GCM encrypted
+  encrypted: integer('encrypted', { mode: 'boolean' }).notNull().default(true),
+  encryptionVersion: text('encryptionVersion').notNull().default('aes-256-gcm'),
+  status: text('status').notNull().default('active'), // 'active' | 'expired' | 'error'
+  lastSync: timestamp('lastSync'),
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+})
+
+// ============================================================================
+// SUBSCRIBED STREAMING APPS TABLE (replaces subscribed-streaming-apps.json)
+// ============================================================================
+
+export const subscribedStreamingApps = sqliteTable('SubscribedStreamingApp', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  appId: text('appId').notNull().unique(), // Android package name
+  enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+  activityName: text('activityName'), // Android activity for launch
+  displayOrder: integer('displayOrder').notNull().default(0),
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
 })

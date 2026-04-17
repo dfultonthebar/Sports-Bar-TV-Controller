@@ -7,6 +7,7 @@ import { Card, CardHeader, CardTitle, CardContent } from './ui/cards'
 import { Button } from './ui/button'
 import { Badge } from './ui/badge'
 import { useLogging } from '@/hooks/useLogging'
+import { getChannelLogoOrBadge } from '@/lib/channel-logos'
 import ChannelPresetGrid from './ChannelPresetGrid'
 import RemoteControlPopup from './remotes/RemoteControlPopup'
 import FireTVAppShortcuts from './FireTVAppShortcuts'
@@ -957,6 +958,23 @@ export default function EnhancedChannelGuideBartenderRemote() {
   const handleGameClick = async (game: GameListing) => {
     const deviceType = getDeviceTypeForInput(selectedInput!)
 
+    // Fire-and-forget: record the Watch button click to the rolling tune history
+    // so we track intent regardless of which downstream path (cable/DirecTV/streaming)
+    // actually runs. Failures here must not block the tune.
+    if (game.channel.channelNumber) {
+      fetch('/api/channel-presets/tune/history', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          channelNumber: game.channel.channelNumber,
+          channelName: game.channel.name,
+          deviceType: deviceType || 'unknown',
+          inputNum: selectedInput ?? undefined,
+          triggeredBy: 'watch-button',
+        }),
+      }).catch(() => {})
+    }
+
     // Use IR control for cable inputs (all cable boxes now use IR control)
     if (deviceType === 'cable' && game.channel.channelNumber) {
       setLoading(true)
@@ -1488,10 +1506,38 @@ export default function EnhancedChannelGuideBartenderRemote() {
                           </div>
                           <div className="flex-1 overflow-hidden">
                             <div className={`font-medium ${selectedInput === input.channelNumber ? 'text-white' : 'text-gray-300'}`}>{getInputLabelWithChannel(input)}</div>
-                            <div className={`text-xs ${selectedInput === input.channelNumber ? 'text-blue-200' : 'text-slate-400'}`}>
-                              {currentChannels[input.channelNumber]?.channelNumber
-                                ? `Ch ${currentChannels[input.channelNumber].channelNumber}`
-                                : `Input ${input.channelNumber}`} • {deviceType || input.inputType}
+                            <div className={`text-xs flex items-center gap-2 mt-0.5 ${selectedInput === input.channelNumber ? 'text-blue-200' : 'text-slate-400'}`}>
+                              {(() => {
+                                const channelName = currentChannels[input.channelNumber]?.channelName
+                                if (!channelName) return null
+                                const { src, badge, alt } = getChannelLogoOrBadge(channelName)
+                                return src ? (
+                                  <img
+                                    src={src}
+                                    alt={alt}
+                                    title={alt}
+                                    className="h-8 w-8 object-contain flex-shrink-0 bg-white/10 rounded p-0.5"
+                                    loading="lazy"
+                                    onError={(e) => {
+                                      const img = e.currentTarget as HTMLImageElement
+                                      img.style.display = 'none'
+                                    }}
+                                  />
+                                ) : (
+                                  <span
+                                    title={alt}
+                                    className="inline-flex items-center justify-center h-8 px-1.5 rounded text-[10px] font-bold flex-shrink-0 tracking-tight"
+                                    style={{ backgroundColor: badge.bg, color: badge.fg, minWidth: '32px' }}
+                                  >
+                                    {badge.text}
+                                  </span>
+                                )
+                              })()}
+                              <span>
+                                {currentChannels[input.channelNumber]?.channelNumber
+                                  ? `Ch ${currentChannels[input.channelNumber].channelNumber}`
+                                  : `Input ${input.channelNumber}`} • {deviceType || input.inputType}
+                              </span>
                             </div>
                           </div>
                         </div>
@@ -1512,6 +1558,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
                   deviceType={getDeviceTypeForInput(selectedInput) === 'satellite' ? 'directv' : 'cable'}
                   onPresetClick={handlePresetClick}
                   maxVisible={6}
+                  matrixInputId={selectedInput}
                 />
               )}
 

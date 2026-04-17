@@ -6,6 +6,7 @@ import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { z } from 'zod'
 import { validateRequestBody, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
+import { getFireTVDeviceById } from '@/lib/device-db'
 
 import { logger } from '@sports-bar/logger'
 // Key code mappings for Fire TV
@@ -36,13 +37,16 @@ const KEY_CODES: Record<string, number> = {
   'CHANNEL_DOWN': 167
 }
 
-// Validation schema for FireTV command
+// Validation schema for FireTV command.
+// ipAddress/port are OPTIONAL so stale client-side device caches (e.g. an iPad
+// that loaded /api/devices/all before a device row was healed) cannot break
+// control commands — the backend re-resolves them from the DB when missing.
 const firetvSendCommandSchema = z.object({
   deviceId: ValidationSchemas.deviceId,
   command: z.string().min(1).max(200, 'Command must be less than 200 characters'),
   appPackage: ValidationSchemas.appId.optional(),
-  ipAddress: ValidationSchemas.ipAddress,
-  port: ValidationSchemas.port.default(5555)
+  ipAddress: ValidationSchemas.ipAddress.optional(),
+  port: ValidationSchemas.port.optional()
 })
 
 export async function POST(request: NextRequest) {
@@ -58,7 +62,26 @@ export async function POST(request: NextRequest) {
 
     const { data } = validation
 
-    const { deviceId, command, appPackage, ipAddress, port } = data
+    const { deviceId, command, appPackage } = data
+    let ipAddress = data.ipAddress
+    let port = data.port
+
+    // Re-resolve from DB if the client didn't send ipAddress/port, or if the
+    // client sent blank values. Client-side caches can go stale; the DB is the
+    // source of truth. This guards against the "Amazon 2 won't navigate" class
+    // of bug where an iPad had a cached device list with an empty ipAddress.
+    if (!ipAddress || !port) {
+      const device = await getFireTVDeviceById(deviceId)
+      if (!device || !device.ipAddress) {
+        return NextResponse.json({
+          success: false,
+          message: `Device ${deviceId} not found or missing ipAddress`,
+        }, { status: 404 })
+      }
+      ipAddress = ipAddress || device.ipAddress
+      port = port || device.port || 5555
+    }
+
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     logger.info('🎮 [FIRE CUBE] Sending command')
     logger.info(`   Device ID: ${deviceId}`)
@@ -67,7 +90,7 @@ export async function POST(request: NextRequest) {
     logger.info(`   IP: ${ipAddress}:${port}`)
     logger.info(`   Timestamp: ${new Date().toISOString()}`)
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-    
+
     const ip = ipAddress.trim()
     const devicePort = parseInt(port.toString())
     const deviceAddress = `${ip}:${devicePort}`
