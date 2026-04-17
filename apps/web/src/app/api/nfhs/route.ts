@@ -270,10 +270,17 @@ export async function GET(request: NextRequest) {
       },
       liveGames,
       upcomingGames,
-      availableSchools: Object.entries(NFHS_SCHOOLS).map(([key, val]) => ({
-        key,
-        ...val
-      })),
+      availableSchools: await (async () => {
+        try {
+          const dbSchools = await db.select().from(schema.nfhsSchools)
+            .where(eq(schema.nfhsSchools.isActive, true)).all()
+          return dbSchools.map(s => ({
+            key: s.id, slug: s.slug, name: s.name, city: s.city, state: s.state,
+            lastSyncedAt: s.lastSyncedAt, lastSyncedGames: s.lastSyncedGames,
+            lastSyncError: s.lastSyncError,
+          }))
+        } catch { return [] }
+      })(),
       lastUpdated: new Date().toISOString()
     })
 
@@ -287,7 +294,9 @@ export async function GET(request: NextRequest) {
 }
 
 /**
- * POST - Add a new school to track
+ * POST - Add a new school to track (persists to NFHSSchool table).
+ * Each venue has its own DB so this is per-location automatically.
+ * Body: { name, slug, city?, state? }
  */
 export async function POST(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.DEFAULT)
@@ -300,35 +309,64 @@ export async function POST(request: NextRequest) {
     if (!name || !slug) {
       return NextResponse.json({
         success: false,
-        error: 'Name and slug are required'
+        error: 'Name and slug are required',
       }, { status: 400 })
     }
 
-    // Add to schools config
-    const key = name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
-    NFHS_SCHOOLS[key] = {
-      name,
-      slug,
-      city: city || '',
-      state: state || ''
+    const existing = await db.select().from(schema.nfhsSchools)
+      .where(eq(schema.nfhsSchools.slug, slug)).get()
+
+    if (existing) {
+      // Reactivate if previously deleted, otherwise update
+      await db.update(schema.nfhsSchools).set({
+        name,
+        city: city || null,
+        state: state || null,
+        isActive: true,
+        updatedAt: new Date().toISOString(),
+      }).where(eq(schema.nfhsSchools.id, existing.id))
+      logger.info(`[NFHS] Updated school: ${name} (${slug})`)
+      return NextResponse.json({ success: true, school: { ...existing, name, city, state, isActive: true } })
     }
 
-    // Clear cache to force refresh
-    nfhsCache = null
-
-    logger.info(`[NFHS] Added school: ${name} (${slug})`)
-
-    return NextResponse.json({
-      success: true,
-      school: NFHS_SCHOOLS[key],
-      key
+    const id = crypto.randomUUID()
+    await db.insert(schema.nfhsSchools).values({
+      id, slug, name, city: city || null, state: state || null, isActive: true,
     })
-
+    logger.info(`[NFHS] Added school: ${name} (${slug})`)
+    return NextResponse.json({ success: true, school: { id, slug, name, city, state, isActive: true } })
   } catch (error: any) {
     logger.error('[NFHS] POST error:', error)
-    return NextResponse.json({
-      success: false,
-      error: error.message
-    }, { status: 500 })
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 })
+  }
+}
+
+/**
+ * DELETE - Remove a tracked school by slug. Soft delete (isActive=false) so
+ * existing NFHSGame rows stay queryable; sync will skip the school.
+ */
+export async function DELETE(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.DEFAULT)
+  if (!rateLimit.allowed) return rateLimit.response
+
+  try {
+    const { searchParams } = new URL(request.url)
+    const slug = searchParams.get('slug')
+    if (!slug) return NextResponse.json({ success: false, error: 'slug query param required' }, { status: 400 })
+
+    const existing = await db.select().from(schema.nfhsSchools)
+      .where(eq(schema.nfhsSchools.slug, slug)).get()
+    if (!existing) return NextResponse.json({ success: false, error: 'School not found' }, { status: 404 })
+
+    await db.update(schema.nfhsSchools).set({
+      isActive: false,
+      updatedAt: new Date().toISOString(),
+    }).where(eq(schema.nfhsSchools.id, existing.id))
+
+    logger.info(`[NFHS] Deactivated school: ${existing.name} (${slug})`)
+    return NextResponse.json({ success: true })
+  } catch (error: any) {
+    logger.error('[NFHS] DELETE error:', error)
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 })
   }
 }

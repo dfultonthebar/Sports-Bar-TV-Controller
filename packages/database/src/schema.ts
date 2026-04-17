@@ -104,6 +104,26 @@ export const nfhsGames = sqliteTable('NFHSGame', {
   statusIdx: index('idx_nfhs_status').on(table.status),
 }))
 
+// NFHS Network Schools tracked by this venue — hourly sync reads from this
+// table to know which school pages to scrape. Per-location config: each
+// sports bar adds the schools their customers care about.
+export const nfhsSchools = sqliteTable('NFHSSchool', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  // Page slug from nfhsnetwork.com/schools/<slug> — e.g. "de-pere-high-school-de-pere-wi"
+  slug: text('slug').notNull().unique(),
+  name: text('name').notNull(),          // Display name: "De Pere Redbirds"
+  city: text('city'),                    // "De Pere"
+  state: text('state'),                  // "WI"
+  isActive: integer('isActive', { mode: 'boolean' }).notNull().default(true),
+  lastSyncedAt: text('lastSyncedAt'),
+  lastSyncedGames: integer('lastSyncedGames').default(0),
+  lastSyncError: text('lastSyncError'),
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+}, (table) => ({
+  activeIdx: index('idx_nfhs_school_active').on(table.isActive),
+}))
+
 // Schedule Model
 export const schedules = sqliteTable('Schedule', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),

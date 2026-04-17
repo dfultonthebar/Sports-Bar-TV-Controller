@@ -248,5 +248,36 @@ export async function register() {
     } catch (error) {
       logger.error('[INSTRUMENTATION] ❌ Failed to initialize Atlas learning cycle:', error)
     }
+
+    try {
+      // NFHS Network game sync. NFHS has no public API (placeholder in
+      // packages/streaming — see docs/NFHS_API_INTEGRATION.md), so we scrape
+      // each school's page from nfhsnetwork.com hourly. The school list lives
+      // in the NFHSSchool table (per-venue config). Games land in NFHSGame
+      // and are consumed by /api/channel-guide's streaming path for Fire TV
+      // inputs that have NFHS Network logged in.
+      const { syncAllActiveSchools } = await import('./lib/nfhs-sync')
+
+      const runNfhsSync = async () => {
+        try {
+          const results = await syncAllActiveSchools()
+          const added = results.reduce((n, r) => n + r.gamesAdded, 0)
+          const updated = results.reduce((n, r) => n + r.gamesUpdated, 0)
+          const errors = results.filter(r => r.error).length
+          logger.info(`[INSTRUMENTATION][NFHS SYNC] ${results.length} schools: +${added} new, ~${updated} updated, ${errors} errors`)
+        } catch (err) {
+          logger.error('[INSTRUMENTATION][NFHS SYNC] failed:', err)
+        }
+      }
+
+      // Initial sync after 75s (staggered so we don't hammer the network on boot)
+      setTimeout(runNfhsSync, 75_000)
+      // Recurring: hourly
+      setInterval(runNfhsSync, 60 * 60 * 1000)
+
+      logger.info('[INSTRUMENTATION] ✅ NFHS Network sync scheduled (hourly)')
+    } catch (error) {
+      logger.error('[INSTRUMENTATION] ❌ Failed to initialize NFHS sync:', error)
+    }
   }
 }
