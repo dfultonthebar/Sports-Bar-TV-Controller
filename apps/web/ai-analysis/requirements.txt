@@ -1,2 +1,0 @@
-# Simple log analysis - no external dependencies needed
-# Using only Python standard library for lightweight analysis
