@@ -160,11 +160,59 @@ export async function POST(request: NextRequest) {
       })
     }
 
+    // Normalize input source type from the DB record — the caller's `deviceType`
+    // claim is unreliable (e.g. AI-suggest approve flow once hardcoded 'cable' for
+    // every suggestion). The DB row is the source of truth for what kind of input
+    // this is, and downstream scheduler-service dispatches tune calls based on
+    // this field. Mismatches cause "Cable box device not found" loops when a
+    // DirecTV ID is sent down the cable/IR path.
+    const normalizedType = inputSource.type === 'satellite' ? 'directv' : inputSource.type
+    const allowedTypes = ['cable', 'directv', 'firetv']
+    const resolvedType = allowedTypes.includes(normalizedType) ? normalizedType : deviceType
+    if (resolvedType !== deviceType) {
+      logger.warn(
+        `[BARTENDER-SCHEDULE] Caller claimed deviceType='${deviceType}' but input source ` +
+        `${inputSource.name} is type='${inputSource.type}'. Using '${resolvedType}'.`
+      )
+    }
+
+    // Reject overlapping allocations on the same input — only one game can be
+    // live per input at a time. An overlap exists if any pending/active allocation
+    // on the same input has a time window that intersects this one.
+    const sameInputAllocs = await db.select({
+      alloc: schema.inputSourceAllocations,
+      game: schema.gameSchedules,
+    })
+      .from(schema.inputSourceAllocations)
+      .innerJoin(schema.gameSchedules, eq(schema.inputSourceAllocations.gameScheduleId, schema.gameSchedules.id))
+      .where(
+        and(
+          eq(schema.inputSourceAllocations.inputSourceId, inputSource.id),
+          or(
+            eq(schema.inputSourceAllocations.status, 'pending'),
+            eq(schema.inputSourceAllocations.status, 'active')
+          )
+        )
+      )
+      .all()
+
+    const overlap = sameInputAllocs.find(r =>
+      r.alloc.allocatedAt < endTimeUnix && r.alloc.expectedFreeAt > tuneAtUnix
+    )
+    if (overlap) {
+      const msg = `Input ${inputSource.name} already has "${overlap.game.awayTeamName} @ ${overlap.game.homeTeamName}" scheduled during that window`
+      logger.warn(`[BARTENDER-SCHEDULE] ${msg}`)
+      return NextResponse.json(
+        { success: false, error: msg, conflictingAllocationId: overlap.alloc.id },
+        { status: 409 }
+      )
+    }
+
     // 4. Create the input source allocation
     const allocation = {
       id: crypto.randomUUID(),
       inputSourceId: inputSource.id,
-      inputSourceType: deviceType,
+      inputSourceType: resolvedType,
       gameScheduleId: gameSchedule.id,
       channelNumber: channelNumber,
       tvOutputIds: JSON.stringify(tvOutputIds), // Matrix output channel numbers the bartender assigned

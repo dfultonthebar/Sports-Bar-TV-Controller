@@ -76,6 +76,8 @@ interface AISuggestion {
   channelName: string
   suggestedInput: string
   suggestedInputId: string
+  suggestedDeviceId?: string
+  suggestedDeviceType?: 'cable' | 'directv' | 'firetv'
   suggestedOutputs: number[]
   confidence: number
   reasoning: string
@@ -548,9 +550,9 @@ export default function ScheduledGamesPanel() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           inputSourceId: suggestion.suggestedInputId || undefined,
-          deviceId: (suggestion as any).suggestedDeviceId || undefined,
+          deviceId: suggestion.suggestedDeviceId || undefined,
           deviceName: suggestion.suggestedInput || undefined,
-          deviceType: 'cable',
+          deviceType: suggestion.suggestedDeviceType || 'cable',
           channelNumber: suggestion.channelNumber,
           channelName: suggestion.channelName,
           gameInfo: {

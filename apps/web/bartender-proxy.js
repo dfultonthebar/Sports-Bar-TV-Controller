@@ -18,15 +18,21 @@ const BACKEND_HOST = '127.0.0.1'
 const BLOCKED_ROUTES = [
   '/device-config',
   '/matrix-control',
+  '/matrix',
   '/system-admin',
   '/system-health',
   '/layout-editor',
   '/sports-guide-config',
+  '/sports-guide-admin',
+  '/scheduling',
   '/settings',
   '/login',
   '/test-upload',
   '/ai-diagnostics',
   '/ai-gameplan',
+  '/ai-hub',
+  '/scheduler-logs',
+  '/wolfpack',
 ]
 
 const server = http.createServer((req, res) => {
