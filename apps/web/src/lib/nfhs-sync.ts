@@ -183,6 +183,58 @@ export async function syncSchool(slug: string): Promise<SchoolSyncResult> {
         await db.insert(schema.nfhsGames).values({ ...record, createdAt: new Date().toISOString() })
         result.gamesAdded++
       }
+
+      // Mirror into game_schedules so the bartender-schedule POST, AI
+      // scheduler, and channel-guide fallback all see NFHS games as
+      // first-class citizens. Without this mirror, the bartender Guide tab
+      // shows NFHS games but tapping Schedule fails with "No matching game
+      // schedule found" because the lookup runs against game_schedules only.
+      try {
+        const scheduledStartSec = Math.floor(evDate.getTime() / 1000)
+        // Estimated 2h duration for high school games (most are shorter, but
+        // the auto-reallocator uses this as the soonest-unallocated time —
+        // erring a bit high is safer than blocking an input that already
+        // finished).
+        const estimatedEndSec = scheduledStartSec + 2 * 60 * 60
+        const gsId = `nfhs-${ev.key}`
+        const seasonYear = evDate.getUTCFullYear()
+
+        const gsExisting = await db.select().from(schema.gameSchedules)
+          .where(eq(schema.gameSchedules.id, gsId)).get()
+
+        const gsRecord = {
+          id: gsId,
+          espnEventId: gsId,
+          espnCompetitionId: gsId,
+          sport: sport.toLowerCase(),
+          league: 'NFHS',
+          homeTeamEspnId: `nfhs-${slug}`,
+          awayTeamEspnId: awayTeam ? `nfhs-${awayTeam.toLowerCase().replace(/\s+/g, '-').slice(0, 60)}` : `nfhs-unknown`,
+          homeTeamName: homeTeam,
+          awayTeamName: awayTeam || 'Unknown',
+          scheduledStart: scheduledStartSec,
+          estimatedEnd: estimatedEndSec,
+          status: 'scheduled',
+          seasonType: 2,
+          seasonYear,
+          broadcastNetworks: JSON.stringify(['NFHS Network']),
+          updatedAt: Math.floor(Date.now() / 1000),
+        }
+
+        if (gsExisting) {
+          await db.update(schema.gameSchedules).set(gsRecord)
+            .where(eq(schema.gameSchedules.id, gsId))
+        } else {
+          await db.insert(schema.gameSchedules).values({
+            ...gsRecord,
+            createdAt: Math.floor(Date.now() / 1000),
+          })
+        }
+      } catch (gsErr: any) {
+        // Non-fatal — NFHSGame row is still authoritative for the guide,
+        // this just means scheduling will fall back to the 404 path.
+        logger.warn(`[NFHS SYNC] game_schedules mirror failed for ${ev.key}: ${gsErr.message}`)
+      }
     }
   } catch (err: any) {
     result.error = err.message
