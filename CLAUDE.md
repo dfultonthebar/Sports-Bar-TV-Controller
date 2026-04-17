@@ -613,6 +613,11 @@ The bartender Video tab reads both `zones` and `rooms` from the `BartenderLayout
 
 6. **Always use `scripts/auto-update.sh` for updates.** When asked to update a location or "auto update yourself", run `bash scripts/auto-update.sh --triggered-by=manual_cli`. Never manually merge main, run npm ci, or restart PM2 — the script handles conflict resolution, DB schema push, backup creation, Turbo cache busting, PM2 restart, verify-install checks, and Claude checkpoint reviews. Manual updates skip safety checks and are error-prone.
 
+7. **Sync memory ↔ CLAUDE.md on every read (bidirectional).** When reading this file during a session (especially Checkpoint B of auto-update), compare its rules/gotchas/standing-instructions against the host memory at `~/.claude/projects/-home-ubuntu-Sports-Bar-TV-Controller/memory/`. In BOTH directions:
+   - **CLAUDE.md → memory:** If a rule appears in CLAUDE.md but is missing from memory, save it as a new memory entry (feedback/gotcha type) and update `MEMORY.md`. This ensures every Claude session on this host inherits the rule, even without re-reading CLAUDE.md in full.
+   - **memory → CLAUDE.md:** If a rule/gotcha is in host memory but NOT in CLAUDE.md, it's location-only knowledge that other locations are missing. Add it to the appropriate section of CLAUDE.md, bump version, commit to main (or the current branch if on a location branch — eventually to main). This is how institutional knowledge caught at one location propagates to every other.
+   - The two sources should be near-duplicates in content. Rule 5 covers new rules the user explicitly asks you to remember; Rule 7 covers the passive drift-catching on every CLAUDE.md read.
+
 ### Version Bumping (REQUIRED — every commit to main)
 **Every commit pushed to `main` MUST include a version bump in root `package.json`.** Do not push code changes and bump the version separately — include it in the same commit or at minimum the same push. A commit without a version bump means two locations can report the same version while running different code, making debugging impossible.
 - **Minor bump** (2.1.0 → 2.2.0): Feature additions, migrations, significant changes
