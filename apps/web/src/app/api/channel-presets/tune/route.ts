@@ -150,24 +150,29 @@ export async function POST(request: NextRequest) {
           if (!ftRow?.ipAddress) {
             result = { success: false, error: `Fire TV device not found: ${fireTVIdStr}` }
           } else {
-            // Resolve app name → package. Reuse the shared streaming map.
-            const { getStreamingAppInfoForStation } = await import('@/lib/network-channel-resolver')
-            const appInfo = getStreamingAppInfoForStation(channelNumberStr)
-            const appPackage = appInfo?.packages?.[0]
-            if (!appPackage) {
+            // Match the app name ("Prime Video", "Apple TV+") to the streaming-
+            // apps database by name (substring, case-insensitive). streamingManager
+            // expects the DB id (e.g. "amazon-prime"), not the package name.
+            const { STREAMING_APPS_DATABASE } = await import('@sports-bar/streaming')
+            const target = channelNumberStr.toLowerCase().replace(/[\s+]/g, '')
+            const app = STREAMING_APPS_DATABASE.find((a: any) => {
+              const name = a.name.toLowerCase().replace(/[\s+]/g, '')
+              return name.includes(target) || target.includes(name)
+            })
+            if (!app) {
               result = { success: false, error: `Unknown streaming app: ${channelNumberStr}` }
             } else {
               const { streamingManager } = await import('@/services/streaming-service-manager')
               const ok = await streamingManager.launchApp(
                 fireTVIdStr,
                 ftRow.ipAddress,
-                appPackage,
+                app.id,
                 {},
                 ftRow.port || 5555
               )
               result = ok
-                ? { success: true, message: `Launched ${channelNumberStr} on ${ftRow.name}` }
-                : { success: false, error: `Failed to launch ${channelNumberStr} on ${ftRow.name}` }
+                ? { success: true, message: `Launched ${app.name} on ${ftRow.name}` }
+                : { success: false, error: `Failed to launch ${app.name} on ${ftRow.name} — check ADB connection and app installation` }
             }
           }
         } catch (err: any) {
