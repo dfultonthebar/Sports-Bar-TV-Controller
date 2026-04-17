@@ -500,6 +500,7 @@ LOCATION_PATHS_OURS=(
   "apps/web/data/atlas-configs"
   "apps/web/data/channel-presets-cable.json"
   "apps/web/data/channel-presets-directv.json"
+  "apps/web/data/everpass-devices.json"
   "apps/web/public/uploads/layouts"
   "data"
   ".env"
@@ -509,6 +510,12 @@ LOCATION_PATHS_OURS=(
   # location's env-driven version across merges. When main eventually adopts
   # the env-driven pattern, this entry becomes a no-op (content-identical).
   "ecosystem.config.js"
+  # hardware-config.ts has per-location values (venue name, processor IP,
+  # audio output slot range). Main historically shipped with Stoneyard's
+  # values hardcoded; merging main overwrites the location's correct
+  # values. Keep ours until the file is refactored into DB/env lookups
+  # keyed by LOCATION_ID.
+  "apps/web/src/lib/hardware-config.ts"
 )
 
 # These paths always take the MAIN version (git checkout --theirs)
