@@ -605,8 +605,12 @@ else
   if grep -qE "(index|table|column) [\`\"]?[A-Za-z_][A-Za-z0-9_]*[\`\"]? already exists|already exists" "$SCHEMA_PUSH_LOG"; then
     log "WARNING: drizzle-kit push reported pre-existing objects (benign — see $SCHEMA_PUSH_LOG)"
     log "WARNING: this means the DB already had untracked tables/indexes from a prior manual hotfix."
-    log "WARNING: continuing with the update. If this release adds a NEW table that was not pre-created,"
-    log "WARNING: the corresponding endpoints will 500 at runtime — verify-install will catch it."
+    log "WARNING: Running ensure-schema.sh fallback to create any genuinely missing tables/columns..."
+    if bash "$REPO_ROOT/scripts/ensure-schema.sh" "$DB_PATH" 2>&1 | tee -a "$LOG_FILE"; then
+      log "ensure-schema.sh fallback completed successfully"
+    else
+      log "WARNING: ensure-schema.sh had errors — some new tables/columns may be missing"
+    fi
   else
     cat "$SCHEMA_PUSH_LOG" >> "$LOG_FILE"
     fail "drizzle-kit push failed with an unrecognized error — see $SCHEMA_PUSH_LOG" 4

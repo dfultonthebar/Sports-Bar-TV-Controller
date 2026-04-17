@@ -62,6 +62,7 @@ interface AISuggestion {
   suggestedInput: string
   suggestedInputId: string
   suggestedDeviceId: string
+  suggestedDeviceType: 'cable' | 'directv' | 'firetv'
   suggestedOutputs: number[]
   confidence: number
   reasoning: string
@@ -278,13 +279,20 @@ function buildPrompt(
     inputLines.push(`  ${s.name} (directv${s.currentlyAllocated ? ', BUSY' : ''})`)
   }
 
-  // Build game list showing BOTH channel numbers so the AI uses the right one
+  // Build game list showing BOTH channel numbers so the AI uses the right one.
+  // Also tag each game with availability: BOTH / CABLE-ONLY / DIRECTV-ONLY so the
+  // AI can assign exclusive-channel games to their required input type first and
+  // push dual-availability games to whichever platform has slack.
   const gameLines = games.map((g, i) => {
     const time = new Date(g.time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Chicago' })
     const cableCh = g.channelNumber ? `cable ch ${g.channelNumber}` : ''
     const dtvCh = g.directvChannel ? `directv ch ${g.directvChannel}` : ''
     const channels = [cableCh, dtvCh].filter(Boolean).join(', ')
-    return `${i + 1}. ${g.awayTeam} at ${g.homeTeam} (${g.league}) — ${time} CT — ${channels || 'no channel found'}`
+    let availability = 'NO-CHANNEL'
+    if (g.channelNumber && g.directvChannel) availability = 'BOTH'
+    else if (g.channelNumber) availability = 'CABLE-ONLY'
+    else if (g.directvChannel) availability = 'DIRECTV-ONLY'
+    return `${i + 1}. [${availability}] ${g.awayTeam} at ${g.homeTeam} (${g.league}) — ${time} CT — ${channels || 'no channel found'}`
   }).join('\n')
 
   const tvCount = tvOutputs.length
@@ -310,6 +318,18 @@ function buildPrompt(
 
   const exampleInput = inputSources[0]?.name || 'DirecTV 1'
 
+  // Exclusivity preference only applies when the venue has BOTH cable and
+  // directv inputs available. Single-type venues (cable-only or directv-only)
+  // have no routing choice to make.
+  const hasMixedInputs = cableInputs.length > 0 && directvInputs.length > 0
+  const exclusivityRule = hasMixedInputs
+    ? `2. Assign EXCLUSIVE games to their required input type FIRST, then fill remaining slots with BOTH games:
+   - [CABLE-ONLY] games MUST go on a cable input — nothing else can carry them.
+   - [DIRECTV-ONLY] games MUST go on a directv input — nothing else can carry them.
+   - [BOTH] games should go on DIRECTV by default, so cable inputs stay free for cable-only games.
+     Only put a [BOTH] game on cable if all directv inputs are already taken OR if another game needs directv exclusively.`
+    : `2. Every input is ${cableInputs.length > 0 ? 'cable' : 'directv'} — assign all games to these inputs using the matching channel number.`
+
   return `You are a sports bar TV scheduler in Green Bay, Wisconsin. Assign games to inputs and TVs.
 
 INPUTS (each tunes ONE channel at a time):
@@ -323,12 +343,11 @@ ${patternHints}
 
 RULES:
 1. CRITICAL: Cable inputs MUST use the "cable ch" number. DirecTV inputs MUST use the "directv ch" number. Never mix them.
-2. If a game only has a cable channel, assign it to a cable input. If it only has a directv channel, assign it to a directv input.
-3. If a game has both, prefer whichever input type has more availability.
-4. Home team games (Brewers, Bucks, Packers, Badgers) get top priority and more TVs.
-5. Each input tunes ONE channel — assign different games to different inputs.
-6. Spread games across inputs — don't put everything on one box.
-7. "suggestedInput" MUST be an exact name from the INPUTS list above.
+${exclusivityRule}
+3. Home team games (Brewers, Bucks, Packers, Badgers) get top priority and more TVs.
+4. Each input tunes ONE channel — assign different games to different inputs. Never pick the same input twice.
+5. Spread games across inputs — don't put everything on one box.
+6. "suggestedInput" MUST be an exact name from the INPUTS list above.
 
 Return ONLY valid JSON:
 {"suggestions":[{"gameIndex":1,"suggestedInput":"${exampleInput}","channelNumber":"669","suggestedOutputs":[1,2,3],"confidence":0.9,"reasoning":"Brewers home game on DirecTV"}]}
@@ -402,6 +421,9 @@ function parseOllamaResponse(
             .filter((n: number) => Number.isFinite(n) && n >= 0)
         : []
 
+      const resolvedDeviceType: 'cable' | 'directv' | 'firetv' =
+        isDirectv ? 'directv' : inputType === 'firetv' ? 'firetv' : 'cable'
+
       suggestions.push({
         gameId: `game-${gameIdx}`,
         homeTeam: game.homeTeam || 'Unknown',
@@ -413,13 +435,78 @@ function parseOllamaResponse(
         suggestedInput: input?.name || s.suggestedInput || 'Unknown',
         suggestedInputId: input?.id || '',
         suggestedDeviceId: input?.deviceId || '',
+        suggestedDeviceType: resolvedDeviceType,
         suggestedOutputs: suggestedOutputsInt,
         confidence: typeof s.confidence === 'number' ? Math.min(1, Math.max(0, s.confidence)) : 0.5,
         reasoning: s.reasoning || 'No reasoning provided',
       })
     }
 
-    return suggestions
+    // Server-side enforcement: the AI sometimes ignores the prompt. Apply hard
+    // rules post-parse.
+    //
+    // (a) Exclusivity: a [BOTH]-availability game that the AI put on a cable
+    //     input gets moved to DirecTV if at least one directv input is not yet
+    //     claimed by another suggestion. This frees cable boxes for CABLE-ONLY
+    //     games (and vice versa for directv-only games).
+    //
+    // (b) Deduplicate inputs: each input can carry only one game; drop later
+    //     suggestions that collide with an already-picked input (rank by home-
+    //     team > confidence).
+    const claimedInputIds = new Set<string>()
+    const HOME_TEAMS = ['Packers', 'Brewers', 'Bucks', 'Badgers']
+    const isHomeTeamGame = (s: AISuggestion) =>
+      HOME_TEAMS.some(t => s.homeTeam.includes(t) || s.awayTeam.includes(t))
+
+    suggestions.sort((a, b) => {
+      const ah = isHomeTeamGame(a) ? 1 : 0
+      const bh = isHomeTeamGame(b) ? 1 : 0
+      if (ah !== bh) return bh - ah
+      return b.confidence - a.confidence
+    })
+
+    const cableInputsAll = inputSources.filter((src: any) => src.type === 'cable')
+    const directvInputsAll = inputSources.filter((src: any) => src.type === 'directv' || src.type === 'satellite')
+    // Exclusivity rerouting only makes sense when the venue has both input types.
+    const hasMixedInputs = cableInputsAll.length > 0 && directvInputsAll.length > 0
+
+    const finalSuggestions: AISuggestion[] = []
+    for (const sug of suggestions) {
+      const gameIdx = parseInt(sug.gameId.replace('game-', ''), 10)
+      const origGame = games[gameIdx]
+      const availableOnBoth = origGame?.channelNumber && origGame?.directvChannel
+
+      // (a) Prefer DirecTV for BOTH-availability games when a directv input is free.
+      // Skip entirely at single-platform venues.
+      if (hasMixedInputs && availableOnBoth && sug.suggestedDeviceType === 'cable') {
+        const freeDirectv = directvInputsAll.find((src: any) => !claimedInputIds.has(src.id))
+        if (freeDirectv) {
+          sug.suggestedInput = freeDirectv.name
+          sug.suggestedInputId = freeDirectv.id
+          sug.suggestedDeviceId = freeDirectv.deviceId || ''
+          sug.suggestedDeviceType = 'directv'
+          sug.channelNumber = origGame.directvChannel || sug.channelNumber
+          sug.reasoning = `${sug.reasoning} [moved to DirecTV to keep cable free for cable-only games]`
+        }
+      }
+      // Same rule the other way — if AI put a BOTH game on directv but no cable
+      // inputs are claimed yet AND there are directv-only games later that need
+      // the directv slot, move this one to cable. Approximation: prefer cable
+      // only if no directv-only game exists in the remaining queue.
+      // (Skipped for now — DirecTV-preference is the stated default per user.)
+
+      // (b) Dedup: skip if this input is already claimed
+      if (claimedInputIds.has(sug.suggestedInputId)) {
+        logger.debug(
+          `[AI-SUGGEST] Dropping duplicate input assignment: ${sug.suggestedInput} already used`
+        )
+        continue
+      }
+      claimedInputIds.add(sug.suggestedInputId)
+      finalSuggestions.push(sug)
+    }
+
+    return finalSuggestions
   } catch (err: any) {
     logger.error(`[AI-SUGGEST] Failed to parse Ollama JSON response: ${err.message}`)
     logger.debug(`[AI-SUGGEST] Raw response: ${raw.substring(0, 500)}`)
