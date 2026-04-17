@@ -37,6 +37,51 @@ is the archive.
 
 ## Current entries
 
+### v2.18.0 — Override-learn hook for bartender matrix changes
+**Released:** 2026-04-17
+
+**What changed:**
+`POST /api/matrix/route` now closes the scheduler's feedback loop. When
+a bartender issues a manual route within 10 min of an active scheduled
+allocation, the route handler patches that allocation's `tv_output_ids`
+to reflect the correction so the hourly pattern-analyzer learns from it.
+Home-team overrides (teams in the `HomeTeam` table) log at `warn` level
+for stronger filtering.
+
+**Schema changes:** None. Uses existing `input_source_allocations`,
+`HomeTeam`, `SchedulerLog`, `input_sources`, `MatrixInput`.
+
+**Required manual steps:** None. Hook activates on next `pm2 restart`
+after the build completes.
+
+**Verification:**
+```bash
+# After a bartender manually reroutes a scheduled TV, watch SchedulerLog:
+sqlite3 /home/ubuntu/sports-bar-data/production.db <<SQL
+SELECT datetime(createdAt,'unixepoch','localtime') AS ts,
+       level, operation, message
+FROM SchedulerLog
+WHERE component='override-learn'
+ORDER BY createdAt DESC LIMIT 10;
+SQL
+```
+
+**Home team readiness (optional per-location):**
+The hook flags overrides as `isHomeTeam=true` only when the team name
+appears in the `HomeTeam` table. Lucky's 1313 has Brewers, Bucks, and
+Badgers seeded; **Packers is not currently seeded** at Lucky's. To add:
+```sql
+INSERT INTO HomeTeam (id, teamName, sport, league, category, location, conference, isPrimary, isActive, priority, matchingStrategy, minMatchConfidence, minTVsWhenActive, autoPromotePlayoffs)
+VALUES (lower(hex(randomblob(16))), 'Green Bay Packers', 'football', 'nfl', 'professional', 'Green Bay', 'NFC North', 1, 1, 0, 'fuzzy', 0.7, 1, 1);
+```
+
+**Why this matters:** Pattern-analyzer reads `tv_output_ids` hourly to
+build per-team routing patterns. Bartender corrections within 10 min of
+a scheduled tune are the highest-quality training signal the system can
+capture — the bartender knows which sight-lines serve which teams best.
+
+---
+
 ### v2.17.0 — Dep major upgrades (Tailwind 4, lucide-react 1, eslint 10)
 **Released:** 2026-04-17
 
