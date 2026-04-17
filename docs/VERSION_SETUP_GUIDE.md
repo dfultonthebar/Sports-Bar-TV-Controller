@@ -190,6 +190,135 @@ sqlite3 $DB "SELECT ipAddress, brand, model, CASE WHEN authToken IS NULL THEN 'u
 
 ---
 
+## Known Errors & Fixes
+
+Append entries here whenever a location hits an error that was non-obvious
+to diagnose. Format:
+
+- **Symptom:** what the operator/UI showed
+- **Root cause:** why it happened
+- **Fix:** the exact SQL/command/code change that resolved it
+- **Verification:** how to confirm the fix worked
+- **Applies to:** `all locations` or a specific location tag
+- **First seen:** YYYY-MM-DD at which location
+
+The goal: every other location inheriting this file from main should find
+the answer here instead of re-debugging from scratch. Per CLAUDE.md Rule
+8, you MUST add an entry when you fix a non-trivial error.
+
+### AI Suggest returns `suggestions: []` with "No active input sources configured"
+
+- **Symptom:** clicking "Get Suggestions" on the scheduler UI does
+  nothing; `GET /api/scheduling/ai-suggest` returns empty with message
+  `"No active input sources configured. Add cable boxes or streaming
+  devices first."`
+- **Root cause:** the `input_sources` table is empty. AI Suggest reads
+  from this normalized table, which is supposed to be seeded from
+  `IRDevice` + `FireTVDevice` + `DirecTVDevice` but the seed step was
+  missed.
+- **Fix:** populate `input_sources` from existing device tables. SQL
+  template (adjust IDs to match your `IRDevice.id` and
+  `MatrixInput.id` values):
+  ```sql
+  INSERT INTO input_sources (id, name, type, device_id, matrix_input_id,
+    available_networks, is_active, currently_allocated, priority_rank,
+    created_at, updated_at)
+  VALUES ('is-cable-1','Cable Box 1','cable','<IRDevice-id>',
+    '<MatrixInput-id>','[]',1,0,50, strftime('%s','now'), strftime('%s','now'));
+  ```
+- **Verification:** `curl -s -b cookiejar
+  http://localhost:3001/api/scheduling/ai-suggest | jq '.suggestions | length'`
+  should return > 0 when games are live.
+- **Applies to:** all locations
+- **First seen:** 2026-04-17 at Lucky's 1313
+
+### Default Source Settings UI spinner forever
+
+- **Symptom:** `/system-admin` → Default Source Settings tab loads
+  indefinitely (perpetual spinner), never shows form.
+- **Root cause:** `loadData()` sequentially awaits
+  `/api/atlas/sources?processorIp=<ip>` with no timeout. The Atlas
+  HiQnet probe hangs on a non-Atlas audio processor (e.g., dbx ZonePRO)
+  because HiQnet isn't spoken by those devices.
+- **Fix:** patched in v2.16.5 —
+  `apps/web/src/components/DefaultSourceSettings.tsx` now checks
+  `processor.processorType === 'atlas'` before probing + wraps the
+  fetch in a 5s `AbortController`. If you hit this on a pre-v2.16.5
+  location: either cherry-pick the patch, or temporarily unset the
+  AudioProcessor row to skip the fetch path.
+- **Verification:** open the page, it should render form controls
+  within 3 seconds regardless of audio processor type.
+- **Applies to:** all non-Atlas locations (dbx/BSS/etc.)
+- **First seen:** 2026-04-17 at Lucky's 1313 (dbx ZonePRO 1260m)
+
+### Matrix routing lands on wrong physical output
+
+- **Symptom:** clicking "route to Output 1" on bartender remote
+  changes the TV on output 27 (or wherever +26 lands). Operator sees
+  "nothing happens" when the intended TV is actually fine; a different
+  TV silently changed source.
+- **Root cause:** `MatrixConfiguration.outputOffset` is set to a
+  non-zero value on a single-card Wolf Pack (WP-8X8/16X16/36X36).
+  `wolfpack-matrix-service.ts` adds the offset to every output number
+  before sending the routing command. Single-card matrices route 1:1
+  and must have `outputOffset=0`.
+- **Fix:**
+  ```sql
+  UPDATE MatrixConfiguration SET outputOffset=0, audioOutputCount=0,
+    updatedAt=datetime('now') WHERE model LIKE 'WP-%X%';
+  ```
+  (Only set `audioOutputCount=0` if audio is NOT wired to the Wolf
+  Pack — Lucky's routes audio via dbx ZonePRO, not Wolf Pack outputs.)
+  After the UPDATE, `pm2 restart sports-bar-tv-controller` to clear
+  any cached route maps.
+- **Verification:** v2.16.6+ adds `matrix_config` layer to
+  `scripts/verify-install.sh` which FAILs if a single-card model has
+  non-zero outputOffset. Also `[MATRIX-CONFIG] ⚠` is logged at every
+  PM2 boot for the same condition. See CLAUDE.md §5a.
+- **Applies to:** any location with a single-card Wolf Pack
+- **First seen:** 2026-04-17 at Lucky's 1313 (`outputOffset=26` on
+  WP-36X36 for weeks)
+
+### `/api/bartender/layout` renders "No Layout Uploaded" despite layout existing
+
+- **Symptom:** bartender remote Video tab shows "No Layout Uploaded"
+  even though the DB has a `BartenderLayout` row with valid
+  `imageUrl` and 20+ zones.
+- **Root cause:** the API response uses `backgroundImage` but the
+  `InteractiveBartenderLayout` component reads
+  `layout.imageUrl || layout.professionalImageUrl` — name mismatch.
+- **Fix:** patched in v2.16.7 —
+  `apps/web/src/app/api/bartender/layout/route.ts` now returns both
+  `imageUrl` and `professionalImageUrl` alongside `backgroundImage`
+  for backward compat.
+- **Verification:** `curl -s
+  http://localhost:3001/api/bartender/layout | jq '.layout.imageUrl'`
+  should be the `/api/uploads/layouts/...` path, not `null`.
+- **Applies to:** all locations pre-v2.16.7
+- **First seen:** 2026-04-17 at Lucky's 1313
+
+### Auto-update schema_push never converges (350-iter cap hit)
+
+- **Symptom:** `[SCHEMA] iterative retry hit cap (350) without
+  converging` in the auto-update log. Run rolls back.
+- **Root cause:** drizzle-kit push cycles through the same duplicate
+  indexes at locations with many hotfix-era indexes. Iterative
+  drop-and-retry never gets ahead of the cycling.
+- **Fix:** v2.12.5 added a bulk-regenerate fallback — drop all
+  user-defined indexes, run `drizzle-kit generate` to get the
+  canonical CREATE list, apply `CREATE ... IF NOT EXISTS` in one
+  transaction, final push reports benign already-exists (schema IS
+  in sync). Pre-v2.12.5 locations: upgrade the auto-update.sh
+  manually before the next run.
+- **Verification:** auto-update log shows `[SCHEMA] bulk-apply:
+  created N indexes from generate output` followed by `[SCHEMA]
+  bulk-regenerate fallback: final push reports benign pre-existing
+  objects — schema IS in sync`.
+- **Applies to:** all locations
+- **First seen:** 2026-04-16 at Lucky's 1313
+
+---
+
 ## Archive
 
 Older entries (>2 major versions back) pruned from this file. `git log docs/VERSION_SETUP_GUIDE.md` is the archive.
