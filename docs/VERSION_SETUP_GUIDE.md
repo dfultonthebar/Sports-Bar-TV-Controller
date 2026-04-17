@@ -304,6 +304,87 @@ The goal: every other location inheriting this file from main should find
 the answer here instead of re-debugging from scratch. Per CLAUDE.md Rule
 8, you MUST add an entry when you fix a non-trivial error.
 
+### Scheduler shows cable box as "Idle" while a game is actively tuned on it
+
+- **Symptom:** On the Sports Guide admin scheduler page, a Cable Box card
+  shows "Idle" even though:
+  - `input_source_allocations` has a row with `status='active'` for that box
+  - The physical box is correctly tuned to the game's channel
+  - `SchedulerLog` shows a successful `scheduler-service/tune` entry
+  Other cable boxes in the same UI show their games correctly.
+- **Root causes (two variants — check both):**
+  1. **`input_sources.currently_allocated` / `current_channel` not set
+     after tune.** Prior to v2.18.0, `scheduler-service.checkAndExecute
+     BartenderSchedules()` flipped the allocation to `active` but never
+     updated the `input_sources` row. The UI reads both tables — if the
+     source row is stale, the card renders as idle. Fixed in v2.18.0,
+     but existing rows need one-time backfill.
+  2. **`InputCurrentChannel.inputLabel` mismatch.** The scheduler UI
+     joins allocations to current-channel rows by exact string match on
+     `inputLabel`. Historical rows may have a shortened label like
+     `"Cable 1"` while the allocation returns `"Cable Box 1"` (from
+     `input_sources.name`). The join fails → card shows idle. Other
+     boxes with matching labels render correctly. No automated UI
+     surface reveals the mismatch — you have to diff the two API
+     responses.
+- **Diagnostic commands:**
+  ```bash
+  DB=/home/ubuntu/sports-bar-data/production.db
+  # Variant 1: any active allocation whose source row is still idle?
+  sqlite3 "$DB" "SELECT s.name, s.currently_allocated, a.status, a.channel_number
+    FROM input_source_allocations a
+    JOIN input_sources s ON s.id = a.input_source_id
+    WHERE a.status = 'active';"
+  # (currently_allocated should be 1 — if it's 0, variant 1 applies)
+
+  # Variant 2: does InputCurrentChannel.inputLabel match input_sources.name?
+  sqlite3 "$DB" "SELECT icc.inputNum, icc.inputLabel AS channel_label,
+    s.name AS source_name,
+    CASE WHEN icc.inputLabel = s.name THEN 'match' ELSE 'MISMATCH' END AS status
+    FROM InputCurrentChannel icc
+    LEFT JOIN input_sources s ON s.matrix_input_id = (
+      SELECT id FROM MatrixInput WHERE channelNumber = icc.inputNum LIMIT 1)
+    ORDER BY icc.inputNum;"
+  ```
+- **Fix:**
+  ```bash
+  DB=/home/ubuntu/sports-bar-data/production.db
+
+  # Variant 1: backfill input_sources state from active allocations
+  sqlite3 "$DB" "UPDATE input_sources
+    SET currently_allocated = 1,
+        current_channel = (SELECT a.channel_number FROM input_source_allocations a
+                           WHERE a.input_source_id = input_sources.id
+                             AND a.status = 'active'
+                           ORDER BY a.allocated_at DESC LIMIT 1),
+        updated_at = strftime('%s','now')
+    WHERE EXISTS (SELECT 1 FROM input_source_allocations a
+                  WHERE a.input_source_id = input_sources.id AND a.status = 'active');"
+
+  # Variant 2: normalize InputCurrentChannel.inputLabel to match input_sources.name
+  # For each mismatch row from the diagnostic above:
+  sqlite3 "$DB" "UPDATE InputCurrentChannel SET inputLabel = 'Cable Box 1' WHERE inputNum = 1;"
+  # Repeat per inputNum as needed. The UPDATE path in channel-presets/tune does
+  # not touch inputLabel, so the corrected value persists across future tunes.
+  ```
+- **Verification:** refresh the Sports Guide admin scheduler page. The
+  previously-idle box now shows the game's teams below the channel number.
+  Also:
+  ```bash
+  diff <(curl -s http://localhost:3001/api/schedules/bartender-schedule | jq -r '.schedules[] | select(.status=="active") | .inputLabel') \
+       <(curl -s http://localhost:3001/api/matrix/current-channels | jq -r '.channels | to_entries[] | .value.inputLabel')
+  # Empty diff = all labels match.
+  ```
+- **Applies to:** all locations. Variant 1 affects any deployment with
+  bartender allocations that activated before v2.18.0 upgrade. Variant 2
+  affects any deployment with historical short-label rows in
+  `InputCurrentChannel`.
+- **First seen:** 2026-04-17 at Lucky's 1313. Variant 1 was found first
+  (both cable boxes 1 and 2 affected); variant 2 was exposed after
+  variant 1 was backfilled and Box 1 still showed idle while Box 2
+  correctly displayed LSU game — the label diff between Box 1
+  (`"Cable 1"`) and Box 2 (`"Cable Box 2"`) was the tell.
+
 ### AI Suggest returns `suggestions: []` with "No active input sources configured"
 
 - **Symptom:** clicking "Get Suggestions" on the scheduler UI does
