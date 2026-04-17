@@ -7,6 +7,7 @@ import { cacheManager } from '@/lib/cache-manager'
 import { z } from 'zod'
 import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 import { HARDWARE_CONFIG } from '@/lib/hardware-config'
+import { requireAtlasProcessor } from '@/lib/atlas-guard'
 
 export async function GET(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
@@ -30,6 +31,9 @@ export async function GET(request: NextRequest) {
         { status: 400 }
       )
     }
+
+    const guard = await requireAtlasProcessor(processorIp, 'ATLAS SOURCES')
+    if (guard) return guard
 
     // Cache key based on processor IP
     const cacheKey = `sources:${processorIp}`

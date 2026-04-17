@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { validateQueryParams, isValidationError } from '@/lib/validation'
 import { atlasMeterManager } from '@/lib/atlas-meter-manager'
 import { HARDWARE_CONFIG } from '@/lib/hardware-config'
+import { requireAtlasProcessor } from '@/lib/atlas-guard'
 
 export async function GET(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
@@ -27,6 +28,9 @@ export async function GET(request: NextRequest) {
         { status: 400 }
       )
     }
+
+    const guard = await requireAtlasProcessor(processorIp, 'INPUT METERS')
+    if (guard) return guard
 
     // Ensure we're subscribed to meters for this processor
     if (!atlasMeterManager.isSubscribed(processorIp)) {
