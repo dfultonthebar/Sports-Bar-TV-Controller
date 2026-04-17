@@ -37,6 +37,59 @@ is the archive.
 
 ## Current entries
 
+### v2.17.0 — Dep major upgrades (Tailwind 4, lucide-react 1, eslint 10)
+**Released:** 2026-04-17
+
+**New dependencies:**
+- **`@tailwindcss/postcss`** installed as the replacement PostCSS plugin
+  for Tailwind v4. `autoprefixer` was removed (baked into the new plugin).
+
+**Dependencies removed:**
+- **`sqlite3`** (the legacy package, not better-sqlite3). It was listed as
+  a dependency but not imported anywhere in source — only appeared as a
+  string literal in a shell-command allowlist. Removing it killed ~7
+  security advisories that lived under its cacache/tar transitive tree.
+
+**Schema changes:** None.
+
+**Required manual steps:**
+- [ ] **Tailwind CSS** — `apps/web/src/app/globals.css` no longer uses
+  `@tailwind base/components/utilities` directives; it now uses
+  `@import 'tailwindcss'` + `@theme { ... }`. If a location has custom
+  CSS that extends Tailwind utilities, verify those still work after
+  the upgrade. The `tailwind.config.js` file was retired — all theme
+  customization lives inline in `globals.css` via `@theme`.
+- [ ] **lucide-react 0.x → 1.x** — icon naming stable across this range,
+  but any location that pinned to a specific 0.x version in its own code
+  should re-verify renders. All icons used in the bartender remote and
+  admin UI were confirmed working at Lucky's.
+
+**Verification:**
+```bash
+# Build must succeed — any Tailwind class that v4 removed (e.g.,
+# rounded default→rounded-sm) will surface here:
+NODE_ENV=development npm run build
+
+# verify-install 7/7
+bash scripts/verify-install.sh
+
+# Pages load with CSS intact
+curl -s http://localhost:3001/remote | grep -c "tailwindcss"   # should be 0 (v4 inlines styles)
+curl -sS -o /dev/null -w "%{http_code}\n" http://localhost:3001/remote   # 200
+```
+
+**Rollback:** If Tailwind 4 breaks UI at a location, the rollback tag
+`pre-dep-upgrade-YYYYMMDD-HHMMSS` (see `git tag | grep pre-dep`) captures
+the pre-upgrade state. `git reset --hard <tag>` + `npm ci` + `npm run build`
+restores Tailwind 3.
+
+**Remaining vulnerabilities:** 11 (all in drizzle-kit + next-pwa dev
+dependencies; upstream maintainers haven't released fixes). These are
+build-time only, not exposed to runtime attackers, and cannot currently
+be patched.
+
+---
+
 ### v2.16.x — dbx ZonePRO audio + single-card Wolf Pack support
 **Released:** 2026-04-17
 
