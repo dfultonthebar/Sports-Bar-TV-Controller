@@ -372,15 +372,20 @@ export default function ScheduledGamesPanel() {
     async (id: string) => {
       setCancellingId(id)
       try {
-        const res = await fetch('/api/schedules/bartender-schedule', {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id, status: 'cancelled' }),
-        })
-        if (!res.ok) {
+        // Use DELETE — the PATCH handler's Zod schema silently drops
+        // `status`, so a PATCH-based cancel appears successful but actually
+        // wipes tvOutputIds and leaves status='pending'. DELETE sets status
+        // to 'cancelled' atomically.
+        const res = await fetch(
+          `/api/schedules/bartender-schedule?id=${encodeURIComponent(id)}`,
+          { method: 'DELETE' }
+        )
+        const body = await res.json().catch(() => ({}))
+        if (!res.ok || body?.success === false) {
           logger.error('[SCHEDULED-GAMES] Failed to cancel schedule', {
             id,
             status: res.status,
+            error: body?.error,
           })
         } else {
           logger.debug('[SCHEDULED-GAMES] Cancelled schedule', { id })

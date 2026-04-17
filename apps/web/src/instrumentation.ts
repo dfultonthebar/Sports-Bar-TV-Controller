@@ -101,14 +101,42 @@ export async function register() {
       // channel guide has live game data to display.
       const { espnSyncService } = await import('@sports-bar/scheduler')
 
+      // Comprehensive sports bar lineup. Each league adds one ESPN HTTP call
+      // per sync cycle (every 10 min). Any league that 404s on ESPN just
+      // returns an empty game list and logs an error — the sync continues.
       const ESPN_SYNC_LEAGUES: Array<{ sport: string; league: string }> = [
+        // Baseball / Softball
         { sport: 'baseball', league: 'mlb' },
+        { sport: 'baseball', league: 'college-baseball' },
+        { sport: 'softball', league: 'college-softball' },
+        // Basketball
         { sport: 'basketball', league: 'nba' },
-        { sport: 'hockey', league: 'nhl' },
-        { sport: 'football', league: 'nfl' },
-        { sport: 'football', league: 'college-football' },
+        { sport: 'basketball', league: 'wnba' },
         { sport: 'basketball', league: 'mens-college-basketball' },
         { sport: 'basketball', league: 'womens-college-basketball' },
+        // Hockey
+        { sport: 'hockey', league: 'nhl' },
+        { sport: 'hockey', league: 'mens-college-hockey' },
+        // Football — NFL + college + UFL spring league
+        { sport: 'football', league: 'nfl' },
+        { sport: 'football', league: 'college-football' },
+        { sport: 'football', league: 'ufl' },
+        // Soccer — MLS, Premier League, Champions League
+        { sport: 'soccer', league: 'usa.1' },
+        { sport: 'soccer', league: 'eng.1' },
+        { sport: 'soccer', league: 'uefa.champions' },
+        // Racing — F1, NASCAR Cup, IndyCar
+        { sport: 'racing', league: 'f1' },
+        { sport: 'racing', league: 'nascar-premier' },
+        { sport: 'racing', league: 'irl' },
+        // Golf
+        { sport: 'golf', league: 'pga' },
+        { sport: 'golf', league: 'lpga' },
+        // Combat
+        { sport: 'mma', league: 'ufc' },
+        // Tennis — ATP/WTA tours
+        { sport: 'tennis', league: 'atp' },
+        { sport: 'tennis', league: 'wta' },
       ]
 
       const runEspnSyncAll = async () => {
@@ -219,6 +247,37 @@ export async function register() {
       logger.info('[INSTRUMENTATION] ✅ Atlas Audio AI learning cycle initialized (every 6 hours)')
     } catch (error) {
       logger.error('[INSTRUMENTATION] ❌ Failed to initialize Atlas learning cycle:', error)
+    }
+
+    try {
+      // NFHS Network game sync. NFHS has no public API (placeholder in
+      // packages/streaming — see docs/NFHS_API_INTEGRATION.md), so we scrape
+      // each school's page from nfhsnetwork.com hourly. The school list lives
+      // in the NFHSSchool table (per-venue config). Games land in NFHSGame
+      // and are consumed by /api/channel-guide's streaming path for Fire TV
+      // inputs that have NFHS Network logged in.
+      const { syncAllActiveSchools } = await import('./lib/nfhs-sync')
+
+      const runNfhsSync = async () => {
+        try {
+          const results = await syncAllActiveSchools()
+          const added = results.reduce((n, r) => n + r.gamesAdded, 0)
+          const updated = results.reduce((n, r) => n + r.gamesUpdated, 0)
+          const errors = results.filter(r => r.error).length
+          logger.info(`[INSTRUMENTATION][NFHS SYNC] ${results.length} schools: +${added} new, ~${updated} updated, ${errors} errors`)
+        } catch (err) {
+          logger.error('[INSTRUMENTATION][NFHS SYNC] failed:', err)
+        }
+      }
+
+      // Initial sync after 75s (staggered so we don't hammer the network on boot)
+      setTimeout(runNfhsSync, 75_000)
+      // Recurring: hourly
+      setInterval(runNfhsSync, 60 * 60 * 1000)
+
+      logger.info('[INSTRUMENTATION] ✅ NFHS Network sync scheduled (hourly)')
+    } catch (error) {
+      logger.error('[INSTRUMENTATION] ❌ Failed to initialize NFHS sync:', error)
     }
   }
 }
