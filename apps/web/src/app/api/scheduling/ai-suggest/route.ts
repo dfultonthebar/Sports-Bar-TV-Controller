@@ -27,15 +27,13 @@ const OLLAMA_MODEL = HARDWARE_CONFIG.ollama.model
 interface SchedulingPattern {
   id: string
   pattern_type: string
-  team_name?: string
-  league?: string
-  input_source_id?: string
-  input_source_name?: string
-  preferred_outputs?: string
-  occurrence_count: number
+  pattern_key: string
+  pattern_data: string
+  observation_count: number
+  sample_size: number
   confidence: number
-  last_seen?: string
-  metadata?: string
+  first_observed: number
+  last_observed: number
 }
 
 interface GameListing {
@@ -203,7 +201,7 @@ async function fetchUpcomingGames(): Promise<GameListing[]> {
 async function loadSchedulingPatterns(): Promise<SchedulingPattern[]> {
   try {
     const rows = await db.all(
-      sql`SELECT * FROM scheduling_patterns ORDER BY occurrence_count DESC LIMIT 100`
+      sql`SELECT * FROM scheduling_patterns ORDER BY observation_count DESC LIMIT 100`
     ) as SchedulingPattern[]
     logger.info(`[AI-SUGGEST] Loaded ${rows.length} scheduling patterns`)
     return rows
@@ -387,7 +385,7 @@ function buildPrompt(
       .map((p: any) => {
         try {
           const d = typeof p.pattern_data === 'string' ? JSON.parse(p.pattern_data) : p.pattern_data
-          return `${d.teamName || '?'}: usually on ${d.preferredInput || '?'}`
+          return `${d.team || d.teamName || '?'}: usually on ${d.preferredInput || '?'}`
         } catch { return null }
       })
       .filter(Boolean)
