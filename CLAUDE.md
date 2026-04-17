@@ -538,6 +538,40 @@ pm2 delete sports-bar-tv-controller && pm2 start ecosystem.config.js
 - **All cable box control uses IR** via Global Cache iTach IP2IR
 - **CEC code is legacy dead weight** — do not add new CEC features, plan to remove existing CEC code
 
+### 5a. Matrix Config Per-Location Values (CRITICAL)
+
+`MatrixConfiguration.outputOffset` is ADDED to every output number before
+routing commands go to the Wolf Pack. If set wrong, routing silently lands
+on the wrong physical TVs with no error — just confused operators. Lucky's
+1313 shipped in April 2026 with `outputOffset=26` on a single-card WP-36X36,
+sending every "output 1" request to physical output 27 for weeks before
+being caught.
+
+**Expected values by model:**
+
+| Model family | outputOffset | audioOutputCount notes |
+|---|---|---|
+| **WP-8X8, WP-16X16, WP-36X36** (single-card) | **MUST be 0** | 0 if audio routes via Atlas/dbx/BSS DSP; non-zero only if Wolf Pack outputs are wired to speakers |
+| **WP-48+** (multi-card) | Per-card, depends on physical wiring — see the location's card-slot assignments | Per-location |
+
+**Per-location reference:**
+
+| Location | Model | outputOffset | audioOutputCount | Notes |
+|---|---|---|---|---|
+| Holmgren Way | Wolf Pack 48-port | Per card layout | 4 | Outputs 37-40 are audio-only (CLAUDE.md §10) |
+| Graystone | Wolf Pack (multi-card) | +32 for audio card | 4 | Comment in `wolfpack-matrix-service.ts:275` |
+| Lucky's 1313 | **WP-36X36 (single-card)** | **0** | **0** | Audio via dbx ZonePRO 1260m @ 192.168.10.50, NOT Wolf Pack outputs |
+
+**Enforcement:**
+- `apps/web/src/instrumentation.ts` logs `[MATRIX-CONFIG] ⚠` at startup if a single-card model has non-zero offset
+- `scripts/verify-install.sh` has a `matrix_config` layer that FAILS the install-verify for the same condition, rolling back auto-updates that somehow land bad values
+- Multi-card locations are not auto-verified (their values are wiring-specific) — operator must maintain the row in this table when adding/moving cards
+
+**When adding a new location**, add a row to the per-location table above
+BEFORE the first auto-update merges it into this file. When changing physical
+cabling on an existing Wolf Pack, update both the live DB value AND the row
+here.
+
 ### 6. Device Data: DB is Source of Truth
 - Devices are now stored in database tables (`DirecTVDevice`, `FireTVDevice`), not JSON files
 - JSON files (`data/directv-devices.json`, `data/firetv-devices.json`) are only used for initial seeding

@@ -392,7 +392,7 @@ check_crash_logs() {
 # code when only one check failed (helps the auto-updater decide what to roll
 # back), but always run every check so the operator sees the full picture.
 # ---------------------------------------------------------------------------
-TOTAL=6
+TOTAL=7
 PASSED=0
 FAILED_NAMES=""
 FIRST_FAIL_CODE=0
@@ -411,11 +411,45 @@ run_check() {
     fi
 }
 
+# Matrix config sanity: if the active MatrixConfiguration is a single-card
+# Wolf Pack (WP-8X8/16X16/36X36), outputOffset MUST be 0. A non-zero offset
+# means every routing command lands on the wrong physical output — silent
+# but destructive. Lucky's 1313 shipped with outputOffset=26 on a WP-36X36
+# for weeks before being caught. Multi-card models (WP-48 etc.) can
+# legitimately have non-zero offsets, so we only flag the single-card case.
+check_matrix_config() {
+    log_info "Checking MatrixConfiguration sanity for single-card Wolf Packs..."
+    local row
+    row=$(sqlite3 "$DB_PATH" "SELECT model || '|' || outputOffset FROM MatrixConfiguration WHERE isActive=1 LIMIT 1;" 2>/dev/null || echo "")
+    if [ -z "$row" ]; then
+        log_pass "MatrixConfiguration check skipped (no active matrix)"
+        record "matrix_config" 1 "no active matrix"
+        return 0
+    fi
+    local model="${row%|*}"
+    local offset="${row#*|}"
+    local model_upper
+    model_upper=$(echo "$model" | tr '[:lower:]' '[:upper:]')
+    case "$model_upper" in
+        WP-8X8*|WP-16X16*|WP-36X36*)
+            if [ "$offset" -ne 0 ] 2>/dev/null; then
+                log_fail "Single-card Wolf Pack ($model) has outputOffset=$offset but must be 0 — routing will land on wrong outputs"
+                record "matrix_config" 0 "offset=$offset on $model (expected 0)"
+                return 16
+            fi
+            ;;
+    esac
+    log_pass "MatrixConfiguration OK (model=$model, outputOffset=$offset)"
+    record "matrix_config" 1 "model=$model offset=$offset"
+    return 0
+}
+
 run_check check_pm2             "pm2_online"
 run_check check_health_http     "health_http"
 run_check check_metrics_http    "metrics_http"
 run_check check_bartender_proxy "bartender_proxy"
 run_check check_critical_tables "critical_tables"
+run_check check_matrix_config   "matrix_config"
 run_check check_crash_logs      "crash_logs"
 
 END_EPOCH=$(date +%s)
