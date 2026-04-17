@@ -360,7 +360,7 @@ function buildPrompt(
   // routes — cable channel, directv channel, and/or a streaming app on Fire TV.
   // The AI picks whichever input it wants and uses the matching identifier.
   const gameLines = games.map((g, i) => {
-    const time = new Date(g.time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Chicago' })
+    const time = new Date(g.time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: HARDWARE_CONFIG.venue.timezone })
     const cableCh = g.channelNumber ? `cable ch ${g.channelNumber}` : ''
     const dtvCh = g.directvChannel ? `directv ch ${g.directvChannel}` : ''
     const app = g.streamingApp ? `firetv app "${g.streamingApp}"` : ''

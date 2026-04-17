@@ -1,6 +1,7 @@
 import { logger } from '@sports-bar/logger'
 import { db, schema } from '@/db'
 import { eq } from 'drizzle-orm'
+import { HARDWARE_CONFIG } from '@/lib/hardware-config'
 
 /**
  * NFHS Network page scraper.
@@ -151,10 +152,10 @@ export async function syncSchool(slug: string): Promise<SchoolSyncResult> {
       const awayTeam = ev.second_title || (ev.subheadline || '').split(/\s+vs\.?\s+/i)[1] || null
       const location = [ev.city, ev.state].filter(Boolean).join(', ')
       const time = evDate.toLocaleTimeString('en-US', {
-        hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'America/Chicago',
+        hour: 'numeric', minute: '2-digit', hour12: true, timeZone: HARDWARE_CONFIG.venue.timezone,
       })
       const dateStr = evDate.toLocaleDateString('en-US', {
-        month: 'short', day: 'numeric', year: 'numeric', timeZone: 'America/Chicago',
+        month: 'short', day: 'numeric', year: 'numeric', timeZone: HARDWARE_CONFIG.venue.timezone,
       })
 
       const record = {
