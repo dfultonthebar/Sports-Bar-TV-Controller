@@ -156,8 +156,37 @@ async function fetchUpcomingGames(): Promise<GameListing[]> {
       })
     }
 
-    // Sort by start time
-    games.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime())
+    // Sort by importance so the 30-cap picks high-value games instead of
+    // whatever comes first chronologically. With 23 leagues synced, a raw
+    // time sort would fill the prompt with routine college baseball games
+    // and push the Brewers / MLS / UFL games out.
+    //
+    // Priority tiers (lower number = higher priority):
+    //   1. Home-team games (Brewers/Bucks/Packers/Badgers) — always include
+    //   2. Pro leagues (MLB, NBA, NHL, NFL, MLS, Premier League, UFC, UFL,
+    //      F1, NASCAR, IndyCar, PGA, LPGA)
+    //   3. College football and men's/women's college basketball
+    //   4. Other college sports (college baseball, softball, hockey, tennis)
+    const HOME_TEAMS_RE = /(Brewers|Bucks|Packers|Badgers)/i
+    const PRO_LEAGUES = new Set([
+      'mlb', 'nba', 'wnba', 'nhl', 'nfl', 'ufl',
+      'usa.1', 'eng.1', 'uefa.champions',
+      'f1', 'nascar-premier', 'irl',
+      'pga', 'lpga', 'ufc', 'atp', 'wta',
+    ])
+    const TOP_COLLEGE = new Set(['college-football', 'mens-college-basketball', 'womens-college-basketball'])
+    const priorityOf = (g: GameListing): number => {
+      if (HOME_TEAMS_RE.test(g.homeTeam) || HOME_TEAMS_RE.test(g.awayTeam)) return 1
+      if (PRO_LEAGUES.has(g.league)) return 2
+      if (TOP_COLLEGE.has(g.league)) return 3
+      return 4
+    }
+    games.sort((a, b) => {
+      const pa = priorityOf(a)
+      const pb = priorityOf(b)
+      if (pa !== pb) return pa - pb
+      return new Date(a.time).getTime() - new Date(b.time).getTime()
+    })
     const capped = games.slice(0, 30)
     logger.info(
       `[AI-SUGGEST] Games in window: ${rows.length}, playable at this venue: ${games.length} (skipped ${skippedNoChannel} with no resolvable channel), capped to ${capped.length}`
