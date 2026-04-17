@@ -22,8 +22,8 @@ export const HARDWARE_CONFIG = {
   },
   ollama: {
     baseUrl: 'http://localhost:11434',
-    model: 'llama3.2:3b',
-    timeout: 60000,
+    model: 'llama3.1:8b',
+    timeout: 180000,
   },
   venue: {
     timezone: 'America/Chicago',

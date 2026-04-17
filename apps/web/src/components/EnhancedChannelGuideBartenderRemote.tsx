@@ -220,7 +220,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
 
   // Schedule Picker State (for choosing Cable vs DirecTV when scheduling)
   const [schedulePickerGame, setSchedulePickerGame] = useState<GameListing | null>(null)
-  const [schedulePickerDeviceType, setSchedulePickerDeviceType] = useState<'cable' | 'directv'>('cable')
+  const [schedulePickerDeviceType, setSchedulePickerDeviceType] = useState<'cable' | 'directv' | 'firetv'>('cable')
   const [schedulePickerDeviceId, setSchedulePickerDeviceId] = useState<string>('')
 
   // UI State
@@ -368,10 +368,16 @@ export default function EnhancedChannelGuideBartenderRemote() {
 
     // Pre-select device type based on the currently selected input
     const currentDeviceType = selectedInput ? getDeviceTypeForInput(selectedInput) : null
-    let defaultType: 'cable' | 'directv' = 'cable'
+    let defaultType: 'cable' | 'directv' | 'firetv' = 'cable'
     let defaultDeviceId = ''
 
-    if (currentDeviceType === 'satellite' && selectedDevice) {
+    if (currentDeviceType === 'streaming' && selectedDevice) {
+      defaultType = 'firetv'
+      defaultDeviceId = selectedDevice.id
+    } else if (currentDeviceType === 'streaming' && fireTVDevices.length > 0) {
+      defaultType = 'firetv'
+      defaultDeviceId = fireTVDevices[0].id
+    } else if (currentDeviceType === 'satellite' && selectedDevice) {
       defaultType = 'directv'
       defaultDeviceId = selectedDevice.id
     } else if (currentDeviceType === 'cable' && selectedDevice) {
@@ -406,6 +412,9 @@ export default function EnhancedChannelGuideBartenderRemote() {
     if (schedulePickerDeviceType === 'cable') {
       const device = irDevices.find(d => d.id === schedulePickerDeviceId)
       deviceName = device?.name || 'Cable Box'
+    } else if (schedulePickerDeviceType === 'firetv') {
+      const device = fireTVDevices.find(d => d.id === schedulePickerDeviceId)
+      deviceName = device?.name || 'Fire TV'
     } else {
       const device = direcTVDevices.find(d => d.id === schedulePickerDeviceId)
       deviceName = device?.name || 'DirecTV'
@@ -1936,12 +1945,26 @@ export default function EnhancedChannelGuideBartenderRemote() {
                 <Satellite className="w-4 h-4 inline mr-2" />
                 DirecTV
               </button>
+              <button
+                onClick={() => {
+                  setSchedulePickerDeviceType('firetv')
+                  setSchedulePickerDeviceId(fireTVDevices.length > 0 ? fireTVDevices[0].id : '')
+                }}
+                className={`flex-1 py-3 px-4 rounded-xl font-medium text-sm transition-all duration-200 ${
+                  schedulePickerDeviceType === 'firetv'
+                    ? 'bg-blue-500/30 border-2 border-blue-400/60 text-blue-300'
+                    : 'bg-white/5 border border-white/10 text-slate-400 hover:bg-white/10'
+                }`}
+              >
+                <Smartphone className="w-4 h-4 inline mr-2" />
+                Fire TV
+              </button>
             </div>
 
             {/* Device Selector */}
             <div className="mb-4">
               <label className="text-xs font-medium text-slate-400 block mb-2">
-                Select {schedulePickerDeviceType === 'cable' ? 'Cable Box' : 'DirecTV Receiver'}
+                Select {schedulePickerDeviceType === 'cable' ? 'Cable Box' : schedulePickerDeviceType === 'firetv' ? 'Fire TV' : 'DirecTV Receiver'}
               </label>
               {schedulePickerDeviceType === 'cable' ? (
                 <div className="space-y-2 max-h-48 overflow-y-auto">
@@ -1964,7 +1987,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
                     ))
                   )}
                 </div>
-              ) : (
+              ) : schedulePickerDeviceType === 'directv' ? (
                 <div className="space-y-2 max-h-48 overflow-y-auto">
                   {direcTVDevices.length === 0 ? (
                     <p className="text-sm text-slate-500 py-3 text-center">No DirecTV receivers configured</p>
@@ -1985,6 +2008,36 @@ export default function EnhancedChannelGuideBartenderRemote() {
                             <div className="text-xs text-slate-400 mt-0.5">{device.receiverType}{device.inputChannel ? ` -- Input ${device.inputChannel}` : ''}</div>
                           </div>
                           {device.isOnline ? (
+                            <CheckCircle className="w-4 h-4 text-green-400 flex-shrink-0" />
+                          ) : (
+                            <AlertCircle className="w-4 h-4 text-slate-500 flex-shrink-0" />
+                          )}
+                        </div>
+                      </button>
+                    ))
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {fireTVDevices.length === 0 ? (
+                    <p className="text-sm text-slate-500 py-3 text-center">No Fire TV devices configured</p>
+                  ) : (
+                    fireTVDevices.map(device => (
+                      <button
+                        key={device.id}
+                        onClick={() => setSchedulePickerDeviceId(device.id)}
+                        className={`w-full text-left p-3 rounded-xl transition-all duration-200 ${
+                          schedulePickerDeviceId === device.id
+                            ? 'bg-blue-500/20 border-2 border-blue-400/50 text-white'
+                            : 'bg-white/5 border border-white/10 text-slate-300 hover:bg-white/10'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <div className="font-medium text-sm">{device.name}</div>
+                            <div className="text-xs text-slate-400 mt-0.5">{device.deviceType}{device.inputChannel ? ` -- Input ${device.inputChannel}` : ''}</div>
+                          </div>
+                          {(device as any).isOnline ? (
                             <CheckCircle className="w-4 h-4 text-green-400 flex-shrink-0" />
                           ) : (
                             <AlertCircle className="w-4 h-4 text-slate-500 flex-shrink-0" />
