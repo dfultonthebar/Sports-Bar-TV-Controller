@@ -474,15 +474,34 @@ export async function POST(request: NextRequest) {
     let deviceLoggedInPackages: string[] = []  // Packages for services the device is logged into
 
     if (deviceType === 'streaming' && deviceId) {
+      // Look up the Fire TV's IP so we can match Scout reports by IP as well
+      // as by deviceId. Scout's deviceId ("amazon-2") rarely matches
+      // FireTVDevice.id ("firetv_1741700000002_holmgren2") — they're configured
+      // independently — but both rows share the same ipAddress.
+      let deviceIp: string | null = null
+      try {
+        const { db } = await import('@/db')
+        const { schema } = await import('@/db')
+        const { eq } = await import('drizzle-orm')
+        const row = await db.select().from(schema.fireTVDevices)
+          .where(eq(schema.fireTVDevices.id, deviceId)).get()
+        deviceIp = row?.ipAddress ?? null
+      } catch { /* non-fatal */ }
+
       // Fetch installed apps from Scout
       try {
         const scoutResponse = await fetch('http://localhost:3001/api/firestick-scout')
         if (scoutResponse.ok) {
           const scoutData = await scoutResponse.json()
-          const device = scoutData.statuses?.find((d: any) => d.deviceId === deviceId)
+          const statuses = (scoutData.statuses || []) as any[]
+          const device =
+            statuses.find(d => d.deviceId === deviceId) ||
+            (deviceIp ? statuses.find(d => d.ipAddress === deviceIp) : null)
           if (device && device.installedApps) {
             deviceInstalledApps = device.installedApps
-            logInfo(`Fire TV device ${deviceId} has ${deviceInstalledApps.length} installed apps`)
+            logInfo(`Fire TV ${deviceId} (ip=${deviceIp || '?'}, scoutId=${device.deviceId}) has ${deviceInstalledApps.length} installed apps`)
+          } else {
+            logInfo(`Fire TV ${deviceId} (ip=${deviceIp || '?'}) not found in Scout reports (${statuses.length} devices reporting)`)
           }
         }
       } catch (error: any) {
@@ -626,6 +645,137 @@ export async function POST(request: NextRequest) {
     }
 
     logInfo(`Processed ${programs.length} programs and ${channels.size} channels`)
+
+    // Streaming: augment with ESPN-synced game_schedules. Rail Media only covers
+    // nationally-carried games; our ESPN sync covers 23 leagues. For each game
+    // we walk broadcast_networks looking for a streaming app, and ONLY include
+    // games whose app is actually logged-in on THIS specific Fire TV — different
+    // Fire TVs at the same venue can have different apps installed.
+    if (deviceType === 'streaming' && deviceId) {
+      try {
+        const { db } = await import('@/db')
+        const { schema } = await import('@/db')
+        const { and, gte, lte } = await import('drizzle-orm')
+
+        const windowStartSec = Math.floor(new Date(startTime).getTime() / 1000)
+        const windowEndSec = Math.floor(new Date(endTime).getTime() / 1000)
+
+        const localGames = await db
+          .select()
+          .from(schema.gameSchedules)
+          .where(
+            and(
+              gte(schema.gameSchedules.scheduledStart, windowStartSec),
+              lte(schema.gameSchedules.scheduledStart, windowEndSec)
+            )
+          )
+          .all()
+
+        let gsInjected = 0
+        let gsSkippedNoApp = 0
+        let gsSkippedNotLoggedIn = 0
+        let gsSkippedDupe = 0
+
+        for (const game of localGames) {
+          if (!game.homeTeamName || !game.awayTeamName) continue
+
+          let broadcastNetworks: string[] = []
+          try {
+            if (game.broadcastNetworks) {
+              broadcastNetworks = JSON.parse(game.broadcastNetworks)
+            }
+          } catch {
+            broadcastNetworks = []
+          }
+
+          // Walk networks looking for a streaming app this device can play.
+          // Sport-gate MLBEI/NHLCI/NBALP/MLSDK by passing the game's league.
+          let matchedAppInfo: { app: string; code: string; packages: string[] } | null = null
+          let matchedNetwork: string | null = null
+          for (const network of broadcastNetworks) {
+            const appInfo = getStreamingAppInfoForStation(network, game.league)
+            if (!appInfo) continue
+            const loggedIn = deviceLoggedInPackages.some(pkg => appInfo.packages.includes(pkg))
+            if (loggedIn) {
+              matchedAppInfo = appInfo
+              matchedNetwork = network
+              break
+            }
+          }
+
+          if (!matchedAppInfo) {
+            // We had no streaming app resolution at all, OR the app isn't
+            // logged in on this device.
+            const anyResolved = broadcastNetworks.some(
+              n => getStreamingAppInfoForStation(n, game.league)
+            )
+            if (anyResolved) gsSkippedNotLoggedIn++
+            else gsSkippedNoApp++
+            continue
+          }
+
+          // Dedupe against programs already added from Rail Media
+          const dupe = programs.some(p =>
+            p.channel?.streamingApp === matchedAppInfo!.app &&
+            p.homeTeam === game.homeTeamName &&
+            p.awayTeam === game.awayTeamName
+          )
+          if (dupe) {
+            gsSkippedDupe++
+            continue
+          }
+
+          const appChannel = {
+            id: `stream-${matchedAppInfo.app.replace(/\s+/g, '-').toLowerCase()}`,
+            name: matchedAppInfo.app,
+            number: matchedNetwork || matchedAppInfo.code,
+            type: 'streaming',
+            cost: 'subscription',
+            platforms: ['Fire TV', 'Streaming'],
+            channelNumber: matchedNetwork || matchedAppInfo.code,
+            deviceType: 'streaming',
+            streamingApp: matchedAppInfo.app,
+            packages: matchedAppInfo.packages,
+          }
+          if (!channels.has(appChannel.id)) {
+            channels.set(appChannel.id, appChannel)
+          }
+
+          const startDate = new Date(game.scheduledStart * 1000)
+          const endDate = new Date(game.estimatedEnd * 1000)
+          const gameTimeLabel = startDate.toLocaleTimeString('en-US', {
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true,
+          }).toLowerCase()
+
+          programs.push({
+            id: `gs-stream-${game.id}`,
+            league: game.league || 'Sports',
+            homeTeam: game.homeTeamName,
+            awayTeam: game.awayTeamName,
+            gameTime: gameTimeLabel,
+            startTime: startDate.toISOString(),
+            endTime: endDate.toISOString(),
+            channel: appChannel,
+            description: `${game.awayTeamName} @ ${game.homeTeamName}${game.venueName ? ' · ' + game.venueName : ''} (${matchedAppInfo.app})`,
+            isSports: true,
+            isLive: false,
+            venue: game.venueName || '',
+            station: matchedNetwork,
+          })
+          gsInjected++
+        }
+
+        if (gsInjected > 0 || gsSkippedNotLoggedIn > 0 || gsSkippedNoApp > 0) {
+          logInfo(
+            `game_schedules streaming fallback for ${deviceId}: +${gsInjected} injected, ${gsSkippedNotLoggedIn} skipped (app not logged in), ${gsSkippedNoApp} skipped (no streaming app), ${gsSkippedDupe} dedup`
+          )
+        }
+      } catch (fallbackError: any) {
+        logger.error('[Channel-Guide-API] game_schedules streaming fallback failed (non-fatal):', { error: fallbackError.message })
+      }
+    }
 
     // For streaming devices, check if NFHS Network is logged in and add NFHS games
     if (deviceType === 'streaming' && deviceId) {
