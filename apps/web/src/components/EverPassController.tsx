@@ -402,7 +402,7 @@ export default function EverPassController() {
                   testConnection(device)
                 }}
                 disabled={testingConnection === device.id}
-                className="flex items-center gap-1 px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded transition-colors disabled:opacity-50"
+                className="flex items-center gap-1 px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded-sm transition-colors disabled:opacity-50"
               >
                 {testingConnection === device.id ? (
                   <RefreshCw className="h-3 w-3 animate-spin" />
@@ -416,7 +416,7 @@ export default function EverPassController() {
                   e.stopPropagation()
                   openEditDialog(device)
                 }}
-                className="flex items-center gap-1 px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded transition-colors"
+                className="flex items-center gap-1 px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded-sm transition-colors"
               >
                 <Edit3 className="h-3 w-3" />
                 Edit
@@ -426,7 +426,7 @@ export default function EverPassController() {
                   e.stopPropagation()
                   setShowDeleteConfirm(device.id)
                 }}
-                className="flex items-center gap-1 px-2 py-1 text-xs bg-red-100 hover:bg-red-200 text-red-600 rounded transition-colors"
+                className="flex items-center gap-1 px-2 py-1 text-xs bg-red-100 hover:bg-red-200 text-red-600 rounded-sm transition-colors"
               >
                 <Trash2 className="h-3 w-3" />
                 Delete
@@ -576,19 +576,19 @@ export default function EverPassController() {
           <div className="flex justify-center gap-2 mt-6">
             <button
               onClick={() => sendCommand('f2_red')}
-              className="w-10 h-6 bg-red-500 hover:bg-red-600 rounded transition-colors"
+              className="w-10 h-6 bg-red-500 hover:bg-red-600 rounded-sm transition-colors"
             />
             <button
               onClick={() => sendCommand('f3_green')}
-              className="w-10 h-6 bg-green-500 hover:bg-green-600 rounded transition-colors"
+              className="w-10 h-6 bg-green-500 hover:bg-green-600 rounded-sm transition-colors"
             />
             <button
               onClick={() => sendCommand('f4_yellow')}
-              className="w-10 h-6 bg-yellow-500 hover:bg-yellow-600 rounded transition-colors"
+              className="w-10 h-6 bg-yellow-500 hover:bg-yellow-600 rounded-sm transition-colors"
             />
             <button
               onClick={() => sendCommand('f1_blue')}
-              className="w-10 h-6 bg-blue-500 hover:bg-blue-600 rounded transition-colors"
+              className="w-10 h-6 bg-blue-500 hover:bg-blue-600 rounded-sm transition-colors"
             />
           </div>
         </div>

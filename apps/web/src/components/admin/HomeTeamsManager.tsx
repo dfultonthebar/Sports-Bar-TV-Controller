@@ -360,7 +360,7 @@ export default function HomeTeamsManager() {
                         })
                         setEspnDivisions([]) // Clear divisions
                       }}
-                      className="w-full px-4 py-2 bg-sportsBar-800 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      className="w-full px-4 py-2 bg-sportsBar-800 border border-slate-600 rounded-lg text-white focus:outline-hidden focus:ring-2 focus:ring-purple-500"
                     >
                       <option value="">Select Sport</option>
                       <option value="football">Football</option>
@@ -395,7 +395,7 @@ export default function HomeTeamsManager() {
                         }
                       }}
                       disabled={!teamFormData.sport || loadingLeagues}
-                      className="w-full px-4 py-2 bg-sportsBar-800 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="w-full px-4 py-2 bg-sportsBar-800 border border-slate-600 rounded-lg text-white focus:outline-hidden focus:ring-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <option value="">
                         {loadingLeagues ? 'Loading leagues...' : teamFormData.sport ? 'Select League' : 'Select Sport First'}
@@ -427,7 +427,7 @@ export default function HomeTeamsManager() {
                         }
                       }}
                       disabled={!teamFormData.league || loadingTeams || espnTeams.length === 0}
-                      className="w-full px-4 py-2 bg-sportsBar-800 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="w-full px-4 py-2 bg-sportsBar-800 border border-slate-600 rounded-lg text-white focus:outline-hidden focus:ring-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <option value="">
                         {loadingTeams ? 'Loading teams...' : espnTeams.length === 0 ? 'Select League First' : 'Select a team (optional)'}
@@ -454,7 +454,7 @@ export default function HomeTeamsManager() {
                       value={teamFormData.teamName || ''}
                       onChange={(e) => setTeamFormData({ ...teamFormData, teamName: e.target.value })}
                       placeholder="e.g., Dallas Cowboys"
-                      className="w-full px-4 py-2 bg-sportsBar-800 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      className="w-full px-4 py-2 bg-sportsBar-800 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-purple-500"
                     />
                   </div>
 
@@ -467,7 +467,7 @@ export default function HomeTeamsManager() {
                       value={teamFormData.location || ''}
                       onChange={(e) => setTeamFormData({ ...teamFormData, location: e.target.value })}
                       placeholder="e.g., Dallas"
-                      className="w-full px-4 py-2 bg-sportsBar-800 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      className="w-full px-4 py-2 bg-sportsBar-800 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-purple-500"
                     />
                   </div>
 
@@ -479,7 +479,7 @@ export default function HomeTeamsManager() {
                       value={teamFormData.conference || ''}
                       onChange={(e) => setTeamFormData({ ...teamFormData, conference: e.target.value })}
                       disabled={!teamFormData.league || loadingDivisions}
-                      className="w-full px-4 py-2 bg-sportsBar-800 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="w-full px-4 py-2 bg-sportsBar-800 border border-slate-600 rounded-lg text-white focus:outline-hidden focus:ring-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <option value="">
                         {loadingDivisions ? 'Loading divisions...' : espnDivisions.length > 0 ? 'Select Division (Optional)' : 'Select League First'}
@@ -536,7 +536,7 @@ export default function HomeTeamsManager() {
                         max="20"
                         value={teamFormData.minTVsWhenActive || 1}
                         onChange={(e) => setTeamFormData({ ...teamFormData, minTVsWhenActive: parseInt(e.target.value) })}
-                        className="w-full px-4 py-2 bg-sportsBar-800 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        className="w-full px-4 py-2 bg-sportsBar-800 border border-slate-600 rounded-lg text-white focus:outline-hidden focus:ring-2 focus:ring-purple-500"
                       />
                       <p className="text-xs text-slate-400 mt-1">
                         Minimum number of TVs to show this team when they're playing
@@ -549,7 +549,7 @@ export default function HomeTeamsManager() {
                         id="autoPromotePlayoffs"
                         checked={teamFormData.autoPromotePlayoffs ?? true}
                         onChange={(e) => setTeamFormData({ ...teamFormData, autoPromotePlayoffs: e.target.checked })}
-                        className="w-5 h-5 rounded border-slate-600 bg-sportsBar-800 text-purple-600 focus:ring-2 focus:ring-purple-500"
+                        className="w-5 h-5 rounded-sm border-slate-600 bg-sportsBar-800 text-purple-600 focus:ring-2 focus:ring-purple-500"
                       />
                       <label htmlFor="autoPromotePlayoffs" className="text-sm font-medium text-slate-200">
                         Auto promote playoff games
@@ -572,7 +572,7 @@ export default function HomeTeamsManager() {
                         id="isPrimary"
                         checked={teamFormData.isPrimary || false}
                         onChange={(e) => setTeamFormData({ ...teamFormData, isPrimary: e.target.checked })}
-                        className="w-5 h-5 rounded border-slate-600 bg-sportsBar-800 text-yellow-600 focus:ring-2 focus:ring-yellow-500"
+                        className="w-5 h-5 rounded-sm border-slate-600 bg-sportsBar-800 text-yellow-600 focus:ring-2 focus:ring-yellow-500"
                       />
                       <label htmlFor="isPrimary" className="text-sm font-medium text-slate-200 flex items-center space-x-2">
                         <Star className="w-4 h-4 text-yellow-400" />
@@ -586,7 +586,7 @@ export default function HomeTeamsManager() {
                         id="isActive"
                         checked={teamFormData.isActive ?? true}
                         onChange={(e) => setTeamFormData({ ...teamFormData, isActive: e.target.checked })}
-                        className="w-5 h-5 rounded border-slate-600 bg-sportsBar-800 text-green-600 focus:ring-2 focus:ring-green-500"
+                        className="w-5 h-5 rounded-sm border-slate-600 bg-sportsBar-800 text-green-600 focus:ring-2 focus:ring-green-500"
                       />
                       <label htmlFor="isActive" className="text-sm font-medium text-slate-200">
                         Active (include in scheduler)
@@ -605,7 +605,7 @@ export default function HomeTeamsManager() {
                     onChange={(e) => setTeamFormData({ ...teamFormData, schedulerNotes: e.target.value })}
                     placeholder="Optional notes for the scheduler..."
                     rows={3}
-                    className="w-full px-4 py-2 bg-sportsBar-800 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    className="w-full px-4 py-2 bg-sportsBar-800 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-purple-500"
                   />
                 </div>
               </div>
@@ -662,12 +662,12 @@ export default function HomeTeamsManager() {
                       <div className="flex items-center space-x-2 mb-1">
                         <span className="font-medium text-white text-lg">{team.teamName}</span>
                         {team.isPrimary && (
-                          <span className="px-2 py-0.5 bg-yellow-500/20 text-yellow-300 text-xs font-bold rounded border border-yellow-500/30">
+                          <span className="px-2 py-0.5 bg-yellow-500/20 text-yellow-300 text-xs font-bold rounded-sm border border-yellow-500/30">
                             PRIMARY
                           </span>
                         )}
                         {team.isActive === false && (
-                          <span className="px-2 py-0.5 bg-slate-500/20 text-slate-300 text-xs font-bold rounded border border-slate-500/30">
+                          <span className="px-2 py-0.5 bg-slate-500/20 text-slate-300 text-xs font-bold rounded-sm border border-slate-500/30">
                             INACTIVE
                           </span>
                         )}
@@ -697,7 +697,7 @@ export default function HomeTeamsManager() {
                       </div>
 
                       {team.schedulerNotes && (
-                        <div className="mt-2 text-xs text-slate-400 bg-sportsBar-900/50 rounded p-2 border border-slate-700/50">
+                        <div className="mt-2 text-xs text-slate-400 bg-sportsBar-900/50 rounded-sm p-2 border border-slate-700/50">
                           {team.schedulerNotes}
                         </div>
                       )}

@@ -290,7 +290,7 @@ export default function HTDZoneControl({
                     value={zone.source}
                     onChange={(e) => handleSetSource(zone.zone, parseInt(e.target.value))}
                     disabled={controllingZone === zone.zone}
-                    className="w-full text-xs bg-slate-900 border border-slate-600 rounded px-2 py-1 text-slate-200"
+                    className="w-full text-xs bg-slate-900 border border-slate-600 rounded-sm px-2 py-1 text-slate-200"
                   >
                     {sourceNames.slice(0, device.sources).map((name, idx) => (
                       <option key={idx + 1} value={idx + 1}>{name}</option>
@@ -354,7 +354,7 @@ export default function HTDZoneControl({
               </div>
               <Button
                 size="sm"
-                variant={zone.power ? 'default' : 'outline'}
+                variant={zone.power ? 'default' : 'outline-solid'}
                 onClick={() => handlePower(zone.zone)}
                 disabled={controllingZone === zone.zone}
                 className={zone.power ? 'bg-green-600 hover:bg-green-500' : ''}
@@ -432,7 +432,7 @@ export default function HTDZoneControl({
                         <Button
                           key={sourceNum}
                           size="sm"
-                          variant={zone.source === sourceNum ? 'default' : 'outline'}
+                          variant={zone.source === sourceNum ? 'default' : 'outline-solid'}
                           onClick={() => handleSetSource(zone.zone, sourceNum)}
                           disabled={controllingZone === zone.zone}
                           className={`text-xs ${

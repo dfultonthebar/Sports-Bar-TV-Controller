@@ -1,0 +1,86 @@
+
+import { NextRequest, NextResponse } from 'next/server'
+import { and, asc, desc, eq, findFirst, or, update } from '@/lib/db-helpers'
+import { schema } from '@/db'
+import { logger } from '@sports-bar/logger'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
+import { z } from 'zod'
+import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
+
+
+/**
+ * POST /api/channel-presets/update-usage
+ * Update usage tracking for a preset when it's clicked
+ */
+export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.SPORTS_DATA)
+  if (!rateLimit.allowed) {
+    return rateLimit.response
+  }
+
+
+  // Input validation
+  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  if (isValidationError(bodyValidation)) return bodyValidation.error
+
+
+  try {
+    const { data: body } = bodyValidation
+    const { presetId } = body
+
+    if (!presetId) {
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: 'Missing required field: presetId' 
+        },
+        { status: 400 }
+      )
+    }
+
+    // Get current preset to increment usage count
+    const currentPreset = await findFirst('channelPresets', {
+      where: eq(schema.channelPresets.id, presetId as string)
+    })
+
+    if (!currentPreset) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Preset not found'
+        },
+        { status: 404 }
+      )
+    }
+
+    // Update the preset's usage count and last used timestamp
+    await update('channelPresets', presetId as string, {
+      usageCount: currentPreset.usageCount + 1,
+      lastUsed: new Date().toISOString()
+    })
+
+    // Get the updated preset
+    const updatedPreset = await findFirst('channelPresets', {
+      where: eq(schema.channelPresets.id, presetId as string)
+    })
+
+    logger.debug(`[Usage Tracking] Preset "${updatedPreset?.name}" usage updated: ${updatedPreset?.usageCount} uses`)
+
+    return NextResponse.json({
+      success: true,
+      preset: updatedPreset,
+      message: 'Usage tracking updated successfully'
+    })
+  } catch (error) {
+    logger.error('[Usage Tracking] Error updating preset usage:', error)
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Failed to update usage tracking',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
+      { status: 500 }
+    )
+  }
+}

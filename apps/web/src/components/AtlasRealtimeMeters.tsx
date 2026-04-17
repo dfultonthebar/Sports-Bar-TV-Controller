@@ -134,7 +134,7 @@ function MeterBar({ name, level, muted = false, compact = false }: MeterBarProps
         <div className="text-[10px] text-slate-400 truncate mb-0.5">{name}</div>
         <div className="h-2 bg-slate-800 rounded-full overflow-hidden relative">
           <div
-            className="h-full transition-all duration-[50ms] ease-out rounded-full"
+            className="h-full transition-all duration-50 ease-out rounded-full"
             style={{
               width: `${percent}%`,
               backgroundColor: muted ? 'rgb(100, 116, 139)' : color
@@ -154,12 +154,12 @@ function MeterBar({ name, level, muted = false, compact = false }: MeterBarProps
   return (
     <div className="flex items-center gap-2">
       <div className="w-20 text-xs text-slate-400 truncate flex items-center gap-1">
-        {muted && <VolumeX className="w-3 h-3 text-red-400 flex-shrink-0" />}
+        {muted && <VolumeX className="w-3 h-3 text-red-400 shrink-0" />}
         <span className={muted ? 'text-slate-500' : ''}>{name}</span>
       </div>
       <div className="flex-1 h-3 bg-slate-800 rounded-full overflow-hidden relative">
         <div
-          className="h-full transition-all duration-[50ms] ease-out rounded-full"
+          className="h-full transition-all duration-50 ease-out rounded-full"
           style={{
             width: `${percent}%`,
             backgroundColor: muted ? 'rgb(100, 116, 139)' : color

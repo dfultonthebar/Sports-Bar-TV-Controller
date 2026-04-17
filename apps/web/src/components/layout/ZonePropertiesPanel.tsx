@@ -121,14 +121,14 @@ export default function ZonePropertiesPanel({
   return (
     <div className="bg-slate-800 border border-slate-700 rounded-xl shadow-xl w-72 overflow-hidden">
       {/* Header */}
-      <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-3 flex items-center justify-between">
+      <div className="bg-linear-to-r from-blue-600 to-blue-700 px-4 py-3 flex items-center justify-between">
         <div className="flex items-center space-x-2">
           <Settings className="w-5 h-5 text-white" />
           <h3 className="font-semibold text-white">Zone Properties</h3>
         </div>
         <button
           onClick={onClose}
-          className="p-1 hover:bg-white/20 rounded transition-colors"
+          className="p-1 hover:bg-white/20 rounded-sm transition-colors"
         >
           <X className="w-5 h-5 text-white" />
         </button>
@@ -149,7 +149,7 @@ export default function ZonePropertiesPanel({
                 value={label}
                 onChange={(e) => handleUpdate('label', e.target.value)}
                 placeholder="e.g., Bar TV 1"
-                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
               />
             </div>
 
@@ -162,7 +162,7 @@ export default function ZonePropertiesPanel({
               <select
                 value={outputNumber}
                 onChange={(e) => handleUpdate('outputNumber', e.target.value)}
-                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-hidden focus:ring-2 focus:ring-blue-500"
               >
                 {availableOutputs.map((output) => (
                   <option key={output.channelNumber} value={output.channelNumber}>
@@ -182,7 +182,7 @@ export default function ZonePropertiesPanel({
                 <select
                   value={room}
                   onChange={(e) => handleUpdate('room', e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">No Room Assigned</option>
                   {rooms.map((r) => (
@@ -219,7 +219,7 @@ export default function ZonePropertiesPanel({
                     min={0}
                     max={100 - width}
                     step={0.5}
-                    className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
                 <div>
@@ -231,7 +231,7 @@ export default function ZonePropertiesPanel({
                     min={0}
                     max={100 - height}
                     step={0.5}
-                    className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
               </div>
@@ -253,7 +253,7 @@ export default function ZonePropertiesPanel({
                     min={3}
                     max={100 - x}
                     step={0.5}
-                    className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
                 <div>
@@ -265,7 +265,7 @@ export default function ZonePropertiesPanel({
                     min={3}
                     max={100 - y}
                     step={0.5}
-                    className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
               </div>

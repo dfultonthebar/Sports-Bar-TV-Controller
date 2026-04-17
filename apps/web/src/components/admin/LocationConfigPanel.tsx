@@ -190,7 +190,7 @@ export default function LocationConfigPanel() {
                 value={config.zipCode || ''}
                 onChange={(e) => setConfig({ ...config, zipCode: e.target.value })}
                 placeholder="12345"
-                className="w-full px-4 py-2 bg-sportsBar-800 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-2 bg-sportsBar-800 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
               />
             </div>
 
@@ -203,7 +203,7 @@ export default function LocationConfigPanel() {
                 value={config.city || ''}
                 onChange={(e) => setConfig({ ...config, city: e.target.value })}
                 placeholder="City"
-                className="w-full px-4 py-2 bg-sportsBar-800 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-2 bg-sportsBar-800 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
               />
             </div>
 
@@ -216,7 +216,7 @@ export default function LocationConfigPanel() {
                 value={config.state || ''}
                 onChange={(e) => setConfig({ ...config, state: e.target.value })}
                 placeholder="State"
-                className="w-full px-4 py-2 bg-sportsBar-800 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-2 bg-sportsBar-800 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
               />
             </div>
           </div>
@@ -228,7 +228,7 @@ export default function LocationConfigPanel() {
             <select
               value={config.timezone}
               onChange={(e) => setConfig({ ...config, timezone: e.target.value })}
-              className="w-full px-4 py-2 bg-sportsBar-800 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-4 py-2 bg-sportsBar-800 border border-slate-600 rounded-lg text-white focus:outline-hidden focus:ring-2 focus:ring-blue-500"
             >
               {US_TIMEZONES.map((tz) => (
                 <option key={tz.value} value={tz.value}>
@@ -254,7 +254,7 @@ export default function LocationConfigPanel() {
                       enabled: e.target.checked
                     }
                   })}
-                  className="w-5 h-5 rounded border-slate-600 bg-sportsBar-800 text-blue-600 focus:ring-2 focus:ring-blue-500"
+                  className="w-5 h-5 rounded-sm border-slate-600 bg-sportsBar-800 text-blue-600 focus:ring-2 focus:ring-blue-500"
                 />
                 <label htmlFor="updateEnabled" className="text-sm font-medium text-slate-200">
                   Enable automatic guide updates
@@ -277,7 +277,7 @@ export default function LocationConfigPanel() {
                           time: e.target.value
                         }
                       })}
-                      className="w-full px-4 py-2 bg-sportsBar-800 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-4 py-2 bg-sportsBar-800 border border-slate-600 rounded-lg text-white focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
 
@@ -294,7 +294,7 @@ export default function LocationConfigPanel() {
                           frequency: e.target.value as 'daily' | 'weekly'
                         }
                       })}
-                      className="w-full px-4 py-2 bg-sportsBar-800 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-4 py-2 bg-sportsBar-800 border border-slate-600 rounded-lg text-white focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                     >
                       <option value="daily">Daily</option>
                       <option value="weekly">Weekly</option>
@@ -310,7 +310,7 @@ export default function LocationConfigPanel() {
           <button
             onClick={saveConfiguration}
             disabled={isSaving}
-            className="inline-flex items-center space-x-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg hover:from-blue-700 hover:to-purple-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            className="inline-flex items-center space-x-2 px-6 py-3 bg-linear-to-r from-blue-600 to-purple-600 text-white rounded-lg hover:from-blue-700 hover:to-purple-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Save className="w-5 h-5" />
             <span>{isSaving ? 'Saving...' : 'Save Configuration'}</span>

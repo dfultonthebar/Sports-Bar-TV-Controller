@@ -92,19 +92,19 @@ export default function UpdateAvailableBanner() {
 
   return (
     <div
-      className="fixed top-0 inset-x-0 z-[9999] bg-blue-600 text-white shadow-lg border-b border-blue-400"
+      className="fixed top-0 inset-x-0 z-9999 bg-blue-600 text-white shadow-lg border-b border-blue-400"
       role="alert"
     >
       <button
         onClick={handleRefresh}
         className="w-full flex items-center justify-center gap-3 px-4 py-4 active:bg-blue-700 transition"
       >
-        <RefreshCw className="h-5 w-5 flex-shrink-0" />
+        <RefreshCw className="h-5 w-5 shrink-0" />
         <span className="font-semibold text-base">
           New version available — tap to refresh
         </span>
         {countdown !== null && countdown <= 30 && (
-          <span className="ml-2 text-sm opacity-90 bg-blue-700 rounded px-2 py-0.5">
+          <span className="ml-2 text-sm opacity-90 bg-blue-700 rounded-sm px-2 py-0.5">
             auto in {countdown}s
           </span>
         )}

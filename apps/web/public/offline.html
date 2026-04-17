@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Offline - TV Controller</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+        'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      text-align: center;
+      padding: 2rem;
+    }
+
+    .container {
+      max-width: 500px;
+      width: 100%;
+    }
+
+    .icon {
+      width: 80px;
+      height: 80px;
+      margin: 0 auto 2rem;
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 40px;
+    }
+
+    h1 {
+      font-size: 2.5rem;
+      margin-bottom: 1rem;
+      font-weight: 700;
+    }
+
+    p {
+      font-size: 1.2rem;
+      opacity: 0.95;
+      margin-bottom: 2rem;
+      line-height: 1.6;
+    }
+
+    .details {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 2rem;
+      backdrop-filter: blur(10px);
+    }
+
+    .details p {
+      font-size: 0.95rem;
+      margin-bottom: 0;
+      opacity: 0.9;
+    }
+
+    button {
+      background: white;
+      color: #667eea;
+      border: none;
+      padding: 1rem 3rem;
+      border-radius: 8px;
+      font-size: 1.1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 8px rgba(0, 0, 0, 0.15);
+    }
+
+    button:active {
+      transform: translateY(0);
+    }
+
+    .status {
+      margin-top: 2rem;
+      font-size: 0.9rem;
+      opacity: 0.8;
+    }
+
+    @media (max-width: 600px) {
+      h1 {
+        font-size: 2rem;
+      }
+
+      p {
+        font-size: 1rem;
+      }
+
+      button {
+        padding: 0.875rem 2rem;
+        font-size: 1rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="icon">📡</div>
+    <h1>You're Offline</h1>
+    <p>Unable to connect to the TV Controller server. Please check your connection and try again.</p>
+
+    <div class="details">
+      <p>
+        <strong>What you can do:</strong><br>
+        • Check your Wi-Fi or ethernet connection<br>
+        • Verify the server is running (Port 3001)<br>
+        • Make sure you're on the same network
+      </p>
+    </div>
+
+    <button onclick="window.location.reload()">
+      Try Again
+    </button>
+
+    <div class="status" id="status">
+      Checking connection...
+    </div>
+  </div>
+
+  <script>
+    // Periodically check if we're back online
+    let checkInterval;
+
+    function checkConnection() {
+      fetch('/')
+        .then(response => {
+          if (response.ok) {
+            document.getElementById('status').textContent = 'Connection restored! Reloading...';
+            setTimeout(() => window.location.reload(), 1000);
+          }
+        })
+        .catch(() => {
+          document.getElementById('status').textContent = 'Still offline. Will keep trying...';
+        });
+    }
+
+    // Check connection every 5 seconds
+    checkInterval = setInterval(checkConnection, 5000);
+
+    // Also listen for online event
+    window.addEventListener('online', () => {
+      document.getElementById('status').textContent = 'Connection detected! Reloading...';
+      setTimeout(() => window.location.reload(), 1000);
+    });
+
+    // Initial check
+    checkConnection();
+  </script>
+</body>
+</html>

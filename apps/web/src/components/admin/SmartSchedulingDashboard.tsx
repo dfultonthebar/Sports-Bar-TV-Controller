@@ -187,12 +187,12 @@ export default function SmartSchedulingDashboard() {
                     <h3 className="font-semibold text-slate-100">{source.name}</h3>
                     <div className="flex gap-2">
                       {source.isActive && (
-                        <span className="px-2 py-1 bg-green-600/20 text-green-400 rounded text-xs">
+                        <span className="px-2 py-1 bg-green-600/20 text-green-400 rounded-sm text-xs">
                           Active
                         </span>
                       )}
                       {source.currentlyAllocated && (
-                        <span className="px-2 py-1 bg-blue-600/20 text-blue-400 rounded text-xs">
+                        <span className="px-2 py-1 bg-blue-600/20 text-blue-400 rounded-sm text-xs">
                           In Use
                         </span>
                       )}

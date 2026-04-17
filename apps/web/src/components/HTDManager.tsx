@@ -367,7 +367,7 @@ export default function HTDManager({ onDeviceCountChange, showBartenderToggle = 
                   <p className="text-sm font-medium text-indigo-300">
                     {selectedModel.zones} Zones • {selectedModel.sources} Sources
                     {selectedModel.supportsWebSocket && (
-                      <span className="ml-2 text-xs bg-blue-500/20 text-blue-300 px-2 py-0.5 rounded">
+                      <span className="ml-2 text-xs bg-blue-500/20 text-blue-300 px-2 py-0.5 rounded-sm">
                         WebSocket
                       </span>
                     )}
@@ -555,7 +555,7 @@ export default function HTDManager({ onDeviceCountChange, showBartenderToggle = 
                       </span>
                     </div>
                     <div className="flex items-center space-x-3 text-sm text-slate-400">
-                      <span className="px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-300">
+                      <span className="px-2 py-0.5 rounded-sm bg-indigo-500/10 text-indigo-300">
                         HTD
                       </span>
                       <span>{device.model}</span>

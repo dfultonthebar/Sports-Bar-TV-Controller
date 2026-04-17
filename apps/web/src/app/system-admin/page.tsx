@@ -146,7 +146,7 @@ function VersionBadge() {
   }
 
   return (
-    <div className="mb-2 rounded border border-slate-800 bg-slate-900/60 px-3 py-2 text-xs text-slate-400 font-mono flex items-center justify-between flex-wrap gap-2">
+    <div className="mb-2 rounded-sm border border-slate-800 bg-slate-900/60 px-3 py-2 text-xs text-slate-400 font-mono flex items-center justify-between flex-wrap gap-2">
       <span>
         <span className="text-slate-200">v{info.version}</span>
         {info.branch ? (
@@ -258,7 +258,7 @@ function AuthStatusBanner() {
       </span>
       <a
         href="/login?redirect=/system-admin%3Ftab%3Dsync"
-        className="text-xs bg-amber-700 hover:bg-amber-600 text-white px-3 py-1 rounded"
+        className="text-xs bg-amber-700 hover:bg-amber-600 text-white px-3 py-1 rounded-sm"
       >
         Log in
       </a>
@@ -699,7 +699,7 @@ export default function SystemAdminPage() {
                       Backups include: Configuration files, environment variables, database, API keys, subscriptions, and device settings.
                     </p>
                     <p className="text-slate-400 text-xs">
-                      Backup location: <code className="bg-sportsBar-900/50 px-2 py-0.5 rounded">{backupDir}</code>
+                      Backup location: <code className="bg-sportsBar-900/50 px-2 py-0.5 rounded-sm">{backupDir}</code>
                     </p>
                   </div>
                 </div>
@@ -1084,9 +1084,9 @@ export default function SystemAdminPage() {
                             }`}>
                             <div className="flex items-center space-x-3 flex-1">
                               {result.success ? (
-                                <CheckCircle className="w-4 h-4 text-green-400 flex-shrink-0" />
+                                <CheckCircle className="w-4 h-4 text-green-400 shrink-0" />
                               ) : (
-                                <XCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
+                                <XCircle className="w-4 h-4 text-red-400 shrink-0" />
                               )}
                               <div className="flex-1 min-w-0">
                                 <p className="text-sm font-medium text-slate-200">
@@ -1100,7 +1100,7 @@ export default function SystemAdminPage() {
                                 )}
                               </div>
                             </div>
-                            <span className="text-xs text-slate-400 ml-3 flex-shrink-0">
+                            <span className="text-xs text-slate-400 ml-3 shrink-0">
                               {result.duration}ms
                             </span>
                           </div>
@@ -1205,7 +1205,7 @@ export default function SystemAdminPage() {
                           <td className="py-3 px-4">
                             <div className="flex items-center space-x-2">
                               {getStatusIcon(log.status)}
-                              <span className={`text-xs px-2 py-1 rounded ${getStatusColor(log.status)}`}>
+                              <span className={`text-xs px-2 py-1 rounded-sm ${getStatusColor(log.status)}`}>
                                 {log.status}
                               </span>
                             </div>

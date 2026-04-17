@@ -491,9 +491,9 @@ export default function AudioZoneControl({ bartenderMode = false }: AudioZoneCon
   return (
     <div className="space-y-6">
       {/* Info Banner */}
-      <div className="bg-gradient-to-r from-teal-900/30 to-blue-900/30 border border-teal-500/30 rounded-lg p-4">
+      <div className="bg-linear-to-r from-teal-900/30 to-blue-900/30 border border-teal-500/30 rounded-lg p-4">
         <div className="flex items-start gap-3">
-          <Music className="w-5 h-5 text-teal-400 mt-0.5 flex-shrink-0" />
+          <Music className="w-5 h-5 text-teal-400 mt-0.5 shrink-0" />
           <div className="flex-1">
             <p className="text-slate-200 font-medium">Audio Zone Control</p>
             <p className="text-slate-400 text-sm mt-1">
@@ -554,7 +554,7 @@ export default function AudioZoneControl({ bartenderMode = false }: AudioZoneCon
               <select
                 value={audioInputs.find(input => input.name === zone.currentSource)?.id || ''}
                 onChange={(e) => handleSourceChange(zone.id, e.target.value)}
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-teal-500 transition-colors"
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-slate-200 focus:outline-hidden focus:border-teal-500 transition-colors"
               >
                 <option value="">Select source...</option>
                 {audioInputs.map(input => (

@@ -167,7 +167,7 @@ export default function ConflictAlerts({
                     {conflict.conflictingGames.map(game => (
                       <div
                         key={game.id}
-                        className="text-sm bg-slate-900/50 p-2 rounded"
+                        className="text-sm bg-slate-900/50 p-2 rounded-sm"
                       >
                         <div className="flex justify-between items-center">
                           <span className="text-white">
@@ -177,7 +177,7 @@ export default function ConflictAlerts({
                             <span className="text-xs text-slate-400">
                               {game.primaryNetwork || 'Network TBD'}
                             </span>
-                            <span className="text-xs px-2 py-1 bg-blue-600/20 text-blue-400 rounded">
+                            <span className="text-xs px-2 py-1 bg-blue-600/20 text-blue-400 rounded-sm">
                               Priority: {game.calculatedPriority}
                             </span>
                           </div>

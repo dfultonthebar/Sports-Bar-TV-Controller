@@ -530,8 +530,8 @@ export default function AudioProcessorManager() {
                 <div>
                   <p className="text-sm font-medium text-purple-300">
                     Network Only (HiQnet Protocol)
-                    {selectedBssModel?.hasDante && <span className="ml-2 text-xs bg-blue-500/20 text-blue-300 px-2 py-0.5 rounded">Dante</span>}
-                    {selectedBssModel?.hasCobraNet && <span className="ml-2 text-xs bg-green-500/20 text-green-300 px-2 py-0.5 rounded">CobraNet</span>}
+                    {selectedBssModel?.hasDante && <span className="ml-2 text-xs bg-blue-500/20 text-blue-300 px-2 py-0.5 rounded-sm">Dante</span>}
+                    {selectedBssModel?.hasCobraNet && <span className="ml-2 text-xs bg-green-500/20 text-green-300 px-2 py-0.5 rounded-sm">CobraNet</span>}
                   </p>
                   <p className="text-xs text-purple-300/70">
                     BSS Soundweb London uses HiQnet over TCP port 1023. Configure via Audio Architect software.

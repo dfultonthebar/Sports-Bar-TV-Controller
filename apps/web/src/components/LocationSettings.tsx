@@ -285,7 +285,7 @@ export default function LocationSettings() {
               value={location.name}
               onChange={(e) => setLocation(prev => ({ ...prev, name: e.target.value }))}
               placeholder="e.g., Main Street Sports Bar"
-              className="w-full px-4 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-4 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
@@ -299,7 +299,7 @@ export default function LocationSettings() {
               value={location.description}
               onChange={(e) => setLocation(prev => ({ ...prev, description: e.target.value }))}
               placeholder="e.g., Downtown location with 24 TVs"
-              className="w-full px-4 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-4 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
@@ -313,7 +313,7 @@ export default function LocationSettings() {
               value={location.address}
               onChange={(e) => setLocation(prev => ({ ...prev, address: e.target.value }))}
               placeholder="e.g., 123 Main Street"
-              className="w-full px-4 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-4 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
@@ -328,7 +328,7 @@ export default function LocationSettings() {
                 value={location.city}
                 onChange={(e) => setLocation(prev => ({ ...prev, city: e.target.value }))}
                 placeholder="Milwaukee"
-                className="w-full px-4 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
               />
             </div>
             <div>
@@ -338,7 +338,7 @@ export default function LocationSettings() {
               <select
                 value={location.state}
                 onChange={(e) => setLocation(prev => ({ ...prev, state: e.target.value }))}
-                className="w-full px-4 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white focus:outline-hidden focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">Select...</option>
                 {US_STATES.map(state => (
@@ -356,7 +356,7 @@ export default function LocationSettings() {
                 onChange={(e) => setLocation(prev => ({ ...prev, zipCode: e.target.value }))}
                 placeholder="53202"
                 maxLength={10}
-                className="w-full px-4 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
               />
             </div>
           </div>
@@ -370,7 +370,7 @@ export default function LocationSettings() {
             <select
               value={location.timezone}
               onChange={(e) => setLocation(prev => ({ ...prev, timezone: e.target.value }))}
-              className="w-full px-4 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-4 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white focus:outline-hidden focus:ring-2 focus:ring-blue-500"
             >
               {TIMEZONES.map(tz => (
                 <option key={tz.value} value={tz.value}>{tz.label}</option>
@@ -403,7 +403,7 @@ export default function LocationSettings() {
                 value={location.gitBranch}
                 onChange={(e) => setLocation(prev => ({ ...prev, gitBranch: e.target.value }))}
                 placeholder="e.g., location/main-street-bar"
-                className="flex-1 px-4 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+                className="flex-1 px-4 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 font-mono text-sm"
               />
               <button
                 onClick={generateBranchName}

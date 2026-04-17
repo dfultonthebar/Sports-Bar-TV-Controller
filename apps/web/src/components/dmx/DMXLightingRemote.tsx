@@ -146,7 +146,7 @@ export default function DMXLightingRemote() {
       >
         <div className="flex items-center gap-3">
           <Lightbulb className="w-6 h-6 text-purple-400" />
-          <h3 className="text-lg font-bold bg-gradient-to-r from-purple-400 via-pink-400 to-red-400 bg-clip-text text-transparent">
+          <h3 className="text-lg font-bold bg-linear-to-r from-purple-400 via-pink-400 to-red-400 bg-clip-text text-transparent">
             Lighting Control
           </h3>
           {hasControllers && (
@@ -187,7 +187,7 @@ export default function DMXLightingRemote() {
           {/* No Controllers Warning */}
           {!hasControllers && !loading && (
             <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 text-sm text-amber-400 flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+              <AlertTriangle className="w-4 h-4 shrink-0" />
               <span>No DMX controllers configured. Add one in Device Config.</span>
             </div>
           )}
@@ -310,9 +310,9 @@ function SceneButton({ scene, isActive, isLoading, onClick, disabled }: SceneBut
       )}
     >
       {isLoading ? (
-        <Loader2 className="w-4 h-4 animate-spin flex-shrink-0" />
+        <Loader2 className="w-4 h-4 animate-spin shrink-0" />
       ) : (
-        <Icon className="w-4 h-4 flex-shrink-0" />
+        <Icon className="w-4 h-4 shrink-0" />
       )}
       <span className="truncate text-sm">{scene.name}</span>
     </button>

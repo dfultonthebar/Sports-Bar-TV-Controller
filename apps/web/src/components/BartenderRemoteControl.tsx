@@ -1017,7 +1017,7 @@ export default function BartenderRemoteControl() {
   }
 
   return (
-    <div className="h-full bg-gradient-to-br from-slate-900 via-blue-900 to-slate-800 p-4 remote-control-container">
+    <div className="h-full bg-linear-to-br from-slate-900 via-blue-900 to-slate-800 p-4 remote-control-container">
       {/* Header */}
       <div className="text-center mb-6">
         <h1 className="text-2xl md:text-3xl font-bold text-white mb-2">
@@ -1064,7 +1064,7 @@ export default function BartenderRemoteControl() {
       {/* Sports Guide Panel */}
       {showSportsGuide && (
         <div className="max-w-7xl mx-auto mb-6">
-          <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-sm rounded-lg p-4">
+          <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-xs rounded-lg p-4">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-bold text-white flex items-center">
                 <Calendar className="mr-2 w-5 h-5" />
@@ -1103,7 +1103,7 @@ export default function BartenderRemoteControl() {
                 {sportsGuide.map((game) => (
                   <div
                     key={game.id}
-                    className="bg-slate-800 or bg-slate-900/5 backdrop-blur-sm rounded-lg p-4 border border-slate-700/10 hover:bg-slate-800 or bg-slate-900/10 transition-all cursor-pointer"
+                    className="bg-slate-800 or bg-slate-900/5 backdrop-blur-xs rounded-lg p-4 border border-slate-700/10 hover:bg-slate-800 or bg-slate-900/10 transition-all cursor-pointer"
                     onClick={() => handleGameClick(game)}
                   >
                     <div className="flex items-center justify-between mb-2">
@@ -1168,7 +1168,7 @@ export default function BartenderRemoteControl() {
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 max-w-7xl mx-auto">
         {/* Left Panel - Input Selection */}
         <div className="lg:col-span-1">
-          <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-sm rounded-lg p-4 h-fit">
+          <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-xs rounded-lg p-4 h-fit">
             <h2 className="text-lg font-bold text-white mb-3 flex items-center">
               <Tv className="mr-2 w-5 h-5" />
               TV Inputs
@@ -1181,7 +1181,7 @@ export default function BartenderRemoteControl() {
                 placeholder="Search inputs..."
                 value={inputSearch}
                 onChange={(e) => setInputSearch(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full pl-9 pr-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white text-sm placeholder-gray-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>
             <div className="space-y-2 max-h-96 overflow-y-auto">
@@ -1213,17 +1213,17 @@ export default function BartenderRemoteControl() {
                         <div className="text-xs opacity-80 truncate">
                           Ch {input.channelNumber} • {input.inputType}
                           {direcTVDevice && (
-                            <span className="ml-2 px-1 py-0.5 bg-green-500/20 text-green-400 rounded text-xs border border-green-500/30">
+                            <span className="ml-2 px-1 py-0.5 bg-green-500/20 text-green-400 rounded-sm text-xs border border-green-500/30">
                               DirecTV IP
                             </span>
                           )}
                           {!direcTVDevice && irDevice && (
-                            <span className="ml-2 px-1 py-0.5 bg-orange-500/20 text-orange-400 rounded text-xs border border-orange-500/30">
+                            <span className="ml-2 px-1 py-0.5 bg-orange-500/20 text-orange-400 rounded-sm text-xs border border-orange-500/30">
                               {irDevice.controlMethod}
                             </span>
                           )}
                           {!direcTVDevice && !irDevice && (
-                            <span className="ml-2 px-1 py-0.5 bg-gray-500/20 text-slate-500 rounded text-xs border border-gray-500/30">
+                            <span className="ml-2 px-1 py-0.5 bg-gray-500/20 text-slate-500 rounded-sm text-xs border border-gray-500/30">
                               No Device
                             </span>
                           )}
@@ -1239,7 +1239,7 @@ export default function BartenderRemoteControl() {
 
         {/* Main Remote Control Panel */}
         <div className="lg:col-span-2">
-          <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-sm rounded-lg p-4 h-fit">
+          <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-xs rounded-lg p-4 h-fit">
             {selectedInput ? (
               <>
                 <div className="text-center mb-4">
@@ -1330,7 +1330,7 @@ export default function BartenderRemoteControl() {
         {/* Right Panel - Future Features */}
         <div className="lg:col-span-1 space-y-4">
           {/* TV Power Controls (Future) */}
-          <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-sm rounded-lg p-4">
+          <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-xs rounded-lg p-4">
             <h3 className="text-lg font-bold text-white mb-3 flex items-center">
               <Power className="mr-2 w-4 h-4" />
               TV Power
@@ -1353,7 +1353,7 @@ export default function BartenderRemoteControl() {
           </div>
 
           {/* Audio Zone Controls */}
-          <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-sm rounded-lg p-4">
+          <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-xs rounded-lg p-4">
             <h3 className="text-lg font-bold text-white mb-3 flex items-center">
               <Speaker className="mr-2 w-4 h-4" />
               Audio Zones
@@ -1369,7 +1369,7 @@ export default function BartenderRemoteControl() {
                     const processor = audioProcessors.find(p => p.id === e.target.value)
                     setSelectedProcessor(processor || null)
                   }}
-                  className="w-full p-2 bg-slate-700 text-white rounded text-sm border border-slate-600 focus:border-purple-500"
+                  className="w-full p-2 bg-slate-700 text-white rounded-sm text-sm border border-slate-600 focus:border-purple-500"
                 >
                   <option value="">Select Processor</option>
                   {audioProcessors.map((processor) => (
@@ -1424,7 +1424,7 @@ export default function BartenderRemoteControl() {
 
           {/* Audio Zone Controls */}
           {selectedAudioZone && (
-            <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-sm rounded-lg p-4">
+            <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-xs rounded-lg p-4">
               <h3 className="text-lg font-bold text-white mb-3 flex items-center">
                 <Volume2 className="mr-2 w-4 h-4" />
                 Zone Control
@@ -1445,7 +1445,7 @@ export default function BartenderRemoteControl() {
                   <div className="flex space-x-1">
                     <button
                       onClick={() => adjustZoneVolume(selectedAudioZone, -2)}
-                      className="flex-1 p-2 bg-red-600 hover:bg-red-500 text-white rounded text-sm transition-all font-medium"
+                      className="flex-1 p-2 bg-red-600 hover:bg-red-500 text-white rounded-sm text-sm transition-all font-medium"
                     >
                       -2
                     </button>
@@ -1461,7 +1461,7 @@ export default function BartenderRemoteControl() {
                     </button>
                     <button
                       onClick={() => adjustZoneVolume(selectedAudioZone, 2)}
-                      className="flex-1 p-2 bg-green-600 hover:bg-green-500 text-white rounded text-sm transition-all font-medium"
+                      className="flex-1 p-2 bg-green-600 hover:bg-green-500 text-white rounded-sm text-sm transition-all font-medium"
                     >
                       +2
                     </button>
@@ -1474,7 +1474,7 @@ export default function BartenderRemoteControl() {
                   <select
                     value={selectedAudioZone.currentSource || ''}
                     onChange={(e) => setZoneSource(selectedAudioZone, e.target.value)}
-                    className="w-full p-2 bg-slate-700 text-white rounded text-sm border border-slate-600 focus:border-purple-500"
+                    className="w-full p-2 bg-slate-700 text-white rounded-sm text-sm border border-slate-600 focus:border-purple-500"
                   >
                     <option value="">Select Source</option>
                     {audioInputs.map((input) => (
@@ -1489,7 +1489,7 @@ export default function BartenderRemoteControl() {
           )}
 
           {/* Quick Actions */}
-          <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-sm rounded-lg p-4">
+          <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-xs rounded-lg p-4">
             <h3 className="text-lg font-bold text-white mb-3">Actions</h3>
             <div className="space-y-2">
               <button

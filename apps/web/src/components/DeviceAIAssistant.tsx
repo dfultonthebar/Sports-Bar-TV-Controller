@@ -339,7 +339,7 @@ export default function DeviceAIAssistant() {
                       </span>
                     </div>
                     <p className="text-sm text-slate-300 mb-2">{prediction.description}</p>
-                    <p className="text-sm text-purple-700 bg-purple-50 p-2 rounded">
+                    <p className="text-sm text-purple-700 bg-purple-50 p-2 rounded-sm">
                       {prediction.recommendation}
                     </p>
                   </div>

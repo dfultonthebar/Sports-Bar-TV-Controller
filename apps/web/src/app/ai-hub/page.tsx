@@ -241,7 +241,7 @@ export default function AIHubPage() {
         <div className="mb-6 grid grid-cols-1 md:grid-cols-3 gap-4">
           <Link 
             href="/ai-diagnostics"
-            className="p-4 bg-gradient-to-br from-blue-600/40 to-purple-600/40 rounded-xl border-2 border-blue-400/50 hover:border-blue-400/70 hover:from-blue-600/50 hover:to-purple-600/50 transition-all duration-200 shadow-lg"
+            className="p-4 bg-linear-to-br from-blue-600/40 to-purple-600/40 rounded-xl border-2 border-blue-400/50 hover:border-blue-400/70 hover:from-blue-600/50 hover:to-purple-600/50 transition-all duration-200 shadow-lg"
           >
             <div className="flex items-center space-x-3 mb-2">
               <Activity className="w-6 h-6 text-blue-300" />
@@ -250,7 +250,7 @@ export default function AIHubPage() {
             <p className="text-blue-100/90 text-sm">Run comprehensive AI system health checks and monitor performance</p>
           </Link>
 
-          <div className="p-4 bg-gradient-to-br from-green-600/40 to-teal-600/40 rounded-xl border-2 border-green-400/50">
+          <div className="p-4 bg-linear-to-br from-green-600/40 to-teal-600/40 rounded-xl border-2 border-green-400/50">
             <div className="flex items-center space-x-3 mb-2">
               <CheckCircle className="w-6 h-6 text-green-300" />
               <h3 className="font-bold text-green-200">System Status</h3>
@@ -267,7 +267,7 @@ export default function AIHubPage() {
             </div>
           </div>
 
-          <div className="p-4 bg-gradient-to-br from-purple-600/40 to-pink-600/40 rounded-xl border-2 border-purple-400/50">
+          <div className="p-4 bg-linear-to-br from-purple-600/40 to-pink-600/40 rounded-xl border-2 border-purple-400/50">
             <div className="flex items-center space-x-3 mb-2">
               <Brain className="w-6 h-6 text-purple-300" />
               <h3 className="font-bold text-purple-200">AI Performance</h3>
@@ -421,7 +421,7 @@ export default function AIHubPage() {
                     <h3 className="text-sm font-semibold text-slate-300 mb-3">Files by Type:</h3>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                       {codebaseStats.filesByType.map(ft => (
-                        <div key={ft.type} className="flex items-center justify-between p-2 bg-slate-700/50 rounded">
+                        <div key={ft.type} className="flex items-center justify-between p-2 bg-slate-700/50 rounded-sm">
                           <span className="text-xs text-slate-300">{ft.type}</span>
                           <span className="text-sm font-bold text-slate-100">{ft.count}</span>
                         </div>
@@ -474,7 +474,7 @@ export default function AIHubPage() {
                     onChange={(e) => setChatMessage(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
                     placeholder="Ask about your code, troubleshoot issues, or request help..."
-                    className="flex-1 px-4 py-2 bg-slate-800 border border-slate-600 rounded-lg text-slate-100 placeholder-slate-400 focus:outline-none focus:border-blue-500"
+                    className="flex-1 px-4 py-2 bg-slate-800 border border-slate-600 rounded-lg text-slate-100 placeholder-slate-400 focus:outline-hidden focus:border-blue-500"
                     disabled={isChatting}
                   />
                   <button
@@ -518,7 +518,7 @@ export default function AIHubPage() {
 
               {/* Status Overview */}
               {providersStatus && (
-                <div className="bg-sportsBar-800/10 backdrop-blur-sm rounded-lg p-4 mb-6 border border-slate-700/20">
+                <div className="bg-sportsBar-800/10 backdrop-blur-xs rounded-lg p-4 mb-6 border border-slate-700/20">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-6">
                       <div className="text-center">
@@ -541,7 +541,7 @@ export default function AIHubPage() {
               {/* AI Diagnostics Link */}
               <Link 
                 href="/ai-diagnostics"
-                className="block mb-6 p-4 bg-gradient-to-br from-blue-600/40 to-purple-600/40 rounded-xl border-2 border-blue-400/50 hover:border-blue-400/70 hover:from-blue-600/50 hover:to-purple-600/50 transition-all duration-200 shadow-lg"
+                className="block mb-6 p-4 bg-linear-to-br from-blue-600/40 to-purple-600/40 rounded-xl border-2 border-blue-400/50 hover:border-blue-400/70 hover:from-blue-600/50 hover:to-purple-600/50 transition-all duration-200 shadow-lg"
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-3">
@@ -640,13 +640,13 @@ export default function AIHubPage() {
               </div>
 
               {/* Installation Guide */}
-              <div className="bg-sportsBar-800/10 backdrop-blur-sm rounded-xl border border-slate-700/20 p-6">
+              <div className="bg-sportsBar-800/10 backdrop-blur-xs rounded-xl border border-slate-700/20 p-6">
                 <h3 className="font-semibold text-white mb-4">Local AI Setup Guide</h3>
                 
                 <div className="space-y-4 text-sm text-gray-300">
                   <div className="bg-sportsBar-800/5 rounded-lg p-4">
                     <h4 className="font-medium text-blue-300 mb-2">🦙 Ollama</h4>
-                    <code className="block bg-black/20 p-2 rounded mb-2 text-xs">
+                    <code className="block bg-black/20 p-2 rounded-sm mb-2 text-xs">
                       curl -fsSL https://ollama.ai/install.sh | sh<br/>
                       ollama pull llama3.2:3b
                     </code>
@@ -655,7 +655,7 @@ export default function AIHubPage() {
                   
                   <div className="bg-sportsBar-800/5 rounded-lg p-4">
                     <h4 className="font-medium text-green-300 mb-2">🤖 LocalAI</h4>
-                    <code className="block bg-black/20 p-2 rounded mb-2 text-xs">
+                    <code className="block bg-black/20 p-2 rounded-sm mb-2 text-xs">
                       docker run -p 8080:8080 --name local-ai -ti localai/localai:latest
                     </code>
                     <p>OpenAI-compatible API on port 8080</p>
@@ -684,7 +684,7 @@ export default function AIHubPage() {
               <div className="space-y-6">
                 {/* n8n Embedded Interface */}
                 <div className="bg-slate-900 rounded-lg border border-slate-700 overflow-hidden">
-                  <div className="bg-gradient-to-r from-purple-900/30 to-blue-900/30 border-b border-purple-500/30 p-4">
+                  <div className="bg-linear-to-r from-purple-900/30 to-blue-900/30 border-b border-purple-500/30 p-4">
                     <h3 className="text-lg font-semibold text-slate-100 flex items-center gap-2">
                       <Activity className="w-5 h-5 text-purple-400" />
                       n8n Workflow Editor
@@ -734,7 +734,7 @@ export default function AIHubPage() {
                 </div>
 
                 {/* Quick Links */}
-                <div className="bg-gradient-to-r from-purple-900/20 to-blue-900/20 border border-purple-500/30 rounded-lg p-4">
+                <div className="bg-linear-to-r from-purple-900/20 to-blue-900/20 border border-purple-500/30 rounded-lg p-4">
                   <h4 className="font-medium text-slate-200 mb-3">Quick Access</h4>
                   <div className="flex flex-wrap gap-3">
                     <a
@@ -775,7 +775,7 @@ export default function AIHubPage() {
               <ApiKeysManager />
 
               {/* Features Overview */}
-              <div className="mt-6 bg-sportsBar-800/10 backdrop-blur-sm rounded-lg p-6 border border-slate-700/20">
+              <div className="mt-6 bg-sportsBar-800/10 backdrop-blur-xs rounded-lg p-6 border border-slate-700/20">
                 <h3 className="font-semibold text-white mb-4 flex items-center space-x-2">
                   <Brain className="w-5 h-5" />
                   <span>AI Assistant Features</span>

@@ -257,7 +257,7 @@ export default function TodoDetails({ todoId, onEdit, onDelete, onClose, refresh
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="card p-6 max-w-md w-full mx-4">
             <div className="flex items-start space-x-3 mb-4">
-              <AlertCircle className="w-6 h-6 text-yellow-400 flex-shrink-0 mt-1" />
+              <AlertCircle className="w-6 h-6 text-yellow-400 shrink-0 mt-1" />
               <div>
                 <h3 className="text-lg font-bold text-slate-100 mb-2">
                   Confirm Completion
@@ -274,7 +274,7 @@ export default function TodoDetails({ todoId, onEdit, onDelete, onClose, refresh
                   type="checkbox"
                   checked={completeForm.productionTested}
                   onChange={(e) => setCompleteForm({ ...completeForm, productionTested: e.target.checked })}
-                  className="mt-1 w-5 h-5 rounded border-slate-600 bg-sportsBar-800 text-blue-600 focus:ring-2 focus:ring-blue-500"
+                  className="mt-1 w-5 h-5 rounded-sm border-slate-600 bg-sportsBar-800 text-blue-600 focus:ring-2 focus:ring-blue-500"
                 />
                 <span className="text-sm text-slate-200">
                   Feature has been tested and is functioning on the production server
@@ -286,7 +286,7 @@ export default function TodoDetails({ todoId, onEdit, onDelete, onClose, refresh
                   type="checkbox"
                   checked={completeForm.mergedToMain}
                   onChange={(e) => setCompleteForm({ ...completeForm, mergedToMain: e.target.checked })}
-                  className="mt-1 w-5 h-5 rounded border-slate-600 bg-sportsBar-800 text-blue-600 focus:ring-2 focus:ring-blue-500"
+                  className="mt-1 w-5 h-5 rounded-sm border-slate-600 bg-sportsBar-800 text-blue-600 focus:ring-2 focus:ring-blue-500"
                 />
                 <span className="text-sm text-slate-200">
                   Changes have been merged to the main branch

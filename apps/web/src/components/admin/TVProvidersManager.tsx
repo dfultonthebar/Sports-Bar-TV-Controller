@@ -170,7 +170,7 @@ export default function TVProvidersManager() {
                 value={newProvider.name}
                 onChange={(e) => setNewProvider({ ...newProvider, name: e.target.value })}
                 placeholder="e.g., Comcast, DirecTV, YouTube TV"
-                className="w-full px-4 py-2 bg-sportsBar-800 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-2 bg-sportsBar-800 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
               />
             </div>
 
@@ -181,7 +181,7 @@ export default function TVProvidersManager() {
               <select
                 value={newProvider.type}
                 onChange={(e) => setNewProvider({ ...newProvider, type: e.target.value as any })}
-                className="w-full px-4 py-2 bg-sportsBar-800 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-2 bg-sportsBar-800 border border-slate-600 rounded-lg text-white focus:outline-hidden focus:ring-2 focus:ring-blue-500"
               >
                 {PROVIDER_TYPES.map((type) => (
                   <option key={type.value} value={type.value}>
@@ -239,7 +239,7 @@ export default function TVProvidersManager() {
           <button
             onClick={saveProviders}
             disabled={isSaving}
-            className="inline-flex items-center space-x-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg hover:from-blue-700 hover:to-purple-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            className="inline-flex items-center space-x-2 px-6 py-3 bg-linear-to-r from-blue-600 to-purple-600 text-white rounded-lg hover:from-blue-700 hover:to-purple-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Save className="w-5 h-5" />
             <span>{isSaving ? 'Saving...' : 'Save Providers'}</span>

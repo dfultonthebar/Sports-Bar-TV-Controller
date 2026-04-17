@@ -478,7 +478,7 @@ export default function ScheduledGameTVPicker({
                   {/* Room header with Select All */}
                   <label className="flex items-center gap-3 cursor-pointer py-1.5 group">
                     <span
-                      className="relative flex h-6 w-6 items-center justify-center rounded border-2 transition-colors"
+                      className="relative flex h-6 w-6 items-center justify-center rounded-sm border-2 transition-colors"
                       style={{
                         borderColor: room?.color || '#64748b',
                         backgroundColor:
@@ -495,7 +495,7 @@ export default function ScheduledGameTVPicker({
                         <Check className="h-4 w-4 text-white" />
                       )}
                       {someSelected && (
-                        <span className="block h-2.5 w-2.5 rounded-sm bg-white" />
+                        <span className="block h-2.5 w-2.5 rounded-xs bg-white" />
                       )}
                     </span>
                     <span
@@ -591,7 +591,7 @@ export default function ScheduledGameTVPicker({
                         <Check className="h-4 w-4 text-white" />
                       )}
                       {someAudioSelected && (
-                        <span className="block h-2.5 w-2.5 rounded-sm bg-white" />
+                        <span className="block h-2.5 w-2.5 rounded-xs bg-white" />
                       )}
                     </span>
                   )
@@ -684,7 +684,7 @@ export default function ScheduledGameTVPicker({
                       Audio Source
                     </label>
                     <select
-                      className="min-h-[48px] text-base w-full max-w-sm rounded-lg border border-slate-600 bg-slate-900 text-slate-200 px-3 py-2 focus:border-orange-500 focus:ring-1 focus:ring-orange-500 focus:outline-none"
+                      className="min-h-[48px] text-base w-full max-w-sm rounded-lg border border-slate-600 bg-slate-900 text-slate-200 px-3 py-2 focus:border-orange-500 focus:ring-1 focus:ring-orange-500 focus:outline-hidden"
                       value={selectedAudioSource ?? ''}
                       onClick={(e) => e.stopPropagation()}
                       onChange={(e) => {
@@ -719,7 +719,7 @@ export default function ScheduledGameTVPicker({
                         <div className="flex gap-2">
                           <button
                             type="button"
-                            className="text-xs font-medium text-orange-400 hover:text-orange-300 px-2 py-1 rounded transition-colors"
+                            className="text-xs font-medium text-orange-400 hover:text-orange-300 px-2 py-1 rounded-sm transition-colors"
                             onClick={(e) => {
                               e.stopPropagation()
                               setAllAudioZones(true)
@@ -729,7 +729,7 @@ export default function ScheduledGameTVPicker({
                           </button>
                           <button
                             type="button"
-                            className="text-xs font-medium text-slate-400 hover:text-slate-300 px-2 py-1 rounded transition-colors"
+                            className="text-xs font-medium text-slate-400 hover:text-slate-300 px-2 py-1 rounded-sm transition-colors"
                             onClick={(e) => {
                               e.stopPropagation()
                               setAllAudioZones(false)

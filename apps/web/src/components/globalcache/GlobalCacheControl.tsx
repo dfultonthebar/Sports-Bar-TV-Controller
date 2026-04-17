@@ -609,7 +609,7 @@ export default function GlobalCacheControl() {
       <Card className="border-blue-500/20 bg-blue-500/5">
         <CardContent className="py-4">
           <div className="flex items-start gap-3">
-            <Info className="w-5 h-5 text-blue-400 mt-0.5 flex-shrink-0" />
+            <Info className="w-5 h-5 text-blue-400 mt-0.5 shrink-0" />
             <div className="text-sm text-slate-300">
               <p className="font-semibold text-blue-400 mb-2">Setup Instructions:</p>
               <ol className="list-decimal list-inside space-y-1">
@@ -645,7 +645,7 @@ export default function GlobalCacheControl() {
                   id="learning-device"
                   value={selectedDeviceForLearning}
                   onChange={(e) => setSelectedDeviceForLearning(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-md text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-md text-slate-200 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                   disabled={isLearning}
                 >
                   <option value="">-- Select a device --</option>
@@ -711,7 +711,7 @@ export default function GlobalCacheControl() {
                         value={learnedCode}
                         readOnly
                         rows={6}
-                        className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-md text-slate-200 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-md text-slate-200 font-mono text-xs focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                       />
                       <Button
                         size="sm"
@@ -756,7 +756,7 @@ export default function GlobalCacheControl() {
           <Card className="border-yellow-500/20 bg-yellow-500/5">
             <CardContent className="py-4">
               <div className="flex items-start gap-3">
-                <Info className="w-5 h-5 text-yellow-400 mt-0.5 flex-shrink-0" />
+                <Info className="w-5 h-5 text-yellow-400 mt-0.5 shrink-0" />
                 <div className="text-sm text-slate-300">
                   <p className="font-semibold text-yellow-400 mb-2">How to Learn IR Codes:</p>
                   <ol className="list-decimal list-inside space-y-2">

@@ -268,7 +268,7 @@ export default function DeviceSubscriptionPanel({
                   onClick={() => setFilter(type)}
                   className={`flex-1 px-3 py-2 text-sm font-medium rounded-md transition-colors ${
                     filter === type
-                      ? 'bg-slate-800 or bg-slate-900 text-blue-700 shadow-sm'
+                      ? 'bg-slate-800 or bg-slate-900 text-blue-700 shadow-xs'
                       : 'text-gray-600 hover:text-slate-100'
                   }`}
                 >

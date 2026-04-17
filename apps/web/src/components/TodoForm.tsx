@@ -113,7 +113,7 @@ export default function TodoForm({ todo, onSave, onCancel }: TodoFormProps) {
             value={formData.title}
             onChange={(e) => setFormData({ ...formData, title: e.target.value })}
             placeholder="Enter todo title"
-            className="w-full px-4 py-2 bg-sportsBar-800 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-4 py-2 bg-sportsBar-800 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
             required
           />
         </div>
@@ -127,7 +127,7 @@ export default function TodoForm({ todo, onSave, onCancel }: TodoFormProps) {
             onChange={(e) => setFormData({ ...formData, description: e.target.value })}
             placeholder="Enter todo description"
             rows={4}
-            className="w-full px-4 py-2 bg-sportsBar-800 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-4 py-2 bg-sportsBar-800 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
           />
         </div>
 
@@ -139,7 +139,7 @@ export default function TodoForm({ todo, onSave, onCancel }: TodoFormProps) {
             <select
               value={formData.priority}
               onChange={(e) => setFormData({ ...formData, priority: e.target.value })}
-              className="w-full px-4 py-2 bg-sportsBar-800 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-4 py-2 bg-sportsBar-800 border border-slate-600 rounded-lg text-white focus:outline-hidden focus:ring-2 focus:ring-blue-500"
             >
               <option value="LOW">Low</option>
               <option value="MEDIUM">Medium</option>
@@ -155,7 +155,7 @@ export default function TodoForm({ todo, onSave, onCancel }: TodoFormProps) {
             <select
               value={formData.status}
               onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-              className="w-full px-4 py-2 bg-sportsBar-800 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-4 py-2 bg-sportsBar-800 border border-slate-600 rounded-lg text-white focus:outline-hidden focus:ring-2 focus:ring-blue-500"
             >
               <option value="PLANNED">Planned</option>
               <option value="IN_PROGRESS">In Progress</option>
@@ -174,7 +174,7 @@ export default function TodoForm({ todo, onSave, onCancel }: TodoFormProps) {
             value={formData.category}
             onChange={(e) => setFormData({ ...formData, category: e.target.value })}
             placeholder="e.g., Feature Development, Bug Fix"
-            className="w-full px-4 py-2 bg-sportsBar-800 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-4 py-2 bg-sportsBar-800 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
           />
         </div>
 
@@ -187,7 +187,7 @@ export default function TodoForm({ todo, onSave, onCancel }: TodoFormProps) {
             value={formData.tags}
             onChange={(e) => setFormData({ ...formData, tags: e.target.value })}
             placeholder="e.g., frontend, backend, urgent"
-            className="w-full px-4 py-2 bg-sportsBar-800 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-4 py-2 bg-sportsBar-800 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
           />
         </div>
       </div>
@@ -203,7 +203,7 @@ export default function TodoForm({ todo, onSave, onCancel }: TodoFormProps) {
         <button
           type="submit"
           disabled={saving}
-          className="inline-flex items-center space-x-2 px-6 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg hover:from-blue-700 hover:to-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="inline-flex items-center space-x-2 px-6 py-2 bg-linear-to-r from-blue-600 to-purple-600 text-white rounded-lg hover:from-blue-700 hover:to-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Save className="w-5 h-5" />
           <span>{saving ? 'Saving...' : 'Save TODO'}</span>

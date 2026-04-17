@@ -237,7 +237,7 @@ export default function StreamingPlatformsPage() {
   return (
     <div className="min-h-screen bg-sports-gradient">
       {/* Header */}
-      <header className="bg-sportsBar-800/90 backdrop-blur-sm border-b border-sportsBar-700/50 sticky top-0 z-50">
+      <header className="bg-sportsBar-800/90 backdrop-blur-xs border-b border-sportsBar-700/50 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center space-x-4">
@@ -249,7 +249,7 @@ export default function StreamingPlatformsPage() {
                 <span>Back</span>
               </Link>
               
-              <div className="bg-gradient-to-br from-purple-500 to-pink-600 rounded-xl p-2.5 shadow-lg">
+              <div className="bg-linear-to-br from-purple-500 to-pink-600 rounded-xl p-2.5 shadow-lg">
                 <Tv className="w-6 h-6 text-white" />
               </div>
               <div>
@@ -261,7 +261,7 @@ export default function StreamingPlatformsPage() {
             <div className="flex items-center space-x-4">
               <button
                 onClick={() => updateAuthStatus()}
-                className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-lg hover:from-blue-600 hover:to-indigo-700 transition-all duration-200 shadow-md hover:shadow-lg"
+                className="flex items-center space-x-2 px-4 py-2 bg-linear-to-r from-blue-500 to-indigo-600 text-white rounded-lg hover:from-blue-600 hover:to-indigo-700 transition-all duration-200 shadow-md hover:shadow-lg"
               >
                 <RefreshCw className="w-4 h-4" />
                 <span>Refresh Status</span>
@@ -454,7 +454,7 @@ export default function StreamingPlatformsPage() {
                           type="text"
                           value={authForm.username}
                           onChange={(e) => setAuthForm(prev => ({ ...prev, username: e.target.value }))}
-                          className="form-select-dark focus:outline-none focus:ring-2 focus:ring-purple-500"
+                          className="form-select-dark focus:outline-hidden focus:ring-2 focus:ring-purple-500"
                           placeholder="Enter your username/email"
                         />
                       </div>
@@ -468,7 +468,7 @@ export default function StreamingPlatformsPage() {
                             type={showPassword ? 'text' : 'password'}
                             value={authForm.password}
                             onChange={(e) => setAuthForm(prev => ({ ...prev, password: e.target.value }))}
-                            className="form-select-dark focus:outline-none focus:ring-2 focus:ring-purple-500 pr-10"
+                            className="form-select-dark focus:outline-hidden focus:ring-2 focus:ring-purple-500 pr-10"
                             placeholder="Enter your password"
                           />
                           <button
@@ -487,7 +487,7 @@ export default function StreamingPlatformsPage() {
                           id="rememberMe"
                           checked={authForm.rememberMe}
                           onChange={(e) => setAuthForm(prev => ({ ...prev, rememberMe: e.target.checked }))}
-                          className="w-4 h-4 text-purple-600 border-sportsBar-600 rounded focus:ring-purple-500"
+                          className="w-4 h-4 text-purple-600 border-sportsBar-600 rounded-sm focus:ring-purple-500"
                         />
                         <label htmlFor="rememberMe" className="text-sm text-slate-300">
                           Keep me logged in
@@ -581,9 +581,9 @@ export default function StreamingPlatformsPage() {
                           {platform.dataEnhancements.map((enhancement, index) => (
                             <div key={index} className="flex items-center space-x-2">
                               {platform.authStatus === 'connected' ? (
-                                <Check className="w-4 h-4 text-green-500 flex-shrink-0" />
+                                <Check className="w-4 h-4 text-green-500 shrink-0" />
                               ) : (
-                                <Minus className="w-4 h-4 text-slate-500 flex-shrink-0" />
+                                <Minus className="w-4 h-4 text-slate-500 shrink-0" />
                               )}
                               <span className={`text-sm ${
                                 platform.authStatus === 'connected' ? 'text-slate-300' : 'text-slate-400'
