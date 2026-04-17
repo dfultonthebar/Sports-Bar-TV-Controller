@@ -803,6 +803,23 @@ if [ "$SCHEMA_ITER" -ge "$SCHEMA_MAX_ITERATIONS" ]; then
 fi
 
 # ===========================================================================
+# PHASE: OLLAMA MODEL — ensure AI Suggest has the required LLM
+# ===========================================================================
+# Non-fatal: if this fails the app still boots; only the AI Suggest
+# scheduling feature is degraded. See scripts/ensure-ollama-model.sh for
+# exit code meanings. First run at a location downloads ~4.7GB.
+step "ollama_model"
+if [ -x "$REPO_ROOT/scripts/ensure-ollama-model.sh" ]; then
+  if bash "$REPO_ROOT/scripts/ensure-ollama-model.sh" 2>&1 | tee -a "$LOG_FILE"; then
+    log "ollama model check passed"
+  else
+    log "WARNING: ollama model check reported a problem — AI Suggest may be unavailable"
+  fi
+else
+  log "WARNING: scripts/ensure-ollama-model.sh missing or not executable — skipping"
+fi
+
+# ===========================================================================
 # CHECKPOINT B — Post-merge / pre-build review
 # ===========================================================================
 step "checkpoint_b"

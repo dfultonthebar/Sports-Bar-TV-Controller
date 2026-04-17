@@ -39,6 +39,32 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-04-17 — v2.16.3 — auto-pull Ollama llama3.1:8b during update
+
+**Risk:** GO — additive step in auto-update.sh. Non-fatal if ollama isn't reachable.
+
+**What's in this release:**
+
+- New `scripts/ensure-ollama-model.sh` — idempotent helper that checks if `llama3.1:8b` is installed in the local Ollama daemon, and pulls it if missing. Exits 0 when the model is present (no-op on subsequent runs).
+- `scripts/auto-update.sh` calls the helper between `schema_push` and `checkpoint_b` as a new `ollama_model` step. Non-fatal: if ollama is down or the pull fails, the update continues and just logs a WARNING — AI Suggest will be degraded until resolved, but the rest of the app works.
+
+**What could break at a location:**
+
+- First run at each location downloads ~4.7GB from `registry.ollama.ai`. Expect the auto-update duration to jump from ~4 min to ~8-10 min on the first run that includes this change. Subsequent runs are instant no-ops.
+- If the location runs Ollama with a different model configured and intentionally doesn't have `llama3.1:8b`, this will still pull it (no harm, just disk usage). The app's `hardware-config.ts` hardcodes `llama3.1:8b` as the AI Suggest model, so this matches production code.
+- If the location has no Ollama daemon running at all, the helper exits 1 with a WARNING and the update proceeds. AI Suggest will continue to fail until ollama is installed. This is a soft fail by design.
+
+**Manual steps required:** None. The auto-update handles it.
+
+**Rollback notes:** The new step is strictly additive. Rolling back the code change removes the step; any already-pulled model stays on disk (harmless).
+
+**Affected files:**
+- `scripts/ensure-ollama-model.sh` (new)
+- `scripts/auto-update.sh` (added `ollama_model` step)
+- `package.json` (version 2.16.2 → 2.16.3)
+
+---
+
 ### 2026-04-15 — v2.8.4 — LG TV model probe + TV power audit trail + LG clientKey fix
 
 **Risk:** GO — additive features plus one latent-bug fix. No schema change.
