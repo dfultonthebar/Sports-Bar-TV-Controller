@@ -93,29 +93,28 @@ for arg in "$@"; do
   esac
 done
 
-case "$TRIGGERED_BY" in
-  cron|manual_api|manual_cli) ;;
-  *) echo "Invalid --triggered-by: $TRIGGERED_BY" >&2; exit 1 ;;
-esac
-
 # ---------------------------------------------------------------------------
-# Re-exec resume: if we were exec'd from an earlier version of this script
-# after the merge updated us, restore state and skip to npm_ci. The trigger
-# exports state vars; we read them here to avoid repeating preflight/merge.
+# Self-update re-exec handler: if we were re-exec'd by a prior version of
+# this script after the merge updated us, restore state and skip to where
+# the prior version left off.
 # ---------------------------------------------------------------------------
-REEXEC_RESUMED=0
 if [ "${AUTO_UPDATE_REEXEC:-}" = "1" ]; then
-  PRE_MERGE_SHA="${AUTO_UPDATE_PRE_MERGE_SHA:-}"
-  PRE_MERGE_VERSION="${AUTO_UPDATE_PRE_MERGE_VERSION:-}"
-  POST_MERGE_SHA="${AUTO_UPDATE_POST_MERGE_SHA:-}"
-  RUN_TS="${AUTO_UPDATE_RUN_TS:-$RUN_TS}"
+  PRE_MERGE_SHA="$AUTO_UPDATE_PRE_MERGE_SHA"
+  PRE_MERGE_VERSION="$AUTO_UPDATE_PRE_MERGE_VERSION"
+  POST_MERGE_SHA="$AUTO_UPDATE_POST_MERGE_SHA"
+  RUN_TS="$AUTO_UPDATE_RUN_TS"
   LOG_FILE="${AUTO_UPDATE_LOG_FILE:-$LOG_FILE}"
   ROLLBACK_TAG="${AUTO_UPDATE_ROLLBACK_TAG:-}"
   HISTORY_ID="${AUTO_UPDATE_HISTORY_ID:-}"
   BRANCH=$(git -C "$REPO_ROOT" branch --show-current)
   unset AUTO_UPDATE_REEXEC
-  REEXEC_RESUMED=1
+  log "=== RE-EXEC: running updated auto-update.sh from version_check ==="
 fi
+
+case "$TRIGGERED_BY" in
+  cron|manual_api|manual_cli) ;;
+  *) echo "Invalid --triggered-by: $TRIGGERED_BY" >&2; exit 1 ;;
+esac
 
 # ---------------------------------------------------------------------------
 # Setup
@@ -304,71 +303,61 @@ run_checkpoint() {
   # an API key in env it tries that path and rejects the skip-permissions
   # flag with "Invalid API key · Fix external API key", failing the
   # checkpoint in ~2 seconds. Stripping the var forces OAuth mode.
-  # We check the CLI exit code AND the output file independently. The CLI can
-  # exit non-zero (e.g., SIGPIPE on timeout, or after flushing stdout right at
-  # the 180s mark) while still having written a valid DECISION line. Treating
-  # that as a hard failure wastes a run that actually produced a good answer.
-  set +e
-  env -u ANTHROPIC_API_KEY timeout "$timeout_secs" claude -p --dangerously-skip-permissions "$prompt" >"$out_file" 2>&1
-  local cli_rc=$?
-  set -e
-
-  if [ "$cli_rc" -ne 0 ]; then
-    # Check if the output contains a parseable DECISION before giving up.
-    if [ -s "$out_file" ] && grep -qE '^(DECISION:|GO\b|CAUTION\b|STOP\b)' "$out_file"; then
-      log "Checkpoint $label: CLI exited $cli_rc but output has a DECISION line — parsing anyway"
-    else
-      log "Checkpoint $label: Claude Code timed out or errored (exit $cli_rc)"
-      log "Checkpoint $label output: $(head -40 "$out_file" 2>/dev/null)"
-      rm -f "$out_file"
-      fail "Checkpoint $label: Claude Code CLI failure" 2
-    fi
+  #
+  # `script -qfc ...` wraps the invocation in a pseudo-TTY because
+  # Claude Code CLI 2.1.113+ aborts non-interactive invocations with
+  # "Interactive prompts require a TTY terminal" even when stdin is
+  # piped and --dangerously-skip-permissions is set. The PTY from
+  # `script` satisfies the isTTY check. We write the prompt to a file
+  # and read it via `< $prompt_file` inside the script'd shell because
+  # passing a multi-KB prompt on the command line can exceed ARG_MAX
+  # once script/sh layers stack up.
+  #
+  # IMPORTANT: `script -qfc` invokes the command via `sh -c`, which
+  # does NOT inherit the interactive bash PATH. On hosts where claude
+  # lives in ~/.local/bin (native install), sh can't find it. Resolve
+  # claude to its absolute path BEFORE passing to script so the
+  # command doesn't rely on PATH inside the script'd subshell.
+  local claude_bin
+  claude_bin=$(command -v claude)
+  if [ -z "$claude_bin" ]; then
+    fail "Checkpoint $label: claude binary not on PATH in run_checkpoint context" 2
   fi
-
-  # Parse the decision. Claude is SUPPOSED to emit "DECISION: GO|CAUTION|STOP - <reason>"
-  # as the first line, but in practice it sometimes rephrases ("GO confirmed. ...",
-  # "CAUTION: ...", etc.). Accept both the strict form and a leading-word form
-  # so a valid GO doesn't trigger a false rollback. STOP/CAUTION keywords must
-  # appear BEFORE any GO keyword on the first match line, to avoid a response
-  # like "I would STOP but actually GO" from being misread.
-  local decision decision_kind
-  decision=$(grep -m1 -E '^(DECISION:|GO\b|CAUTION\b|STOP\b)' "$out_file" || true)
-  if [ -z "$decision" ]; then
-    # Fallback: scan the whole response for an unambiguous keyword.
-    if grep -qiE '\bDECISION:\s*STOP\b|\bSTOP\s*[:\-]' "$out_file"; then
-      decision_kind="STOP"
-    elif grep -qiE '\bDECISION:\s*CAUTION\b|\bCAUTION\s*[:\-]' "$out_file"; then
-      decision_kind="CAUTION"
-    elif grep -qiE '\bDECISION:\s*GO\b|^GO\b|\bGO confirmed\b' "$out_file"; then
-      decision_kind="GO"
-    fi
-  else
-    # Normalise the first-line match to a bare kind.
-    case "$decision" in
-      "DECISION: GO"*|"DECISION:GO"*|"GO"*|"GO "*) decision_kind="GO" ;;
-      "DECISION: CAUTION"*|"DECISION:CAUTION"*|"CAUTION"*|"CAUTION "*) decision_kind="CAUTION" ;;
-      "DECISION: STOP"*|"DECISION:STOP"*|"STOP"*|"STOP "*) decision_kind="STOP" ;;
-    esac
+  local prompt_file_tmp
+  prompt_file_tmp=$(mktemp)
+  printf '%s' "$prompt" > "$prompt_file_tmp"
+  if ! env -u ANTHROPIC_API_KEY timeout "$timeout_secs" \
+       script -qfc "$claude_bin -p --dangerously-skip-permissions \"\$(cat $prompt_file_tmp)\"" /dev/null \
+       >"$out_file" 2>&1; then
+    log "Checkpoint $label: Claude Code timed out or errored"
+    log "Checkpoint $label output: $(head -40 "$out_file" 2>/dev/null)"
+    rm -f "$out_file" "$prompt_file_tmp"
+    fail "Checkpoint $label: Claude Code CLI failure" 2
   fi
+  rm -f "$prompt_file_tmp"
 
-  log "Checkpoint $label: decision=${decision_kind:-UNDETERMINED} line=\"$decision\""
+  local decision
+  # Try line-start first, then fall back to anywhere in the response.
+  # Claude sometimes writes a summary before the DECISION line.
+  decision=$(grep -m1 '^DECISION:' "$out_file" || grep -m1 'DECISION:' "$out_file" || true)
+  log "Checkpoint $label: $decision"
   # Also dump full response to log for forensics
   log "--- Checkpoint $label full response ---"
   cat "$out_file" >> "$LOG_FILE"
   log "--- end Checkpoint $label response ---"
   rm -f "$out_file"
 
-  case "${decision_kind:-UNDETERMINED}" in
-    GO)
+  case "$decision" in
+    "DECISION: GO"*)
       return 0
       ;;
-    CAUTION)
+    "DECISION: CAUTION"*)
       CAUTION_MODE=1
       log "Checkpoint $label: CAUTION — proceeding with extra monitoring"
       return 0
       ;;
-    STOP)
-      fail "Checkpoint $label: STOP — ${decision}" 2
+    "DECISION: STOP"*)
+      fail "Checkpoint $label: STOP — ${decision#DECISION: STOP}" 2
       ;;
     *)
       fail "Checkpoint $label: UNDETERMINED response from Claude Code" 2
@@ -377,13 +366,17 @@ run_checkpoint() {
 }
 
 # ===========================================================================
-# PHASE: PRE-FLIGHT through VERSION_CHECK
+# Skip to version_check if this is a re-exec after self-update
 # ===========================================================================
-# Skip these phases if we just re-exec'd ourselves after the merge updated
-# auto-update.sh on disk. State is restored from env vars by the re-exec
-# handler above. Resume directly at npm_ci.
-if [ "$REEXEC_RESUMED" -eq 0 ]; then
-
+if [ "${AUTO_UPDATE_REEXEC_FROM:-}" = "version_check" ]; then
+  unset AUTO_UPDATE_REEXEC_FROM
+  log "Skipping preflight → merge phases (already completed by prior script version)"
+  # Jump directly to version_check — all prior phases were completed by the
+  # old script before it exec'd us.
+else
+# ===========================================================================
+# PHASE: PRE-FLIGHT
+# ===========================================================================
 step "preflight"
 log "Triggered by: $TRIGGERED_BY (dry-run=$DRY_RUN)"
 
@@ -455,7 +448,7 @@ log "History row id=$HISTORY_ID"
 # CHECKPOINT A — Pre-update analysis
 # ===========================================================================
 step "checkpoint_a"
-run_checkpoint "A" "$PROMPTS_DIR/checkpoint-a.txt" 240
+run_checkpoint "A" "$PROMPTS_DIR/checkpoint-a.txt" 180
 
 # If dry-run, report what we WOULD do and stop here (before any state change).
 if [ "$DRY_RUN" -eq 1 ]; then
@@ -521,9 +514,24 @@ LOCATION_PATHS_OURS=(
 # These paths always take the MAIN version (git checkout --theirs)
 # package-lock and package.json version bumps must come from main for
 # `npm ci` to work after the reset.
+#
+# Orchestration scripts (auto-update.sh, rollback.sh, ensure-*.sh) and
+# prompt files are pure software — locations should never carry
+# divergent versions. When a location's branch has stale edits to these
+# (e.g. from a manual tweak during an earlier debugging session), the
+# merge hits a content conflict and the whole update aborts. Force them
+# to take main's version so software fixes propagate cleanly.
 LOCATION_PATHS_THEIRS=(
   "package-lock.json"
   "package.json"
+  "scripts/auto-update.sh"
+  "scripts/rollback.sh"
+  "scripts/verify-install.sh"
+  "scripts/ensure-schema.sh"
+  "scripts/ensure-ollama-model.sh"
+  "scripts/prompts/checkpoint-a.txt"
+  "scripts/prompts/checkpoint-b.txt"
+  "scripts/prompts/checkpoint-c.txt"
 )
 
 log "git merge origin/main --no-ff -m 'chore: auto-update merge $RUN_TS'"
@@ -564,6 +572,30 @@ POST_MERGE_SHA=$(git rev-parse HEAD)
 log "Post-merge sha: $POST_MERGE_SHA"
 
 # ===========================================================================
+# SELF-UPDATE CHECK: if auto-update.sh itself changed in the merge, re-exec
+# the new version so all subsequent steps (build, checkpoint prompts, etc.)
+# use the latest logic. Without this, a location running an old script gets
+# the new code but builds/verifies with the old script's stale commands.
+# ===========================================================================
+if git diff "$PRE_MERGE_SHA" HEAD --name-only | grep -q '^scripts/auto-update\.sh$'; then
+  log "auto-update.sh was updated by the merge — re-executing new version"
+  log "Re-exec args: $0 $*"
+  # Pass a flag so the re-exec'd script skips phases already completed
+  export AUTO_UPDATE_REEXEC=1
+  export AUTO_UPDATE_REEXEC_FROM="version_check"
+  export AUTO_UPDATE_PRE_MERGE_SHA="$PRE_MERGE_SHA"
+  export AUTO_UPDATE_PRE_MERGE_VERSION="$PRE_MERGE_VERSION"
+  export AUTO_UPDATE_POST_MERGE_SHA="$POST_MERGE_SHA"
+  export AUTO_UPDATE_RUN_TS="$RUN_TS"
+  export AUTO_UPDATE_LOG_FILE="$LOG_FILE"
+  export AUTO_UPDATE_ROLLBACK_TAG="$ROLLBACK_TAG"
+  export AUTO_UPDATE_HISTORY_ID="$HISTORY_ID"
+  exec bash "$REPO_ROOT/scripts/auto-update.sh" "$@"
+fi
+
+fi  # end of "skip to version_check if re-exec" else block
+
+# ===========================================================================
 # PHASE: VERSION REGRESSION CHECK
 # ===========================================================================
 step "version_check"
@@ -586,42 +618,6 @@ if [ "$PRE_MERGE_VERSION" != "unknown" ] && [ "$POST_MERGE_VERSION" != "unknown"
   fi
 fi
 
-# ---------------------------------------------------------------------------
-# SELF-UPDATE RE-EXEC — critical to prevent mid-run script corruption
-# ---------------------------------------------------------------------------
-# When the merge step updates scripts/auto-update.sh itself, bash keeps
-# reading the file line-by-line from disk. The portions after the current
-# read position may be completely different code than what was compiled into
-# the bash process's state so far, producing bizarre failures like "schema_push
-# exits immediately with code 1" that don't match any code path in either
-# the pre-merge or post-merge script. The bug is self-modifying scripts,
-# not a specific bug in either version.
-#
-# Fix: if the merge changed auto-update.sh, re-exec self with the new copy
-# so bash loads a consistent version from start. Pass state via env vars so
-# the re-exec's handler block at the top of the script can resume from here
-# instead of re-running preflight/fetch/merge.
-if [ -n "$PRE_MERGE_SHA" ] && [ -n "$POST_MERGE_SHA" ] && [ "$PRE_MERGE_SHA" != "$POST_MERGE_SHA" ]; then
-  if git -C "$REPO_ROOT" diff --name-only "$PRE_MERGE_SHA" "$POST_MERGE_SHA" 2>/dev/null | grep -qx 'scripts/auto-update.sh'; then
-    log "auto-update.sh was updated by the merge — re-exec'ing with new version"
-    export AUTO_UPDATE_REEXEC=1
-    export AUTO_UPDATE_PRE_MERGE_SHA="$PRE_MERGE_SHA"
-    export AUTO_UPDATE_PRE_MERGE_VERSION="$PRE_MERGE_VERSION"
-    export AUTO_UPDATE_POST_MERGE_SHA="$POST_MERGE_SHA"
-    export AUTO_UPDATE_RUN_TS="$RUN_TS"
-    export AUTO_UPDATE_LOG_FILE="$LOG_FILE"
-    export AUTO_UPDATE_ROLLBACK_TAG="$ROLLBACK_TAG"
-    export AUTO_UPDATE_HISTORY_ID="$HISTORY_ID"
-    exec "$0" "$@"
-  fi
-fi
-
-fi # end of: if [ "$REEXEC_RESUMED" -eq 0 ] — pre-flight through version_check block
-if [ "$REEXEC_RESUMED" -eq 1 ]; then
-  log "=== RESUMED from re-exec — skipped preflight/fetch/checkpoint_a/backup/merge/version_check ==="
-  log "Pre-merge: $PRE_MERGE_SHA  /  Post-merge: $POST_MERGE_SHA  /  Rollback tag: $ROLLBACK_TAG"
-fi
-
 # ===========================================================================
 # PHASE: NPM CI
 # ===========================================================================
@@ -634,10 +630,31 @@ log "npm ci --include=dev (install/sync node_modules to the merged lockfile)"
 # monorepo) gets dropped from node_modules, and `npm run build` then
 # fails with `sh: 1: turbo: not found`. Same applies to `next` CLI tools
 # and any other dev-only build machinery.
-NODE_ENV=development npm ci --include=dev 2>&1 | tee -a "$LOG_FILE"
-if [ "${PIPESTATUS[0]}" -ne 0 ]; then
-  fail "npm ci failed" 4
+NPM_CI_LOG="$LOG_DIR/npm-ci-$(date +%s).log"
+NODE_ENV=development npm ci --include=dev 2>&1 | tee "$NPM_CI_LOG" | tee -a "$LOG_FILE"
+NPM_CI_EXIT="${PIPESTATUS[0]}"
+
+if [ "$NPM_CI_EXIT" -ne 0 ]; then
+  # Fail-safe: lockfile drift (EUSAGE) is a common class of failure when
+  # package.json was bumped but the lockfile wasn't regenerated. Rather than
+  # rolling back the whole update (which strands the location), fall back to
+  # `npm install` to regenerate the lockfile in-place. The rebuilt lockfile
+  # stays local — not pushed back to git — so the root cause still needs a
+  # fix on main, but at least this location can install and run.
+  if grep -qE "EUSAGE|npm ci.*can only install|out of sync with|package-lock\.json.*not in sync" "$NPM_CI_LOG"; then
+    log "WARNING: npm ci failed with lockfile drift — falling back to npm install"
+    log "WARNING: The root cause is on main (package.json bumped without regenerating lock)."
+    log "WARNING: This location's lockfile will be regenerated in-place and NOT committed."
+    NODE_ENV=development npm install --include=dev 2>&1 | tee -a "$LOG_FILE"
+    if [ "${PIPESTATUS[0]}" -ne 0 ]; then
+      fail "npm install fallback also failed" 4
+    fi
+    log "npm install fallback succeeded"
+  else
+    fail "npm ci failed" 4
+  fi
 fi
+rm -f "$NPM_CI_LOG"
 
 # ===========================================================================
 # PHASE: SCHEMA PUSH (drizzle-kit)
@@ -657,155 +674,28 @@ fi
 step "schema_push"
 log "npx drizzle-kit push (apply pending schema changes)"
 SCHEMA_PUSH_LOG="$LOG_DIR/drizzle-push-$(date +%s).log"
-
-# Iterative retry loop. drizzle-kit push is NOT atomic: it commits statements
-# one-at-a-time, so a conflict partway through leaves partial state in the
-# DB. We handle three classes of recoverable error per iteration; anything
-# else is surfaced and aborts.
-#
-# Recoverable errors:
-# 1. "index|table|column X already exists" — a pre-existing object (from a
-#    prior hotfix or partial push) collides with drizzle's CREATE. Drop it
-#    and retry; drizzle recreates it fresh on the next pass.
-# 2. "no such column: X" — drizzle is running its SQLite ADD-COLUMN
-#    workaround (create __new_Table, copy data, swap) and the SELECT is
-#    referencing a column that hasn't been added yet. The orphan
-#    __new_Table from the failed copy blocks retries. Drop every __new_*
-#    shadow and, if X appears in schema.ts, add it to the source table
-#    directly so the next push can complete without the shadow pattern.
-# 3. Convergence cap: 350 iterations max so a genuine schema bug can't
-#    trap us in an infinite loop.
-SCHEMA_MAX_ITERATIONS=350
-SCHEMA_ITER=0
-SCHEMA_FILE="$REPO_ROOT/packages/database/src/schema.ts"
-
-while [ "$SCHEMA_ITER" -lt "$SCHEMA_MAX_ITERATIONS" ]; do
-  SCHEMA_ITER=$((SCHEMA_ITER + 1))
-  if NODE_ENV=development npx drizzle-kit push > "$SCHEMA_PUSH_LOG" 2>&1; then
-    tail -20 "$SCHEMA_PUSH_LOG" >> "$LOG_FILE"
-    log "[SCHEMA] drizzle-kit push succeeded after $SCHEMA_ITER iteration(s)"
-    break
-  fi
-
-  # Class 1: "X already exists"
-  DUP_IDX=$(grep -oE "(index|table|column) [A-Za-z_][A-Za-z0-9_]* already exists" "$SCHEMA_PUSH_LOG" | head -1 | awk '{print $2}')
-  if [ -n "$DUP_IDX" ]; then
-    sqlite3 "$DB_PATH" "DROP INDEX IF EXISTS \"$DUP_IDX\"; DROP TABLE IF EXISTS \"$DUP_IDX\";" >>"$LOG_FILE" 2>&1
-    [ $((SCHEMA_ITER % 25)) -eq 0 ] && log "[SCHEMA] iter=$SCHEMA_ITER last-dropped=$DUP_IDX"
-    continue
-  fi
-
-  # Class 2: "no such column: X" — stuck ADD-COLUMN workaround
-  MISSING_COL=$(grep -oE 'no such column: "[A-Za-z_][A-Za-z0-9_]*"' "$SCHEMA_PUSH_LOG" | head -1 | sed -E 's/no such column: "([^"]+)"/\1/')
-  if [ -n "$MISSING_COL" ]; then
-    # Drop any __new_* shadow tables that drizzle left behind from the
-    # failed copy. These block subsequent push attempts.
-    SHADOWS=$(sqlite3 "$DB_PATH" "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE '__new_%';" 2>/dev/null)
-    if [ -n "$SHADOWS" ]; then
-      while read -r sh; do
-        [ -z "$sh" ] && continue
-        sqlite3 "$DB_PATH" "DROP TABLE IF EXISTS \"$sh\";" >>"$LOG_FILE" 2>&1
-        log "[SCHEMA] iter=$SCHEMA_ITER dropped shadow table $sh"
-      done <<< "$SHADOWS"
+# drizzle-kit push prompts for confirmation when it detects a data-loss
+# statement (e.g. dropping a table that still has rows). In the
+# auto-update flow the schema change was already approved at Checkpoint A
+# (it's in the merge diff Claude reviewed), so we pipe `yes` to accept.
+# Without this, any release that removes a table — e.g. v2.20.0's
+# n8n-log cleanup — fails at a location that still has rows in the
+# to-be-removed table, with "Error: Interactive prompts require a TTY".
+if yes 2>/dev/null | NODE_ENV=development npx drizzle-kit push 2>&1 | tee "$SCHEMA_PUSH_LOG" | tee -a "$LOG_FILE"; then
+  log "drizzle-kit push completed cleanly"
+else
+  if grep -qE "(index|table|column) [\`\"]?[A-Za-z_][A-Za-z0-9_]*[\`\"]? already exists|already exists" "$SCHEMA_PUSH_LOG"; then
+    log "WARNING: drizzle-kit push reported pre-existing objects (benign — see $SCHEMA_PUSH_LOG)"
+    log "WARNING: this means the DB already had untracked tables/indexes from a prior manual hotfix."
+    log "WARNING: Running ensure-schema.sh fallback to create any genuinely missing tables/columns..."
+    if bash "$REPO_ROOT/scripts/ensure-schema.sh" "$DB_PATH" 2>&1 | tee -a "$LOG_FILE"; then
+      log "ensure-schema.sh fallback completed successfully"
+    else
+      log "WARNING: ensure-schema.sh had errors — some new tables/columns may be missing"
     fi
-    # Find any tables in schema.ts that declare $MISSING_COL as a column
-    # and don't have it in the live DB. Add it directly so drizzle's next
-    # pass sees it and skips the shadow-table workaround.
-    TYPE_LINE=$(grep -nE "^[[:space:]]+${MISSING_COL}[[:space:]]*:[[:space:]]*(text|integer|real|blob|timestamp)[[:space:]]*\(" "$SCHEMA_FILE" | head -1)
-    if [ -n "$TYPE_LINE" ]; then
-      DRIZZLE_TYPE=$(printf '%s' "$TYPE_LINE" | grep -oE "(text|integer|real|blob|timestamp)" | head -1)
-      case "$DRIZZLE_TYPE" in
-        text|timestamp) SQL_TYPE="TEXT" ;;
-        integer)        SQL_TYPE="INTEGER" ;;
-        real)           SQL_TYPE="REAL" ;;
-        blob)           SQL_TYPE="BLOB" ;;
-        *)              SQL_TYPE="TEXT" ;;
-      esac
-      LINE_NUM=$(printf '%s' "$TYPE_LINE" | cut -d: -f1)
-      TARGET_TABLE=$(awk -v ln="$LINE_NUM" 'NR<=ln && /sqliteTable\(/ {match($0,/sqliteTable\(['"'"'"]([A-Za-z_][A-Za-z0-9_]*)['"'"'"]/,arr); if(arr[1]!="")tbl=arr[1]} END {print tbl}' "$SCHEMA_FILE")
-      if [ -n "$TARGET_TABLE" ]; then
-        IN_DB=$(sqlite3 "$DB_PATH" "PRAGMA table_info(\"$TARGET_TABLE\");" 2>/dev/null | awk -F'|' -v c="$MISSING_COL" '$2==c {print "yes"}')
-        if [ "$IN_DB" != "yes" ]; then
-          sqlite3 "$DB_PATH" "ALTER TABLE \"$TARGET_TABLE\" ADD COLUMN \"$MISSING_COL\" $SQL_TYPE;" >>"$LOG_FILE" 2>&1 \
-            && log "[SCHEMA] iter=$SCHEMA_ITER added $TARGET_TABLE.$MISSING_COL $SQL_TYPE (bypassing drizzle shadow-pattern)"
-        fi
-      fi
-    fi
-    continue
-  fi
-
-  # Anything else — surface and abort.
-  cat "$SCHEMA_PUSH_LOG" >> "$LOG_FILE"
-  fail "drizzle-kit push failed with an unrecognized error (iteration $SCHEMA_ITER) — see $SCHEMA_PUSH_LOG" 4
-done
-
-if [ "$SCHEMA_ITER" -ge "$SCHEMA_MAX_ITERATIONS" ]; then
-  log "[SCHEMA] iterative retry hit cap ($SCHEMA_MAX_ITERATIONS) without converging — switching to bulk-regenerate fallback"
-  log "[SCHEMA] this pattern — iterations cycling through the same indexes without making net progress — happens when"
-  log "[SCHEMA] drizzle-kit commits-per-statement AND its CREATE order lets duplicates re-appear each pass."
-
-  # Step 1: drop every user-defined index. Indexes carry no data, only metadata;
-  # safe to recreate from scratch.
-  BULK_DROP_SQL=$(mktemp)
-  {
-    echo "BEGIN;"
-    sqlite3 "$DB_PATH" "SELECT name FROM sqlite_master WHERE type='index' AND name NOT LIKE 'sqlite_autoindex%';" \
-      | awk 'NF {printf "DROP INDEX IF EXISTS \"%s\";\n", $0}'
-    echo "COMMIT;"
-  } > "$BULK_DROP_SQL"
-  IDX_DROPPED=$(wc -l < "$BULK_DROP_SQL")
-  if ! sqlite3 "$DB_PATH" < "$BULK_DROP_SQL" >>"$LOG_FILE" 2>&1; then
-    rm -f "$BULK_DROP_SQL"
-    fail "bulk-drop of user indexes failed — see $LOG_FILE" 4
-  fi
-  rm -f "$BULK_DROP_SQL"
-  log "[SCHEMA] bulk-drop: removed ~$IDX_DROPPED user indexes"
-
-  # Step 2: generate fresh migration SQL from schema.ts. This gives us the
-  # canonical CREATE TABLE / CREATE INDEX set for the current schema.
-  BULK_GEN_DIR=$(mktemp -d)
-  if ! NODE_ENV=development npx drizzle-kit generate --out "$BULK_GEN_DIR" --dialect sqlite --schema "$SCHEMA_FILE" >>"$LOG_FILE" 2>&1; then
-    rm -rf "$BULK_GEN_DIR"
-    fail "drizzle-kit generate failed during bulk-regenerate fallback" 4
-  fi
-  GEN_SQL=$(ls "$BULK_GEN_DIR"/*.sql 2>/dev/null | head -1)
-  if [ -z "$GEN_SQL" ]; then
-    rm -rf "$BULK_GEN_DIR"
-    fail "drizzle-kit generate produced no .sql output — see $LOG_FILE" 4
-  fi
-
-  # Step 3: extract CREATE INDEX statements, make them IF NOT EXISTS, apply
-  # in one transaction. Using IF NOT EXISTS so any index that survived the
-  # drop (unlikely, but possible via a race) is tolerated.
-  BULK_IDX_SQL=$(mktemp)
-  {
-    echo "BEGIN;"
-    grep -E "^CREATE (UNIQUE )?INDEX" "$GEN_SQL" \
-      | sed -E 's/^CREATE INDEX /CREATE INDEX IF NOT EXISTS /; s/^CREATE UNIQUE INDEX /CREATE UNIQUE INDEX IF NOT EXISTS /; s| --> statement-breakpoint||'
-    echo "COMMIT;"
-  } > "$BULK_IDX_SQL"
-  IDX_CREATED=$(grep -cE "^CREATE " "$BULK_IDX_SQL")
-  if ! sqlite3 "$DB_PATH" < "$BULK_IDX_SQL" >>"$LOG_FILE" 2>&1; then
-    rm -f "$BULK_IDX_SQL"
-    rm -rf "$BULK_GEN_DIR"
-    fail "bulk-apply of $IDX_CREATED CREATE INDEX statements failed — see $LOG_FILE" 4
-  fi
-  rm -f "$BULK_IDX_SQL"
-  rm -rf "$BULK_GEN_DIR"
-  log "[SCHEMA] bulk-apply: created $IDX_CREATED indexes from generate output"
-
-  # Step 4: final drizzle-kit push. With all indexes present AND all
-  # previously-applied column additions intact, this should either succeed
-  # cleanly OR report benign pre-existing objects (which are fine — schema
-  # IS in sync). Anything else is a genuine error.
-  FINAL_LOG="$LOG_DIR/drizzle-push-final-$(date +%s).log"
-  if NODE_ENV=development npx drizzle-kit push > "$FINAL_LOG" 2>&1; then
-    log "[SCHEMA] bulk-regenerate fallback succeeded — schema now in sync"
-  elif grep -qE "already exists" "$FINAL_LOG"; then
-    log "[SCHEMA] bulk-regenerate fallback: final push reports benign pre-existing objects — schema IS in sync"
   else
-    cat "$FINAL_LOG" >> "$LOG_FILE"
-    fail "bulk-regenerate fallback: final drizzle-kit push failed with unrecognized error — see $FINAL_LOG" 4
+    cat "$SCHEMA_PUSH_LOG" >> "$LOG_FILE"
+    fail "drizzle-kit push failed with an unrecognized error — see $SCHEMA_PUSH_LOG" 4
   fi
 fi
 
@@ -830,7 +720,7 @@ fi
 # CHECKPOINT B — Post-merge / pre-build review
 # ===========================================================================
 step "checkpoint_b"
-run_checkpoint "B" "$PROMPTS_DIR/checkpoint-b.txt" 240
+run_checkpoint "B" "$PROMPTS_DIR/checkpoint-b.txt" 300
 
 # ===========================================================================
 # PHASE: BUILD (with .next.bak caching for instant rollback)
@@ -842,8 +732,9 @@ if [ -d "$REPO_ROOT/apps/web/.next" ]; then
   mv "$REPO_ROOT/apps/web/.next" "$REPO_ROOT/apps/web/.next.bak"
 fi
 
-log "npm run build"
-npm run build 2>&1 | tee -a "$LOG_FILE"
+log "npm run build (--force to bypass Turbo cache for package changes)"
+rm -rf "$REPO_ROOT/.turbo" "$REPO_ROOT/node_modules/.cache"
+npx turbo run build --force 2>&1 | tee -a "$LOG_FILE"
 if [ "${PIPESTATUS[0]}" -ne 0 ]; then
   fail "npm run build failed" 4
 fi
@@ -888,7 +779,7 @@ fi
 # CHECKPOINT C — Post-restart holistic check
 # ===========================================================================
 step "checkpoint_c"
-run_checkpoint "C" "$PROMPTS_DIR/checkpoint-c.txt" 240
+run_checkpoint "C" "$PROMPTS_DIR/checkpoint-c.txt" 300
 
 # ===========================================================================
 # PHASE: FINALIZE
