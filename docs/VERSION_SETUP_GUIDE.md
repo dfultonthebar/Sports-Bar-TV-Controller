@@ -187,6 +187,276 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.23.11 — Location-aware browser tab title
+**Released:** 2026-04-18
+
+**What changed:**
+- `apps/web/src/app/layout.tsx` — switched from `export const metadata` (static, evaluated at build time) to `export async function generateMetadata` (dynamic, evaluated at request time). Title now computes from `process.env.LOCATION_NAME`. Format: `<LocationName>-Sports-Bar-TV-Controller` when set, plain `Sports Bar TV Controller` when unset.
+- `turbo.json` — added `"env": ["LOCATION_NAME", "LOCATION_ID", "NODE_ENV"]` to the build task so Turbo passes these through to the Next.js build subprocess AND includes them in the build cache hash. Without this, Next.js statically pre-renders pages like `/` and `/system-admin` with `process.env.LOCATION_NAME=undefined` at build time, baking the fallback title into cached HTML regardless of what the PM2 runtime env says.
+
+**Why this matters:** operators running multiple locations open each in a browser tab. Previously every tab said "Sports Bar TV Controller" — tell them apart by hovering over favicons or guessing from URL. Now Holmgren's tab says "Holmgren-Sports-Bar-TV-Controller" while Lucky's would say "LuckyS1313-Sports-Bar-TV-Controller" (or whatever the operator sets `LOCATION_NAME` to).
+
+**Required Claude step at each location** (Claude: execute during Checkpoint B of the update that merges v2.23.11):
+
+1. Check if `LOCATION_NAME` is already set in `.env`:
+```bash
+grep ^LOCATION_NAME= /home/ubuntu/Sports-Bar-TV-Controller/.env
+```
+
+2. If NOT set, add it. Use a short, unambiguous name that looks good as a tab title — no spaces needed (will auto-convert to dashes anyway), no special chars. Examples: `Holmgren`, `LegLamp`, `Lucky1313`, `Graystone`, `AppletonStoneyard`. Match the human name bartenders use at the bar:
+```bash
+echo 'LOCATION_NAME=<ShortName>' >> /home/ubuntu/Sports-Bar-TV-Controller/.env
+```
+
+3. Rebuild with the env var in the build shell (Turbo needs it exported even though `.env` has it):
+```bash
+cd /home/ubuntu/Sports-Bar-TV-Controller
+export LOCATION_NAME="$(grep ^LOCATION_NAME= .env | cut -d= -f2)"
+rm -rf apps/web/.next .turbo
+npx turbo run build --force --filter=@sports-bar/web
+pm2 restart sports-bar-tv-controller
+```
+
+4. Verify the tab title:
+```bash
+curl -s http://localhost:3001/ | grep -oE '<title[^>]*>[^<]+</title>'
+```
+Expected: `<title>YourLocation-Sports-Bar-TV-Controller</title>`. If you see the plain `<title>Sports Bar TV Controller</title>`, LOCATION_NAME wasn't in the build shell env — re-run step 3 with `export` first.
+
+**Rollback:** `git revert` restores the static metadata export and removes the turbo env array. Titles go back to "Sports Bar TV Controller" across the board. No data impact.
+
+---
+
+### v2.23.5 — Extract memory + versioning guides out of CLAUDE.md
+**Released:** 2026-04-18
+
+**What changed:**
+- `docs/CLAUDE_MEMORY_GUIDE.md` (new) — full details on the three memory systems (auto-memory at `~/.claude/projects/.../memory/`, in-repo Memory Bank at `apps/web/src/lib/memory-bank/`, and CLAUDE.md itself). Contains the complete "how to apply" for Standing Rules 5 and 7 plus the memory-saving two-step process, edge cases, and stale-entry handling.
+- `docs/CLAUDE_VERSIONING_GUIDE.md` (new) — full details on version-bumping rules, the interlock between `VERSION_SETUP_GUIDE.md` / `LOCATION_UPDATE_NOTES.md` / CLAUDE.md (disjoint responsibilities — whether-to-update vs. what-to-do vs. permanent-rules), commit strategy for release changes, and how auto-update Checkpoint A/B/C consume all three documents. Contains the complete "how to apply" for Standing Rule 8.
+- `CLAUDE.md` — added a prominent "⚠️ READ FIRST" banner at the top pointing at both guides as required reading before non-trivial work. Trimmed Standing Rules 5, 7, 8 to one-line summaries that point to the guides. Replaced the 28-line Memory Bank System description (§6) with a one-paragraph summary + pointer. Replaced the Version Bumping section with a one-paragraph summary + pointer. Net: ~15 lines shorter, but much more scannable.
+
+**Required Claude step at each location** (Claude: execute during Checkpoint B of the update that merges v2.23.5):
+
+1. Read the READ FIRST block at the top of CLAUDE.md. Verify it references BOTH `docs/CLAUDE_MEMORY_GUIDE.md` AND `docs/CLAUDE_VERSIONING_GUIDE.md`:
+```bash
+head -25 /home/ubuntu/Sports-Bar-TV-Controller/CLAUDE.md | grep -c "CLAUDE_MEMORY_GUIDE\|CLAUDE_VERSIONING_GUIDE"
+```
+Expected: `2` (both appear in the banner).
+
+2. Read both new guides fully. They contain the authoritative version of Standing Rules 5, 7, 8 — CLAUDE.md's one-liners are only summaries.
+
+3. **Sync memory ↔ new guides** per Rule 7 bidirectional sync. Since the content in the guides is derived from (not new vs.) prior CLAUDE.md content, most host auto-memory entries will already match. Do a pass to confirm. If memory references `CLAUDE.md §6 Memory Bank System` by line number, update the reference to `docs/CLAUDE_MEMORY_GUIDE.md` (the full text now lives there).
+
+**Rollback:** `git revert` is clean — restores the full text into CLAUDE.md and removes the two guide files. All previously-authoritative rules remain intact after revert.
+
+---
+
+### v2.23.3 — context7 + brave-search MCP servers project-wide
+**Released:** 2026-04-18
+
+**What changed:**
+- `.mcp.json` (new, at repo root) — declares two MCP (Model Context Protocol) servers that every Claude Code session inside this repo gets:
+  - **`context7`** by Upstash (`@upstash/context7-mcp`) — fetches up-to-date, version-accurate library docs on demand (React, Next.js, Drizzle, Tailwind, any npm package). Free tier, no API key. Invoke by saying something like "use context7 to check the latest Drizzle ORM schema API" in a Claude session.
+  - **`brave-search`** by MCP org (`@modelcontextprotocol/server-brave-search`) — web search. Requires `BRAVE_API_KEY` in each location's `.env` file. Works like a web-search tool (current-events questions, looking up hardware specs, checking vendor sites).
+- `.claude/settings.json` — added `"enableAllProjectMcpServers": true` so MCP servers declared in the project's `.mcp.json` auto-approve without a human having to click through the Claude Code consent prompt on first session. Safe here because we only pull from `@modelcontextprotocol/*` (MCP org — protocol maintainers) and `@upstash/*` (reputable vendor).
+
+**Required Claude step at each location** (Claude: execute this during Checkpoint B of the update that merges v2.23.3):
+
+1. Verify `.mcp.json` arrived with the merge:
+```bash
+cat /home/ubuntu/Sports-Bar-TV-Controller/.mcp.json
+```
+Expected: contains `mcpServers.context7` and `mcpServers.brave-search` entries. The `$comment` key is intentional metadata — Claude Code ignores unknown top-level keys.
+
+2. Confirm the auto-approve flag is in `.claude/settings.json`:
+```bash
+grep enableAllProjectMcpServers /home/ubuntu/Sports-Bar-TV-Controller/.claude/settings.json
+```
+Expected: `"enableAllProjectMcpServers": true`. If missing, the first Claude Code session at this repo will prompt a human to approve each server.
+
+3. **(Optional but recommended)** Set up `BRAVE_API_KEY` so the `brave-search` MCP works at this location. **Without this step, Context7 works but Brave Search silently fails** when invoked — the MCP process starts, tries to read the key, aborts, and subsequent searches return empty. Not fatal to the Sports Bar app; just means that location loses the web-search tool.
+    - Free tier (2,000 queries/month per key) is enough for operator/debugging use. Sign up at <https://api.search.brave.com/app/keys> — 2-minute flow, no credit card for free tier.
+    - **Important — how the key actually reaches the MCP:** `.mcp.json` uses `${BRAVE_API_KEY}` which Claude Code interpolates from *its own process environment*, not from the project's `.env` file. Just editing `.env` is NOT enough — the shell that launches `claude` must have the variable exported. Two complementary places to set it:
+      ```bash
+      # (a) Export in every shell — works for interactive claude sessions:
+      echo 'export BRAVE_API_KEY=<paste-key-here>' >> ~/.bashrc
+      # Reload in your current shell or open a new one:
+      source ~/.bashrc
+
+      # (b) Also add to the project .env — so anything else at this location
+      # (scripts, scheduled jobs) that reads .env sees it:
+      echo 'BRAVE_API_KEY=<paste-key-here>' >> /home/ubuntu/Sports-Bar-TV-Controller/.env
+      ```
+    - Both files stay on this host — `.env` is gitignored, `~/.bashrc` is per-user. Neither gets pushed to any branch.
+    - No restart needed for the Sports Bar app; the next time you start a **new** Claude Code session in the repo, `npx` spawns the MCP with the new env var. If the session already running, exit and restart `claude`.
+
+4. **Smoke-test both MCPs are wired correctly.** Start a Claude Code session at the repo and ask:
+    - "Use context7 to look up the current @sports-bar/drizzle-orm type for a nullable column." → expect a real answer citing docs.
+    - "Use brave search to find recent Spectrum cable firmware release notes." → expect search hits, OR a clear error if `BRAVE_API_KEY` isn't set.
+    - If context7 reports "server not found" but the flag is set, force a reload: inside Claude Code run `/mcp` to see connected servers, or kill the session and restart.
+
+**Why this matters for each location:**
+- Context7 is particularly useful when debugging build errors — "why did this Next.js 16 API change" gets an accurate answer without the model hallucinating an API version.
+- Brave Search is useful when Claude doesn't know the cable lineup in a new city, vendor docs aren't in the repo, or a firmware release note mention is needed (e.g., "is Spectrum re-enabling CEC on their new firmware?"). It also fills the gap in checkpoint A/B decisions when external context is needed.
+
+**Rollback:** Delete `.mcp.json` and remove `"enableAllProjectMcpServers": true` from `.claude/settings.json` — MCP servers stop loading. The Sports Bar app itself has no runtime dependency on these; they only affect Claude Code sessions inside the repo.
+
+---
+
+### v2.23.2 — Enable frontend-design + feature-dev Claude Code plugins project-wide
+**Released:** 2026-04-18
+
+**What changed:**
+- `.claude/settings.json` — new file at project scope. Sets `enabledPlugins` for `frontend-design@claude-plugins-official` and `feature-dev@claude-plugins-official`. These are plugins from Anthropic's built-in official marketplace (`claude-plugins-official`, auto-available in Claude Code — no `extraKnownMarketplaces` entry needed).
+- **frontend-design** — design philosophy + system prompts that guide Claude to produce distinctive, production-grade UI (bold aesthetic choices, purposeful typography, intentional animations). Applies whenever the dev works on React/Next.js components. Invoked automatically by Claude when it detects UI/frontend work, or explicitly via `/frontend-design:*` skills after `/reload-plugins`.
+- **feature-dev** — comprehensive feature-development workflow. Provides specialized subagents for codebase exploration, architecture design, and quality review. Also invokable via `/feature-dev:*` slash commands.
+
+**Required Claude step at each location** (Claude: execute this during Checkpoint B of the update that merges v2.23.2):
+
+1. Verify the `.claude/settings.json` file arrived with the merge:
+```bash
+cat /home/ubuntu/Sports-Bar-TV-Controller/.claude/settings.json
+```
+Expected: contains `enabledPlugins` with `frontend-design@claude-plugins-official` and `feature-dev@claude-plugins-official` both set to `true`.
+
+2. The `claude-plugins-official` marketplace is built into Claude Code, so no marketplace-add is needed. However, the plugins themselves must be installed/cached. On most locations the official marketplace auto-updates at startup, so the plugins should be present. If a session later reports "plugin not found," run in Claude Code interactively:
+```
+/plugin marketplace update claude-plugins-official
+/plugin install frontend-design@claude-plugins-official
+/plugin install feature-dev@claude-plugins-official
+/reload-plugins
+```
+
+3. Verify plugins are loaded. In Claude Code CLI:
+```bash
+claude plugin list 2>&1 | grep -E "frontend-design|feature-dev"
+```
+Expected: both plugins listed as enabled. If missing from the list but present in `.claude/settings.json`, the plugin files need to be cached — run the `/plugin install` commands from step 2 in an interactive session once and Claude Code will remember them.
+
+4. Confirm a Claude Code session invoked at the repo picks them up:
+```bash
+ls ~/.claude/plugins/cache/ 2>&1 | grep -E "frontend-design|feature-dev" || echo "(plugins not yet cached — run /plugin install as step 2)"
+```
+
+**Why this is a project-scoped commit rather than a per-host install:** installing user-scope (`~/.claude/`) at each location would require a manual step that's easy to skip. Committing `enabledPlugins` to `.claude/settings.json` means every location that trusts this repo in Claude Code inherits the same enabled plugin set, and `git pull` + next session start is enough to pick up new plugins added to the list later.
+
+**Rollback:** `git revert` the commit — drops the `.claude/settings.json` file, plugins become disabled for project sessions. The underlying plugin files (if cached at user scope) stay. No DB or runtime impact.
+
+---
+
+### v2.23.0 — AI Suggest diversity + per-location station-alias seeding
+**Released:** 2026-04-18
+
+**What changed:**
+- `apps/web/src/app/api/scheduling/ai-suggest/route.ts` — Ollama prompt loosened so the AI now proposes up to `min(totalInputs*2, games.length, 20)` suggestions (previously hard-capped at 6). Rule 4/5/6 rewritten to encourage diverse league coverage and alternate routes (e.g. Brewers game on BOTH cable ch 308 and firetv Apple TV+) so the manager can pick. Parser dedup now allows up to 2 suggestions per input and 2 per game, rejecting only exact game+input duplicates. The pattern-analyzer then learns from the manager's approve choices (this is the feedback loop — scheduler reads `input_source_allocations.tv_output_ids` hourly and builds team-routing patterns from accepted suggestions).
+- `apps/web/src/lib/seed-from-json.ts` — `seedStationAliases()` changed from "skip-if-any-rows" to per-row upsert (union-merge of aliases for existing rows, insert for new rows). Without this, new entries added to `STANDARD_ALIASES` in a future release would be no-ops at already-seeded locations. **Removed** hardcoded Green Bay broadcast affiliates (ABC→WBAY, NBC→WGBA, CBS→WFRV, FOX→WLUK) from `STANDARD_ALIASES` — these are location-specific and were wrong for Madison/Appleton/other cities. **Added** 9 universal streaming alias rows (PrimeVideo, AppleTVPlus, ParamountPlus, Peacock, ESPNPlus, Netflix, Max, YouTubeTV, Hulu).
+- `apps/web/src/lib/seed-from-json.ts` — New `seedLocalStationAliases()` function that reads `apps/web/data/station-aliases-local.json` and upserts the entries. This file is an empty template on `main` and populated per-location on each `location/<name>` branch.
+- `apps/web/data/station-aliases-local.json` — New file. On main: `{"aliases": []}`. On each location branch: populated with that city's OTA affiliate mappings.
+
+**Bug this fixes:** AI Suggest was only surfacing 6 games to the manager, and many of them were MLB/NHL because the Green Bay-specific affiliate aliases (WBAY as ABC, etc.) didn't exist at non-Green-Bay locations — so NBA on ABC, UFL on FOX, EPL on NBC silently failed to resolve and were dropped from the "playable" pool. Manager couldn't approve games that the system had no idea existed.
+
+---
+
+**Required Claude step at each location (Claude: execute this during Checkpoint B of the update that merges v2.23.0):**
+
+You MUST populate `apps/web/data/station-aliases-local.json` with this location's OTA broadcast affiliates BEFORE the build step runs, or broadcast-network games (anything on ABC, FOX, NBC, CBS that isn't on cable-specific affiliate channels) will fail to resolve. Do NOT just read this section — execute the steps below.
+
+**Step 1.** Identify the location by reading `/home/ubuntu/Sports-Bar-TV-Controller/.env` for `LOCATION_NAME`, and cross-check the current `station_aliases` table to see what affiliate callsigns are already seeded:
+```bash
+grep LOCATION_NAME /home/ubuntu/Sports-Bar-TV-Controller/.env
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "SELECT standard_name, aliases FROM station_aliases WHERE aliases LIKE '%ABC%' OR aliases LIKE '%FOX%' OR aliases LIKE '%NBC%' OR aliases LIKE '%CBS%';"
+```
+
+**Step 2.** Determine the correct OTA affiliate callsigns for this city. Use this reference table — if your city isn't listed, look up "ABC affiliate <city>" / "FOX affiliate <city>" / "NBC affiliate <city>" / "CBS affiliate <city>" via web search:
+
+| City | ABC | FOX | NBC | CBS |
+|---|---|---|---|---|
+| Green Bay, WI | WBAY (ch 2) | WLUK-TV (ch 11) | WGBA-TV (ch 26) | WFRV (ch 5) |
+| Madison, WI | WKOW (ch 27) | WMSN-TV (ch 47) | WMTV (ch 15) | WISC-TV (ch 3) |
+| Milwaukee, WI | WISN (ch 12) | WITI (ch 6) | WTMJ (ch 4) | WDJT (ch 58) |
+| Appleton/Fox Cities, WI | WBAY (ch 2) | WLUK-TV (ch 11) | WGBA-TV (ch 26) | WFRV (ch 5) |
+
+(Green Bay and Appleton share affiliates — they're the same DMA.)
+
+**Step 3.** Write the file at `apps/web/data/station-aliases-local.json`. Replace the `standardName` values with this location's callsigns and adjust the `aliases` array to include `"<NETWORK>"` (bare), the callsign (`"WBAY"`), a `-TV` variant (`"WBAY-TV"`), and a display variant like `"ABC 2"` (callsign's actual OTA channel number):
+```json
+{
+  "_location": "<LOCATION_NAME from .env>",
+  "aliases": [
+    {
+      "standardName": "<ABC_CALLSIGN>",
+      "aliases": ["ABC", "<ABC_CALLSIGN>", "<ABC_CALLSIGN>-TV", "ABC <OTA_CHANNEL>"]
+    },
+    {
+      "standardName": "<FOX_CALLSIGN>",
+      "aliases": ["FOX", "<FOX_CALLSIGN>", "<FOX_CALLSIGN>-TV", "FOX <OTA_CHANNEL>"]
+    },
+    {
+      "standardName": "<NBC_CALLSIGN>",
+      "aliases": ["NBC", "<NBC_CALLSIGN>", "<NBC_CALLSIGN>-TV", "NBC <OTA_CHANNEL>"]
+    },
+    {
+      "standardName": "<CBS_CALLSIGN>",
+      "aliases": ["CBS", "<CBS_CALLSIGN>", "<CBS_CALLSIGN>-TV", "CBS <OTA_CHANNEL>"]
+    }
+  ]
+}
+```
+
+**Step 4.** Also patch the live `station_aliases` DB so the fix is active WITHOUT waiting for the next fresh install to run `seedLocalStationAliases()` (the seeder only runs on empty tables). Run this SQL, substituting the callsigns and channel numbers for YOUR city:
+```bash
+sqlite3 /home/ubuntu/sports-bar-data/production.db <<'SQL'
+UPDATE station_aliases
+SET aliases = json_array('ABC','<ABC_CALLSIGN>','<ABC_CALLSIGN>-TV','ABC <OTA_CHANNEL>')
+WHERE standard_name='<ABC_CALLSIGN>';
+
+UPDATE station_aliases
+SET aliases = json_array('FOX','<FOX_CALLSIGN>','<FOX_CALLSIGN>-TV','FOX <OTA_CHANNEL>')
+WHERE standard_name='<FOX_CALLSIGN>';
+
+UPDATE station_aliases
+SET aliases = json_array('NBC','<NBC_CALLSIGN>','<NBC_CALLSIGN>-TV','NBC <OTA_CHANNEL>')
+WHERE standard_name='<NBC_CALLSIGN>';
+
+UPDATE station_aliases
+SET aliases = json_array('CBS','<CBS_CALLSIGN>','<CBS_CALLSIGN>-TV','CBS <OTA_CHANNEL>')
+WHERE standard_name='<CBS_CALLSIGN>';
+SQL
+```
+
+If the existing `station_aliases` table does NOT have a row for one of these callsigns (e.g., the location was seeded before any OTA affiliate seeding), insert it instead:
+```bash
+sqlite3 /home/ubuntu/sports-bar-data/production.db <<'SQL'
+INSERT OR IGNORE INTO station_aliases (id, standard_name, aliases, created_at) VALUES
+  (lower(hex(randomblob(16))), '<CALLSIGN>', json_array('NETWORK','<CALLSIGN>','<CALLSIGN>-TV','NETWORK <OTA_CHANNEL>'), CURRENT_TIMESTAMP);
+SQL
+```
+
+**Step 5.** Commit the populated JSON file to the location branch (NOT to main — main keeps the empty template):
+```bash
+cd /home/ubuntu/Sports-Bar-TV-Controller
+git add apps/web/data/station-aliases-local.json
+git commit -m "feat(station-aliases): populate OTA affiliates for <LOCATION_NAME>"
+# Push happens via auto-update.sh's normal push step — do not push manually.
+```
+
+**Step 6.** Verify the AI Suggest fix worked. After the build+restart, call the endpoint:
+```bash
+curl -s 'http://localhost:3001/api/scheduling/ai-suggest' | python3 -c '
+import json, sys, collections
+d = json.load(sys.stdin)
+leagues = collections.Counter(s["league"] for s in d.get("suggestions", []))
+print("leagues in suggestions:", dict(leagues))
+print("total suggestions:", len(d.get("suggestions", [])))
+'
+```
+Expected: more than 6 suggestions, spanning multiple leagues (MLB + NHL + NBA + MLS + UFL + UFC + etc., whatever has games in the 12h window). If you still see only MLB/NHL, one of the affiliate aliases was typed wrong — re-check Step 2's callsigns against the actual ESPN broadcast data (`sqlite3 .../production.db "SELECT DISTINCT broadcast_networks FROM game_schedules WHERE league='ufl' LIMIT 5;"` should show `["ABC"]` or `["FOX"]` — confirm your alias catches those bare names).
+
+**Rollback:** The `seedStationAliases()` upsert change is additive (union-merge never deletes aliases). Reverting the code is safe; the DB rows stay. The AI Suggest prompt loosening is a prompt-text change — `git revert` removes it cleanly, and any in-flight AI suggestions from the new prompt continue to work because `parseOllamaResponse` handles both shapes.
+
+---
+
 ### v2.22.6 — Checkpoint C enforces CLAUDE.md ↔ memory sync post-update
 **Released:** 2026-04-17
 

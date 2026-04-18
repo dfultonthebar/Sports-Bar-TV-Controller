@@ -46,12 +46,15 @@ const STANDARD_ALIASES = [
   { standardName: 'TNT', aliases: ['TNTHD', 'TNT HD', 'TNTDRAMA'] },
   { standardName: 'TBS', aliases: ['TBSHD', 'TBS HD'] },
   { standardName: 'BTN', aliases: ['BIG TEN NETWORK', 'BIG TEN', 'B10', 'Big 10', 'BTNHD', 'BTN HD'] },
-  { standardName: 'NBCSN', aliases: ['NBC SPORTS', 'NBC Sports', 'NBCSNHD', 'NBCSN HD', 'Peacock', 'PEACOCK', 'Peacock/NBC Sports'] },
+  { standardName: 'NBCSN', aliases: ['NBC SPORTS', 'NBC Sports', 'NBCSNHD', 'NBCSN HD', 'Peacock/NBC Sports'] },
   { standardName: 'USA', aliases: ['USAHD', 'USA HD', 'USA NETWORK', 'USA Network'] },
-  { standardName: 'ABC', aliases: ['ABCHD', 'WABC', 'ABC HD', 'WBAY'] },
-  { standardName: 'NBC', aliases: ['NBCHD', 'NBC HD', 'WGBA'] },
-  { standardName: 'CBS', aliases: ['CBSHD', 'CBS HD', 'WFRV'] },
-  { standardName: 'FOX', aliases: ['FOXHD', 'FOX HD', 'WLUK', 'Fox'] },
+  // NOTE: Bare broadcast network names ("ABC", "NBC", "CBS", "FOX") are
+  // intentionally NOT aliased here — each location has DIFFERENT OTA
+  // affiliates (Green Bay = WBAY/WGBA/WFRV/WLUK; Madison = WKOW/WMTV/WISC/WMSN;
+  // etc.). Location-specific affiliate aliases are seeded from
+  // `apps/web/data/station-aliases-local.json` by seedLocalStationAliases().
+  // Populating bare network names here would route Madison's "ABC" games to
+  // Green Bay's WBAY preset — wrong channel.
   { standardName: 'MLBN', aliases: ['MLB', 'MLBNHD', 'MLB NETWORK', 'MLB NET', 'MLB Network', 'MLBNet'] },
   { standardName: 'NFLN', aliases: ['NFL', 'NFLNHD', 'NFL NETWORK', 'NFL NET', 'NFL Network', 'NFLNet'] },
   { standardName: 'NHLN', aliases: ['NHL', 'NHLNHD', 'NHL NETWORK', 'NHL NET', 'NHL Network', 'NHLNet'] },
@@ -68,6 +71,19 @@ const STANDARD_ALIASES = [
   { standardName: 'TRUTV', aliases: ['TRU TV', 'TRUTVHD', 'truTV'] },
   { standardName: 'PARAMOUNT', aliases: ['Paramount', 'Paramount Network', 'PARMOUNT', 'PAR'] },
   { standardName: 'MLBSZ', aliases: ['MLB Strike Zone', 'MLB STRIKE ZONE', 'Strike Zone'] },
+  // Streaming apps (universal — these are service names, not local affiliates).
+  // These aliases also help the cable/directv preset fallback path recognize
+  // streaming-origin broadcast strings; the primary streaming resolution path
+  // uses STREAMING_STATION_MAP in network-channel-resolver.ts.
+  { standardName: 'PrimeVideo', aliases: ['Prime Video', 'Amazon Prime Video', 'Amazon Prime', 'PRIME VIDEO', 'Amazon'] },
+  { standardName: 'AppleTVPlus', aliases: ['Apple TV', 'Apple TV+', 'AppleTV+', 'Apple TV Plus', 'APPLE TV+', 'APPLE TV'] },
+  { standardName: 'ParamountPlus', aliases: ['Paramount+', 'Paramount Plus', 'PARAMOUNT+', 'P+'] },
+  { standardName: 'Peacock', aliases: ['Peacock', 'PEACOCK', 'Peacock Premium', 'Peacock TV'] },
+  { standardName: 'ESPNPlus', aliases: ['ESPN+', 'ESPN Plus', 'ESPNPLUS', 'ESPN +'] },
+  { standardName: 'Netflix', aliases: ['Netflix', 'NETFLIX', 'Netflix Sports'] },
+  { standardName: 'Max', aliases: ['Max', 'HBO Max', 'MAX', 'HBOMax'] },
+  { standardName: 'YouTubeTV', aliases: ['YouTube TV', 'YoutubeTV', 'YTTV', 'YOUTUBE TV'] },
+  { standardName: 'Hulu', aliases: ['Hulu', 'HULU', 'Hulu+'] },
 ]
 
 // ---------------------------------------------------------------------------
@@ -197,25 +213,102 @@ async function seedFireTV(): Promise<{ seeded: boolean; count: number }> {
 
 async function seedStationAliases(): Promise<{ seeded: boolean; count: number }> {
   try {
-    const count = await tableRowCount('station_aliases')
-    if (count > 0) {
-      logger.info(`[SEED] station_aliases table already has ${count} rows, skipping`)
+    // Per-row upsert: merge new entries into whatever is already in the DB.
+    // This lets later code releases add new universal aliases (e.g. new
+    // streaming apps) and have them take effect on locations that already
+    // have the table populated. The previous "skip-if-any-rows" behavior
+    // made adding entries to STANDARD_ALIASES a no-op at existing installs.
+    const existing = await db.select({ name: schema.stationAliases.standardName, aliases: schema.stationAliases.aliases }).from(schema.stationAliases)
+    const existingMap = new Map<string, string[]>()
+    for (const row of existing) {
+      try { existingMap.set(row.name, JSON.parse(row.aliases)) } catch { existingMap.set(row.name, []) }
+    }
+
+    let added = 0
+    let merged = 0
+    for (const entry of STANDARD_ALIASES) {
+      const current = existingMap.get(entry.standardName)
+      if (!current) {
+        await db.insert(schema.stationAliases).values({
+          standardName: entry.standardName,
+          aliases: JSON.stringify(entry.aliases),
+        }).onConflictDoNothing()
+        logger.info(`[SEED]   +Alias: ${entry.standardName} -> ${entry.aliases.join(', ')}`)
+        added++
+      } else {
+        // Union — preserve any location-edited aliases, add new universal ones
+        const unionSet = new Set([...current, ...entry.aliases])
+        if (unionSet.size > current.length) {
+          await db.update(schema.stationAliases)
+            .set({ aliases: JSON.stringify([...unionSet]) })
+            .where(sql`standard_name = ${entry.standardName}`)
+          logger.info(`[SEED]   ~Alias merge: ${entry.standardName} (+${unionSet.size - current.length} new)`)
+          merged++
+        }
+      }
+    }
+
+    logger.info(`[SEED] Station alias seed complete: ${added} added, ${merged} merged (of ${STANDARD_ALIASES.length} universal entries)`)
+    return { seeded: added > 0 || merged > 0, count: added + merged }
+  } catch (error) {
+    logger.error('[SEED] Failed to seed station aliases:', error)
+    return { seeded: false, count: 0 }
+  }
+}
+
+interface LocalAliasEntry {
+  standardName: string
+  aliases: string[]
+}
+
+async function seedLocalStationAliases(): Promise<{ seeded: boolean; count: number }> {
+  // Location-specific OTA broadcast-affiliate aliases. Each location has
+  // different ABC/NBC/CBS/FOX affiliates (Green Bay uses WBAY/WGBA/WFRV/WLUK;
+  // Madison uses WKOW/WMTV/WISC/WMSN; etc.). This file is populated per
+  // location branch; it's an empty template on main. Format:
+  //   {"aliases": [{"standardName": "WBAY", "aliases": ["ABC", "ABC 2", ...]}, ...]}
+  try {
+    const data = tryReadJson<{ aliases: LocalAliasEntry[] }>('station-aliases-local.json')
+    if (!data || !Array.isArray(data.aliases) || data.aliases.length === 0) {
+      logger.info('[SEED] No station-aliases-local.json entries to seed (empty template or missing — normal on main)')
       return { seeded: false, count: 0 }
     }
 
-    logger.info(`[SEED] Seeding ${STANDARD_ALIASES.length} standard station aliases...`)
-    for (const entry of STANDARD_ALIASES) {
-      await db.insert(schema.stationAliases).values({
-        standardName: entry.standardName,
-        aliases: JSON.stringify(entry.aliases),
-      }).onConflictDoNothing()
-      logger.info(`[SEED]   Alias: ${entry.standardName} -> ${entry.aliases.join(', ')}`)
+    // Reload current aliases after seedStationAliases() may have just run
+    const existing = await db.select({ name: schema.stationAliases.standardName, aliases: schema.stationAliases.aliases }).from(schema.stationAliases)
+    const existingMap = new Map<string, string[]>()
+    for (const row of existing) {
+      try { existingMap.set(row.name, JSON.parse(row.aliases)) } catch { existingMap.set(row.name, []) }
     }
 
-    logger.info(`[SEED] Station alias seeding complete: ${STANDARD_ALIASES.length} entries`)
-    return { seeded: true, count: STANDARD_ALIASES.length }
+    let added = 0
+    let merged = 0
+    for (const entry of data.aliases) {
+      if (!entry.standardName || !Array.isArray(entry.aliases)) continue
+      const current = existingMap.get(entry.standardName)
+      if (!current) {
+        await db.insert(schema.stationAliases).values({
+          standardName: entry.standardName,
+          aliases: JSON.stringify(entry.aliases),
+        }).onConflictDoNothing()
+        logger.info(`[SEED]   +Local alias: ${entry.standardName} -> ${entry.aliases.join(', ')}`)
+        added++
+      } else {
+        const unionSet = new Set([...current, ...entry.aliases])
+        if (unionSet.size > current.length) {
+          await db.update(schema.stationAliases)
+            .set({ aliases: JSON.stringify([...unionSet]) })
+            .where(sql`standard_name = ${entry.standardName}`)
+          logger.info(`[SEED]   ~Local alias merge: ${entry.standardName} (+${unionSet.size - current.length} new)`)
+          merged++
+        }
+      }
+    }
+
+    logger.info(`[SEED] Local station alias seed complete: ${added} added, ${merged} merged (of ${data.aliases.length} local entries)`)
+    return { seeded: added > 0 || merged > 0, count: added + merged }
   } catch (error) {
-    logger.error('[SEED] Failed to seed station aliases:', error)
+    logger.error('[SEED] Failed to seed local station aliases:', error)
     return { seeded: false, count: 0 }
   }
 }
@@ -331,12 +424,21 @@ export async function seedFromJson(): Promise<SeedResult> {
   const direcTV = await seedDirecTV()
   const fireTV = await seedFireTV()
   const stationAliases = await seedStationAliases()
+  const localStationAliases = await seedLocalStationAliases()
   const channelPresets = await seedChannelPresets()
   const bartenderLayout = await seedBartenderLayout()
 
-  if (!direcTV.seeded && !fireTV.seeded && !stationAliases.seeded && !channelPresets.seeded && !bartenderLayout.seeded) {
+  if (!direcTV.seeded && !fireTV.seeded && !stationAliases.seeded && !localStationAliases.seeded && !channelPresets.seeded && !bartenderLayout.seeded) {
     logger.info('[SEED] All tables already populated, no seeding needed')
   }
 
-  return { direcTV, fireTV, stationAliases, channelPresets }
+  // Merge universal + local alias counts into the stationAliases slot so
+  // callers see a single "stationAliases" result (backward compatible with
+  // any consumer that logs SeedResult).
+  const combinedAliases = {
+    seeded: stationAliases.seeded || localStationAliases.seeded,
+    count: stationAliases.count + localStationAliases.count,
+  }
+
+  return { direcTV, fireTV, stationAliases: combinedAliases, channelPresets }
 }
