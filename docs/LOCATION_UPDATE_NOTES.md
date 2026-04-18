@@ -39,6 +39,17 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-04-17 — v2.22.9 — orchestration scripts take main's version + longer checkpoint timeouts
+
+**Risk:** GO — fixes two remaining blockers.
+
+1. `scripts/auto-update.sh`, `scripts/rollback.sh`, `scripts/verify-install.sh`, `scripts/ensure-schema.sh`, `scripts/ensure-ollama-model.sh`, and the three `checkpoint-*.txt` prompts now live in `LOCATION_PATHS_THEIRS` — any merge conflict on these takes main's version. Lucky's had divergent edits to `auto-update.sh` from an earlier manual tweak, which aborted the merge at step `merge`. These are pure software and locations should never carry divergent versions.
+2. Checkpoint B and C timeouts bumped 180s → 300s. The memory-sync additions in Checkpoint C and accumulated context in Checkpoint B were making Claude run past 3 min on lower-spec hosts (Graystone). `script -qfc` killed the subprocess at the outer timeout and rolled back.
+
+**Affected:** `scripts/auto-update.sh`, `package.json`.
+
+---
+
 ### 2026-04-17 — v2.22.8 — pipe `yes` to drizzle-kit push for data-loss prompts
 
 **Risk:** GO — unblocks locations with data in tables the schema has since removed (v2.20.0 removed N8nWebhookLog + N8nWorkflowConfig). drizzle-kit push was hitting a confirmation prompt for data-loss statements and erroring with "Interactive prompts require a TTY terminal" — indistinguishable in the log from the Claude CLI TTY error that v2.22.4/7 fixed. Fix: `yes | npx drizzle-kit push` so the auto-approved schema change from Checkpoint A proceeds. Data loss is intentional: the table was already removed on main.
