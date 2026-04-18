@@ -274,6 +274,34 @@ class SchedulerService {
           }).catch(() => {});
         } catch {}
 
+        // Digest recent bartender overrides into stable recommendations.
+        // Complements pattern-analyzer: that reads post-correction state
+        // for AI Suggest; this reads the delta (add/remove events) to
+        // surface recurring corrections that might warrant updating the
+        // default tv_output_ids for a team.
+        try {
+          const { runOverrideDigest } = await import('./override-digester');
+          runOverrideDigest().then(r => {
+            logger.info(`[SCHEDULER] Override digest: ${r.totalEventsScanned} events → ${r.patterns.length} stable patterns`);
+          }).catch((err) => {
+            logger.warn('[SCHEDULER] Override digest failed:', err);
+          });
+        } catch {}
+
+        // Scan recent SchedulerLog failures for recurring clusters and
+        // promote them to high-visibility warn rows. This is how new
+        // systemic bugs surface before an operator notices — tonight's
+        // UUID parseInt bug would have been flagged within an hour of
+        // the first failed tune cluster.
+        try {
+          const { runFailureSweep } = await import('./failure-sweeper');
+          runFailureSweep().then(r => {
+            logger.info(`[SCHEDULER] Failure sweep: ${r.scanned} events → ${r.clusters.length} clusters`);
+          }).catch((err) => {
+            logger.warn('[SCHEDULER] Failure sweep failed:', err);
+          });
+        } catch {}
+
         this.lastCleanup = now;
       }
 

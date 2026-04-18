@@ -37,6 +37,79 @@ is the archive.
 
 ## Current entries
 
+### v2.20.0 — Autonomous agents + n8n cleanup + GPU benchmark
+**Released:** 2026-04-17
+
+**What changed:**
+
+1. **`override-digester` (autonomous, hourly).** New
+   `packages/scheduler/src/override-digester.ts`. Reads 30 days of
+   `SchedulerLog component='override-learn'` events, buckets by
+   (team, outputNum, action), and emits an hourly
+   `[override-digest/summarize]` summary plus one
+   `[override-digest/recommend]` row per stable pattern
+   (≥3 occurrences). Home-team recommendations emit at `level='warn'`
+   for prominence. Does NOT auto-mutate allocation defaults — it
+   surfaces recommendations for a human review.
+
+2. **`failure-sweeper` (autonomous, hourly).** New
+   `packages/scheduler/src/failure-sweeper.ts`. Tails the last hour of
+   `SchedulerLog` for `success=0` or `level∈(error,warn)` rows
+   (excluding intentional high-vis override signals), buckets by
+   (component, operation, first 60 chars of message), emits
+   `[failure-sweep/scan]` every hour and a `[failure-sweep/cluster]`
+   warn row per recurring signature (≥3 occurrences). Tonight's UUID
+   parseInt bug would have been flagged within an hour under this.
+
+3. **n8n dead code removed.** Deleted `n8n-workflows/` directory,
+   `/api/n8n/webhook` route, n8n tab from AI Hub UI, `N8nWebhookLog` +
+   `N8nWorkflowConfig` schema tables (both empty), and
+   `/api/n8n` entry from `packages/auth/src/config.ts`
+   webhook-endpoint patterns. The embedded iframe used to point at
+   `http://24.123.87.42:5678` (a non-internal IP). ~300 lines gone.
+
+**Schema changes:** `N8nWebhookLog` and `N8nWorkflowConfig` tables
+dropped. Both were empty at every location. Drizzle schema no longer
+declares them.
+
+**Required manual steps:**
+- [ ] **Drop n8n tables** (safe — always empty in practice):
+  ```bash
+  DB=/home/ubuntu/sports-bar-data/production.db
+  sqlite3 "$DB" "DROP TABLE IF EXISTS N8nWebhookLog; DROP TABLE IF EXISTS N8nWorkflowConfig;"
+  ```
+- [ ] **Restart PM2** — autonomous agents fire inside the existing
+  hourly cleanup tick; no new scheduler entry point needed.
+
+**Verification:**
+```bash
+# Agents should emit one summary + scan row per hour. Check last 4 hours:
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "SELECT datetime(createdAt,'unixepoch','localtime'), component, operation, message
+   FROM SchedulerLog
+   WHERE component IN ('override-digest','failure-sweep')
+     AND createdAt >= strftime('%s','now','-4 hours')
+   ORDER BY createdAt DESC LIMIT 20;"
+```
+
+**GPU acceleration notes (for other locations deciding whether to try):**
+- Ollama ships with a Vulkan backend at `/usr/local/lib/ollama/vulkan/`.
+  Enable with `OLLAMA_VULKAN=1` (the environment var must be set — not
+  just `OLLAMA_LLM_LIBRARY=vulkan`).
+- **Intel Iris Xe (13900HK at Lucky's 1313): Vulkan is SLOWER than CPU.**
+  CPU baseline 10.8 tok/sec, Vulkan 7.4 tok/sec on llama3.1:8b. The iGPU
+  shares RAM (no bandwidth win) and has too few EUs to beat an
+  alderlake-tuned ggml CPU build. **Don't enable.**
+- Discrete GPU (NVIDIA ≥ 8GB, AMD RX with ROCm, Apple Silicon): very
+  likely worth enabling. If a future location gets one, benchmark with
+  the same `curl ... /api/generate ... "options":{"num_predict":80}`
+  pattern against a CPU baseline and pick the winner.
+- Do NOT add `OLLAMA_VULKAN=1` to `/etc/systemd/system/ollama.service`
+  unless a per-location benchmark proves it's a net win. The default
+  CPU path is the safe choice.
+
+---
+
 ### v2.19.0 — Per-league duration learning + Atlas endpoint guards
 **Released:** 2026-04-17
 
