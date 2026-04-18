@@ -677,11 +677,16 @@ SCHEMA_PUSH_LOG="$LOG_DIR/drizzle-push-$(date +%s).log"
 # drizzle-kit push prompts for confirmation when it detects a data-loss
 # statement (e.g. dropping a table that still has rows). In the
 # auto-update flow the schema change was already approved at Checkpoint A
-# (it's in the merge diff Claude reviewed), so we pipe `yes` to accept.
-# Without this, any release that removes a table — e.g. v2.20.0's
-# n8n-log cleanup — fails at a location that still has rows in the
-# to-be-removed table, with "Error: Interactive prompts require a TTY".
-if yes 2>/dev/null | NODE_ENV=development npx drizzle-kit push 2>&1 | tee "$SCHEMA_PUSH_LOG" | tee -a "$LOG_FILE"; then
+# (it's in the merge diff Claude reviewed), so we auto-accept.
+#
+# Piping `yes` into stdin does NOT work: drizzle-kit uses the `prompts`
+# package with a TTY-aware reader that bails with "Interactive prompts
+# require a TTY terminal" the moment it detects stdin is not a tty —
+# BEFORE it ever tries to read a character. Same class of problem as
+# the Claude CLI TTY bug (v2.22.4). Fix the same way: wrap in
+# `script -qfc` to provide a pty, and feed the "y\n" answer via `yes`
+# inside the script so it's ready when the prompt reads.
+if script -qfc "yes 2>/dev/null | NODE_ENV=development npx drizzle-kit push" /dev/null 2>&1 | tee "$SCHEMA_PUSH_LOG" | tee -a "$LOG_FILE"; then
   log "drizzle-kit push completed cleanly"
 else
   if grep -qE "(index|table|column) [\`\"]?[A-Za-z_][A-Za-z0-9_]*[\`\"]? already exists|already exists" "$SCHEMA_PUSH_LOG"; then

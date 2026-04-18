@@ -39,6 +39,18 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-04-17 — v2.22.10 — wrap drizzle-kit push in PTY for data-loss prompts
+
+**Risk:** GO — small fix to schema_push.
+
+v2.22.8's `yes | drizzle-kit push` didn't work because drizzle-kit's `prompts` package bails with "Interactive prompts require a TTY terminal" the moment it detects stdin isn't a tty, before reading any characters. Same bug class as the Claude CLI TTY regression — needs a real pty. Fix: wrap in `script -qfc "yes | ... drizzle-kit push" /dev/null`. The `yes` inside the script'd shell pre-stages "y\n" answers and the pty satisfies the tty check.
+
+Still affects Graystone (3 rows in N8nWebhookLog that v2.20.0's schema removed).
+
+**Affected:** `scripts/auto-update.sh`, `package.json`.
+
+---
+
 ### 2026-04-17 — v2.22.9 — orchestration scripts take main's version + longer checkpoint timeouts
 
 **Risk:** GO — fixes two remaining blockers.
