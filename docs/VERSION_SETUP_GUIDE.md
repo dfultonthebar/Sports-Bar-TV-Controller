@@ -187,6 +187,29 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.22.6 — Checkpoint C enforces CLAUDE.md ↔ memory sync post-update
+**Released:** 2026-04-17
+
+**What changed:**
+- `scripts/prompts/checkpoint-c.txt` — new "REQUIRED FIRST STEP" section that makes the post-restart Claude re-read `CLAUDE.md` in full, compare it against `~/.claude/projects/-home-ubuntu-Sports-Bar-TV-Controller/memory/MEMORY.md`, add missing rules as new memory entries, correct memories that conflict, remove memories for deleted features, and scan the "Known Errors & Fixes" section of `VERSION_SETUP_GUIDE.md` for any fixes that still apply at this host — all BEFORE deciding GO/CAUTION.
+- Backfill entries for v2.22.2/3/4/5 (previously shipped without doc entries) and two "Known Errors & Fixes" entries (Claude CLI 2.1.113+ TTY bug, Tailwind-lockfile drift) so the updated Checkpoint C has concrete content to sync.
+
+**Required Manual Step:** None. Triggered automatically during every successful auto-update run.
+
+**Verification:**
+```bash
+# After v2.22.6 lands, the most recent auto-update log should show the
+# Checkpoint C response mention memory file edits or a "no drift found" note:
+grep -A3 "Checkpoint C: DECISION" $(ls -t /home/ubuntu/sports-bar-data/update-logs/auto-update-*.log | head -1)
+
+# The memory file should have a last-modified time close to the update:
+stat -c "%y %n" ~/.claude/projects/-home-ubuntu-Sports-Bar-TV-Controller/memory/MEMORY.md
+```
+
+**Rollback:** Prompt-only change. Revert safely removes the REQUIRED-FIRST-STEP block; Checkpoint C reverts to its prior behavior (holistic health sanity check only).
+
+---
+
 ### v2.22.5 — Shift brief: real game times + anti-hallucination guardrail
 **Released:** 2026-04-17
 
@@ -809,6 +832,35 @@ to diagnose. Format:
 The goal: every other location inheriting this file from main should find
 the answer here instead of re-debugging from scratch. Per CLAUDE.md Rule
 8, you MUST add an entry when you fix a non-trivial error.
+
+### Auto-update rolls back at Checkpoint B after Claude CLI 2.1.113+ install
+
+- **Symptom:** `auto-update.sh` runs through merge, npm_ci, schema_push, then fails at Checkpoint B with `FAIL at step 'checkpoint_b': Checkpoint B: Claude Code CLI failure`. The checkpoint output log contains `Error: Interactive prompts require a TTY terminal (process.stdin.isTTY or process.stdout.isTTY is false)`. The auto-update rolls back cleanly (exit 4), no on-disk damage, but the location stays on its pre-merge version run after run.
+- **Root cause:** Claude Code CLI 2.1.113 and later require a TTY for `claude -p` even when `--dangerously-skip-permissions` is set and stdin is piped. The auto-update runs via `setsid -f` detached from any TTY, so the check fails. Locations still on 2.1.112 don't hit this; locations where Claude CLI auto-updated past 2.1.112 do.
+- **Fix:** Included in v2.22.4. `scripts/auto-update.sh` now wraps the invocation in `script -qfc "claude -p --dangerously-skip-permissions \"\$(cat $prompt_file_tmp)\"" /dev/null`, which provides a pty. Prompt goes through a mktemp file because multi-KB prompts on the command line overflow ARG_MAX once script/sh layers stack. If a location is stuck pre-v2.22.4, the workaround is to manually `git reset --hard` the location branch forward to v2.22.4 (or temporarily downgrade Claude CLI back to 2.1.112 with `curl -fsSL https://claude.ai/install.sh | bash -s -- --version 2.1.112`).
+- **Verification:** `grep "Checkpoint B: DECISION" $(ls -t /home/ubuntu/sports-bar-data/update-logs/auto-update-*.log | head -1)` should return a DECISION line. Also confirm `claude --version` is ≥ 2.1.113 so you know the pty wrapper is actually what unblocked it.
+- **Applies to:** all locations with Claude CLI ≥ 2.1.113. As of 2026-04-17 that's: Appleton, Graystone, Lucky's, Stoneyard-Greenville (post-upgrade). Holmgren + Leg Lamp escaped because their successful runs happened before their Claude CLI upgraded.
+- **First seen:** 2026-04-17 at Appleton during v2.22.x batch rollout; Graystone and Lucky's hit the same within minutes. Fixed in v2.22.4.
+
+### Every location rolls back at `npm_ci` with EUSAGE lockfile drift
+
+- **Symptom:** Auto-update fails at `npm_ci` step with `npm error code EUSAGE / npm ci can only install packages when your package.json and package-lock.json or npm-shrinkwrap.json are in sync. Please update your lock file with npm install before continuing.` followed by a list of `Missing: <pkg>@<version> from lock file`. Rolls back cleanly.
+- **Root cause:** A commit on main bumped a dep in a workspace `package.json` (typically `apps/web/package.json`) but the root `package-lock.json` wasn't regenerated in the same commit. `npm ci` is strict about this — correctly, since a stale lock means reproducible builds aren't actually reproducible. The concrete instance on 2026-04-17 was commit `5209838a` (v2.17.0 "Tailwind 4") that added `@tailwindcss/postcss ^4.2.2` to `apps/web/package.json` but didn't bump `tailwindcss` from `^3.4.18` to `^4.2.2` there, so the regenerated lockfile had inconsistent transitive deps.
+- **Fix:** Two parts, both in v2.22.2:
+  1. Fix the package.json drift on main: bump the misaligned dep, run `npm install --package-lock-only`, commit both files together.
+  2. Defensive fallback in `scripts/auto-update.sh` (mirrored in `scripts/rollback.sh`): if `npm ci` exits with EUSAGE, fall back to `npm install --include=dev` which regenerates node_modules from package.json. The location's rebuilt lockfile is NOT pushed back to git — main still needs to be fixed — but one missed regen on main can no longer strand the fleet.
+- **Verification:** `grep "npm install fallback succeeded" $(ls -t /home/ubuntu/sports-bar-data/update-logs/auto-update-*.log | head -1)` — if this line is present the fallback fired and the root cause needs a main-side fix.
+- **Applies to:** all locations.
+- **First seen:** 2026-04-17 at all 6 locations simultaneously when v2.17.0 rolled out. Fallback added in v2.22.2.
+
+### Location stuck at pre-v2.17.0 version because `npm ci` keeps failing
+
+- **Symptom:** Location is on, say, v2.13.2 or v2.16.x. Auto-update log shows `FAIL at step 'npm_ci'` with `Missing: tailwindcss@3.4.19 from lock file` plus ~20 transitive deps. Rolls back, repeats on next cron cycle. Days pass with no actual update.
+- **Root cause:** v2.17.0 shipped an incomplete Tailwind 3→4 migration — `globals.css` still used v3 syntax, `tailwind.config.js` was deleted with no `@theme` replacement, and the package.json ↔ lockfile drift from the entry above compounded. Even with v2.22.2's fallback landing the install, the build then failed with `Cannot find module 'autoprefixer'` or `Cannot apply unknown utility class text-slate-100`.
+- **Fix:** v2.22.3 reverts the Tailwind 4 migration entirely — restores `apps/web/tailwind.config.js`, reverts `postcss.config.js` to `{ tailwindcss, autoprefixer }`, `apps/web/package.json` back to `tailwindcss ^3.4.18` + `autoprefixer ^10.4.21`, regenerates lockfile. Keeps the non-Tailwind parts of v2.17.0 (lucide-react 1.x, eslint 10, sqlite3 removal) since those worked.
+- **Verification:** `grep version /home/ubuntu/Sports-Bar-TV-Controller/package.json` should read ≥ 2.22.3 after a successful auto-update. Then `ls apps/web/tailwind.config.js` should exist, and `npx turbo run build --force --filter=@sports-bar/web` should compile in ~38s with no Tailwind errors.
+- **Applies to:** all locations.
+- **First seen:** 2026-04-17 at Stoneyard, Graystone, Appleton, Holmgren, Lucky's, Leg Lamp — essentially the entire fleet during the v2.17.0 → v2.22.x batch.
 
 ### Atlas endpoint reconnect loop on dbx/BSS locations
 

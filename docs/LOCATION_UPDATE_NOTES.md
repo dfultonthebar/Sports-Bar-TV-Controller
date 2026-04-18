@@ -39,6 +39,18 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-04-17 — v2.22.6 — checkpoint C enforces CLAUDE.md + memory sync post-update
+
+**Risk:** GO — prompt-only change to `scripts/prompts/checkpoint-c.txt`. No code, no schema, no deps.
+
+Every successful auto-update now forces the post-restart Claude to re-read `CLAUDE.md` in full, sync it against this host's `memory/MEMORY.md`, and scan `docs/VERSION_SETUP_GUIDE.md`'s "Known Errors & Fixes" for any unapplied fixes — before deciding GO/CAUTION. This enforces CLAUDE.md Rule 7 at a predictable moment so each location's memory stays near-duplicate with CLAUDE.md across the fleet. Two rounds of doc backfill (the v2.22.2-5 entries and the "Known Errors & Fixes" entries for the Claude-CLI-TTY and Tailwind-lockfile issues we debugged today) are part of the same push so the updated Checkpoint C has something to catch.
+
+**Required Manual Step:** None. Runs automatically at the tail of every auto-update.
+
+**Affected:** `scripts/prompts/checkpoint-c.txt`, `docs/VERSION_SETUP_GUIDE.md`, `package.json`.
+
+---
+
 ### 2026-04-17 — v2.22.5 — shift brief: real game times + anti-hallucination
 
 **Risk:** GO — pure fix to an LLM prompt. No schema, no deps.
