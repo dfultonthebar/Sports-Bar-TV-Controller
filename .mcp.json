@@ -1,0 +1,16 @@
+{
+  "$comment": "Project-scoped MCP servers shared across every Sports-Bar-TV-Controller location. Auto-approved at load via .claude/settings.json enableAllProjectMcpServers=true. See docs/VERSION_SETUP_GUIDE.md section v2.23.3 for per-location setup notes (Brave Search needs BRAVE_API_KEY in .env).",
+  "mcpServers": {
+    "context7": {
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp"]
+    },
+    "brave-search": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+      "env": {
+        "BRAVE_API_KEY": "${BRAVE_API_KEY}"
+      }
+    }
+  }
+}
