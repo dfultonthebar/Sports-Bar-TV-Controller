@@ -7,6 +7,48 @@ HTTP health 200, metrics endpoint OK, bartender proxy 302, critical
 DB tables populated, no crash patterns in PM2 error logs in the last
 100 lines).
 
+## REQUIRED FIRST STEP — sync memory from updated CLAUDE.md
+
+Before anything else, re-read the CLAUDE.md that just landed on this
+host and synchronize this host's memory system to it. This enforces
+CLAUDE.md Rule 7 (bidirectional memory ↔ CLAUDE.md sync on every read)
+at a well-defined moment — every successful update. Without this step,
+one location's memory drifts further from CLAUDE.md on every update,
+and future sessions at that location answer from stale rules.
+
+Do this in order:
+
+1. Read `/home/ubuntu/Sports-Bar-TV-Controller/CLAUDE.md` in full.
+2. Read `~/.claude/projects/-home-ubuntu-Sports-Bar-TV-Controller/memory/MEMORY.md`
+   to see what's already saved on this host.
+3. For every Standing Rule, every "Common Gotcha", every hardware
+   constraint, every conventions/patterns section in CLAUDE.md —
+   check the memory index for a corresponding entry:
+   - If MISSING: save a new memory entry (type: feedback or project,
+     per CLAUDE.md's auto-memory conventions) and add a one-line
+     pointer in MEMORY.md. This ensures that even sessions that
+     never read CLAUDE.md in full inherit the rule.
+   - If PRESENT but CONFLICTS with current CLAUDE.md text: update
+     the memory entry to match. CLAUDE.md wins — it's the shared
+     authoritative copy across all locations.
+   - If PRESENT and matches: leave alone.
+4. Remove memory entries that reference files, tables, or features
+   no longer present in the codebase (e.g. if CLAUDE.md now marks
+   CEC as deprecated, remove "use CEC for cable boxes" memories).
+5. Also scan `docs/VERSION_SETUP_GUIDE.md`'s "Known Errors & Fixes"
+   section — any fix entry that describes a problem this location
+   could still be in (e.g. a schema step this host never ran) should
+   be verified/applied now, while you're already doing a post-update
+   sanity check.
+
+Commit any memory-file changes to the local memory directory; these
+are per-host and never pushed to git. If you discover CLAUDE.md
+itself is missing a rule that's clearly in local memory (the reverse
+direction of Rule 7), add a note in your DECISION response body
+flagging that a main-side CLAUDE.md update is needed — do not edit
+CLAUDE.md from Checkpoint C; that's a separate commit the operator
+makes deliberately.
+
 ## How this fits into the pipeline
 
 The calling script has ALREADY:

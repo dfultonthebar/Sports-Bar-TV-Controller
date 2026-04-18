@@ -303,12 +303,38 @@ run_checkpoint() {
   # an API key in env it tries that path and rejects the skip-permissions
   # flag with "Invalid API key · Fix external API key", failing the
   # checkpoint in ~2 seconds. Stripping the var forces OAuth mode.
-  if ! env -u ANTHROPIC_API_KEY timeout "$timeout_secs" claude -p --dangerously-skip-permissions "$prompt" >"$out_file" 2>&1; then
+  #
+  # `script -qfc ...` wraps the invocation in a pseudo-TTY because
+  # Claude Code CLI 2.1.113+ aborts non-interactive invocations with
+  # "Interactive prompts require a TTY terminal" even when stdin is
+  # piped and --dangerously-skip-permissions is set. The PTY from
+  # `script` satisfies the isTTY check. We write the prompt to a file
+  # and read it via `< $prompt_file` inside the script'd shell because
+  # passing a multi-KB prompt on the command line can exceed ARG_MAX
+  # once script/sh layers stack up.
+  #
+  # IMPORTANT: `script -qfc` invokes the command via `sh -c`, which
+  # does NOT inherit the interactive bash PATH. On hosts where claude
+  # lives in ~/.local/bin (native install), sh can't find it. Resolve
+  # claude to its absolute path BEFORE passing to script so the
+  # command doesn't rely on PATH inside the script'd subshell.
+  local claude_bin
+  claude_bin=$(command -v claude)
+  if [ -z "$claude_bin" ]; then
+    fail "Checkpoint $label: claude binary not on PATH in run_checkpoint context" 2
+  fi
+  local prompt_file_tmp
+  prompt_file_tmp=$(mktemp)
+  printf '%s' "$prompt" > "$prompt_file_tmp"
+  if ! env -u ANTHROPIC_API_KEY timeout "$timeout_secs" \
+       script -qfc "$claude_bin -p --dangerously-skip-permissions \"\$(cat $prompt_file_tmp)\"" /dev/null \
+       >"$out_file" 2>&1; then
     log "Checkpoint $label: Claude Code timed out or errored"
     log "Checkpoint $label output: $(head -40 "$out_file" 2>/dev/null)"
-    rm -f "$out_file"
+    rm -f "$out_file" "$prompt_file_tmp"
     fail "Checkpoint $label: Claude Code CLI failure" 2
   fi
+  rm -f "$prompt_file_tmp"
 
   local decision
   # Try line-start first, then fall back to anywhere in the response.
@@ -488,9 +514,24 @@ LOCATION_PATHS_OURS=(
 # These paths always take the MAIN version (git checkout --theirs)
 # package-lock and package.json version bumps must come from main for
 # `npm ci` to work after the reset.
+#
+# Orchestration scripts (auto-update.sh, rollback.sh, ensure-*.sh) and
+# prompt files are pure software — locations should never carry
+# divergent versions. When a location's branch has stale edits to these
+# (e.g. from a manual tweak during an earlier debugging session), the
+# merge hits a content conflict and the whole update aborts. Force them
+# to take main's version so software fixes propagate cleanly.
 LOCATION_PATHS_THEIRS=(
   "package-lock.json"
   "package.json"
+  "scripts/auto-update.sh"
+  "scripts/rollback.sh"
+  "scripts/verify-install.sh"
+  "scripts/ensure-schema.sh"
+  "scripts/ensure-ollama-model.sh"
+  "scripts/prompts/checkpoint-a.txt"
+  "scripts/prompts/checkpoint-b.txt"
+  "scripts/prompts/checkpoint-c.txt"
 )
 
 log "git merge origin/main --no-ff -m 'chore: auto-update merge $RUN_TS'"
@@ -633,7 +674,19 @@ rm -f "$NPM_CI_LOG"
 step "schema_push"
 log "npx drizzle-kit push (apply pending schema changes)"
 SCHEMA_PUSH_LOG="$LOG_DIR/drizzle-push-$(date +%s).log"
-if NODE_ENV=development npx drizzle-kit push 2>&1 | tee "$SCHEMA_PUSH_LOG" | tee -a "$LOG_FILE"; then
+# drizzle-kit push prompts for confirmation when it detects a data-loss
+# statement (e.g. dropping a table that still has rows). In the
+# auto-update flow the schema change was already approved at Checkpoint A
+# (it's in the merge diff Claude reviewed), so we auto-accept.
+#
+# Piping `yes` into stdin does NOT work: drizzle-kit uses the `prompts`
+# package with a TTY-aware reader that bails with "Interactive prompts
+# require a TTY terminal" the moment it detects stdin is not a tty —
+# BEFORE it ever tries to read a character. Same class of problem as
+# the Claude CLI TTY bug (v2.22.4). Fix the same way: wrap in
+# `script -qfc` to provide a pty, and feed the "y\n" answer via `yes`
+# inside the script so it's ready when the prompt reads.
+if script -qfc "yes 2>/dev/null | NODE_ENV=development npx drizzle-kit push" /dev/null 2>&1 | tee "$SCHEMA_PUSH_LOG" | tee -a "$LOG_FILE"; then
   log "drizzle-kit push completed cleanly"
 else
   if grep -qE "(index|table|column) [\`\"]?[A-Za-z_][A-Za-z0-9_]*[\`\"]? already exists|already exists" "$SCHEMA_PUSH_LOG"; then
@@ -672,7 +725,7 @@ fi
 # CHECKPOINT B — Post-merge / pre-build review
 # ===========================================================================
 step "checkpoint_b"
-run_checkpoint "B" "$PROMPTS_DIR/checkpoint-b.txt" 180
+run_checkpoint "B" "$PROMPTS_DIR/checkpoint-b.txt" 300
 
 # ===========================================================================
 # PHASE: BUILD (with .next.bak caching for instant rollback)
@@ -731,7 +784,7 @@ fi
 # CHECKPOINT C — Post-restart holistic check
 # ===========================================================================
 step "checkpoint_c"
-run_checkpoint "C" "$PROMPTS_DIR/checkpoint-c.txt" 180
+run_checkpoint "C" "$PROMPTS_DIR/checkpoint-c.txt" 300
 
 # ===========================================================================
 # PHASE: FINALIZE

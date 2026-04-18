@@ -39,6 +39,77 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-04-17 — v2.22.10 — wrap drizzle-kit push in PTY for data-loss prompts
+
+**Risk:** GO — small fix to schema_push.
+
+v2.22.8's `yes | drizzle-kit push` didn't work because drizzle-kit's `prompts` package bails with "Interactive prompts require a TTY terminal" the moment it detects stdin isn't a tty, before reading any characters. Same bug class as the Claude CLI TTY regression — needs a real pty. Fix: wrap in `script -qfc "yes | ... drizzle-kit push" /dev/null`. The `yes` inside the script'd shell pre-stages "y\n" answers and the pty satisfies the tty check.
+
+Still affects Graystone (3 rows in N8nWebhookLog that v2.20.0's schema removed).
+
+**Affected:** `scripts/auto-update.sh`, `package.json`.
+
+---
+
+### 2026-04-17 — v2.22.9 — orchestration scripts take main's version + longer checkpoint timeouts
+
+**Risk:** GO — fixes two remaining blockers.
+
+1. `scripts/auto-update.sh`, `scripts/rollback.sh`, `scripts/verify-install.sh`, `scripts/ensure-schema.sh`, `scripts/ensure-ollama-model.sh`, and the three `checkpoint-*.txt` prompts now live in `LOCATION_PATHS_THEIRS` — any merge conflict on these takes main's version. Lucky's had divergent edits to `auto-update.sh` from an earlier manual tweak, which aborted the merge at step `merge`. These are pure software and locations should never carry divergent versions.
+2. Checkpoint B and C timeouts bumped 180s → 300s. The memory-sync additions in Checkpoint C and accumulated context in Checkpoint B were making Claude run past 3 min on lower-spec hosts (Graystone). `script -qfc` killed the subprocess at the outer timeout and rolled back.
+
+**Affected:** `scripts/auto-update.sh`, `package.json`.
+
+---
+
+### 2026-04-17 — v2.22.8 — pipe `yes` to drizzle-kit push for data-loss prompts
+
+**Risk:** GO — unblocks locations with data in tables the schema has since removed (v2.20.0 removed N8nWebhookLog + N8nWorkflowConfig). drizzle-kit push was hitting a confirmation prompt for data-loss statements and erroring with "Interactive prompts require a TTY terminal" — indistinguishable in the log from the Claude CLI TTY error that v2.22.4/7 fixed. Fix: `yes | npx drizzle-kit push` so the auto-approved schema change from Checkpoint A proceeds. Data loss is intentional: the table was already removed on main.
+
+**Affected:** `scripts/auto-update.sh` (schema_push step), `package.json`.
+
+---
+
+### 2026-04-17 — v2.22.7 — resolve claude to absolute path inside script -qfc
+
+**Risk:** GO — critical followup to v2.22.4. `script -qfc` invokes via `sh -c` which lacks `~/.local/bin` on PATH, so v2.22.4's pty wrapper couldn't find `claude`. Now we call `command -v claude` first and pass the absolute path into `script`. Without this fix, every location still rolls back at Checkpoint B even though v2.22.4 landed.
+
+**Affected:** `scripts/auto-update.sh` (run_checkpoint function), `package.json`.
+
+---
+
+### 2026-04-17 — v2.22.6 — checkpoint C enforces CLAUDE.md + memory sync post-update
+
+**Risk:** GO — prompt-only change to `scripts/prompts/checkpoint-c.txt`. No code, no schema, no deps.
+
+Every successful auto-update now forces the post-restart Claude to re-read `CLAUDE.md` in full, sync it against this host's `memory/MEMORY.md`, and scan `docs/VERSION_SETUP_GUIDE.md`'s "Known Errors & Fixes" for any unapplied fixes — before deciding GO/CAUTION. This enforces CLAUDE.md Rule 7 at a predictable moment so each location's memory stays near-duplicate with CLAUDE.md across the fleet. Two rounds of doc backfill (the v2.22.2-5 entries and the "Known Errors & Fixes" entries for the Claude-CLI-TTY and Tailwind-lockfile issues we debugged today) are part of the same push so the updated Checkpoint C has something to catch.
+
+**Required Manual Step:** None. Runs automatically at the tail of every auto-update.
+
+**Affected:** `scripts/prompts/checkpoint-c.txt`, `docs/VERSION_SETUP_GUIDE.md`, `package.json`.
+
+---
+
+### 2026-04-17 — v2.22.5 — shift brief: real game times + anti-hallucination
+
+**Risk:** GO — pure fix to an LLM prompt. No schema, no deps.
+
+Ollama was fabricating times in the shift brief (e.g. "Brewers at 9pm" for a game that started at 6:10pm) because active-allocation prompt entries had no time field. Fix adds `startLocal` + `status` to the context and a CRITICAL guardrail forbidding invented times. Fallback brief also shows "started <time>". See `docs/VERSION_SETUP_GUIDE.md` v2.22.5 for verification commands.
+
+**Affected:** `apps/web/src/app/api/ai/shift-brief/route.ts`, `package.json`.
+
+---
+
+### 2026-04-17 — v2.22.4 — wrap claude -p in pseudo-TTY
+
+**Risk:** GO — critical fix; every location's auto-update was rolling back at Checkpoint B once Claude CLI reached 2.1.113+.
+
+Claude Code CLI 2.1.113+ errors with "Interactive prompts require a TTY terminal" when invoked non-interactively. `scripts/auto-update.sh` now wraps the claude call in `script -qfc "..." /dev/null` to provide a pty. Self-update re-exec means every location picks up the fix starting with the run that merges it. See `docs/VERSION_SETUP_GUIDE.md` v2.22.4 for verification.
+
+**Affected:** `scripts/auto-update.sh`, `package.json`.
+
+---
+
 ### 2026-04-17 — v2.22.3 — revert to Tailwind 3 (v2.17.0 migration was incomplete)
 
 **Risk:** GO — restores the last known-good CSS pipeline. Fixes build break that no location could recover from.
