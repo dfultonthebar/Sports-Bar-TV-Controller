@@ -22,6 +22,7 @@ class SchedulerService {
   private isRunning = false;
   private hasDelayedGames = false;
   private lastCleanup: Date | null = null;
+  private lastWeeklySummary: Date | null = null;
   private executingSchedules = new Set<string>();
 
   /**
@@ -270,11 +271,63 @@ class SchedulerService {
         try {
           const { patternAnalyzer } = await import('./pattern-analyzer');
           patternAnalyzer.analyzeAll().then(result => {
-            logger.info(`[SCHEDULER] Pattern analysis: ${result.teamRouting?.length || 0} team, ${result.leaguePriority?.length || 0} league, ${result.timeSlot?.length || 0} timeslot patterns`);
+            logger.info(`[SCHEDULER] Pattern analysis: ${result.teamRouting?.length || 0} team, ${result.leaguePriority?.length || 0} league, ${result.leagueDuration?.length || 0} league-duration, ${result.timeSlots?.length || 0} timeslot patterns`);
           }).catch(() => {});
         } catch {}
 
+        // Digest recent bartender overrides into stable recommendations.
+        // Complements pattern-analyzer: that reads post-correction state
+        // for AI Suggest; this reads the delta (add/remove events) to
+        // surface recurring corrections that might warrant updating the
+        // default tv_output_ids for a team.
+        try {
+          const { runOverrideDigest } = await import('./override-digester');
+          runOverrideDigest().then(r => {
+            logger.info(`[SCHEDULER] Override digest: ${r.totalEventsScanned} events → ${r.patterns.length} stable patterns`);
+          }).catch((err) => {
+            logger.warn('[SCHEDULER] Override digest failed:', err);
+          });
+        } catch {}
+
+        // Scan recent SchedulerLog failures for recurring clusters and
+        // promote them to high-visibility warn rows. This is how new
+        // systemic bugs surface before an operator notices — tonight's
+        // UUID parseInt bug would have been flagged within an hour of
+        // the first failed tune cluster.
+        try {
+          const { runFailureSweep } = await import('./failure-sweeper');
+          runFailureSweep().then(r => {
+            logger.info(`[SCHEDULER] Failure sweep: ${r.scanned} events → ${r.clusters.length} clusters`);
+          }).catch((err) => {
+            logger.warn('[SCHEDULER] Failure sweep failed:', err);
+          });
+        } catch {}
+
         this.lastCleanup = now;
+      }
+
+      // Weekly owner summary — fires on Monday between 06:00 and 06:59
+      // local time (the scheduler checks every ~60s so this catches it
+      // reliably in that hour). The POST handler writes
+      // data/reports/week-YYYY-Www.md.
+      try {
+        const local = new Date(now.toLocaleString('en-US', { timeZone: process.env.LOCATION_TIMEZONE || 'America/Chicago' }));
+        const isMonday = local.getDay() === 1;
+        const isSixAmHour = local.getHours() === 6;
+        const dayKey = `${local.getFullYear()}-${local.getMonth()}-${local.getDate()}`;
+        const alreadyRanToday = this.lastWeeklySummary
+          ? `${this.lastWeeklySummary.getFullYear()}-${this.lastWeeklySummary.getMonth()}-${this.lastWeeklySummary.getDate()}` === dayKey
+          : false;
+        if (isMonday && isSixAmHour && !alreadyRanToday) {
+          logger.info('[SCHEDULER] Triggering weekly owner summary');
+          fetch(`http://127.0.0.1:${API_PORT}/api/ai/weekly-summary`, { method: 'POST' })
+            .then(r => r.json())
+            .then((r: any) => logger.info(`[SCHEDULER] Weekly summary: ${r.success ? r.writtenTo : r.error}`))
+            .catch(err => logger.warn('[SCHEDULER] Weekly summary request failed:', err));
+          this.lastWeeklySummary = now;
+        }
+      } catch (err: any) {
+        logger.warn('[SCHEDULER] Weekly summary check error:', err);
       }
 
       // Get all enabled schedules
@@ -649,6 +702,21 @@ class SchedulerService {
               })
               .where(eq(schema.inputSourceAllocations.id, allocation.id));
 
+            // Mirror the active state onto the input_sources row so the
+            // scheduler UI (which reads currentlyAllocated / currentChannel)
+            // shows the game against the correct cable box / fire TV. Prior
+            // to v2.18.0 only the auto-reallocator did this, but it only
+            // fires on still-pending allocations — once scheduler-service
+            // flipped to 'active' first, the source row never got updated
+            // and the UI showed "no game" on that box until restart.
+            await db.update(schema.inputSources)
+              .set({
+                currentlyAllocated: true,
+                currentChannel: allocation.channelNumber,
+                updatedAt: nowUnix,
+              })
+              .where(eq(schema.inputSources.id, inputSource.id));
+
             await schedulerLogger.info(
               'scheduler-service',
               'tune',
@@ -666,11 +734,27 @@ class SchedulerService {
 
             logger.info(`[SCHEDULER] ✅ Successfully tuned ${inputSource.name} to channel ${allocation.channelNumber}`);
 
-            // Route matrix inputs to TV outputs if tvOutputIds is set
+            // Route matrix inputs to TV outputs if tvOutputIds is set.
+            // inputSource.matrixInputId is a UUID FK to MatrixInput.id, NOT the
+            // physical input channel. Prior to v2.18.2 this code did
+            // parseInt(matrixInputId, 10), which returned NaN for UUIDs that
+            // start with a letter and garbage numbers for UUIDs that start
+            // with digits (e.g., "99ad..." parsed to 99). Either way the
+            // Wolf Pack either rejected the route silently or landed TVs on
+            // unrelated inputs, and the bartender had to rescue every
+            // scheduled tune by hand. Fix: resolve the UUID to the physical
+            // channelNumber via MatrixInput.
             if (allocation.tvOutputIds && inputSource.matrixInputId) {
               try {
                 const outputIds: number[] = JSON.parse(allocation.tvOutputIds);
-                const matrixInput = parseInt(inputSource.matrixInputId, 10);
+                const matrixInputRow = await db.select({
+                    channelNumber: schema.matrixInputs.channelNumber,
+                  })
+                  .from(schema.matrixInputs)
+                  .where(eq(schema.matrixInputs.id, inputSource.matrixInputId))
+                  .limit(1)
+                  .all();
+                const matrixInput = matrixInputRow[0]?.channelNumber ?? NaN;
 
                 if (outputIds.length > 0 && !isNaN(matrixInput)) {
                   // Check for conflicting active allocations that claim the same outputs

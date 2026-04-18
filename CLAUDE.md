@@ -602,6 +602,58 @@ pm2 delete sports-bar-tv-controller && pm2 start ecosystem.config.js
 - **All cable box control uses IR** via Global Cache iTach IP2IR
 - **CEC code is legacy dead weight** — do not add new CEC features, plan to remove existing CEC code
 
+### 5a. Matrix Config Per-Location Values (CRITICAL)
+
+`MatrixConfiguration.outputOffset` is ADDED to every output number before
+routing commands go to the Wolf Pack. If set wrong, routing silently lands
+on the wrong physical TVs with no error — just confused operators. Lucky's
+1313 shipped in April 2026 with `outputOffset=26` on a single-card WP-36X36,
+sending every "output 1" request to physical output 27 for weeks before
+being caught.
+
+**Expected values by card layout (NOT by model string):**
+
+The WP-8X8, WP-16X16, and WP-36X36 chassis are all sold in BOTH single-card
+and multi-card configurations — the model string alone does not tell you
+which. Card layout is set per-location by the installer.
+
+| Card layout | outputOffset | audioOutputCount notes |
+|---|---|---|
+| **Single-card** (one card fills all outputs) | **MUST be 0** | 0 if audio routes via Atlas/dbx/BSS DSP; non-zero only if Wolf Pack outputs are wired to speakers |
+| **Multi-card** (chassis populated with multiple daughter cards) | Per-card, depends on physical wiring | Per-location |
+
+**Per-location reference** (updated 2026-04-18 after operator verification):
+
+| Location | Model | Layout | outputOffset | audioOutputCount | Notes |
+|---|---|---|---|---|---|
+| Stoneyard Greenville | Wolf Pack WP-36X36 | **Multi-card** | Per card | 4 | |
+| Stoneyard Appleton | Wolf Pack | **Multi-card** | Per card | 4 | |
+| Holmgren Way | Wolf Pack 48-port | **Multi-card** | Per card layout | 4 | Outputs 37-40 are audio-only (CLAUDE.md §10) |
+| Graystone | Wolf Pack WP-36X36 | **Multi-card** | +32 for audio card | 4 | Comment in `wolfpack-matrix-service.ts:275` |
+| Lucky's 1313 | Wolf Pack WP-36X36 | **Single-card** | **0 (enforced)** | **0** | Audio via dbx ZonePRO 1260m @ 192.168.10.50 |
+| Leg Lamp | Wolf Pack | **Single-card** | **0 (enforced)** | 0 | |
+
+**How enforcement is opted in:**
+
+Single-card locations declare themselves by setting `MATRIX_SINGLE_CARD=true`
+in the location's `.env`. When this flag is set, `scripts/verify-install.sh`'s
+`matrix_config` layer will FAIL the install if `outputOffset != 0`, rolling
+back the auto-update before bad values ship. Multi-card locations leave the
+flag unset (the default) and any offset is accepted.
+
+This was changed from a model-name-based check after Graystone's multi-card
+WP-36X36 failed verify with "offset=32 on WP-36X36 (expected 0)" — the old
+check assumed every WP-36X36 was single-card. Opt-in via env is explicit
+and lets operators match the check to physical wiring regardless of model.
+
+- `apps/web/src/instrumentation.ts` logs `[MATRIX-CONFIG] ⚠` at startup if a single-card model has non-zero offset (separate legacy check, still useful as a runtime warning).
+- Multi-card locations are not auto-verified (their values are wiring-specific) — operator must maintain the row in this table when adding/moving cards.
+
+**When adding a new location**, add a row to the per-location table above
+BEFORE the first auto-update merges it into this file. When changing physical
+cabling on an existing Wolf Pack, update both the live DB value AND the row
+here.
+
 ### 6. Device Data: DB is Source of Truth
 - Devices are now stored in database tables (`DirecTVDevice`, `FireTVDevice`), not JSON files
 - JSON files (`data/directv-devices.json`, `data/firetv-devices.json`) are only used for initial seeding
@@ -642,6 +694,21 @@ The bartender Video tab reads both `zones` and `rooms` from the `BartenderLayout
 5. **When told to "remember" something, update CLAUDE.md too.** Memory files are per-host — only this machine's future sessions see them. CLAUDE.md is in the shared repo and gets merged to every location. When the user says "remember X", save to local memory AND add the rule to the appropriate section of CLAUDE.md, then commit+push with a version bump. This is how rules propagate to Lucky's, Holmgren, Graystone, Leg Lamp, and any future location.
 
 6. **Always use `scripts/auto-update.sh` for updates.** When asked to update a location or "auto update yourself", run `bash scripts/auto-update.sh --triggered-by=manual_cli`. Never manually merge main, run npm ci, or restart PM2 — the script handles conflict resolution, DB schema push, backup creation, Turbo cache busting, PM2 restart, verify-install checks, and Claude checkpoint reviews. Manual updates skip safety checks and are error-prone.
+
+7. **Sync memory ↔ CLAUDE.md on every read (bidirectional).** When reading this file during a session (especially Checkpoint B of auto-update), compare its rules/gotchas/standing-instructions against the host memory at `~/.claude/projects/-home-ubuntu-Sports-Bar-TV-Controller/memory/`. In BOTH directions:
+   - **CLAUDE.md → memory:** If a rule appears in CLAUDE.md but is missing from memory, save it as a new memory entry (feedback/gotcha type) and update `MEMORY.md`. This ensures every Claude session on this host inherits the rule, even without re-reading CLAUDE.md in full.
+   - **memory → CLAUDE.md:** If a rule/gotcha is in host memory but NOT in CLAUDE.md, it's location-only knowledge that other locations are missing. Add it to the appropriate section of CLAUDE.md, bump version, commit to main (or the current branch if on a location branch — eventually to main). This is how institutional knowledge caught at one location propagates to every other.
+   - The two sources should be near-duplicates in content. Rule 5 covers new rules the user explicitly asks you to remember; Rule 7 covers the passive drift-catching on every CLAUDE.md read.
+
+8. **Read and CONTRIBUTE to `docs/VERSION_SETUP_GUIDE.md` on every update.** This file has two purposes, both mandatory:
+
+   **Reading (every version-changing update):** Before trusting a version bump, scan the entry for the target version. Each entry lists REQUIRED manual setup — install Ollama, seed a DB table, set a new env var, etc. Checkpoint B of auto-update must verify each "Required manual step" was completed OR perform it automatically (if safe) OR flag it for the operator in the decision response. `LOCATION_UPDATE_NOTES.md` tells you WHETHER to update; `VERSION_SETUP_GUIDE.md` tells you WHAT TO DO so it works after updating.
+
+   **Contributing (every location, every session):** The guide is a living knowledge base that every location improves. You MUST contribute in two cases:
+   - **When bumping a version to main**, include an entry for that version in the same commit as `package.json`. List any new setup required (dependencies, DB work, env keys, verification commands). Skipping this means the next location to update will silently miss required setup.
+   - **When you hit an error at a location and fix it**, append an entry to the "Known Errors & Fixes" section of the guide with: the symptom the operator saw, the root cause, the exact fix (SQL, command, code path), and how to verify the fix worked. Other locations hitting the same error later will find the fix from reading the guide instead of re-debugging. This includes: botched schema pushes, missing seed rows, wrong-IP config, stuck auto-update steps, UI spinners, routing misroutes — anything where the path from symptom → fix was non-obvious. If you're not sure whether a fix is generally applicable or location-specific, err on the side of documenting it with a location tag; future readers can filter.
+
+   The guide lives at `/home/ubuntu/Sports-Bar-TV-Controller/docs/VERSION_SETUP_GUIDE.md`. Commit edits to the current branch (main for shared knowledge; a location branch only if the fix is truly location-specific). After committing a fix entry to a location branch, cherry-pick or promote to main so every other location inherits it on their next update.
 
 ### Version Bumping (REQUIRED — every commit to main)
 **Every commit pushed to `main` MUST include a version bump in root `package.json`.** Do not push code changes and bump the version separately — include it in the same commit or at minimum the same push. A commit without a version bump means two locations can report the same version while running different code, making debugging impossible.
@@ -858,6 +925,8 @@ The admin UI for Sports Guide, Smart Scheduler, and AI Game Plan is being consol
 Never combine them into a single alias bundle or Bucks games will wrongly route to 308. See `apps/web/src/lib/seed-from-json.ts` for the canonical alias lists that seed new installations.
 
 **channel_guide normalizeStation:** The helper strips `HD`, `NETWORK`, `CHANNEL`, and `-TV` suffixes, and removes spaces and dashes, before matching. If adding new alias entries, ensure at least one alias in the list normalizes to the target preset's name (also normalized) so the preset-build loop can link the alias to the preset.
+
+**Override-learn hook (v2.18.0):** When a bartender issues a manual matrix route (`POST /api/matrix/route` with `source='bartender'`) within 10 minutes of an active/pending `input_source_allocation` being created, the route handler patches that allocation's `tv_output_ids` to reflect the bartender's correction. Logic: if the new `inputNum` matches the allocation's mapped input → add `outputNum` to the list; if `outputNum` was in the list but the new input is different → remove it. Every patch writes a `SchedulerLog` row with `component='override-learn'`, operation `add`/`remove`, and full metadata (prev/new outputs, team, league, `isHomeTeam`). Home-team overrides (teams matched against the `HomeTeam` table — Brewers, Bucks, Badgers, etc.) log at `level='warn'` so operators can filter the strongest signals. Why it matters: `pattern-analyzer.ts` reads `tv_output_ids` hourly to build team-routing patterns. Since bartenders often know the room's sight-lines better than the original scheduler, their corrections within the first 10 min of a tune are the highest-quality training signal we have. Manual changes made after the 10-minute window are treated as unrelated decisions and are not learned from.
 
 #### 9a. Live Channel Mapping (Network → Channel)
 **Purpose:** Map ESPN broadcast network names to local channel numbers for live game display

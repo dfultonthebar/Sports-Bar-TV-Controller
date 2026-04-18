@@ -39,6 +39,186 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-04-18 — v2.22.12 — per-league duration learning from actual-vs-scheduled
+
+**Risk:** GO — additive pattern type. No schema change; uses existing `scheduling_patterns` table.
+
+`input_source_allocations` has been storing `allocated_at`, `expected_free_at`, and `actually_freed_at` since v2.19.0, but `pattern-analyzer.ts` never aggregated the duration data. Raw signal was sitting in the DB unused.
+
+New `analyzeLeagueDurationPatterns()` reads every completed allocation and computes per league: sample count, avg scheduled vs actual duration, P50 + P90 actual, avg + P90 overrun, and a recommended buffer = ceil(P90 overrun / 5) * 5 min. Writes `pattern_type='league_duration'` rows to `scheduling_patterns`.
+
+AI Suggest's Ollama prompt now includes `Learned league durations: mlb: ~209 min actual (+29 min over scheduled, n=1; buffer 30 min for P90 overrun)`, so future slot planning buffers high-overrun leagues correctly while on-time leagues get no buffer. Learning is per-venue from that venue's own completed allocations.
+
+**Affected:** `packages/scheduler/src/pattern-analyzer.ts`, `packages/scheduler/src/scheduler-service.ts`, `apps/web/src/app/api/scheduling/ai-suggest/route.ts`, `package.json`.
+
+---
+
+### 2026-04-17 — v2.22.11 — matrix single-card check is opt-in via env
+
+**Risk:** GO — fixes false-positive verify failure on multi-card WP-36X36 locations (Graystone). Single-card locations (Lucky's, Leg Lamp) now declare themselves via `MATRIX_SINGLE_CARD=true` in .env, which activates the strict offset=0 check. Multi-card (default) accepts any offset.
+
+**Manual step per single-card location:** add `MATRIX_SINGLE_CARD=true` to `.env`. Already done at Lucky's and Leg Lamp during rollout.
+
+**Affected:** `scripts/verify-install.sh`, `CLAUDE.md`, `package.json`.
+
+---
+
+### 2026-04-17 — v2.22.10 — wrap drizzle-kit push in PTY for data-loss prompts
+
+**Risk:** GO — small fix to schema_push.
+
+v2.22.8's `yes | drizzle-kit push` didn't work because drizzle-kit's `prompts` package bails with "Interactive prompts require a TTY terminal" the moment it detects stdin isn't a tty, before reading any characters. Same bug class as the Claude CLI TTY regression — needs a real pty. Fix: wrap in `script -qfc "yes | ... drizzle-kit push" /dev/null`. The `yes` inside the script'd shell pre-stages "y\n" answers and the pty satisfies the tty check.
+
+Still affects Graystone (3 rows in N8nWebhookLog that v2.20.0's schema removed).
+
+**Affected:** `scripts/auto-update.sh`, `package.json`.
+
+---
+
+### 2026-04-17 — v2.22.9 — orchestration scripts take main's version + longer checkpoint timeouts
+
+**Risk:** GO — fixes two remaining blockers.
+
+1. `scripts/auto-update.sh`, `scripts/rollback.sh`, `scripts/verify-install.sh`, `scripts/ensure-schema.sh`, `scripts/ensure-ollama-model.sh`, and the three `checkpoint-*.txt` prompts now live in `LOCATION_PATHS_THEIRS` — any merge conflict on these takes main's version. Lucky's had divergent edits to `auto-update.sh` from an earlier manual tweak, which aborted the merge at step `merge`. These are pure software and locations should never carry divergent versions.
+2. Checkpoint B and C timeouts bumped 180s → 300s. The memory-sync additions in Checkpoint C and accumulated context in Checkpoint B were making Claude run past 3 min on lower-spec hosts (Graystone). `script -qfc` killed the subprocess at the outer timeout and rolled back.
+
+**Affected:** `scripts/auto-update.sh`, `package.json`.
+
+---
+
+### 2026-04-17 — v2.22.8 — pipe `yes` to drizzle-kit push for data-loss prompts
+
+**Risk:** GO — unblocks locations with data in tables the schema has since removed (v2.20.0 removed N8nWebhookLog + N8nWorkflowConfig). drizzle-kit push was hitting a confirmation prompt for data-loss statements and erroring with "Interactive prompts require a TTY terminal" — indistinguishable in the log from the Claude CLI TTY error that v2.22.4/7 fixed. Fix: `yes | npx drizzle-kit push` so the auto-approved schema change from Checkpoint A proceeds. Data loss is intentional: the table was already removed on main.
+
+**Affected:** `scripts/auto-update.sh` (schema_push step), `package.json`.
+
+---
+
+### 2026-04-17 — v2.22.7 — resolve claude to absolute path inside script -qfc
+
+**Risk:** GO — critical followup to v2.22.4. `script -qfc` invokes via `sh -c` which lacks `~/.local/bin` on PATH, so v2.22.4's pty wrapper couldn't find `claude`. Now we call `command -v claude` first and pass the absolute path into `script`. Without this fix, every location still rolls back at Checkpoint B even though v2.22.4 landed.
+
+**Affected:** `scripts/auto-update.sh` (run_checkpoint function), `package.json`.
+
+---
+
+### 2026-04-17 — v2.22.6 — checkpoint C enforces CLAUDE.md + memory sync post-update
+
+**Risk:** GO — prompt-only change to `scripts/prompts/checkpoint-c.txt`. No code, no schema, no deps.
+
+Every successful auto-update now forces the post-restart Claude to re-read `CLAUDE.md` in full, sync it against this host's `memory/MEMORY.md`, and scan `docs/VERSION_SETUP_GUIDE.md`'s "Known Errors & Fixes" for any unapplied fixes — before deciding GO/CAUTION. This enforces CLAUDE.md Rule 7 at a predictable moment so each location's memory stays near-duplicate with CLAUDE.md across the fleet. Two rounds of doc backfill (the v2.22.2-5 entries and the "Known Errors & Fixes" entries for the Claude-CLI-TTY and Tailwind-lockfile issues we debugged today) are part of the same push so the updated Checkpoint C has something to catch.
+
+**Required Manual Step:** None. Runs automatically at the tail of every auto-update.
+
+**Affected:** `scripts/prompts/checkpoint-c.txt`, `docs/VERSION_SETUP_GUIDE.md`, `package.json`.
+
+---
+
+### 2026-04-17 — v2.22.5 — shift brief: real game times + anti-hallucination
+
+**Risk:** GO — pure fix to an LLM prompt. No schema, no deps.
+
+Ollama was fabricating times in the shift brief (e.g. "Brewers at 9pm" for a game that started at 6:10pm) because active-allocation prompt entries had no time field. Fix adds `startLocal` + `status` to the context and a CRITICAL guardrail forbidding invented times. Fallback brief also shows "started <time>". See `docs/VERSION_SETUP_GUIDE.md` v2.22.5 for verification commands.
+
+**Affected:** `apps/web/src/app/api/ai/shift-brief/route.ts`, `package.json`.
+
+---
+
+### 2026-04-17 — v2.22.4 — wrap claude -p in pseudo-TTY
+
+**Risk:** GO — critical fix; every location's auto-update was rolling back at Checkpoint B once Claude CLI reached 2.1.113+.
+
+Claude Code CLI 2.1.113+ errors with "Interactive prompts require a TTY terminal" when invoked non-interactively. `scripts/auto-update.sh` now wraps the claude call in `script -qfc "..." /dev/null` to provide a pty. Self-update re-exec means every location picks up the fix starting with the run that merges it. See `docs/VERSION_SETUP_GUIDE.md` v2.22.4 for verification.
+
+**Affected:** `scripts/auto-update.sh`, `package.json`.
+
+---
+
+### 2026-04-17 — v2.22.3 — revert to Tailwind 3 (v2.17.0 migration was incomplete)
+
+**Risk:** GO — restores the last known-good CSS pipeline. Fixes build break that no location could recover from.
+
+**What's in this release:**
+
+The Tailwind 3→4 migration in commit `5209838a` (v2.17.0) was never actually completed. The commit claimed "migrated via `npx @tailwindcss/upgrade`" but:
+
+- `apps/web/src/app/globals.css` still uses Tailwind 3 syntax (`@tailwind base/components/utilities;`) instead of Tailwind 4's `@import 'tailwindcss';`.
+- `apps/web/tailwind.config.js` was deleted without adding a `@theme` block to globals.css to replace it.
+- `apps/web/postcss.config.js` still lists `tailwindcss` and `autoprefixer` as plugins (Tailwind 4 consolidates both into `@tailwindcss/postcss`).
+- `apps/web/package.json` dep mix was internally inconsistent.
+
+Result: `npm ci` failed on every location's auto-update starting with v2.17.0, then when v2.22.2's hotfix let `npm ci` through, the build failed with `Cannot find module 'autoprefixer'`, then `Cannot apply unknown utility class text-slate-100` once postcss.config was fixed.
+
+This release reverts all Tailwind 4 changes back to the working Tailwind 3 state. Other v2.17.0 bumps (lucide-react 0→1, eslint 9→10, sqlite3 removal) are KEPT.
+
+Verified: `npm ci && npx turbo run build --force --filter=@sports-bar/web` compiles successfully in 38s on Stoneyard.
+
+**What could break at a location:** Nothing. Restores the CSS pipeline every location was running before v2.17.0.
+
+**Manual steps required:** None.
+
+**Affected files:**
+- `apps/web/tailwind.config.js` (restored)
+- `apps/web/postcss.config.js` (reverted)
+- `apps/web/package.json` (reverted tailwind/autoprefixer deps)
+- `package-lock.json` (regenerated)
+- `package.json` (version 2.22.2 → 2.22.3)
+
+---
+
+### 2026-04-17 — v2.22.2 — fix Tailwind 4 lockfile drift + add npm-ci fallback
+
+**Risk:** GO — fixes a hard break on all locations that would otherwise roll back every auto-update run.
+
+**What's in this release:**
+
+1. **`apps/web/package.json`** — bumped `tailwindcss: ^3.4.18` → `^4.2.2`. Commit `5209838a` (v2.17.0) had migrated the root lockfile to Tailwind 4.2.2 and added `@tailwindcss/postcss: ^4.2.2`, but forgot to bump the `tailwindcss` dep in the same workspace file. `npm ci` caught the mismatch and failed on every location's auto-update starting with v2.17.0, triggering an immediate rollback at the `npm_ci` step.
+
+2. **`scripts/auto-update.sh` + `scripts/rollback.sh`** — added a fail-safe: if `npm ci` exits with EUSAGE ("lockfile out of sync"), fall back to `npm install` which regenerates the lock in-place on the location. Rebuilt lock is NOT committed back to git — the root cause still has to be fixed on main — but this prevents a single missed lockfile regen on main from stranding the entire fleet.
+
+3. **`package-lock.json`** regenerated to include all of Tailwind 4.2.2's transitive deps (arg, chokidar, didyoumean, dlv, fast-glob, jiti, lilconfig, postcss-nested, sucrase, etc.).
+
+**What could break at a location:** Nothing. This update is what was supposed to be in v2.17.0. Every location that attempted an auto-update between v2.17.0 and v2.22.1 rolled back cleanly (no state damage), they just stayed on their pre-v2.17.0 commit. This release finally gets them unstuck.
+
+**Manual steps required:** None.
+
+**Rollback notes:** If this ends up mispulling, the rollback path is: `git revert HEAD` on main + regenerate lock with `npm install --package-lock-only`. The npm-ci fail-safe is designed to be strictly additive, so it can be removed without behavioral change on the happy path.
+
+**Affected files:**
+- `apps/web/package.json` (tailwindcss 3 → 4)
+- `package-lock.json` (regenerated)
+- `scripts/auto-update.sh` (npm_ci fail-safe)
+- `scripts/rollback.sh` (npm_ci fail-safe)
+- `package.json` (version 2.22.1 → 2.22.2)
+
+---
+
+### 2026-04-17 — v2.16.3 — auto-pull Ollama llama3.1:8b during update
+
+**Risk:** GO — additive step in auto-update.sh. Non-fatal if ollama isn't reachable.
+
+**What's in this release:**
+
+- New `scripts/ensure-ollama-model.sh` — idempotent helper that checks if `llama3.1:8b` is installed in the local Ollama daemon, and pulls it if missing. Exits 0 when the model is present (no-op on subsequent runs).
+- `scripts/auto-update.sh` calls the helper between `schema_push` and `checkpoint_b` as a new `ollama_model` step. Non-fatal: if ollama is down or the pull fails, the update continues and just logs a WARNING — AI Suggest will be degraded until resolved, but the rest of the app works.
+
+**What could break at a location:**
+
+- First run at each location downloads ~4.7GB from `registry.ollama.ai`. Expect the auto-update duration to jump from ~4 min to ~8-10 min on the first run that includes this change. Subsequent runs are instant no-ops.
+- If the location runs Ollama with a different model configured and intentionally doesn't have `llama3.1:8b`, this will still pull it (no harm, just disk usage). The app's `hardware-config.ts` hardcodes `llama3.1:8b` as the AI Suggest model, so this matches production code.
+- If the location has no Ollama daemon running at all, the helper exits 1 with a WARNING and the update proceeds. AI Suggest will continue to fail until ollama is installed. This is a soft fail by design.
+
+**Manual steps required:** None. The auto-update handles it.
+
+**Rollback notes:** The new step is strictly additive. Rolling back the code change removes the step; any already-pulled model stays on disk (harmless).
+
+**Affected files:**
+- `scripts/ensure-ollama-model.sh` (new)
+- `scripts/auto-update.sh` (added `ollama_model` step)
+- `package.json` (version 2.16.2 → 2.16.3)
+
+---
+
 ### 2026-04-15 — v2.8.4 — LG TV model probe + TV power audit trail + LG clientKey fix
 
 **Risk:** GO — additive features plus one latent-bug fix. No schema change.

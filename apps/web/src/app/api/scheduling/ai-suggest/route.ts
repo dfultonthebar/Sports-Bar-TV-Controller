@@ -27,15 +27,13 @@ const OLLAMA_MODEL = HARDWARE_CONFIG.ollama.model
 interface SchedulingPattern {
   id: string
   pattern_type: string
-  team_name?: string
-  league?: string
-  input_source_id?: string
-  input_source_name?: string
-  preferred_outputs?: string
-  occurrence_count: number
+  pattern_key: string
+  pattern_data: string
+  observation_count: number
+  sample_size: number
   confidence: number
-  last_seen?: string
-  metadata?: string
+  first_observed: number
+  last_observed: number
 }
 
 interface GameListing {
@@ -49,6 +47,7 @@ interface GameListing {
   channelNumber?: string   // cable channel
   channelName?: string
   directvChannel?: string  // directv channel (different numbering)
+  streamingApp?: string    // app name for firetv inputs (e.g. "Prime Video", "Apple TV+")
 }
 
 interface AISuggestion {
@@ -59,6 +58,7 @@ interface AISuggestion {
   startTime: string
   channelNumber: string
   channelName: string
+  appName?: string          // populated for firetv suggestions
   suggestedInput: string
   suggestedInputId: string
   suggestedDeviceId: string
@@ -86,17 +86,57 @@ async function fetchUpcomingGames(): Promise<GameListing[]> {
       )
     )
 
+    // Collect apps that are actually available on at least one firetv input at
+    // this venue. An "installed" app is one the venue has a login for — if
+    // nobody at Holmgren has MLB.TV, a Cubs/Mets MLB.TV-only game is not
+    // playable here even though we have Fire TVs. Store as lowercase for
+    // case-insensitive comparison against the resolver's app names.
+    const firetvSources = await db.select().from(schema.inputSources).where(
+      and(eq(schema.inputSources.isActive, true), eq(schema.inputSources.type, 'firetv'))
+    )
+    const availableApps = new Set<string>()
+    for (const src of firetvSources) {
+      try {
+        const apps = JSON.parse(src.availableNetworks || '[]') as string[]
+        for (const app of apps) {
+          if (app) availableApps.add(app.toLowerCase().trim())
+        }
+      } catch { /* ignore */ }
+    }
+    logger.info(`[AI-SUGGEST] Available firetv apps at venue: ${[...availableApps].join(', ') || '(none)'}`)
+
     const games: GameListing[] = []
+    let skippedNoChannel = 0
     for (const row of rows) {
       // Parse broadcast networks from JSON
       let networks: string[] = []
       try { networks = JSON.parse(row.broadcastNetworks || '[]') } catch { /* ignore */ }
 
-      // Resolve channels using the same resolver as the bartender remote
+      // Resolve channels using the same resolver as the bartender remote.
+      // Include 'streaming' so Prime Video / Apple TV+ / Peacock games can
+      // be routed to a Fire TV input.
       const resolved = await resolveChannelsForGame(
         { networks, primaryNetwork: networks[0] || null, league: row.league, sport: row.sport },
-        ['cable', 'directv']
+        ['cable', 'directv', 'streaming']
       )
+
+      // Gate the streaming route against apps actually installed on our
+      // Fire TVs. If the resolved app is MLB.TV but no venue Fire TV has
+      // MLB.TV, clear the streaming app so this doesn't count as a playable
+      // route.
+      let streamingAppName = resolved.streamingApp?.app || ''
+      if (streamingAppName && !availableApps.has(streamingAppName.toLowerCase())) {
+        streamingAppName = ''
+      }
+
+      // Skip games that don't have ANY playable route at this venue.
+      // Out-of-market RSN broadcasts (e.g. BravesVision, Marquee Sports Net)
+      // with no streaming fallback fall out here — our cable/DirecTV lineup
+      // doesn't carry them and there's no Fire TV app for them either.
+      if (!resolved.cableChannel && !resolved.directvChannel && !streamingAppName) {
+        skippedNoChannel++
+        continue
+      }
 
       const gameTime = new Date(row.scheduledStart * 1000)
 
@@ -110,13 +150,45 @@ async function fetchUpcomingGames(): Promise<GameListing[]> {
         channelNumber: resolved.cableChannel || '',
         channelName: resolved.primaryMatch || networks[0] || '',
         directvChannel: resolved.directvChannel || '',
+        streamingApp: streamingAppName,
       })
     }
 
-    // Sort by start time
-    games.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime())
+    // Sort by importance so the 30-cap picks high-value games instead of
+    // whatever comes first chronologically. With 23 leagues synced, a raw
+    // time sort would fill the prompt with routine college baseball games
+    // and push the Brewers / MLS / UFL games out.
+    //
+    // Priority tiers (lower number = higher priority):
+    //   1. Home-team games (Brewers/Bucks/Packers/Badgers) — always include
+    //   2. Pro leagues (MLB, NBA, NHL, NFL, MLS, Premier League, UFC, UFL,
+    //      F1, NASCAR, IndyCar, PGA, LPGA)
+    //   3. College football and men's/women's college basketball
+    //   4. Other college sports (college baseball, softball, hockey, tennis)
+    const HOME_TEAMS_RE = /(Brewers|Bucks|Packers|Badgers)/i
+    const PRO_LEAGUES = new Set([
+      'mlb', 'nba', 'wnba', 'nhl', 'nfl', 'ufl',
+      'usa.1', 'eng.1', 'uefa.champions',
+      'f1', 'nascar-premier', 'irl',
+      'pga', 'lpga', 'ufc', 'atp', 'wta',
+    ])
+    const TOP_COLLEGE = new Set(['college-football', 'mens-college-basketball', 'womens-college-basketball'])
+    const priorityOf = (g: GameListing): number => {
+      if (HOME_TEAMS_RE.test(g.homeTeam) || HOME_TEAMS_RE.test(g.awayTeam)) return 1
+      if (PRO_LEAGUES.has(g.league)) return 2
+      if (TOP_COLLEGE.has(g.league)) return 3
+      return 4
+    }
+    games.sort((a, b) => {
+      const pa = priorityOf(a)
+      const pb = priorityOf(b)
+      if (pa !== pb) return pa - pb
+      return new Date(a.time).getTime() - new Date(b.time).getTime()
+    })
     const capped = games.slice(0, 30)
-    logger.info(`[AI-SUGGEST] Found ${games.length} upcoming games from ESPN data, ${capped.length} capped`)
+    logger.info(
+      `[AI-SUGGEST] Games in window: ${rows.length}, playable at this venue: ${games.length} (skipped ${skippedNoChannel} with no resolvable channel), capped to ${capped.length}`
+    )
     return capped
   } catch (err: any) {
     logger.error('[AI-SUGGEST] Error fetching games from game_schedules:', err)
@@ -129,7 +201,7 @@ async function fetchUpcomingGames(): Promise<GameListing[]> {
 async function loadSchedulingPatterns(): Promise<SchedulingPattern[]> {
   try {
     const rows = await db.all(
-      sql`SELECT * FROM scheduling_patterns ORDER BY occurrence_count DESC LIMIT 100`
+      sql`SELECT * FROM scheduling_patterns ORDER BY observation_count DESC LIMIT 100`
     ) as SchedulingPattern[]
     logger.info(`[AI-SUGGEST] Loaded ${rows.length} scheduling patterns`)
     return rows
@@ -270,6 +342,7 @@ function buildPrompt(
   // Group inputs by type so the AI knows which channel number to use
   const cableInputs = inputSources.filter(s => s.type === 'cable')
   const directvInputs = inputSources.filter(s => s.type === 'directv' || s.type === 'satellite')
+  const firetvInputs = inputSources.filter(s => s.type === 'firetv')
 
   const inputLines: string[] = []
   for (const s of cableInputs) {
@@ -278,21 +351,26 @@ function buildPrompt(
   for (const s of directvInputs) {
     inputLines.push(`  ${s.name} (directv${s.currentlyAllocated ? ', BUSY' : ''})`)
   }
+  for (const s of firetvInputs) {
+    const apps = Array.isArray(s.availableNetworks) ? s.availableNetworks.slice(0, 6).join(', ') : 'streaming apps'
+    inputLines.push(`  ${s.name} (firetv — apps: ${apps}${s.currentlyAllocated ? ', BUSY' : ''})`)
+  }
 
-  // Build game list showing BOTH channel numbers so the AI uses the right one.
-  // Also tag each game with availability: BOTH / CABLE-ONLY / DIRECTV-ONLY so the
-  // AI can assign exclusive-channel games to their required input type first and
-  // push dual-availability games to whichever platform has slack.
+  // Build game list with per-route labels. A game can have multiple simultaneous
+  // routes — cable channel, directv channel, and/or a streaming app on Fire TV.
+  // The AI picks whichever input it wants and uses the matching identifier.
   const gameLines = games.map((g, i) => {
-    const time = new Date(g.time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Chicago' })
+    const time = new Date(g.time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: HARDWARE_CONFIG.venue.timezone })
     const cableCh = g.channelNumber ? `cable ch ${g.channelNumber}` : ''
     const dtvCh = g.directvChannel ? `directv ch ${g.directvChannel}` : ''
-    const channels = [cableCh, dtvCh].filter(Boolean).join(', ')
-    let availability = 'NO-CHANNEL'
-    if (g.channelNumber && g.directvChannel) availability = 'BOTH'
-    else if (g.channelNumber) availability = 'CABLE-ONLY'
-    else if (g.directvChannel) availability = 'DIRECTV-ONLY'
-    return `${i + 1}. [${availability}] ${g.awayTeam} at ${g.homeTeam} (${g.league}) — ${time} CT — ${channels || 'no channel found'}`
+    const app = g.streamingApp ? `firetv app "${g.streamingApp}"` : ''
+    const routes = [cableCh, dtvCh, app].filter(Boolean).join(', ')
+    const availability: string[] = []
+    if (g.channelNumber) availability.push('CABLE')
+    if (g.directvChannel) availability.push('DIRECTV')
+    if (g.streamingApp) availability.push('FIRETV')
+    const tag = availability.length > 1 ? availability.join('+') : (availability[0] || 'NO-ROUTE')
+    return `${i + 1}. [${tag}] ${g.awayTeam} at ${g.homeTeam} (${g.league}) — ${time} CT — ${routes || 'no route'}`
   }).join('\n')
 
   const tvCount = tvOutputs.length
@@ -307,12 +385,34 @@ function buildPrompt(
       .map((p: any) => {
         try {
           const d = typeof p.pattern_data === 'string' ? JSON.parse(p.pattern_data) : p.pattern_data
-          return `${d.teamName || '?'}: usually on ${d.preferredInput || '?'}`
+          return `${d.team || d.teamName || '?'}: usually on ${d.preferredInput || '?'}`
         } catch { return null }
       })
       .filter(Boolean)
     if (routingHints.length > 0) {
       patternHints = `\nPast routing patterns:\n${routingHints.join('\n')}`
+    }
+
+    // Per-league duration history. Feeds the LLM observed runtime so
+    // slot planning for high-overrun leagues (MLB, college baseball)
+    // can buffer accordingly. Data comes from (actually_freed_at -
+    // allocated_at) aggregated by pattern-analyzer.ts.
+    const durationHints = patterns
+      .filter((p: any) => p.pattern_type === 'league_duration' && p.pattern_data)
+      .slice(0, 8)
+      .map((p: any) => {
+        try {
+          const d = typeof p.pattern_data === 'string' ? JSON.parse(p.pattern_data) : p.pattern_data
+          if (!d.actualDurationAvgMin || !d.sampleCount) return null
+          const overrun = d.overrunAvgMin ?? 0
+          const overrunLabel = overrun > 0 ? `+${overrun} min over scheduled` : overrun < 0 ? `${overrun} min under scheduled` : 'on time'
+          const bufferNote = d.recommendedBufferMin > 0 ? `; buffer ${d.recommendedBufferMin} min for P90 overrun` : ''
+          return `${d.league}: ~${d.actualDurationAvgMin} min actual (${overrunLabel}, n=${d.sampleCount}${bufferNote})`
+        } catch { return null }
+      })
+      .filter(Boolean)
+    if (durationHints.length > 0) {
+      patternHints += `\nLearned league durations (from completed games at this venue):\n${durationHints.join('\n')}`
     }
   }
 
@@ -342,12 +442,14 @@ SETUP: ${tvCount} TVs across ${totalInputs} inputs. Home teams: Packers, Brewers
 ${patternHints}
 
 RULES:
-1. CRITICAL: Cable inputs MUST use the "cable ch" number. DirecTV inputs MUST use the "directv ch" number. Never mix them.
+1. CRITICAL: Cable inputs MUST use the "cable ch" number. DirecTV inputs MUST use the "directv ch" number. Fire TV inputs MUST use the streaming app name as the channelNumber value (e.g. "Prime Video", "Apple TV+", "Peacock"). Never mix identifiers.
 ${exclusivityRule}
-3. Home team games (Brewers, Bucks, Packers, Badgers) get top priority and more TVs.
-4. Each input tunes ONE channel — assign different games to different inputs. Never pick the same input twice.
-5. Spread games across inputs — don't put everything on one box.
-6. "suggestedInput" MUST be an exact name from the INPUTS list above.
+3. STREAMING GAMES: Any game tagged [FIRETV] (Prime Video, Apple TV+, Peacock, ESPN+, Max, Paramount+) MUST be routed to a firetv input — no cable/directv box can tune it.
+4. CRITICAL COVERAGE RULE: Assign DIFFERENT games to different inputs. Each gameIndex may appear AT MOST ONCE across all suggestions (home team games may appear TWICE — once on cable/directv, once on firetv — for redundancy). Do NOT propose the same game on 3+ inputs.
+5. Home team games (Brewers, Bucks, Packers, Badgers) get top priority. Cover the home team game first, then pick the most popular remaining games (prefer nationally-televised matchups, winning records, playoff implications).
+6. Each input tunes ONE channel — never pick the same input twice.
+7. Spread across inputs — use EVERY input if possible before repeating games.
+8. "suggestedInput" MUST be an exact name from the INPUTS list above.
 
 Return ONLY valid JSON:
 {"suggestions":[{"gameIndex":1,"suggestedInput":"${exampleInput}","channelNumber":"669","suggestedOutputs":[1,2,3],"confidence":0.9,"reasoning":"Brewers home game on DirecTV"}]}
@@ -405,14 +507,25 @@ function parseOllamaResponse(
       const input = resolveInput(s.suggestedInputId || '', s.suggestedInput || '')
 
       // CRITICAL: Don't trust the LLM's channel number — it hallucinates.
-      // Use the server-side resolved channel number based on the input type.
+      // Use the server-side resolved identifier based on the input type:
+      //   cable  → cable channel number
+      //   directv → directv channel number
+      //   firetv → streaming app name
       const inputType = input?.type || 'cable'
       const isDirectv = inputType === 'directv' || inputType === 'satellite'
-      const channelNumberStr = isDirectv
-        ? (game.directvChannel || game.channelNumber || '')
-        : (game.channelNumber || game.directvChannel || '')
+      const isFiretv = inputType === 'firetv'
+      let channelNumberStr = ''
+      let appName = ''
+      if (isFiretv) {
+        appName = game.streamingApp || ''
+        channelNumberStr = appName // display value carries the app name
+      } else if (isDirectv) {
+        channelNumberStr = game.directvChannel || game.channelNumber || ''
+      } else {
+        channelNumberStr = game.channelNumber || game.directvChannel || ''
+      }
 
-      // Skip if we have no valid channel for this input type
+      // Skip if we have no valid route for this input type
       if (!channelNumberStr) continue
 
       const suggestedOutputsInt: number[] = Array.isArray(s.suggestedOutputs)
@@ -422,7 +535,7 @@ function parseOllamaResponse(
         : []
 
       const resolvedDeviceType: 'cable' | 'directv' | 'firetv' =
-        isDirectv ? 'directv' : inputType === 'firetv' ? 'firetv' : 'cable'
+        isDirectv ? 'directv' : isFiretv ? 'firetv' : 'cable'
 
       suggestions.push({
         gameId: `game-${gameIdx}`,
@@ -432,6 +545,7 @@ function parseOllamaResponse(
         startTime: game.time || new Date().toISOString(),
         channelNumber: channelNumberStr,
         channelName: game.channelName || '',
+        appName: appName || undefined,
         suggestedInput: input?.name || s.suggestedInput || 'Unknown',
         suggestedInputId: input?.id || '',
         suggestedDeviceId: input?.deviceId || '',
@@ -454,6 +568,7 @@ function parseOllamaResponse(
     //     suggestions that collide with an already-picked input (rank by home-
     //     team > confidence).
     const claimedInputIds = new Set<string>()
+    const gameAssignmentCount = new Map<string, number>()
     const HOME_TEAMS = ['Packers', 'Brewers', 'Bucks', 'Badgers']
     const isHomeTeamGame = (s: AISuggestion) =>
       HOME_TEAMS.some(t => s.homeTeam.includes(t) || s.awayTeam.includes(t))
@@ -502,6 +617,21 @@ function parseOllamaResponse(
         )
         continue
       }
+
+      // (c) Per-game assignment limit: most games get ONE input. Home team games
+      //     may appear twice — once on cable and once on directv — for
+      //     redundancy. This stops the AI from piling a single game (e.g.
+      //     Brewers) onto every available input while ignoring 16 other games.
+      const gameCount = gameAssignmentCount.get(sug.gameId) || 0
+      const limit = isHomeTeamGame(sug) ? 2 : 1
+      if (gameCount >= limit) {
+        logger.debug(
+          `[AI-SUGGEST] Dropping extra assignment for game ${sug.gameId} (${sug.awayTeam} @ ${sug.homeTeam}); already at limit ${limit}`
+        )
+        continue
+      }
+      gameAssignmentCount.set(sug.gameId, gameCount + 1)
+
       claimedInputIds.add(sug.suggestedInputId)
       finalSuggestions.push(sug)
     }
@@ -564,9 +694,9 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    // 2b. Filter to games that have at least one resolved channel (cable or directv)
-    const filteredGames = games.filter(g => g.channelNumber || g.directvChannel)
-    logger.info(`[AI-SUGGEST] Filtered ${games.length} games to ${filteredGames.length} with resolved channels`)
+    // 2b. Filter to games that have at least one resolved route (cable, directv, or streaming)
+    const filteredGames = games.filter(g => g.channelNumber || g.directvChannel || g.streamingApp)
+    logger.info(`[AI-SUGGEST] Filtered ${games.length} games to ${filteredGames.length} with resolved routes`)
 
     if (filteredGames.length === 0) {
       return NextResponse.json({
@@ -604,6 +734,8 @@ export async function GET(request: NextRequest) {
         { status: 503 }
       )
     }
+
+    logger.info(`[AI-SUGGEST] Ollama raw response (${ollamaResponse.length} chars): ${ollamaResponse.slice(0, 2000)}`)
 
     // 4. Parse response into structured suggestions
     const suggestions = parseOllamaResponse(ollamaResponse, filteredGames, inputSources)

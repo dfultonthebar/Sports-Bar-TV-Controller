@@ -1,6 +1,6 @@
 {
   "name": "sports-bar-tv-controller",
-  "version": "2.13.2",
+  "version": "2.22.13",
   "private": true,
   "packageManager": "npm@10.8.2",
   "workspaces": [
@@ -22,7 +22,9 @@
     "db:studio": "npm run db:studio --workspace=@sports-bar/web"
   },
   "devDependencies": {
+    "@types/supertest": "^7.2.0",
     "baseline-browser-mapping": "^2.9.14",
+    "eslint": "^10.2.1",
     "playwright": "^1.59.1",
     "serialport": "^13.0.0",
     "turbo": "^2.6.3"

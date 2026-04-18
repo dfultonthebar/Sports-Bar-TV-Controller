@@ -7,6 +7,7 @@ import { logger } from '@sports-bar/logger'
 import { z } from 'zod'
 import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 import { HARDWARE_CONFIG } from '@/lib/hardware-config'
+import { requireAtlasProcessor } from '@/lib/atlas-guard'
 export async function GET(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
   if (!rateLimit.allowed) {
@@ -27,6 +28,9 @@ export async function GET(request: NextRequest) {
         { status: 400 }
       )
     }
+
+    const guard = await requireAtlasProcessor(processorIp, 'ATLAS GROUPS')
+    if (guard) return guard
 
     const client = new AtlasTCPClient({
       ipAddress: processorIp,
@@ -148,6 +152,9 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       )
     }
+
+    const guard = await requireAtlasProcessor(processorIp, 'ATLAS GROUPS POST')
+    if (guard) return guard
 
     // Convert unknown types to numbers
     const groupIndexNum = Number(groupIndex)

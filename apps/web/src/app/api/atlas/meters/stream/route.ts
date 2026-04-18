@@ -11,6 +11,7 @@ import { NextRequest } from 'next/server'
 import { atlasMeterManager } from '@/lib/atlas-meter-manager'
 import { logger } from '@sports-bar/logger'
 import { HARDWARE_CONFIG } from '@/lib/hardware-config'
+import { requireAtlasProcessor } from '@/lib/atlas-guard'
 
 // Store zone metadata (names, mute states) - refreshed periodically
 const zoneMetadataCache = new Map<string, {
@@ -160,6 +161,9 @@ export async function GET(request: NextRequest) {
   if (!processorIp) {
     return new Response('Processor IP is required', { status: 400 })
   }
+
+  const guard = await requireAtlasProcessor(processorIp, 'METER_STREAM')
+  if (guard) return guard
 
   logger.info(`[METER_STREAM] SSE connection opened for ${processorIp}`)
 
