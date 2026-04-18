@@ -24,6 +24,36 @@ export async function register() {
       logger.error('[STARTUP] Failed to seed from JSON:', error)
     }
 
+    // Matrix config sanity check — warn loudly at boot if outputOffset or
+    // audioOutputCount look inconsistent with the declared model. Lucky's
+    // 1313 shipped with outputOffset=26 on a single-card WP-36X36 in April
+    // 2026, silently routing every output to +26 (so output 1 hit physical
+    // 27). No code raised a flag; the operator noticed TVs landing on wrong
+    // sources. This check makes the misconfig visible in pm2 logs immediately.
+    try {
+      const { db, schema } = await import('./db')
+      const rows = await db.select().from(schema.matrixConfigurations).where(
+        (await import('drizzle-orm')).eq(schema.matrixConfigurations.isActive, true)
+      )
+      for (const cfg of rows) {
+        const model = (cfg.model || '').toUpperCase()
+        const offset = cfg.outputOffset ?? 0
+        const audio = cfg.audioOutputCount ?? 0
+        // Single-card Wolf Pack sizes (8x8/16x16/36x36 variants that live
+        // in one chassis) should always have outputOffset=0. Multi-card
+        // WP-48 / multi-chassis setups can legitimately have non-zero.
+        const singleCardPatterns = /^WP-(8X8|16X16|36X36)/
+        if (singleCardPatterns.test(model) && offset !== 0) {
+          logger.warn(`[MATRIX-CONFIG] ⚠ ${cfg.name} (${cfg.model}) has outputOffset=${offset} but single-card models route 1:1 with no offset. Expected 0. Routing will land on wrong outputs.`)
+        }
+        if (singleCardPatterns.test(model) && audio !== 0) {
+          logger.warn(`[MATRIX-CONFIG] ⚠ ${cfg.name} (${cfg.model}) has audioOutputCount=${audio}. If this location uses a dedicated audio DSP (Atlas/dbx/BSS), audioOutputCount should be 0. If Wolf Pack outputs ARE wired to speakers, ignore this warning.`)
+        }
+      }
+    } catch (error) {
+      logger.error('[MATRIX-CONFIG] sanity check failed (non-fatal):', error)
+    }
+
     try {
       // Import health monitor singleton
       const { healthMonitor } = await import('./services/firetv-health-monitor')

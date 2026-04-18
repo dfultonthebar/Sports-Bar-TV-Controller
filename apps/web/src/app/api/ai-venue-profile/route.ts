@@ -13,6 +13,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
 import { schema } from '@/db'
 import { eq } from 'drizzle-orm'
+import { HARDWARE_CONFIG } from '@/lib/hardware-config'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { logger } from '@sports-bar/logger'
@@ -40,7 +41,7 @@ export async function GET(request: NextRequest) {
         defaults: {
           openTime: '11:00',
           closeTime: '02:00',
-          timezone: 'America/New_York',
+          timezone: HARDWARE_CONFIG.venue.timezone,
           fillerChannels: [],
           fillerApps: [],
           defaultFillerMode: 'sports_network',
@@ -83,7 +84,7 @@ export async function POST(request: NextRequest) {
   const bodyValidation = await validateRequestBody(request, z.object({
     openTime: z.string().optional().default('11:00'),
     closeTime: z.string().optional().default('02:00'),
-    timezone: z.string().optional().default('America/New_York'),
+    timezone: z.string().optional().default(HARDWARE_CONFIG.venue.timezone),
     fillerChannels: z.array(z.string()).optional().default([]),
     fillerApps: z.array(z.string()).optional().default([]),
     defaultFillerMode: z.enum(['sports_network', 'local_news', 'music']).optional().default('sports_network'),

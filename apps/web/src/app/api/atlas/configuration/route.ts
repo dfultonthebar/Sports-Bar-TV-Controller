@@ -10,6 +10,7 @@ import { logger } from '@sports-bar/logger'
 import { z } from 'zod'
 import { validateRequestBody, validateQueryParams, isValidationError } from '@/lib/validation'
 import { HARDWARE_CONFIG } from '@/lib/hardware-config'
+import { requireAtlasProcessor } from '@/lib/atlas-guard'
 const CONFIG_DIR = path.join(process.cwd(), 'data', 'atlas-configs')
 
 // Ensure config directory exists
@@ -39,6 +40,8 @@ export async function GET(request: NextRequest) {
 
     // If processorIp and param are provided, fetch from Atlas hardware directly
     if (processorIp && param) {
+      const guard = await requireAtlasProcessor(processorIp, 'ATLAS CONFIG')
+      if (guard) return guard
       try {
         const client = new AtlasTCPClient({
           ipAddress: processorIp,

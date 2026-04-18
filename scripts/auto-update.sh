@@ -467,9 +467,22 @@ LOCATION_PATHS_OURS=(
   "apps/web/data/atlas-configs"
   "apps/web/data/channel-presets-cable.json"
   "apps/web/data/channel-presets-directv.json"
+  "apps/web/data/everpass-devices.json"
   "apps/web/public/uploads/layouts"
   "data"
   ".env"
+  # PM2 config carries per-location Sports Guide credentials via process.env.
+  # Main historically hardcoded a location's values in this file, which means
+  # every merge from main overwrites the running location's creds. Keep the
+  # location's env-driven version across merges. When main eventually adopts
+  # the env-driven pattern, this entry becomes a no-op (content-identical).
+  "ecosystem.config.js"
+  # hardware-config.ts has per-location values (venue name, processor IP,
+  # audio output slot range). Main historically shipped with Stoneyard's
+  # values hardcoded; merging main overwrites the location's correct
+  # values. Keep ours until the file is refactored into DB/env lookups
+  # keyed by LOCATION_ID.
+  "apps/web/src/lib/hardware-config.ts"
 )
 
 # These paths always take the MAIN version (git checkout --theirs)
@@ -576,10 +589,31 @@ log "npm ci --include=dev (install/sync node_modules to the merged lockfile)"
 # monorepo) gets dropped from node_modules, and `npm run build` then
 # fails with `sh: 1: turbo: not found`. Same applies to `next` CLI tools
 # and any other dev-only build machinery.
-NODE_ENV=development npm ci --include=dev 2>&1 | tee -a "$LOG_FILE"
-if [ "${PIPESTATUS[0]}" -ne 0 ]; then
-  fail "npm ci failed" 4
+NPM_CI_LOG="$LOG_DIR/npm-ci-$(date +%s).log"
+NODE_ENV=development npm ci --include=dev 2>&1 | tee "$NPM_CI_LOG" | tee -a "$LOG_FILE"
+NPM_CI_EXIT="${PIPESTATUS[0]}"
+
+if [ "$NPM_CI_EXIT" -ne 0 ]; then
+  # Fail-safe: lockfile drift (EUSAGE) is a common class of failure when
+  # package.json was bumped but the lockfile wasn't regenerated. Rather than
+  # rolling back the whole update (which strands the location), fall back to
+  # `npm install` to regenerate the lockfile in-place. The rebuilt lockfile
+  # stays local — not pushed back to git — so the root cause still needs a
+  # fix on main, but at least this location can install and run.
+  if grep -qE "EUSAGE|npm ci.*can only install|out of sync with|package-lock\.json.*not in sync" "$NPM_CI_LOG"; then
+    log "WARNING: npm ci failed with lockfile drift — falling back to npm install"
+    log "WARNING: The root cause is on main (package.json bumped without regenerating lock)."
+    log "WARNING: This location's lockfile will be regenerated in-place and NOT committed."
+    NODE_ENV=development npm install --include=dev 2>&1 | tee -a "$LOG_FILE"
+    if [ "${PIPESTATUS[0]}" -ne 0 ]; then
+      fail "npm install fallback also failed" 4
+    fi
+    log "npm install fallback succeeded"
+  else
+    fail "npm ci failed" 4
+  fi
 fi
+rm -f "$NPM_CI_LOG"
 
 # ===========================================================================
 # PHASE: SCHEMA PUSH (drizzle-kit)
@@ -615,6 +649,23 @@ else
     cat "$SCHEMA_PUSH_LOG" >> "$LOG_FILE"
     fail "drizzle-kit push failed with an unrecognized error — see $SCHEMA_PUSH_LOG" 4
   fi
+fi
+
+# ===========================================================================
+# PHASE: OLLAMA MODEL — ensure AI Suggest has the required LLM
+# ===========================================================================
+# Non-fatal: if this fails the app still boots; only the AI Suggest
+# scheduling feature is degraded. See scripts/ensure-ollama-model.sh for
+# exit code meanings. First run at a location downloads ~4.7GB.
+step "ollama_model"
+if [ -x "$REPO_ROOT/scripts/ensure-ollama-model.sh" ]; then
+  if bash "$REPO_ROOT/scripts/ensure-ollama-model.sh" 2>&1 | tee -a "$LOG_FILE"; then
+    log "ollama model check passed"
+  else
+    log "WARNING: ollama model check reported a problem — AI Suggest may be unavailable"
+  fi
+else
+  log "WARNING: scripts/ensure-ollama-model.sh missing or not executable — skipping"
 fi
 
 # ===========================================================================
