@@ -39,6 +39,30 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-04-18 — v2.23.3 — Add context7 + brave-search MCP servers project-wide
+
+**Risk:** GO — additive config only. Adds `.mcp.json` at repo root with two MCP servers and sets `enableAllProjectMcpServers: true` in `.claude/settings.json` so the auto-approval bypasses interactive consent at first Claude Code load. No runtime code; no DB impact. MCPs only affect Claude Code sessions at the repo — not the running Sports Bar app.
+
+**What each location gets automatically:**
+- **context7** (by Upstash) — live up-to-date library docs for Claude sessions. No API key. Helps with "is this still the current Drizzle API" / "what changed in Next.js 16" questions so the model doesn't guess.
+- **brave-search** (by MCP org) — web search. **Needs `BRAVE_API_KEY` in .env per location.** Free-tier key (2,000 queries/month) available at <https://api.search.brave.com/app/keys>. Without the key, Context7 works but Brave Search silently fails.
+
+**Manual step per location (Claude: execute during Checkpoint B):**
+1. Verify `.mcp.json` + settings.json flag arrived (see `docs/VERSION_SETUP_GUIDE.md` §v2.23.3 steps 1-2).
+2. **Sign up for a free Brave Search API key** (<https://api.search.brave.com/app/keys> — no credit card, 2-minute flow) and add to `.env`:
+    ```bash
+    echo 'BRAVE_API_KEY=<paste-key>' >> /home/ubuntu/Sports-Bar-TV-Controller/.env
+    ```
+3. Smoke-test both MCPs in a Claude Code session at the repo (see guide §v2.23.3 step 4).
+
+If a location skips step 2, it's not an error — Context7 still works; Brave Search queries from Claude sessions just come back empty at that location.
+
+**Rollback:** Delete `.mcp.json`, remove `enableAllProjectMcpServers` from `.claude/settings.json`. MCPs stop loading. No Sports Bar app impact.
+
+**Affected:** `.mcp.json` (new), `.claude/settings.json` (modified), `docs/VERSION_SETUP_GUIDE.md`, `docs/LOCATION_UPDATE_NOTES.md`, `package.json`.
+
+---
+
 ### 2026-04-18 — v2.23.2 — Enable frontend-design + feature-dev Claude Code plugins
 
 **Risk:** GO — additive config only. Adds `.claude/settings.json` with two enabled plugins from the built-in Claude Code official marketplace. No runtime code changes; no DB impact. Plugins only affect Claude Code sessions invoked inside this repo, not the running Sports Bar app.
