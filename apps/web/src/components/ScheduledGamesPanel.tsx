@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import DefaultSourceSettings from './DefaultSourceSettings'
+import DistributionPlanModal from './ai/DistributionPlanModal'
 import {
   Calendar,
   Clock,
@@ -223,6 +224,7 @@ export default function ScheduledGamesPanel() {
   const [approvingAll, setApprovingAll] = useState(false)
   const [modifyingId, setModifyingId] = useState<string | null>(null)
   const [modifyOutputs, setModifyOutputs] = useState<Record<string, number[]>>({})
+  const [distributeOpen, setDistributeOpen] = useState(false)
 
   // -----------------------------------------------------------------------
   // Auto-Pilot state
@@ -372,15 +374,20 @@ export default function ScheduledGamesPanel() {
     async (id: string) => {
       setCancellingId(id)
       try {
-        const res = await fetch('/api/schedules/bartender-schedule', {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id, status: 'cancelled' }),
-        })
-        if (!res.ok) {
+        // Use DELETE — the PATCH handler's Zod schema silently drops
+        // `status`, so a PATCH-based cancel appears successful but actually
+        // wipes tvOutputIds and leaves status='pending'. DELETE sets status
+        // to 'cancelled' atomically.
+        const res = await fetch(
+          `/api/schedules/bartender-schedule?id=${encodeURIComponent(id)}`,
+          { method: 'DELETE' }
+        )
+        const body = await res.json().catch(() => ({}))
+        if (!res.ok || body?.success === false) {
           logger.error('[SCHEDULED-GAMES] Failed to cancel schedule', {
             id,
             status: res.status,
+            error: body?.error,
           })
         } else {
           logger.debug('[SCHEDULED-GAMES] Cancelled schedule', { id })
@@ -1398,26 +1405,58 @@ export default function ScheduledGamesPanel() {
                 )
               })}
 
-              {/* Approve All button */}
+              {/* Bulk actions */}
               {suggestions.some(
                 (s) => !skippedIds.has(s.gameId) && !approvedIds.has(s.gameId)
               ) && (
-                <button
-                  type="button"
-                  onClick={approveAll}
-                  disabled={approvingAll}
-                  className="w-full flex items-center justify-center gap-2 rounded-lg border border-green-600 bg-green-700 hover:bg-green-600 active:bg-green-800 text-white py-3 px-4 text-sm font-medium transition-colors disabled:opacity-50"
-                >
-                  {approvingAll ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <CheckCheck className="h-4 w-4" />
-                  )}
-                  {approvingAll ? 'Approving All...' : 'Approve All'}
-                </button>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={approveAll}
+                    disabled={approvingAll}
+                    className="w-full flex items-center justify-center gap-2 rounded-lg border border-green-600 bg-green-700 hover:bg-green-600 active:bg-green-800 text-white py-3 px-4 text-sm font-medium transition-colors disabled:opacity-50"
+                  >
+                    {approvingAll ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <CheckCheck className="h-4 w-4" />
+                    )}
+                    {approvingAll ? 'Approving All...' : 'Approve All (simple)'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDistributeOpen(true)}
+                    disabled={approvingAll}
+                    className="w-full flex items-center justify-center gap-2 rounded-lg border border-purple-600 bg-purple-700 hover:bg-purple-600 active:bg-purple-800 text-white py-3 px-4 text-sm font-medium transition-colors disabled:opacity-50"
+                  >
+                    <Sparkles className="h-4 w-4" />
+                    Smart Distribute
+                  </button>
+                </div>
               )}
             </div>
           )}
+          <DistributionPlanModal
+            open={distributeOpen}
+            proposedGames={suggestions
+              .filter((s) => !skippedIds.has(s.gameId) && !approvedIds.has(s.gameId))
+              .map((s) => ({
+                gameScheduleId: s.gameId,
+                homeTeam: s.homeTeam,
+                awayTeam: s.awayTeam,
+                league: s.league,
+                startTime: s.startTime,
+                channelNumber: s.channelNumber,
+                channelName: s.channelName,
+                suggestedDeviceType: s.suggestedDeviceType,
+              }))}
+            onClose={() => setDistributeOpen(false)}
+            onCommitted={() => {
+              setDistributeOpen(false)
+              fetchSchedule()
+              fetchSuggestions()
+            }}
+          />
         </div>
       )}
 

@@ -70,11 +70,28 @@ log "npm ci --include=dev (re-aligning node_modules with the reset lockfile)"
 # would cause npm ci to skip devDependencies (including `turbo`, the
 # build orchestrator). Without dev deps, the rollback rebuild would
 # also fail on `sh: turbo: not found` — same bug the main script had.
-NODE_ENV=development npm ci --include=dev 2>&1 | tee -a "$LOG_FILE"
-if [ "${PIPESTATUS[0]}" -ne 0 ]; then
-  critical "npm ci failed during rollback"
-  exit 99
+NPM_CI_ROLLBACK_LOG="/tmp/npm-ci-rollback-$$.log"
+NODE_ENV=development npm ci --include=dev 2>&1 | tee "$NPM_CI_ROLLBACK_LOG" | tee -a "$LOG_FILE"
+NPM_CI_EXIT="${PIPESTATUS[0]}"
+if [ "$NPM_CI_EXIT" -ne 0 ]; then
+  # Same fail-safe as auto-update.sh: if rollback's npm ci hits lockfile
+  # drift, fall back to npm install so we don't end up with rollback
+  # failing too (which means no version of the app is installable).
+  if grep -qE "EUSAGE|npm ci.*can only install|out of sync with|package-lock\.json.*not in sync" "$NPM_CI_ROLLBACK_LOG"; then
+    log "WARNING: rollback npm ci hit lockfile drift — falling back to npm install"
+    NODE_ENV=development npm install --include=dev 2>&1 | tee -a "$LOG_FILE"
+    if [ "${PIPESTATUS[0]}" -ne 0 ]; then
+      rm -f "$NPM_CI_ROLLBACK_LOG"
+      critical "npm install fallback also failed during rollback"
+      exit 99
+    fi
+  else
+    rm -f "$NPM_CI_ROLLBACK_LOG"
+    critical "npm ci failed during rollback"
+    exit 99
+  fi
 fi
+rm -f "$NPM_CI_ROLLBACK_LOG"
 
 # --- 4. Restore the Next.js build ------------------------------------------
 rm -rf apps/web/.next

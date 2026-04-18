@@ -8,6 +8,7 @@ import {
   Check, Search, Cable, Satellite, Play, Settings, RefreshCw, Send,
   Lock, Unlock, AlertTriangle, X, CheckCircle, XCircle, Timer
 } from 'lucide-react'
+import { HARDWARE_CONFIG } from '@/lib/hardware-config'
 
 // Types
 interface MatrixInput {
@@ -277,7 +278,7 @@ export default function AIGamePlanDashboard() {
         setVenueProfile({
           openTime: '11:00',
           closeTime: '02:00',
-          timezone: 'America/New_York',
+          timezone: HARDWARE_CONFIG.venue.timezone,
           fillerChannels: [],
           fillerApps: [],
           defaultFillerMode: 'sports_network',
@@ -294,7 +295,7 @@ export default function AIGamePlanDashboard() {
       setVenueProfile({
         openTime: '11:00',
         closeTime: '02:00',
-        timezone: 'America/New_York',
+        timezone: HARDWARE_CONFIG.venue.timezone,
         fillerChannels: [],
         fillerApps: [],
         defaultFillerMode: 'sports_network',

@@ -153,6 +153,113 @@ export async function POST(request: NextRequest) {
       // Don't fail the request if tracking fails
     }
 
+    // Override-learn: when a bartender changes a route within 10 min of an
+    // active scheduled allocation, patch that allocation's tv_output_ids so
+    // the hourly pattern-analyzer learns from the correction (the bartender
+    // knows the room better than whoever originally scheduled the TVs).
+    // Home-team overrides (Brewers/Bucks/Badgers/etc. from HomeTeam table)
+    // are logged at warn level so operators can filter to the strongest
+    // signals.
+    if (source === 'bartender') {
+      try {
+        const { sql } = await import('drizzle-orm')
+        const windowStart = Math.floor(Date.now() / 1000) - 600 // 10 min
+
+        const recent = await db.all(sql`
+          SELECT
+            a.id AS allocation_id,
+            a.input_source_id,
+            a.tv_output_ids,
+            a.game_schedule_id,
+            s.matrix_input_id,
+            mi.channelNumber AS matrix_input_num,
+            g.home_team_name,
+            g.away_team_name,
+            g.league,
+            EXISTS(
+              SELECT 1 FROM HomeTeam h
+              WHERE h.teamName = g.home_team_name OR h.teamName = g.away_team_name
+            ) AS is_home_team_game
+          FROM input_source_allocations a
+          JOIN input_sources s ON s.id = a.input_source_id
+          LEFT JOIN MatrixInput mi ON mi.id = s.matrix_input_id
+          LEFT JOIN game_schedules g ON g.id = a.game_schedule_id
+          WHERE a.status IN ('active','pending','tuning')
+            AND a.allocated_at >= ${windowStart}
+        `) as Array<{
+          allocation_id: string
+          input_source_id: string
+          tv_output_ids: string
+          game_schedule_id: string
+          matrix_input_id: string | null
+          matrix_input_num: number | null
+          home_team_name: string | null
+          away_team_name: string | null
+          league: string | null
+          is_home_team_game: number
+        }>
+
+        for (const row of recent) {
+          let tvList: number[] = []
+          try { tvList = JSON.parse(row.tv_output_ids) } catch { continue }
+          const hadOutput = tvList.includes(outputNum)
+          const movedOntoScheduled = row.matrix_input_num === inputNum
+          if (!hadOutput && !movedOntoScheduled) continue
+
+          let newList = tvList
+          let action: 'added' | 'removed' = 'added'
+          if (movedOntoScheduled && !hadOutput) {
+            newList = [...tvList, outputNum].sort((a, b) => a - b)
+            action = 'added'
+          } else if (hadOutput && !movedOntoScheduled) {
+            newList = tvList.filter(n => n !== outputNum)
+            action = 'removed'
+          } else {
+            continue
+          }
+
+          await db.update(schema.inputSourceAllocations)
+            .set({
+              tvOutputIds: JSON.stringify(newList),
+              tvCount: newList.length,
+              updatedAt: Math.floor(Date.now() / 1000),
+            })
+            .where(eq(schema.inputSourceAllocations.id, row.allocation_id))
+
+          const team = row.home_team_name || row.away_team_name || 'unknown'
+          const isHomeTeam = row.is_home_team_game === 1
+          const msg = `Bartender ${action} output ${outputNum} ${action === 'added' ? 'onto' : 'from'} scheduled ${team}${isHomeTeam ? ' (home team)' : ''} [${row.league || '?'}] — patched tv_output_ids to ${JSON.stringify(newList)}`
+
+          await db.insert(schema.schedulerLogs).values({
+            correlationId: row.allocation_id,
+            component: 'override-learn',
+            operation: action === 'added' ? 'add' : 'remove',
+            level: isHomeTeam ? 'warn' : 'info',
+            message: msg,
+            gameId: row.game_schedule_id,
+            inputSourceId: row.input_source_id,
+            allocationId: row.allocation_id,
+            deviceId: String(outputNum),
+            success: true,
+            metadata: JSON.stringify({
+              team,
+              isHomeTeam,
+              league: row.league,
+              outputNum,
+              inputNum,
+              prevOutputs: tvList,
+              newOutputs: newList,
+              bartenderId: bartenderId || 'bartender',
+            }),
+          })
+
+          logger.info(`[OVERRIDE-LEARN] ${msg}`)
+        }
+      } catch (learnError: any) {
+        logger.warn(`[OVERRIDE-LEARN] Failed to record override: ${learnError.message}`)
+      }
+    }
+
     return NextResponse.json({
       success: true,
       message: `Successfully routed input ${input} to output ${output}`,

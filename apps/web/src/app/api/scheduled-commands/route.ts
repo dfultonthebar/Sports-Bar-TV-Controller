@@ -6,6 +6,7 @@ import { withTransaction, transactionHelpers } from '@/lib/db/transaction-wrappe
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { getNextExecution } from '@/lib/cron-utils'
+import { HARDWARE_CONFIG } from '@/lib/hardware-config'
 
 import { logger } from '@sports-bar/logger'
 import { z } from 'zod'
@@ -104,7 +105,7 @@ export async function POST(request: NextRequest) {
     const nextExecution = calculateNextExecution(
       scheduleType as string,
       scheduleData as any,
-      String(timezone || 'America/New_York'),
+      String(timezone || HARDWARE_CONFIG.venue.timezone),
       cronExpression as string | undefined
     )
 
@@ -122,7 +123,7 @@ export async function POST(request: NextRequest) {
           scheduleType,
           scheduleData: JSON.stringify(scheduleData),
           cronExpression: cronExpression as string | undefined,
-          timezone: timezone || 'America/New_York',
+          timezone: timezone || HARDWARE_CONFIG.venue.timezone,
           enabled: enabled !== undefined ? enabled : true,
           nextExecution,
           createdBy: createdBy as string,
@@ -197,7 +198,7 @@ export async function PUT(request: NextRequest) {
       updateData.nextExecution = calculateNextExecution(
         (updates.scheduleType as string) || 'daily',
         updates.scheduleData || {},
-        (updates.timezone as string) || 'America/New_York',
+        (updates.timezone as string) || HARDWARE_CONFIG.venue.timezone,
         updates.cronExpression as string | undefined
       )
     }

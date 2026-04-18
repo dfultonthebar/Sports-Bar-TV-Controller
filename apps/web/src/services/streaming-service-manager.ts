@@ -148,12 +148,26 @@ class StreamingServiceManager {
       // Get ADB connection
       const client = await connectionManager.getOrCreateConnection(deviceId, ipAddress, port)
 
-      // Check if app is installed
-      const isInstalled = await client.isAppInstalled(app.packageName)
-      if (!isInstalled) {
-        logger.error(`[STREAMING MANAGER] ${app.name} is not installed on device ${deviceId}`)
+      // Find a package variant actually installed on this device. Fire TV Cubes
+      // ship Amazon-specific builds (com.apple.atve.amazon.appletv) while
+      // generic Android TVs use androidtv builds — different physical devices
+      // at the same venue may even have different variants. Try the primary
+      // first, then aliases.
+      const candidatePackages = [app.packageName, ...(app.packageAliases || [])]
+      let installedPackage: string | null = null
+      for (const pkg of candidatePackages) {
+        if (await client.isAppInstalled(pkg)) {
+          installedPackage = pkg
+          break
+        }
+      }
+      if (!installedPackage) {
+        logger.error(
+          `[STREAMING MANAGER] ${app.name} is not installed on device ${deviceId} (tried: ${candidatePackages.join(', ')})`
+        )
         return false
       }
+      logger.info(`[STREAMING MANAGER] Using package ${installedPackage} for ${app.name}`)
 
       // Launch app with appropriate method
       if (options?.deepLink && app.deepLinkSupport) {
@@ -161,10 +175,10 @@ class StreamingServiceManager {
         await client.launchAppWithDeepLink(options.deepLink)
       } else if (options?.activityName) {
         logger.info(`[STREAMING MANAGER] Launching ${app.name} with activity: ${options.activityName}`)
-        await client.launchAppWithIntent(app.packageName, options.activityName)
+        await client.launchAppWithIntent(installedPackage, options.activityName)
       } else {
         logger.info(`[STREAMING MANAGER] Launching ${app.name} with default launcher`)
-        await client.launchApp(app.packageName)
+        await client.launchApp(installedPackage)
       }
 
       logger.info(`[STREAMING MANAGER] Successfully launched ${app.name}`)

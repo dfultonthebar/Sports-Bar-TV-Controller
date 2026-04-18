@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { Save, Check, X } from 'lucide-react'
 import { logger } from '@sports-bar/logger'
+import { HARDWARE_CONFIG } from '@/lib/hardware-config'
 
 interface Configuration {
   zipCode?: string
@@ -32,7 +33,7 @@ export default function LocationConfigPanel() {
   const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null)
 
   const [config, setConfig] = useState<Configuration>({
-    timezone: 'America/New_York',
+    timezone: HARDWARE_CONFIG.venue.timezone,
     updateSchedule: {
       enabled: true,
       time: '06:00',
@@ -58,7 +59,7 @@ export default function LocationConfigPanel() {
       const scheduleResult = await scheduleResponse.json()
 
       const loadedConfig: Configuration = {
-        timezone: 'America/New_York',
+        timezone: HARDWARE_CONFIG.venue.timezone,
         updateSchedule: { enabled: true, time: '06:00', frequency: 'daily' },
       }
 

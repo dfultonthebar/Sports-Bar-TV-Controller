@@ -104,6 +104,26 @@ export const nfhsGames = sqliteTable('NFHSGame', {
   statusIdx: index('idx_nfhs_status').on(table.status),
 }))
 
+// NFHS Network Schools tracked by this venue — hourly sync reads from this
+// table to know which school pages to scrape. Per-location config: each
+// sports bar adds the schools their customers care about.
+export const nfhsSchools = sqliteTable('NFHSSchool', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  // Page slug from nfhsnetwork.com/schools/<slug> — e.g. "de-pere-high-school-de-pere-wi"
+  slug: text('slug').notNull().unique(),
+  name: text('name').notNull(),          // Display name: "De Pere Redbirds"
+  city: text('city'),                    // "De Pere"
+  state: text('state'),                  // "WI"
+  isActive: integer('isActive', { mode: 'boolean' }).notNull().default(true),
+  lastSyncedAt: text('lastSyncedAt'),
+  lastSyncedGames: integer('lastSyncedGames').default(0),
+  lastSyncError: text('lastSyncError'),
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+}, (table) => ({
+  activeIdx: index('idx_nfhs_school_active').on(table.isActive),
+}))
+
 // Schedule Model
 export const schedules = sqliteTable('Schedule', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -1139,47 +1159,6 @@ export const atlasConnectionStates = sqliteTable('AtlasConnectionState', {
   createdAt: timestamp('createdAt').notNull().default(timestampNow()),
   updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
 })
-
-// n8n Webhook Logs Model (for tracking n8n webhook executions)
-export const n8nWebhookLogs = sqliteTable('N8nWebhookLog', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  action: text('action').notNull(), // Action type (control_tv, control_audio, etc.)
-  workflowId: text('workflowId'), // n8n workflow ID
-  executionId: text('executionId'), // n8n execution ID
-  payload: text('payload').notNull(), // JSON payload received from n8n
-  response: text('response'), // JSON response sent back to n8n
-  status: text('status').notNull().default('success'), // success, failed, error
-  errorMessage: text('errorMessage'), // Error message if failed
-  duration: integer('duration').notNull(), // Execution duration in ms
-  metadata: text('metadata'), // Additional metadata as JSON
-  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
-}, (table) => ({
-  actionIdx: index('N8nWebhookLog_action_idx').on(table.action),
-  statusIdx: index('N8nWebhookLog_status_idx').on(table.status),
-  createdAtIdx: index('N8nWebhookLog_createdAt_idx').on(table.createdAt),
-  workflowIdIdx: index('N8nWebhookLog_workflowId_idx').on(table.workflowId),
-}))
-
-// n8n Workflow Configurations Model (for storing n8n workflow settings)
-export const n8nWorkflowConfigs = sqliteTable('N8nWorkflowConfig', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  name: text('name').notNull(), // Workflow name
-  workflowId: text('workflowId').unique(), // n8n workflow ID
-  description: text('description'), // Workflow description
-  webhookUrl: text('webhookUrl'), // Webhook URL for this workflow
-  isActive: integer('isActive', { mode: 'boolean' }).notNull().default(true),
-  triggerType: text('triggerType').notNull().default('manual'), // manual, scheduled, webhook
-  schedule: text('schedule'), // Cron expression for scheduled workflows
-  actions: text('actions').notNull(), // JSON array of action configurations
-  metadata: text('metadata'), // Additional configuration as JSON
-  lastExecuted: timestamp('lastExecuted'),
-  executionCount: integer('executionCount').notNull().default(0),
-  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
-  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
-}, (table) => ({
-  workflowIdIdx: index('N8nWorkflowConfig_workflowId_idx').on(table.workflowId),
-  isActiveIdx: index('N8nWorkflowConfig_isActive_idx').on(table.isActive),
-}))
 
 
 // ============================================================================
