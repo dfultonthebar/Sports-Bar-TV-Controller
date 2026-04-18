@@ -212,12 +212,19 @@ Expected: `"enableAllProjectMcpServers": true`. If missing, the first Claude Cod
 
 3. **(Optional but recommended)** Set up `BRAVE_API_KEY` so the `brave-search` MCP works at this location. **Without this step, Context7 works but Brave Search silently fails** when invoked — the MCP process starts, tries to read the key, aborts, and subsequent searches return empty. Not fatal to the Sports Bar app; just means that location loses the web-search tool.
     - Free tier (2,000 queries/month per key) is enough for operator/debugging use. Sign up at <https://api.search.brave.com/app/keys> — 2-minute flow, no credit card for free tier.
-    - After getting the key, add it to the location's `.env`:
+    - **Important — how the key actually reaches the MCP:** `.mcp.json` uses `${BRAVE_API_KEY}` which Claude Code interpolates from *its own process environment*, not from the project's `.env` file. Just editing `.env` is NOT enough — the shell that launches `claude` must have the variable exported. Two complementary places to set it:
       ```bash
+      # (a) Export in every shell — works for interactive claude sessions:
+      echo 'export BRAVE_API_KEY=<paste-key-here>' >> ~/.bashrc
+      # Reload in your current shell or open a new one:
+      source ~/.bashrc
+
+      # (b) Also add to the project .env — so anything else at this location
+      # (scripts, scheduled jobs) that reads .env sees it:
       echo 'BRAVE_API_KEY=<paste-key-here>' >> /home/ubuntu/Sports-Bar-TV-Controller/.env
       ```
-    - The `.env` file is gitignored — the key stays on this host and is not pushed to any branch.
-    - No restart needed for Claude Code sessions; the next time you start a session in the repo, `npx` spawns the MCP with the new env var.
+    - Both files stay on this host — `.env` is gitignored, `~/.bashrc` is per-user. Neither gets pushed to any branch.
+    - No restart needed for the Sports Bar app; the next time you start a **new** Claude Code session in the repo, `npx` spawns the MCP with the new env var. If the session already running, exit and restart `claude`.
 
 4. **Smoke-test both MCPs are wired correctly.** Start a Claude Code session at the repo and ask:
     - "Use context7 to look up the current @sports-bar/drizzle-orm type for a nullable column." → expect a real answer citing docs.

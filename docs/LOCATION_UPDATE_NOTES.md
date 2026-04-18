@@ -49,9 +49,11 @@ decision log, not a permanent archive. Git history is the archive.
 
 **Manual step per location (Claude: execute during Checkpoint B):**
 1. Verify `.mcp.json` + settings.json flag arrived (see `docs/VERSION_SETUP_GUIDE.md` §v2.23.3 steps 1-2).
-2. **Sign up for a free Brave Search API key** (<https://api.search.brave.com/app/keys> — no credit card, 2-minute flow) and add to `.env`:
+2. **Sign up for a free Brave Search API key** (<https://api.search.brave.com/app/keys> — no credit card, 2-minute flow). The key has to be in the SHELL ENV Claude Code launches from, not just in `.env` — see VERSION_SETUP_GUIDE.md §v2.23.3 step 3 for both `~/.bashrc` export and `.env` pattern. Short version:
     ```bash
+    echo 'export BRAVE_API_KEY=<paste-key>' >> ~/.bashrc
     echo 'BRAVE_API_KEY=<paste-key>' >> /home/ubuntu/Sports-Bar-TV-Controller/.env
+    source ~/.bashrc
     ```
 3. Smoke-test both MCPs in a Claude Code session at the repo (see guide §v2.23.3 step 4).
 
