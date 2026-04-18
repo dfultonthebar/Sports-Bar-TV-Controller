@@ -22,6 +22,7 @@ class SchedulerService {
   private isRunning = false;
   private hasDelayedGames = false;
   private lastCleanup: Date | null = null;
+  private lastWeeklySummary: Date | null = null;
   private executingSchedules = new Set<string>();
 
   /**
@@ -303,6 +304,30 @@ class SchedulerService {
         } catch {}
 
         this.lastCleanup = now;
+      }
+
+      // Weekly owner summary — fires on Monday between 06:00 and 06:59
+      // local time (the scheduler checks every ~60s so this catches it
+      // reliably in that hour). The POST handler writes
+      // data/reports/week-YYYY-Www.md.
+      try {
+        const local = new Date(now.toLocaleString('en-US', { timeZone: process.env.LOCATION_TIMEZONE || 'America/Chicago' }));
+        const isMonday = local.getDay() === 1;
+        const isSixAmHour = local.getHours() === 6;
+        const dayKey = `${local.getFullYear()}-${local.getMonth()}-${local.getDate()}`;
+        const alreadyRanToday = this.lastWeeklySummary
+          ? `${this.lastWeeklySummary.getFullYear()}-${this.lastWeeklySummary.getMonth()}-${this.lastWeeklySummary.getDate()}` === dayKey
+          : false;
+        if (isMonday && isSixAmHour && !alreadyRanToday) {
+          logger.info('[SCHEDULER] Triggering weekly owner summary');
+          fetch(`http://127.0.0.1:${API_PORT}/api/ai/weekly-summary`, { method: 'POST' })
+            .then(r => r.json())
+            .then((r: any) => logger.info(`[SCHEDULER] Weekly summary: ${r.success ? r.writtenTo : r.error}`))
+            .catch(err => logger.warn('[SCHEDULER] Weekly summary request failed:', err));
+          this.lastWeeklySummary = now;
+        }
+      } catch (err: any) {
+        logger.warn('[SCHEDULER] Weekly summary check error:', err);
       }
 
       // Get all enabled schedules
