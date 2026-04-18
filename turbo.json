@@ -3,7 +3,8 @@
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "outputs": [".next/**", "!.next/cache/**", "dist/**"]
+      "outputs": [".next/**", "!.next/cache/**", "dist/**"],
+      "env": ["LOCATION_NAME", "LOCATION_ID", "NODE_ENV"]
     },
     "type-check": {
       "dependsOn": ["^build"],
