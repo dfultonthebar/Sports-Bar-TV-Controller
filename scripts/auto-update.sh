@@ -514,9 +514,24 @@ LOCATION_PATHS_OURS=(
 # These paths always take the MAIN version (git checkout --theirs)
 # package-lock and package.json version bumps must come from main for
 # `npm ci` to work after the reset.
+#
+# Orchestration scripts (auto-update.sh, rollback.sh, ensure-*.sh) and
+# prompt files are pure software — locations should never carry
+# divergent versions. When a location's branch has stale edits to these
+# (e.g. from a manual tweak during an earlier debugging session), the
+# merge hits a content conflict and the whole update aborts. Force them
+# to take main's version so software fixes propagate cleanly.
 LOCATION_PATHS_THEIRS=(
   "package-lock.json"
   "package.json"
+  "scripts/auto-update.sh"
+  "scripts/rollback.sh"
+  "scripts/verify-install.sh"
+  "scripts/ensure-schema.sh"
+  "scripts/ensure-ollama-model.sh"
+  "scripts/prompts/checkpoint-a.txt"
+  "scripts/prompts/checkpoint-b.txt"
+  "scripts/prompts/checkpoint-c.txt"
 )
 
 log "git merge origin/main --no-ff -m 'chore: auto-update merge $RUN_TS'"
@@ -705,7 +720,7 @@ fi
 # CHECKPOINT B — Post-merge / pre-build review
 # ===========================================================================
 step "checkpoint_b"
-run_checkpoint "B" "$PROMPTS_DIR/checkpoint-b.txt" 180
+run_checkpoint "B" "$PROMPTS_DIR/checkpoint-b.txt" 300
 
 # ===========================================================================
 # PHASE: BUILD (with .next.bak caching for instant rollback)
@@ -764,7 +779,7 @@ fi
 # CHECKPOINT C — Post-restart holistic check
 # ===========================================================================
 step "checkpoint_c"
-run_checkpoint "C" "$PROMPTS_DIR/checkpoint-c.txt" 180
+run_checkpoint "C" "$PROMPTS_DIR/checkpoint-c.txt" 300
 
 # ===========================================================================
 # PHASE: FINALIZE
