@@ -37,6 +37,85 @@ is the archive.
 
 ## Current entries
 
+### v2.21.0 — AI features: shift brief, distribution optimizer, conflict advisor, weekly summary
+**Released:** 2026-04-17
+
+**Four new AI endpoints** (all under `/api/ai/*`):
+
+1. **`GET /api/ai/shift-brief`** — Ollama-generated pre-shift summary
+   (under 120 words) for the bartender opening the remote. Pulls
+   upcoming games (next 12h), currently-playing games, recent
+   failure-sweep clusters, and new override-digest recommendations.
+   10-minute response cache. Graceful fallback to a deterministic
+   text brief when Ollama is slow or unavailable.
+
+2. **`POST /api/ai/distribution-plan`** — bulk scheduling optimizer.
+   Give it an array of `{ gameScheduleId }`, get back an assignment
+   plan that maximizes coverage: games routed to the right input
+   sources with the right TV outputs using **historical data learned
+   from prior games**: `scheduling_patterns` (team→input from
+   pattern-analyzer), override-digest recommendations (bartender
+   corrections), and per-league duration stats (game-duration-stats,
+   v2.19.0). Spreads load across cable boxes automatically. Dry-run —
+   caller commits each line through the existing bartender-schedule
+   POST.
+
+3. **`POST /api/ai/conflict-suggestion`** — when bartender-schedule
+   returns 409, pass the rejected allocation and the conflicting
+   allocation to get a ranked displacement recommendation
+   (`displace` / `keep` / `ambiguous`) with factor-by-factor
+   reasoning and an optional one-line LLM summary. Suggest-only — the
+   UI must delete+re-POST to execute.
+
+4. **`GET/POST /api/ai/weekly-summary`** — generates a markdown report
+   of last week's operations: games aired, top teams by TV-hours,
+   bartender corrections, stable learning patterns, failure clusters,
+   AI Suggest usage. POST also writes the report to
+   `apps/web/data/reports/week-YYYY-Www.md`. Auto-fired by
+   scheduler-service on Mondays 06:00 local time.
+
+**No schema changes.** Reads only from existing tables.
+
+**Required manual steps:**
+- [ ] **Ensure `OLLAMA_MODEL` matches an installed model.** Running
+  `OLLAMA_MODEL=llama3.2` is common in older `.env` files but `latest`
+  tag isn't always fetched. Check:
+  ```bash
+  curl -s http://localhost:11434/api/tags | jq -r '.models[].name'
+  grep OLLAMA_MODEL /home/ubuntu/Sports-Bar-TV-Controller/.env
+  ```
+  Set `OLLAMA_MODEL=llama3.1:8b` (or whichever model is listed + you
+  want to use) and `pm2 delete/start` to reload. The shift-brief + AI
+  Suggest endpoints 404 silently if the model tag is wrong, falling
+  back to deterministic text — still usable, but loses the LLM layer.
+- [ ] **No new cron entry** — weekly summary hook piggybacks on the
+  existing scheduler-service tick.
+
+**Verification:**
+```bash
+# Smoke-test shift brief (may take ~50s on CPU-only Ollama first call)
+curl -s http://localhost:3001/api/ai/shift-brief | jq '.brief' | head -30
+
+# Smoke-test distribution plan against some upcoming games
+curl -s -X POST http://localhost:3001/api/ai/distribution-plan \
+  -H 'Content-Type: application/json' \
+  -d "{\"games\":[{\"gameScheduleId\":\"<some-uuid>\"}]}" | jq '.plan'
+```
+
+**Where the historical signal comes from:**
+- `scheduling_patterns` table (team_routing rows) — written hourly by
+  `packages/scheduler/src/pattern-analyzer.ts`
+- `SchedulerLog component='override-digest' operation='recommend'` —
+  written hourly by `packages/scheduler/src/override-digester.ts` (v2.20.0)
+- `game_schedules.duration_minutes` — written by ESPN sync (v2.19.0)
+
+All three need at least a few days of real scheduler use before the
+optimizer's recommendations become meaningfully specific. Before that,
+it falls back to broad-spread across cable boxes, which is still a net
+improvement over the pre-v2.21.0 behavior of "first-come-first-served".
+
+---
+
 ### v2.20.0 — Autonomous agents + n8n cleanup + GPU benchmark
 **Released:** 2026-04-17
 
