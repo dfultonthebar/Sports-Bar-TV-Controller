@@ -39,6 +39,38 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-04-18 — v2.23.0 — AI Suggest diversity + per-location OTA affiliate aliases
+
+**Risk:** CAUTION — requires per-location manual step to populate OTA broadcast affiliates. Without the manual step, games broadcast on ABC/FOX/NBC/CBS (UFL, EPL, some NBA, some UFC) will continue to be filtered out of AI Suggest at locations other than Green Bay/Appleton (which already have WBAY/WLUK-TV/WGBA-TV/WFRV aliased). See `docs/VERSION_SETUP_GUIDE.md` section `v2.23.0` for the exact Claude-executable steps per location.
+
+**What changed (three coherent pieces):**
+
+1. **AI Suggest proposes more games.** The Ollama prompt was capped at 6 suggestions; now `min(totalInputs*2, games.length, 20)` suggestions. Rules rewritten to encourage league diversity and alternate routes (e.g. Brewers game on both cable ch 308 AND on firetv Apple TV+ so the manager can pick). Parser dedup allows up to 2 alternatives per input and 2 per game, rejecting only exact game+input duplicates. Learning loop unchanged — `pattern-analyzer.ts` still reads approved allocations hourly and builds team-routing patterns from manager choices.
+
+2. **`seedStationAliases()` is now a merge, not a skip.** Previously "if station_aliases has any rows, don't touch it" — which meant adding new entries to `STANDARD_ALIASES` in later releases was a no-op at every existing location. Now it per-row upserts: for known rows it unions new aliases with existing (preserving any location-edited aliases); for new rows it inserts. Future universal alias additions propagate automatically.
+
+3. **Per-location OTA affiliate aliases moved out of the shared seed.** `STANDARD_ALIASES` had ABC→WBAY, FOX→WLUK, NBC→WGBA, CBS→WFRV hardcoded — correct for Green Bay, wrong for every other city. Removed. New `seedLocalStationAliases()` reads `apps/web/data/station-aliases-local.json`, which is an empty template on main and populated per-location on each `location/<name>` branch. Also added 9 universal streaming app aliases (PrimeVideo, AppleTVPlus, ParamountPlus, Peacock, ESPNPlus, Netflix, Max, YouTubeTV, Hulu) which ARE the same everywhere.
+
+**What could break:**
+- **Green Bay/Appleton locations** already had the old hardcoded aliases in the DB, so those rows remain (merge doesn't delete). Nothing breaks. The merge ADDS streaming app aliases. UFL/EPL/NBA on ABC/FOX will now resolve correctly.
+- **Madison (Lucky's), Milwaukee, or any other city**: after merging v2.23.0, the DB will NOT yet have the location's correct ABC/FOX/NBC/CBS aliases — because those were never seeded. Claude at each location MUST execute Step 3-5 of the VERSION_SETUP_GUIDE.md v2.23.0 section BEFORE the build step, populating `station-aliases-local.json` AND patching the live DB.
+- Commit the populated JSON to the location branch (not main). Main keeps the empty template.
+
+**Manual step per location (Claude: execute during Checkpoint B):**
+1. `grep LOCATION_NAME /home/ubuntu/Sports-Bar-TV-Controller/.env` to identify this location.
+2. Determine OTA callsigns for this city (use `docs/VERSION_SETUP_GUIDE.md` reference table; web search for cities not listed).
+3. Write `apps/web/data/station-aliases-local.json` populated with this location's 4 OTA affiliates.
+4. Run the SQL in VERSION_SETUP_GUIDE.md §v2.23.0 Step 4 to patch the live DB.
+5. Commit the JSON to the location branch — do NOT push to main.
+
+The detailed Claude-executable steps (with exact SQL templates, callsign reference table, and verification curl command) are in `docs/VERSION_SETUP_GUIDE.md` under `### v2.23.0`. Auto-update's Checkpoint B must perform this population before the build runs, or the fix silently no-ops at that location.
+
+**Rollback:** The upsert change is additive (union-merge never deletes aliases). Git revert is safe — DB rows stay, AI Suggest prompt reverts to the 6-cap. The populated `station-aliases-local.json` stays on the location branch as a valid template for future use.
+
+**Affected:** `apps/web/src/app/api/scheduling/ai-suggest/route.ts`, `apps/web/src/lib/seed-from-json.ts`, `apps/web/data/station-aliases-local.json` (new), `docs/VERSION_SETUP_GUIDE.md`, `package.json`.
+
+---
+
 ### 2026-04-18 — v2.22.12 — per-league duration learning from actual-vs-scheduled
 
 **Risk:** GO — additive pattern type. No schema change; uses existing `scheduling_patterns` table.
