@@ -31,6 +31,18 @@ export interface LeaguePriorityPattern {
   scheduleCount: number;
 }
 
+export interface LeagueDurationPattern {
+  league: string;
+  sampleCount: number;
+  scheduledDurationAvgMin: number;
+  actualDurationAvgMin: number;
+  actualDurationP50Min: number;
+  actualDurationP90Min: number;
+  overrunAvgMin: number;   // actual - scheduled, averaged
+  overrunP90Min: number;   // 90th-percentile overrun
+  recommendedBufferMin: number; // ceil(overrunP90) rounded to nearest 5
+}
+
 export interface TimeSlotPattern {
   hourRange: string;
   avgBoxes: number;
@@ -54,6 +66,7 @@ export interface AudioVolumePattern {
 export interface PatternAnalysisResult {
   teamRouting: TeamRoutingPattern[];
   leaguePriority: LeaguePriorityPattern[];
+  leagueDuration: LeagueDurationPattern[];
   timeSlots: TimeSlotPattern[];
   audioVolume: AudioVolumePattern[];
   analyzedAt: number;
@@ -325,6 +338,111 @@ class PatternAnalyzer {
       return patterns;
     } catch (error: any) {
       logger.error('[PATTERN-ANALYZER] Error analyzing league priority patterns:', { error });
+      return [];
+    }
+  }
+
+  // ==========================================================================
+  // 2b. League Duration Patterns
+  // ==========================================================================
+
+  /**
+   * Learn how long games in each league actually run vs their scheduled
+   * duration. Reads every completed `input_source_allocation` that has an
+   * `actually_freed_at` timestamp and aggregates per league.
+   *
+   * Feeds AI Suggest so the LLM can buffer future MLB slots (which tend to
+   * overrun by ~30 min) differently from, say, women's college basketball
+   * (which usually ends on time). Without this the scheduler planning is
+   * identical across leagues even though their overrun distributions are
+   * very different.
+   */
+  async analyzeLeagueDurationPatterns(): Promise<LeagueDurationPattern[]> {
+    try {
+      logger.info('[PATTERN-ANALYZER] Analyzing league duration patterns...');
+
+      // Pull raw per-allocation durations (in seconds) for every game that
+      // has a known end. We aggregate in JS so we can compute percentiles —
+      // SQLite does not have a built-in PERCENTILE_CONT.
+      const rows = await db.all(sql`
+        SELECT
+          gs.league AS league,
+          (isa.actually_freed_at - isa.allocated_at) AS actual_secs,
+          (isa.expected_free_at - isa.allocated_at) AS scheduled_secs
+        FROM input_source_allocations isa
+        INNER JOIN game_schedules gs
+          ON isa.game_schedule_id = gs.id
+        WHERE isa.status = 'completed'
+          AND isa.actually_freed_at IS NOT NULL
+          AND isa.allocated_at IS NOT NULL
+          AND isa.expected_free_at IS NOT NULL
+          AND (isa.actually_freed_at - isa.allocated_at) > 0
+          AND (isa.actually_freed_at - isa.allocated_at) < 8 * 3600
+      `) as Array<{
+        league: string;
+        actual_secs: number;
+        scheduled_secs: number;
+      }>;
+
+      if (!rows || rows.length === 0) {
+        logger.info('[PATTERN-ANALYZER] No league duration data found (no completed allocations)');
+        return [];
+      }
+
+      // Bucket by league
+      const byLeague = new Map<string, Array<{ actual: number; scheduled: number }>>();
+      for (const row of rows) {
+        if (!row.league) continue;
+        const bucket = byLeague.get(row.league) || [];
+        bucket.push({ actual: row.actual_secs / 60, scheduled: row.scheduled_secs / 60 });
+        byLeague.set(row.league, bucket);
+      }
+
+      const percentile = (sorted: number[], p: number): number => {
+        if (sorted.length === 0) return 0;
+        const idx = Math.min(sorted.length - 1, Math.max(0, Math.floor(sorted.length * p)));
+        return sorted[idx];
+      };
+
+      const patterns: LeagueDurationPattern[] = [];
+      for (const [league, samples] of byLeague) {
+        if (samples.length < 1) continue;
+
+        const actualsSorted = samples.map(s => s.actual).sort((a, b) => a - b);
+        const overrunsSorted = samples.map(s => s.actual - s.scheduled).sort((a, b) => a - b);
+        const actualAvg = actualsSorted.reduce((s, v) => s + v, 0) / actualsSorted.length;
+        const scheduledAvg = samples.reduce((s, v) => s + v.scheduled, 0) / samples.length;
+        const overrunAvg = overrunsSorted.reduce((s, v) => s + v, 0) / overrunsSorted.length;
+        const actualP50 = percentile(actualsSorted, 0.5);
+        const actualP90 = percentile(actualsSorted, 0.9);
+        const overrunP90 = percentile(overrunsSorted, 0.9);
+
+        // Recommended buffer = ceil(overrunP90) rounded up to nearest 5 minutes,
+        // clamped to [0, 60]. Never recommend buffering a league whose P90 is
+        // already negative (games ending early).
+        const bufferRaw = Math.max(0, Math.min(60, Math.ceil(overrunP90)));
+        const recommendedBuffer = Math.ceil(bufferRaw / 5) * 5;
+
+        patterns.push({
+          league,
+          sampleCount: samples.length,
+          scheduledDurationAvgMin: Math.round(scheduledAvg),
+          actualDurationAvgMin: Math.round(actualAvg),
+          actualDurationP50Min: Math.round(actualP50),
+          actualDurationP90Min: Math.round(actualP90),
+          overrunAvgMin: Math.round(overrunAvg),
+          overrunP90Min: Math.round(overrunP90),
+          recommendedBufferMin: recommendedBuffer,
+        });
+      }
+
+      // Sort descending by sample count so most-observed leagues show first
+      patterns.sort((a, b) => b.sampleCount - a.sampleCount);
+
+      logger.info(`[PATTERN-ANALYZER] Found duration patterns for ${patterns.length} leagues`);
+      return patterns;
+    } catch (error: any) {
+      logger.error('[PATTERN-ANALYZER] Error analyzing league duration patterns:', { error });
       return [];
     }
   }
@@ -688,9 +806,10 @@ class PatternAnalyzer {
 
     await this.ensureTables();
 
-    const [teamRouting, leaguePriority, timeSlots, audioVolume] = await Promise.all([
+    const [teamRouting, leaguePriority, leagueDuration, timeSlots, audioVolume] = await Promise.all([
       this.analyzeTeamRoutingPatterns(),
       this.analyzeLeaguePriorityPatterns(),
+      this.analyzeLeagueDurationPatterns(),
       this.analyzeTimeSlotPatterns(),
       this.analyzeAudioVolumePatterns(),
     ]);
@@ -754,6 +873,39 @@ class PatternAnalyzer {
         `);
       } catch (error: any) {
         logger.error(`[PATTERN-ANALYZER] Error saving league priority pattern for ${pattern.league}:`, { error });
+      }
+    }
+
+    // Persist league duration patterns (actual runtime vs scheduled)
+    for (const pattern of leagueDuration) {
+      try {
+        const id = this.generateId();
+        const data = JSON.stringify(pattern);
+        // Confidence caps at 1.0 around 10 samples — beyond that the marginal
+        // confidence bump per additional game is negligible for this use.
+        const confidence = Math.min(pattern.sampleCount / 10, 1.0);
+        await db.run(sql`
+          INSERT OR REPLACE INTO scheduling_patterns
+            (id, pattern_type, pattern_key, pattern_data, sample_size, confidence, created_at, updated_at)
+          VALUES (
+            COALESCE(
+              (SELECT id FROM scheduling_patterns WHERE pattern_type = 'league_duration' AND pattern_key = ${pattern.league}),
+              ${id}
+            ),
+            'league_duration',
+            ${pattern.league},
+            ${data},
+            ${pattern.sampleCount},
+            ${confidence},
+            COALESCE(
+              (SELECT created_at FROM scheduling_patterns WHERE pattern_type = 'league_duration' AND pattern_key = ${pattern.league}),
+              ${now}
+            ),
+            ${now}
+          )
+        `);
+      } catch (error: any) {
+        logger.error(`[PATTERN-ANALYZER] Error saving league duration pattern for ${pattern.league}:`, { error });
       }
     }
 
@@ -826,6 +978,7 @@ class PatternAnalyzer {
       const summaryData = JSON.stringify({
         teamCount: teamRouting.length,
         leagueCount: leaguePriority.length,
+        leagueDurationCount: leagueDuration.length,
         timeSlotCount: timeSlots.length,
         audioVolumeCount: audioVolume.length,
         analyzedAt: now,
@@ -857,6 +1010,7 @@ class PatternAnalyzer {
     const result: PatternAnalysisResult = {
       teamRouting,
       leaguePriority,
+      leagueDuration,
       timeSlots,
       audioVolume,
       analyzedAt: now,
@@ -866,6 +1020,7 @@ class PatternAnalyzer {
     logger.info(
       `[PATTERN-ANALYZER] Full analysis complete in ${durationMs}ms: ` +
       `${teamRouting.length} teams, ${leaguePriority.length} leagues, ` +
+      `${leagueDuration.length} league-duration, ` +
       `${timeSlots.length} time slots, ${audioVolume.length} audio volume patterns`
     );
 

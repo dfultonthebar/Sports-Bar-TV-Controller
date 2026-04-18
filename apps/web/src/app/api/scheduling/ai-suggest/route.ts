@@ -392,6 +392,28 @@ function buildPrompt(
     if (routingHints.length > 0) {
       patternHints = `\nPast routing patterns:\n${routingHints.join('\n')}`
     }
+
+    // Per-league duration history. Feeds the LLM observed runtime so
+    // slot planning for high-overrun leagues (MLB, college baseball)
+    // can buffer accordingly. Data comes from (actually_freed_at -
+    // allocated_at) aggregated by pattern-analyzer.ts.
+    const durationHints = patterns
+      .filter((p: any) => p.pattern_type === 'league_duration' && p.pattern_data)
+      .slice(0, 8)
+      .map((p: any) => {
+        try {
+          const d = typeof p.pattern_data === 'string' ? JSON.parse(p.pattern_data) : p.pattern_data
+          if (!d.actualDurationAvgMin || !d.sampleCount) return null
+          const overrun = d.overrunAvgMin ?? 0
+          const overrunLabel = overrun > 0 ? `+${overrun} min over scheduled` : overrun < 0 ? `${overrun} min under scheduled` : 'on time'
+          const bufferNote = d.recommendedBufferMin > 0 ? `; buffer ${d.recommendedBufferMin} min for P90 overrun` : ''
+          return `${d.league}: ~${d.actualDurationAvgMin} min actual (${overrunLabel}, n=${d.sampleCount}${bufferNote})`
+        } catch { return null }
+      })
+      .filter(Boolean)
+    if (durationHints.length > 0) {
+      patternHints += `\nLearned league durations (from completed games at this venue):\n${durationHints.join('\n')}`
+    }
   }
 
   const exampleInput = inputSources[0]?.name || 'DirecTV 1'

@@ -547,25 +547,43 @@ on the wrong physical TVs with no error — just confused operators. Lucky's
 sending every "output 1" request to physical output 27 for weeks before
 being caught.
 
-**Expected values by model:**
+**Expected values by card layout (NOT by model string):**
 
-| Model family | outputOffset | audioOutputCount notes |
+The WP-8X8, WP-16X16, and WP-36X36 chassis are all sold in BOTH single-card
+and multi-card configurations — the model string alone does not tell you
+which. Card layout is set per-location by the installer.
+
+| Card layout | outputOffset | audioOutputCount notes |
 |---|---|---|
-| **WP-8X8, WP-16X16, WP-36X36** (single-card) | **MUST be 0** | 0 if audio routes via Atlas/dbx/BSS DSP; non-zero only if Wolf Pack outputs are wired to speakers |
-| **WP-48+** (multi-card) | Per-card, depends on physical wiring — see the location's card-slot assignments | Per-location |
+| **Single-card** (one card fills all outputs) | **MUST be 0** | 0 if audio routes via Atlas/dbx/BSS DSP; non-zero only if Wolf Pack outputs are wired to speakers |
+| **Multi-card** (chassis populated with multiple daughter cards) | Per-card, depends on physical wiring | Per-location |
 
-**Per-location reference:**
+**Per-location reference** (updated 2026-04-18 after operator verification):
 
-| Location | Model | outputOffset | audioOutputCount | Notes |
-|---|---|---|---|---|
-| Holmgren Way | Wolf Pack 48-port | Per card layout | 4 | Outputs 37-40 are audio-only (CLAUDE.md §10) |
-| Graystone | Wolf Pack (multi-card) | +32 for audio card | 4 | Comment in `wolfpack-matrix-service.ts:275` |
-| Lucky's 1313 | **WP-36X36 (single-card)** | **0** | **0** | Audio via dbx ZonePRO 1260m @ 192.168.10.50, NOT Wolf Pack outputs |
+| Location | Model | Layout | outputOffset | audioOutputCount | Notes |
+|---|---|---|---|---|---|
+| Stoneyard Greenville | Wolf Pack WP-36X36 | **Multi-card** | Per card | 4 | |
+| Stoneyard Appleton | Wolf Pack | **Multi-card** | Per card | 4 | |
+| Holmgren Way | Wolf Pack 48-port | **Multi-card** | Per card layout | 4 | Outputs 37-40 are audio-only (CLAUDE.md §10) |
+| Graystone | Wolf Pack WP-36X36 | **Multi-card** | +32 for audio card | 4 | Comment in `wolfpack-matrix-service.ts:275` |
+| Lucky's 1313 | Wolf Pack WP-36X36 | **Single-card** | **0 (enforced)** | **0** | Audio via dbx ZonePRO 1260m @ 192.168.10.50 |
+| Leg Lamp | Wolf Pack | **Single-card** | **0 (enforced)** | 0 | |
 
-**Enforcement:**
-- `apps/web/src/instrumentation.ts` logs `[MATRIX-CONFIG] ⚠` at startup if a single-card model has non-zero offset
-- `scripts/verify-install.sh` has a `matrix_config` layer that FAILS the install-verify for the same condition, rolling back auto-updates that somehow land bad values
-- Multi-card locations are not auto-verified (their values are wiring-specific) — operator must maintain the row in this table when adding/moving cards
+**How enforcement is opted in:**
+
+Single-card locations declare themselves by setting `MATRIX_SINGLE_CARD=true`
+in the location's `.env`. When this flag is set, `scripts/verify-install.sh`'s
+`matrix_config` layer will FAIL the install if `outputOffset != 0`, rolling
+back the auto-update before bad values ship. Multi-card locations leave the
+flag unset (the default) and any offset is accepted.
+
+This was changed from a model-name-based check after Graystone's multi-card
+WP-36X36 failed verify with "offset=32 on WP-36X36 (expected 0)" — the old
+check assumed every WP-36X36 was single-card. Opt-in via env is explicit
+and lets operators match the check to physical wiring regardless of model.
+
+- `apps/web/src/instrumentation.ts` logs `[MATRIX-CONFIG] ⚠` at startup if a single-card model has non-zero offset (separate legacy check, still useful as a runtime warning).
+- Multi-card locations are not auto-verified (their values are wiring-specific) — operator must maintain the row in this table when adding/moving cards.
 
 **When adding a new location**, add a row to the per-location table above
 BEFORE the first auto-update merges it into this file. When changing physical
