@@ -187,6 +187,46 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.23.11 — Location-aware browser tab title
+**Released:** 2026-04-18
+
+**What changed:**
+- `apps/web/src/app/layout.tsx` — switched from `export const metadata` (static, evaluated at build time) to `export async function generateMetadata` (dynamic, evaluated at request time). Title now computes from `process.env.LOCATION_NAME`. Format: `<LocationName>-Sports-Bar-TV-Controller` when set, plain `Sports Bar TV Controller` when unset.
+- `turbo.json` — added `"env": ["LOCATION_NAME", "LOCATION_ID", "NODE_ENV"]` to the build task so Turbo passes these through to the Next.js build subprocess AND includes them in the build cache hash. Without this, Next.js statically pre-renders pages like `/` and `/system-admin` with `process.env.LOCATION_NAME=undefined` at build time, baking the fallback title into cached HTML regardless of what the PM2 runtime env says.
+
+**Why this matters:** operators running multiple locations open each in a browser tab. Previously every tab said "Sports Bar TV Controller" — tell them apart by hovering over favicons or guessing from URL. Now Holmgren's tab says "Holmgren-Sports-Bar-TV-Controller" while Lucky's would say "LuckyS1313-Sports-Bar-TV-Controller" (or whatever the operator sets `LOCATION_NAME` to).
+
+**Required Claude step at each location** (Claude: execute during Checkpoint B of the update that merges v2.23.11):
+
+1. Check if `LOCATION_NAME` is already set in `.env`:
+```bash
+grep ^LOCATION_NAME= /home/ubuntu/Sports-Bar-TV-Controller/.env
+```
+
+2. If NOT set, add it. Use a short, unambiguous name that looks good as a tab title — no spaces needed (will auto-convert to dashes anyway), no special chars. Examples: `Holmgren`, `LegLamp`, `Lucky1313`, `Graystone`, `AppletonStoneyard`. Match the human name bartenders use at the bar:
+```bash
+echo 'LOCATION_NAME=<ShortName>' >> /home/ubuntu/Sports-Bar-TV-Controller/.env
+```
+
+3. Rebuild with the env var in the build shell (Turbo needs it exported even though `.env` has it):
+```bash
+cd /home/ubuntu/Sports-Bar-TV-Controller
+export LOCATION_NAME="$(grep ^LOCATION_NAME= .env | cut -d= -f2)"
+rm -rf apps/web/.next .turbo
+npx turbo run build --force --filter=@sports-bar/web
+pm2 restart sports-bar-tv-controller
+```
+
+4. Verify the tab title:
+```bash
+curl -s http://localhost:3001/ | grep -oE '<title[^>]*>[^<]+</title>'
+```
+Expected: `<title>YourLocation-Sports-Bar-TV-Controller</title>`. If you see the plain `<title>Sports Bar TV Controller</title>`, LOCATION_NAME wasn't in the build shell env — re-run step 3 with `export` first.
+
+**Rollback:** `git revert` restores the static metadata export and removes the turbo env array. Titles go back to "Sports Bar TV Controller" across the board. No data impact.
+
+---
+
 ### v2.23.5 — Extract memory + versioning guides out of CLAUDE.md
 **Released:** 2026-04-18
 
