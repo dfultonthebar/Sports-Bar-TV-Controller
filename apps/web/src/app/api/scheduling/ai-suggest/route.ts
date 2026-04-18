@@ -577,10 +577,26 @@ function parseOllamaResponse(
     const isHomeTeamGame = (s: AISuggestion) =>
       HOME_TEAMS.some(t => s.homeTeam.includes(t) || s.awayTeam.includes(t))
 
+    // Sort order for the suggestion list returned to the manager:
+    //   1. Home team games first (Brewers/Bucks/Packers/Badgers).
+    //   2. Within each tier, live-TV sources (cable + directv) above
+    //      streaming (firetv). Live sources are the primary feeds; firetv
+    //      is a fallback for streaming-only broadcasts (Prime Video, Apple TV+,
+    //      Paramount+, etc.). Previously firetv suggestions could appear
+    //      above directv ones when confidence was identical, pushing the
+    //      primary-source options below the alternates.
+    //   3. Tiebreak by confidence descending.
+    // At DirecTV-only locations (no cable inputs) this keeps directv at top.
+    // At cable-only locations (no directv inputs) it keeps cable at top.
+    // At mixed locations (cable + directv), both appear before firetv.
+    const liveTvRank = (s: AISuggestion) => (s.suggestedDeviceType === 'firetv' ? 1 : 0)
     suggestions.sort((a, b) => {
-      const ah = isHomeTeamGame(a) ? 1 : 0
-      const bh = isHomeTeamGame(b) ? 1 : 0
-      if (ah !== bh) return bh - ah
+      const ah = isHomeTeamGame(a) ? 0 : 1
+      const bh = isHomeTeamGame(b) ? 0 : 1
+      if (ah !== bh) return ah - bh
+      const ar = liveTvRank(a)
+      const br = liveTvRank(b)
+      if (ar !== br) return ar - br
       return b.confidence - a.confidence
     })
 
