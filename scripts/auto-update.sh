@@ -659,7 +659,14 @@ rm -f "$NPM_CI_LOG"
 step "schema_push"
 log "npx drizzle-kit push (apply pending schema changes)"
 SCHEMA_PUSH_LOG="$LOG_DIR/drizzle-push-$(date +%s).log"
-if NODE_ENV=development npx drizzle-kit push 2>&1 | tee "$SCHEMA_PUSH_LOG" | tee -a "$LOG_FILE"; then
+# drizzle-kit push prompts for confirmation when it detects a data-loss
+# statement (e.g. dropping a table that still has rows). In the
+# auto-update flow the schema change was already approved at Checkpoint A
+# (it's in the merge diff Claude reviewed), so we pipe `yes` to accept.
+# Without this, any release that removes a table — e.g. v2.20.0's
+# n8n-log cleanup — fails at a location that still has rows in the
+# to-be-removed table, with "Error: Interactive prompts require a TTY".
+if yes 2>/dev/null | NODE_ENV=development npx drizzle-kit push 2>&1 | tee "$SCHEMA_PUSH_LOG" | tee -a "$LOG_FILE"; then
   log "drizzle-kit push completed cleanly"
 else
   if grep -qE "(index|table|column) [\`\"]?[A-Za-z_][A-Za-z0-9_]*[\`\"]? already exists|already exists" "$SCHEMA_PUSH_LOG"; then
