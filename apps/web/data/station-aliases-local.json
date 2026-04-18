@@ -1,4 +1,22 @@
 {
-  "_comment": "Location-specific OTA broadcast-affiliate aliases. Each location branch populates this with its local affiliates (e.g. WBAY/WLUK/WGBA/WFRV for Green Bay DMA; WKOW/WMSN/WMTV/WISC for Madison). On main this is an empty template. Seeded by seedLocalStationAliases() in apps/web/src/lib/seed-from-json.ts. See docs/VERSION_SETUP_GUIDE.md §v2.23.0 for the Claude-executable steps per location.",
-  "aliases": []
+  "_comment": "Location-specific OTA broadcast-affiliate aliases for Holmgren Way (Green Bay, WI). Each location branch populates this with ITS local affiliates. On main this file is an empty template {\"aliases\": []}. Seeded by seedLocalStationAliases() in apps/web/src/lib/seed-from-json.ts.",
+  "_location": "Holmgren Way, Green Bay WI",
+  "aliases": [
+    {
+      "standardName": "WBAY",
+      "aliases": ["ABC", "WBAY", "WBAY-TV", "WBAY HD", "ABC 2", "WBAY 2"]
+    },
+    {
+      "standardName": "WLUK-TV",
+      "aliases": ["FOX", "WLUK", "WLUK-TV", "WLUK-DT", "FOX 11", "WLUK 11"]
+    },
+    {
+      "standardName": "WGBA-TV",
+      "aliases": ["NBC", "WGBA", "WGBA-TV", "WGBA-DT", "NBC 26", "WGBA 26"]
+    },
+    {
+      "standardName": "WFRV",
+      "aliases": ["CBS", "WFRV", "WFRV-TV", "CBS 5", "WFRV 5"]
+    }
+  ]
 }
