@@ -271,7 +271,7 @@ class SchedulerService {
         try {
           const { patternAnalyzer } = await import('./pattern-analyzer');
           patternAnalyzer.analyzeAll().then(result => {
-            logger.info(`[SCHEDULER] Pattern analysis: ${result.teamRouting?.length || 0} team, ${result.leaguePriority?.length || 0} league, ${result.timeSlot?.length || 0} timeslot patterns`);
+            logger.info(`[SCHEDULER] Pattern analysis: ${result.teamRouting?.length || 0} team, ${result.leaguePriority?.length || 0} league, ${result.leagueDuration?.length || 0} league-duration, ${result.timeSlots?.length || 0} timeslot patterns`);
           }).catch(() => {});
         } catch {}
 
