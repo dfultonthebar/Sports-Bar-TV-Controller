@@ -85,6 +85,8 @@ async function gatherShiftContext() {
       game: {
         home: schema.gameSchedules.homeTeamName,
         away: schema.gameSchedules.awayTeamName,
+        start: schema.gameSchedules.scheduledStart,
+        status: schema.gameSchedules.status,
       },
       source: { name: schema.inputSources.name },
     })
@@ -134,6 +136,13 @@ async function gatherShiftContext() {
       source: a.source?.name ?? 'unknown',
       channel: a.channelNumber,
       matchup: `${a.game?.away ?? '?'} @ ${a.game?.home ?? '?'}`,
+      startLocal: a.game?.start
+        ? new Date(a.game.start * 1000).toLocaleString('en-US', {
+            timeZone: HARDWARE_CONFIG.venue.timezone,
+            hour: 'numeric', minute: '2-digit', hour12: true,
+          })
+        : 'unknown',
+      status: a.game?.status ?? 'unknown',
       tvs: a.tvCount,
     })),
     recentFailures: recentFailureClusters.map(r => r.message),
@@ -170,7 +179,7 @@ function buildPrompt(ctx: any): string {
       ).join('\n')
     : '- (no games scheduled in next 12 hours)'
   const active = ctx.activeAllocations.length > 0
-    ? ctx.activeAllocations.map((a: any) => `- ${a.source} ch ${a.channel}: ${a.matchup} (${a.tvs} TVs)`).join('\n')
+    ? ctx.activeAllocations.map((a: any) => `- ${a.source} ch ${a.channel}: ${a.matchup} (${a.tvs} TVs, started ${a.startLocal}, ${a.status})`).join('\n')
     : '- (no games currently on)'
   const failures = ctx.recentFailures.length > 0
     ? ctx.recentFailures.map((m: string) => `- ${m}`).join('\n')
@@ -198,6 +207,8 @@ Format:
 - Call out home-team games (Brewers, Bucks, Badgers) first.
 - Mention any recent failures the bartender should pre-test.
 - Use plain text, bullets OK, no markdown headings. Be direct — no hedging phrases like "you might want to consider". The bartender is experienced.
+
+CRITICAL: Only reference game start times that are explicitly listed above. Never invent, estimate, or round times. If a game's time is not in the data, do not mention any time for it. If a game is marked "in_progress", use the "started at <time>" from the Currently-playing section verbatim and do not reframe it as an upcoming start time.
 `
 }
 
@@ -221,7 +232,7 @@ function fallbackBrief(ctx: any): string {
   }
   if (ctx.activeAllocations.length > 0) {
     lines.push(`Currently on:`)
-    for (const a of ctx.activeAllocations) lines.push(`  ${a.source} ch ${a.channel}: ${a.matchup} (${a.tvs} TVs)`)
+    for (const a of ctx.activeAllocations) lines.push(`  ${a.source} ch ${a.channel}: ${a.matchup} (started ${a.startLocal}, ${a.tvs} TVs)`)
     lines.push('')
   }
   if (ctx.recentFailures.length > 0) {
