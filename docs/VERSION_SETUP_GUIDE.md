@@ -187,6 +187,47 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.23.2 — Enable frontend-design + feature-dev Claude Code plugins project-wide
+**Released:** 2026-04-18
+
+**What changed:**
+- `.claude/settings.json` — new file at project scope. Sets `enabledPlugins` for `frontend-design@claude-plugins-official` and `feature-dev@claude-plugins-official`. These are plugins from Anthropic's built-in official marketplace (`claude-plugins-official`, auto-available in Claude Code — no `extraKnownMarketplaces` entry needed).
+- **frontend-design** — design philosophy + system prompts that guide Claude to produce distinctive, production-grade UI (bold aesthetic choices, purposeful typography, intentional animations). Applies whenever the dev works on React/Next.js components. Invoked automatically by Claude when it detects UI/frontend work, or explicitly via `/frontend-design:*` skills after `/reload-plugins`.
+- **feature-dev** — comprehensive feature-development workflow. Provides specialized subagents for codebase exploration, architecture design, and quality review. Also invokable via `/feature-dev:*` slash commands.
+
+**Required Claude step at each location** (Claude: execute this during Checkpoint B of the update that merges v2.23.2):
+
+1. Verify the `.claude/settings.json` file arrived with the merge:
+```bash
+cat /home/ubuntu/Sports-Bar-TV-Controller/.claude/settings.json
+```
+Expected: contains `enabledPlugins` with `frontend-design@claude-plugins-official` and `feature-dev@claude-plugins-official` both set to `true`.
+
+2. The `claude-plugins-official` marketplace is built into Claude Code, so no marketplace-add is needed. However, the plugins themselves must be installed/cached. On most locations the official marketplace auto-updates at startup, so the plugins should be present. If a session later reports "plugin not found," run in Claude Code interactively:
+```
+/plugin marketplace update claude-plugins-official
+/plugin install frontend-design@claude-plugins-official
+/plugin install feature-dev@claude-plugins-official
+/reload-plugins
+```
+
+3. Verify plugins are loaded. In Claude Code CLI:
+```bash
+claude plugin list 2>&1 | grep -E "frontend-design|feature-dev"
+```
+Expected: both plugins listed as enabled. If missing from the list but present in `.claude/settings.json`, the plugin files need to be cached — run the `/plugin install` commands from step 2 in an interactive session once and Claude Code will remember them.
+
+4. Confirm a Claude Code session invoked at the repo picks them up:
+```bash
+ls ~/.claude/plugins/cache/ 2>&1 | grep -E "frontend-design|feature-dev" || echo "(plugins not yet cached — run /plugin install as step 2)"
+```
+
+**Why this is a project-scoped commit rather than a per-host install:** installing user-scope (`~/.claude/`) at each location would require a manual step that's easy to skip. Committing `enabledPlugins` to `.claude/settings.json` means every location that trusts this repo in Claude Code inherits the same enabled plugin set, and `git pull` + next session start is enough to pick up new plugins added to the list later.
+
+**Rollback:** `git revert` the commit — drops the `.claude/settings.json` file, plugins become disabled for project sessions. The underlying plugin files (if cached at user scope) stay. No DB or runtime impact.
+
+---
+
 ### v2.23.0 — AI Suggest diversity + per-location station-alias seeding
 **Released:** 2026-04-18
 

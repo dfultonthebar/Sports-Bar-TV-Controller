@@ -39,6 +39,27 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-04-18 — v2.23.2 — Enable frontend-design + feature-dev Claude Code plugins
+
+**Risk:** GO — additive config only. Adds `.claude/settings.json` with two enabled plugins from the built-in Claude Code official marketplace. No runtime code changes; no DB impact. Plugins only affect Claude Code sessions invoked inside this repo, not the running Sports Bar app.
+
+**What changed:**
+- `.claude/settings.json` (new) — `enabledPlugins`: `frontend-design@claude-plugins-official` and `feature-dev@claude-plugins-official`, both `true`. The `claude-plugins-official` marketplace is built into Claude Code — no separate marketplace-add needed.
+
+**What these plugins do:**
+- **frontend-design** (Anthropic): design philosophy + system prompts that guide Claude toward distinctive, production-grade UI work (intentional typography, purposeful color, meaningful animation) instead of generic output.
+- **feature-dev** (Anthropic): workflow for multi-step feature development — specialized subagents for codebase exploration, architecture, and quality review.
+
+**Manual step per location (Claude: execute during Checkpoint B):**
+1. `cat /home/ubuntu/Sports-Bar-TV-Controller/.claude/settings.json` to confirm the file arrived.
+2. If a later Claude Code session reports "plugin not found," run interactively once: `/plugin install frontend-design@claude-plugins-official` and `/plugin install feature-dev@claude-plugins-official`, then `/reload-plugins`. See `docs/VERSION_SETUP_GUIDE.md` §v2.23.2 for the full runbook.
+
+**Rollback:** Delete `.claude/settings.json` — plugins become disabled for project sessions. No impact on the Sports Bar app or DB.
+
+**Affected:** `.claude/settings.json` (new), `docs/VERSION_SETUP_GUIDE.md`, `docs/LOCATION_UPDATE_NOTES.md`, `package.json`.
+
+---
+
 ### 2026-04-18 — v2.23.0 — AI Suggest diversity + per-location OTA affiliate aliases
 
 **Risk:** CAUTION — requires per-location manual step to populate OTA broadcast affiliates. Without the manual step, games broadcast on ABC/FOX/NBC/CBS (UFL, EPL, some NBA, some UFC) will continue to be filtered out of AI Suggest at locations other than Green Bay/Appleton (which already have WBAY/WLUK-TV/WGBA-TV/WFRV aliased). See `docs/VERSION_SETUP_GUIDE.md` section `v2.23.0` for the exact Claude-executable steps per location.
