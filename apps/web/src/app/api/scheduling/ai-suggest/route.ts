@@ -19,7 +19,11 @@ import { HARDWARE_CONFIG } from '@/lib/hardware-config'
 import { resolveChannelsForGame } from '@/lib/network-channel-resolver'
 
 const OLLAMA_URL = `${HARDWARE_CONFIG.ollama.baseUrl}/api/generate`
-const OLLAMA_TIMEOUT_MS = HARDWARE_CONFIG.ollama.timeout // 60 seconds
+// AI Suggest runs Ollama with a longer prompt (up to 12 diverse suggestions)
+// than other routes. CPU-only llama3.1:8b takes ~20s per suggestion generated,
+// so 10-12 suggestions = ~240s. Extend past the shared HARDWARE_CONFIG default
+// to avoid aborts during legitimate generation.
+const OLLAMA_TIMEOUT_MS = Math.max(HARDWARE_CONFIG.ollama.timeout, 300000) // ≥ 300s
 const OLLAMA_MODEL = HARDWARE_CONFIG.ollama.model
 
 // ---------- types ----------
@@ -445,16 +449,15 @@ RULES:
 1. CRITICAL: Cable inputs MUST use the "cable ch" number. DirecTV inputs MUST use the "directv ch" number. Fire TV inputs MUST use the streaming app name as the channelNumber value (e.g. "Prime Video", "Apple TV+", "Peacock"). Never mix identifiers.
 ${exclusivityRule}
 3. STREAMING GAMES: Any game tagged [FIRETV] (Prime Video, Apple TV+, Peacock, ESPN+, Max, Paramount+) MUST be routed to a firetv input — no cable/directv box can tune it.
-4. CRITICAL COVERAGE RULE: Assign DIFFERENT games to different inputs. Each gameIndex may appear AT MOST ONCE across all suggestions (home team games may appear TWICE — once on cable/directv, once on firetv — for redundancy). Do NOT propose the same game on 3+ inputs.
-5. Home team games (Brewers, Bucks, Packers, Badgers) get top priority. Cover the home team game first, then pick the most popular remaining games (prefer nationally-televised matchups, winning records, playoff implications).
-6. Each input tunes ONE channel — never pick the same input twice.
-7. Spread across inputs — use EVERY input if possible before repeating games.
-8. "suggestedInput" MUST be an exact name from the INPUTS list above.
+4. PROPOSE OPTIONS FOR THE MANAGER TO CHOOSE FROM. The manager will approve the ones they want. A given gameIndex may appear up to 2 times (e.g. Brewers game on both cable ch 308 AND on firetv Apple TV+ as alternatives). A given input may also appear up to 2 times with different game options (e.g. Fire TV 2 proposed for both the NBA game and the MLS game — manager picks one). Do NOT propose the same game+input combo more than once.
+5. Home team games (Brewers, Bucks, Packers, Badgers) get top priority — always propose them first. Then propose diverse options across leagues (MLB, NBA, NHL, MLS, UFL, UFC, Premier League, college sports) so the manager can compare. Don't only suggest one sport — include games from every league present in the GAMES list.
+6. Spread across inputs — propose games for EVERY available input. Every cable box, DirecTV receiver, and Fire TV should have at least one suggestion.
+7. "suggestedInput" MUST be an exact name from the INPUTS list above.
 
 Return ONLY valid JSON:
 {"suggestions":[{"gameIndex":1,"suggestedInput":"${exampleInput}","channelNumber":"669","suggestedOutputs":[1,2,3],"confidence":0.9,"reasoning":"Brewers home game on DirecTV"}]}
 
-Return up to ${Math.min(totalInputs, 6)} suggestions for the best games. JSON only, no other text.`
+Return ${Math.min(totalInputs * 2, games.length, 12)} suggestions — at least one per input when possible, plus alternatives across different leagues for the manager to pick from. JSON only, no other text.`
 }
 
 // ---------- helper: parse Ollama response ----------
@@ -567,8 +570,9 @@ function parseOllamaResponse(
     // (b) Deduplicate inputs: each input can carry only one game; drop later
     //     suggestions that collide with an already-picked input (rank by home-
     //     team > confidence).
-    const claimedInputIds = new Set<string>()
+    const inputAssignmentCount = new Map<string, number>()
     const gameAssignmentCount = new Map<string, number>()
+    const gameInputCombos = new Set<string>()
     const HOME_TEAMS = ['Packers', 'Brewers', 'Bucks', 'Badgers']
     const isHomeTeamGame = (s: AISuggestion) =>
       HOME_TEAMS.some(t => s.homeTeam.includes(t) || s.awayTeam.includes(t))
@@ -592,9 +596,10 @@ function parseOllamaResponse(
       const availableOnBoth = origGame?.channelNumber && origGame?.directvChannel
 
       // (a) Prefer DirecTV for BOTH-availability games when a directv input is free.
-      // Skip entirely at single-platform venues.
+      // Skip entirely at single-platform venues. "Free" means assigned fewer
+      // than 2 times (we allow up to 2 alternates per input).
       if (hasMixedInputs && availableOnBoth && sug.suggestedDeviceType === 'cable') {
-        const freeDirectv = directvInputsAll.find((src: any) => !claimedInputIds.has(src.id))
+        const freeDirectv = directvInputsAll.find((src: any) => (inputAssignmentCount.get(src.id) || 0) < 2)
         if (freeDirectv) {
           sug.suggestedInput = freeDirectv.name
           sug.suggestedInputId = freeDirectv.id
@@ -610,29 +615,43 @@ function parseOllamaResponse(
       // only if no directv-only game exists in the remaining queue.
       // (Skipped for now — DirecTV-preference is the stated default per user.)
 
-      // (b) Dedup: skip if this input is already claimed
-      if (claimedInputIds.has(sug.suggestedInputId)) {
+      // (b) Per-input limit: up to 2 alternatives per input so the manager
+      //     can compare options (e.g. Fire TV 2 proposed for both NBA and MLS).
+      //     The manager picks one on approve; the other is dropped by the UI.
+      const inputCount = inputAssignmentCount.get(sug.suggestedInputId) || 0
+      if (inputCount >= 2) {
         logger.debug(
-          `[AI-SUGGEST] Dropping duplicate input assignment: ${sug.suggestedInput} already used`
+          `[AI-SUGGEST] Dropping 3rd+ assignment for input ${sug.suggestedInput} (already at limit 2)`
         )
         continue
       }
 
-      // (c) Per-game assignment limit: most games get ONE input. Home team games
-      //     may appear twice — once on cable and once on directv — for
-      //     redundancy. This stops the AI from piling a single game (e.g.
-      //     Brewers) onto every available input while ignoring 16 other games.
+      // (c) Per-game limit: up to 2 proposals per game so the manager sees
+      //     alternate routes (e.g. Brewers on cable ch 308 OR on firetv Apple
+      //     TV+). Same cap for home-team and non-home games — the user wants
+      //     choice across the board. The per-game+input uniqueness below
+      //     prevents literal duplicates.
       const gameCount = gameAssignmentCount.get(sug.gameId) || 0
-      const limit = isHomeTeamGame(sug) ? 2 : 1
-      if (gameCount >= limit) {
+      if (gameCount >= 2) {
         logger.debug(
-          `[AI-SUGGEST] Dropping extra assignment for game ${sug.gameId} (${sug.awayTeam} @ ${sug.homeTeam}); already at limit ${limit}`
+          `[AI-SUGGEST] Dropping 3rd+ proposal for game ${sug.gameId} (${sug.awayTeam} @ ${sug.homeTeam})`
         )
         continue
       }
-      gameAssignmentCount.set(sug.gameId, gameCount + 1)
 
-      claimedInputIds.add(sug.suggestedInputId)
+      // (d) Reject exact game+input duplicates (same game proposed twice on
+      //     the same input adds no manager choice).
+      const comboKey = `${sug.gameId}::${sug.suggestedInputId}`
+      if (gameInputCombos.has(comboKey)) {
+        logger.debug(
+          `[AI-SUGGEST] Dropping exact game+input duplicate: ${sug.awayTeam} @ ${sug.homeTeam} on ${sug.suggestedInput}`
+        )
+        continue
+      }
+
+      gameAssignmentCount.set(sug.gameId, gameCount + 1)
+      inputAssignmentCount.set(sug.suggestedInputId, inputCount + 1)
+      gameInputCombos.add(comboKey)
       finalSuggestions.push(sug)
     }
 
@@ -716,7 +735,7 @@ export async function GET(request: NextRequest) {
       ollamaResponse = await callOllama(prompt)
     } catch (err: any) {
       if (err.name === 'AbortError') {
-        logger.error('[AI-SUGGEST] Ollama request timed out after 30s')
+        logger.error(`[AI-SUGGEST] Ollama request timed out after ${Math.round(OLLAMA_TIMEOUT_MS / 1000)}s`)
         return NextResponse.json(
           { success: false, error: 'AI suggestion timed out. Ollama may be busy or unavailable.', suggestions: [] },
           { status: 504 }
