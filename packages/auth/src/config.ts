@@ -106,7 +106,6 @@ export const PUBLIC_ENDPOINT_PATTERNS = [
 // Webhook endpoints that require API key
 export const WEBHOOK_ENDPOINT_PATTERNS = [
   '/api/webhooks',
-  '/api/n8n',
   '/api/automation',
 ] as const
 
