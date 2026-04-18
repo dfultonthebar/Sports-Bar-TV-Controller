@@ -6,6 +6,7 @@ import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { z } from 'zod'
 import { validateRequestBody, isValidationError } from '@/lib/validation'
+import { getExpectedDurationSeconds } from '@/lib/game-duration-stats'
 import crypto from 'crypto'
 
 // Schema for creating a bartender schedule
@@ -91,9 +92,25 @@ export async function POST(request: NextRequest) {
     // 2. Find or create game schedule
     const tuneAtUnix = Math.floor(new Date(tuneAt).getTime() / 1000)
     const startTimeUnix = Math.floor(new Date(gameInfo.startTime).getTime() / 1000)
-    const endTimeUnix = gameInfo.endTime
-      ? Math.floor(new Date(gameInfo.endTime).getTime() / 1000)
-      : startTimeUnix + (3 * 60 * 60) // Default 3 hour game
+    // endTime derivation order: explicit caller value > learned per-league
+    // average from historical durations > 3h fallback. The per-league
+    // average comes from `game_schedules.duration_minutes` rows populated
+    // by ESPN sync — see apps/web/src/lib/game-duration-stats.ts and
+    // CLAUDE.md §9. Before v2.18.3 every sport used the same 3h default,
+    // which over-reserved TVs for short sports (NBA ~2h15m, college
+    // basketball ~2h) and under-reserved for NFL (~3h30m).
+    let endTimeUnix: number
+    if (gameInfo.endTime) {
+      endTimeUnix = Math.floor(new Date(gameInfo.endTime).getTime() / 1000)
+    } else {
+      const leagueForDuration = gameInfo.league ?? null
+      const { durationSeconds, source, sampleCount } = await getExpectedDurationSeconds(leagueForDuration)
+      endTimeUnix = startTimeUnix + durationSeconds
+      logger.debug(
+        `[BARTENDER-SCHEDULE] endTime defaulted for ${leagueForDuration || 'unknown league'}: ` +
+        `${Math.round(durationSeconds / 60)}min (${source}${source === 'learned' ? `, n=${sampleCount}` : ''})`
+      )
+    }
 
     let gameSchedule = null
 
@@ -341,7 +358,15 @@ export async function DELETE(request: NextRequest) {
   }
 
   const url = new URL(request.url)
-  const allocationId = url.searchParams.get('id')
+  // Accept either ?id=... (legacy query style) or a trailing path segment
+  // (new style used by the conflict advisor for RESTful deletes).
+  let allocationId = url.searchParams.get('id')
+  if (!allocationId) {
+    const pathname = url.pathname
+    const match = pathname.match(/\/bartender-schedule\/([^\/]+)$/)
+    if (match) allocationId = decodeURIComponent(match[1])
+  }
+  const force = url.searchParams.get('force') === 'true'
 
   if (!allocationId) {
     return NextResponse.json(
@@ -362,23 +387,36 @@ export async function DELETE(request: NextRequest) {
       )
     }
 
-    // Only allow cancelling pending schedules
-    if (allocation.status !== 'pending') {
+    // Only allow cancelling pending schedules by default. force=true
+    // is required to cancel active allocations — this is how the
+    // v2.21.0 conflict advisor performs displacement after the
+    // bartender confirms the recommendation.
+    if (allocation.status !== 'pending' && !force) {
       return NextResponse.json(
-        { success: false, error: `Cannot cancel schedule with status: ${allocation.status}` },
+        { success: false, error: `Cannot cancel schedule with status: ${allocation.status}. Pass force=true to displace an active allocation.` },
         { status: 400 }
       )
     }
 
+    const newStatus = allocation.status === 'active' ? 'displaced' : 'cancelled'
     await db.update(schema.inputSourceAllocations)
-      .set({ status: 'cancelled', updatedAt: Math.floor(Date.now() / 1000) })
+      .set({ status: newStatus, updatedAt: Math.floor(Date.now() / 1000) })
       .where(eq(schema.inputSourceAllocations.id, allocationId))
 
-    logger.info(`[BARTENDER-SCHEDULE] Cancelled allocation: ${allocationId}`)
+    // If we forcibly displaced an active allocation, also free the
+    // input source so the replay POST can claim it immediately.
+    if (allocation.status === 'active' && force) {
+      await db.update(schema.inputSources)
+        .set({ currentlyAllocated: false, updatedAt: Math.floor(Date.now() / 1000) })
+        .where(eq(schema.inputSources.id, allocation.inputSourceId))
+    }
+
+    logger.info(`[BARTENDER-SCHEDULE] ${force && allocation.status === 'active' ? 'Displaced' : 'Cancelled'} allocation: ${allocationId}`)
 
     return NextResponse.json({
       success: true,
-      message: 'Schedule cancelled',
+      message: newStatus === 'displaced' ? 'Schedule displaced' : 'Schedule cancelled',
+      status: newStatus,
     })
   } catch (error: any) {
     logger.error('[BARTENDER-SCHEDULE] Error cancelling schedule:', error)

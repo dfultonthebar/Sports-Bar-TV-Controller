@@ -30,6 +30,19 @@ REQUIRED READS:
    modified by the merge — read each in full. LOCATION_UPDATE_NOTES.md
    especially: a v2.8.0+ entry will tell you whether this release added
    new tables and what their names are.
+2a. `docs/VERSION_SETUP_GUIDE.md` — for EVERY version between the
+   pre-merge and post-merge version numbers, find its entry and check
+   the "Required manual steps" list. For each step, either:
+     (a) verify it was already done at this location (run the
+         verification command from the entry), OR
+     (b) perform the step automatically if it's safe (e.g., ALTER TABLE
+         ADD COLUMN, INSERT a missing row), OR
+     (c) flag it in your DECISION response as a post-update task the
+         operator must run.
+   If the target version has no entry in VERSION_SETUP_GUIDE.md, note
+   that as a DRIFT issue — whoever bumped the version skipped documenting
+   setup requirements. Mention it after the DECISION line so the operator
+   can backfill the doc.
 3. Current state of /home/ubuntu/Sports-Bar-TV-Controller/apps/web/data/*.json
    — these should NOT have changed during merge.
 4. The .env file at /home/ubuntu/Sports-Bar-TV-Controller/.env — confirm

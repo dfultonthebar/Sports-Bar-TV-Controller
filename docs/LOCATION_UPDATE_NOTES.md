@@ -39,6 +39,65 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-04-17 — v2.22.3 — revert to Tailwind 3 (v2.17.0 migration was incomplete)
+
+**Risk:** GO — restores the last known-good CSS pipeline. Fixes build break that no location could recover from.
+
+**What's in this release:**
+
+The Tailwind 3→4 migration in commit `5209838a` (v2.17.0) was never actually completed. The commit claimed "migrated via `npx @tailwindcss/upgrade`" but:
+
+- `apps/web/src/app/globals.css` still uses Tailwind 3 syntax (`@tailwind base/components/utilities;`) instead of Tailwind 4's `@import 'tailwindcss';`.
+- `apps/web/tailwind.config.js` was deleted without adding a `@theme` block to globals.css to replace it.
+- `apps/web/postcss.config.js` still lists `tailwindcss` and `autoprefixer` as plugins (Tailwind 4 consolidates both into `@tailwindcss/postcss`).
+- `apps/web/package.json` dep mix was internally inconsistent.
+
+Result: `npm ci` failed on every location's auto-update starting with v2.17.0, then when v2.22.2's hotfix let `npm ci` through, the build failed with `Cannot find module 'autoprefixer'`, then `Cannot apply unknown utility class text-slate-100` once postcss.config was fixed.
+
+This release reverts all Tailwind 4 changes back to the working Tailwind 3 state. Other v2.17.0 bumps (lucide-react 0→1, eslint 9→10, sqlite3 removal) are KEPT.
+
+Verified: `npm ci && npx turbo run build --force --filter=@sports-bar/web` compiles successfully in 38s on Stoneyard.
+
+**What could break at a location:** Nothing. Restores the CSS pipeline every location was running before v2.17.0.
+
+**Manual steps required:** None.
+
+**Affected files:**
+- `apps/web/tailwind.config.js` (restored)
+- `apps/web/postcss.config.js` (reverted)
+- `apps/web/package.json` (reverted tailwind/autoprefixer deps)
+- `package-lock.json` (regenerated)
+- `package.json` (version 2.22.2 → 2.22.3)
+
+---
+
+### 2026-04-17 — v2.22.2 — fix Tailwind 4 lockfile drift + add npm-ci fallback
+
+**Risk:** GO — fixes a hard break on all locations that would otherwise roll back every auto-update run.
+
+**What's in this release:**
+
+1. **`apps/web/package.json`** — bumped `tailwindcss: ^3.4.18` → `^4.2.2`. Commit `5209838a` (v2.17.0) had migrated the root lockfile to Tailwind 4.2.2 and added `@tailwindcss/postcss: ^4.2.2`, but forgot to bump the `tailwindcss` dep in the same workspace file. `npm ci` caught the mismatch and failed on every location's auto-update starting with v2.17.0, triggering an immediate rollback at the `npm_ci` step.
+
+2. **`scripts/auto-update.sh` + `scripts/rollback.sh`** — added a fail-safe: if `npm ci` exits with EUSAGE ("lockfile out of sync"), fall back to `npm install` which regenerates the lock in-place on the location. Rebuilt lock is NOT committed back to git — the root cause still has to be fixed on main — but this prevents a single missed lockfile regen on main from stranding the entire fleet.
+
+3. **`package-lock.json`** regenerated to include all of Tailwind 4.2.2's transitive deps (arg, chokidar, didyoumean, dlv, fast-glob, jiti, lilconfig, postcss-nested, sucrase, etc.).
+
+**What could break at a location:** Nothing. This update is what was supposed to be in v2.17.0. Every location that attempted an auto-update between v2.17.0 and v2.22.1 rolled back cleanly (no state damage), they just stayed on their pre-v2.17.0 commit. This release finally gets them unstuck.
+
+**Manual steps required:** None.
+
+**Rollback notes:** If this ends up mispulling, the rollback path is: `git revert HEAD` on main + regenerate lock with `npm install --package-lock-only`. The npm-ci fail-safe is designed to be strictly additive, so it can be removed without behavioral change on the happy path.
+
+**Affected files:**
+- `apps/web/package.json` (tailwindcss 3 → 4)
+- `package-lock.json` (regenerated)
+- `scripts/auto-update.sh` (npm_ci fail-safe)
+- `scripts/rollback.sh` (npm_ci fail-safe)
+- `package.json` (version 2.22.1 → 2.22.2)
+
+---
+
 ### 2026-04-17 — v2.16.3 — auto-pull Ollama llama3.1:8b during update
 
 **Risk:** GO — additive step in auto-update.sh. Non-fatal if ollama isn't reachable.

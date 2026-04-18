@@ -37,8 +37,11 @@ const ESPN_SPORTS = [
   // Hockey (MEDIUM PRIORITY - fall/winter/spring)
   { sport: 'hockey', league: 'nhl', name: 'NHL' },
 
-  // Baseball (HIGH PRIORITY - spring/summer)
+  // Baseball (HIGH PRIORITY - spring/summer). College baseball is on
+  // ESPN/ESPNU/SEC Network throughout spring and regularly fills
+  // cable boxes at locations near college towns.
   { sport: 'baseball', league: 'mlb', name: 'MLB' },
+  { sport: 'baseball', league: 'college-baseball', name: 'College Baseball' },
 
   // Soccer (MEDIUM PRIORITY - varies by league)
   { sport: 'soccer', league: 'usa.1', name: 'MLS' },
