@@ -303,12 +303,38 @@ run_checkpoint() {
   # an API key in env it tries that path and rejects the skip-permissions
   # flag with "Invalid API key · Fix external API key", failing the
   # checkpoint in ~2 seconds. Stripping the var forces OAuth mode.
-  if ! env -u ANTHROPIC_API_KEY timeout "$timeout_secs" claude -p --dangerously-skip-permissions "$prompt" >"$out_file" 2>&1; then
+  #
+  # `script -qfc ...` wraps the invocation in a pseudo-TTY because
+  # Claude Code CLI 2.1.113+ aborts non-interactive invocations with
+  # "Interactive prompts require a TTY terminal" even when stdin is
+  # piped and --dangerously-skip-permissions is set. The PTY from
+  # `script` satisfies the isTTY check. We write the prompt to a file
+  # and read it via `< $prompt_file` inside the script'd shell because
+  # passing a multi-KB prompt on the command line can exceed ARG_MAX
+  # once script/sh layers stack up.
+  #
+  # IMPORTANT: `script -qfc` invokes the command via `sh -c`, which
+  # does NOT inherit the interactive bash PATH. On hosts where claude
+  # lives in ~/.local/bin (native install), sh can't find it. Resolve
+  # claude to its absolute path BEFORE passing to script so the
+  # command doesn't rely on PATH inside the script'd subshell.
+  local claude_bin
+  claude_bin=$(command -v claude)
+  if [ -z "$claude_bin" ]; then
+    fail "Checkpoint $label: claude binary not on PATH in run_checkpoint context" 2
+  fi
+  local prompt_file_tmp
+  prompt_file_tmp=$(mktemp)
+  printf '%s' "$prompt" > "$prompt_file_tmp"
+  if ! env -u ANTHROPIC_API_KEY timeout "$timeout_secs" \
+       script -qfc "$claude_bin -p --dangerously-skip-permissions \"\$(cat $prompt_file_tmp)\"" /dev/null \
+       >"$out_file" 2>&1; then
     log "Checkpoint $label: Claude Code timed out or errored"
     log "Checkpoint $label output: $(head -40 "$out_file" 2>/dev/null)"
-    rm -f "$out_file"
+    rm -f "$out_file" "$prompt_file_tmp"
     fail "Checkpoint $label: Claude Code CLI failure" 2
   fi
+  rm -f "$prompt_file_tmp"
 
   local decision
   # Try line-start first, then fall back to anywhere in the response.
@@ -467,9 +493,22 @@ LOCATION_PATHS_OURS=(
   "apps/web/data/atlas-configs"
   "apps/web/data/channel-presets-cable.json"
   "apps/web/data/channel-presets-directv.json"
+  "apps/web/data/everpass-devices.json"
   "apps/web/public/uploads/layouts"
   "data"
   ".env"
+  # PM2 config carries per-location Sports Guide credentials via process.env.
+  # Main historically hardcoded a location's values in this file, which means
+  # every merge from main overwrites the running location's creds. Keep the
+  # location's env-driven version across merges. When main eventually adopts
+  # the env-driven pattern, this entry becomes a no-op (content-identical).
+  "ecosystem.config.js"
+  # hardware-config.ts has per-location values (venue name, processor IP,
+  # audio output slot range). Main historically shipped with Stoneyard's
+  # values hardcoded; merging main overwrites the location's correct
+  # values. Keep ours until the file is refactored into DB/env lookups
+  # keyed by LOCATION_ID.
+  "apps/web/src/lib/hardware-config.ts"
 )
 
 # These paths always take the MAIN version (git checkout --theirs)
@@ -576,10 +615,31 @@ log "npm ci --include=dev (install/sync node_modules to the merged lockfile)"
 # monorepo) gets dropped from node_modules, and `npm run build` then
 # fails with `sh: 1: turbo: not found`. Same applies to `next` CLI tools
 # and any other dev-only build machinery.
-NODE_ENV=development npm ci --include=dev 2>&1 | tee -a "$LOG_FILE"
-if [ "${PIPESTATUS[0]}" -ne 0 ]; then
-  fail "npm ci failed" 4
+NPM_CI_LOG="$LOG_DIR/npm-ci-$(date +%s).log"
+NODE_ENV=development npm ci --include=dev 2>&1 | tee "$NPM_CI_LOG" | tee -a "$LOG_FILE"
+NPM_CI_EXIT="${PIPESTATUS[0]}"
+
+if [ "$NPM_CI_EXIT" -ne 0 ]; then
+  # Fail-safe: lockfile drift (EUSAGE) is a common class of failure when
+  # package.json was bumped but the lockfile wasn't regenerated. Rather than
+  # rolling back the whole update (which strands the location), fall back to
+  # `npm install` to regenerate the lockfile in-place. The rebuilt lockfile
+  # stays local — not pushed back to git — so the root cause still needs a
+  # fix on main, but at least this location can install and run.
+  if grep -qE "EUSAGE|npm ci.*can only install|out of sync with|package-lock\.json.*not in sync" "$NPM_CI_LOG"; then
+    log "WARNING: npm ci failed with lockfile drift — falling back to npm install"
+    log "WARNING: The root cause is on main (package.json bumped without regenerating lock)."
+    log "WARNING: This location's lockfile will be regenerated in-place and NOT committed."
+    NODE_ENV=development npm install --include=dev 2>&1 | tee -a "$LOG_FILE"
+    if [ "${PIPESTATUS[0]}" -ne 0 ]; then
+      fail "npm install fallback also failed" 4
+    fi
+    log "npm install fallback succeeded"
+  else
+    fail "npm ci failed" 4
+  fi
 fi
+rm -f "$NPM_CI_LOG"
 
 # ===========================================================================
 # PHASE: SCHEMA PUSH (drizzle-kit)
@@ -599,7 +659,14 @@ fi
 step "schema_push"
 log "npx drizzle-kit push (apply pending schema changes)"
 SCHEMA_PUSH_LOG="$LOG_DIR/drizzle-push-$(date +%s).log"
-if NODE_ENV=development npx drizzle-kit push 2>&1 | tee "$SCHEMA_PUSH_LOG" | tee -a "$LOG_FILE"; then
+# drizzle-kit push prompts for confirmation when it detects a data-loss
+# statement (e.g. dropping a table that still has rows). In the
+# auto-update flow the schema change was already approved at Checkpoint A
+# (it's in the merge diff Claude reviewed), so we pipe `yes` to accept.
+# Without this, any release that removes a table — e.g. v2.20.0's
+# n8n-log cleanup — fails at a location that still has rows in the
+# to-be-removed table, with "Error: Interactive prompts require a TTY".
+if yes 2>/dev/null | NODE_ENV=development npx drizzle-kit push 2>&1 | tee "$SCHEMA_PUSH_LOG" | tee -a "$LOG_FILE"; then
   log "drizzle-kit push completed cleanly"
 else
   if grep -qE "(index|table|column) [\`\"]?[A-Za-z_][A-Za-z0-9_]*[\`\"]? already exists|already exists" "$SCHEMA_PUSH_LOG"; then

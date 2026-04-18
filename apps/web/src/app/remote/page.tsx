@@ -27,6 +27,7 @@ import ScheduledGamesPanel from '@/components/ScheduledGamesPanel'
 import RecoveryConfirmationPopup from '@/components/RecoveryConfirmationPopup'
 import { CommercialLightingRemote } from '@/components/commercial-lighting'
 import AtmosphereControl from '@/components/AtmosphereControl'
+import ShiftBriefTile from '@/components/ai/ShiftBriefTile'
 
 import { logger } from '@sports-bar/logger'
 interface MatrixInput {
@@ -810,6 +811,7 @@ export default function BartenderRemotePage() {
         <RecoveryConfirmationPopup />
         {activeTab === 'video' && (
           <div className="w-full mx-auto space-y-4 px-1">
+            <ShiftBriefTile />
             <InteractiveBartenderLayout
               layout={tvLayout}
               onInputSelect={routeInputToOutput}
