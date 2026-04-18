@@ -39,6 +39,14 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-04-17 — v2.22.7 — resolve claude to absolute path inside script -qfc
+
+**Risk:** GO — critical followup to v2.22.4. `script -qfc` invokes via `sh -c` which lacks `~/.local/bin` on PATH, so v2.22.4's pty wrapper couldn't find `claude`. Now we call `command -v claude` first and pass the absolute path into `script`. Without this fix, every location still rolls back at Checkpoint B even though v2.22.4 landed.
+
+**Affected:** `scripts/auto-update.sh` (run_checkpoint function), `package.json`.
+
+---
+
 ### 2026-04-17 — v2.22.6 — checkpoint C enforces CLAUDE.md + memory sync post-update
 
 **Risk:** GO — prompt-only change to `scripts/prompts/checkpoint-c.txt`. No code, no schema, no deps.

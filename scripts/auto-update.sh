@@ -312,11 +312,22 @@ run_checkpoint() {
   # and read it via `< $prompt_file` inside the script'd shell because
   # passing a multi-KB prompt on the command line can exceed ARG_MAX
   # once script/sh layers stack up.
+  #
+  # IMPORTANT: `script -qfc` invokes the command via `sh -c`, which
+  # does NOT inherit the interactive bash PATH. On hosts where claude
+  # lives in ~/.local/bin (native install), sh can't find it. Resolve
+  # claude to its absolute path BEFORE passing to script so the
+  # command doesn't rely on PATH inside the script'd subshell.
+  local claude_bin
+  claude_bin=$(command -v claude)
+  if [ -z "$claude_bin" ]; then
+    fail "Checkpoint $label: claude binary not on PATH in run_checkpoint context" 2
+  fi
   local prompt_file_tmp
   prompt_file_tmp=$(mktemp)
   printf '%s' "$prompt" > "$prompt_file_tmp"
   if ! env -u ANTHROPIC_API_KEY timeout "$timeout_secs" \
-       script -qfc "claude -p --dangerously-skip-permissions \"\$(cat $prompt_file_tmp)\"" /dev/null \
+       script -qfc "$claude_bin -p --dangerously-skip-permissions \"\$(cat $prompt_file_tmp)\"" /dev/null \
        >"$out_file" 2>&1; then
     log "Checkpoint $label: Claude Code timed out or errored"
     log "Checkpoint $label output: $(head -40 "$out_file" 2>/dev/null)"
