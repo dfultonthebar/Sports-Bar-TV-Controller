@@ -217,6 +217,47 @@ export async function POST(request: NextRequest) {
       result = await sendCableBoxChannelChange(channelNumberStr, cableBoxIdStr)
     }
 
+    // Resolve device identity BEFORE branching on success — so if the tune
+    // fails with a timeout, the failure ChannelTuneLog row still records
+    // which specific device was targeted (DirecTV 4 vs DirecTV 5, etc.).
+    // Previously the failure branch hard-coded inputNum/inputLabel=null,
+    // which made "which box failed?" queries impossible (v2.23.10 fix).
+    let resolvedInputNum: number | null = null
+    let resolvedInputLabel: string | null = null
+    try {
+      const { db } = await import('@/db')
+      if (deviceTypeStr === 'cable') {
+        const ir = cableBoxIdStr
+          ? await db.select().from(schema.irDevices).where(and(
+              eq(schema.irDevices.id, cableBoxIdStr),
+              or(eq(schema.irDevices.deviceType, 'Cable Box'), eq(schema.irDevices.deviceType, 'CableBox'))
+            )).limit(1).get()
+          : await db.select().from(schema.irDevices).where(
+              or(eq(schema.irDevices.deviceType, 'Cable Box'), eq(schema.irDevices.deviceType, 'CableBox'))
+            ).limit(1).get()
+        if (ir?.matrixInput) {
+          resolvedInputNum = ir.matrixInput
+          resolvedInputLabel = ir.matrixInputLabel || ir.name
+        }
+      } else if (deviceTypeStr === 'directv') {
+        const { getDirecTVDeviceById, getDirecTVDeviceByIp } = await import('@/lib/device-db')
+        const dtv = directTVId
+          ? await getDirecTVDeviceById(String(directTVId))
+          : deviceIpStr
+            ? await getDirecTVDeviceByIp(deviceIpStr)
+            : null
+        if (dtv?.inputChannel) {
+          resolvedInputNum = dtv.inputChannel
+          resolvedInputLabel = dtv.name || 'DirecTV'
+        }
+      }
+    } catch (identityErr) {
+      // Non-fatal — lookup failure just means the log row won't have device
+      // identity (falls back to old behavior), but the tune itself still
+      // proceeds to its own logging.
+      logger.warn('[TUNE API] Pre-tune device identity lookup failed:', identityErr)
+    }
+
     if (result.success) {
       const durationMs = Date.now() - startTime
 
@@ -459,10 +500,13 @@ export async function POST(request: NextRequest) {
         }
       })
 
-      // Append to rolling tune history (failure)
+      // Append to rolling tune history (failure). inputNum/inputLabel now
+      // come from the pre-tune resolvedInput* lookup so "which DirecTV
+      // failed?" is answerable from one row. Falls through to null only
+      // if the identity lookup itself errored.
       await appendTuneLog({
-        inputNum: null,
-        inputLabel: null,
+        inputNum: resolvedInputNum,
+        inputLabel: resolvedInputLabel,
         deviceType: deviceTypeStr,
         deviceId: cableBoxIdStr || deviceIpStr || null,
         cableBoxId: cableBoxIdStr || null,
