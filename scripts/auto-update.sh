@@ -303,12 +303,27 @@ run_checkpoint() {
   # an API key in env it tries that path and rejects the skip-permissions
   # flag with "Invalid API key · Fix external API key", failing the
   # checkpoint in ~2 seconds. Stripping the var forces OAuth mode.
-  if ! env -u ANTHROPIC_API_KEY timeout "$timeout_secs" claude -p --dangerously-skip-permissions "$prompt" >"$out_file" 2>&1; then
+  #
+  # `script -qfc ...` wraps the invocation in a pseudo-TTY because
+  # Claude Code CLI 2.1.113+ aborts non-interactive invocations with
+  # "Interactive prompts require a TTY terminal" even when stdin is
+  # piped and --dangerously-skip-permissions is set. The PTY from
+  # `script` satisfies the isTTY check. We write the prompt to a file
+  # and read it via `< $prompt_file` inside the script'd shell because
+  # passing a multi-KB prompt on the command line can exceed ARG_MAX
+  # once script/sh layers stack up.
+  local prompt_file_tmp
+  prompt_file_tmp=$(mktemp)
+  printf '%s' "$prompt" > "$prompt_file_tmp"
+  if ! env -u ANTHROPIC_API_KEY timeout "$timeout_secs" \
+       script -qfc "claude -p --dangerously-skip-permissions \"\$(cat $prompt_file_tmp)\"" /dev/null \
+       >"$out_file" 2>&1; then
     log "Checkpoint $label: Claude Code timed out or errored"
     log "Checkpoint $label output: $(head -40 "$out_file" 2>/dev/null)"
-    rm -f "$out_file"
+    rm -f "$out_file" "$prompt_file_tmp"
     fail "Checkpoint $label: Claude Code CLI failure" 2
   fi
+  rm -f "$prompt_file_tmp"
 
   local decision
   # Try line-start first, then fall back to anywhere in the response.
