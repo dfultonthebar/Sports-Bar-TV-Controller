@@ -589,10 +589,31 @@ log "npm ci --include=dev (install/sync node_modules to the merged lockfile)"
 # monorepo) gets dropped from node_modules, and `npm run build` then
 # fails with `sh: 1: turbo: not found`. Same applies to `next` CLI tools
 # and any other dev-only build machinery.
-NODE_ENV=development npm ci --include=dev 2>&1 | tee -a "$LOG_FILE"
-if [ "${PIPESTATUS[0]}" -ne 0 ]; then
-  fail "npm ci failed" 4
+NPM_CI_LOG="$LOG_DIR/npm-ci-$(date +%s).log"
+NODE_ENV=development npm ci --include=dev 2>&1 | tee "$NPM_CI_LOG" | tee -a "$LOG_FILE"
+NPM_CI_EXIT="${PIPESTATUS[0]}"
+
+if [ "$NPM_CI_EXIT" -ne 0 ]; then
+  # Fail-safe: lockfile drift (EUSAGE) is a common class of failure when
+  # package.json was bumped but the lockfile wasn't regenerated. Rather than
+  # rolling back the whole update (which strands the location), fall back to
+  # `npm install` to regenerate the lockfile in-place. The rebuilt lockfile
+  # stays local — not pushed back to git — so the root cause still needs a
+  # fix on main, but at least this location can install and run.
+  if grep -qE "EUSAGE|npm ci.*can only install|out of sync with|package-lock\.json.*not in sync" "$NPM_CI_LOG"; then
+    log "WARNING: npm ci failed with lockfile drift — falling back to npm install"
+    log "WARNING: The root cause is on main (package.json bumped without regenerating lock)."
+    log "WARNING: This location's lockfile will be regenerated in-place and NOT committed."
+    NODE_ENV=development npm install --include=dev 2>&1 | tee -a "$LOG_FILE"
+    if [ "${PIPESTATUS[0]}" -ne 0 ]; then
+      fail "npm install fallback also failed" 4
+    fi
+    log "npm install fallback succeeded"
+  else
+    fail "npm ci failed" 4
+  fi
 fi
+rm -f "$NPM_CI_LOG"
 
 # ===========================================================================
 # PHASE: SCHEMA PUSH (drizzle-kit)

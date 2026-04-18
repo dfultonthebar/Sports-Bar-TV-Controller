@@ -39,6 +39,33 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-04-17 — v2.22.2 — fix Tailwind 4 lockfile drift + add npm-ci fallback
+
+**Risk:** GO — fixes a hard break on all locations that would otherwise roll back every auto-update run.
+
+**What's in this release:**
+
+1. **`apps/web/package.json`** — bumped `tailwindcss: ^3.4.18` → `^4.2.2`. Commit `5209838a` (v2.17.0) had migrated the root lockfile to Tailwind 4.2.2 and added `@tailwindcss/postcss: ^4.2.2`, but forgot to bump the `tailwindcss` dep in the same workspace file. `npm ci` caught the mismatch and failed on every location's auto-update starting with v2.17.0, triggering an immediate rollback at the `npm_ci` step.
+
+2. **`scripts/auto-update.sh` + `scripts/rollback.sh`** — added a fail-safe: if `npm ci` exits with EUSAGE ("lockfile out of sync"), fall back to `npm install` which regenerates the lock in-place on the location. Rebuilt lock is NOT committed back to git — the root cause still has to be fixed on main — but this prevents a single missed lockfile regen on main from stranding the entire fleet.
+
+3. **`package-lock.json`** regenerated to include all of Tailwind 4.2.2's transitive deps (arg, chokidar, didyoumean, dlv, fast-glob, jiti, lilconfig, postcss-nested, sucrase, etc.).
+
+**What could break at a location:** Nothing. This update is what was supposed to be in v2.17.0. Every location that attempted an auto-update between v2.17.0 and v2.22.1 rolled back cleanly (no state damage), they just stayed on their pre-v2.17.0 commit. This release finally gets them unstuck.
+
+**Manual steps required:** None.
+
+**Rollback notes:** If this ends up mispulling, the rollback path is: `git revert HEAD` on main + regenerate lock with `npm install --package-lock-only`. The npm-ci fail-safe is designed to be strictly additive, so it can be removed without behavioral change on the happy path.
+
+**Affected files:**
+- `apps/web/package.json` (tailwindcss 3 → 4)
+- `package-lock.json` (regenerated)
+- `scripts/auto-update.sh` (npm_ci fail-safe)
+- `scripts/rollback.sh` (npm_ci fail-safe)
+- `package.json` (version 2.22.1 → 2.22.2)
+
+---
+
 ### 2026-04-17 — v2.16.3 — auto-pull Ollama llama3.1:8b during update
 
 **Risk:** GO — additive step in auto-update.sh. Non-fatal if ollama isn't reachable.
