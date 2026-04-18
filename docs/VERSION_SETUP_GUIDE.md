@@ -35,6 +35,156 @@ is the archive.
 
 ---
 
+## OPERATOR HEADS-UP — 2026-04-17 batch (v2.18.0 through v2.22.x)
+
+**Applies to every location auto-updating tonight.** 14 versions shipped
+in a single night at Lucky's 1313. Most are additive and pure software;
+the `auto-update.sh` pipeline handles the merge, schema push, cache
+bust, and PM2 restart automatically — you do NOT need to run any manual
+steps for the update itself. Checkpoint B will reconcile these entries
+for you. This section exists so you know what to watch for on the OTHER
+side of the update.
+
+### What changed (one-line per version)
+
+- **v2.18.0–2.18.2** — Scheduler bug fixes: per-tune matrix routing was
+  silently mis-routing TVs for bartender-scheduled games (UUID parseInt
+  passed garbage to Wolf Pack). Plus: scheduler UI "Idle" state fix
+  + override-learn hook that records bartender corrections.
+- **v2.19.0** — ESPN sync now tracks real game durations per league,
+  scheduler uses the learned average for `expected_free_at` instead of
+  hardcoded 3h. Atlas endpoint guards stop reconnect-loop log spam at
+  non-Atlas locations.
+- **v2.20.0** — Autonomous agents: override-digester + failure-sweeper
+  run hourly, surface recurring bartender corrections and recurring
+  SchedulerLog failures as high-visibility warn rows. n8n dead code
+  removed (iframe pointed at a stranger's IP — unused at all locations).
+- **v2.21.0** — Four new `/api/ai/*` endpoints: shift-brief,
+  distribution-plan, conflict-suggestion, weekly-summary.
+- **v2.22.0** — UI wiring for v2.21.0 endpoints on the bartender
+  remote + AI Suggest tab. Also fixed a pre-existing bug where college
+  baseball games on ESPN/ESPNU were invisible in the Live Games list.
+
+### What bartenders will notice the night of update
+
+- **Scheduled tunes now land TVs on the correct input the first time.**
+  Many bartenders have been manually moving TVs to the right cable box
+  after every scheduled game fire — that behavior is no longer needed.
+  If they've been compensating, the change will feel sudden. Brief them.
+- **New Shift Brief card at the top of the remote's Video tab.** Shows
+  tonight's games and anything unusual. Can be dismissed for 4 hours.
+- **New "Smart Distribute" button next to "Approve All"** in the AI
+  Suggest tab. Recommended flow when approving 3+ games at once.
+- **College baseball shows up in Live Games** where it didn't before.
+- **No UI regression expected anywhere else.**
+
+### What to verify AFTER update (5-minute checklist)
+
+Run each block. All commands are safe / read-only unless noted.
+
+**1. `OLLAMA_MODEL` env var points at an installed model** (critical —
+the shift-brief 404s silently if wrong):
+```bash
+grep OLLAMA_MODEL /home/ubuntu/Sports-Bar-TV-Controller/.env
+curl -s http://localhost:11434/api/tags | jq -r '.models[].name'
+# If .env value isn't in the installed list, edit .env and do:
+# pm2 delete sports-bar-tv-controller && pm2 start ecosystem.config.js
+```
+
+**2. No in-flight scheduler routing drift** (the v2.18.2 detection query):
+```bash
+DB=/home/ubuntu/sports-bar-data/production.db
+sqlite3 "$DB" <<'SQL'
+WITH alloc_outputs AS (
+  SELECT s.name AS src, mi.channelNumber AS expected_input, j.value AS output
+  FROM input_source_allocations a
+  JOIN input_sources s ON s.id = a.input_source_id
+  JOIN MatrixInput mi ON mi.id = s.matrix_input_id
+  JOIN json_each(a.tv_output_ids) j
+  WHERE a.status = 'active'
+)
+SELECT ao.src, ao.output, ao.expected_input AS expected, mr.inputNum AS actual,
+       CASE WHEN ao.expected_input = mr.inputNum THEN 'ok' ELSE 'MIS-ROUTED' END AS state
+FROM alloc_outputs ao LEFT JOIN MatrixRoute mr ON mr.outputNum = ao.output
+ORDER BY ao.src, CAST(ao.output AS INT);
+SQL
+```
+Any `MIS-ROUTED` = an allocation created pre-v2.18.2 that the fix
+didn't repair. Curl-loop repair per the v2.18.2 entry below.
+
+**3. Atlas reconnect loop absent** (post-v2.19.0 should be zero):
+```bash
+pm2 logs sports-bar-tv-controller --err --lines 500 --nostream \
+  | grep -c "Failed to connect to Atlas processor"
+```
+Expect 0. Non-zero at a non-Atlas location = guard didn't apply (check
+that the build picked up the new `atlas-guard.ts`).
+
+**4. Autonomous agents fired on restart:**
+```bash
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "SELECT component, operation, message FROM SchedulerLog
+   WHERE component IN ('override-digest','failure-sweep')
+   ORDER BY createdAt DESC LIMIT 4;"
+```
+Expect 2 summary rows per hourly tick (one each).
+
+**5. ChannelPreset seeded** (distribution-optimizer preflight depends
+on this — without it, every plan line shows `chan ✗`):
+```bash
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "SELECT deviceType, COUNT(*) FROM ChannelPreset WHERE isActive=1 GROUP BY deviceType;"
+```
+A running location should have 20+ cable / 50+ directv presets. If
+zero, seed through the bartender remote preset UI before trusting
+distribution-plan output.
+
+**6. HomeTeam seeded** (drives home-team priority in every AI feature):
+```bash
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "SELECT teamName, sport, league FROM HomeTeam WHERE isActive=1 ORDER BY sport;"
+```
+If empty, shift-brief and distribution-plan won't prioritize home-team
+games. Populate per your market — see CLAUDE.md §10 reference example.
+
+**7. `LOCATION_TIMEZONE` is set** if you're not in Central Time. The
+weekly owner summary fires Monday 6am in `LOCATION_TIMEZONE` local time:
+```bash
+grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
+```
+
+### Location-specific notes
+
+- **Holmgren Way** (only Atlas-using location): the v2.19.0 atlas-guard
+  passes through for type='atlas' and is a no-op performance-wise.
+  Expected zero change in log spam volume.
+- **Graystone + Holmgren Way** (multi-card Wolf Pack): the v2.18.2
+  matrix routing fix is orthogonal to your non-zero `outputOffset`
+  settings — those remain per-card and correct per your layout. The
+  fix only repairs the parseInt-of-UUID bug. Verify-install's
+  `matrix_config` layer still only catches the single-card variant;
+  multi-card drift is operator-maintained per CLAUDE.md §5a.
+- **Lucky's 1313**: all features built and verified tonight against
+  real scheduled games. Reference implementation for the other sites.
+
+### What NOT to panic about
+
+- **`bartender-proxy` restart counter jumping by 1-2** during the
+  update is expected (the proxy re-handshakes with the main app when
+  PM2 recycles it). Only worry if it's restarting AFTER the update
+  finishes and sports-bar-tv-controller is stable.
+- **Hundreds of new SchedulerLog rows** with component=override-digest
+  or failure-sweep every hour — that's the new autonomous agents
+  reporting in. Info-level rows are the heartbeat; warn rows are the
+  signal.
+- **One merge conflict possible** on `apps/web/src/app/ai-hub/page.tsx`
+  if your location had a local edit to that file. `auto-update.sh`'s
+  `LOCATION_PATHS_OURS` doesn't cover it. If Checkpoint B reports a
+  conflict here, the safe resolution is `git checkout --theirs` —
+  this page is a shared AI UI, not location-specific data.
+
+---
+
 ## Current entries
 
 ### v2.22.0 — AI UI tiles + college baseball in Live Games
