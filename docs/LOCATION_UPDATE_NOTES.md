@@ -39,6 +39,27 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-04-18 — v2.23.5 — Extract memory + versioning guides out of CLAUDE.md
+
+**Risk:** GO — doc reorg only. No code changes. No runtime impact. Each location's next Claude Code session will see the new `docs/CLAUDE_MEMORY_GUIDE.md` and `docs/CLAUDE_VERSIONING_GUIDE.md` referenced in CLAUDE.md's new READ FIRST banner.
+
+**What changed:**
+- Two new guide files: `docs/CLAUDE_MEMORY_GUIDE.md` (memory systems, Rules 5 & 7 details) and `docs/CLAUDE_VERSIONING_GUIDE.md` (Rule 8 details, version-bump rules, the 3-doc interlock).
+- `CLAUDE.md` adds a "⚠️ READ FIRST" banner at the top requiring both guides as prerequisite reading. Standing Rules 5, 7, 8 in CLAUDE.md trimmed to one-line summaries pointing to the guides. Memory Bank System §6 and Version Bumping sections condensed to one paragraph each + pointer.
+
+**Why this matters:** CLAUDE.md had grown to 1,124 lines with the Standing Rules, Common Gotchas, hardware sections, and UI style guide all inline. The memory and versioning details kept getting bigger with each release. Extracting them into dedicated guides keeps CLAUDE.md scannable while preserving — and clarifying — the rules by giving them room to spell out edge cases.
+
+**Manual step per location (Claude: execute during Checkpoint B):**
+1. Verify banner + guide files arrived (see VERSION_SETUP_GUIDE.md §v2.23.5 step 1).
+2. Read both new guides fully. They contain the authoritative versions of Rules 5, 7, 8.
+3. Sync host auto-memory against the new guide content per Rule 7. If existing memory entries reference "CLAUDE.md §6" by line number, update the pointer to the relevant guide.
+
+**Rollback:** `git revert` cleanly restores the full text to CLAUDE.md and removes the guide files. No data loss.
+
+**Affected:** `CLAUDE.md`, `docs/CLAUDE_MEMORY_GUIDE.md` (new), `docs/CLAUDE_VERSIONING_GUIDE.md` (new), `docs/VERSION_SETUP_GUIDE.md`, `docs/LOCATION_UPDATE_NOTES.md`, `package.json`.
+
+---
+
 ### 2026-04-18 — v2.23.3 — Add context7 + brave-search MCP servers project-wide
 
 **Risk:** GO — additive config only. Adds `.mcp.json` at repo root with two MCP servers and sets `enableAllProjectMcpServers: true` in `.claude/settings.json` so the auto-approval bypasses interactive consent at first Claude Code load. No runtime code; no DB impact. MCPs only affect Claude Code sessions at the repo — not the running Sports Bar app.
