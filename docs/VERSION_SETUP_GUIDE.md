@@ -37,6 +37,67 @@ is the archive.
 
 ## Current entries
 
+### v2.22.0 — AI UI tiles + college baseball in Live Games
+**Released:** 2026-04-17
+
+**UI for v2.21.0 endpoints (all three wired in this release):**
+
+1. **ShiftBriefTile** on the bartender remote (top of Video tab).
+   Fetches `/api/ai/shift-brief` on mount, renders the LLM or
+   deterministic brief, `Refresh` button forces regenerate,
+   `Dismiss` hides for 4 hours (localStorage-backed).
+
+2. **DistributionPlanModal** — the "Smart Distribute" button next to
+   "Approve All" in the AI Suggest tab of ScheduledGamesPanel. Opens
+   a modal that calls `/api/ai/distribution-plan` with the selected
+   suggestions, shows per-line plan + preflight pills (chan ✓ / src ✓
+   / outs ✓), lets bartender skip any line, and commits the selected
+   rows through the existing `/api/schedules/bartender-schedule`
+   POST one-at-a-time.
+
+3. **ConflictAdvisor** — embedded inline when a bartender-schedule
+   POST returns 409 inside the DistributionPlanModal. Calls
+   `/api/ai/conflict-suggestion` with the rejected + conflicting
+   allocation IDs. Renders recommendation + reasoning + optional
+   one-line LLM summary. "Displace & retry" button triggers a force
+   DELETE of the conflicting allocation followed by re-POST of the
+   original body.
+
+**Force-displace support in bartender-schedule DELETE:** Previously
+only allowed cancellation of `pending` allocations. Now accepts
+`?id=X&force=true` to displace `active` allocations — used exclusively
+by the ConflictAdvisor flow. Sets status to `displaced` (not
+`cancelled`) so forensics can tell the difference later, and clears
+`input_sources.currentlyAllocated` so the replay POST can claim the
+freed input.
+
+**College baseball in Live Games (fix):** `ESPN_SPORTS` array in
+`/api/sports-guide/live-by-channel/route.ts` did NOT include
+`baseball/college-baseball`, so LSU/SEC games on ESPN/ESPNU never
+appeared in the bartender remote's Live Games list even though they
+were fully scheduled. Added the league. At Lucky's on April 17 this
+went from showing 1 live game (Brewers) to 4 (Brewers + 3 college
+baseball). No schema changes.
+
+**Required manual steps:** None. Pure additive UI + one-line league
+list fix. Restart PM2 after pulling.
+
+**Verification:**
+```bash
+# Live games should include college baseball games that map to
+# cable presets on ESPN/ESPNU/SEC Network / Longhorn Network:
+curl -s 'http://localhost:3001/api/sports-guide/live-by-channel?deviceType=cable' \
+  | jq '.channels | to_entries | map({ch: .key, league: .value.league, game: (.value.awayTeam + " @ " + .value.homeTeam)})'
+```
+
+**Bundle impact:** The three AI UI components are code-split into the
+remote/page and ScheduledGamesPanel bundles. No runtime cost until
+the user opens those views. ShiftBriefTile's `/api/ai/shift-brief`
+call defers to the server-side 10-min cache, so back-to-back page
+refreshes are cheap.
+
+---
+
 ### v2.21.0 — AI features: shift brief, distribution optimizer, conflict advisor, weekly summary
 **Released:** 2026-04-17
 
