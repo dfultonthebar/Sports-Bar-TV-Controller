@@ -187,6 +187,92 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.22.5 — Shift brief: real game times + anti-hallucination guardrail
+**Released:** 2026-04-17
+
+**What changed:**
+- `apps/web/src/app/api/ai/shift-brief/route.ts` — `activeAllocations` query now selects `scheduled_start` + `status` from the joined `game_schedules` row. The mapped payload includes `startLocal` (formatted in `HARDWARE_CONFIG.venue.timezone`) and `status`. The Ollama prompt's "Currently playing" section now says `"Marlins @ Brewers (8 TVs, started 6:10 PM, in_progress)"` instead of a time-less version.
+- Added a CRITICAL guardrail to the prompt: "Only reference game start times that are explicitly listed above. Never invent, estimate, or round times." This stops llama3.1:8b from fabricating times for in-progress games it had no time data for.
+- Deterministic fallback brief (for when Ollama is down) also shows `"started <time>"` for active allocations.
+
+**Bug this fixes:** Shift brief was reporting "Brewers starting at 9pm" for a game that actually started at 6:10pm CT. Root cause was a lossy prompt — the active-allocations context didn't carry the start time, so the LLM made one up. Verified on Stoneyard that the DB had the correct 23:10 UTC timestamp all along.
+
+**Required Manual Step:** None. The fix is entirely code-side; the existing `scheduling_patterns` and `game_schedules` data is already correct.
+
+**Verification:**
+```bash
+# After auto-update lands, force-refresh the brief and confirm times match DB:
+curl -s 'http://localhost:3001/api/ai/shift-brief?force=true' | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["brief"])'
+
+# Compare against the actual DB times for any in-progress games:
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "SELECT home_team_name, away_team_name, datetime(scheduled_start, 'unixepoch', 'localtime') FROM game_schedules WHERE status='in_progress';"
+```
+
+**Rollback:** Strictly additive fields + prompt-string change. `git revert` cleanly.
+
+---
+
+### v2.22.4 — Wrap claude -p in pseudo-TTY for CLI 2.1.113+
+**Released:** 2026-04-17
+
+**What changed:**
+- `scripts/auto-update.sh` — the `run_checkpoint` function now wraps `claude -p --dangerously-skip-permissions` in `script -qfc "..." /dev/null` which creates a pty. The prompt is written to a mktemp file and read via `"$(cat ...)"` because multi-KB prompts on the command line overflow ARG_MAX once script/sh layers stack up.
+
+**Bug this fixes:** Claude Code CLI 2.1.113+ aborts non-interactive `claude -p` with `Error: Interactive prompts require a TTY terminal (process.stdin.isTTY or process.stdout.isTTY is false)`. Checkpoint B/C on every location that auto-updated past 2.1.112 would fail and roll back. Affected Appleton, Graystone, Lucky's during the v2.22.x rollout. Stoneyard / Holmgren / Leg Lamp escaped because they were on 2.1.112 when their merges ran.
+
+**Required Manual Step:** None. The fix lives in `auto-update.sh` itself; self-update re-exec ensures every location uses the fixed version starting with the run that merges it.
+
+**Verification:**
+```bash
+# After a location auto-updates to v2.22.4+, the auto-update log should show
+# Checkpoint B returned a DECISION (not "Claude Code timed out or errored"):
+grep "Checkpoint B: DECISION" $(ls -t /home/ubuntu/sports-bar-data/update-logs/auto-update-*.log | head -1)
+```
+
+**Rollback:** `git revert` is safe — removes the pty wrapper. Only valid rollback target is back to `claude -p` direct invocation, which requires Claude CLI ≤ 2.1.112 to work. Do not revert unless every location's Claude CLI is downgraded.
+
+---
+
+### v2.22.3 — Revert Tailwind 4 → Tailwind 3 (v2.17.0 migration was incomplete)
+**Released:** 2026-04-17
+
+**What changed:**
+- `apps/web/tailwind.config.js` restored from `5209838a^` (the commit that had deleted it claiming migration to `@theme` in globals.css, which was never actually done).
+- `apps/web/postcss.config.js` reverted to `{ tailwindcss, autoprefixer }` plugins.
+- `apps/web/package.json`: removed `@tailwindcss/postcss ^4.2.2`, added `autoprefixer ^10.4.21` back, `tailwindcss ^4.2.2` → `^3.4.18`.
+- `package-lock.json` regenerated via `npm install --package-lock-only`.
+
+**Bug this fixes:** v2.17.0's Tailwind 3→4 migration was half-done — `globals.css` still had v3 `@tailwind base/components/utilities` directives, `tailwind.config.js` was deleted with no `@theme` replacement, postcss.config still listed v3 plugins. Every location auto-update from v2.17.0 onward either failed `npm ci` (EUSAGE lockfile drift) or failed the build with "Cannot find module 'autoprefixer'" / "Cannot apply unknown utility class text-slate-100", rolled back cleanly.
+
+**Required Manual Step:** None. Locations pulling this update will get the Tailwind 3 config + autoprefixer restored atomically.
+
+**Verification:**
+```bash
+# Build should compile without the Tailwind errors that blocked v2.17.0-v2.22.2:
+npx turbo run build --force --filter=@sports-bar/web 2>&1 | grep -E "Compiled|Cannot find|unknown utility" | head -5
+# Expected: "✓ Compiled successfully in ~38s" and no Cannot-find/unknown-utility lines.
+```
+
+**Rollback:** If Tailwind 4 is re-attempted in the future, the migration MUST include: (a) rewrite `globals.css` from `@tailwind ...` to `@import 'tailwindcss'`, (b) add `@theme { ... }` block for custom colors, (c) update `postcss.config.js` to only `@tailwindcss/postcss`, (d) audit every `@apply` usage for v4 compatibility (v4 requires `@reference` in CSS modules). Don't ship without a successful local build at the operator's machine first.
+
+---
+
+### v2.22.2 — Tailwind 4 lockfile drift hotfix + npm-ci fail-safe
+**Released:** 2026-04-17
+
+**What changed:**
+- `apps/web/package.json`: `tailwindcss ^3.4.18` → `^4.2.2` (matching the `@tailwindcss/postcss ^4.2.2` that commit 5209838a had added). Regenerated `package-lock.json`.
+- `scripts/auto-update.sh` + `scripts/rollback.sh`: added a fail-safe — if `npm ci` exits with EUSAGE, fall back to `npm install` to regenerate node_modules from package.json. Location-side lockfile is rebuilt in-place but NOT committed back to git.
+
+**Note:** This was an incomplete hotfix — v2.22.3 is the full Tailwind 3 revert that actually unblocks locations. The npm-ci fallback from v2.22.2 is kept because it's a strictly defensive addition for any future lockfile drift.
+
+**Required Manual Step:** None.
+
+**Verification:** Superseded by v2.22.3 verification.
+
+---
+
 ### v2.22.0 — AI UI tiles + college baseball in Live Games
 **Released:** 2026-04-17
 

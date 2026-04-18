@@ -39,6 +39,26 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-04-17 — v2.22.5 — shift brief: real game times + anti-hallucination
+
+**Risk:** GO — pure fix to an LLM prompt. No schema, no deps.
+
+Ollama was fabricating times in the shift brief (e.g. "Brewers at 9pm" for a game that started at 6:10pm) because active-allocation prompt entries had no time field. Fix adds `startLocal` + `status` to the context and a CRITICAL guardrail forbidding invented times. Fallback brief also shows "started <time>". See `docs/VERSION_SETUP_GUIDE.md` v2.22.5 for verification commands.
+
+**Affected:** `apps/web/src/app/api/ai/shift-brief/route.ts`, `package.json`.
+
+---
+
+### 2026-04-17 — v2.22.4 — wrap claude -p in pseudo-TTY
+
+**Risk:** GO — critical fix; every location's auto-update was rolling back at Checkpoint B once Claude CLI reached 2.1.113+.
+
+Claude Code CLI 2.1.113+ errors with "Interactive prompts require a TTY terminal" when invoked non-interactively. `scripts/auto-update.sh` now wraps the claude call in `script -qfc "..." /dev/null` to provide a pty. Self-update re-exec means every location picks up the fix starting with the run that merges it. See `docs/VERSION_SETUP_GUIDE.md` v2.22.4 for verification.
+
+**Affected:** `scripts/auto-update.sh`, `package.json`.
+
+---
+
 ### 2026-04-17 — v2.22.3 — revert to Tailwind 3 (v2.17.0 migration was incomplete)
 
 **Risk:** GO — restores the last known-good CSS pipeline. Fixes build break that no location could recover from.
