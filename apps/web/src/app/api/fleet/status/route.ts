@@ -44,6 +44,16 @@ interface FleetLocation {
   lastAutoUpdateDate: string | null
   staleness: 'healthy' | 'warning' | 'stuck' | 'unknown'
   stalenessReason: string
+  // Heartbeat from .auto-update-last-success.json (v2.25.2+). Absent on
+  // older locations or locations that have never had a successful auto-
+  // update since v2.25.2 landed.
+  heartbeat?: {
+    successAtUnix: number
+    runId: string
+    verifyInstallStatus: string | null
+    verifyInstallPassed: number | null
+    verifyInstallTotal: number | null
+  } | null
 }
 
 interface FleetStatus {
@@ -108,12 +118,13 @@ function versionsBehind(locationVersion: string | null, mainVersion: string | nu
 
 async function buildLocationEntry(branch: string, mainVersion: string | null): Promise<FleetLocation> {
   // Gather all location-branch data with parallel git calls.
-  const [versionRaw, lastCommit, behindMain, aheadMain, lastAutoUpdate] = await Promise.all([
+  const [versionRaw, lastCommit, behindMain, aheadMain, lastAutoUpdate, heartbeatRaw] = await Promise.all([
     git(['show', `${branch}:package.json`]).catch(() => ''),
     git(['log', branch, '-1', '--format=%ct%x09%s']).catch(() => ''),
     git(['rev-list', '--count', `${branch}..origin/main`]).catch(() => '0'),
     git(['rev-list', '--count', `origin/main..${branch}`]).catch(() => '0'),
     git(['log', branch, '--grep=auto-update merge', '-1', '--format=%ct%x09%s']).catch(() => ''),
+    git(['show', `${branch}:.auto-update-last-success.json`]).catch(() => ''),
   ])
 
   // Parse version from package.json JSON
@@ -189,6 +200,22 @@ async function buildLocationEntry(branch: string, mainVersion: string | null): P
     stalenessReason = 'current with main'
   }
 
+  // Parse heartbeat file (v2.25.2+) if present
+  let heartbeat: FleetLocation['heartbeat'] = null
+  if (heartbeatRaw) {
+    try {
+      const hb = JSON.parse(heartbeatRaw)
+      const vi = hb.verifyInstall ?? {}
+      heartbeat = {
+        successAtUnix: typeof hb.successAtUnix === 'number' ? hb.successAtUnix : 0,
+        runId: typeof hb.runId === 'string' ? hb.runId : '',
+        verifyInstallStatus: typeof vi.status === 'string' ? vi.status : null,
+        verifyInstallPassed: typeof vi.passed === 'number' ? vi.passed : null,
+        verifyInstallTotal: typeof vi.total === 'number' ? vi.total : null,
+      }
+    } catch { /* ignore malformed */ }
+  }
+
   return {
     branch: branch.replace(/^origin\//, ''),
     displayName: branchDisplayName(branch),
@@ -203,6 +230,7 @@ async function buildLocationEntry(branch: string, mainVersion: string | null): P
     lastAutoUpdateDate: autoTs ? new Date(autoTs * 1000).toISOString() : null,
     staleness,
     stalenessReason,
+    heartbeat,
   }
 }
 
