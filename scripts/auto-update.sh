@@ -815,6 +815,38 @@ if [ -d "$REPO_ROOT/apps/web/.next.bak" ]; then
   rm -rf "$REPO_ROOT/apps/web/.next.bak"
 fi
 
+# Push the merge commit back to origin so the Fleet Dashboard (v2.24.0+)
+# sees this location's current version. Before v2.24.6, auto-update.sh
+# merged main locally, built, verified, restarted — but never pushed. The
+# remote branch stayed at whatever the last human-pushed state was, which
+# meant every dashboard report of "stuck" for a location that had been
+# auto-updating was wrong. We only push here AFTER all verifications have
+# passed (checkpoint_c + verify-install 6/6), so pushing a broken state
+# to GitHub can't happen.
+#
+# Safety properties:
+#   - Pushes ONLY the current branch (the location/* branch). Never
+#     touches main — location work must not leak to other locations.
+#   - No --force. If the remote has diverged (someone pushed while we
+#     were running), we fail this step loud rather than overwriting.
+#   - Push failure is NON-FATAL — the location itself is in a good
+#     state; only the dashboard signal is missing. Log and continue.
+if git rev-parse --abbrev-ref HEAD >/dev/null 2>&1; then
+  CURRENT_BRANCH=$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD)
+  if [ "$CURRENT_BRANCH" = "main" ]; then
+    log "WARNING: auto-update ran on main; not pushing (location branches only)"
+  elif [ -z "$CURRENT_BRANCH" ] || [ "$CURRENT_BRANCH" = "HEAD" ]; then
+    log "WARNING: detached HEAD — skipping push"
+  else
+    log "Pushing $CURRENT_BRANCH to origin (fleet-dashboard signal)"
+    if git -C "$REPO_ROOT" push origin "$CURRENT_BRANCH" 2>&1 | tee -a "$LOG_FILE"; then
+      log "Push succeeded — Fleet Dashboard will reflect this update within 5 min (cache TTL)"
+    else
+      log "WARNING: push failed — location is still healthy, but Fleet Dashboard won't see this update until a human pushes manually or next successful auto-update"
+    fi
+  fi
+fi
+
 FINAL_RESULT="pass"
 FINAL_MSG=""
 if [ "$CAUTION_MODE" -eq 1 ]; then
