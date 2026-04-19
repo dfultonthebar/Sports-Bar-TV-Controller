@@ -187,6 +187,29 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.24.6 — auto-update.sh pushes merge commits back to origin (Fleet Dashboard accuracy fix)
+**Released:** 2026-04-18
+
+**What changed:**
+- `scripts/auto-update.sh` — new push step at the end of the FINALIZE phase. After a successful auto-update (checkpoints A/B/C + verify-install all green), the script now runs `git push origin <current-branch>` to publish the merge commit to GitHub. Non-fatal on failure (location is still healthy; just the dashboard signal is missing). Never touches main. No --force.
+
+**Why this matters:** the Fleet Dashboard (v2.24.0) reads `origin/location/<name>` from the local git clone, which mirrors GitHub. Before v2.24.6, auto-update.sh merged main locally and built/restarted but never pushed. Every location that successfully auto-updated LOCALLY without a human running `git push` afterward looked "stuck" on the dashboard forever. Stoneyard Appleton (v2.12.8 on git, last push 2 days ago) and Stoneyard Greenville (v2.16.2, last push 32h ago) are examples — both have almost certainly been running newer code for a while; nobody has been pushing.
+
+After v2.24.6 lands at a location, the next successful auto-update will push automatically and the dashboard will catch up.
+
+**Required Claude step per location:** None — fix is purely in auto-update.sh. No config, no env var, no DB patch.
+
+**One-time catch-up action for already-stuck locations:** operator SSH to each stuck host once, run:
+```bash
+cd /home/ubuntu/Sports-Bar-TV-Controller
+git push origin "$(git rev-parse --abbrev-ref HEAD)"
+```
+That pushes whatever merge commits have accumulated locally. Future auto-updates (after v2.24.6 lands there) will do it automatically.
+
+**Rollback:** `git revert` removes the push step. Auto-update goes back to merge-locally-only behavior; dashboard drifts again.
+
+---
+
 ### v2.24.5 — Per-location Brave API key provisioning helper
 **Released:** 2026-04-18
 
