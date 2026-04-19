@@ -1,4 +1,22 @@
 {
-  "_comment": "Location-specific OTA broadcast-affiliate aliases. Each location branch populates this with its local affiliates (e.g. WBAY/WLUK/WGBA/WFRV for Green Bay DMA; WKOW/WMSN/WMTV/WISC for Madison). On main this is an empty template. Seeded by seedLocalStationAliases() in apps/web/src/lib/seed-from-json.ts. See docs/VERSION_SETUP_GUIDE.md §v2.23.0 for the Claude-executable steps per location.",
-  "aliases": []
+  "_location": "Graystone",
+  "_comment": "Green Bay, WI DMA OTA broadcast affiliates. See docs/VERSION_SETUP_GUIDE.md §v2.23.0.",
+  "aliases": [
+    {
+      "standardName": "WBAY",
+      "aliases": ["ABC", "WBAY", "WBAY-TV", "ABC 2", "ABCHD", "ABC HD"]
+    },
+    {
+      "standardName": "WLUK",
+      "aliases": ["FOX", "WLUK", "WLUK-TV", "FOX 11", "FOXHD", "FOX HD"]
+    },
+    {
+      "standardName": "WGBA",
+      "aliases": ["NBC", "WGBA", "WGBA-TV", "NBC 26", "NBCHD", "NBC HD"]
+    },
+    {
+      "standardName": "WFRV",
+      "aliases": ["CBS", "WFRV", "WFRV-TV", "CBS 5", "CBSHD", "CBS HD"]
+    }
+  ]
 }
