@@ -1,0 +1,9 @@
+{
+  "version": "2.26.0",
+  "branch": "location/leg-lamp",
+  "commitSha": "c8b6e8fd73e753adab41bfd86c6bb4579a35b5b2",
+  "successAt": "2026-04-19T17:07:47Z",
+  "successAtUnix": 1776618467,
+  "runId": "auto-update-2026-04-19-17-02",
+  "verifyInstall": {"status":"PASS","passed":7,"total":7,"durationSecs":0,"failed":[],"layers":[{"name":"pm2_online","passed":true,"detail":"status=online restart_time=1"},{"name":"health_http","passed":true,"detail":"status=healthy"},{"name":"metrics_http","passed":true,"detail":"cores=20"},{"name":"bartender_proxy","passed":true,"detail":"http=302"},{"name":"critical_tables","passed":true,"detail":"presets=83 aliases=45 directv=0 firetv=0"},{"name":"matrix_config","passed":true,"detail":"single-card WP-18X18 offset=0"},{"name":"crash_logs","passed":true,"detail":"clean"}]}
+}
