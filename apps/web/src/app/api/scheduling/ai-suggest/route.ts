@@ -806,6 +806,43 @@ export async function GET(request: NextRequest) {
     // 1. Fetch upcoming games from sports guide
     const games = await fetchUpcomingGames()
 
+    // Phase 2 (v2.26.0): Dual-run diff harness when USE_UNIFIED_CONTEXT=true.
+    // Builds the same 12h window via the new buildGameContexts() composer
+    // and logs a per-request summary of how its output compares to the
+    // inline fetchUpcomingGames() path. Does NOT change behavior — the
+    // existing code path still drives the response. Lets operators soak
+    // the new builder for a week before migrating.
+    if (process.env.USE_UNIFIED_CONTEXT === 'true') {
+      try {
+        const { buildGameContexts } = await import('@/lib/scheduling/game-context')
+        const nowUnix = Math.floor(Date.now() / 1000)
+        const windowEnd = nowUnix + 12 * 60 * 60
+        const { db: db2, schema: schema2 } = await import('@/db')
+        const { and: and2, gte: gte2, lte: lte2, ne: ne2 } = await import('drizzle-orm')
+        const gameRows = await db2
+          .select({ id: schema2.gameSchedules.id })
+          .from(schema2.gameSchedules)
+          .where(
+            and2(
+              gte2(schema2.gameSchedules.scheduledStart, nowUnix),
+              lte2(schema2.gameSchedules.scheduledStart, windowEnd),
+              ne2(schema2.gameSchedules.status, 'completed'),
+            ),
+          )
+          .all()
+        const ids = gameRows.map(r => r.id)
+        const contexts = await buildGameContexts(ids)
+        const unifiedPlayable = contexts.filter(c => c.routes.playable).length
+        const unifiedWithBookings = contexts.filter(c => c.allocations.length > 0).length
+        const unifiedWithOverrides = contexts.filter(c => c.overridesInPlay.length > 0).length
+        logger.info(
+          `[AI-SUGGEST:UNIFIED-DIFF] new: ${contexts.length} games, ${unifiedPlayable} playable, ${unifiedWithBookings} with bookings, ${unifiedWithOverrides} with overrides · old: ${games.length} playable games`,
+        )
+      } catch (diffErr) {
+        logger.warn('[AI-SUGGEST:UNIFIED-DIFF] builder failed (non-fatal):', diffErr)
+      }
+    }
+
     if (games.length === 0) {
       logger.info('[AI-SUGGEST] No upcoming games found')
       return NextResponse.json({
