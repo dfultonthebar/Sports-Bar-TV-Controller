@@ -747,11 +747,31 @@ fi
 # ecosystem.config.js. Any new file-format env (e.g. lines with quotes,
 # comments) should pass through cleanly because we use `set -a` + source.
 if [ -f "$REPO_ROOT/.env" ]; then
-  log "Sourcing .env so build sees LOCATION_NAME / LOCATION_ID / etc."
-  set -a
-  # shellcheck disable=SC1091
-  source "$REPO_ROOT/.env"
-  set +a
+  log "Loading .env so build sees LOCATION_NAME / LOCATION_ID / etc."
+  # Safe .env loader: `source` cannot be used because unquoted values
+  # with spaces (e.g. `LOCATION_NAME=Stoneyard Greenville`) or
+  # apostrophes (`Lucky's 1313`) make bash try to execute the value
+  # as a command — which crashes `source` with exit 127 "command not
+  # found". Next.js's dotenv parser handles these without quoting, so
+  # the .env is internally valid — it's only the bash source that
+  # chokes. This loop reads each line literally and exports it as an
+  # env var without ever passing it through the shell word-splitter.
+  while IFS= read -r line || [ -n "$line" ]; do
+    # Skip blank lines and comments
+    [ -z "$line" ] && continue
+    case "$line" in \#*) continue ;; esac
+    # Must contain an =
+    case "$line" in *=*) ;; *) continue ;; esac
+    # Split on the FIRST = only
+    local_key="${line%%=*}"
+    local_val="${line#*=}"
+    # Trim surrounding quotes if the value is fully quoted
+    case "$local_val" in
+      \"*\") local_val="${local_val#\"}"; local_val="${local_val%\"}" ;;
+      \'*\') local_val="${local_val#\'}"; local_val="${local_val%\'}" ;;
+    esac
+    export "$local_key=$local_val"
+  done < "$REPO_ROOT/.env"
 fi
 
 log "npm run build (--force to bypass Turbo cache for package changes)"
