@@ -27,6 +27,7 @@ import BartenderRemoteSelector from '@/components/BartenderRemoteSelector'
 import DMXLightingRemote from '@/components/dmx/DMXLightingRemote'
 import DJControlPanel from '@/components/DJControlPanel'
 import ScheduledGamesPanel from '@/components/ScheduledGamesPanel'
+import OverrideLearnWidget from '@/components/OverrideLearnWidget'
 import RecoveryConfirmationPopup from '@/components/RecoveryConfirmationPopup'
 import { CommercialLightingRemote } from '@/components/commercial-lighting'
 import AtmosphereControl from '@/components/AtmosphereControl'
@@ -1178,6 +1179,10 @@ export default function BartenderRemotePage() {
         {activeTab === 'schedule' && (
           <div className="max-w-7xl mx-auto pt-4">
             <ScheduledGamesPanel />
+            {/* Override-learn recommendations — live summary of which teams */}
+            {/* bartenders have been correcting, with one-tap Apply buttons. */}
+            {/* Full details at /override-learn. */}
+            <OverrideLearnWidget />
           </div>
         )}
       </div>

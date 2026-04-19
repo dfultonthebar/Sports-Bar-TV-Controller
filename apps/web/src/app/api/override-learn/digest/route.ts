@@ -225,6 +225,18 @@ export async function GET(request: NextRequest) {
       .orderBy(desc(schema.schedulerLogs.createdAt))
       .limit(50)
 
+    // 6. Currently-applied override defaults. Lets the UI show an
+    //    "Applied ✓" state on pattern rows that have already been acted
+    //    on, and offer a Revert button instead of Apply. Keyed by
+    //    (team, outputNum, action) which matches the pattern tuple.
+    const appliedRows = await db.select().from(schema.scheduledOverrideDefaults).all()
+    const appliedMap: Record<string, { id: string; appliedAt: string; appliedBy: string }> = {}
+    for (const r of appliedRows) {
+      const expectedAction = r.action
+      const key = `${r.team}\u0000${r.outputNum}\u0000${expectedAction === 'exclude' ? 'remove' : 'add'}`
+      appliedMap[key] = { id: r.id, appliedAt: r.appliedAt, appliedBy: r.appliedBy }
+    }
+
     // Sort the aggregated views for a useful default order.
     const byTeam = [...teamMap.values()].sort((a, b) => b.corrections - a.corrections)
     const byOutput = [...outputMap.values()]
@@ -241,13 +253,26 @@ export async function GET(request: NextRequest) {
       .sort((a, b) => b.corrections - a.corrections)
     const byPattern = [...patternMap.values()].sort((a, b) => b.occurrences - a.occurrences)
 
+    // Annotate each pattern with its applied state so the UI can show
+    // "Applied ✓" + a Revert button without a second API call.
+    const byPatternWithState = byPattern.slice(0, 25).map(p => {
+      const key = `${p.team}\u0000${p.outputNum}\u0000${p.action}`
+      const applied = appliedMap[key]
+      return {
+        ...p,
+        applied: applied
+          ? { id: applied.id, appliedAt: applied.appliedAt, appliedBy: applied.appliedBy }
+          : null,
+      }
+    })
+
     return NextResponse.json({
       windowDays,
       totalEvents: events.length,
       generatedAt: new Date().toISOString(),
       byTeam: byTeam.slice(0, 25),
       byOutput: byOutput.slice(0, 25),
-      byPattern: byPattern.slice(0, 25),
+      byPattern: byPatternWithState,
       recentEvents: events.slice(0, 50),
       existingRecommendations: recRows.map(r => ({
         ts: r.createdAt,
@@ -255,6 +280,7 @@ export async function GET(request: NextRequest) {
         level: r.level,
         metadata: r.metadata,
       })),
+      appliedCount: appliedRows.length,
     })
   } catch (err: any) {
     logger.error('[OVERRIDE-DIGEST-API] error:', err)

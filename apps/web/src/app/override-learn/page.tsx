@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { ArrowDown, ArrowUp, Brain, Home as HomeIcon, Loader2, RefreshCw, Sparkles, Tv2, XCircle } from 'lucide-react'
+import { ArrowDown, ArrowUp, Brain, Check, Home as HomeIcon, Loader2, RefreshCw, RotateCcw, Sparkles, Tv2, XCircle } from 'lucide-react'
 
 interface TeamRow {
   team: string
@@ -27,6 +27,7 @@ interface PatternRow {
   isHomeTeam: boolean
   firstSeen: number
   lastSeen: number
+  applied: { id: string; appliedAt: string; appliedBy: string } | null
 }
 interface RecentEvent {
   ts: number
@@ -83,6 +84,8 @@ export default function OverrideLearnPage() {
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const [busyKey, setBusyKey] = useState<string | null>(null)
+
   const load = useCallback(async (force = false) => {
     setError(null)
     if (force) setRefreshing(true)
@@ -100,6 +103,57 @@ export default function OverrideLearnPage() {
       setRefreshing(false)
     }
   }, [days])
+
+  // Apply a pattern as a durable scheduler default. Maps the raw override
+  // direction to the action the scheduler needs to honor:
+  //   remove events -> 'exclude' (never auto-route this team here)
+  //   add events    -> 'include' (always auto-route this team here)
+  const applyPattern = useCallback(async (p: PatternRow) => {
+    const key = `${p.team}:${p.outputNum}:${p.action}`
+    setBusyKey(key)
+    try {
+      const res = await fetch('/api/override-learn/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          team: p.team,
+          outputNum: p.outputNum,
+          action: p.action === 'remove' ? 'exclude' : 'include',
+          isHomeTeam: p.isHomeTeam,
+          occurrences: p.occurrences,
+        }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body?.error || `HTTP ${res.status}`)
+      }
+      await load(true)
+    } catch (err: any) {
+      setError(err.message || 'Apply failed')
+    } finally {
+      setBusyKey(null)
+    }
+  }, [load])
+
+  const revertPattern = useCallback(async (p: PatternRow) => {
+    if (!p.applied) return
+    const key = `${p.team}:${p.outputNum}:${p.action}`
+    setBusyKey(key)
+    try {
+      const res = await fetch(`/api/override-learn/apply?id=${encodeURIComponent(p.applied.id)}`, {
+        method: 'DELETE',
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body?.error || `HTTP ${res.status}`)
+      }
+      await load(true)
+    } catch (err: any) {
+      setError(err.message || 'Revert failed')
+    } finally {
+      setBusyKey(null)
+    }
+  }, [load])
 
   useEffect(() => {
     load(false)
@@ -299,14 +353,17 @@ export default function OverrideLearnPage() {
                       <th className="pb-2 px-2">TV</th>
                       <th className="pb-2 px-2 text-right">Times</th>
                       <th className="pb-2 px-2">First seen</th>
-                      <th className="pb-2 pl-2">Last seen</th>
+                      <th className="pb-2 px-2">Last seen</th>
+                      <th className="pb-2 pl-2 text-right">Apply</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800">
                     {digest.byPattern.map((p, i) => {
                       const strong = p.occurrences >= 3
+                      const busyKeyThis = `${p.team}:${p.outputNum}:${p.action}`
+                      const isBusy = busyKey === busyKeyThis
                       return (
-                        <tr key={`${p.team}-${p.outputNum}-${p.action}`} className={strong ? 'bg-amber-500/5' : i % 2 === 0 ? 'bg-slate-800/30' : ''}>
+                        <tr key={`${p.team}-${p.outputNum}-${p.action}`} className={p.applied ? 'bg-emerald-500/5' : strong ? 'bg-amber-500/5' : i % 2 === 0 ? 'bg-slate-800/30' : ''}>
                           <td className="py-2 pr-2 text-slate-100 font-medium flex items-center gap-1.5">
                             {p.isHomeTeam && <HomeIcon className="h-3.5 w-3.5 text-emerald-400 flex-shrink-0" />}
                             {p.team}
@@ -327,7 +384,31 @@ export default function OverrideLearnPage() {
                             {p.occurrences}×
                           </td>
                           <td className="py-2 px-2 text-slate-500 text-xs">{formatDate(p.firstSeen)}</td>
-                          <td className="py-2 pl-2 text-slate-500 text-xs">{formatDate(p.lastSeen)}</td>
+                          <td className="py-2 px-2 text-slate-500 text-xs">{formatDate(p.lastSeen)}</td>
+                          <td className="py-2 pl-2 text-right">
+                            {p.applied ? (
+                              <button
+                                onClick={() => revertPattern(p)}
+                                disabled={isBusy}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-emerald-500/40 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20 disabled:opacity-50 transition-colors"
+                                title={`Applied ${formatDate(new Date(p.applied.appliedAt).getTime() / 1000)} by ${p.applied.appliedBy}. Click to revert.`}
+                              >
+                                {isBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+                                Applied
+                                <RotateCcw className="h-3 w-3 ml-1 opacity-60" />
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => applyPattern(p)}
+                                disabled={isBusy}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-sky-500/40 bg-sky-500/10 text-sky-300 hover:bg-sky-500/20 disabled:opacity-50 transition-colors"
+                                title={p.action === 'remove' ? `Never auto-route ${p.team} to TV ${p.outputNum} going forward` : `Always auto-route ${p.team} to TV ${p.outputNum} going forward`}
+                              >
+                                {isBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                                Apply
+                              </button>
+                            )}
+                          </td>
                         </tr>
                       )
                     })}
