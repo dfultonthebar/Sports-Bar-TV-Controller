@@ -35,6 +35,36 @@ export async function POST(request: NextRequest) {
       forceAllocation: data.forceAllocation,
     });
 
+    // v2.25.4: the smartInputAllocator picks ONE input source by capability.
+    // Before it persists the allocation, verify the chosen input is free
+    // during the game's time window. Conflict check is done here (post-
+    // pick, pre-persist) because the allocator doesn't expose a hook and
+    // we don't want to duplicate its capability matching.
+    if (result.success && result.allocationId && result.inputSourceId) {
+      const { checkAllocationConflict } = await import('@/lib/scheduling/allocation-conflicts');
+      const alloc = await db.select().from(schema.inputSourceAllocations)
+        .where(eq(schema.inputSourceAllocations.id, result.allocationId)).limit(1).get();
+      if (alloc) {
+        const { conflict } = await checkAllocationConflict(
+          result.inputSourceId,
+          alloc.allocatedAt,
+          alloc.expectedFreeAt,
+          result.allocationId,
+        );
+        if (conflict) {
+          logger.warn(`[ALLOCATE] Allocator picked ${result.inputSourceId} but it collides with ${conflict.gameLabel}; reverting`);
+          // Revert the just-created allocation — smartInputAllocator.allocateGame
+          // already persisted it, so we delete the conflict-creating row.
+          await db.delete(schema.inputSourceAllocations)
+            .where(eq(schema.inputSourceAllocations.id, result.allocationId));
+          return NextResponse.json(
+            { success: false, error: `Allocation conflict: input already booked for "${conflict.gameLabel}"`, conflict },
+            { status: 409 },
+          );
+        }
+      }
+    }
+
     if (result.success) {
       logger.api.response('POST', '/api/scheduling/allocate', 200);
       return NextResponse.json({

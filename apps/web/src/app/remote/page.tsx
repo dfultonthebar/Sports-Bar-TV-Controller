@@ -8,13 +8,16 @@ import {
   Power,
   Volume2,
   Zap,
-  Calendar,
+  ListVideo,
   Music2,
-  Gamepad2,
+  Radio,
   Lightbulb,
   Music,
   Monitor,
-  Loader2
+  Loader2,
+  Clock,
+  MoreHorizontal,
+  X
 } from 'lucide-react'
 import EnhancedChannelGuideBartenderRemote from '@/components/EnhancedChannelGuideBartenderRemote'
 import BartenderMusicControl from '@/components/BartenderMusicControl'
@@ -24,6 +27,7 @@ import BartenderRemoteSelector from '@/components/BartenderRemoteSelector'
 import DMXLightingRemote from '@/components/dmx/DMXLightingRemote'
 import DJControlPanel from '@/components/DJControlPanel'
 import ScheduledGamesPanel from '@/components/ScheduledGamesPanel'
+import OverrideLearnWidget from '@/components/OverrideLearnWidget'
 import RecoveryConfirmationPopup from '@/components/RecoveryConfirmationPopup'
 import { CommercialLightingRemote } from '@/components/commercial-lighting'
 import AtmosphereControl from '@/components/AtmosphereControl'
@@ -150,6 +154,10 @@ export default function BartenderRemotePage() {
 
   // Tab state
   const [activeTab, setActiveTab] = useState<'video' | 'audio' | 'power' | 'guide' | 'music' | 'remote' | 'routing' | 'dj' | 'lighting' | 'schedule'>('video')
+  // "More" overflow sheet for admin tabs (Schedule, DJ) — Direction B keeps
+  // the core + ambient + emergency (Power) tabs always visible; tapping
+  // admin items auto-closes the sheet.
+  const [moreOpen, setMoreOpen] = useState(false)
 
   // System time state - initialize with null to avoid hydration mismatch
   const [currentTime, setCurrentTime] = useState<string | null>(null)
@@ -686,7 +694,6 @@ export default function BartenderRemotePage() {
     }
   }
 
-
   const sendTVPower = async (deviceId: string, action: 'on' | 'off' | 'toggle') => {
     setTvPowerLoading(`${deviceId}-${action}`)
     try {
@@ -838,7 +845,7 @@ export default function BartenderRemotePage() {
         {activeTab === 'power' && (
           <div className="max-w-7xl mx-auto pt-4 space-y-4">
             {/* Bulk Power Controls */}
-            <div className="bg-slate-900/90 backdrop-blur-sm rounded-lg p-4 border border-slate-700/50">
+            <div className="bg-slate-900/90 backdrop-blur rounded-lg p-4 border border-slate-700/50">
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="text-lg font-semibold text-white flex items-center gap-2">
@@ -888,8 +895,8 @@ export default function BartenderRemotePage() {
                     {/* TV Header */}
                     <div className="flex items-center justify-between mb-1">
                       <div className="flex items-center gap-1.5 min-w-0">
-                        <Tv className={`w-4 h-4 shrink-0 ${tv.brand.toLowerCase() === 'samsung' ? 'text-blue-400' : tv.brand.toLowerCase() === 'roku' ? 'text-purple-400' : 'text-slate-400'}`} />
-                        <div className={`w-2 h-2 rounded-full shrink-0 ${tv.status === 'online' ? 'bg-green-500' : tv.status === 'standby' ? 'bg-yellow-500' : 'bg-red-500'}`} />
+                        <Tv className={`w-4 h-4 flex-shrink-0 ${tv.brand.toLowerCase() === 'samsung' ? 'text-blue-400' : tv.brand.toLowerCase() === 'roku' ? 'text-purple-400' : 'text-slate-400'}`} />
+                        <div className={`w-2 h-2 rounded-full flex-shrink-0 ${tv.status === 'online' ? 'bg-green-500' : tv.status === 'standby' ? 'bg-yellow-500' : 'bg-red-500'}`} />
                       </div>
                       <span className="text-[10px] text-slate-500 uppercase">{tv.brand}</span>
                     </div>
@@ -905,12 +912,12 @@ export default function BartenderRemotePage() {
                             if (e.key === 'Escape') setEditingTVName(null)
                           }}
                           autoFocus
-                          className="flex-1 px-1.5 py-0.5 bg-slate-700 border border-slate-600 rounded-sm text-xs text-white focus:outline-hidden focus:border-blue-500 min-w-0"
+                          className="flex-1 px-1.5 py-0.5 bg-slate-700 border border-slate-600 rounded text-xs text-white focus:outline-none focus:border-blue-500 min-w-0"
                           placeholder="TV name..."
                         />
                         <button
                           onClick={() => saveTVName(tv.id, editNameValue)}
-                          className="px-1.5 py-0.5 bg-blue-600 hover:bg-blue-700 text-white rounded-sm text-[10px]"
+                          className="px-1.5 py-0.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-[10px]"
                         >OK</button>
                       </div>
                     ) : (
@@ -930,7 +937,7 @@ export default function BartenderRemotePage() {
                           onChange={(e) => assignTVOutput(tv.id, e.target.value || null)}
                           autoFocus
                           onBlur={() => setAssigningOutput(null)}
-                          className="text-[10px] bg-slate-700 border border-slate-600 text-white rounded-sm px-1 py-0.5 focus:outline-hidden focus:border-blue-500"
+                          className="text-[10px] bg-slate-700 border border-slate-600 text-white rounded px-1 py-0.5 focus:outline-none focus:border-blue-500"
                         >
                           <option value="">None</option>
                           {matrixOutputs.map((o) => (
@@ -940,7 +947,7 @@ export default function BartenderRemotePage() {
                       ) : (
                         <span
                           onClick={() => setAssigningOutput(tv.id)}
-                          className="text-[10px] text-slate-600 bg-slate-700/50 px-1 rounded-sm cursor-pointer hover:text-blue-300 transition-colors"
+                          className="text-[10px] text-slate-600 bg-slate-700/50 px-1 rounded cursor-pointer hover:text-blue-300 transition-colors"
                           title="Click to assign Wolf Pack output"
                         >
                           {tv.outputNumber ? `Out ${tv.outputNumber}` : 'Link output'}
@@ -954,7 +961,7 @@ export default function BartenderRemotePage() {
                         <button
                           onClick={() => pairNetworkTV(tv.id, tv.name || tv.outputLabel || tv.ipAddress)}
                           disabled={pairingTVId === tv.id}
-                          className="w-full py-1.5 bg-orange-600 hover:bg-orange-700 text-white rounded-sm text-xs font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-1"
+                          className="w-full py-1.5 bg-orange-600 hover:bg-orange-700 text-white rounded text-xs font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-1"
                         >
                           {pairingTVId === tv.id ? <><Loader2 className="w-3 h-3 animate-spin" /> Waiting for TV...</> : <><Zap className="w-3 h-3" /> Pair</>}
                         </button>
@@ -981,9 +988,6 @@ export default function BartenderRemotePage() {
                       <div>
                         <p className="text-[10px] text-slate-500 mb-1 flex items-center gap-1">
                           <Monitor className="w-2.5 h-2.5" /> HDMI Input
-                          {tv.currentInput && (
-                            <span className="text-blue-400 ml-auto">{tv.currentInput.toUpperCase()}</span>
-                          )}
                         </p>
                         <div className="grid grid-cols-4 gap-1">
                           {(['hdmi1', 'hdmi2', 'hdmi3', 'hdmi4'] as const).map((input) => (
@@ -1019,7 +1023,7 @@ export default function BartenderRemotePage() {
 
         {activeTab === 'routing' && (
           <div className="max-w-7xl mx-auto pt-4">
-            <div className="bg-slate-900/90 backdrop-blur-sm rounded-lg shadow-xl p-4 border border-slate-700/50">
+            <div className="bg-slate-900/90 backdrop-blur rounded-lg shadow-xl p-4 border border-slate-700/50">
               <div className="flex items-center justify-between mb-4">
                 <div>
                   <h3 className="text-lg font-semibold text-slate-100">Quick Routing Matrix</h3>
@@ -1142,7 +1146,7 @@ export default function BartenderRemotePage() {
                 <h4 className="font-semibold text-slate-200 mb-2 text-sm">Legend</h4>
                 <div className="grid grid-cols-2 gap-2 text-xs">
                   <div className="flex items-center gap-2">
-                    <div className="w-5 h-5 bg-green-600 rounded-sm flex items-center justify-center shrink-0">
+                    <div className="w-5 h-5 bg-green-600 rounded flex items-center justify-center flex-shrink-0">
                       <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
                         <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                       </svg>
@@ -1150,7 +1154,7 @@ export default function BartenderRemotePage() {
                     <span className="text-slate-300">Active Route</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <div className="w-5 h-5 bg-slate-900 border border-slate-700 rounded-sm shrink-0"></div>
+                    <div className="w-5 h-5 bg-slate-900 border border-slate-700 rounded flex-shrink-0"></div>
                     <span className="text-slate-300">Available Route</span>
                   </div>
                 </div>
@@ -1175,59 +1179,51 @@ export default function BartenderRemotePage() {
         {activeTab === 'schedule' && (
           <div className="max-w-7xl mx-auto pt-4">
             <ScheduledGamesPanel />
+            {/* Override-learn recommendations — live summary of which teams */}
+            {/* bartenders have been correcting, with one-tap Apply buttons. */}
+            {/* Full details at /override-learn. */}
+            <OverrideLearnWidget />
           </div>
         )}
       </div>
 
-      {/* Bottom Tab Navigation */}
-      <div className="fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur-sm border-t border-slate-700/10 z-50">
-        <div className="flex justify-around items-center py-2">
+      {/* Bottom Tab Navigation — Direction B "Sky Signal" (v2.23.9)
+       *
+       * Single sky-400 accent for active state across all tiers.
+       * Core tabs (Video / Guide / Routing / Remote): 52×60px, text-sm.
+       * Ambient tabs (Audio / Music / Lighting): 44×52px, text-xs.
+       * Emergency (Power): always visible, 44×44px.
+       * Admin (Schedule / DJ): behind a "More" overflow sheet.
+       *
+       * Active = ring-1 ring-sky-400/50 + bg-sky-500/20 + text-sky-300 +
+       * scale-[1.03]. The ring sits outside the box model so neighboring
+       * tabs don't shift on activation.
+       */}
+      <div className="fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur border-t border-slate-700/40 z-50">
+        <div className="flex justify-around items-stretch gap-1 px-2 py-2">
+          {/* Core tier — 52×60px, text-sm */}
           <button
             onClick={() => setActiveTab('video')}
-            className={`flex flex-col items-center space-y-1 px-2 py-2 rounded-lg transition-all ${
+            className={`min-h-[52px] min-w-[60px] flex flex-col items-center justify-center gap-1.5 px-2.5 py-3 rounded-xl transition-all ${
               activeTab === 'video'
-                ? 'bg-blue-500/30 text-blue-300'
-                : 'text-slate-500 hover:text-white hover:bg-sportsBar-800/5'
+                ? 'ring-1 ring-sky-400/50 bg-sky-500/20 text-sky-300 scale-[1.03]'
+                : 'text-slate-400 hover:text-slate-200'
             }`}
           >
-            <Tv className="w-4 h-4" />
-            <span className="text-xs font-medium">Video</span>
+            <Tv className="h-5 w-5" />
+            <span className="text-sm font-medium">Video</span>
           </button>
-          
-          <button
-            onClick={() => setActiveTab('audio')}
-            className={`flex flex-col items-center space-y-1 px-2 py-2 rounded-lg transition-all ${
-              activeTab === 'audio'
-                ? 'bg-purple-500/30 text-purple-300'
-                : 'text-slate-500 hover:text-white hover:bg-sportsBar-800/5'
-            }`}
-          >
-            <Volume2 className="w-4 h-4" />
-            <span className="text-xs font-medium">Audio</span>
-          </button>
-          
-          <button
-            onClick={() => setActiveTab('music')}
-            className={`flex flex-col items-center space-y-1 px-2 py-2 rounded-lg transition-all ${
-              activeTab === 'music'
-                ? 'bg-indigo-500/30 text-indigo-300'
-                : 'text-slate-500 hover:text-white hover:bg-sportsBar-800/5'
-            }`}
-          >
-            <Music2 className="w-4 h-4" />
-            <span className="text-xs font-medium">Music</span>
-          </button>
-          
+
           <button
             onClick={() => setActiveTab('guide')}
-            className={`flex flex-col items-center space-y-1 px-2 py-2 rounded-lg transition-all ${
+            className={`min-h-[52px] min-w-[60px] flex flex-col items-center justify-center gap-1.5 px-2.5 py-3 rounded-xl transition-all ${
               activeTab === 'guide'
-                ? 'bg-green-500/30 text-green-300'
-                : 'text-slate-500 hover:text-white hover:bg-sportsBar-800/5'
+                ? 'ring-1 ring-sky-400/50 bg-sky-500/20 text-sky-300 scale-[1.03]'
+                : 'text-slate-400 hover:text-slate-200'
             }`}
           >
-            <Calendar className="w-4 h-4" />
-            <span className="text-xs font-medium">Guide</span>
+            <ListVideo className="h-5 w-5" />
+            <span className="text-sm font-medium">Guide</span>
           </button>
 
           <button
@@ -1236,84 +1232,163 @@ export default function BartenderRemotePage() {
               loadCurrentRoutes()
               loadCurrentChannels()
             }}
-            className={`flex flex-col items-center space-y-1 px-2 py-2 rounded-lg transition-all ${
+            className={`min-h-[52px] min-w-[60px] flex flex-col items-center justify-center gap-1.5 px-2.5 py-3 rounded-xl transition-all ${
               activeTab === 'routing'
-                ? 'bg-cyan-500/30 text-cyan-300'
-                : 'text-slate-500 hover:text-white hover:bg-sportsBar-800/5'
+                ? 'ring-1 ring-sky-400/50 bg-sky-500/20 text-sky-300 scale-[1.03]'
+                : 'text-slate-400 hover:text-slate-200'
             }`}
           >
-            <Zap className="w-4 h-4" />
-            <span className="text-xs font-medium">Routing</span>
+            <Zap className="h-5 w-5" />
+            <span className="text-sm font-medium">Routing</span>
           </button>
 
           <button
             onClick={() => setActiveTab('remote')}
-            className={`flex flex-col items-center space-y-1 px-2 py-2 rounded-lg transition-all ${
+            className={`min-h-[52px] min-w-[60px] flex flex-col items-center justify-center gap-1.5 px-2.5 py-3 rounded-xl transition-all ${
               activeTab === 'remote'
-                ? 'bg-orange-500/30 text-orange-300'
-                : 'text-slate-500 hover:text-white hover:bg-sportsBar-800/5'
+                ? 'ring-1 ring-sky-400/50 bg-sky-500/20 text-sky-300 scale-[1.03]'
+                : 'text-slate-400 hover:text-slate-200'
             }`}
           >
-            <Gamepad2 className="w-4 h-4" />
-            <span className="text-xs font-medium">Remote</span>
+            <Radio className="h-5 w-5" />
+            <span className="text-sm font-medium">Remote</span>
+          </button>
+
+          {/* Ambient tier — 44×52px, text-xs, text-slate-500 inactive */}
+          <button
+            onClick={() => setActiveTab('audio')}
+            className={`min-h-[44px] min-w-[52px] flex flex-col items-center justify-center gap-1 px-2 py-2 rounded-xl transition-all ${
+              activeTab === 'audio'
+                ? 'ring-1 ring-sky-400/50 bg-sky-500/20 text-sky-300 scale-[1.03]'
+                : 'text-slate-500 hover:text-slate-300'
+            }`}
+          >
+            <Volume2 className="h-4 w-4" />
+            <span className="text-xs font-medium">Audio</span>
           </button>
 
           <button
-            onClick={() => setActiveTab('schedule')}
-            className={`flex flex-col items-center space-y-1 px-2 py-2 rounded-lg transition-all ${
-              activeTab === 'schedule'
-                ? 'bg-orange-500/30 text-orange-300'
-                : 'text-slate-500 hover:text-white hover:bg-sportsBar-800/5'
+            onClick={() => setActiveTab('music')}
+            className={`min-h-[44px] min-w-[52px] flex flex-col items-center justify-center gap-1 px-2 py-2 rounded-xl transition-all ${
+              activeTab === 'music'
+                ? 'ring-1 ring-sky-400/50 bg-sky-500/20 text-sky-300 scale-[1.03]'
+                : 'text-slate-500 hover:text-slate-300'
             }`}
           >
-            <Calendar className="w-4 h-4" />
-            <span className="text-xs font-medium">Schedule</span>
+            <Music2 className="h-4 w-4" />
+            <span className="text-xs font-medium">Music</span>
           </button>
-
-          {djControlsEnabled && (
-            <button
-              onClick={() => setActiveTab('dj')}
-              className={`flex flex-col items-center space-y-1 px-2 py-2 rounded-lg transition-all ${
-                activeTab === 'dj'
-                  ? 'bg-orange-500/30 text-orange-300'
-                  : 'text-slate-500 hover:text-white hover:bg-sportsBar-800/5'
-              }`}
-            >
-              <Music className="w-4 h-4" />
-              <span className="text-xs font-medium">DJ</span>
-            </button>
-          )}
 
           {lightingEnabled && (
             <button
               onClick={() => setActiveTab('lighting')}
-              className={`flex flex-col items-center space-y-1 px-2 py-2 rounded-lg transition-all ${
+              className={`min-h-[44px] min-w-[52px] flex flex-col items-center justify-center gap-1 px-2 py-2 rounded-xl transition-all ${
                 activeTab === 'lighting'
-                  ? 'bg-purple-500/30 text-purple-300'
-                  : 'text-slate-500 hover:text-white hover:bg-sportsBar-800/5'
+                  ? 'ring-1 ring-sky-400/50 bg-sky-500/20 text-sky-300 scale-[1.03]'
+                  : 'text-slate-500 hover:text-slate-300'
               }`}
             >
-              <Lightbulb className="w-4 h-4" />
+              <Lightbulb className="h-4 w-4" />
               <span className="text-xs font-medium">Lighting</span>
             </button>
           )}
 
+          {/* Emergency — always visible, 44×44px */}
           <button
             onClick={() => {
               setActiveTab('power')
               checkTVStatus()
             }}
-            className={`flex flex-col items-center space-y-1 px-2 py-2 rounded-lg transition-all ${
+            className={`min-h-[44px] min-w-[44px] flex flex-col items-center justify-center gap-1 px-2 py-2 rounded-xl transition-all ${
               activeTab === 'power'
-                ? 'bg-red-500/30 text-red-300'
-                : 'text-slate-500 hover:text-white hover:bg-sportsBar-800/5'
+                ? 'ring-1 ring-sky-400/50 bg-sky-500/20 text-sky-300 scale-[1.03]'
+                : 'text-slate-500 hover:text-slate-300'
             }`}
           >
-            <Power className="w-4 h-4" />
+            <Power className="h-4 w-4" />
             <span className="text-xs font-medium">Power</span>
+          </button>
+
+          {/* Overflow — Schedule + DJ in a bottom sheet */}
+          <button
+            onClick={() => setMoreOpen(true)}
+            className={`min-h-[44px] min-w-[44px] flex flex-col items-center justify-center gap-1 px-2 py-2 rounded-xl transition-all ${
+              activeTab === 'schedule' || activeTab === 'dj'
+                ? 'ring-1 ring-sky-400/50 bg-sky-500/20 text-sky-300 scale-[1.03]'
+                : 'text-slate-500 hover:text-slate-300'
+            }`}
+            aria-label="More options"
+          >
+            <MoreHorizontal className="h-4 w-4" />
+            <span className="text-xs font-medium">More</span>
           </button>
         </div>
       </div>
+
+      {/* More overflow sheet — Schedule + DJ (conditional) */}
+      {moreOpen && (
+        <div
+          className="fixed inset-0 z-[60] flex items-end bg-slate-950/60 backdrop-blur-sm"
+          onClick={() => setMoreOpen(false)}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div
+            className="w-full bg-slate-900 border-t border-slate-700 rounded-t-2xl px-4 pt-4 pb-8 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-base font-semibold text-slate-100">More options</h3>
+              <button
+                onClick={() => setMoreOpen(false)}
+                className="h-10 w-10 flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
+                aria-label="Close"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="flex gap-3 flex-wrap">
+              <button
+                onClick={() => {
+                  setActiveTab('schedule')
+                  setMoreOpen(false)
+                }}
+                className={`flex-1 min-w-[140px] min-h-[64px] flex items-center gap-3 px-4 py-3 rounded-xl border border-slate-700 transition-all ${
+                  activeTab === 'schedule'
+                    ? 'ring-1 ring-sky-400/50 bg-sky-500/20 text-sky-300'
+                    : 'bg-slate-800/50 text-slate-300 hover:bg-slate-800 hover:text-slate-100'
+                }`}
+              >
+                <Clock className="h-5 w-5 flex-shrink-0" />
+                <div className="flex flex-col items-start">
+                  <span className="text-sm font-semibold">Schedule</span>
+                  <span className="text-xs opacity-70">Scheduled games</span>
+                </div>
+              </button>
+
+              {djControlsEnabled && (
+                <button
+                  onClick={() => {
+                    setActiveTab('dj')
+                    setMoreOpen(false)
+                  }}
+                  className={`flex-1 min-w-[140px] min-h-[64px] flex items-center gap-3 px-4 py-3 rounded-xl border border-slate-700 transition-all ${
+                    activeTab === 'dj'
+                      ? 'ring-1 ring-sky-400/50 bg-sky-500/20 text-sky-300'
+                      : 'bg-slate-800/50 text-slate-300 hover:bg-slate-800 hover:text-slate-100'
+                  }`}
+                >
+                  <Music className="h-5 w-5 flex-shrink-0" />
+                  <div className="flex flex-col items-start">
+                    <span className="text-sm font-semibold">DJ Mode</span>
+                    <span className="text-xs opacity-70">Assignment lock</span>
+                  </div>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

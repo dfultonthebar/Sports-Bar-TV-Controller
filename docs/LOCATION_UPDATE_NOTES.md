@@ -39,6 +39,142 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-04-18 — v2.23.5 — Extract memory + versioning guides out of CLAUDE.md
+
+**Risk:** GO — doc reorg only. No code changes. No runtime impact. Each location's next Claude Code session will see the new `docs/CLAUDE_MEMORY_GUIDE.md` and `docs/CLAUDE_VERSIONING_GUIDE.md` referenced in CLAUDE.md's new READ FIRST banner.
+
+**What changed:**
+- Two new guide files: `docs/CLAUDE_MEMORY_GUIDE.md` (memory systems, Rules 5 & 7 details) and `docs/CLAUDE_VERSIONING_GUIDE.md` (Rule 8 details, version-bump rules, the 3-doc interlock).
+- `CLAUDE.md` adds a "⚠️ READ FIRST" banner at the top requiring both guides as prerequisite reading. Standing Rules 5, 7, 8 in CLAUDE.md trimmed to one-line summaries pointing to the guides. Memory Bank System §6 and Version Bumping sections condensed to one paragraph each + pointer.
+
+**Why this matters:** CLAUDE.md had grown to 1,124 lines with the Standing Rules, Common Gotchas, hardware sections, and UI style guide all inline. The memory and versioning details kept getting bigger with each release. Extracting them into dedicated guides keeps CLAUDE.md scannable while preserving — and clarifying — the rules by giving them room to spell out edge cases.
+
+**Manual step per location (Claude: execute during Checkpoint B):**
+1. Verify banner + guide files arrived (see VERSION_SETUP_GUIDE.md §v2.23.5 step 1).
+2. Read both new guides fully. They contain the authoritative versions of Rules 5, 7, 8.
+3. Sync host auto-memory against the new guide content per Rule 7. If existing memory entries reference "CLAUDE.md §6" by line number, update the pointer to the relevant guide.
+
+**Rollback:** `git revert` cleanly restores the full text to CLAUDE.md and removes the guide files. No data loss.
+
+**Affected:** `CLAUDE.md`, `docs/CLAUDE_MEMORY_GUIDE.md` (new), `docs/CLAUDE_VERSIONING_GUIDE.md` (new), `docs/VERSION_SETUP_GUIDE.md`, `docs/LOCATION_UPDATE_NOTES.md`, `package.json`.
+
+---
+
+### 2026-04-18 — v2.23.3 — Add context7 + brave-search MCP servers project-wide
+
+**Risk:** GO — additive config only. Adds `.mcp.json` at repo root with two MCP servers and sets `enableAllProjectMcpServers: true` in `.claude/settings.json` so the auto-approval bypasses interactive consent at first Claude Code load. No runtime code; no DB impact. MCPs only affect Claude Code sessions at the repo — not the running Sports Bar app.
+
+**What each location gets automatically:**
+- **context7** (by Upstash) — live up-to-date library docs for Claude sessions. No API key. Helps with "is this still the current Drizzle API" / "what changed in Next.js 16" questions so the model doesn't guess.
+- **brave-search** (by MCP org) — web search. **Needs `BRAVE_API_KEY` in .env per location.** Free-tier key (2,000 queries/month) available at <https://api.search.brave.com/app/keys>. Without the key, Context7 works but Brave Search silently fails.
+
+**Manual step per location (Claude: execute during Checkpoint B):**
+1. Verify `.mcp.json` + settings.json flag arrived (see `docs/VERSION_SETUP_GUIDE.md` §v2.23.3 steps 1-2).
+2. **Sign up for a free Brave Search API key** (<https://api.search.brave.com/app/keys> — no credit card, 2-minute flow). The key has to be in the SHELL ENV Claude Code launches from, not just in `.env` — see VERSION_SETUP_GUIDE.md §v2.23.3 step 3 for both `~/.bashrc` export and `.env` pattern. Short version:
+    ```bash
+    echo 'export BRAVE_API_KEY=<paste-key>' >> ~/.bashrc
+    echo 'BRAVE_API_KEY=<paste-key>' >> /home/ubuntu/Sports-Bar-TV-Controller/.env
+    source ~/.bashrc
+    ```
+3. Smoke-test both MCPs in a Claude Code session at the repo (see guide §v2.23.3 step 4).
+
+If a location skips step 2, it's not an error — Context7 still works; Brave Search queries from Claude sessions just come back empty at that location.
+
+**Rollback:** Delete `.mcp.json`, remove `enableAllProjectMcpServers` from `.claude/settings.json`. MCPs stop loading. No Sports Bar app impact.
+
+**Affected:** `.mcp.json` (new), `.claude/settings.json` (modified), `docs/VERSION_SETUP_GUIDE.md`, `docs/LOCATION_UPDATE_NOTES.md`, `package.json`.
+
+---
+
+### 2026-04-18 — v2.23.2 — Enable frontend-design + feature-dev Claude Code plugins
+
+**Risk:** GO — additive config only. Adds `.claude/settings.json` with two enabled plugins from the built-in Claude Code official marketplace. No runtime code changes; no DB impact. Plugins only affect Claude Code sessions invoked inside this repo, not the running Sports Bar app.
+
+**What changed:**
+- `.claude/settings.json` (new) — `enabledPlugins`: `frontend-design@claude-plugins-official` and `feature-dev@claude-plugins-official`, both `true`. The `claude-plugins-official` marketplace is built into Claude Code — no separate marketplace-add needed.
+
+**What these plugins do:**
+- **frontend-design** (Anthropic): design philosophy + system prompts that guide Claude toward distinctive, production-grade UI work (intentional typography, purposeful color, meaningful animation) instead of generic output.
+- **feature-dev** (Anthropic): workflow for multi-step feature development — specialized subagents for codebase exploration, architecture, and quality review.
+
+**Manual step per location (Claude: execute during Checkpoint B):**
+1. `cat /home/ubuntu/Sports-Bar-TV-Controller/.claude/settings.json` to confirm the file arrived.
+2. If a later Claude Code session reports "plugin not found," run interactively once: `/plugin install frontend-design@claude-plugins-official` and `/plugin install feature-dev@claude-plugins-official`, then `/reload-plugins`. See `docs/VERSION_SETUP_GUIDE.md` §v2.23.2 for the full runbook.
+
+**Rollback:** Delete `.claude/settings.json` — plugins become disabled for project sessions. No impact on the Sports Bar app or DB.
+
+**Affected:** `.claude/settings.json` (new), `docs/VERSION_SETUP_GUIDE.md`, `docs/LOCATION_UPDATE_NOTES.md`, `package.json`.
+
+---
+
+### 2026-04-18 — v2.23.0 — AI Suggest diversity + per-location OTA affiliate aliases
+
+**Risk:** CAUTION — requires per-location manual step to populate OTA broadcast affiliates. Without the manual step, games broadcast on ABC/FOX/NBC/CBS (UFL, EPL, some NBA, some UFC) will continue to be filtered out of AI Suggest at locations other than Green Bay/Appleton (which already have WBAY/WLUK-TV/WGBA-TV/WFRV aliased). See `docs/VERSION_SETUP_GUIDE.md` section `v2.23.0` for the exact Claude-executable steps per location.
+
+**What changed (three coherent pieces):**
+
+1. **AI Suggest proposes more games.** The Ollama prompt was capped at 6 suggestions; now `min(totalInputs*2, games.length, 20)` suggestions. Rules rewritten to encourage league diversity and alternate routes (e.g. Brewers game on both cable ch 308 AND on firetv Apple TV+ so the manager can pick). Parser dedup allows up to 2 alternatives per input and 2 per game, rejecting only exact game+input duplicates. Learning loop unchanged — `pattern-analyzer.ts` still reads approved allocations hourly and builds team-routing patterns from manager choices.
+
+2. **`seedStationAliases()` is now a merge, not a skip.** Previously "if station_aliases has any rows, don't touch it" — which meant adding new entries to `STANDARD_ALIASES` in later releases was a no-op at every existing location. Now it per-row upserts: for known rows it unions new aliases with existing (preserving any location-edited aliases); for new rows it inserts. Future universal alias additions propagate automatically.
+
+3. **Per-location OTA affiliate aliases moved out of the shared seed.** `STANDARD_ALIASES` had ABC→WBAY, FOX→WLUK, NBC→WGBA, CBS→WFRV hardcoded — correct for Green Bay, wrong for every other city. Removed. New `seedLocalStationAliases()` reads `apps/web/data/station-aliases-local.json`, which is an empty template on main and populated per-location on each `location/<name>` branch. Also added 9 universal streaming app aliases (PrimeVideo, AppleTVPlus, ParamountPlus, Peacock, ESPNPlus, Netflix, Max, YouTubeTV, Hulu) which ARE the same everywhere.
+
+**What could break:**
+- **Green Bay/Appleton locations** already had the old hardcoded aliases in the DB, so those rows remain (merge doesn't delete). Nothing breaks. The merge ADDS streaming app aliases. UFL/EPL/NBA on ABC/FOX will now resolve correctly.
+- **Madison (Lucky's), Milwaukee, or any other city**: after merging v2.23.0, the DB will NOT yet have the location's correct ABC/FOX/NBC/CBS aliases — because those were never seeded. Claude at each location MUST execute Step 3-5 of the VERSION_SETUP_GUIDE.md v2.23.0 section BEFORE the build step, populating `station-aliases-local.json` AND patching the live DB.
+- Commit the populated JSON to the location branch (not main). Main keeps the empty template.
+
+**Manual step per location (Claude: execute during Checkpoint B):**
+1. `grep LOCATION_NAME /home/ubuntu/Sports-Bar-TV-Controller/.env` to identify this location.
+2. Determine OTA callsigns for this city (use `docs/VERSION_SETUP_GUIDE.md` reference table; web search for cities not listed).
+3. Write `apps/web/data/station-aliases-local.json` populated with this location's 4 OTA affiliates.
+4. Run the SQL in VERSION_SETUP_GUIDE.md §v2.23.0 Step 4 to patch the live DB.
+5. Commit the JSON to the location branch — do NOT push to main.
+
+The detailed Claude-executable steps (with exact SQL templates, callsign reference table, and verification curl command) are in `docs/VERSION_SETUP_GUIDE.md` under `### v2.23.0`. Auto-update's Checkpoint B must perform this population before the build runs, or the fix silently no-ops at that location.
+
+**Rollback:** The upsert change is additive (union-merge never deletes aliases). Git revert is safe — DB rows stay, AI Suggest prompt reverts to the 6-cap. The populated `station-aliases-local.json` stays on the location branch as a valid template for future use.
+
+**Affected:** `apps/web/src/app/api/scheduling/ai-suggest/route.ts`, `apps/web/src/lib/seed-from-json.ts`, `apps/web/data/station-aliases-local.json` (new), `docs/VERSION_SETUP_GUIDE.md`, `package.json`.
+
+---
+
+### 2026-04-18 — v2.22.12 — per-league duration learning from actual-vs-scheduled
+
+**Risk:** GO — additive pattern type. No schema change; uses existing `scheduling_patterns` table.
+
+`input_source_allocations` has been storing `allocated_at`, `expected_free_at`, and `actually_freed_at` since v2.19.0, but `pattern-analyzer.ts` never aggregated the duration data. Raw signal was sitting in the DB unused.
+
+New `analyzeLeagueDurationPatterns()` reads every completed allocation and computes per league: sample count, avg scheduled vs actual duration, P50 + P90 actual, avg + P90 overrun, and a recommended buffer = ceil(P90 overrun / 5) * 5 min. Writes `pattern_type='league_duration'` rows to `scheduling_patterns`.
+
+AI Suggest's Ollama prompt now includes `Learned league durations: mlb: ~209 min actual (+29 min over scheduled, n=1; buffer 30 min for P90 overrun)`, so future slot planning buffers high-overrun leagues correctly while on-time leagues get no buffer. Learning is per-venue from that venue's own completed allocations.
+
+**Affected:** `packages/scheduler/src/pattern-analyzer.ts`, `packages/scheduler/src/scheduler-service.ts`, `apps/web/src/app/api/scheduling/ai-suggest/route.ts`, `package.json`.
+
+---
+
+### 2026-04-17 — v2.22.11 — matrix single-card check is opt-in via env
+
+**Risk:** GO — fixes false-positive verify failure on multi-card WP-36X36 locations (Graystone). Single-card locations (Lucky's, Leg Lamp) now declare themselves via `MATRIX_SINGLE_CARD=true` in .env, which activates the strict offset=0 check. Multi-card (default) accepts any offset.
+
+**Manual step per single-card location:** add `MATRIX_SINGLE_CARD=true` to `.env`. Already done at Lucky's and Leg Lamp during rollout.
+
+**Affected:** `scripts/verify-install.sh`, `CLAUDE.md`, `package.json`.
+
+---
+
+### 2026-04-17 — v2.22.10 — wrap drizzle-kit push in PTY for data-loss prompts
+
+**Risk:** GO — small fix to schema_push.
+
+v2.22.8's `yes | drizzle-kit push` didn't work because drizzle-kit's `prompts` package bails with "Interactive prompts require a TTY terminal" the moment it detects stdin isn't a tty, before reading any characters. Same bug class as the Claude CLI TTY regression — needs a real pty. Fix: wrap in `script -qfc "yes | ... drizzle-kit push" /dev/null`. The `yes` inside the script'd shell pre-stages "y\n" answers and the pty satisfies the tty check.
+
+Still affects Graystone (3 rows in N8nWebhookLog that v2.20.0's schema removed).
+
+**Affected:** `scripts/auto-update.sh`, `package.json`.
+
+---
+
 ### 2026-04-17 — v2.22.9 — orchestration scripts take main's version + longer checkpoint timeouts
 
 **Risk:** GO — fixes two remaining blockers.

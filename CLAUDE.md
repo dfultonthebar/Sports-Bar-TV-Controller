@@ -2,6 +2,30 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+---
+
+## ⚠️ READ FIRST — REQUIRED BEFORE ANY NON-TRIVIAL WORK
+
+Before starting any task on this repo, you MUST read these two companion
+guides in addition to this file. They hold the detailed rules that were
+extracted from CLAUDE.md to keep it focused. Standing Rules 5, 7, and 8
+below are just SUMMARIES — the full "how to apply" lives in those guides.
+
+1. **`docs/CLAUDE_MEMORY_GUIDE.md`** — the three memory systems
+   (auto-memory, Memory Bank, CLAUDE.md), how to sync between them, when
+   to save vs. not save, and how Rules 5 and 7 apply to edge cases.
+
+2. **`docs/CLAUDE_VERSIONING_GUIDE.md`** — version-bumping rules, the
+   interlock between `VERSION_SETUP_GUIDE.md` / `LOCATION_UPDATE_NOTES.md`
+   / CLAUDE.md, commit strategy for release changes, how auto-update's
+   Checkpoint A/B/C consume these docs.
+
+If you haven't read both, you're missing context needed to apply Standing
+Rules 5, 7, and 8 correctly — and you will silently break cross-location
+sync, memory propagation, or release tracking.
+
+---
+
 ## V2 Monorepo Architecture
 
 This project uses **Turborepo** with npm workspaces. The codebase is organized as:
@@ -547,25 +571,43 @@ on the wrong physical TVs with no error — just confused operators. Lucky's
 sending every "output 1" request to physical output 27 for weeks before
 being caught.
 
-**Expected values by model:**
+**Expected values by card layout (NOT by model string):**
 
-| Model family | outputOffset | audioOutputCount notes |
+The WP-8X8, WP-16X16, and WP-36X36 chassis are all sold in BOTH single-card
+and multi-card configurations — the model string alone does not tell you
+which. Card layout is set per-location by the installer.
+
+| Card layout | outputOffset | audioOutputCount notes |
 |---|---|---|
-| **WP-8X8, WP-16X16, WP-36X36** (single-card) | **MUST be 0** | 0 if audio routes via Atlas/dbx/BSS DSP; non-zero only if Wolf Pack outputs are wired to speakers |
-| **WP-48+** (multi-card) | Per-card, depends on physical wiring — see the location's card-slot assignments | Per-location |
+| **Single-card** (one card fills all outputs) | **MUST be 0** | 0 if audio routes via Atlas/dbx/BSS DSP; non-zero only if Wolf Pack outputs are wired to speakers |
+| **Multi-card** (chassis populated with multiple daughter cards) | Per-card, depends on physical wiring | Per-location |
 
-**Per-location reference:**
+**Per-location reference** (updated 2026-04-18 after operator verification):
 
-| Location | Model | outputOffset | audioOutputCount | Notes |
-|---|---|---|---|---|
-| Holmgren Way | Wolf Pack 48-port | Per card layout | 4 | Outputs 37-40 are audio-only (CLAUDE.md §10) |
-| Graystone | Wolf Pack (multi-card) | +32 for audio card | 4 | Comment in `wolfpack-matrix-service.ts:275` |
-| Lucky's 1313 | **WP-36X36 (single-card)** | **0** | **0** | Audio via dbx ZonePRO 1260m @ 192.168.10.50, NOT Wolf Pack outputs |
+| Location | Model | Layout | outputOffset | audioOutputCount | Notes |
+|---|---|---|---|---|---|
+| Stoneyard Greenville | Wolf Pack WP-36X36 | **Multi-card** | Per card | 4 | |
+| Stoneyard Appleton | Wolf Pack | **Multi-card** | Per card | 4 | |
+| Holmgren Way | Wolf Pack 48-port | **Multi-card** | Per card layout | 4 | Outputs 37-40 are audio-only (CLAUDE.md §10) |
+| Graystone | Wolf Pack WP-36X36 | **Multi-card** | +32 for audio card | 4 | Comment in `wolfpack-matrix-service.ts:275` |
+| Lucky's 1313 | Wolf Pack WP-36X36 | **Single-card** | **0 (enforced)** | **0** | Audio via dbx ZonePRO 1260m @ 192.168.10.50 |
+| Leg Lamp | Wolf Pack | **Single-card** | **0 (enforced)** | 0 | |
 
-**Enforcement:**
-- `apps/web/src/instrumentation.ts` logs `[MATRIX-CONFIG] ⚠` at startup if a single-card model has non-zero offset
-- `scripts/verify-install.sh` has a `matrix_config` layer that FAILS the install-verify for the same condition, rolling back auto-updates that somehow land bad values
-- Multi-card locations are not auto-verified (their values are wiring-specific) — operator must maintain the row in this table when adding/moving cards
+**How enforcement is opted in:**
+
+Single-card locations declare themselves by setting `MATRIX_SINGLE_CARD=true`
+in the location's `.env`. When this flag is set, `scripts/verify-install.sh`'s
+`matrix_config` layer will FAIL the install if `outputOffset != 0`, rolling
+back the auto-update before bad values ship. Multi-card locations leave the
+flag unset (the default) and any offset is accepted.
+
+This was changed from a model-name-based check after Graystone's multi-card
+WP-36X36 failed verify with "offset=32 on WP-36X36 (expected 0)" — the old
+check assumed every WP-36X36 was single-card. Opt-in via env is explicit
+and lets operators match the check to physical wiring regardless of model.
+
+- `apps/web/src/instrumentation.ts` logs `[MATRIX-CONFIG] ⚠` at startup if a single-card model has non-zero offset (separate legacy check, still useful as a runtime warning).
+- Multi-card locations are not auto-verified (their values are wiring-specific) — operator must maintain the row in this table when adding/moving cards.
 
 **When adding a new location**, add a row to the per-location table above
 BEFORE the first auto-update merges it into this file. When changing physical
@@ -609,29 +651,16 @@ The bartender Video tab reads both `zones` and `rooms` from the `BartenderLayout
 
 4. **Force-rebuild when Turbo cache lies.** If `npm run build` completes in under 1 second with `FULL TURBO` and all tasks cached, the source changes did NOT get compiled. Run `npx turbo run build --force` (or `rm -rf apps/web/.next && npm run build`) to bypass the cache. This commonly happens after switching branches or cherry-picking.
 
-5. **When told to "remember" something, update CLAUDE.md too.** Memory files are per-host — only this machine's future sessions see them. CLAUDE.md is in the shared repo and gets merged to every location. When the user says "remember X", save to local memory AND add the rule to the appropriate section of CLAUDE.md, then commit+push with a version bump. This is how rules propagate to Lucky's, Holmgren, Graystone, Leg Lamp, and any future location.
+5. **When told to "remember" something, update CLAUDE.md too.** Save to local auto-memory AND add to the appropriate CLAUDE.md section, then commit+push with a version bump so the rule propagates to every location. **Full application details in `docs/CLAUDE_MEMORY_GUIDE.md` → "Rule 5".** This rule interacts with the three memory systems — read the guide before applying.
 
 6. **Always use `scripts/auto-update.sh` for updates.** When asked to update a location or "auto update yourself", run `bash scripts/auto-update.sh --triggered-by=manual_cli`. Never manually merge main, run npm ci, or restart PM2 — the script handles conflict resolution, DB schema push, backup creation, Turbo cache busting, PM2 restart, verify-install checks, and Claude checkpoint reviews. Manual updates skip safety checks and are error-prone.
 
-7. **Sync memory ↔ CLAUDE.md on every read (bidirectional).** When reading this file during a session (especially Checkpoint B of auto-update), compare its rules/gotchas/standing-instructions against the host memory at `~/.claude/projects/-home-ubuntu-Sports-Bar-TV-Controller/memory/`. In BOTH directions:
-   - **CLAUDE.md → memory:** If a rule appears in CLAUDE.md but is missing from memory, save it as a new memory entry (feedback/gotcha type) and update `MEMORY.md`. This ensures every Claude session on this host inherits the rule, even without re-reading CLAUDE.md in full.
-   - **memory → CLAUDE.md:** If a rule/gotcha is in host memory but NOT in CLAUDE.md, it's location-only knowledge that other locations are missing. Add it to the appropriate section of CLAUDE.md, bump version, commit to main (or the current branch if on a location branch — eventually to main). This is how institutional knowledge caught at one location propagates to every other.
-   - The two sources should be near-duplicates in content. Rule 5 covers new rules the user explicitly asks you to remember; Rule 7 covers the passive drift-catching on every CLAUDE.md read.
+7. **Sync memory ↔ CLAUDE.md bidirectionally on every read.** When reading CLAUDE.md (especially at auto-update Checkpoint B), diff it against host auto-memory in BOTH directions: CLAUDE.md→memory (save missing rules locally), memory→CLAUDE.md (promote location-only knowledge to shared). **Full application details in `docs/CLAUDE_MEMORY_GUIDE.md` → "Rule 7"**, including how to handle stale entries and conflict resolution.
 
-8. **Read and CONTRIBUTE to `docs/VERSION_SETUP_GUIDE.md` on every update.** This file has two purposes, both mandatory:
-
-   **Reading (every version-changing update):** Before trusting a version bump, scan the entry for the target version. Each entry lists REQUIRED manual setup — install Ollama, seed a DB table, set a new env var, etc. Checkpoint B of auto-update must verify each "Required manual step" was completed OR perform it automatically (if safe) OR flag it for the operator in the decision response. `LOCATION_UPDATE_NOTES.md` tells you WHETHER to update; `VERSION_SETUP_GUIDE.md` tells you WHAT TO DO so it works after updating.
-
-   **Contributing (every location, every session):** The guide is a living knowledge base that every location improves. You MUST contribute in two cases:
-   - **When bumping a version to main**, include an entry for that version in the same commit as `package.json`. List any new setup required (dependencies, DB work, env keys, verification commands). Skipping this means the next location to update will silently miss required setup.
-   - **When you hit an error at a location and fix it**, append an entry to the "Known Errors & Fixes" section of the guide with: the symptom the operator saw, the root cause, the exact fix (SQL, command, code path), and how to verify the fix worked. Other locations hitting the same error later will find the fix from reading the guide instead of re-debugging. This includes: botched schema pushes, missing seed rows, wrong-IP config, stuck auto-update steps, UI spinners, routing misroutes — anything where the path from symptom → fix was non-obvious. If you're not sure whether a fix is generally applicable or location-specific, err on the side of documenting it with a location tag; future readers can filter.
-
-   The guide lives at `/home/ubuntu/Sports-Bar-TV-Controller/docs/VERSION_SETUP_GUIDE.md`. Commit edits to the current branch (main for shared knowledge; a location branch only if the fix is truly location-specific). After committing a fix entry to a location branch, cherry-pick or promote to main so every other location inherits it on their next update.
+8. **Read and CONTRIBUTE to `docs/VERSION_SETUP_GUIDE.md` on every update.** On auto-update, read the entry for the target version and execute its Required Manual Steps (or flag them). When bumping a version to main, write a new entry in the same commit. When fixing a location error, append to Known Errors & Fixes. **Full application details in `docs/CLAUDE_VERSIONING_GUIDE.md` → "Standing Rule 8"**, including the split between `VERSION_SETUP_GUIDE.md` (what-to-do) and `LOCATION_UPDATE_NOTES.md` (whether-to-update).
 
 ### Version Bumping (REQUIRED — every commit to main)
-**Every commit pushed to `main` MUST include a version bump in root `package.json`.** Do not push code changes and bump the version separately — include it in the same commit or at minimum the same push. A commit without a version bump means two locations can report the same version while running different code, making debugging impossible.
-- **Minor bump** (2.1.0 → 2.2.0): Feature additions, migrations, significant changes
-- **Patch bump** (2.1.0 → 2.1.1): Bug fixes, docs, small adjustments
+**Every commit pushed to `main` MUST include a version bump in root `package.json`.** Same commit or at minimum same push. Code-change-without-bump creates debugging hell when locations report matching versions for mismatched code. Minor bump for features/migrations; patch for bug fixes/docs. **Full rules in `docs/CLAUDE_VERSIONING_GUIDE.md` → "Version Bumping".**
 
 ### Making Schema Changes
 ```bash
@@ -680,34 +709,8 @@ curl -X POST http://localhost:3001/api/cec/cable-box/test \
 - `packages/validation/src/schemas.ts` - Centralized validation schemas
 - `packages/rate-limiting/src/rate-limiter.ts` - Rate limit configurations
 
-#### 6. Memory Bank System
-**Purpose:** Automatic project context snapshots for resume-after-restart capability
-
-**Location:** `apps/web/src/lib/memory-bank/`
-**CLI Commands:**
-```bash
-npm run memory:snapshot  # Create manual snapshot
-npm run memory:restore   # View latest snapshot
-npm run memory:list      # List all snapshots
-npm run memory:stats     # Show storage statistics
-npm run memory:watch     # Watch files and auto-snapshot (has ENOSPC issues, use carefully)
-```
-
-**API Endpoints:**
-- `GET /api/memory-bank/current` - Get latest snapshot
-- `GET /api/memory-bank/history` - List all snapshots
-- `POST /api/memory-bank/snapshot` - Create new snapshot
-- `POST /api/memory-bank/restore` - Restore specific snapshot
-
-**What Gets Captured:**
-- Git status (branch, commit, modified files)
-- Modified file list (unstaged, staged, untracked)
-- System state (database location, port, Node version)
-- Quick resume commands
-
-**Storage:** `/memory-bank/*.md` files (auto-cleanup keeps 30 most recent)
-
-**Use Case:** When terminal/SSH session ends, Memory Bank preserves project state. Next Claude Code session can restore context instantly.
+#### 6. Memory Bank System (resume-after-restart snapshots)
+Per-host project-state snapshot tool at `apps/web/src/lib/memory-bank/`. Captures git status, modified files, system state. Primarily an operator tool for "SSH session died, what was I doing?" use case. CLI: `npm run memory:snapshot`, `memory:restore`, `memory:list`. API under `/api/memory-bank/*`. **Full details (CLI commands, API endpoints, relationship to the other two memory systems — Claude auto-memory and CLAUDE.md itself) in `docs/CLAUDE_MEMORY_GUIDE.md`.**
 
 #### 7. RAG Documentation Server
 **Purpose:** Local documentation search and Q&A using Ollama LLM

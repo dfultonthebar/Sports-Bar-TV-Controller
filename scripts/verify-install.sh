@@ -411,14 +411,24 @@ run_check() {
     fi
 }
 
-# Matrix config sanity: if the active MatrixConfiguration is a single-card
-# Wolf Pack (WP-8X8/16X16/36X36), outputOffset MUST be 0. A non-zero offset
-# means every routing command lands on the wrong physical output — silent
-# but destructive. Lucky's 1313 shipped with outputOffset=26 on a WP-36X36
-# for weeks before being caught. Multi-card models (WP-48 etc.) can
-# legitimately have non-zero offsets, so we only flag the single-card case.
+# Matrix config sanity: on SINGLE-CARD Wolf Pack chassis, outputOffset
+# MUST be 0 or every routing command lands on the wrong physical output —
+# silent but destructive. Lucky's 1313 shipped with outputOffset=26 on a
+# WP-36X36 for weeks before being caught. Multi-card chassis legitimately
+# have non-zero offsets per card.
+#
+# The WP-36X36 chassis (and even WP-8X8/WP-16X16 in rare cases) can be
+# deployed as either single-card or multi-card — the model string alone
+# does NOT distinguish them. So this check is OPT-IN: a single-card
+# location declares itself by setting `MATRIX_SINGLE_CARD=true` in its
+# .env, which activates the offset=0 requirement. Multi-card locations
+# leave it unset (the default) and any offset is accepted.
+#
+# Current single-card locations (as of 2026-04-18): Lucky's 1313, Leg Lamp.
+# Current multi-card locations: Stoneyard Greenville, Stoneyard Appleton,
+# Holmgren Way, Graystone.
 check_matrix_config() {
-    log_info "Checking MatrixConfiguration sanity for single-card Wolf Packs..."
+    log_info "Checking MatrixConfiguration sanity..."
     local row
     row=$(sqlite3 "$DB_PATH" "SELECT model || '|' || outputOffset FROM MatrixConfiguration WHERE isActive=1 LIMIT 1;" 2>/dev/null || echo "")
     if [ -z "$row" ]; then
@@ -428,19 +438,31 @@ check_matrix_config() {
     fi
     local model="${row%|*}"
     local offset="${row#*|}"
-    local model_upper
-    model_upper=$(echo "$model" | tr '[:lower:]' '[:upper:]')
-    case "$model_upper" in
-        WP-8X8*|WP-16X16*|WP-36X36*)
-            if [ "$offset" -ne 0 ] 2>/dev/null; then
-                log_fail "Single-card Wolf Pack ($model) has outputOffset=$offset but must be 0 — routing will land on wrong outputs"
-                record "matrix_config" 0 "offset=$offset on $model (expected 0)"
-                return 16
-            fi
-            ;;
-    esac
-    log_pass "MatrixConfiguration OK (model=$model, outputOffset=$offset)"
-    record "matrix_config" 1 "model=$model offset=$offset"
+
+    # Read MATRIX_SINGLE_CARD from env (runtime) or fall back to .env file at
+    # the fixed repo root. verify-install.sh runs under `set -u` and does
+    # NOT inherit REPO_ROOT from auto-update.sh — use the absolute path.
+    local single_card="${MATRIX_SINGLE_CARD:-}"
+    local env_file="/home/ubuntu/Sports-Bar-TV-Controller/.env"
+    if [ -z "$single_card" ] && [ -f "$env_file" ]; then
+        single_card=$(grep -E '^MATRIX_SINGLE_CARD=' "$env_file" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'")
+    fi
+
+    if [ "$single_card" = "true" ]; then
+        if [ "$offset" -ne 0 ] 2>/dev/null; then
+            log_fail "Single-card Wolf Pack ($model) declared via MATRIX_SINGLE_CARD=true has outputOffset=$offset but must be 0 — routing will land on wrong outputs"
+            record "matrix_config" 0 "offset=$offset on single-card $model (expected 0)"
+            return 16
+        fi
+        log_pass "MatrixConfiguration OK (single-card $model, outputOffset=0)"
+        record "matrix_config" 1 "single-card $model offset=0"
+        return 0
+    fi
+
+    # Multi-card (default): any offset is acceptable — each card slot in
+    # the chassis has its own offset per the physical wiring.
+    log_pass "MatrixConfiguration OK (multi-card $model, outputOffset=$offset accepted — set MATRIX_SINGLE_CARD=true in .env to enforce offset=0)"
+    record "matrix_config" 1 "multi-card $model offset=$offset"
     return 0
 }
 
