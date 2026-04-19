@@ -106,6 +106,58 @@ export async function checkAllocationConflict(
 }
 
 /**
+ * Like checkAllocationConflict but returns EVERY booking that overlaps
+ * [startUnix, endUnix), not just the first. Used by GameWithContext
+ * (v2.26.0) to populate the `allocations` array so consumers can show
+ * "this input has 3 bookings in this window" rather than just
+ * "conflict detected".
+ */
+export async function getAllocationConflicts(
+  inputSourceId: string,
+  startUnix: number,
+  endUnix: number,
+  excludeAllocationId?: string | null,
+): Promise<ConflictInfo[]> {
+  if (!inputSourceId || startUnix >= endUnix) return []
+
+  const rows = await db
+    .select({
+      allocation: schema.inputSourceAllocations,
+      game: schema.gameSchedules,
+    })
+    .from(schema.inputSourceAllocations)
+    .leftJoin(
+      schema.gameSchedules,
+      eq(schema.inputSourceAllocations.gameScheduleId, schema.gameSchedules.id),
+    )
+    .where(
+      and(
+        eq(schema.inputSourceAllocations.inputSourceId, inputSourceId),
+        inArray(schema.inputSourceAllocations.status, ['pending', 'active']),
+        lt(schema.inputSourceAllocations.allocatedAt, endUnix),
+        gt(schema.inputSourceAllocations.expectedFreeAt, startUnix),
+      ),
+    )
+    .all()
+
+  return rows
+    .filter(r => !excludeAllocationId || r.allocation.id !== excludeAllocationId)
+    .map(r => {
+      const game = r.game
+      const gameLabel = game
+        ? [game.awayTeamName, game.homeTeamName].filter(Boolean).join(' @ ') || 'existing booking'
+        : 'existing booking'
+      return {
+        allocationId: r.allocation.id,
+        allocatedAt: r.allocation.allocatedAt,
+        expectedFreeAt: r.allocation.expectedFreeAt,
+        status: r.allocation.status,
+        gameLabel,
+      }
+    })
+}
+
+/**
  * Find the FIRST free input among a candidate list, skipping any that
  * would collide with an existing booking during [startUnix, endUnix).
  * Candidates are checked in array order; use that to express preference
