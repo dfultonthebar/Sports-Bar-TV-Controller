@@ -225,6 +225,21 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // 3b. Apply any ScheduledOverrideDefaults for this game's teams BEFORE
+    // the insert. These are the rules the operator applied from the
+    // override-learn digest — "never route Marlins to TV 13", etc.
+    // The helper returns the filtered/augmented list and writes an audit
+    // log row if anything changed; if no rules match, the list is returned
+    // unchanged. Non-fatal on error — allocation proceeds with the
+    // original list.
+    const { applyOverrideDefaults } = await import('@/lib/scheduling/apply-override-defaults')
+    const overrideResult = await applyOverrideDefaults(
+      tvOutputIds,
+      gameSchedule.homeTeamName,
+      gameSchedule.awayTeamName,
+    )
+    const finalTvOutputIds = overrideResult.finalOutputIds
+
     // 4. Create the input source allocation
     const allocation = {
       id: crypto.randomUUID(),
@@ -232,8 +247,8 @@ export async function POST(request: NextRequest) {
       inputSourceType: resolvedType,
       gameScheduleId: gameSchedule.id,
       channelNumber: channelNumber,
-      tvOutputIds: JSON.stringify(tvOutputIds), // Matrix output channel numbers the bartender assigned
-      tvCount: tvOutputIds.length,
+      tvOutputIds: JSON.stringify(finalTvOutputIds),
+      tvCount: finalTvOutputIds.length,
       allocatedAt: tuneAtUnix, // When to actually tune
       expectedFreeAt: endTimeUnix,
       status: 'pending',

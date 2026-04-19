@@ -149,5 +149,5 @@ fi
 
 echo ""
 echo -e "${BLUE}════════════════════════════════════════════════════════════${NC}"
-echo -e "${BLUE}For more information, see: REBUILD_REQUIRED.md${NC}"
+echo -e "${BLUE}For more information, see: docs/REBUILD_REQUIRED.md${NC}"
 echo -e "${BLUE}════════════════════════════════════════════════════════════${NC}"

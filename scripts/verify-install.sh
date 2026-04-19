@@ -439,10 +439,13 @@ check_matrix_config() {
     local model="${row%|*}"
     local offset="${row#*|}"
 
-    # Read MATRIX_SINGLE_CARD from env (runtime) or fall back to .env file.
+    # Read MATRIX_SINGLE_CARD from env (runtime) or fall back to .env file at
+    # the fixed repo root. verify-install.sh runs under `set -u` and does
+    # NOT inherit REPO_ROOT from auto-update.sh — use the absolute path.
     local single_card="${MATRIX_SINGLE_CARD:-}"
-    if [ -z "$single_card" ] && [ -f "$REPO_ROOT/.env" ]; then
-        single_card=$(grep -E '^MATRIX_SINGLE_CARD=' "$REPO_ROOT/.env" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'")
+    local env_file="/home/ubuntu/Sports-Bar-TV-Controller/.env"
+    if [ -z "$single_card" ] && [ -f "$env_file" ]; then
+        single_card=$(grep -E '^MATRIX_SINGLE_CARD=' "$env_file" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'")
     fi
 
     if [ "$single_card" = "true" ]; then
