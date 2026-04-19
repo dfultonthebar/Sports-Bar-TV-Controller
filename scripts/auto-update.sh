@@ -803,6 +803,11 @@ bash "$VERIFY_SCRIPT" --json >"$VERIFY_JSON" 2>>"$LOG_FILE"
 VERIFY_EXIT=$?
 log "verify-install.sh exit: $VERIFY_EXIT"
 log "verify-install.sh output: $(cat "$VERIFY_JSON" 2>/dev/null | head -20)"
+# Capture for heartbeat file (v2.25.2+). One-line JSON suitable for
+# embedding inside another JSON document.
+if [ -f "$VERIFY_JSON" ]; then
+  VERIFY_INSTALL_JSON=$(cat "$VERIFY_JSON" | tr -d '\n' | tr -s ' ')
+fi
 
 if [ "$VERIFY_EXIT" -ne 0 ]; then
   rm -f "$VERIFY_JSON"
@@ -832,6 +837,35 @@ step "finalize"
 if [ -d "$REPO_ROOT/apps/web/.next.bak" ]; then
   log "Removing stale apps/web/.next.bak"
   rm -rf "$REPO_ROOT/apps/web/.next.bak"
+fi
+
+# Heartbeat (v2.25.2+): write .auto-update-last-success.json at repo root
+# with the just-verified state. Committed + pushed alongside the merge so
+# the Fleet Dashboard can read verify-install-7/7-PASS, uptime, and
+# success timestamp via `git show origin/location/X:.auto-update-last-success.json`.
+# Tells the dashboard "this location is actually HEALTHY right now", not
+# just "last commit was N hours ago".
+#
+# The file is gitignored on main (main has no concept of "last successful
+# update at this location") but tracked on location branches. We force-
+# add it here with `git add -f` so the gitignore doesn't block the commit.
+if [ -n "${VERIFY_INSTALL_JSON:-}" ]; then
+  {
+    printf '{\n'
+    printf '  "version": "%s",\n' "${POST_MERGE_VERSION:-unknown}"
+    printf '  "branch": "%s",\n' "${BRANCH:-unknown}"
+    printf '  "commitSha": "%s",\n' "${POST_MERGE_SHA:-unknown}"
+    printf '  "successAt": "%s",\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    printf '  "successAtUnix": %d,\n' "$(date +%s)"
+    printf '  "runId": "%s",\n' "$(basename "$LOG_FILE" .log)"
+    printf '  "verifyInstall": %s\n' "$VERIFY_INSTALL_JSON"
+    printf '}\n'
+  } > "$REPO_ROOT/.auto-update-last-success.json"
+  git -C "$REPO_ROOT" add -f ".auto-update-last-success.json" 2>/dev/null || true
+  if ! git -C "$REPO_ROOT" diff --cached --quiet -- ".auto-update-last-success.json" 2>/dev/null; then
+    git -C "$REPO_ROOT" commit -q -m "chore(heartbeat): update .auto-update-last-success.json ($(date +%Y-%m-%d-%H-%M))" 2>/dev/null || true
+    log "Heartbeat file committed"
+  fi
 fi
 
 # Push the merge commit back to origin so the Fleet Dashboard (v2.24.0+)

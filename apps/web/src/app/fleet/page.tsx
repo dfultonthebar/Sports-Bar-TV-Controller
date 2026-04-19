@@ -17,6 +17,13 @@ interface FleetLocation {
   lastAutoUpdateDate: string | null
   staleness: 'healthy' | 'warning' | 'stuck' | 'unknown'
   stalenessReason: string
+  heartbeat?: {
+    successAtUnix: number
+    runId: string
+    verifyInstallStatus: string | null
+    verifyInstallPassed: number | null
+    verifyInstallTotal: number | null
+  } | null
 }
 
 interface FleetStatus {
@@ -247,6 +254,26 @@ export default function FleetDashboardPage() {
                       <span className="text-slate-600">&rarr; </span>
                       {loc.lastCommitSubject}
                     </p>
+                  )}
+
+                  {loc.heartbeat && loc.heartbeat.successAtUnix > 0 && (
+                    <div className="mt-3 pt-3 border-t border-slate-700/50">
+                      <p className="text-xs text-slate-400 flex items-center gap-2 flex-wrap">
+                        <span className="text-emerald-400 font-medium">✓ Last verified-good</span>
+                        <span>{timeAgo(loc.heartbeat.successAtUnix)}</span>
+                        {loc.heartbeat.verifyInstallStatus && (
+                          <span>
+                            · verify-install:
+                            <span className={loc.heartbeat.verifyInstallStatus === 'PASS' ? 'text-emerald-300 ml-1' : 'text-rose-300 ml-1'}>
+                              {loc.heartbeat.verifyInstallStatus}
+                              {loc.heartbeat.verifyInstallPassed !== null && loc.heartbeat.verifyInstallTotal !== null && (
+                                <span> {loc.heartbeat.verifyInstallPassed}/{loc.heartbeat.verifyInstallTotal}</span>
+                              )}
+                            </span>
+                          </span>
+                        )}
+                      </p>
+                    </div>
                   )}
                 </div>
               )
