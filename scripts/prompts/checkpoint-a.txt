@@ -142,6 +142,38 @@ Do NOT STOP for:
 - New routes, components, or packages appearing
 - docs/*.md files changing (they're just documentation)
 
+## Rollback-learn consultation (v2.25.1+)
+
+Before finalizing your decision, query the local rollback-learn API to
+see if the incoming commits resemble a pattern that has already
+failed on this host or another location:
+
+```bash
+curl -sS -m 5 http://localhost:3001/api/auto-update/failures 2>/dev/null | head -c 4000
+```
+
+Expected: JSON with a `failures` array. Each entry =
+`{failedStep, signature, occurrences, fullReason, affectedVersions}`.
+Look at the top 5 by `occurrences`.
+
+For each known failure, ask yourself:
+- Does the current diff touch files related to the `failedStep`?
+  (e.g. a `schema_push` failure matters if the merge modifies
+  `packages/database/src/schema.ts`.)
+- Is the incoming version in or near the `affectedVersions` list?
+- Does `fullReason` reference a module/dep being upgraded by the
+  merge?
+
+If any of these are true AND the failure has ≥3 occurrences, escalate
+GO to CAUTION with the specific pattern cited:
+
+```
+DECISION: CAUTION - Known failure pattern: schema_push has aborted 5× with "index X already exists" on v2.12.x+; incoming commits modify schema.ts. Proceeding with awareness.
+```
+
+API unavailable or empty response → treat as "no known patterns" and
+decide normally. Never downgrade GO to STOP on this signal alone.
+
 ## Output format — first line ONLY, no text before it
 
 ```
