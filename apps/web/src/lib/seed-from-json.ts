@@ -418,15 +418,128 @@ async function seedBartenderLayout(): Promise<{ seeded: boolean; count: number }
   }
 }
 
+// ---------------------------------------------------------------------------
+// INPUT SOURCES (v2.25.4) — derived from the 3 device-source-of-truth tables.
+//
+// AI Suggest and the scheduler read `input_sources` for their candidate list
+// of places to route a game. Historically this table was populated by hand
+// (or by a bootstrap that missed receivers added later), which is why
+// Holmgren was running with 1 of 6 DirecTVs in input_sources even though
+// all 6 were in DirecTVDevice. AI Suggest then never considered the other 5.
+//
+// This seeder enumerates DirecTVDevice, FireTVDevice, and irDevices
+// (filtered to Cable Box entries) and inserts one input_sources row per
+// device that doesn't yet have one. Idempotent — existing rows are left
+// alone (we don't overwrite manually-tuned fields like available_networks
+// or priority_rank). Locations with 2 receivers get 2 rows; locations
+// with 8 get 8. Fleet-wide shape works regardless of count.
+// ---------------------------------------------------------------------------
+async function seedInputSources(): Promise<{ seeded: boolean; count: number }> {
+  try {
+    const existing = await db.select({
+      id: schema.inputSources.id,
+      deviceId: schema.inputSources.deviceId,
+      type: schema.inputSources.type,
+    }).from(schema.inputSources).all()
+    const existingByDeviceId = new Map<string, boolean>()
+    for (const r of existing) {
+      if (r.deviceId) existingByDeviceId.set(`${r.type}:${r.deviceId}`, true)
+    }
+
+    const inserts: Array<{ name: string; type: string; deviceId: string; priorityRank: number; matrixInputId: string | null; availableNetworks: string }> = []
+
+    // DirecTV boxes
+    const directvs = await db.select().from(schema.direcTVDevices).all()
+    for (const d of directvs) {
+      const key = `directv:${d.id}`
+      if (!existingByDeviceId.has(key)) {
+        inserts.push({
+          name: d.name,
+          type: 'directv',
+          deviceId: d.id,
+          priorityRank: 70,
+          matrixInputId: null,
+          availableNetworks: '[]',
+        })
+      }
+    }
+
+    // Fire TV devices
+    const firetvs = await db.select().from(schema.fireTVDevices).all()
+    for (const d of firetvs) {
+      const key = `firetv:${d.id}`
+      if (!existingByDeviceId.has(key)) {
+        inserts.push({
+          name: d.name,
+          type: 'firetv',
+          deviceId: d.id,
+          priorityRank: 60,
+          matrixInputId: null,
+          availableNetworks: '[]',
+        })
+      }
+    }
+
+    // Cable boxes via IRDevice
+    const irs = await db.select().from(schema.irDevices).all()
+    for (const d of irs) {
+      const t = (d.deviceType || '').toLowerCase()
+      if (t !== 'cablebox' && t !== 'cable box' && t !== 'cable') continue
+      const key = `cable:${d.id}`
+      if (!existingByDeviceId.has(key)) {
+        inserts.push({
+          name: d.name,
+          type: 'cable',
+          deviceId: d.id,
+          priorityRank: 80,
+          matrixInputId: d.matrixInput != null ? String(d.matrixInput) : null,
+          availableNetworks: '[]',
+        })
+      }
+    }
+
+    if (inserts.length === 0) {
+      logger.info('[SEED] input_sources already covers all 3 device tables (no new rows needed)')
+      return { seeded: false, count: 0 }
+    }
+
+    const now = Math.floor(Date.now() / 1000)
+    for (const i of inserts) {
+      await db.insert(schema.inputSources).values({
+        id: crypto.randomUUID(),
+        name: i.name,
+        type: i.type,
+        deviceId: i.deviceId,
+        matrixInputId: i.matrixInputId,
+        availableNetworks: i.availableNetworks,
+        isActive: true,
+        currentlyAllocated: false,
+        priorityRank: i.priorityRank,
+        createdAt: now,
+        updatedAt: now,
+      })
+      logger.info(`[SEED]   +InputSource: ${i.name} (${i.type}) deviceId=${i.deviceId}`)
+    }
+
+    logger.info(`[SEED] input_sources seeded: ${inserts.length} new rows (existing rows left alone)`)
+    return { seeded: true, count: inserts.length }
+  } catch (error) {
+    logger.error('[SEED] Failed to seed input_sources:', error)
+    return { seeded: false, count: 0 }
+  }
+}
+
 export async function seedFromJson(): Promise<SeedResult> {
   logger.info('[SEED] Checking if database needs seeding from JSON files...')
 
   const direcTV = await seedDirecTV()
   const fireTV = await seedFireTV()
+  const inputSourcesResult = await seedInputSources()
   const stationAliases = await seedStationAliases()
   const localStationAliases = await seedLocalStationAliases()
   const channelPresets = await seedChannelPresets()
   const bartenderLayout = await seedBartenderLayout()
+  void inputSourcesResult // result logged inside; not part of SeedResult shape
 
   if (!direcTV.seeded && !fireTV.seeded && !stationAliases.seeded && !localStationAliases.seeded && !channelPresets.seeded && !bartenderLayout.seeded) {
     logger.info('[SEED] All tables already populated, no seeding needed')

@@ -117,6 +117,38 @@ Skipping this means the next location to auto-update will silently
 miss required setup and report GO when the feature is actually
 broken.
 
+##### Per-location values: table + derivation rule required
+
+If the setup step involves a value that **differs per location** (e.g.
+`LOCATION_NAME`, OTA affiliate callsigns, city-specific channel
+numbers, per-region API keys), the setup entry MUST include:
+
+1. **A branch→value mapping table** covering every currently-known
+   `location/*` branch. As of 2026-04-18 that's six: `location/holmgren-way`,
+   `location/leg-lamp`, `location/lucky-s-1313`, `location/graystone`,
+   `location/stoneyard-appleton`, `location/stoneyard-greenville`.
+2. **A derivation rule** for unlisted branches so Claude at a
+   freshly-added location can still pick a sane default (e.g.
+   "capitalize each dash-separated segment").
+3. **Idempotent shell commands** that skip work if state is already
+   correct — typically `if ! grep -q '^FOO=' .env; then echo 'FOO=...' >> .env; fi`
+   rather than unconditional `echo ... >> .env`.
+4. **No placeholders without tables**. Anti-pattern:
+   `echo 'LOCATION_NAME=<ShortName>' >> .env` — Claude at Leg Lamp has
+   no way to resolve `<ShortName>` and silently skips the step. Always
+   pair placeholders with a lookup table the Claude in auto-update
+   Checkpoint B can read to pick the right value.
+
+**Why this matters concretely:** auto-update.sh at every location runs
+Checkpoint B, which reads the `Required Claude step` block for the
+target version and executes it. If the block is prose with ambiguous
+placeholders, Claude can't act autonomously — it either skips the
+step or picks a guess. Either way, the feature silently fails at
+every non-Holmgren location. v2.23.11's `LOCATION_NAME` rollout hit
+exactly this: Leg Lamp auto-updated, the tab title never changed,
+because the instruction said `<ShortName>` with no derivation logic.
+v2.24.1 fixed this forward with a branch→value table.
+
 #### Case B: Fixing an error at a location
 
 When you hit an error at a location and fix it, append an entry to

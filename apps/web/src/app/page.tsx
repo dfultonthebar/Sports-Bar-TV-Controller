@@ -136,6 +136,28 @@ export default function Home() {
                     <p className="text-blue-100/90 text-sm">Logs, backups, sync & tests</p>
                   </div>
                 </a>
+
+                <a
+                  href="/fleet"
+                  className="group relative block p-6 backdrop-blur-xl bg-gradient-to-br from-sky-500/20 to-cyan-500/20 rounded-xl border-2 border-sky-400/30 hover:border-sky-400/50 hover:scale-105 transition-all duration-300 shadow-xl hover:shadow-2xl overflow-hidden"
+                >
+                  <div className="absolute inset-0 bg-gradient-to-br from-sky-500/10 to-cyan-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                  <div className="relative z-10">
+                    <h3 className="font-bold text-sky-200 mb-2 text-lg">🌐 Fleet Dashboard</h3>
+                    <p className="text-sky-100/90 text-sm">Every location&apos;s version & update status</p>
+                  </div>
+                </a>
+
+                <a
+                  href="/override-learn"
+                  className="group relative block p-6 backdrop-blur-xl bg-gradient-to-br from-amber-500/20 to-yellow-500/20 rounded-xl border-2 border-amber-400/30 hover:border-amber-400/50 hover:scale-105 transition-all duration-300 shadow-xl hover:shadow-2xl overflow-hidden"
+                >
+                  <div className="absolute inset-0 bg-gradient-to-br from-amber-500/10 to-yellow-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                  <div className="relative z-10">
+                    <h3 className="font-bold text-amber-200 mb-2 text-lg">🧠 Override-Learn Digest</h3>
+                    <p className="text-amber-100/90 text-sm">Scheduler corrections, apply recommendations</p>
+                  </div>
+                </a>
               </div>
 
               {/* Music & Audio */}

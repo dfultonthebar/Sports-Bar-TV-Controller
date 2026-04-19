@@ -133,7 +133,26 @@ step() {
 }
 
 fail() {
-  log "FAIL at step '$CURRENT_STEP': $*"
+  local reason="$*"
+  log "FAIL at step '$CURRENT_STEP': $reason"
+
+  # Rollback-learn hook (v2.25.1+): capture failure signature for future
+  # Checkpoint A consultation. Non-fatal — if the API call fails we still
+  # exit with the failure code, just without the learn-signal.
+  # Run-id = the basename of the current log file (auto-update-YYYY-MM-DD-HH-MM)
+  if [ -n "${LOG_FILE:-}" ] && [ -n "${CURRENT_STEP:-}" ]; then
+    local run_id
+    run_id=$(basename "$LOG_FILE" .log)
+    local payload
+    payload=$(printf '{"action":"capture","runId":%s,"failedStep":%s,"reason":%s,"version":%s}' \
+      "$(printf '%s' "$run_id"       | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))')" \
+      "$(printf '%s' "$CURRENT_STEP" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))')" \
+      "$(printf '%s' "$reason"       | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))')" \
+      "$(printf '%s' "${PRE_MERGE_VERSION:-}" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))')")
+    curl -sS -m 5 -X POST -H 'Content-Type: application/json' \
+      "http://localhost:3001/api/auto-update/failures" -d "$payload" >/dev/null 2>&1 || true
+  fi
+
   exit "${2:-4}"
 }
 
@@ -534,6 +553,28 @@ LOCATION_PATHS_THEIRS=(
   "scripts/prompts/checkpoint-c.txt"
 )
 
+# Prefix-based fallback: any remaining conflict under a shared-software
+# prefix takes MAIN. These subtrees are pure software and location
+# branches should never carry divergent edits. Prior to v2.22.2 a single
+# stale edit anywhere under apps/web/src/app/ would abort the entire
+# auto-update (remote/page.tsx at Lucky's 1313 on 2026-04-19 is the
+# case that prompted this fix). Ordered most-specific-first — a later
+# match does NOT override an earlier one, so putting OURS-exempt paths
+# in LOCATION_PATHS_OURS above is what protects them from this fallback.
+SHARED_SOFTWARE_PREFIXES=(
+  "apps/web/src/app/"
+  "apps/web/src/components/"
+  "apps/web/src/lib/"
+  "apps/web/src/hooks/"
+  "apps/web/src/db/"
+  "apps/web/src/types/"
+  "apps/web/src/utils/"
+  "apps/web/public/"
+  "packages/"
+  "docs/"
+  "drizzle/"
+)
+
 log "git merge origin/main --no-ff -m 'chore: auto-update merge $RUN_TS'"
 set +e
 git merge origin/main --no-ff -m "chore: auto-update merge $RUN_TS" 2>&1 | tee -a "$LOG_FILE"
@@ -557,9 +598,30 @@ if [ "$MERGE_EXIT" -ne 0 ]; then
     fi
   done
 
-  # Any remaining conflict = unexpected file, human required
+  # Prefix-based shared-software fallback. Any remaining UU file whose
+  # path starts with a SHARED_SOFTWARE_PREFIXES entry takes MAIN. Files
+  # in LOCATION_PATHS_OURS were already resolved above so the fallback
+  # only fires on files that ARE shared code.
   if git status --porcelain | grep -q "^UU"; then
-    log "Unexpected merge conflict on non-whitelisted files:"
+    while IFS= read -r conflict_line; do
+      # conflict_line looks like "UU apps/web/src/app/remote/page.tsx"
+      conflict_path="${conflict_line:3}"
+      for prefix in "${SHARED_SOFTWARE_PREFIXES[@]}"; do
+        case "$conflict_path" in
+          "$prefix"*)
+            log "  taking MAIN version (shared-software fallback): $conflict_path"
+            git checkout --theirs "$conflict_path" 2>&1 | tee -a "$LOG_FILE"
+            git add "$conflict_path"
+            break
+            ;;
+        esac
+      done
+    done < <(git status --porcelain | grep "^UU")
+  fi
+
+  # Any STILL-remaining conflict = unexpected file, human required
+  if git status --porcelain | grep -q "^UU"; then
+    log "Unexpected merge conflict on non-whitelisted files (not covered by OURS/THEIRS/prefix fallback):"
     git status --porcelain | grep "^UU" | tee -a "$LOG_FILE"
     git merge --abort 2>/dev/null || true
     fail "merge conflict on non-whitelisted file" 3
@@ -737,6 +799,43 @@ if [ -d "$REPO_ROOT/apps/web/.next" ]; then
   mv "$REPO_ROOT/apps/web/.next" "$REPO_ROOT/apps/web/.next.bak"
 fi
 
+# Source the location's .env so LOCATION_NAME, LOCATION_ID (and anything
+# else the build reads via process.env) reach Turbo and the Next.js build
+# subprocess. Without this, Turbo's strict-env mode strips location-
+# specific vars and statically-rendered pages bake the wrong default
+# (e.g. the browser tab title from v2.23.11's generateMetadata). This
+# matters even though PM2's ecosystem.config.js already loads .env for
+# the runtime — builds happen in a separate shell that never touches
+# ecosystem.config.js. Any new file-format env (e.g. lines with quotes,
+# comments) should pass through cleanly because we use `set -a` + source.
+if [ -f "$REPO_ROOT/.env" ]; then
+  log "Loading .env so build sees LOCATION_NAME / LOCATION_ID / etc."
+  # Safe .env loader: `source` cannot be used because unquoted values
+  # with spaces (e.g. `LOCATION_NAME=Stoneyard Greenville`) or
+  # apostrophes (`Lucky's 1313`) make bash try to execute the value
+  # as a command — which crashes `source` with exit 127 "command not
+  # found". Next.js's dotenv parser handles these without quoting, so
+  # the .env is internally valid — it's only the bash source that
+  # chokes. This loop reads each line literally and exports it as an
+  # env var without ever passing it through the shell word-splitter.
+  while IFS= read -r line || [ -n "$line" ]; do
+    # Skip blank lines and comments
+    [ -z "$line" ] && continue
+    case "$line" in \#*) continue ;; esac
+    # Must contain an =
+    case "$line" in *=*) ;; *) continue ;; esac
+    # Split on the FIRST = only
+    local_key="${line%%=*}"
+    local_val="${line#*=}"
+    # Trim surrounding quotes if the value is fully quoted
+    case "$local_val" in
+      \"*\") local_val="${local_val#\"}"; local_val="${local_val%\"}" ;;
+      \'*\') local_val="${local_val#\'}"; local_val="${local_val%\'}" ;;
+    esac
+    export "$local_key=$local_val"
+  done < "$REPO_ROOT/.env"
+fi
+
 log "npm run build (--force to bypass Turbo cache for package changes)"
 rm -rf "$REPO_ROOT/.turbo" "$REPO_ROOT/node_modules/.cache"
 npx turbo run build --force 2>&1 | tee -a "$LOG_FILE"
@@ -767,6 +866,11 @@ bash "$VERIFY_SCRIPT" --json >"$VERIFY_JSON" 2>>"$LOG_FILE"
 VERIFY_EXIT=$?
 log "verify-install.sh exit: $VERIFY_EXIT"
 log "verify-install.sh output: $(cat "$VERIFY_JSON" 2>/dev/null | head -20)"
+# Capture for heartbeat file (v2.25.2+). One-line JSON suitable for
+# embedding inside another JSON document.
+if [ -f "$VERIFY_JSON" ]; then
+  VERIFY_INSTALL_JSON=$(cat "$VERIFY_JSON" | tr -d '\n' | tr -s ' ')
+fi
 
 if [ "$VERIFY_EXIT" -ne 0 ]; then
   rm -f "$VERIFY_JSON"
@@ -796,6 +900,67 @@ step "finalize"
 if [ -d "$REPO_ROOT/apps/web/.next.bak" ]; then
   log "Removing stale apps/web/.next.bak"
   rm -rf "$REPO_ROOT/apps/web/.next.bak"
+fi
+
+# Heartbeat (v2.25.2+): write .auto-update-last-success.json at repo root
+# with the just-verified state. Committed + pushed alongside the merge so
+# the Fleet Dashboard can read verify-install-7/7-PASS, uptime, and
+# success timestamp via `git show origin/location/X:.auto-update-last-success.json`.
+# Tells the dashboard "this location is actually HEALTHY right now", not
+# just "last commit was N hours ago".
+#
+# The file is gitignored on main (main has no concept of "last successful
+# update at this location") but tracked on location branches. We force-
+# add it here with `git add -f` so the gitignore doesn't block the commit.
+if [ -n "${VERIFY_INSTALL_JSON:-}" ]; then
+  {
+    printf '{\n'
+    printf '  "version": "%s",\n' "${POST_MERGE_VERSION:-unknown}"
+    printf '  "branch": "%s",\n' "${BRANCH:-unknown}"
+    printf '  "commitSha": "%s",\n' "${POST_MERGE_SHA:-unknown}"
+    printf '  "successAt": "%s",\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    printf '  "successAtUnix": %d,\n' "$(date +%s)"
+    printf '  "runId": "%s",\n' "$(basename "$LOG_FILE" .log)"
+    printf '  "verifyInstall": %s\n' "$VERIFY_INSTALL_JSON"
+    printf '}\n'
+  } > "$REPO_ROOT/.auto-update-last-success.json"
+  git -C "$REPO_ROOT" add -f ".auto-update-last-success.json" 2>/dev/null || true
+  if ! git -C "$REPO_ROOT" diff --cached --quiet -- ".auto-update-last-success.json" 2>/dev/null; then
+    git -C "$REPO_ROOT" commit -q -m "chore(heartbeat): update .auto-update-last-success.json ($(date +%Y-%m-%d-%H-%M))" 2>/dev/null || true
+    log "Heartbeat file committed"
+  fi
+fi
+
+# Push the merge commit back to origin so the Fleet Dashboard (v2.24.0+)
+# sees this location's current version. Before v2.24.6, auto-update.sh
+# merged main locally, built, verified, restarted — but never pushed. The
+# remote branch stayed at whatever the last human-pushed state was, which
+# meant every dashboard report of "stuck" for a location that had been
+# auto-updating was wrong. We only push here AFTER all verifications have
+# passed (checkpoint_c + verify-install 6/6), so pushing a broken state
+# to GitHub can't happen.
+#
+# Safety properties:
+#   - Pushes ONLY the current branch (the location/* branch). Never
+#     touches main — location work must not leak to other locations.
+#   - No --force. If the remote has diverged (someone pushed while we
+#     were running), we fail this step loud rather than overwriting.
+#   - Push failure is NON-FATAL — the location itself is in a good
+#     state; only the dashboard signal is missing. Log and continue.
+if git rev-parse --abbrev-ref HEAD >/dev/null 2>&1; then
+  CURRENT_BRANCH=$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD)
+  if [ "$CURRENT_BRANCH" = "main" ]; then
+    log "WARNING: auto-update ran on main; not pushing (location branches only)"
+  elif [ -z "$CURRENT_BRANCH" ] || [ "$CURRENT_BRANCH" = "HEAD" ]; then
+    log "WARNING: detached HEAD — skipping push"
+  else
+    log "Pushing $CURRENT_BRANCH to origin (fleet-dashboard signal)"
+    if git -C "$REPO_ROOT" push origin "$CURRENT_BRANCH" 2>&1 | tee -a "$LOG_FILE"; then
+      log "Push succeeded — Fleet Dashboard will reflect this update within 5 min (cache TTL)"
+    else
+      log "WARNING: push failed — location is still healthy, but Fleet Dashboard won't see this update until a human pushes manually or next successful auto-update"
+    fi
+  fi
 fi
 
 FINAL_RESULT="pass"

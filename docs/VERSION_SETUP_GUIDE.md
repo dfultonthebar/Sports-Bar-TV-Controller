@@ -187,6 +187,292 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.25.5 — Auto-update shared-software conflict fallback
+**Released:** 2026-04-19
+
+**What changed:**
+`scripts/auto-update.sh` — adds `SHARED_SOFTWARE_PREFIXES[]` after the
+existing `LOCATION_PATHS_OURS` / `LOCATION_PATHS_THEIRS` lists. Any
+merge conflict on a path under these prefixes now auto-resolves to
+MAIN's version via `git checkout --theirs`. Prefixes covered:
+`apps/web/src/app/`, `apps/web/src/components/`, `apps/web/src/lib/`
+(except `hardware-config.ts` which remains in OURS), `apps/web/src/hooks/`,
+`apps/web/src/db/`, `apps/web/src/types/`, `apps/web/src/utils/`,
+`apps/web/public/`, `packages/`, `docs/`, `drizzle/`.
+
+**Why:** Locations' branches can drift on shared UI files from past
+on-device debugging or one-off manual tweaks. Before this fix a single
+stale edit anywhere under `apps/web/src/app/` would hit `CONFLICT
+(content)` at merge time, fall through the exact-path OURS/THEIRS loop,
+and the whole auto-update aborted with rollback. `apps/web/src/app/remote/page.tsx`
+at Lucky's 1313 triggered this on 2026-04-19 at 16:39 and 2026-04-18
+at 16:07, rolling back both attempts.
+
+**Schema changes:** None.
+
+**Required manual steps (ONE-TIME per location, to bootstrap the fix):**
+
+**This is the critical step.** The currently-deployed auto-update.sh
+at each location does NOT have this fallback. It can't update itself
+via auto-update because the pre-update merge is exactly where it
+fails. Operators must resolve the current conflict manually ONCE:
+
+```bash
+cd /home/ubuntu/Sports-Bar-TV-Controller
+git fetch origin
+BRANCH=$(git branch --show-current)
+git merge origin/main --no-ff -m "chore: one-shot merge to bootstrap auto-update fix"
+# If conflicts appear, take main's version for each shared UI file
+# reported — safe because these are shared code, not location config:
+for f in $(git status --porcelain | grep '^UU' | awk '{print $2}'); do
+  case "$f" in
+    apps/web/data/*|.env|ecosystem.config.js|apps/web/src/lib/hardware-config.ts)
+      echo "KEEP LOCATION: $f"  # these stay ours
+      git checkout --ours "$f" && git add "$f"
+      ;;
+    *)
+      echo "TAKE MAIN: $f"
+      git checkout --theirs "$f" && git add "$f"
+      ;;
+  esac
+done
+git commit --no-edit 2>&1 | tail -3
+# Rebuild + restart so the live app matches the new merge
+rm -rf apps/web/.next .turbo
+npx turbo run build --force 2>&1 | tail -5
+pm2 delete sports-bar-tv-controller 2>&1 | tail -1
+pm2 start ecosystem.config.js 2>&1 | tail -3
+# Push the resolved branch
+git push origin "$BRANCH"
+```
+
+After this, `scripts/auto-update.sh` on disk is v2.25.5 and the new
+fallback is active for every subsequent auto-update at this location.
+
+**Verification:**
+```bash
+grep -c "SHARED_SOFTWARE_PREFIXES" /home/ubuntu/Sports-Bar-TV-Controller/scripts/auto-update.sh
+# Expect: >= 2 (one in the array def, one or more in the usage loop)
+```
+
+**Applies to:** every location running auto-update.sh prior to v2.25.5.
+
+**First seen:** 2026-04-18 16:07 and 2026-04-19 16:39 at Lucky's 1313
+— two consecutive auto-update attempts rolled back because
+`apps/web/src/app/remote/page.tsx` had conflicts not covered by the
+exact-path OURS/THEIRS lists.
+
+---
+
+### v2.24.6 — auto-update.sh pushes merge commits back to origin (Fleet Dashboard accuracy fix)
+**Released:** 2026-04-18
+
+**What changed:**
+- `scripts/auto-update.sh` — new push step at the end of the FINALIZE phase. After a successful auto-update (checkpoints A/B/C + verify-install all green), the script now runs `git push origin <current-branch>` to publish the merge commit to GitHub. Non-fatal on failure (location is still healthy; just the dashboard signal is missing). Never touches main. No --force.
+
+**Why this matters:** the Fleet Dashboard (v2.24.0) reads `origin/location/<name>` from the local git clone, which mirrors GitHub. Before v2.24.6, auto-update.sh merged main locally and built/restarted but never pushed. Every location that successfully auto-updated LOCALLY without a human running `git push` afterward looked "stuck" on the dashboard forever. Stoneyard Appleton (v2.12.8 on git, last push 2 days ago) and Stoneyard Greenville (v2.16.2, last push 32h ago) are examples — both have almost certainly been running newer code for a while; nobody has been pushing.
+
+After v2.24.6 lands at a location, the next successful auto-update will push automatically and the dashboard will catch up.
+
+**Required Claude step per location:** None — fix is purely in auto-update.sh. No config, no env var, no DB patch.
+
+**One-time catch-up action for already-stuck locations:** operator SSH to each stuck host once, run:
+```bash
+cd /home/ubuntu/Sports-Bar-TV-Controller
+git push origin "$(git rev-parse --abbrev-ref HEAD)"
+```
+That pushes whatever merge commits have accumulated locally. Future auto-updates (after v2.24.6 lands there) will do it automatically.
+
+**Rollback:** `git revert` removes the push step. Auto-update goes back to merge-locally-only behavior; dashboard drifts again.
+
+---
+
+### v2.24.5 — Per-location Brave API key provisioning helper
+**Released:** 2026-04-18
+
+**What changed:**
+- New `scripts/set-brave-api-key.sh` — installs a BRAVE_API_KEY into both `.env` (for PM2 runtime) and `~/.bashrc` (for interactive Claude Code sessions) at the host where it's run. Idempotent (same key = no-op, different key = update). Supports `--remove`, `--show` (masked), `--test` (probes the Brave API to confirm the key works). The script itself is committed; **keys are NOT**. Operator at each location runs it once per key.
+
+**Why this matters:** the Brave Search MCP enabled in v2.23.3 needs a `BRAVE_API_KEY` to work. The repo is PUBLIC, so committing a shared key to git exposes it to scrapers. The safe path is per-location free-tier keys (2,000 queries/month each, signup 2 min, no credit card).
+
+**Required Claude step per location:** None — this is operator-driven. Claude at each location has no way to sign up for an API key; a human has to do the 2-min form. However, Claude at Checkpoint B should mention the helper script in its decision summary so the operator knows it's available.
+
+**Operator runbook per location (do this ONCE per location you want Brave Search in):**
+
+1. Visit https://api.search.brave.com/app/keys and sign up (free tier, no credit card).
+2. Create an API key and copy it. The key format is `BS...` — roughly 32-33 chars of alphanumerics/underscores.
+3. SSH to the location's server (or run locally on the bar's host), then:
+   ```bash
+   cd /home/ubuntu/Sports-Bar-TV-Controller
+   bash scripts/set-brave-api-key.sh <paste-key-here>
+   ```
+   Output should show `.env: added` and `~/.bashrc: added`.
+
+4. Confirm the key actually works (the helper has a probe built in):
+   ```bash
+   bash scripts/set-brave-api-key.sh --test
+   ```
+   Expected: `OK: HTTP 200 — key works.` Any other response means the key is invalid or rate-limited.
+
+5. For the Sports Bar app to read the new .env value, do a PM2 delete+start (not restart — see CLAUDE.md Common Gotcha #3):
+   ```bash
+   pm2 delete sports-bar-tv-controller && pm2 start ecosystem.config.js
+   ```
+
+6. For any CURRENT `claude` terminal session to pick up the new key, either open a new shell OR `export BRAVE_API_KEY="$(grep ^BRAVE_API_KEY= .env | cut -d= -f2-)"` in the existing one, then exit and relaunch `claude`.
+
+**What locations can skip this:**
+- Any location where you don't want Brave Search in Claude Code sessions at all — Context7 still works without a key, so the other MCP is unaffected.
+
+**Rollback:**
+- `bash scripts/set-brave-api-key.sh --remove` — strips the key from both `.env` and `~/.bashrc` at the location.
+- `git revert` the commit — removes the helper script. The key stays until `--remove` is run locally.
+
+---
+
+### v2.24.4 — Scheduler honors applied override defaults + Fleet/Override-Learn home page nav
+**Released:** 2026-04-18
+
+**What changed:**
+- `apps/web/src/lib/scheduling/apply-override-defaults.ts` — new helper that reads `ScheduledOverrideDefaults` rows for a game's home+away teams and filters/augments an incoming `tvOutputIds` array: `action='exclude'` rows drop matching outputs; `action='include'` rows add missing outputs. Writes an audit `SchedulerLog` row (`operation='applied-to-allocation'`) when any change is made. Non-fatal on DB error.
+- `apps/web/src/app/api/schedules/bartender-schedule/route.ts` — wires the helper in BEFORE the allocation insert. Operator decisions from the v2.24.3 Apply button now actually affect live routing.
+- `apps/web/src/app/page.tsx` — home-page System Controls grid gains Fleet Dashboard (`/fleet`) and Override-Learn Digest (`/override-learn`) cards. The pages were live since v2.24.0 and v2.24.2 respectively but had no nav entry.
+
+**Required Claude step at each location:** None. Feature uses data already at this location; no env vars, no DB patches, no per-location values.
+
+**Verification at Checkpoint C:**
+```bash
+# Home page shows both new cards
+curl -s http://localhost:3001/ | grep -oE 'href="/(fleet|override-learn)"' | sort -u
+```
+Expected: both `href="/fleet"` and `href="/override-learn"` appear.
+
+```bash
+# Apply a rule and confirm it stores; revert it
+curl -s -X POST http://localhost:3001/api/override-learn/apply \
+  -H 'Content-Type: application/json' \
+  -d '{"team":"__TEST__","outputNum":99,"action":"exclude"}' \
+  | python3 -c "import json,sys; print(json.load(sys.stdin))"
+sqlite3 /home/ubuntu/sports-bar-data/production.db "DELETE FROM ScheduledOverrideDefaults WHERE team='__TEST__';"
+```
+Expected: `{'success': True, 'id': '<uuid>', 'refreshed': False}`.
+
+**Rollback:** `git revert` removes the helper + its call-site hook. The `ScheduledOverrideDefaults` table stays with any applied rules (harmless — nothing consults the table after revert).
+
+---
+
+### v2.24.3 — Apply-recommendation buttons + bartender Schedule widget
+**Released:** 2026-04-18
+
+**What changed:**
+- New `ScheduledOverrideDefaults` DB table stores durable operator decisions from the override-learn digest. Each row: `(team, outputNum, action='exclude'|'include', occurrences, appliedAt, appliedBy)` with a `UNIQUE(team, outputNum, action)` index.
+- `POST /api/override-learn/apply` upserts a row (idempotent — clicking Apply twice refreshes rather than duplicates). `DELETE /api/override-learn/apply?id=X` reverts. Each operation also writes a `SchedulerLog` audit row at `component='override-digest'`, `operation='applied'` or `'reverted'`.
+- `GET /api/override-learn/digest` response now tags each pattern with its `applied` state so the UI can show "Applied ✓" + a Revert button without a second fetch.
+- `/override-learn` page gains per-row Apply / Revert buttons.
+- New `OverrideLearnWidget` component, embedded in the bartender remote's Schedule tab. Shows the top 5 unapplied patterns (≥2 occurrences) with 44×44 Apply buttons for one-tap manager action. Links to `/override-learn` for the full view. Respects CLAUDE.md bartender-UI rules (touch targets, text-sm, dark theme).
+
+**Scheduler integration status:** The table is WRITTEN but the scheduler doesn't YET consult it when building new allocations. That integration is v2.24.4+ — a single-function change in `packages/scheduler/src/scheduler-service.ts` where `tv_output_ids` is initially computed. For now, Apply records the decision as an audit trail and shared source of truth that any follow-up can honor. Ack this explicitly: clicking Apply today records your intent but doesn't yet change live routing.
+
+**Required Claude step at each location** (Claude at Checkpoint B of the update that merges v2.24.3: execute these steps in order, no questions):
+
+1. **Verify the new table was created.** drizzle-kit push can abort silently on pre-existing indexes (CLAUDE.md Gotcha #7), so confirm the table + its unique index both exist:
+```bash
+sqlite3 /home/ubuntu/sports-bar-data/production.db "SELECT name FROM sqlite_master WHERE type='table' AND name='ScheduledOverrideDefaults';"
+```
+Expected output: `ScheduledOverrideDefaults`. If blank, the push failed before reaching this table — create it manually:
+```bash
+sqlite3 /home/ubuntu/sports-bar-data/production.db <<'SQL'
+CREATE TABLE IF NOT EXISTS ScheduledOverrideDefaults (
+  id TEXT PRIMARY KEY,
+  team TEXT NOT NULL,
+  league TEXT,
+  outputNum INTEGER NOT NULL,
+  action TEXT NOT NULL,
+  isHomeTeam INTEGER NOT NULL DEFAULT 0,
+  occurrences INTEGER NOT NULL DEFAULT 1,
+  sourceCorrelationId TEXT,
+  appliedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  appliedBy TEXT NOT NULL DEFAULT 'operator',
+  notes TEXT,
+  createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ScheduledOverrideDefaults_team_idx ON ScheduledOverrideDefaults(team);
+CREATE UNIQUE INDEX IF NOT EXISTS ScheduledOverrideDefaults_team_output_action_unique ON ScheduledOverrideDefaults(team, outputNum, action);
+SQL
+```
+
+2. **Verify the unique index exists** (the table can be created without it on a partial-abort):
+```bash
+sqlite3 /home/ubuntu/sports-bar-data/production.db "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='ScheduledOverrideDefaults';"
+```
+Expected: 3 indexes listed (`sqlite_autoindex_…_1`, `ScheduledOverrideDefaults_team_idx`, `ScheduledOverrideDefaults_team_output_action_unique`). If any are missing, run the CREATE INDEX commands from step 1.
+
+3. **Smoke-test the API** after the PM2 restart completes (Checkpoint C):
+```bash
+curl -s http://localhost:3001/api/override-learn/apply | python3 -m json.tool
+```
+Expected: `{"applied": []}` (empty list, not an error). If you get a 500, check the PM2 logs for the error. A column-not-found error means step 1 didn't finish; re-run it.
+
+4. **Verify the bartender widget appears.** Open `http://localhost:3001/remote` in a browser, tap into the "More" sheet → Schedule tab. You should see a "Scheduler corrections" card below the scheduled games list. Content depends on whether this location has any override-learn events:
+   - If yes: shows patterns with Apply buttons.
+   - If none: "No corrections in the last 30 days" — that's a fine state, not an error.
+
+**No per-location value to set.** This feature uses DB-based data collected from that location's own bartender behavior — every location works identically out of the box.
+
+**Rollback:** `git revert` removes the Apply/Revert buttons, the widget, and the API endpoints. The `ScheduledOverrideDefaults` table stays in the DB (harmless — no code reads from it after revert). To fully clean up:
+```bash
+sqlite3 /home/ubuntu/sports-bar-data/production.db "DROP TABLE IF EXISTS ScheduledOverrideDefaults;"
+```
+
+---
+
+### v2.24.1 — auto-update.sh sources .env before build (and LOCATION_NAME fix for v2.23.11)
+**Released:** 2026-04-18
+
+**What changed:**
+- `scripts/auto-update.sh` — the BUILD phase now sources the repo-root `.env` with `set -a; source .env; set +a` immediately before the `npx turbo run build --force` call. This means any env var set in `.env` (LOCATION_NAME, LOCATION_ID, BRAVE_API_KEY, etc.) is visible to Turbo, to the Next.js build, and to the `process.env` that statically-rendered pages read at build time.
+- `docs/VERSION_SETUP_GUIDE.md` — the v2.23.11 entry gains a proper branch-to-LOCATION_NAME mapping table plus the derivation rule for new/unlisted locations, so Claude at each location can pick the right value without guessing.
+
+**Why this is urgent:** the v2.23.11 tab-title feature depended on `LOCATION_NAME` being visible during the build. Before v2.24.1, even a location with `LOCATION_NAME=LegLamp` correctly set in `.env` would still get "Sports Bar TV Controller" (no prefix) baked into the statically-rendered pages, because auto-update.sh never exported the value. Leg Lamp hit exactly this the first time it merged v2.23.11 — the value was missing AND the build wouldn't have seen it anyway.
+
+**Required Claude step at each location** (Claude at Checkpoint B of the update that merges v2.24.1: execute these steps in order, no questions):
+
+1. **Identify this location's branch** and look up the LOCATION_NAME value from the table in §v2.23.11 of this file:
+```bash
+cd /home/ubuntu/Sports-Bar-TV-Controller
+git rev-parse --abbrev-ref HEAD
+```
+For each known branch:
+| Branch | LOCATION_NAME |
+|---|---|
+| `location/holmgren-way` | `Holmgren` |
+| `location/leg-lamp` | `LegLamp` |
+| `location/lucky-s-1313` | `Lucky1313` |
+| `location/graystone` | `Graystone` |
+| `location/stoneyard-appleton` | `AppletonStoneyard` |
+| `location/stoneyard-greenville` | `GreenvilleStoneyard` |
+
+For an unlisted branch, derive by capitalizing each dash-separated segment (e.g. `location/new-spot` → `NewSpot`).
+
+2. **Ensure `LOCATION_NAME` is set in `.env`.** This is idempotent — skip the append if already present:
+```bash
+if ! grep -q '^LOCATION_NAME=' /home/ubuntu/Sports-Bar-TV-Controller/.env; then
+  echo 'LOCATION_NAME=<VALUE FROM TABLE>' >> /home/ubuntu/Sports-Bar-TV-Controller/.env
+fi
+```
+
+3. **That's it.** The auto-update.sh that just ran this checkpoint will proceed to the BUILD phase, where it automatically sources `.env` (v2.24.1 behavior). Next.js will bake the correct title. No manual rebuild needed.
+
+4. **Verify after the PM2 restart phase completes** (Checkpoint C):
+```bash
+curl -s http://localhost:3001/ | grep -oE '<title[^>]*>[^<]+</title>'
+```
+Expected: `<title>YourLocation-Sports-Bar-TV-Controller</title>`. If the plain `<title>Sports Bar TV Controller</title>` is returned, step 2 didn't actually add the var — re-check with `grep ^LOCATION_NAME= .env` and fix manually.
+
+**Rollback:** `git revert` safely removes both the auto-update.sh env sourcing and the doc update. The LOCATION_NAME values already in `.env` files at each location don't go away — they're gitignored — so a revert only affects *future* auto-update runs.
+
+---
+
 ### v2.23.11 — Location-aware browser tab title
 **Released:** 2026-04-18
 
@@ -203,25 +489,44 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 grep ^LOCATION_NAME= /home/ubuntu/Sports-Bar-TV-Controller/.env
 ```
 
-2. If NOT set, add it. Use a short, unambiguous name that looks good as a tab title — no spaces needed (will auto-convert to dashes anyway), no special chars. Examples: `Holmgren`, `LegLamp`, `Lucky1313`, `Graystone`, `AppletonStoneyard`. Match the human name bartenders use at the bar:
+2. If NOT set, DETERMINE the correct value for THIS location by reading the current git branch. Each location/* branch has an obvious short name embedded; use this mapping table (update if new locations arrive, do NOT default to a guess):
+
+| Branch | LOCATION_NAME value |
+|---|---|
+| `location/holmgren-way` | `Holmgren` |
+| `location/leg-lamp` | `LegLamp` |
+| `location/lucky-s-1313` | `Lucky1313` |
+| `location/graystone` | `Graystone` |
+| `location/stoneyard-appleton` | `AppletonStoneyard` |
+| `location/stoneyard-greenville` | `GreenvilleStoneyard` |
+
+For any new/unlisted branch, derive the name by capitalizing each dash-separated segment and concatenating (e.g. `location/big-sky-tavern` → `BigSkyTavern`). Keep it short — it becomes a tab-title prefix, so 4-16 chars is the sweet spot.
+
+Add it to .env (the value column from the table, substituted in):
 ```bash
-echo 'LOCATION_NAME=<ShortName>' >> /home/ubuntu/Sports-Bar-TV-Controller/.env
+# Example — substitute for YOUR branch per the table:
+BRANCH=$(cd /home/ubuntu/Sports-Bar-TV-Controller && git rev-parse --abbrev-ref HEAD)
+echo "Current branch: $BRANCH"
+# Look up the LOCATION_NAME from the table above, then:
+echo 'LOCATION_NAME=<value-from-table>' >> /home/ubuntu/Sports-Bar-TV-Controller/.env
 ```
 
-3. Rebuild with the env var in the build shell (Turbo needs it exported even though `.env` has it):
+3. **As of v2.24.1, auto-update.sh automatically sources .env before the build** — so a subsequent auto-update cycle will pick up your new LOCATION_NAME without any manual shell export. If you want to see the change RIGHT NOW without waiting for the next cron-driven auto-update:
 ```bash
 cd /home/ubuntu/Sports-Bar-TV-Controller
-export LOCATION_NAME="$(grep ^LOCATION_NAME= .env | cut -d= -f2)"
+set -a; source .env; set +a  # push .env into the build shell
 rm -rf apps/web/.next .turbo
 npx turbo run build --force --filter=@sports-bar/web
-pm2 restart sports-bar-tv-controller
+pm2 delete sports-bar-tv-controller && pm2 start ecosystem.config.js
 ```
+(Note: `pm2 delete + start` rather than `pm2 restart` because PM2 restart doesn't re-read .env via ecosystem.config.js — see CLAUDE.md Gotcha about this pattern.)
 
 4. Verify the tab title:
 ```bash
 curl -s http://localhost:3001/ | grep -oE '<title[^>]*>[^<]+</title>'
+curl -s http://localhost:3001/remote | grep -oE '<title[^>]*>[^<]+</title>'
 ```
-Expected: `<title>YourLocation-Sports-Bar-TV-Controller</title>`. If you see the plain `<title>Sports Bar TV Controller</title>`, LOCATION_NAME wasn't in the build shell env — re-run step 3 with `export` first.
+Expected: `<title>YourLocation-Sports-Bar-TV-Controller</title>` on BOTH routes. If `/remote` shows the correct title but `/` doesn't, it means the dynamic path works but the build-time static path didn't pick up LOCATION_NAME — re-run step 3 and confirm `echo $LOCATION_NAME` in your shell returns the value before running `turbo build`.
 
 **Rollback:** `git revert` restores the static metadata export and removes the turbo env array. Titles go back to "Sports Bar TV Controller" across the board. No data impact.
 
@@ -1102,6 +1407,50 @@ to diagnose. Format:
 The goal: every other location inheriting this file from main should find
 the answer here instead of re-debugging from scratch. Per CLAUDE.md Rule
 8, you MUST add an entry when you fix a non-trivial error.
+
+### Auto-update rolls back at `merge` step with "merge conflict on non-whitelisted file"
+
+- **Symptom:** Log ends with lines like:
+  ```
+  CONFLICT (content): Merge conflict in apps/web/src/app/remote/page.tsx
+  [AUTO-UPDATE] Unexpected merge conflict on non-whitelisted files:
+  UU apps/web/src/app/remote/page.tsx
+  [AUTO-UPDATE] FAIL at step 'merge': merge conflict on non-whitelisted file 3
+  [AUTO-UPDATE] Triggering rollback
+  ```
+  Rollback succeeds; location stays on pre-update version. Happens on
+  consecutive days without intervention because each attempt hits the
+  same conflict.
+- **Root cause:** Before v2.25.5, the auto-update conflict resolver
+  only handled an exact-path whitelist
+  (`LOCATION_PATHS_OURS` / `LOCATION_PATHS_THEIRS`). Shared-software
+  files like `apps/web/src/app/remote/page.tsx` that have drifted
+  between the location branch and main (usually from past on-device
+  debugging) fell through both lists and aborted the whole update.
+- **Fix (code, v2.25.5):** Added `SHARED_SOFTWARE_PREFIXES` fallback
+  that force-takes MAIN for any remaining `UU` file under
+  `apps/web/src/app/`, `apps/web/src/components/`, `apps/web/src/lib/`
+  (except `hardware-config.ts`, which stays in OURS),
+  `apps/web/src/hooks/`, `apps/web/src/db/`, `apps/web/src/types/`,
+  `apps/web/src/utils/`, `apps/web/public/`, `packages/`, `docs/`, or
+  `drizzle/`. See the v2.25.5 entry above for the one-time bootstrap
+  command to pick up the new resolver.
+- **Fix (manual, one-time per location):** see v2.25.5 entry. After
+  the one-shot manual merge, every subsequent auto-update uses the
+  new script and won't hit this failure again.
+- **Verification after fix:**
+  ```bash
+  grep -c "SHARED_SOFTWARE_PREFIXES" /home/ubuntu/Sports-Bar-TV-Controller/scripts/auto-update.sh
+  # Expect >= 2
+  ls -t /home/ubuntu/sports-bar-data/update-logs/auto-update-*.log | head -1 \
+    | xargs grep -c "shared-software fallback"
+  # Expect >= 1 after the next auto-update run actually encounters a drift
+  ```
+- **Applies to:** any location that has edited a shared-UI file
+  directly on its location branch (very likely most of them). Once
+  bootstrapped, the fallback handles future drift silently.
+- **First seen:** Lucky's 1313, back-to-back rollbacks at 2026-04-18
+  16:07 and 2026-04-19 16:39 on `apps/web/src/app/remote/page.tsx`.
 
 ### Auto-update rolls back at Checkpoint B after Claude CLI 2.1.113+ install
 
