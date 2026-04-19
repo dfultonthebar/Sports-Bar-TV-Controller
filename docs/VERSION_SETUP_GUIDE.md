@@ -187,6 +187,53 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.24.1 — auto-update.sh sources .env before build (and LOCATION_NAME fix for v2.23.11)
+**Released:** 2026-04-18
+
+**What changed:**
+- `scripts/auto-update.sh` — the BUILD phase now sources the repo-root `.env` with `set -a; source .env; set +a` immediately before the `npx turbo run build --force` call. This means any env var set in `.env` (LOCATION_NAME, LOCATION_ID, BRAVE_API_KEY, etc.) is visible to Turbo, to the Next.js build, and to the `process.env` that statically-rendered pages read at build time.
+- `docs/VERSION_SETUP_GUIDE.md` — the v2.23.11 entry gains a proper branch-to-LOCATION_NAME mapping table plus the derivation rule for new/unlisted locations, so Claude at each location can pick the right value without guessing.
+
+**Why this is urgent:** the v2.23.11 tab-title feature depended on `LOCATION_NAME` being visible during the build. Before v2.24.1, even a location with `LOCATION_NAME=LegLamp` correctly set in `.env` would still get "Sports Bar TV Controller" (no prefix) baked into the statically-rendered pages, because auto-update.sh never exported the value. Leg Lamp hit exactly this the first time it merged v2.23.11 — the value was missing AND the build wouldn't have seen it anyway.
+
+**Required Claude step at each location** (Claude at Checkpoint B of the update that merges v2.24.1: execute these steps in order, no questions):
+
+1. **Identify this location's branch** and look up the LOCATION_NAME value from the table in §v2.23.11 of this file:
+```bash
+cd /home/ubuntu/Sports-Bar-TV-Controller
+git rev-parse --abbrev-ref HEAD
+```
+For each known branch:
+| Branch | LOCATION_NAME |
+|---|---|
+| `location/holmgren-way` | `Holmgren` |
+| `location/leg-lamp` | `LegLamp` |
+| `location/lucky-s-1313` | `Lucky1313` |
+| `location/graystone` | `Graystone` |
+| `location/stoneyard-appleton` | `AppletonStoneyard` |
+| `location/stoneyard-greenville` | `GreenvilleStoneyard` |
+
+For an unlisted branch, derive by capitalizing each dash-separated segment (e.g. `location/new-spot` → `NewSpot`).
+
+2. **Ensure `LOCATION_NAME` is set in `.env`.** This is idempotent — skip the append if already present:
+```bash
+if ! grep -q '^LOCATION_NAME=' /home/ubuntu/Sports-Bar-TV-Controller/.env; then
+  echo 'LOCATION_NAME=<VALUE FROM TABLE>' >> /home/ubuntu/Sports-Bar-TV-Controller/.env
+fi
+```
+
+3. **That's it.** The auto-update.sh that just ran this checkpoint will proceed to the BUILD phase, where it automatically sources `.env` (v2.24.1 behavior). Next.js will bake the correct title. No manual rebuild needed.
+
+4. **Verify after the PM2 restart phase completes** (Checkpoint C):
+```bash
+curl -s http://localhost:3001/ | grep -oE '<title[^>]*>[^<]+</title>'
+```
+Expected: `<title>YourLocation-Sports-Bar-TV-Controller</title>`. If the plain `<title>Sports Bar TV Controller</title>` is returned, step 2 didn't actually add the var — re-check with `grep ^LOCATION_NAME= .env` and fix manually.
+
+**Rollback:** `git revert` safely removes both the auto-update.sh env sourcing and the doc update. The LOCATION_NAME values already in `.env` files at each location don't go away — they're gitignored — so a revert only affects *future* auto-update runs.
+
+---
+
 ### v2.23.11 — Location-aware browser tab title
 **Released:** 2026-04-18
 
@@ -203,25 +250,44 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 grep ^LOCATION_NAME= /home/ubuntu/Sports-Bar-TV-Controller/.env
 ```
 
-2. If NOT set, add it. Use a short, unambiguous name that looks good as a tab title — no spaces needed (will auto-convert to dashes anyway), no special chars. Examples: `Holmgren`, `LegLamp`, `Lucky1313`, `Graystone`, `AppletonStoneyard`. Match the human name bartenders use at the bar:
+2. If NOT set, DETERMINE the correct value for THIS location by reading the current git branch. Each location/* branch has an obvious short name embedded; use this mapping table (update if new locations arrive, do NOT default to a guess):
+
+| Branch | LOCATION_NAME value |
+|---|---|
+| `location/holmgren-way` | `Holmgren` |
+| `location/leg-lamp` | `LegLamp` |
+| `location/lucky-s-1313` | `Lucky1313` |
+| `location/graystone` | `Graystone` |
+| `location/stoneyard-appleton` | `AppletonStoneyard` |
+| `location/stoneyard-greenville` | `GreenvilleStoneyard` |
+
+For any new/unlisted branch, derive the name by capitalizing each dash-separated segment and concatenating (e.g. `location/big-sky-tavern` → `BigSkyTavern`). Keep it short — it becomes a tab-title prefix, so 4-16 chars is the sweet spot.
+
+Add it to .env (the value column from the table, substituted in):
 ```bash
-echo 'LOCATION_NAME=<ShortName>' >> /home/ubuntu/Sports-Bar-TV-Controller/.env
+# Example — substitute for YOUR branch per the table:
+BRANCH=$(cd /home/ubuntu/Sports-Bar-TV-Controller && git rev-parse --abbrev-ref HEAD)
+echo "Current branch: $BRANCH"
+# Look up the LOCATION_NAME from the table above, then:
+echo 'LOCATION_NAME=<value-from-table>' >> /home/ubuntu/Sports-Bar-TV-Controller/.env
 ```
 
-3. Rebuild with the env var in the build shell (Turbo needs it exported even though `.env` has it):
+3. **As of v2.24.1, auto-update.sh automatically sources .env before the build** — so a subsequent auto-update cycle will pick up your new LOCATION_NAME without any manual shell export. If you want to see the change RIGHT NOW without waiting for the next cron-driven auto-update:
 ```bash
 cd /home/ubuntu/Sports-Bar-TV-Controller
-export LOCATION_NAME="$(grep ^LOCATION_NAME= .env | cut -d= -f2)"
+set -a; source .env; set +a  # push .env into the build shell
 rm -rf apps/web/.next .turbo
 npx turbo run build --force --filter=@sports-bar/web
-pm2 restart sports-bar-tv-controller
+pm2 delete sports-bar-tv-controller && pm2 start ecosystem.config.js
 ```
+(Note: `pm2 delete + start` rather than `pm2 restart` because PM2 restart doesn't re-read .env via ecosystem.config.js — see CLAUDE.md Gotcha about this pattern.)
 
 4. Verify the tab title:
 ```bash
 curl -s http://localhost:3001/ | grep -oE '<title[^>]*>[^<]+</title>'
+curl -s http://localhost:3001/remote | grep -oE '<title[^>]*>[^<]+</title>'
 ```
-Expected: `<title>YourLocation-Sports-Bar-TV-Controller</title>`. If you see the plain `<title>Sports Bar TV Controller</title>`, LOCATION_NAME wasn't in the build shell env — re-run step 3 with `export` first.
+Expected: `<title>YourLocation-Sports-Bar-TV-Controller</title>` on BOTH routes. If `/remote` shows the correct title but `/` doesn't, it means the dynamic path works but the build-time static path didn't pick up LOCATION_NAME — re-run step 3 and confirm `echo $LOCATION_NAME` in your shell returns the value before running `turbo build`.
 
 **Rollback:** `git revert` restores the static metadata export and removes the turbo env array. Titles go back to "Sports Bar TV Controller" across the board. No data impact.
 

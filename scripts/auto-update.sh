@@ -737,6 +737,23 @@ if [ -d "$REPO_ROOT/apps/web/.next" ]; then
   mv "$REPO_ROOT/apps/web/.next" "$REPO_ROOT/apps/web/.next.bak"
 fi
 
+# Source the location's .env so LOCATION_NAME, LOCATION_ID (and anything
+# else the build reads via process.env) reach Turbo and the Next.js build
+# subprocess. Without this, Turbo's strict-env mode strips location-
+# specific vars and statically-rendered pages bake the wrong default
+# (e.g. the browser tab title from v2.23.11's generateMetadata). This
+# matters even though PM2's ecosystem.config.js already loads .env for
+# the runtime — builds happen in a separate shell that never touches
+# ecosystem.config.js. Any new file-format env (e.g. lines with quotes,
+# comments) should pass through cleanly because we use `set -a` + source.
+if [ -f "$REPO_ROOT/.env" ]; then
+  log "Sourcing .env so build sees LOCATION_NAME / LOCATION_ID / etc."
+  set -a
+  # shellcheck disable=SC1091
+  source "$REPO_ROOT/.env"
+  set +a
+fi
+
 log "npm run build (--force to bypass Turbo cache for package changes)"
 rm -rf "$REPO_ROOT/.turbo" "$REPO_ROOT/node_modules/.cache"
 npx turbo run build --force 2>&1 | tee -a "$LOG_FILE"
