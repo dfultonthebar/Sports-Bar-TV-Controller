@@ -187,6 +187,83 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.25.5 — Auto-update shared-software conflict fallback
+**Released:** 2026-04-19
+
+**What changed:**
+`scripts/auto-update.sh` — adds `SHARED_SOFTWARE_PREFIXES[]` after the
+existing `LOCATION_PATHS_OURS` / `LOCATION_PATHS_THEIRS` lists. Any
+merge conflict on a path under these prefixes now auto-resolves to
+MAIN's version via `git checkout --theirs`. Prefixes covered:
+`apps/web/src/app/`, `apps/web/src/components/`, `apps/web/src/lib/`
+(except `hardware-config.ts` which remains in OURS), `apps/web/src/hooks/`,
+`apps/web/src/db/`, `apps/web/src/types/`, `apps/web/src/utils/`,
+`apps/web/public/`, `packages/`, `docs/`, `drizzle/`.
+
+**Why:** Locations' branches can drift on shared UI files from past
+on-device debugging or one-off manual tweaks. Before this fix a single
+stale edit anywhere under `apps/web/src/app/` would hit `CONFLICT
+(content)` at merge time, fall through the exact-path OURS/THEIRS loop,
+and the whole auto-update aborted with rollback. `apps/web/src/app/remote/page.tsx`
+at Lucky's 1313 triggered this on 2026-04-19 at 16:39 and 2026-04-18
+at 16:07, rolling back both attempts.
+
+**Schema changes:** None.
+
+**Required manual steps (ONE-TIME per location, to bootstrap the fix):**
+
+**This is the critical step.** The currently-deployed auto-update.sh
+at each location does NOT have this fallback. It can't update itself
+via auto-update because the pre-update merge is exactly where it
+fails. Operators must resolve the current conflict manually ONCE:
+
+```bash
+cd /home/ubuntu/Sports-Bar-TV-Controller
+git fetch origin
+BRANCH=$(git branch --show-current)
+git merge origin/main --no-ff -m "chore: one-shot merge to bootstrap auto-update fix"
+# If conflicts appear, take main's version for each shared UI file
+# reported — safe because these are shared code, not location config:
+for f in $(git status --porcelain | grep '^UU' | awk '{print $2}'); do
+  case "$f" in
+    apps/web/data/*|.env|ecosystem.config.js|apps/web/src/lib/hardware-config.ts)
+      echo "KEEP LOCATION: $f"  # these stay ours
+      git checkout --ours "$f" && git add "$f"
+      ;;
+    *)
+      echo "TAKE MAIN: $f"
+      git checkout --theirs "$f" && git add "$f"
+      ;;
+  esac
+done
+git commit --no-edit 2>&1 | tail -3
+# Rebuild + restart so the live app matches the new merge
+rm -rf apps/web/.next .turbo
+npx turbo run build --force 2>&1 | tail -5
+pm2 delete sports-bar-tv-controller 2>&1 | tail -1
+pm2 start ecosystem.config.js 2>&1 | tail -3
+# Push the resolved branch
+git push origin "$BRANCH"
+```
+
+After this, `scripts/auto-update.sh` on disk is v2.25.5 and the new
+fallback is active for every subsequent auto-update at this location.
+
+**Verification:**
+```bash
+grep -c "SHARED_SOFTWARE_PREFIXES" /home/ubuntu/Sports-Bar-TV-Controller/scripts/auto-update.sh
+# Expect: >= 2 (one in the array def, one or more in the usage loop)
+```
+
+**Applies to:** every location running auto-update.sh prior to v2.25.5.
+
+**First seen:** 2026-04-18 16:07 and 2026-04-19 16:39 at Lucky's 1313
+— two consecutive auto-update attempts rolled back because
+`apps/web/src/app/remote/page.tsx` had conflicts not covered by the
+exact-path OURS/THEIRS lists.
+
+---
+
 ### v2.24.6 — auto-update.sh pushes merge commits back to origin (Fleet Dashboard accuracy fix)
 **Released:** 2026-04-18
 
@@ -1330,6 +1407,50 @@ to diagnose. Format:
 The goal: every other location inheriting this file from main should find
 the answer here instead of re-debugging from scratch. Per CLAUDE.md Rule
 8, you MUST add an entry when you fix a non-trivial error.
+
+### Auto-update rolls back at `merge` step with "merge conflict on non-whitelisted file"
+
+- **Symptom:** Log ends with lines like:
+  ```
+  CONFLICT (content): Merge conflict in apps/web/src/app/remote/page.tsx
+  [AUTO-UPDATE] Unexpected merge conflict on non-whitelisted files:
+  UU apps/web/src/app/remote/page.tsx
+  [AUTO-UPDATE] FAIL at step 'merge': merge conflict on non-whitelisted file 3
+  [AUTO-UPDATE] Triggering rollback
+  ```
+  Rollback succeeds; location stays on pre-update version. Happens on
+  consecutive days without intervention because each attempt hits the
+  same conflict.
+- **Root cause:** Before v2.25.5, the auto-update conflict resolver
+  only handled an exact-path whitelist
+  (`LOCATION_PATHS_OURS` / `LOCATION_PATHS_THEIRS`). Shared-software
+  files like `apps/web/src/app/remote/page.tsx` that have drifted
+  between the location branch and main (usually from past on-device
+  debugging) fell through both lists and aborted the whole update.
+- **Fix (code, v2.25.5):** Added `SHARED_SOFTWARE_PREFIXES` fallback
+  that force-takes MAIN for any remaining `UU` file under
+  `apps/web/src/app/`, `apps/web/src/components/`, `apps/web/src/lib/`
+  (except `hardware-config.ts`, which stays in OURS),
+  `apps/web/src/hooks/`, `apps/web/src/db/`, `apps/web/src/types/`,
+  `apps/web/src/utils/`, `apps/web/public/`, `packages/`, `docs/`, or
+  `drizzle/`. See the v2.25.5 entry above for the one-time bootstrap
+  command to pick up the new resolver.
+- **Fix (manual, one-time per location):** see v2.25.5 entry. After
+  the one-shot manual merge, every subsequent auto-update uses the
+  new script and won't hit this failure again.
+- **Verification after fix:**
+  ```bash
+  grep -c "SHARED_SOFTWARE_PREFIXES" /home/ubuntu/Sports-Bar-TV-Controller/scripts/auto-update.sh
+  # Expect >= 2
+  ls -t /home/ubuntu/sports-bar-data/update-logs/auto-update-*.log | head -1 \
+    | xargs grep -c "shared-software fallback"
+  # Expect >= 1 after the next auto-update run actually encounters a drift
+  ```
+- **Applies to:** any location that has edited a shared-UI file
+  directly on its location branch (very likely most of them). Once
+  bootstrapped, the fallback handles future drift silently.
+- **First seen:** Lucky's 1313, back-to-back rollbacks at 2026-04-18
+  16:07 and 2026-04-19 16:39 on `apps/web/src/app/remote/page.tsx`.
 
 ### Auto-update rolls back at Checkpoint B after Claude CLI 2.1.113+ install
 

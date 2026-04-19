@@ -553,6 +553,28 @@ LOCATION_PATHS_THEIRS=(
   "scripts/prompts/checkpoint-c.txt"
 )
 
+# Prefix-based fallback: any remaining conflict under a shared-software
+# prefix takes MAIN. These subtrees are pure software and location
+# branches should never carry divergent edits. Prior to v2.22.2 a single
+# stale edit anywhere under apps/web/src/app/ would abort the entire
+# auto-update (remote/page.tsx at Lucky's 1313 on 2026-04-19 is the
+# case that prompted this fix). Ordered most-specific-first — a later
+# match does NOT override an earlier one, so putting OURS-exempt paths
+# in LOCATION_PATHS_OURS above is what protects them from this fallback.
+SHARED_SOFTWARE_PREFIXES=(
+  "apps/web/src/app/"
+  "apps/web/src/components/"
+  "apps/web/src/lib/"
+  "apps/web/src/hooks/"
+  "apps/web/src/db/"
+  "apps/web/src/types/"
+  "apps/web/src/utils/"
+  "apps/web/public/"
+  "packages/"
+  "docs/"
+  "drizzle/"
+)
+
 log "git merge origin/main --no-ff -m 'chore: auto-update merge $RUN_TS'"
 set +e
 git merge origin/main --no-ff -m "chore: auto-update merge $RUN_TS" 2>&1 | tee -a "$LOG_FILE"
@@ -576,9 +598,30 @@ if [ "$MERGE_EXIT" -ne 0 ]; then
     fi
   done
 
-  # Any remaining conflict = unexpected file, human required
+  # Prefix-based shared-software fallback. Any remaining UU file whose
+  # path starts with a SHARED_SOFTWARE_PREFIXES entry takes MAIN. Files
+  # in LOCATION_PATHS_OURS were already resolved above so the fallback
+  # only fires on files that ARE shared code.
   if git status --porcelain | grep -q "^UU"; then
-    log "Unexpected merge conflict on non-whitelisted files:"
+    while IFS= read -r conflict_line; do
+      # conflict_line looks like "UU apps/web/src/app/remote/page.tsx"
+      conflict_path="${conflict_line:3}"
+      for prefix in "${SHARED_SOFTWARE_PREFIXES[@]}"; do
+        case "$conflict_path" in
+          "$prefix"*)
+            log "  taking MAIN version (shared-software fallback): $conflict_path"
+            git checkout --theirs "$conflict_path" 2>&1 | tee -a "$LOG_FILE"
+            git add "$conflict_path"
+            break
+            ;;
+        esac
+      done
+    done < <(git status --porcelain | grep "^UU")
+  fi
+
+  # Any STILL-remaining conflict = unexpected file, human required
+  if git status --porcelain | grep -q "^UU"; then
+    log "Unexpected merge conflict on non-whitelisted files (not covered by OURS/THEIRS/prefix fallback):"
     git status --porcelain | grep "^UU" | tee -a "$LOG_FILE"
     git merge --abort 2>/dev/null || true
     fail "merge conflict on non-whitelisted file" 3
