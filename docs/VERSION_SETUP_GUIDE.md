@@ -187,6 +187,49 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.24.5 — Per-location Brave API key provisioning helper
+**Released:** 2026-04-18
+
+**What changed:**
+- New `scripts/set-brave-api-key.sh` — installs a BRAVE_API_KEY into both `.env` (for PM2 runtime) and `~/.bashrc` (for interactive Claude Code sessions) at the host where it's run. Idempotent (same key = no-op, different key = update). Supports `--remove`, `--show` (masked), `--test` (probes the Brave API to confirm the key works). The script itself is committed; **keys are NOT**. Operator at each location runs it once per key.
+
+**Why this matters:** the Brave Search MCP enabled in v2.23.3 needs a `BRAVE_API_KEY` to work. The repo is PUBLIC, so committing a shared key to git exposes it to scrapers. The safe path is per-location free-tier keys (2,000 queries/month each, signup 2 min, no credit card).
+
+**Required Claude step per location:** None — this is operator-driven. Claude at each location has no way to sign up for an API key; a human has to do the 2-min form. However, Claude at Checkpoint B should mention the helper script in its decision summary so the operator knows it's available.
+
+**Operator runbook per location (do this ONCE per location you want Brave Search in):**
+
+1. Visit https://api.search.brave.com/app/keys and sign up (free tier, no credit card).
+2. Create an API key and copy it. The key format is `BS...` — roughly 32-33 chars of alphanumerics/underscores.
+3. SSH to the location's server (or run locally on the bar's host), then:
+   ```bash
+   cd /home/ubuntu/Sports-Bar-TV-Controller
+   bash scripts/set-brave-api-key.sh <paste-key-here>
+   ```
+   Output should show `.env: added` and `~/.bashrc: added`.
+
+4. Confirm the key actually works (the helper has a probe built in):
+   ```bash
+   bash scripts/set-brave-api-key.sh --test
+   ```
+   Expected: `OK: HTTP 200 — key works.` Any other response means the key is invalid or rate-limited.
+
+5. For the Sports Bar app to read the new .env value, do a PM2 delete+start (not restart — see CLAUDE.md Common Gotcha #3):
+   ```bash
+   pm2 delete sports-bar-tv-controller && pm2 start ecosystem.config.js
+   ```
+
+6. For any CURRENT `claude` terminal session to pick up the new key, either open a new shell OR `export BRAVE_API_KEY="$(grep ^BRAVE_API_KEY= .env | cut -d= -f2-)"` in the existing one, then exit and relaunch `claude`.
+
+**What locations can skip this:**
+- Any location where you don't want Brave Search in Claude Code sessions at all — Context7 still works without a key, so the other MCP is unaffected.
+
+**Rollback:**
+- `bash scripts/set-brave-api-key.sh --remove` — strips the key from both `.env` and `~/.bashrc` at the location.
+- `git revert` the commit — removes the helper script. The key stays until `--remove` is run locally.
+
+---
+
 ### v2.24.4 — Scheduler honors applied override defaults + Fleet/Override-Learn home page nav
 **Released:** 2026-04-18
 
