@@ -1,0 +1,9 @@
+{
+  "version": "2.25.2",
+  "branch": "location/graystone",
+  "commitSha": "d2fc5b06a28cb632baa954d418190a6d624b3cea",
+  "successAt": "2026-04-19T16:37:18Z",
+  "successAtUnix": 1776616638,
+  "runId": "auto-update-2026-04-19-11-29",
+  "verifyInstall": {"status":"PASS","passed":7,"total":7,"durationSecs":1,"failed":[],"layers":[{"name":"pm2_online","passed":true,"detail":"status=online restart_time=18"},{"name":"health_http","passed":true,"detail":"status=healthy"},{"name":"metrics_http","passed":true,"detail":"cores=16"},{"name":"bartender_proxy","passed":true,"detail":"http=302"},{"name":"critical_tables","passed":true,"detail":"presets=184 aliases=49 directv=8 firetv=4"},{"name":"matrix_config","passed":true,"detail":"multi-card WP-36X36 offset=32"},{"name":"crash_logs","passed":true,"detail":"clean"}]}
+}
