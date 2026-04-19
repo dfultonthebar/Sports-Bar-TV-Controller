@@ -187,6 +187,37 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.24.4 — Scheduler honors applied override defaults + Fleet/Override-Learn home page nav
+**Released:** 2026-04-18
+
+**What changed:**
+- `apps/web/src/lib/scheduling/apply-override-defaults.ts` — new helper that reads `ScheduledOverrideDefaults` rows for a game's home+away teams and filters/augments an incoming `tvOutputIds` array: `action='exclude'` rows drop matching outputs; `action='include'` rows add missing outputs. Writes an audit `SchedulerLog` row (`operation='applied-to-allocation'`) when any change is made. Non-fatal on DB error.
+- `apps/web/src/app/api/schedules/bartender-schedule/route.ts` — wires the helper in BEFORE the allocation insert. Operator decisions from the v2.24.3 Apply button now actually affect live routing.
+- `apps/web/src/app/page.tsx` — home-page System Controls grid gains Fleet Dashboard (`/fleet`) and Override-Learn Digest (`/override-learn`) cards. The pages were live since v2.24.0 and v2.24.2 respectively but had no nav entry.
+
+**Required Claude step at each location:** None. Feature uses data already at this location; no env vars, no DB patches, no per-location values.
+
+**Verification at Checkpoint C:**
+```bash
+# Home page shows both new cards
+curl -s http://localhost:3001/ | grep -oE 'href="/(fleet|override-learn)"' | sort -u
+```
+Expected: both `href="/fleet"` and `href="/override-learn"` appear.
+
+```bash
+# Apply a rule and confirm it stores; revert it
+curl -s -X POST http://localhost:3001/api/override-learn/apply \
+  -H 'Content-Type: application/json' \
+  -d '{"team":"__TEST__","outputNum":99,"action":"exclude"}' \
+  | python3 -c "import json,sys; print(json.load(sys.stdin))"
+sqlite3 /home/ubuntu/sports-bar-data/production.db "DELETE FROM ScheduledOverrideDefaults WHERE team='__TEST__';"
+```
+Expected: `{'success': True, 'id': '<uuid>', 'refreshed': False}`.
+
+**Rollback:** `git revert` removes the helper + its call-site hook. The `ScheduledOverrideDefaults` table stays with any applied rules (harmless — nothing consults the table after revert).
+
+---
+
 ### v2.24.3 — Apply-recommendation buttons + bartender Schedule widget
 **Released:** 2026-04-18
 
