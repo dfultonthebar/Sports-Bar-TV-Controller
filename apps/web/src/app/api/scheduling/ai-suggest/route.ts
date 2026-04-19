@@ -256,20 +256,85 @@ async function loadHistoricalPatterns(): Promise<string> {
 }
 
 // ---------- helper: load input sources ----------
+//
+// `currentlyAllocated` must reflect LIVE pending/active allocations in the
+// AI-suggest window, not the `input_sources.currently_allocated` stored
+// column which can drift (it's updated lazily by unrelated flows and is
+// often stale). v2.25.3: we compute it from input_source_allocations
+// rows that overlap the coming 12h window. That window matches the
+// games pulled by fetchUpcomingGames() — so any input marked BUSY here
+// has a real conflict against the game list the AI is about to plan.
+//
+// Also returns the per-input list of upcoming bookings so the prompt
+// can say "DirecTV 3: BUSY 12:40-15:49 with Brewers @ Marlins" rather
+// than just BUSY. Gives the AI the time info to reason about whether
+// a later 76ers tip-off at 20:00 can still land on DirecTV 3 after
+// Brewers clears.
 
 async function loadInputSources() {
   const sources = await db.select().from(schema.inputSources).where(eq(schema.inputSources.isActive, true))
-  return sources.map(s => ({
-    id: s.id,
-    name: s.name,
-    type: s.type,
-    deviceId: s.deviceId,
-    matrixInputId: s.matrixInputId,
-    currentlyAllocated: s.currentlyAllocated,
-    currentChannel: s.currentChannel,
-    priorityRank: s.priorityRank,
-    availableNetworks: (() => { try { return JSON.parse(s.availableNetworks) } catch { return [] } })(),
-  }))
+
+  const nowUnix = Math.floor(Date.now() / 1000)
+  const windowEnd = nowUnix + 12 * 60 * 60
+
+  // Pull pending+active allocations in our planning window, plus game
+  // names for display.
+  const activeAllocations = await db.all(sql`
+    SELECT
+      isa.input_source_id AS inputSourceId,
+      isa.allocated_at AS allocatedAt,
+      isa.expected_free_at AS expectedFreeAt,
+      isa.status AS status,
+      gs.home_team_name AS homeTeam,
+      gs.away_team_name AS awayTeam
+    FROM input_source_allocations isa
+    JOIN game_schedules gs ON isa.game_schedule_id = gs.id
+    WHERE isa.status IN ('pending', 'active')
+      AND isa.expected_free_at >= ${nowUnix}
+      AND isa.allocated_at <= ${windowEnd}
+  `) as Array<{
+    inputSourceId: string
+    allocatedAt: number
+    expectedFreeAt: number
+    status: string
+    homeTeam: string | null
+    awayTeam: string | null
+  }>
+
+  const bookingsByInput = new Map<string, typeof activeAllocations>()
+  for (const a of activeAllocations) {
+    const list = bookingsByInput.get(a.inputSourceId) || []
+    list.push(a)
+    bookingsByInput.set(a.inputSourceId, list)
+  }
+
+  return sources.map(s => {
+    const bookings = bookingsByInput.get(s.id) || []
+    // Sort by allocatedAt so "upcoming" order is stable
+    bookings.sort((a, b) => a.allocatedAt - b.allocatedAt)
+    return {
+      id: s.id,
+      name: s.name,
+      type: s.type,
+      deviceId: s.deviceId,
+      matrixInputId: s.matrixInputId,
+      // Live flag: BUSY if any booking overlaps RIGHT NOW (allocatedAt <=
+      // now <= expectedFreeAt). Still-upcoming bookings are shown
+      // separately via `bookings` so the AI can plan around them.
+      currentlyAllocated: bookings.some(b => b.allocatedAt <= nowUnix && b.expectedFreeAt >= nowUnix),
+      currentChannel: s.currentChannel,
+      priorityRank: s.priorityRank,
+      availableNetworks: (() => { try { return JSON.parse(s.availableNetworks) } catch { return [] } })(),
+      bookings: bookings.map(b => ({
+        startUnix: b.allocatedAt,
+        endUnix: b.expectedFreeAt,
+        startLocal: new Date(b.allocatedAt * 1000).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: HARDWARE_CONFIG.venue.timezone }),
+        endLocal: new Date(b.expectedFreeAt * 1000).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: HARDWARE_CONFIG.venue.timezone }),
+        gameLabel: [b.awayTeam, b.homeTeam].filter(Boolean).join(' @ ') || 'game',
+        status: b.status,
+      })),
+    }
+  })
 }
 
 // ---------- helper: load channel presets ----------
@@ -348,16 +413,24 @@ function buildPrompt(
   const directvInputs = inputSources.filter(s => s.type === 'directv' || s.type === 'satellite')
   const firetvInputs = inputSources.filter(s => s.type === 'firetv')
 
+  // Format each input's booking summary: "BUSY 12:40-15:49 Brewers @ Marlins; 20:00-22:30 76ers @ Lakers"
+  // Shown inline with the input so the AI can reason about overlapping windows.
+  const bookingsStr = (s: any): string => {
+    if (!Array.isArray(s.bookings) || s.bookings.length === 0) return ''
+    const lines = s.bookings.slice(0, 3).map((b: any) => `${b.startLocal}-${b.endLocal} ${b.gameLabel}`)
+    return ` · BOOKED: ${lines.join('; ')}`
+  }
+
   const inputLines: string[] = []
   for (const s of cableInputs) {
-    inputLines.push(`  ${s.name} (cable${s.currentlyAllocated ? ', BUSY' : ''})`)
+    inputLines.push(`  ${s.name} (cable${s.currentlyAllocated ? ', BUSY NOW' : ''}${bookingsStr(s)})`)
   }
   for (const s of directvInputs) {
-    inputLines.push(`  ${s.name} (directv${s.currentlyAllocated ? ', BUSY' : ''})`)
+    inputLines.push(`  ${s.name} (directv${s.currentlyAllocated ? ', BUSY NOW' : ''}${bookingsStr(s)})`)
   }
   for (const s of firetvInputs) {
     const apps = Array.isArray(s.availableNetworks) ? s.availableNetworks.slice(0, 6).join(', ') : 'streaming apps'
-    inputLines.push(`  ${s.name} (firetv — apps: ${apps}${s.currentlyAllocated ? ', BUSY' : ''})`)
+    inputLines.push(`  ${s.name} (firetv — apps: ${apps}${s.currentlyAllocated ? ', BUSY NOW' : ''}${bookingsStr(s)})`)
   }
 
   // Build game list with per-route labels. A game can have multiple simultaneous
@@ -453,6 +526,7 @@ ${exclusivityRule}
 5. Home team games (Brewers, Bucks, Packers, Badgers) get top priority — always propose them first. Then propose diverse options across leagues (MLB, NBA, NHL, MLS, UFL, UFC, Premier League, college sports) so the manager can compare. Don't only suggest one sport — include games from every league present in the GAMES list.
 6. Spread across inputs — propose games for EVERY available input. Every cable box, DirecTV receiver, and Fire TV should have at least one suggestion.
 7. "suggestedInput" MUST be an exact name from the INPUTS list above.
+8. RESPECT EXISTING BOOKINGS. Each input line may include a "BOOKED: <start>-<end> <game>" suffix listing allocations that already overlap the 12-hour window. Do NOT suggest a game for an input whose booking window overlaps the game's start time. Example: if "DirecTV 3 · BOOKED: 12:40-15:49 Brewers @ Marlins" is shown and the Philadelphia 76ers game tips off at 14:00, DO NOT pick DirecTV 3 for the 76ers — pick any other DirecTV box (DirecTV 1, 2, 4, 5, 6). Only re-use a booked input if the new game's start is AFTER the booking's end time (e.g., 76ers at 20:00 CAN go on DirecTV 3 because Brewers frees at 15:49).
 
 Return ONLY valid JSON:
 {"suggestions":[{"gameIndex":1,"suggestedInput":"${exampleInput}","channelNumber":"669","suggestedOutputs":[1,2,3],"confidence":0.9,"reasoning":"Brewers home game on DirecTV"}]}
@@ -605,11 +679,43 @@ function parseOllamaResponse(
     // Exclusivity rerouting only makes sense when the venue has both input types.
     const hasMixedInputs = cableInputsAll.length > 0 && directvInputsAll.length > 0
 
+    // Build a map of inputId -> bookings for collision checks below.
+    const bookingsByInputId = new Map<string, Array<{ startUnix: number; endUnix: number; gameLabel: string }>>()
+    for (const s of inputSources) {
+      if (Array.isArray(s.bookings) && s.bookings.length > 0) {
+        bookingsByInputId.set(s.id, s.bookings)
+      }
+    }
+
     const finalSuggestions: AISuggestion[] = []
     for (const sug of suggestions) {
       const gameIdx = parseInt(sug.gameId.replace('game-', ''), 10)
       const origGame = games[gameIdx]
       const availableOnBoth = origGame?.channelNumber && origGame?.directvChannel
+
+      // (0) Safety net: drop any suggestion that collides with an
+      // existing booking on the proposed input. The prompt includes
+      // rule 8 telling the AI to respect bookings, but we don't trust
+      // Ollama to always honor it. If the game's start time falls
+      // within an existing booking's window on the same input, the
+      // suggestion is a hard conflict and we silently drop it so the
+      // manager never sees "schedule 76ers on DirecTV 3" while Brewers
+      // is already there.
+      if (origGame && sug.suggestedInputId) {
+        const bookings = bookingsByInputId.get(sug.suggestedInputId)
+        if (bookings && bookings.length > 0) {
+          const gameStartUnix = new Date(origGame.time).getTime() / 1000
+          const collision = bookings.find(
+            b => gameStartUnix >= b.startUnix && gameStartUnix < b.endUnix,
+          )
+          if (collision) {
+            logger.info(
+              `[AI-SUGGEST] Dropping collision: ${sug.awayTeam} @ ${sug.homeTeam} on ${sug.suggestedInput} (conflicts with ${collision.gameLabel})`,
+            )
+            continue
+          }
+        }
+      }
 
       // (a) Prefer DirecTV for BOTH-availability games when a directv input is free.
       // Skip entirely at single-platform venues. "Free" means assigned fewer
