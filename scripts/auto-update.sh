@@ -133,7 +133,26 @@ step() {
 }
 
 fail() {
-  log "FAIL at step '$CURRENT_STEP': $*"
+  local reason="$*"
+  log "FAIL at step '$CURRENT_STEP': $reason"
+
+  # Rollback-learn hook (v2.25.1+): capture failure signature for future
+  # Checkpoint A consultation. Non-fatal — if the API call fails we still
+  # exit with the failure code, just without the learn-signal.
+  # Run-id = the basename of the current log file (auto-update-YYYY-MM-DD-HH-MM)
+  if [ -n "${LOG_FILE:-}" ] && [ -n "${CURRENT_STEP:-}" ]; then
+    local run_id
+    run_id=$(basename "$LOG_FILE" .log)
+    local payload
+    payload=$(printf '{"action":"capture","runId":%s,"failedStep":%s,"reason":%s,"version":%s}' \
+      "$(printf '%s' "$run_id"       | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))')" \
+      "$(printf '%s' "$CURRENT_STEP" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))')" \
+      "$(printf '%s' "$reason"       | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))')" \
+      "$(printf '%s' "${PRE_MERGE_VERSION:-}" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))')")
+    curl -sS -m 5 -X POST -H 'Content-Type: application/json' \
+      "http://localhost:3001/api/auto-update/failures" -d "$payload" >/dev/null 2>&1 || true
+  fi
+
   exit "${2:-4}"
 }
 
