@@ -187,6 +187,72 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.24.6 — auto-update.sh pushes merge commits back to origin (Fleet Dashboard accuracy fix)
+**Released:** 2026-04-18
+
+**What changed:**
+- `scripts/auto-update.sh` — new push step at the end of the FINALIZE phase. After a successful auto-update (checkpoints A/B/C + verify-install all green), the script now runs `git push origin <current-branch>` to publish the merge commit to GitHub. Non-fatal on failure (location is still healthy; just the dashboard signal is missing). Never touches main. No --force.
+
+**Why this matters:** the Fleet Dashboard (v2.24.0) reads `origin/location/<name>` from the local git clone, which mirrors GitHub. Before v2.24.6, auto-update.sh merged main locally and built/restarted but never pushed. Every location that successfully auto-updated LOCALLY without a human running `git push` afterward looked "stuck" on the dashboard forever. Stoneyard Appleton (v2.12.8 on git, last push 2 days ago) and Stoneyard Greenville (v2.16.2, last push 32h ago) are examples — both have almost certainly been running newer code for a while; nobody has been pushing.
+
+After v2.24.6 lands at a location, the next successful auto-update will push automatically and the dashboard will catch up.
+
+**Required Claude step per location:** None — fix is purely in auto-update.sh. No config, no env var, no DB patch.
+
+**One-time catch-up action for already-stuck locations:** operator SSH to each stuck host once, run:
+```bash
+cd /home/ubuntu/Sports-Bar-TV-Controller
+git push origin "$(git rev-parse --abbrev-ref HEAD)"
+```
+That pushes whatever merge commits have accumulated locally. Future auto-updates (after v2.24.6 lands there) will do it automatically.
+
+**Rollback:** `git revert` removes the push step. Auto-update goes back to merge-locally-only behavior; dashboard drifts again.
+
+---
+
+### v2.24.5 — Per-location Brave API key provisioning helper
+**Released:** 2026-04-18
+
+**What changed:**
+- New `scripts/set-brave-api-key.sh` — installs a BRAVE_API_KEY into both `.env` (for PM2 runtime) and `~/.bashrc` (for interactive Claude Code sessions) at the host where it's run. Idempotent (same key = no-op, different key = update). Supports `--remove`, `--show` (masked), `--test` (probes the Brave API to confirm the key works). The script itself is committed; **keys are NOT**. Operator at each location runs it once per key.
+
+**Why this matters:** the Brave Search MCP enabled in v2.23.3 needs a `BRAVE_API_KEY` to work. The repo is PUBLIC, so committing a shared key to git exposes it to scrapers. The safe path is per-location free-tier keys (2,000 queries/month each, signup 2 min, no credit card).
+
+**Required Claude step per location:** None — this is operator-driven. Claude at each location has no way to sign up for an API key; a human has to do the 2-min form. However, Claude at Checkpoint B should mention the helper script in its decision summary so the operator knows it's available.
+
+**Operator runbook per location (do this ONCE per location you want Brave Search in):**
+
+1. Visit https://api.search.brave.com/app/keys and sign up (free tier, no credit card).
+2. Create an API key and copy it. The key format is `BS...` — roughly 32-33 chars of alphanumerics/underscores.
+3. SSH to the location's server (or run locally on the bar's host), then:
+   ```bash
+   cd /home/ubuntu/Sports-Bar-TV-Controller
+   bash scripts/set-brave-api-key.sh <paste-key-here>
+   ```
+   Output should show `.env: added` and `~/.bashrc: added`.
+
+4. Confirm the key actually works (the helper has a probe built in):
+   ```bash
+   bash scripts/set-brave-api-key.sh --test
+   ```
+   Expected: `OK: HTTP 200 — key works.` Any other response means the key is invalid or rate-limited.
+
+5. For the Sports Bar app to read the new .env value, do a PM2 delete+start (not restart — see CLAUDE.md Common Gotcha #3):
+   ```bash
+   pm2 delete sports-bar-tv-controller && pm2 start ecosystem.config.js
+   ```
+
+6. For any CURRENT `claude` terminal session to pick up the new key, either open a new shell OR `export BRAVE_API_KEY="$(grep ^BRAVE_API_KEY= .env | cut -d= -f2-)"` in the existing one, then exit and relaunch `claude`.
+
+**What locations can skip this:**
+- Any location where you don't want Brave Search in Claude Code sessions at all — Context7 still works without a key, so the other MCP is unaffected.
+
+**Rollback:**
+- `bash scripts/set-brave-api-key.sh --remove` — strips the key from both `.env` and `~/.bashrc` at the location.
+- `git revert` the commit — removes the helper script. The key stays until `--remove` is run locally.
+
+---
+
 ### v2.24.4 — Scheduler honors applied override defaults + Fleet/Override-Learn home page nav
 **Released:** 2026-04-18
 

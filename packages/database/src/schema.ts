@@ -2690,6 +2690,38 @@ export const subscribedStreamingApps = sqliteTable('SubscribedStreamingApp', {
 // This table is read-only from the scheduler's perspective; mutations
 // only happen through /api/override-learn/apply (and a DELETE endpoint
 // for revert). Every apply also writes a SchedulerLog audit row.
+// ============================================================================
+// AUTO-UPDATE ROLLBACK LEARN (v2.25.1)
+// ============================================================================
+//
+// Every time auto-update.sh fails a checkpoint or a step and rolls back,
+// we capture the failure signature here so future Checkpoint A prompts
+// can consult "we've hit this pattern before" before approving new
+// merges. Parallel to override-learn: passively collect signal → surface
+// pattern → reduce recurrence.
+//
+// Signature = which STEP failed + the first ~200 chars of the error
+// message/rollback reason, normalized to strip timestamps and UUIDs.
+// Same step+signature combo increments `occurrences` instead of
+// creating a new row, so a recurring bug shows up as one high-count
+// entry instead of dozens of near-dupes.
+export const autoUpdateFailureSignatures = sqliteTable('AutoUpdateFailureSignatures', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  failedStep: text('failedStep').notNull(), // e.g. 'build', 'schema_push', 'checkpoint_c'
+  signature: text('signature').notNull(), // normalized first-200-chars of error text
+  fullReason: text('fullReason'), // last raw reason observed (not the historical sum)
+  occurrences: integer('occurrences').notNull().default(1),
+  firstSeen: integer('firstSeen').notNull().default(sql`(strftime('%s', 'now'))`),
+  lastSeen: integer('lastSeen').notNull().default(sql`(strftime('%s', 'now'))`),
+  affectedVersions: text('affectedVersions'), // JSON array of version strings where this hit
+  lastRunId: text('lastRunId'), // last auto-update-YYYY-MM-DD-HH-MM filename where this fired
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+}, (table) => ({
+  stepIdx: index('AutoUpdateFailureSignatures_step_idx').on(table.failedStep),
+  uniqueSig: uniqueIndex('AutoUpdateFailureSignatures_step_sig_unique').on(table.failedStep, table.signature),
+}))
+
 export const scheduledOverrideDefaults = sqliteTable('ScheduledOverrideDefaults', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   team: text('team').notNull(),
