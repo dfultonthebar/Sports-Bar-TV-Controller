@@ -165,6 +165,20 @@ export default function CableBoxRemote({ deviceId, deviceName, onClose }: CableB
   // Auto-clear timeout ref for channel input display
   const clearTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
+  // Reports the just-tuned channel to the backend so InputCurrentChannel
+  // reflects reality for the routing-matrix view and bartender channel guide.
+  // Fire-and-forget: the IR tune itself already happened via per-digit sends;
+  // this just tells the backend what the final number was. If this fails,
+  // the user experience is unchanged — just the UI display lags.
+  const reportTunedChannel = (channelNumber: string) => {
+    if (!channelNumber) return
+    fetch('/api/ir-devices/tuned-channel', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deviceId, channelNumber }),
+    }).catch(() => { /* non-fatal, just tracking */ })
+  }
+
   const handleNumberClick = (number: string) => {
     const newChannelInput = channelInput + number
     setChannelInput(newChannelInput)
@@ -172,19 +186,27 @@ export default function CableBoxRemote({ deviceId, deviceName, onClose }: CableB
     // Send digit immediately using non-blocking queue (no UI blocking!)
     sendDigitCommand(number)
 
-    // Reset auto-clear timer on each digit press
+    // Reset auto-clear timer on each digit press. When the timer fires
+    // (user stopped typing for 3s), capture the final channel number —
+    // this catches Spectrum's auto-tune behavior where no Enter press is
+    // needed.
     if (clearTimeoutRef.current) {
       clearTimeout(clearTimeoutRef.current)
     }
     clearTimeoutRef.current = setTimeout(() => {
+      reportTunedChannel(newChannelInput)
       setChannelInput('')
-    }, 3000) // 3 seconds to allow entering longer channel numbers
+    }, 3000)
   }
 
   const handleChannelEnter = () => {
     if (channelInput) {
       // Send Enter command for IR devices
       sendCommand('OK', 'Enter')
+      reportTunedChannel(channelInput)
+      if (clearTimeoutRef.current) {
+        clearTimeout(clearTimeoutRef.current)
+      }
       setChannelInput('')
     }
   }
