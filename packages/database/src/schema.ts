@@ -2665,3 +2665,49 @@ export const subscribedStreamingApps = sqliteTable('SubscribedStreamingApp', {
   createdAt: timestamp('createdAt').notNull().default(timestampNow()),
   updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
 })
+
+// ============================================================================
+// SCHEDULED OVERRIDE DEFAULTS (v2.24.3)
+// ============================================================================
+//
+// When an operator clicks "Apply" on an override-learn recommendation, we
+// store the decision here as a durable rule: "for team X, action Y on TV
+// output Z". The scheduler-service consults this table when building the
+// initial tv_output_ids list for new allocations, so the bartender
+// doesn't have to re-correct the same routing every night.
+//
+// Action semantics:
+//   - 'exclude': never auto-route this team to this output (removes it
+//     from the default tv_output_ids). Derived from recurring 'remove'
+//     override events.
+//   - 'include': always auto-route this team to this output (adds it to
+//     the default tv_output_ids). Derived from recurring 'add' override
+//     events.
+//
+// UNIQUE (team, outputNum, action) prevents duplicates. A team can have
+// BOTH exclude and include entries on different outputs.
+//
+// This table is read-only from the scheduler's perspective; mutations
+// only happen through /api/override-learn/apply (and a DELETE endpoint
+// for revert). Every apply also writes a SchedulerLog audit row.
+export const scheduledOverrideDefaults = sqliteTable('ScheduledOverrideDefaults', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  team: text('team').notNull(),
+  league: text('league'),
+  outputNum: integer('outputNum').notNull(),
+  action: text('action').notNull(), // 'exclude' | 'include'
+  isHomeTeam: integer('isHomeTeam', { mode: 'boolean' }).notNull().default(false),
+  occurrences: integer('occurrences').notNull().default(1), // # of source events this was derived from
+  sourceCorrelationId: text('sourceCorrelationId'), // optional link to a specific override-digest batch
+  appliedAt: timestamp('appliedAt').notNull().default(timestampNow()),
+  appliedBy: text('appliedBy').notNull().default('operator'),
+  notes: text('notes'),
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+}, (table) => ({
+  teamIdx: index('ScheduledOverrideDefaults_team_idx').on(table.team),
+  uniqueAction: uniqueIndex('ScheduledOverrideDefaults_team_output_action_unique').on(
+    table.team,
+    table.outputNum,
+    table.action,
+  ),
+}))

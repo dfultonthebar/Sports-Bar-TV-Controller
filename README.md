@@ -689,7 +689,7 @@ npm run build:kb
 - **[API_REFERENCE.md](./docs/API_REFERENCE.md)** - Complete API endpoint documentation
 - **[HARDWARE_CONFIGURATION.md](./docs/HARDWARE_CONFIGURATION.md)** - Hardware setup and configuration guide
 - **[DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md)** - Comprehensive deployment instructions
-- **[NUC_DEPLOYMENT.md](./NUC_DEPLOYMENT.md)** - Intel NUC-specific deployment guide
+- **[NUC_DEPLOYMENT.md](./docs/NUC_DEPLOYMENT.md)** - Intel NUC-specific deployment guide
 - **[UPDATE_PROCESS.md](./UPDATE_PROCESS.md)** - Detailed update procedures
 - **[BACKUP_RESTORE_GUIDE.md](./BACKUP_RESTORE_GUIDE.md)** - Backup and restore procedures
 - **[ai-assistant/README.md](./ai-assistant/README.md)** - AI Code Assistant documentation
