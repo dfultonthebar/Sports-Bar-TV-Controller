@@ -1,0 +1,9 @@
+{
+  "version": "2.25.2",
+  "branch": "location/holmgren-way",
+  "commitSha": "HEAD",
+  "successAt": "2026-04-19T01:12:37Z",
+  "successAtUnix": 1776561157,
+  "runId": "manual-test-20-12",
+  "verifyInstall": {"status":"PASS","passed":7,"total":7,"durationSecs":2}
+}
