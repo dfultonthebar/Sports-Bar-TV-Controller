@@ -187,6 +187,93 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.27.1 — AI Suggest spread + collision hardening (zero-output guard, in-batch tracker)
+**Released:** 2026-04-20
+
+**What changed:**
+
+- `apps/web/src/app/api/scheduling/ai-suggest/route.ts` — prompt rewrite:
+  removed the "[BOTH] games go DirecTV by default" exclusivity rule that
+  was biasing every dual-route game to DirecTV and packing 5 games on one
+  receiver. New rules: explicit no-double-booking, spread-before-stack,
+  channel-tells-device-class, dynamic free-set re-check per game, and a
+  hard "every suggestion MUST include at least 1 TV output" rule with a
+  per-game tvPerGame hint.
+- `apps/web/src/app/api/scheduling/ai-suggest/route.ts` — parser changes:
+  (1) `parseOllamaResponse` now returns `{ suggestions, rejections }`.
+  (2) Empty `suggestedOutputs` arrays are REJECTED (not silently passed)
+  with `reason='zero_outputs'`. Bug A root cause was Ollama tail-attention
+  drop on long 12-game prompts producing `suggestedOutputs:[]`.
+  (3) New `inBatchClaims` map tracks each accepted suggestion's 3h time
+  window per input, so a second suggestion that overlaps gets rerouted
+  to an idle same-class input (cable→cable, dtv→dtv) or rejected with
+  `reason='in_batch_collision'`.
+  (4) The post-LLM "DirecTV-default rerouter" block was DELETED entirely —
+  it was the second source of cable-box-bias-the-other-way bug.
+  (5) All rejection paths (existing_collision, in_batch_collision,
+  zero_outputs, no_route, duplicate_combo, over_per_input_cap,
+  over_per_game_cap) now persist a `SchedulerLog` row with
+  `component='ai-suggest'`, `operation='reject'`, `level='warn'` for
+  the high-signal cases.
+- `packages/scheduler/src/allocation-conflicts.ts` — NEW. Duplicates
+  `apps/web/src/lib/scheduling/allocation-conflicts.ts` so the package
+  allocator can guard `createAllocation` without a cross-package import.
+- `packages/scheduler/src/smart-input-allocator.ts` — `createAllocation`
+  now refuses to insert when `tvOutputIds.length === 0` (throws
+  `[ALLOCATOR]` error) AND pre-flight conflict-checks the chosen input
+  before the insert (was only checked post-insert by
+  `/api/scheduling/allocate`).
+- `apps/web/src/app/api/scheduling/allocate/route.ts` — maps
+  `[ALLOCATOR]`-prefixed throws to HTTP 409 (was 500) so the UI can
+  show a useful retry message.
+
+**Schema changes:** None. Writes additional rows to existing
+`SchedulerLog` table (`component='ai-suggest'`, `operation='reject'`).
+
+**Why this was needed:**
+
+At Holmgren Way on 2026-04-20, the AI Suggest tab returned a Hawks/Knicks
+suggestion with `suggestedOutputs:[]` (no TVs assigned) and double-booked
+DirecTV 3 across overlapping Brewers and 76ers windows. Operator
+investigation traced both to (a) LLM tail-attention drop on the 12-game
+prompt and (b) the post-LLM "Prefer DirecTV for [BOTH] games" rerouter
+ignoring already-claimed slots in the same response.
+
+**Required manual steps:** NONE. Idempotent. Auto-update pipeline handles
+build, schema (no changes), restart.
+
+**Verify after update (per location):**
+
+```bash
+# 1. Hit the endpoint and confirm no zero-output suggestions returned
+curl -s 'http://127.0.0.1:3001/api/scheduling/ai-suggest' | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+zeros = [s for s in d.get("suggestions", []) if len(s.get("suggestedOutputs", [])) == 0]
+print(f"Suggestions: {len(d.get(\"suggestions\", []))}, zero-output: {len(zeros)}")
+'
+
+# 2. Confirm rejection telemetry is being written when LLM misbehaves
+sqlite3 /home/ubuntu/sports-bar-data/production.db "
+SELECT datetime(createdAt,'unixepoch','localtime') AS when_ct,
+       level, json_extract(metadata,'\$.reason') AS reason,
+       gameId, message
+FROM SchedulerLog
+WHERE component='ai-suggest' AND operation='reject'
+ORDER BY createdAt DESC LIMIT 10;"
+
+# 3. Confirm allocator now refuses 0-output requests with 409
+curl -s -X POST http://127.0.0.1:3001/api/scheduling/allocate \
+  -H 'Content-Type: application/json' \
+  -d '{"gameId":"NONEXISTENT","tvOutputIds":[]}' \
+  | python3 -m json.tool
+# Expected: 4xx response, NOT a 200 with an empty allocation.
+```
+
+**Known errors & fixes:** none observed yet — will append if any surface.
+
+---
+
 ### v2.27.0 — Cable-box tune-back: auto-seed defaults from tune history + observability
 **Released:** 2026-04-20
 

@@ -6,6 +6,7 @@
 
 import { db, schema, eq, and, gte, lte, isNull } from '@sports-bar/database'
 import { logger } from '@sports-bar/logger'
+import { checkAllocationConflict } from './allocation-conflicts'
 
 export interface InputSource {
   id: string;
@@ -335,6 +336,34 @@ class SmartInputAllocator {
     }
   ): Promise<AllocationResult> {
     try {
+      // v2.27.1: hard guard against empty TV-output allocations. Allocator
+      // callers (apply route, scheduler) MUST provide at least one output
+      // — an allocation with 0 TVs is meaningless and used to silently
+      // create empty rows that broke downstream tune logic.
+      if (!request.tvOutputIds || request.tvOutputIds.length === 0) {
+        const msg = `[ALLOCATOR] Refusing to create allocation with 0 TV outputs (game=${request.gameId}, input=${inputSource.name}). Caller must supply at least one tvOutputId.`
+        logger.warn(msg)
+        throw new Error(msg)
+      }
+
+      // v2.27.1: pre-flight conflict check. The post-allocation revert in
+      // /api/scheduling/allocate (v2.25.4) is a fallback — checking up
+      // front avoids the wasted insert+delete and surfaces a clear error
+      // if a preempting flow tries to wedge into an already-booked input.
+      const startUnix = Math.floor(game.scheduledStart.getTime() / 1000)
+      const endUnix = Math.floor(game.estimatedEnd.getTime() / 1000)
+      const { conflict } = await checkAllocationConflict(
+        inputSource.id,
+        startUnix,
+        endUnix,
+        options?.preempts || null,
+      )
+      if (conflict && !options?.preempts) {
+        const msg = `[ALLOCATOR] Input ${inputSource.name} is already allocated to ${conflict.gameLabel} (allocation ${conflict.allocationId}, ${conflict.allocatedAt}-${conflict.expectedFreeAt}).`
+        logger.warn(msg)
+        throw new Error(msg)
+      }
+
       const allocationId = crypto.randomUUID();
 
       // Determine channel/app based on input type
