@@ -215,6 +215,35 @@ class ESPNSyncService {
       if (mins >= 20 && mins <= 360) durationMinutes = mins;
     }
 
+    // ESPN MMA / UFC events don't structure competitors as home/away teams —
+    // displayName comes back null on both sides. Fall back to parsing the
+    // event-level name/shortName ("UFC Fight Night: Topuria vs. Holloway")
+    // so AI Suggest, the bartender remote, and PPV scheduling have something
+    // to render. Without this, every UFC row is "" at "" and gets filtered
+    // out of the AI Suggest prompt — which is exactly how the 2026-04-18
+    // UFC PPV got dropped at Holmgren Way.
+    let homeTeamName = game.homeTeam.displayName
+    let awayTeamName = game.awayTeam.displayName
+    if (sport === 'mma' && (!homeTeamName || !awayTeamName)) {
+      const eventName = game.name || game.shortName || ''
+      // Match either " vs " or " vs. " between the two fighters.
+      const vsMatch = eventName.split(/\s+vs\.?\s+/i)
+      if (vsMatch.length === 2) {
+        // Strip a leading "UFC Fight Night: " or "UFC 300: " etc. from the
+        // first fighter so we get clean names. The second fighter is already
+        // clean (just the surname or full name).
+        const left = vsMatch[0].replace(/^[^:]*:\s*/, '').trim()
+        const right = vsMatch[1].trim()
+        awayTeamName = left || eventName
+        homeTeamName = right || ''
+      } else {
+        // Fallback: stuff the whole event name into awayTeamName so the AI
+        // prompt at least shows "UFC Fight Night" instead of " at ".
+        awayTeamName = eventName
+        homeTeamName = ''
+      }
+    }
+
     const gameData = {
       espnEventId: game.id,
       espnCompetitionId: game.competitionId,
@@ -225,8 +254,8 @@ class ESPNSyncService {
       awayTeamId: null,
       homeTeamEspnId: game.homeTeam.id,
       awayTeamEspnId: game.awayTeam.id,
-      homeTeamName: game.homeTeam.displayName,
-      awayTeamName: game.awayTeam.displayName,
+      homeTeamName,
+      awayTeamName,
 
       scheduledStart: scheduledStartTimestamp,
       estimatedEnd: estimatedEndTimestamp,

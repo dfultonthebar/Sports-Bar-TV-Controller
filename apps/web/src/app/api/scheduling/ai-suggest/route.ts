@@ -144,12 +144,20 @@ async function fetchUpcomingGames(): Promise<GameListing[]> {
 
       const gameTime = new Date(row.scheduledStart * 1000)
 
+      // Tolerate empty home/away names (UFC/PPV — see espn-sync-service.ts).
+      // The prompt builder applies its own fallback when both are empty.
+      const awayName = row.awayTeamName || ''
+      const homeName = row.homeTeamName || ''
+      const titleStr = (awayName && homeName)
+        ? `${awayName} at ${homeName}`
+        : (awayName || homeName || `${row.league || 'event'}`.toUpperCase())
+
       games.push({
         time: gameTime.toISOString(),
-        title: `${row.awayTeamName} at ${row.homeTeamName}`,
+        title: titleStr,
         league: row.league || 'Unknown',
-        homeTeam: row.homeTeamName,
-        awayTeam: row.awayTeamName,
+        homeTeam: homeName,
+        awayTeam: awayName,
         stations: networks,
         channelNumber: resolved.cableChannel || '',
         channelName: resolved.primaryMatch || networks[0] || '',
@@ -456,7 +464,16 @@ function buildPrompt(
     if (g.directvChannel) availability.push('DIRECTV')
     if (g.streamingApp) availability.push('FIRETV')
     const tag = availability.length > 1 ? availability.join('+') : (availability[0] || 'NO-ROUTE')
-    return `${i + 1}. [${tag}] ${g.awayTeam} at ${g.homeTeam} (${g.league}) — ${time} CT — ${routes || 'no route'} · assign ~${tvPerGame} TVs (min 1, max 8)`
+    // UFC/PPV events come through ESPN with empty home/away team names —
+    // ESPN structures MMA as fighters, not teams, so the displayName fields
+    // are null and our espn-sync-service backfill yields awayTeam=
+    // "UFC Fight Night" + homeTeam="" (or both empty if the event-name
+    // parser couldn't split). Render whichever halves are non-empty rather
+    // than emitting " at " which trips the LLM into ignoring the row.
+    const teams = (g.awayTeam && g.homeTeam)
+      ? `${g.awayTeam} at ${g.homeTeam}`
+      : (g.awayTeam || g.homeTeam || `${g.league.toUpperCase()} event`)
+    return `${i + 1}. [${tag}] ${teams} (${g.league}) — ${time} CT — ${routes || 'no route'} · assign ~${tvPerGame} TVs (min 1, max 8)`
   }).join('\n')
 
   // Pattern hints

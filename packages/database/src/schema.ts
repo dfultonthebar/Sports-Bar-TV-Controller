@@ -2753,3 +2753,29 @@ export const scheduledOverrideDefaults = sqliteTable('ScheduledOverrideDefaults'
     table.action,
   ),
 }))
+
+// ============================================================================
+// PPV / EVENT CHANNEL DISCOVERY (v2.28.0)
+// ============================================================================
+
+// Track DirecTV PPV channel observations from /tv/getTuned probe runs.
+// ESPN doesn't reliably surface PPV broadcast info for UFC/boxing events,
+// so we discover channels reactively: every 10 minutes the scheduler asks
+// each DirecTV box what it's tuned to and upserts any "PPV"-callsigned or
+// 100-199 channel-range result here. This gives operators a list of recently
+// active PPV channels they can pin to scheduled events when ESPN is silent.
+export const discoveredPpvChannels = sqliteTable('discovered_ppv_channels', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  directvDeviceId: text('directv_device_id').notNull(),
+  channelMajor: integer('channel_major').notNull(),
+  channelMinor: integer('channel_minor'),
+  callsign: text('callsign'),
+  title: text('title'),
+  firstSeenAt: integer('first_seen_at').notNull(),
+  lastSeenAt: integer('last_seen_at').notNull(),
+  seenCount: integer('seen_count').notNull().default(1),
+}, (table) => ({
+  uniquePerDeviceChannel: uniqueIndex('discovered_ppv_channels_device_major_unique')
+    .on(table.directvDeviceId, table.channelMajor),
+  lastSeenIdx: index('discovered_ppv_channels_lastSeen_idx').on(table.lastSeenAt),
+}))
