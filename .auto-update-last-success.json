@@ -1,9 +1,9 @@
 {
-  "version": "2.26.0",
+  "version": "2.26.2",
   "branch": "location/lucky-s-1313",
-  "commitSha": "342438f74e92b5320a858c1bf832a2c526d22647",
-  "successAt": "2026-04-19T17:10:18Z",
-  "successAtUnix": 1776618618,
-  "runId": "auto-update-2026-04-19-17-05",
-  "verifyInstall": {"status":"PASS","passed":7,"total":7,"durationSecs":0,"failed":[],"layers":[{"name":"pm2_online","passed":true,"detail":"status=online restart_time=1"},{"name":"health_http","passed":true,"detail":"status=healthy"},{"name":"metrics_http","passed":true,"detail":"cores=20"},{"name":"bartender_proxy","passed":true,"detail":"http=302"},{"name":"critical_tables","passed":true,"detail":"presets=31 aliases=45 directv=0 firetv=4"},{"name":"matrix_config","passed":true,"detail":"single-card WP-36X36 offset=0"},{"name":"crash_logs","passed":true,"detail":"clean"}]}
+  "commitSha": "5b49e049347f694f2150b426b53dfac537e6a5d5",
+  "successAt": "2026-04-20T16:46:47Z",
+  "successAtUnix": 1776703607,
+  "runId": "auto-update-2026-04-20-16-40",
+  "verifyInstall": {"status":"PASS","passed":7,"total":7,"durationSecs":1,"failed":[],"layers":[{"name":"pm2_online","passed":true,"detail":"status=online restart_time=1"},{"name":"health_http","passed":true,"detail":"status=healthy"},{"name":"metrics_http","passed":true,"detail":"cores=20"},{"name":"bartender_proxy","passed":true,"detail":"http=302"},{"name":"critical_tables","passed":true,"detail":"presets=31 aliases=49 directv=0 firetv=4"},{"name":"matrix_config","passed":true,"detail":"single-card WP-36X36 offset=0"},{"name":"crash_logs","passed":true,"detail":"clean"}]}
 }
