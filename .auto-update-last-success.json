@@ -1,9 +1,9 @@
 {
-  "version": "2.25.2",
+  "version": "2.26.2",
   "branch": "location/holmgren-way",
-  "commitSha": "HEAD",
-  "successAt": "2026-04-19T01:12:37Z",
-  "successAtUnix": 1776561157,
-  "runId": "manual-test-20-12",
-  "verifyInstall": {"status":"PASS","passed":7,"total":7,"durationSecs":2}
+  "commitSha": "8bbe0158eebe506218bce0ff696b86648e59c2ea",
+  "successAt": "2026-04-20T07:37:42Z",
+  "successAtUnix": 1776670662,
+  "runId": "auto-update-2026-04-20-02-30",
+  "verifyInstall": {"status":"PASS","passed":7,"total":7,"durationSecs":2,"failed":[],"layers":[{"name":"pm2_online","passed":true,"detail":"status=online restart_time=3"},{"name":"health_http","passed":true,"detail":"status=healthy"},{"name":"metrics_http","passed":true,"detail":"cores=20"},{"name":"bartender_proxy","passed":true,"detail":"http=302"},{"name":"critical_tables","passed":true,"detail":"presets=117 aliases=69 directv=6 firetv=5"},{"name":"matrix_config","passed":true,"detail":"multi-card WP-36X36 offset=0"},{"name":"crash_logs","passed":true,"detail":"clean"}]}
 }
