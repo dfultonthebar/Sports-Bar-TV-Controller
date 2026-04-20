@@ -187,6 +187,134 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.28.0 — UFC/PPV event scheduling support (ESPN MMA name backfill + DirecTV PPV probe + AI Suggest empty-team tolerance)
+**Released:** 2026-04-20
+
+**What changed:**
+
+- `packages/scheduler/src/espn-sync-service.ts` — when `sport === 'mma'` and
+  ESPN returns empty `displayName` for both fighters (which it does for
+  every UFC event — ESPN structures MMA as fighters, not teams), parse
+  `event.name` ("UFC Fight Night: Topuria vs. Holloway") on ` vs.? `,
+  strip leading "UFC <whatever>: " from the first half, and assign the
+  two halves to `awayTeamName` / `homeTeamName`. Falls back to the whole
+  event name in `awayTeamName` if the split fails.
+- `packages/database/src/schema.ts` — NEW table `discovered_ppv_channels`
+  with `(directvDeviceId, channelMajor)` unique index. Tracks observations
+  of PPV-band channels seen on DirecTV `/tv/getTuned`.
+- `packages/scheduler/src/directv-probe.ts` — NEW. Polls every active
+  DirecTV box's SHEF `/tv/getTuned` and upserts any tuned channel where
+  `callsign === 'PPV'` OR (major in 100-199 AND title non-empty) into
+  `discovered_ppv_channels`. Per-box errors are caught and reported.
+- `packages/scheduler/src/scheduler-service.ts` — wires the probe into a
+  10-minute cron interval (first run 90s after startup) alongside the
+  existing TV-status poll. New `ppvProbeIntervalId` + `runPpvProbe()`.
+- `packages/scheduler/src/index.ts` — re-exports `probeAllDirecTVTuned` and
+  `DirecTVProbeResult` so app routes can call the probe.
+- `apps/web/src/app/api/directv/probe-tuned/route.ts` — NEW POST endpoint
+  for on-demand probe execution (testing / verification).
+- `apps/web/src/app/api/scheduling/ai-suggest/route.ts` — `buildPrompt()`
+  game line now tolerates empty `homeTeam`/`awayTeam`: renders whichever
+  half is non-empty, falls back to `"<LEAGUE> event"` when both empty.
+  Same fallback applied to the `title` field built in `fetchUpcomingGames()`.
+
+**Schema changes:** New table `discovered_ppv_channels`. The auto-update
+schema-push handles this on most locations, but if `drizzle-kit push`
+silently aborts on a pre-existing index (CLAUDE.md Known Gotcha #7), the
+verify step below will catch it and the manual CREATE TABLE block must
+be run.
+
+**Why this was needed:**
+
+A manager at Holmgren Way scheduled a UFC PPV on a DirecTV box for
+Saturday 2026-04-18. The scheduler never created an allocation for it,
+which meant no auto-revert when the fight ended and the box stayed on
+the PPV channel until manual cleanup. Two root causes:
+
+1. ESPN's MMA scoreboard returns null for both `homeTeam.displayName`
+   and `awayTeam.displayName`. Our sync stored them as empty strings,
+   so AI Suggest's prompt rendered " at " for every UFC row, and the
+   LLM ignored those rows entirely.
+2. ESPN doesn't surface a reliable PPV channel number in
+   `broadcastNetworks`, so even if the row had names, the AI had no
+   channel to route to. We now reactively learn the PPV channel from
+   what the manager already tuned the box to.
+
+**Required manual steps:** NONE for the auto-update path. The pipeline
+handles build, schema push, restart, and (where the box is currently
+tuned to PPV) the first probe sweep at +90s.
+
+**Optional: backfill historical UFC rows** that synced under the old
+code with empty names:
+```bash
+# Fetches the past week and re-syncs — names get backfilled in place.
+TODAY=$(date +%Y%m%d)
+WEEK_AGO=$(date -d '7 days ago' +%Y%m%d)
+curl -s -X POST http://127.0.0.1:3001/api/scheduling/sync \
+  -H 'Content-Type: application/json' \
+  -d "{\"sport\":\"mma\",\"league\":\"ufc\",\"startDate\":\"$WEEK_AGO\",\"endDate\":\"$TODAY\"}"
+```
+
+**Verify after update (per location):**
+
+```bash
+# 1. New table exists
+sqlite3 /home/ubuntu/sports-bar-data/production.db ".tables" | grep ppv
+# Expected: discovered_ppv_channels
+
+# 2. UFC rows have populated names (run after a UFC week and the next sync)
+sqlite3 /home/ubuntu/sports-bar-data/production.db "
+SELECT id, home_team_name, away_team_name,
+       datetime(scheduled_start,'unixepoch') as start_ct
+FROM game_schedules
+WHERE sport='mma' OR league='ufc'
+ORDER BY scheduled_start DESC LIMIT 5;"
+# Expected: home_team_name and away_team_name both non-empty for any row
+# whose scheduled_start fell within the last sync window.
+
+# 3. Trigger an on-demand probe (no PPV active = empty result, that's fine)
+curl -s -X POST http://127.0.0.1:3001/api/directv/probe-tuned | python3 -m json.tool
+# Expected: {"success":true,"result":{"devicesProbed":N,...}}
+# Where N = number of rows in DirecTVDevice.
+
+# 4. After a manager tunes any box to a PPV channel and waits ≤10 min
+#    (or hits the endpoint above), confirm a row appears:
+sqlite3 /home/ubuntu/sports-bar-data/production.db "
+SELECT directv_device_id, channel_major, callsign, title,
+       datetime(last_seen_at,'unixepoch') as last_seen_ct, seen_count
+FROM discovered_ppv_channels ORDER BY last_seen_at DESC LIMIT 10;"
+```
+
+**Per-location notes:** None. All locations have at least one DirecTV box
+in production; the probe scales by DirecTV device count and is harmless
+at any location size.
+
+**If the schema push silently skipped the new table** (Known Gotcha #7):
+```bash
+sqlite3 /home/ubuntu/sports-bar-data/production.db <<'SQL'
+CREATE TABLE IF NOT EXISTS discovered_ppv_channels (
+  id TEXT PRIMARY KEY,
+  directv_device_id TEXT NOT NULL,
+  channel_major INTEGER NOT NULL,
+  channel_minor INTEGER,
+  callsign TEXT,
+  title TEXT,
+  first_seen_at INTEGER NOT NULL,
+  last_seen_at INTEGER NOT NULL,
+  seen_count INTEGER NOT NULL DEFAULT 1
+);
+CREATE UNIQUE INDEX IF NOT EXISTS discovered_ppv_channels_device_major_unique
+  ON discovered_ppv_channels (directv_device_id, channel_major);
+CREATE INDEX IF NOT EXISTS discovered_ppv_channels_lastSeen_idx
+  ON discovered_ppv_channels (last_seen_at);
+SQL
+pm2 restart sports-bar-tv-controller
+```
+
+**Known errors & fixes:** none observed yet — will append if any surface.
+
+---
+
 ### v2.27.1 — AI Suggest spread + collision hardening (zero-output guard, in-batch tracker)
 **Released:** 2026-04-20
 

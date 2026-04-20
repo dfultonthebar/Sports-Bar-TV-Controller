@@ -146,3 +146,9 @@ export {
   type SafetyCheckResult,
   type RampPlan
 } from './volume-safety'
+
+// DirecTV PPV Probe - Periodic /tv/getTuned scrape for PPV channel discovery
+export {
+  probeAllDirecTVTuned,
+  type ProbeResult as DirecTVProbeResult
+} from './directv-probe'
