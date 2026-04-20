@@ -187,6 +187,78 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.27.0 — Cable-box tune-back: auto-seed defaults from tune history + observability
+**Released:** 2026-04-20
+
+**What changed:**
+
+- `packages/scheduler/src/auto-reallocator.ts` — `revertTVsToDefaults()`
+  no longer silently skips Step 6 when `defaults.cableBoxDefaults` is empty.
+  If a cable-input is missing an explicit default, the service queries
+  `ChannelTuneLog` for the most recent successful tune BEFORE the game's
+  `scheduledStart` on that `inputNum`, constructs a `{channelNumber, channelName}`
+  fallback, persists it to `SystemSettings.default_sources` in-process so
+  the UI shows it going forward, and proceeds with the tune. If no prior
+  tune exists either, the box is left where it is with a `warn` row logged.
+- `packages/scheduler/src/auto-reallocator.ts` — every branch of
+  `revertTVsToDefaults()` (skip, success, failure) now writes a
+  `SchedulerLog` row with `component='auto-reallocator'`, `operation='revert'`,
+  and structured metadata including `gameId`, `inputSourceType`,
+  `inputSourceName`, `tvCount`, `cableBoxTuned`, `cableBoxChannel`,
+  `autoSeededCableDefault`, plus a `reason` string from a finite set
+  (`tv_reverted`, `cable_tuned_configured`, `cable_tuned_auto_seeded`,
+  `auto_seeded_from_tune_history`, `no_default_no_history`, `revert_complete`,
+  etc.). A single summary row fires at the end.
+- `packages/scheduler/src/scheduler-logger.ts` — `'revert'` added to the
+  `SchedulerOperation` union.
+- `apps/web/src/components/DefaultSourceSettings.tsx` — amber warning
+  banner lists any cable boxes with no default channel configured and
+  explains the auto-seed fallback.
+
+**Schema changes:** None. Reads `ChannelTuneLog` (no write), writes to
+`SystemSettings` row with `key='default_sources'` (existing row, updated
+in place).
+
+**Why this was needed:**
+
+At Holmgren Way on 2026-04-20, after v2.26.2 unblocked the matrix-route
+enum path, Cable Box 2 and Cable Box 4 still remained on channel 13
+(Magic/Spurs games) after those games ended — because `defaults.cableBoxDefaults`
+was empty. The prior logic `if (...cableBoxDefaults && Object.keys(...).length > 0)`
+silently no-op'd. Operators don't reliably set per-box defaults up front,
+so relying on them was a footgun; the most recent pre-game tune is a
+reasonable signal.
+
+**Required manual steps:** NONE. Idempotent — auto-seeding the same box
+twice produces the same result. The auto-update pipeline handles build
+and restart.
+
+**Verify after update (per location):**
+
+```bash
+# 1. Route still responds
+curl -s http://127.0.0.1:3001/api/settings/default-sources | jq '.defaults | keys'
+
+# 2. After the next game ends, confirm a revert-complete row appears
+sqlite3 /home/ubuntu/sports-bar-data/production.db "
+SELECT datetime(createdAt,'unixepoch','localtime') AS when_ct,
+       level, message, json_extract(metadata,'$.reason'),
+       json_extract(metadata,'$.cableBoxTuned')
+FROM SchedulerLog
+WHERE component='auto-reallocator' AND operation='revert'
+ORDER BY createdAt DESC LIMIT 10;"
+
+# 3. After a game ends on a cable input that had no default set,
+#    confirm default_sources now has a cableBoxDefaults entry
+sqlite3 /home/ubuntu/sports-bar-data/production.db "
+SELECT json_extract(value,'$.cableBoxDefaults') FROM SystemSettings
+WHERE key='default_sources';"
+```
+
+**Known errors & fixes:** none observed yet — will append if any surface.
+
+---
+
 ### v2.25.5 — Auto-update shared-software conflict fallback
 **Released:** 2026-04-19
 
