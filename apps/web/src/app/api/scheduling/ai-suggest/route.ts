@@ -433,6 +433,15 @@ function buildPrompt(
     inputLines.push(`  ${s.name} (firetv — apps: ${apps}${s.currentlyAllocated ? ', BUSY NOW' : ''}${bookingsStr(s)})`)
   }
 
+  const tvCount = tvOutputs.length
+  const totalInputs = inputSources.length
+
+  // Per-game TV-count hint. Used in the game line and in rule 11 below so
+  // the LLM has a concrete target instead of leaving suggestedOutputs empty.
+  // Floor with min 2 so a 24-TV / 12-game venue still shows 2-per-game
+  // suggestions; max 8 keeps a single game from claiming the whole bar.
+  const tvPerGame = Math.max(2, Math.min(8, Math.floor(tvCount / Math.max(1, games.length))))
+
   // Build game list with per-route labels. A game can have multiple simultaneous
   // routes — cable channel, directv channel, and/or a streaming app on Fire TV.
   // The AI picks whichever input it wants and uses the matching identifier.
@@ -447,11 +456,8 @@ function buildPrompt(
     if (g.directvChannel) availability.push('DIRECTV')
     if (g.streamingApp) availability.push('FIRETV')
     const tag = availability.length > 1 ? availability.join('+') : (availability[0] || 'NO-ROUTE')
-    return `${i + 1}. [${tag}] ${g.awayTeam} at ${g.homeTeam} (${g.league}) — ${time} CT — ${routes || 'no route'}`
+    return `${i + 1}. [${tag}] ${g.awayTeam} at ${g.homeTeam} (${g.league}) — ${time} CT — ${routes || 'no route'} · assign ~${tvPerGame} TVs (min 1, max 8)`
   }).join('\n')
-
-  const tvCount = tvOutputs.length
-  const totalInputs = inputSources.length
 
   // Pattern hints
   let patternHints = ''
@@ -495,18 +501,6 @@ function buildPrompt(
 
   const exampleInput = inputSources[0]?.name || 'DirecTV 1'
 
-  // Exclusivity preference only applies when the venue has BOTH cable and
-  // directv inputs available. Single-type venues (cable-only or directv-only)
-  // have no routing choice to make.
-  const hasMixedInputs = cableInputs.length > 0 && directvInputs.length > 0
-  const exclusivityRule = hasMixedInputs
-    ? `2. Assign EXCLUSIVE games to their required input type FIRST, then fill remaining slots with BOTH games:
-   - [CABLE-ONLY] games MUST go on a cable input — nothing else can carry them.
-   - [DIRECTV-ONLY] games MUST go on a directv input — nothing else can carry them.
-   - [BOTH] games should go on DIRECTV by default, so cable inputs stay free for cable-only games.
-     Only put a [BOTH] game on cable if all directv inputs are already taken OR if another game needs directv exclusively.`
-    : `2. Every input is ${cableInputs.length > 0 ? 'cable' : 'directv'} — assign all games to these inputs using the matching channel number.`
-
   return `You are a sports bar TV scheduler in Green Bay, Wisconsin. Assign games to inputs and TVs.
 
 INPUTS (each tunes ONE channel at a time):
@@ -520,13 +514,17 @@ ${patternHints}
 
 RULES:
 1. CRITICAL: Cable inputs MUST use the "cable ch" number. DirecTV inputs MUST use the "directv ch" number. Fire TV inputs MUST use the streaming app name as the channelNumber value (e.g. "Prime Video", "Apple TV+", "Peacock"). Never mix identifiers.
-${exclusivityRule}
-3. STREAMING GAMES: Any game tagged [FIRETV] (Prime Video, Apple TV+, Peacock, ESPN+, Max, Paramount+) MUST be routed to a firetv input — no cable/directv box can tune it.
-4. PROPOSE OPTIONS FOR THE MANAGER TO CHOOSE FROM. The manager will approve the ones they want. A given gameIndex may appear up to 2 times (e.g. Brewers game on both cable ch 308 AND on firetv Apple TV+ as alternatives). A given input may also appear up to 2 times with different game options (e.g. Fire TV 2 proposed for both the NBA game and the MLS game — manager picks one). Do NOT propose the same game+input combo more than once.
-5. Home team games (Brewers, Bucks, Packers, Badgers) get top priority — always propose them first. Then propose diverse options across leagues (MLB, NBA, NHL, MLS, UFL, UFC, Premier League, college sports) so the manager can compare. Don't only suggest one sport — include games from every league present in the GAMES list.
-6. Spread across inputs — propose games for EVERY available input. Every cable box, DirecTV receiver, and Fire TV should have at least one suggestion.
-7. "suggestedInput" MUST be an exact name from the INPUTS list above.
-8. RESPECT EXISTING BOOKINGS. Each input line may include a "BOOKED: <start>-<end> <game>" suffix listing allocations that already overlap the 12-hour window. Do NOT suggest a game for an input whose booking window overlaps the game's start time. Example: if "DirecTV 3 · BOOKED: 12:40-15:49 Brewers @ Marlins" is shown and the Philadelphia 76ers game tips off at 14:00, DO NOT pick DirecTV 3 for the 76ers — pick any other DirecTV box (DirecTV 1, 2, 4, 5, 6). Only re-use a booked input if the new game's start is AFTER the booking's end time (e.g., 76ers at 20:00 CAN go on DirecTV 3 because Brewers frees at 15:49).
+2. STREAMING-ONLY GAMES: Any game tagged [FIRETV] (Prime Video, Apple TV+, Peacock, ESPN+, Max, Paramount+) with no cable/directv route MUST be routed to a firetv input. Skip the game entirely if no Fire TV has the required app installed.
+3. FIRE TV WITHOUT APP: Skip a [FIRETV] game if the streaming app is not in the firetv input's apps list — no other input can tune it.
+4. NO INPUT DOUBLE-BOOKING: Each input source can host only ONE game at a time. Two games whose time windows overlap on the same input are forbidden. Game windows are 3 hours starting at the listed time.
+5. SPREAD BEFORE STACK: Before assigning any game to DirecTV, check whether an idle cable box can carry the channel. Spread games across ALL available inputs (cable + DirecTV) rather than packing DirecTV. Pull the next idle input from the full pool — do not default to DirecTV just because it appears later in the INPUTS list.
+6. CHANNEL TELLS YOU DEVICE CLASS: The channel number tells you device class — cable channels prefer cable boxes; RSNs that are DirecTV-only get DirecTV. Do not default to DirecTV when a cable box is idle and the channel is on cable.
+7. DYNAMIC FREE-SET: The set of allocatable inputs for a given time slot = all inputs with no existing booking AND no in-batch suggestion overlapping that slot. Re-check for every game you assign — once you suggest input X for game A, X is no longer free for game B if their windows overlap.
+8. ALTERNATES OK: A given gameIndex may appear up to 2 times on different inputs (e.g. Brewers game on cable ch 308 AND on firetv Apple TV+ as alternatives). A given input may also appear up to 2 times with different game options. Do NOT propose the same game+input combo more than once.
+9. EXACT INPUT NAMES: "suggestedInput" MUST be an exact name from the INPUTS list above.
+10. RESPECT EXISTING BOOKINGS. Each input line may include a "BOOKED: <start>-<end> <game>" suffix listing allocations that already overlap the 12-hour window. Do NOT suggest a game for an input whose booking window overlaps the game's start time. Only re-use a booked input if the new game's start is AFTER the booking's end time.
+11. MANDATORY OUTPUTS: Every suggestion MUST include at least 1 TV output number in suggestedOutputs. Empty arrays are REJECTED server-side. Aim for ~${tvPerGame} TVs per game; never zero. Use any TV channel number from 1 to ${tvCount}.
+12. PRIORITY ORDER: Home team games (Brewers, Bucks, Packers, Badgers) get top priority — always propose them first. Then propose diverse options across leagues (MLB, NBA, NHL, MLS, UFL, UFC, Premier League, college sports) so the manager can compare.
 
 Return ONLY valid JSON:
 {"suggestions":[{"gameIndex":1,"suggestedInput":"${exampleInput}","channelNumber":"669","suggestedOutputs":[1,2,3],"confidence":0.9,"reasoning":"Brewers home game on DirecTV"}]}
@@ -536,14 +534,27 @@ Return ${Math.min(totalInputs * 2, games.length, 12)} suggestions — at least o
 
 // ---------- helper: parse Ollama response ----------
 
+interface ParsedSuggestionRejection {
+  gameId: string
+  suggestedInput: string
+  reason: 'zero_outputs' | 'existing_collision' | 'in_batch_collision' | 'no_route' | 'duplicate_combo' | 'over_per_input_cap' | 'over_per_game_cap'
+  detail?: string
+}
+
+interface ParseResult {
+  suggestions: AISuggestion[]
+  rejections: ParsedSuggestionRejection[]
+}
+
 function parseOllamaResponse(
   raw: string,
   games: GameListing[],
   inputSources: any[],
-): AISuggestion[] {
+): ParseResult {
   try {
     const parsed = JSON.parse(raw)
     const suggestions: AISuggestion[] = []
+    const rejections: ParsedSuggestionRejection[] = []
 
     // Helper: find the best matching input source for a suggested name.
     // Tries exact id, exact name, case-insensitive normalized name, then
@@ -603,7 +614,15 @@ function parseOllamaResponse(
       }
 
       // Skip if we have no valid route for this input type
-      if (!channelNumberStr) continue
+      if (!channelNumberStr) {
+        rejections.push({
+          gameId: `game-${gameIdx}`,
+          suggestedInput: input?.name || s.suggestedInput || '?',
+          reason: 'no_route',
+          detail: `inputType=${inputType} but game has no matching channel/app`,
+        })
+        continue
+      }
 
       const suggestedOutputsInt: number[] = Array.isArray(s.suggestedOutputs)
         ? s.suggestedOutputs
@@ -676,8 +695,6 @@ function parseOllamaResponse(
 
     const cableInputsAll = inputSources.filter((src: any) => src.type === 'cable')
     const directvInputsAll = inputSources.filter((src: any) => src.type === 'directv' || src.type === 'satellite')
-    // Exclusivity rerouting only makes sense when the venue has both input types.
-    const hasMixedInputs = cableInputsAll.length > 0 && directvInputsAll.length > 0
 
     // Build a map of inputId -> bookings for collision checks below.
     const bookingsByInputId = new Map<string, Array<{ startUnix: number; endUnix: number; gameLabel: string }>>()
@@ -687,20 +704,38 @@ function parseOllamaResponse(
       }
     }
 
+    // v2.27.1: in-batch collision tracker. Each entry records a 3h game-start
+    // window already claimed by a previously-accepted suggestion in THIS batch.
+    // Prevents the LLM from putting two overlapping games on the same input,
+    // which the prompt's rule #4 forbids but Ollama doesn't always honor.
+    // Reset per parse call — only protects within a single AI-suggest response.
+    const inBatchClaims = new Map<string, Array<{ start: number; end: number; gameId: string }>>()
+
     const finalSuggestions: AISuggestion[] = []
     for (const sug of suggestions) {
       const gameIdx = parseInt(sug.gameId.replace('game-', ''), 10)
       const origGame = games[gameIdx]
-      const availableOnBoth = origGame?.channelNumber && origGame?.directvChannel
+
+      // v2.27.1: REJECT empty suggestedOutputs. Bug A root cause was the LLM
+      // dropping the outputs array entirely on long prompts (12-game tail-
+      // attention drop at temp=0.3). Suggestions with no TVs are useless and
+      // would silently insert empty allocations downstream.
+      if (sug.suggestedOutputs.length === 0) {
+        rejections.push({
+          gameId: sug.gameId,
+          suggestedInput: sug.suggestedInput,
+          reason: 'zero_outputs',
+          detail: `${sug.awayTeam} @ ${sug.homeTeam} on ${sug.suggestedInput}`,
+        })
+        continue
+      }
 
       // (0) Safety net: drop any suggestion that collides with an
       // existing booking on the proposed input. The prompt includes
-      // rule 8 telling the AI to respect bookings, but we don't trust
+      // rule 10 telling the AI to respect bookings, but we don't trust
       // Ollama to always honor it. If the game's start time falls
       // within an existing booking's window on the same input, the
-      // suggestion is a hard conflict and we silently drop it so the
-      // manager never sees "schedule 76ers on DirecTV 3" while Brewers
-      // is already there.
+      // suggestion is a hard conflict and we silently drop it.
       if (origGame && sug.suggestedInputId) {
         const bookings = bookingsByInputId.get(sug.suggestedInputId)
         if (bookings && bookings.length > 0) {
@@ -712,76 +747,131 @@ function parseOllamaResponse(
             logger.info(
               `[AI-SUGGEST] Dropping collision: ${sug.awayTeam} @ ${sug.homeTeam} on ${sug.suggestedInput} (conflicts with ${collision.gameLabel})`,
             )
+            rejections.push({
+              gameId: sug.gameId,
+              suggestedInput: sug.suggestedInput,
+              reason: 'existing_collision',
+              detail: `conflicts with existing booking ${collision.gameLabel}`,
+            })
             continue
           }
         }
       }
 
-      // (a) Prefer DirecTV for BOTH-availability games when a directv input is free.
-      // Skip entirely at single-platform venues. "Free" means assigned fewer
-      // than 2 times (we allow up to 2 alternates per input).
-      if (hasMixedInputs && availableOnBoth && sug.suggestedDeviceType === 'cable') {
-        const freeDirectv = directvInputsAll.find((src: any) => (inputAssignmentCount.get(src.id) || 0) < 2)
-        if (freeDirectv) {
-          sug.suggestedInput = freeDirectv.name
-          sug.suggestedInputId = freeDirectv.id
-          sug.suggestedDeviceId = freeDirectv.deviceId || ''
-          sug.suggestedDeviceType = 'directv'
-          sug.channelNumber = origGame.directvChannel || sug.channelNumber
-          sug.reasoning = `${sug.reasoning} [moved to DirecTV to keep cable free for cable-only games]`
+      // v2.27.1: in-batch collision check. If a previously-accepted suggestion
+      // in this batch already claimed this input for an overlapping window,
+      // try to spread to an idle input of the same class instead of dropping.
+      // This is the post-LLM enforcement of prompt rule #4 (no double-booking)
+      // and #5 (spread before stack).
+      const gameStartUnix = origGame ? Math.floor(new Date(origGame.time).getTime() / 1000) : 0
+      const gameEndUnix = gameStartUnix + 3 * 60 * 60
+      let claims = inBatchClaims.get(sug.suggestedInputId) || []
+      let inBatchHit = claims.find(c => gameStartUnix < c.end && gameEndUnix > c.start)
+
+      if (inBatchHit) {
+        // Try to reroute to an idle same-class input. Tie-break cable > directv
+        // when both have an idle option (rule #5: spread before stack on DTV).
+        const sameClass = sug.suggestedDeviceType === 'directv'
+          ? directvInputsAll
+          : sug.suggestedDeviceType === 'cable'
+            ? cableInputsAll
+            : []
+        const reroute = sameClass.find((src: any) => {
+          if (src.id === sug.suggestedInputId) return false
+          const otherClaims = inBatchClaims.get(src.id) || []
+          const overlap = otherClaims.find(c => gameStartUnix < c.end && gameEndUnix > c.start)
+          if (overlap) return false
+          // Also respect existing bookings on the candidate input.
+          const otherBookings = bookingsByInputId.get(src.id) || []
+          const bookingHit = otherBookings.find(b => gameStartUnix >= b.startUnix && gameStartUnix < b.endUnix)
+          if (bookingHit) return false
+          // And the per-input cap of 2 must not already be hit on the candidate.
+          if ((inputAssignmentCount.get(src.id) || 0) >= 2) return false
+          return true
+        })
+
+        if (reroute) {
+          logger.info(
+            `[AI-SUGGEST] Spread reroute: ${sug.awayTeam} @ ${sug.homeTeam} ${sug.suggestedInput} → ${reroute.name} (in-batch collision avoided)`,
+          )
+          sug.suggestedInput = reroute.name
+          sug.suggestedInputId = reroute.id
+          sug.suggestedDeviceId = reroute.deviceId || ''
+          // Device type stays the same since we routed within the same class.
+          sug.reasoning = `${sug.reasoning} [auto-spread to ${reroute.name} to avoid double-booking]`
+          claims = inBatchClaims.get(sug.suggestedInputId) || []
+          inBatchHit = undefined
+        } else {
+          rejections.push({
+            gameId: sug.gameId,
+            suggestedInput: sug.suggestedInput,
+            reason: 'in_batch_collision',
+            detail: `${sug.suggestedInput} already claimed by ${inBatchHit.gameId} in this batch; no idle ${sug.suggestedDeviceType} input available`,
+          })
+          continue
         }
       }
-      // Same rule the other way — if AI put a BOTH game on directv but no cable
-      // inputs are claimed yet AND there are directv-only games later that need
-      // the directv slot, move this one to cable. Approximation: prefer cable
-      // only if no directv-only game exists in the remaining queue.
-      // (Skipped for now — DirecTV-preference is the stated default per user.)
 
       // (b) Per-input limit: up to 2 alternatives per input so the manager
-      //     can compare options (e.g. Fire TV 2 proposed for both NBA and MLS).
-      //     The manager picks one on approve; the other is dropped by the UI.
+      //     can compare options. The manager picks one on approve; the other
+      //     is dropped by the UI.
       const inputCount = inputAssignmentCount.get(sug.suggestedInputId) || 0
       if (inputCount >= 2) {
         logger.debug(
-          `[AI-SUGGEST] Dropping 3rd+ assignment for input ${sug.suggestedInput} (already at limit 2)`
+          `[AI-SUGGEST] Dropping 3rd+ assignment for input ${sug.suggestedInput} (already at limit 2)`,
         )
+        rejections.push({
+          gameId: sug.gameId,
+          suggestedInput: sug.suggestedInput,
+          reason: 'over_per_input_cap',
+        })
         continue
       }
 
       // (c) Per-game limit: up to 2 proposals per game so the manager sees
-      //     alternate routes (e.g. Brewers on cable ch 308 OR on firetv Apple
-      //     TV+). Same cap for home-team and non-home games — the user wants
-      //     choice across the board. The per-game+input uniqueness below
-      //     prevents literal duplicates.
+      //     alternate routes.
       const gameCount = gameAssignmentCount.get(sug.gameId) || 0
       if (gameCount >= 2) {
         logger.debug(
-          `[AI-SUGGEST] Dropping 3rd+ proposal for game ${sug.gameId} (${sug.awayTeam} @ ${sug.homeTeam})`
+          `[AI-SUGGEST] Dropping 3rd+ proposal for game ${sug.gameId} (${sug.awayTeam} @ ${sug.homeTeam})`,
         )
+        rejections.push({
+          gameId: sug.gameId,
+          suggestedInput: sug.suggestedInput,
+          reason: 'over_per_game_cap',
+        })
         continue
       }
 
-      // (d) Reject exact game+input duplicates (same game proposed twice on
-      //     the same input adds no manager choice).
+      // (d) Reject exact game+input duplicates.
       const comboKey = `${sug.gameId}::${sug.suggestedInputId}`
       if (gameInputCombos.has(comboKey)) {
         logger.debug(
-          `[AI-SUGGEST] Dropping exact game+input duplicate: ${sug.awayTeam} @ ${sug.homeTeam} on ${sug.suggestedInput}`
+          `[AI-SUGGEST] Dropping exact game+input duplicate: ${sug.awayTeam} @ ${sug.homeTeam} on ${sug.suggestedInput}`,
         )
+        rejections.push({
+          gameId: sug.gameId,
+          suggestedInput: sug.suggestedInput,
+          reason: 'duplicate_combo',
+        })
         continue
       }
 
       gameAssignmentCount.set(sug.gameId, gameCount + 1)
       inputAssignmentCount.set(sug.suggestedInputId, inputCount + 1)
       gameInputCombos.add(comboKey)
+      // v2.27.1: register this suggestion's claim on the input so the next
+      // overlapping game in the batch routes elsewhere.
+      claims.push({ start: gameStartUnix, end: gameEndUnix, gameId: sug.gameId })
+      inBatchClaims.set(sug.suggestedInputId, claims)
       finalSuggestions.push(sug)
     }
 
-    return finalSuggestions
+    return { suggestions: finalSuggestions, rejections }
   } catch (err: any) {
     logger.error(`[AI-SUGGEST] Failed to parse Ollama JSON response: ${err.message}`)
     logger.debug(`[AI-SUGGEST] Raw response: ${raw.substring(0, 500)}`)
-    return []
+    return { suggestions: [], rejections: [] }
   }
 }
 
@@ -916,11 +1006,40 @@ export async function GET(request: NextRequest) {
     logger.info(`[AI-SUGGEST] Ollama raw response (${ollamaResponse.length} chars): ${ollamaResponse.slice(0, 2000)}`)
 
     // 4. Parse response into structured suggestions
-    const suggestions = parseOllamaResponse(ollamaResponse, filteredGames, inputSources)
+    const { suggestions, rejections } = parseOllamaResponse(ollamaResponse, filteredGames, inputSources)
+
+    // v2.27.1: Persist rejection telemetry so operators can see WHY the LLM
+    // dropped suggestions (zero outputs, in-batch collision, existing booking,
+    // duplicate, cap exceeded). One SchedulerLog row per rejection. Best-
+    // effort — failures here MUST NOT block the response.
+    if (rejections.length > 0) {
+      const correlationId = crypto.randomUUID()
+      try {
+        for (const r of rejections) {
+          await db.insert(schema.schedulerLogs).values({
+            correlationId,
+            component: 'ai-suggest',
+            operation: 'reject',
+            level: r.reason === 'zero_outputs' || r.reason === 'in_batch_collision' ? 'warn' : 'info',
+            message: `Rejected AI suggestion: ${r.reason}${r.detail ? ` (${r.detail})` : ''}`,
+            gameId: r.gameId,
+            success: false,
+            metadata: JSON.stringify({
+              reason: r.reason,
+              detail: r.detail || null,
+              suggestedInput: r.suggestedInput,
+            }),
+          })
+        }
+      } catch (logErr) {
+        logger.warn('[AI-SUGGEST] Failed to persist rejection telemetry:', logErr)
+      }
+    }
 
     logger.api.response('GET', '/api/scheduling/ai-suggest', 200, {
       gamesAnalyzed: games.length,
       suggestionsReturned: suggestions.length,
+      rejections: rejections.length,
     })
 
     return NextResponse.json({
