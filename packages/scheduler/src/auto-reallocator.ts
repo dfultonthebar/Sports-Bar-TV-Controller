@@ -4,7 +4,7 @@
  * Triggers reallocation for pending allocations waiting for inputs
  */
 
-import { db, schema, eq, and, lte, gte, or, inArray } from '@sports-bar/database'
+import { db, schema, eq, and, lte, gte, or, inArray, isNull, isNotNull } from '@sports-bar/database'
 import { logger } from '@sports-bar/logger'
 import { schedulerLogger } from './scheduler-logger'
 
@@ -174,6 +174,71 @@ class AutoReallocator {
         }
       }
 
+      // Step 2.5: Revert-sweep (v2.26.1) — catch any allocation that
+      // got marked `completed` with an `actually_freed_at` timestamp
+      // by a DIFFERENT code path (ESPN sync's failure-sweeper, manual
+      // admin, direct DB update) and therefore bypassed our normal
+      // endAllocation() revert-to-defaults call. Without this sweep,
+      // TVs keep showing whatever channel the game was on even after
+      // the game is logged as completed.
+      //
+      // Query: completed rows with a freed_at but no revert_attempted_at.
+      // For each, run revertTVsToDefaults (which internally skips if
+      // another game starts on the same input within 30 min). Then
+      // mark revert_attempted_at = now so the sweep doesn't re-scan
+      // on next tick regardless of whether the revert fired or was
+      // skipped. Audit logs in revertTVsToDefaults still fire so
+      // operators can see the action.
+      try {
+        const orphanedFreed = await db
+          .select({
+            allocation: schema.inputSourceAllocations,
+            game: schema.gameSchedules,
+            inputSource: schema.inputSources,
+          })
+          .from(schema.inputSourceAllocations)
+          .innerJoin(
+            schema.gameSchedules,
+            eq(schema.inputSourceAllocations.gameScheduleId, schema.gameSchedules.id),
+          )
+          .innerJoin(
+            schema.inputSources,
+            eq(schema.inputSourceAllocations.inputSourceId, schema.inputSources.id),
+          )
+          .where(
+            and(
+              isNotNull(schema.inputSourceAllocations.actuallyFreedAt),
+              isNull(schema.inputSourceAllocations.revertAttemptedAt),
+            ),
+          )
+          .all();
+
+        if (orphanedFreed.length > 0) {
+          logger.info(
+            `[AUTO-REALLOCATOR] Revert-sweep: ${orphanedFreed.length} completed allocation(s) with no revert attempt`,
+          );
+        }
+
+        for (const { allocation, game, inputSource } of orphanedFreed) {
+          try {
+            await this.revertTVsToDefaults(allocation, inputSource, game, correlationId);
+          } catch (err: any) {
+            logger.warn(
+              `[AUTO-REALLOCATOR] Revert-sweep failed for ${allocation.id}: ${err.message} — marking attempted anyway so we don't re-loop`,
+            );
+          }
+          // Mark attempted whether or not the revert actually routed —
+          // a skip (another game in 30 min) is still a successful pass.
+          await db
+            .update(schema.inputSourceAllocations)
+            .set({ revertAttemptedAt: now })
+            .where(eq(schema.inputSourceAllocations.id, allocation.id));
+          stats.inputSourcesFreed++; // count as a free for stats visibility
+        }
+      } catch (sweepErr: any) {
+        logger.warn('[AUTO-REALLOCATOR] Revert-sweep query failed (non-fatal):', { error: sweepErr.message });
+      }
+
       // Step 3: Check for pending allocations that can now be activated
       const pendingCount = await this.activatePendingAllocations(correlationId);
       stats.pendingAllocationsTriggered = pendingCount;
@@ -259,12 +324,16 @@ class AutoReallocator {
   ): Promise<void> {
     const now = Math.floor(Date.now() / 1000); // Unix timestamp
 
-    // Update allocation to completed
+    // Update allocation to completed. Mark revertAttemptedAt at the
+    // same time — this is the normal end-of-game path where we WILL
+    // call revertTVsToDefaults below. Setting revertAttemptedAt here
+    // stops the revert-sweep from re-running on the next tick.
     await db
       .update(schema.inputSourceAllocations)
       .set({
         status: 'completed',
         actuallyFreedAt: now,
+        revertAttemptedAt: now,
       })
       .where(eq(schema.inputSourceAllocations.id, allocation.id));
 
