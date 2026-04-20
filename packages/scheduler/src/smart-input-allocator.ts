@@ -469,11 +469,19 @@ class SmartInputAllocator {
    */
   async freeAllocation(allocationId: string): Promise<void> {
     try {
+      // v2.26.2: actuallyFreedAt is an INTEGER column (unix seconds),
+      // not a Date. Previously `new Date()` was being coerced into
+      // a timestamp string by Drizzle, producing inconsistent values
+      // vs the rest of the codebase. Match the format used in
+      // auto-reallocator.endAllocation and scheduler-service.
+      // revertAttemptedAt is intentionally NOT set here — if this
+      // free path is called without a revert plan, the v2.26.1 sweep
+      // will pick it up on the next 5-min tick.
       await db
         .update(schema.inputSourceAllocations)
         .set({
           status: 'completed',
-          actuallyFreedAt: new Date(),
+          actuallyFreedAt: Math.floor(Date.now() / 1000),
         })
         .where(eq(schema.inputSourceAllocations.id, allocationId));
 

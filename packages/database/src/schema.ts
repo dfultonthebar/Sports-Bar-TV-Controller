@@ -1626,6 +1626,16 @@ export const inputSourceAllocations = sqliteTable('input_source_allocations', {
   expectedFreeAt: integer('expected_free_at').notNull(), // Unix timestamp (estimated game end + buffer)
   actuallyFreedAt: integer('actually_freed_at'), // Unix timestamp
 
+  // Revert bookkeeping (v2.26.1)
+  // Set when the auto-reallocator's revert-sweep has processed this
+  // allocation — regardless of whether it actually tuned TVs (a revert
+  // can be skipped if another game starts on the same input within 30
+  // min, but we still mark it attempted so the sweep doesn't re-scan).
+  // NULL = allocation has not yet been through the revert sweep.
+  // Existing rows are backfilled to `actually_freed_at` on first deploy
+  // so pre-v2.26.1 completed allocations don't get retroactively reverted.
+  revertAttemptedAt: integer('revert_attempted_at'),
+
   // Status
   status: text('status').notNull().default('pending'), // 'pending', 'active', 'completed', 'preempted', 'cancelled'
 
