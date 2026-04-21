@@ -408,6 +408,31 @@ async function callOllama(prompt: string): Promise<string> {
 
 // ---------- helper: build the LLM prompt ----------
 
+// v2.28.4 — home-team minTV rules. Matches game teams against HomeTeam.aliases
+// (case-insensitive contains), returns the minTVsWhenActive for the best match
+// or null if neither side is a home team. Packers=20, Bucks=5, Brewers=3,
+// Badgers=3 etc. — operator-configurable via the HomeTeam table.
+export interface HomeTeamRule {
+  teamName: string
+  minTVs: number
+  aliases: string[] // normalized lowercase
+  priority: number
+}
+
+export function matchHomeTeamRule(
+  homeTeam: string,
+  awayTeam: string,
+  rules: HomeTeamRule[],
+): HomeTeamRule | null {
+  const hay = `${homeTeam} ${awayTeam}`.toLowerCase()
+  let best: HomeTeamRule | null = null
+  for (const r of rules) {
+    const hit = r.aliases.some(a => a && hay.includes(a))
+    if (hit && (best === null || r.priority > best.priority)) best = r
+  }
+  return best
+}
+
 function buildPrompt(
   games: GameListing[],
   inputSources: any[],
@@ -415,6 +440,7 @@ function buildPrompt(
   tvOutputs: any[],
   patterns: SchedulingPattern[],
   _historicalSummary: string,
+  homeTeamRules: HomeTeamRule[] = [],
 ): string {
   // Group inputs by type so the AI knows which channel number to use
   const cableInputs = inputSources.filter(s => s.type === 'cable')
@@ -453,6 +479,11 @@ function buildPrompt(
   // Build game list with per-route labels. A game can have multiple simultaneous
   // routes — cable channel, directv channel, and/or a streaming app on Fire TV.
   // The AI picks whichever input it wants and uses the matching identifier.
+  //
+  // v2.28.4 — per-game TV target. Home-team games get HomeTeam.minTVsWhenActive
+  // (Packers=20, Bucks=5, Brewers=3, Badgers=3 at Holmgren). Non-home games
+  // get the default tvPerGame share. The LLM sees an explicit "assign N TVs"
+  // per row PLUS a [HOME TEAM: <Name>] tag so it can't miss the rule.
   const gameLines = games.map((g, i) => {
     const time = new Date(g.time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: HARDWARE_CONFIG.venue.timezone })
     const cableCh = g.channelNumber ? `cable ch ${g.channelNumber}` : ''
@@ -464,16 +495,20 @@ function buildPrompt(
     if (g.directvChannel) availability.push('DIRECTV')
     if (g.streamingApp) availability.push('FIRETV')
     const tag = availability.length > 1 ? availability.join('+') : (availability[0] || 'NO-ROUTE')
-    // UFC/PPV events come through ESPN with empty home/away team names —
-    // ESPN structures MMA as fighters, not teams, so the displayName fields
-    // are null and our espn-sync-service backfill yields awayTeam=
-    // "UFC Fight Night" + homeTeam="" (or both empty if the event-name
-    // parser couldn't split). Render whichever halves are non-empty rather
-    // than emitting " at " which trips the LLM into ignoring the row.
+    // UFC/PPV events come through ESPN with empty home/away team names.
     const teams = (g.awayTeam && g.homeTeam)
       ? `${g.awayTeam} at ${g.homeTeam}`
       : (g.awayTeam || g.homeTeam || `${g.league.toUpperCase()} event`)
-    return `${i + 1}. [${tag}] ${teams} (${g.league}) — ${time} CT — ${routes || 'no route'} · assign ~${tvPerGame} TVs (min 1, max 8)`
+
+    // v2.28.4 — match against HomeTeam.minTVsWhenActive
+    const rule = matchHomeTeamRule(g.homeTeam || '', g.awayTeam || '', homeTeamRules)
+    const targetTVs = rule ? Math.min(rule.minTVs, tvCount) : tvPerGame
+    const homeTag = rule ? ` [HOME TEAM: ${rule.teamName} — REQUIRES ${targetTVs} TVs MINIMUM]` : ''
+    const assignClause = rule
+      ? ` · assign ${targetTVs} TVs (HOME-TEAM RULE — minimum, do NOT go lower)`
+      : ` · assign ~${targetTVs} TVs (min 1, max 8)`
+
+    return `${i + 1}. [${tag}]${homeTag} ${teams} (${g.league}) — ${time} CT — ${routes || 'no route'}${assignClause}`
   }).join('\n')
 
   // Pattern hints
@@ -540,8 +575,9 @@ RULES:
 8. ALTERNATES OK: A given gameIndex may appear up to 2 times on different inputs (e.g. Brewers game on cable ch 308 AND on firetv Apple TV+ as alternatives). A given input may also appear up to 2 times with different game options. Do NOT propose the same game+input combo more than once.
 9. EXACT INPUT NAMES: "suggestedInput" MUST be an exact name from the INPUTS list above.
 10. RESPECT EXISTING BOOKINGS. Each input line may include a "BOOKED: <start>-<end> <game>" suffix listing allocations that already overlap the 12-hour window. Do NOT suggest a game for an input whose booking window overlaps the game's start time. Only re-use a booked input if the new game's start is AFTER the booking's end time.
-11. MANDATORY OUTPUTS: Every suggestion MUST include at least 1 TV output number in suggestedOutputs. Empty arrays are REJECTED server-side. Aim for ~${tvPerGame} TVs per game; never zero. Use any TV channel number from 1 to ${tvCount}.
-12. PRIORITY ORDER: Home team games (Brewers, Bucks, Packers, Badgers) get top priority — always propose them first. Then propose diverse options across leagues (MLB, NBA, NHL, MLS, UFL, UFC, Premier League, college sports) so the manager can compare.
+11. MANDATORY OUTPUTS: Every suggestion MUST include at least 1 TV output number in suggestedOutputs. Empty arrays are REJECTED server-side. Use any TV channel number from 1 to ${tvCount}.
+12. HOME-TEAM TV MINIMUMS (NON-NEGOTIABLE): Each game line carries an "assign N TVs" clause. For lines tagged [HOME TEAM: <name>] the N is a HARD MINIMUM — your suggestedOutputs.length MUST be >= N. Server-side enforcement WILL pad your output to N if you under-assign, but the LLM should respect the rule directly so it can pick visually-grouped TVs rather than getting padded with TVs 1..N. Operator-set: Packers=20, Bucks=5, Brewers=3, Badgers=3.
+13. PRIORITY ORDER: Home-team games get top priority — always propose them first. Then diverse options across leagues (MLB, NBA, NHL, MLS, UFL, UFC, Premier League, college sports) so the manager can compare.
 
 Return ONLY valid JSON:
 {"suggestions":[{"gameIndex":1,"suggestedInput":"${exampleInput}","channelNumber":"669","suggestedOutputs":[1,2,3],"confidence":0.9,"reasoning":"Brewers home game on DirecTV"}]}
@@ -567,6 +603,8 @@ function parseOllamaResponse(
   raw: string,
   games: GameListing[],
   inputSources: any[],
+  homeTeamRules: HomeTeamRule[] = [],
+  tvCount: number = 0,
 ): ParseResult {
   try {
     const parsed = JSON.parse(raw)
@@ -881,6 +919,35 @@ function parseOllamaResponse(
       // overlapping game in the batch routes elsewhere.
       claims.push({ start: gameStartUnix, end: gameEndUnix, gameId: sug.gameId })
       inBatchClaims.set(sug.suggestedInputId, claims)
+
+      // v2.28.4 — enforce home-team minTV minimums. If the LLM under-assigned
+      // (e.g., 3 TVs for a Packers game when minTVs=20), pad with TVs 1..N
+      // (deduped) so the operator's rule is honored even when the model drops
+      // it. Doesn't deduct from other games — outputs CAN repeat across
+      // games per the alternates pattern, and the operator picks at approve
+      // time. Logs the pad event so operators can see the LLM was lazy here.
+      if (origGame && homeTeamRules.length > 0 && tvCount > 0) {
+        const rule = matchHomeTeamRule(origGame.homeTeam || '', origGame.awayTeam || '', homeTeamRules)
+        if (rule && sug.suggestedOutputs.length < rule.minTVs) {
+          const target = Math.min(rule.minTVs, tvCount)
+          const have = new Set(sug.suggestedOutputs)
+          let n = 1
+          while (have.size < target && n <= tvCount) {
+            have.add(n)
+            n++
+          }
+          const padded = Array.from(have).sort((a, b) => a - b)
+          const addedCount = padded.length - sug.suggestedOutputs.length
+          if (addedCount > 0) {
+            logger.info(
+              `[AI-SUGGEST] Home-team pad: ${rule.teamName} (${origGame.awayTeam} @ ${origGame.homeTeam}) — LLM gave ${sug.suggestedOutputs.length} TVs, padded to ${padded.length} (rule minTVs=${rule.minTVs})`,
+            )
+            sug.suggestedOutputs = padded
+            sug.reasoning = `${sug.reasoning} [auto-padded to ${padded.length} TVs per ${rule.teamName} home-team rule]`
+          }
+        }
+      }
+
       finalSuggestions.push(sug)
     }
 
@@ -992,8 +1059,33 @@ export async function GET(request: NextRequest) {
       })
     }
 
+    // 2c. v2.28.4 — load HomeTeam.minTVsWhenActive rules so the prompt and
+    // parser can enforce per-team TV minimums (Packers=20, Bucks=5, etc.)
+    let homeTeamRules: HomeTeamRule[] = []
+    try {
+      const homeRows = await db.select().from(schema.homeTeams).where(eq(schema.homeTeams.isActive, true)).all()
+      homeTeamRules = homeRows
+        .filter(r => r.isPrimary && r.minTVsWhenActive && r.minTVsWhenActive > 0)
+        .map(r => {
+          let aliases: string[] = [r.teamName.toLowerCase()]
+          try {
+            const parsed = JSON.parse(r.aliases || '[]') as string[]
+            aliases = aliases.concat(parsed.map(a => a.toLowerCase()))
+          } catch {}
+          return {
+            teamName: r.teamName,
+            minTVs: r.minTVsWhenActive,
+            aliases: Array.from(new Set(aliases.filter(a => a && a.length >= 3))),
+            priority: r.priority || 0,
+          }
+        })
+      logger.info(`[AI-SUGGEST] Loaded ${homeTeamRules.length} home-team minTV rules: ${homeTeamRules.map(r => `${r.teamName}=${r.minTVs}`).join(', ')}`)
+    } catch (err: any) {
+      logger.warn(`[AI-SUGGEST] Failed to load HomeTeam minTV rules (proceeding without): ${err.message}`)
+    }
+
     // 3. Build prompt and call Ollama
-    const prompt = buildPrompt(filteredGames, inputSources, channelPresets, tvOutputs, patterns, historicalSummary)
+    const prompt = buildPrompt(filteredGames, inputSources, channelPresets, tvOutputs, patterns, historicalSummary, homeTeamRules)
     logger.info(`[AI-SUGGEST] Sending prompt to Ollama (${prompt.length} chars, ${games.length} games, ${inputSources.length} inputs)`)
 
     let ollamaResponse: string
@@ -1023,7 +1115,7 @@ export async function GET(request: NextRequest) {
     logger.info(`[AI-SUGGEST] Ollama raw response (${ollamaResponse.length} chars): ${ollamaResponse.slice(0, 2000)}`)
 
     // 4. Parse response into structured suggestions
-    const { suggestions, rejections } = parseOllamaResponse(ollamaResponse, filteredGames, inputSources)
+    const { suggestions, rejections } = parseOllamaResponse(ollamaResponse, filteredGames, inputSources, homeTeamRules, tvOutputs.length)
 
     // v2.27.1: Persist rejection telemetry so operators can see WHY the LLM
     // dropped suggestions (zero outputs, in-batch collision, existing booking,
