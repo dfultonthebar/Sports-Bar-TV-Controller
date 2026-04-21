@@ -664,44 +664,68 @@ class AutoReallocator {
         }
       }
 
-      // Step 6: Tune cable box back to its default channel.
-      // cableBoxDefaults is keyed by matrix input number (stringified), so we
-      // must resolve the IR device first to find its matrixInput — the
-      // inputSource.deviceId (e.g. "ir-cable-4") is NOT the key.
+      // Step 6: Tune the source box back to its default channel.
       //
-      // (v2.27.0) If no cable-box default is configured for this input,
-      // attempt to auto-seed one from ChannelTuneLog — the most recent
-      // successful tune BEFORE the game's scheduledStart is a reasonable
-      // "what was this box showing before the game" fallback. This covers
-      // the common case where operators never explicitly set per-box
-      // defaults but still expect the box to return to its idle channel
-      // after a game ends.
-      if (inputSource.type === 'cable' && inputSource.deviceId) {
-        const irDevice = await db
-          .select()
-          .from(schema.irDevices)
-          .where(eq(schema.irDevices.id, inputSource.deviceId))
-          .limit(1)
-          .get();
+      // (v2.28.3) Generalized to handle BOTH cable boxes AND DirecTV
+      // receivers. Operator's `cableBoxDefaults` config is keyed by matrix
+      // input number, which is unique across all box types — Holmgren's
+      // setup uses keys 1-4 for cable boxes and 5-10 for the 6 DirecTV
+      // receivers. Wolves/Nuggets and Orioles/Royals games yesterday left
+      // DirecTV 6 and DirecTV 5 sitting on the game channel after revert
+      // because this block was previously gated on type==='cable' only.
+      //
+      // cableBoxDefaults is keyed by matrix input number (stringified), so
+      // we must resolve the source device first to find its matrix input.
+      // For cable: irDevices.matrixInput. For DirecTV: DirecTVDevice.inputChannel.
+      //
+      // (v2.27.0) If no default is configured for this input, attempt to
+      // auto-seed from ChannelTuneLog — the most recent successful tune
+      // BEFORE the game's scheduledStart is a reasonable "what was this
+      // box showing before the game" fallback.
+      const isTunableBox = inputSource.type === 'cable' || inputSource.type === 'directv';
+      if (isTunableBox && inputSource.deviceId) {
+        // Resolve matrix input number based on source type.
+        let matrixInput: number | null = null;
+        let lookupSource: 'irDevice' | 'directvDevice' = 'irDevice';
+        if (inputSource.type === 'cable') {
+          const irDevice = await db
+            .select()
+            .from(schema.irDevices)
+            .where(eq(schema.irDevices.id, inputSource.deviceId))
+            .limit(1)
+            .get();
+          matrixInput = irDevice?.matrixInput ?? null;
+        } else {
+          // directv
+          lookupSource = 'directvDevice';
+          const dtv = await db
+            .select()
+            .from(schema.direcTVDevices)
+            .where(eq(schema.direcTVDevices.id, inputSource.deviceId))
+            .limit(1)
+            .get();
+          matrixInput = dtv?.inputChannel ?? null;
+        }
 
-        if (!irDevice || irDevice.matrixInput == null) {
+        if (matrixInput == null) {
           cableBoxTuned = false;
           await schedulerLogger.warn(
             'auto-reallocator',
             'revert',
-            `Cannot tune ${inputSource.name} to default: IR device not found or missing matrixInput`,
+            `Cannot tune ${inputSource.name} to default: ${lookupSource} not found or missing matrix input`,
             cid,
             {
               inputSourceId: inputSource.id,
               deviceId: inputSource.deviceId,
               metadata: {
                 ...baseMeta(),
-                reason: 'ir_device_missing_matrixInput',
+                reason: lookupSource === 'irDevice' ? 'ir_device_missing_matrixInput' : 'directv_device_missing_inputChannel',
+                sourceType: inputSource.type,
               },
             }
           );
         } else {
-          const cableKey = String(irDevice.matrixInput);
+          const cableKey = String(matrixInput);
           let cableBoxDefault: CableBoxDefault | undefined =
             defaults.cableBoxDefaults?.[cableKey];
 
@@ -714,7 +738,7 @@ class AutoReallocator {
                 .from(schema.channelTuneLogs)
                 .where(
                   and(
-                    eq(schema.channelTuneLogs.inputNum, irDevice.matrixInput),
+                    eq(schema.channelTuneLogs.inputNum, matrixInput),
                     eq(schema.channelTuneLogs.success, true),
                     lt(schema.channelTuneLogs.tunedAt, scheduledStartIso)
                   )
@@ -733,7 +757,7 @@ class AutoReallocator {
                 await schedulerLogger.info(
                   'auto-reallocator',
                   'revert',
-                  `Auto-seeded cable-box default for ${inputSource.name} (input ${irDevice.matrixInput}) from tune history: ch ${cableBoxDefault.channelNumber}`,
+                  `Auto-seeded ${inputSource.type} default for ${inputSource.name} (input ${matrixInput}) from tune history: ch ${cableBoxDefault.channelNumber}`,
                   cid,
                   {
                     inputSourceId: inputSource.id,
@@ -742,7 +766,8 @@ class AutoReallocator {
                     metadata: {
                       ...baseMeta(),
                       reason: 'auto_seeded_from_tune_history',
-                      matrixInput: irDevice.matrixInput,
+                      matrixInput,
+                      sourceType: inputSource.type,
                       priorTuneAt: priorTune.tunedAt,
                       scheduledStartIso,
                     },
@@ -751,7 +776,7 @@ class AutoReallocator {
 
                 // Persist so the UI shows it going forward
                 await this.persistAutoSeededCableBoxDefault(
-                  irDevice.matrixInput,
+                  matrixInput,
                   cableBoxDefault,
                   inputSource,
                   cid
@@ -761,14 +786,15 @@ class AutoReallocator {
                 await schedulerLogger.warn(
                   'auto-reallocator',
                   'revert',
-                  `No default channel configured for ${inputSource.name} and no tune history prior to game start — cannot revert cable box`,
+                  `No default channel configured for ${inputSource.name} and no tune history prior to game start — cannot revert ${inputSource.type} box`,
                   cid,
                   {
                     inputSourceId: inputSource.id,
                     metadata: {
                       ...baseMeta(),
                       reason: 'no_default_no_history',
-                      matrixInput: irDevice.matrixInput,
+                      matrixInput,
+                      sourceType: inputSource.type,
                       scheduledStartIso,
                     },
                   }
@@ -779,7 +805,7 @@ class AutoReallocator {
               await schedulerLogger.error(
                 'auto-reallocator',
                 'revert',
-                `Error auto-seeding cable-box default from tune history for ${inputSource.name}`,
+                `Error auto-seeding ${inputSource.type} default from tune history for ${inputSource.name}`,
                 cid,
                 seedError,
                 {
@@ -787,7 +813,8 @@ class AutoReallocator {
                   metadata: {
                     ...baseMeta(),
                     reason: 'auto_seed_query_error',
-                    matrixInput: irDevice.matrixInput,
+                    matrixInput,
+                    sourceType: inputSource.type,
                   },
                 }
               );
@@ -797,16 +824,27 @@ class AutoReallocator {
           // Tune now if we have a default (configured OR auto-seeded)
           if (cableBoxDefault && cableBoxDefault.channelNumber) {
             cableBoxChannel = cableBoxDefault.channelNumber;
-            try {
-              const tuneResponse = await fetch(`http://127.0.0.1:${API_PORT}/api/channel-presets/tune`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
+            // (v2.28.3) Build type-specific tune payload. Cable uses
+            // cableBoxId (IR via Global Cache); DirecTV uses directTVId
+            // (IP control via /tv/tune endpoint).
+            const tunePayload: Record<string, any> = inputSource.type === 'cable'
+              ? {
                   channelNumber: cableBoxDefault.channelNumber,
                   deviceType: 'cable',
                   cableBoxId: inputSource.deviceId,
                   presetId: 'default',
-                }),
+                }
+              : {
+                  channelNumber: cableBoxDefault.channelNumber,
+                  deviceType: 'directv',
+                  directTVId: inputSource.deviceId,
+                  presetId: 'default',
+                };
+            try {
+              const tuneResponse = await fetch(`http://127.0.0.1:${API_PORT}/api/channel-presets/tune`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(tunePayload),
               });
 
               if (tuneResponse.ok) {
@@ -822,15 +860,18 @@ class AutoReallocator {
                   {
                     inputSourceId: inputSource.id,
                     channelNumber: cableBoxDefault.channelNumber,
-                    deviceType: 'cable',
+                    deviceType: inputSource.type,
                     deviceId: inputSource.deviceId,
                     metadata: {
                       ...baseMeta(),
-                      reason: autoSeededCableDefault ? 'cable_tuned_auto_seeded' : 'cable_tuned_configured',
+                      reason: autoSeededCableDefault
+                        ? `${inputSource.type}_tuned_auto_seeded`
+                        : `${inputSource.type}_tuned_configured`,
                       cableBoxTuned: true,
                       cableBoxChannel: cableBoxDefault.channelNumber,
                       cableBoxChannelName: cableBoxDefault.channelName,
-                      matrixInput: irDevice.matrixInput,
+                      matrixInput,
+                      sourceType: inputSource.type,
                     },
                   }
                 );
@@ -851,9 +892,10 @@ class AutoReallocator {
                     channelNumber: cableBoxDefault.channelNumber,
                     metadata: {
                       ...baseMeta(),
-                      reason: 'cable_tune_failed',
+                      reason: `${inputSource.type}_tune_failed`,
                       httpStatus: tuneResponse.status,
                       tuneError: errorData.error || tuneResponse.statusText,
+                      sourceType: inputSource.type,
                     },
                   }
                 );
@@ -874,7 +916,8 @@ class AutoReallocator {
                   channelNumber: cableBoxDefault.channelNumber,
                   metadata: {
                     ...baseMeta(),
-                    reason: 'cable_tune_exception',
+                    reason: `${inputSource.type}_tune_exception`,
+                    sourceType: inputSource.type,
                   },
                 }
               );
