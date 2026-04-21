@@ -83,6 +83,18 @@ export async function POST(request: NextRequest) {
       );
     }
   } catch (error: any) {
+    // v2.27.1: package allocator now throws `[ALLOCATOR] ...` for empty
+    // outputs and conflict cases. Surface those as 409 (caller error)
+    // instead of 500 (server error) so the UI can show a useful message
+    // and retry with corrected inputs.
+    const isAllocatorError = typeof error?.message === 'string' && error.message.startsWith('[ALLOCATOR]')
+    if (isAllocatorError) {
+      logger.warn(`[ALLOCATE] Allocator rejected request: ${error.message}`)
+      return NextResponse.json(
+        { success: false, error: error.message },
+        { status: 409 }
+      )
+    }
     logger.api.error('POST', '/api/scheduling/allocate', error);
     return NextResponse.json(
       { success: false, error: 'Allocation failed', details: error.message },
