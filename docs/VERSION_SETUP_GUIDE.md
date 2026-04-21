@@ -187,6 +187,108 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.28.4 — AI Suggest enforces HomeTeam.minTVsWhenActive (Packers gets 20 TVs, not 2)
+**Released:** 2026-04-21
+
+**What changed:**
+
+- `apps/web/src/app/api/scheduling/ai-suggest/route.ts`:
+  - NEW exported helper `matchHomeTeamRule(homeTeam, awayTeam, rules)` —
+    case-insensitive contains-match against HomeTeam.aliases.
+  - GET handler now loads `HomeTeam` rows where `isActive=true AND
+    isPrimary=true AND minTVsWhenActive > 0`, parses the JSON `aliases`
+    column, and passes a `HomeTeamRule[]` array to `buildPrompt()` and
+    `parseOllamaResponse()`.
+  - `buildPrompt()` per-game line now uses the rule's `minTVs` as the target
+    when the game matches a home team (vs the flat `tvPerGame` default).
+    Each home-team game line is tagged `[HOME TEAM: <Name> — REQUIRES N
+    TVs MINIMUM]` and the assign clause says "do NOT go lower".
+  - Rule 12 in the prompt now spells out the operator's per-team minimums
+    (Packers=20, Bucks=5, Brewers=3, Badgers=3) and notes that the server
+    WILL pad if the LLM under-assigns.
+  - `parseOllamaResponse()` enforces minimums: when an accepted suggestion
+    is for a home-team game and `suggestedOutputs.length < rule.minTVs`,
+    it pads with TVs 1..minTVs (deduped). Logs a `[AI-SUGGEST] Home-team
+    pad` line so operators can see when the LLM had to be backstopped.
+
+**Why this was needed:**
+
+`HomeTeam.minTVsWhenActive` has been in the schema since the table was
+seeded (Packers=20, Bucks=5, Brewers=3, Badgers=3 at Holmgren), but the
+AI Suggest prompt and parser never read or enforced it. Result: a Packers
+game would get the same 2-3 TVs as a random college baseball game. Operator
+report after observing the AI Suggest output multiple times: "the rules of
+how many TVs we want them on are not being followed".
+
+**Required steps PER LOCATION** (Claude Code at each location must run these):
+
+The HomeTeam table is seeded per-location. Each location has its own
+`minTVsWhenActive` values and its own home-team list. The new code uses
+whatever is in the table — no behavior change is needed for locations
+whose values are already correct.
+
+**Step 1 — Verify your location's home-team minimums:**
+```bash
+sqlite3 -header /home/ubuntu/sports-bar-data/production.db \
+  "SELECT teamName, sport, league, priority, minTVsWhenActive
+   FROM HomeTeam
+   WHERE isActive=1 AND isPrimary=1
+   ORDER BY priority DESC, teamName;"
+```
+Confirm `minTVsWhenActive` is set to a value the operator wants. NULL or 0
+means the rule is INACTIVE for that team — the AI Suggest will treat it
+as a non-home game (use the default `tvPerGame` share).
+
+**Step 2 — Update minimums via SQL** (idempotent — safe to re-run):
+
+Replace the values to match what each location's operator wants:
+```bash
+# Example template — substitute your team names + counts:
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "UPDATE HomeTeam SET minTVsWhenActive = 20 WHERE teamName = 'Green Bay Packers';"
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "UPDATE HomeTeam SET minTVsWhenActive = 5  WHERE teamName = 'Milwaukee Bucks';"
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "UPDATE HomeTeam SET minTVsWhenActive = 3  WHERE teamName = 'Milwaukee Brewers';"
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "UPDATE HomeTeam SET minTVsWhenActive = 3  WHERE teamName = 'Wisconsin Badgers';"
+```
+
+Or set ALL primary home teams to the same minimum at once:
+```bash
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "UPDATE HomeTeam SET minTVsWhenActive = 5 WHERE isPrimary=1 AND isActive=1;"
+```
+
+**Step 3 — Verify the new behavior fires:**
+```bash
+# Trigger AI Suggest and check the prompt log line for the loaded rules
+curl -s 'http://127.0.0.1:3001/api/scheduling/ai-suggest' --max-time 320 > /dev/null
+grep "Loaded.*home-team minTV rules" ~/.pm2/logs/sports-bar-tv-controller-out.log | tail -1
+# Expected: a line like "Loaded 4 home-team minTV rules: Packers=20, Bucks=5, ..."
+
+# When a home-team game is in the next AI Suggest response, look for the pad event
+grep "Home-team pad" ~/.pm2/logs/sports-bar-tv-controller-out.log | tail -5
+# Expected (when LLM under-assigns): "Home-team pad: Green Bay Packers
+# (Bears @ Packers) — LLM gave 3 TVs, padded to 20 (rule minTVs=20)"
+```
+
+**Per-location reference** (current Holmgren values as of v2.28.4 release):
+
+| Team | Priority | minTVsWhenActive |
+|---|---|---|
+| Green Bay Packers | 100 | 20 |
+| Milwaukee Brewers | 90 | 3 |
+| Milwaukee Bucks | 90 | 5 |
+| Wisconsin Badgers | 85 | 3 |
+| Green Bay Phoenix (UWGB) | 60 | 1 (effectively off) |
+| Marquette Golden Eagles | 60 | 1 (effectively off) |
+
+Other locations should set values that match their bar size and
+clientele expectations. A 12-TV bar should NOT use Packers=20.
+
+---
+
 ### v2.28.3 — DirecTV revert-to-default-channel (extends Step 6 to handle directv sources)
 **Released:** 2026-04-21
 
