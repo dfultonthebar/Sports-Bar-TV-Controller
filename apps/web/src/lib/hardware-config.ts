@@ -27,7 +27,13 @@ export const HARDWARE_CONFIG = {
   },
   venue: {
     timezone: 'America/Chicago',
-    name: 'Stoneyard Greenville',
+    // v2.28.5 — read per-location LOCATION_NAME from .env instead of hardcoding
+    // a single bar name into the shared codebase. Every location already has
+    // LOCATION_NAME populated via ecosystem.config.js, so the shift brief
+    // (and any other venue-name consumer) now renders the correct site.
+    // Generic fallback if the env is somehow missing — never show another
+    // location's name to the wrong bar.
+    name: process.env.LOCATION_NAME || 'Sports Bar',
   },
   scheduler: {
     earlyBufferSeconds: 300,
