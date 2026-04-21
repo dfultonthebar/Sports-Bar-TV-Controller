@@ -43,7 +43,7 @@ import { queryWolfpackRouteState } from '@sports-bar/wolfpack'
  */
 
 type CachedState = {
-  routes: Array<{ inputNum: number; outputNum: number; isActive: true }>
+  routes: Array<{ inputNum: number; outputNum: number; isActive: true; source?: 'db-fallback' }>
   expiry: number
   source: 'hardware'
 }
@@ -140,11 +140,8 @@ export async function GET(request: NextRequest) {
 
       const offset = activeConfig.outputOffset || 0
       // queryWolfpackRouteState normalizes the Wolf Pack 65535 firmware
-      // sentinel to -1. Drop those positions from the result — the UI
-      // should continue showing whatever it had before, which is exactly
-      // what "route missing from the list" produces via the currentSources
-      // Map fallback in the bartender remote page.
-      const routes = routingArray
+      // sentinel to -1. Drop those positions from the live result.
+      const liveRoutes = routingArray
         .map((input0Based, output0Based) => ({
           inputNum: input0Based + 1,
           outputNum: output0Based + 1 - offset,
@@ -157,6 +154,40 @@ export async function GET(request: NextRequest) {
           r.outputNum <= (activeConfig.outputCount || 36)
         )
 
+      // v2.28.1 — DB fallback for outputs filtered out by the 65535
+      // sentinel. Previously we relied on the bartender remote's local
+      // currentSources Map to preserve last-known values, but that only
+      // works for the iPad that made the route. Any OTHER iPad (or the
+      // same iPad after a hard refresh) coming fresh to the Video/Routing
+      // tab would see TV X as unrouted because the Wolf Pack returned
+      // 65535 in the post-route settling window AND the GET response had
+      // no entry for X. Manager-reported pattern: switch to Audio tab,
+      // come back to Video tab, TV 1 checkmark gone — even though the
+      // physical TV is correctly routed.
+      //
+      // Fix: for any output present in MatrixRoute (the persistent table
+      // written by the POST handler) but missing from the live response,
+      // fall back to the DB value and tag it with source='db-fallback'
+      // so the UI can show a subtle indicator if desired. Keep the live
+      // value where present — DB lags by one POST cycle so the live
+      // query is more authoritative when it has data.
+      const liveOutputs = new Set(liveRoutes.map(r => r.outputNum))
+      const dbRows = await db.select()
+        .from(schema.matrixRoutes)
+        .where(eq(schema.matrixRoutes.isActive, true))
+        .all()
+      const fallbacks: Array<{ inputNum: number; outputNum: number; isActive: true; source: 'db-fallback' }> = []
+      for (const row of dbRows) {
+        if (liveOutputs.has(row.outputNum)) continue
+        if (row.outputNum < 1 || row.outputNum > (activeConfig.outputCount || 36)) continue
+        fallbacks.push({ inputNum: row.inputNum, outputNum: row.outputNum, isActive: true, source: 'db-fallback' })
+      }
+      const routes = [...liveRoutes, ...fallbacks].sort((a, b) => a.outputNum - b.outputNum)
+
+      if (fallbacks.length > 0) {
+        logger.info(`[api/matrix/routes] Wolf Pack returned sentinel for ${fallbacks.length} output(s); filled from MatrixRoute DB: ${fallbacks.map(f => `out${f.outputNum}=in${f.inputNum}`).join(', ')}`)
+      }
+
       cache.set(activeConfig.ipAddress, {
         routes,
         expiry: now + CACHE_TTL_MS,
@@ -167,6 +198,7 @@ export async function GET(request: NextRequest) {
         success: true,
         source: 'hardware',
         routes,
+        fallbackCount: fallbacks.length,
       })
     } catch (hwError: any) {
       logger.warn(`[api/matrix/routes] hardware query failed, falling back to DB cache: ${hwError?.message ?? hwError}`)
