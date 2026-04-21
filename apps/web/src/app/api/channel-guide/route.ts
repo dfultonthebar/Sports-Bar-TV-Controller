@@ -348,21 +348,27 @@ export async function POST(request: NextRequest) {
         const windowStartSec = Math.floor(new Date(startTime).getTime() / 1000)
         const windowEndSec = Math.floor(new Date(endTime).getTime() / 1000)
 
-        // v2.28.2 — overlap filter, not start-only filter. Previously this
-        // used `gte(scheduledStart, windowStart) && lte(scheduledStart, windowEnd)`,
-        // which excluded any game that started BEFORE windowStart even if it was
-        // still in progress. Manager-reported case: Wolves @ Nuggets started
-        // 21:30 yesterday, ran into OT, still in_progress at 00:18 today —
-        // channel guide showed zero live games because the start time was outside
-        // the forward-looking 24h window. Now we include any game whose
-        // [scheduledStart, estimatedEnd] window overlaps the requested window.
+        // v2.28.2 — overlap filter PLUS in_progress catch-all. Previously
+        // we filtered on scheduledStart only (`gte(start, windowStart) && lte(start, windowEnd)`)
+        // which excluded any game that started BEFORE windowStart even if it
+        // was still airing. The overlap check fixes upcoming + recently-started.
+        // The OR(status='in_progress') catches games that ran past their
+        // estimated_end (OT, weather delay, etc.) — ESPN still has them as
+        // in_progress so we trust that label even when our duration estimate
+        // is stale. Manager case: Wolves @ Nuggets ran into OT past midnight,
+        // estimated_end was 90min in the past, but ESPN status was still
+        // 'in_progress' and the game was actively playing on DirecTV 6.
+        const { or, eq } = await import('drizzle-orm')
         const localGames = await db
           .select()
           .from(schema.gameSchedules)
           .where(
-            and(
-              lte(schema.gameSchedules.scheduledStart, windowEndSec),
-              gte(schema.gameSchedules.estimatedEnd, windowStartSec)
+            or(
+              and(
+                lte(schema.gameSchedules.scheduledStart, windowEndSec),
+                gte(schema.gameSchedules.estimatedEnd, windowStartSec)
+              ),
+              eq(schema.gameSchedules.status, 'in_progress')
             )
           )
           .all()
@@ -678,14 +684,18 @@ export async function POST(request: NextRequest) {
         const windowStartSec = Math.floor(new Date(startTime).getTime() / 1000)
         const windowEndSec = Math.floor(new Date(endTime).getTime() / 1000)
 
-        // v2.28.2 — overlap filter (see cable/directv path above for rationale)
+        // v2.28.2 — overlap filter + in_progress catch-all (see cable/directv path)
+        const { or, eq } = await import('drizzle-orm')
         const localGames = await db
           .select()
           .from(schema.gameSchedules)
           .where(
-            and(
-              lte(schema.gameSchedules.scheduledStart, windowEndSec),
-              gte(schema.gameSchedules.estimatedEnd, windowStartSec)
+            or(
+              and(
+                lte(schema.gameSchedules.scheduledStart, windowEndSec),
+                gte(schema.gameSchedules.estimatedEnd, windowStartSec)
+              ),
+              eq(schema.gameSchedules.status, 'in_progress')
             )
           )
           .all()
@@ -880,9 +890,14 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Filter out games that started more than 2 hours ago to keep the guide fresh
+    // Filter out games that started more than 2 hours ago to keep the guide fresh.
+    // v2.28.2 — EXCEPT keep games that are explicitly isLive=true regardless of
+    // start time. ESPN sometimes leaves OT games in_progress for hours past
+    // estimated_end; the bartender absolutely needs to see those in the guide
+    // because they're still on a TV right now (Wolves @ Nuggets case 2026-04-21).
     const twoHoursAgo = new Date(Date.now() - (2 * 60 * 60 * 1000))
     const freshPrograms = programs.filter(program => {
+      if (program.isLive) return true // never filter live-now games on age
       if (program.startTime) {
         const gameStart = new Date(program.startTime)
         return gameStart >= twoHoursAgo
