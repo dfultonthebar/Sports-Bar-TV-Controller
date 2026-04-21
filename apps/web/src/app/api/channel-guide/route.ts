@@ -348,13 +348,21 @@ export async function POST(request: NextRequest) {
         const windowStartSec = Math.floor(new Date(startTime).getTime() / 1000)
         const windowEndSec = Math.floor(new Date(endTime).getTime() / 1000)
 
+        // v2.28.2 — overlap filter, not start-only filter. Previously this
+        // used `gte(scheduledStart, windowStart) && lte(scheduledStart, windowEnd)`,
+        // which excluded any game that started BEFORE windowStart even if it was
+        // still in progress. Manager-reported case: Wolves @ Nuggets started
+        // 21:30 yesterday, ran into OT, still in_progress at 00:18 today —
+        // channel guide showed zero live games because the start time was outside
+        // the forward-looking 24h window. Now we include any game whose
+        // [scheduledStart, estimatedEnd] window overlaps the requested window.
         const localGames = await db
           .select()
           .from(schema.gameSchedules)
           .where(
             and(
-              gte(schema.gameSchedules.scheduledStart, windowStartSec),
-              lte(schema.gameSchedules.scheduledStart, windowEndSec)
+              lte(schema.gameSchedules.scheduledStart, windowEndSec),
+              gte(schema.gameSchedules.estimatedEnd, windowStartSec)
             )
           )
           .all()
@@ -362,6 +370,8 @@ export async function POST(request: NextRequest) {
         let gsInjected = 0
         let gsSkippedNoChannel = 0
         let gsSkippedDupe = 0
+
+        const nowSec = Math.floor(Date.now() / 1000)
 
         for (const game of localGames) {
           // Skip games without real team matchups
@@ -429,6 +439,14 @@ export async function POST(request: NextRequest) {
             channels.set(channelInfo.id, channelInfo)
           }
 
+          // v2.28.2 — derive isLive from current time + game status. ESPN
+          // sometimes lags marking a game 'completed' (especially OT games);
+          // trust the time window AND the explicit in_progress status when
+          // either is true.
+          const isLive =
+            game.status === 'in_progress' ||
+            (nowSec >= game.scheduledStart && nowSec <= game.estimatedEnd && game.status !== 'completed' && game.status !== 'final')
+
           programs.push({
             id: `gs-${game.id}`,
             league: game.league || 'Sports',
@@ -440,7 +458,7 @@ export async function POST(request: NextRequest) {
             channel: channelInfo,
             description: `${game.awayTeamName} @ ${game.homeTeamName}${game.venueName ? ' · ' + game.venueName : ''}`,
             isSports: true,
-            isLive: false,
+            isLive,
             venue: game.venueName || '',
             date: startDate.toDateString(),
             station: matchedStation,
@@ -660,13 +678,14 @@ export async function POST(request: NextRequest) {
         const windowStartSec = Math.floor(new Date(startTime).getTime() / 1000)
         const windowEndSec = Math.floor(new Date(endTime).getTime() / 1000)
 
+        // v2.28.2 — overlap filter (see cable/directv path above for rationale)
         const localGames = await db
           .select()
           .from(schema.gameSchedules)
           .where(
             and(
-              gte(schema.gameSchedules.scheduledStart, windowStartSec),
-              lte(schema.gameSchedules.scheduledStart, windowEndSec)
+              lte(schema.gameSchedules.scheduledStart, windowEndSec),
+              gte(schema.gameSchedules.estimatedEnd, windowStartSec)
             )
           )
           .all()
@@ -675,6 +694,8 @@ export async function POST(request: NextRequest) {
         let gsSkippedNoApp = 0
         let gsSkippedNotLoggedIn = 0
         let gsSkippedDupe = 0
+
+        const nowSec = Math.floor(Date.now() / 1000)
 
         for (const game of localGames) {
           if (!game.homeTeamName || !game.awayTeamName) continue
@@ -749,6 +770,11 @@ export async function POST(request: NextRequest) {
             hour12: true,
           }).toLowerCase()
 
+          // v2.28.2 — derive isLive (see cable/directv path)
+          const isLive =
+            game.status === 'in_progress' ||
+            (nowSec >= game.scheduledStart && nowSec <= game.estimatedEnd && game.status !== 'completed' && game.status !== 'final')
+
           programs.push({
             id: `gs-stream-${game.id}`,
             league: game.league || 'Sports',
@@ -760,7 +786,7 @@ export async function POST(request: NextRequest) {
             channel: appChannel,
             description: `${game.awayTeamName} @ ${game.homeTeamName}${game.venueName ? ' · ' + game.venueName : ''} (${matchedAppInfo.app})`,
             isSports: true,
-            isLive: false,
+            isLive,
             venue: game.venueName || '',
             station: matchedNetwork,
           })
