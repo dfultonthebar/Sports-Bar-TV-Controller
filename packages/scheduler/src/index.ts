@@ -157,3 +157,11 @@ export {
 export {
   runFiretvAppSyncSweep,
 } from './firetv-app-sync'
+
+// Fire TV Catalog Walker - Per-box per-app sports content discovery via uiautomator
+export {
+  runFiretvCatalogWalk,
+  type AppWalkRule,
+  type CatalogTile,
+  type CatalogWalkStats,
+} from './firetv-catalog-walker'
