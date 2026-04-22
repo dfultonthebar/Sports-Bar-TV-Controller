@@ -10,6 +10,7 @@ import { logger } from '@sports-bar/logger'
 import { schedulerLogger } from './scheduler-logger'
 import { probeAllDirecTVTuned } from './directv-probe'
 import { runFiretvAppSyncSweep } from './firetv-app-sync'
+import { runFiretvCatalogWalk } from './firetv-catalog-walker'
 
 // Get API port from environment or default to 3001
 const API_PORT = process.env.PORT || 3001
@@ -23,6 +24,8 @@ class SchedulerService {
   private fastPollIntervalId: NodeJS.Timeout | null = null;
   private ppvProbeIntervalId: NodeJS.Timeout | null = null;
   private firetvAppSyncIntervalId: NodeJS.Timeout | null = null;
+  private firetvCatalogWalkIntervalId: NodeJS.Timeout | null = null;
+  private lastCatalogWalk: Date | null = null;
   private isRunning = false;
   private hasDelayedGames = false;
   private lastCleanup: Date | null = null;
@@ -116,6 +119,22 @@ class SchedulerService {
     // First sync 60 seconds after startup (let scout heartbeats catch up)
     setTimeout(() => this.runFiretvAppSync(), 60000);
 
+    // Fire TV catalog walker — daily at 04:00 local. Walks every active
+    // Fire TV's installed sports apps and uploads per-box content tiles
+    // to firetv_streaming_catalog. See firetv-catalog-walker.ts for why
+    // this runs server-side via uiautomator dump (not in-APK).
+    // Tick every 5 min and fire when within the 04:00–04:05 window OR
+    // when the last walk was >25h ago — both gates prevent double-runs
+    // while still catching up after long downtime.
+    if (this.firetvCatalogWalkIntervalId) {
+      clearInterval(this.firetvCatalogWalkIntervalId);
+    }
+    this.firetvCatalogWalkIntervalId = setInterval(() => {
+      this.maybeRunCatalogWalk();
+    }, 300000); // 5 minutes
+    // Run once 5 minutes after startup if it's been >24h since last walk
+    setTimeout(() => this.maybeRunCatalogWalk(), 300000);
+
     schedulerLogger.info(
       'scheduler-service',
       'startup',
@@ -150,6 +169,50 @@ class SchedulerService {
     } catch (error: any) {
       logger.error('[FIRETV-APP-SYNC] Unexpected sweep failure:', { error });
     }
+  }
+
+  /**
+   * Decide whether to run the daily catalog walk and execute if so.
+   * Two gates: time-of-day window (04:00–04:05 local) OR last-walk-was-25h+
+   * for catch-up after long downtime. The Date.now() guard prevents
+   * double-runs within the same window.
+   */
+  private async maybeRunCatalogWalk() {
+    const now = new Date();
+    const localHour = parseInt(
+      now.toLocaleString('en-US', { timeZone: VENUE_TIMEZONE, hour: 'numeric', hourCycle: 'h23' }),
+      10
+    );
+    const localMinute = parseInt(
+      now.toLocaleString('en-US', { timeZone: VENUE_TIMEZONE, minute: 'numeric' }),
+      10
+    );
+    const inWindow = localHour === 4 && localMinute < 5;
+    const last = this.lastCatalogWalk;
+    const longGap = !last || (now.getTime() - last.getTime() > 25 * 60 * 60 * 1000);
+
+    // Cooldown: don't re-run within 6h regardless of window
+    const recent = last && (now.getTime() - last.getTime() < 6 * 60 * 60 * 1000);
+    if (recent) return;
+
+    if (!inWindow && !longGap) return;
+
+    logger.info(`[FIRETV-CATALOG] Triggering daily walk (window=${inWindow}, longGap=${longGap})`);
+    this.lastCatalogWalk = now;
+    try {
+      await runFiretvCatalogWalk();
+    } catch (error: any) {
+      logger.error('[FIRETV-CATALOG] Unexpected walk failure:', { error });
+    }
+  }
+
+  /**
+   * Manual trigger for the catalog walk — used by /api/firestick-scout/catalog/walk
+   * and the daily-cron internal trigger. Always runs regardless of cooldown.
+   */
+  public async triggerCatalogWalkNow() {
+    this.lastCatalogWalk = new Date();
+    return runFiretvCatalogWalk();
   }
 
   /**
