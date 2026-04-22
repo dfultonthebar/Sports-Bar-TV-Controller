@@ -9,6 +9,7 @@ import { db, schema, eq, findMany } from '@sports-bar/database'
 import { logger } from '@sports-bar/logger'
 import { schedulerLogger } from './scheduler-logger'
 import { probeAllDirecTVTuned } from './directv-probe'
+import { runFiretvAppSyncSweep } from './firetv-app-sync'
 
 // Get API port from environment or default to 3001
 const API_PORT = process.env.PORT || 3001
@@ -21,6 +22,7 @@ class SchedulerService {
   private tvStatusIntervalId: NodeJS.Timeout | null = null;
   private fastPollIntervalId: NodeJS.Timeout | null = null;
   private ppvProbeIntervalId: NodeJS.Timeout | null = null;
+  private firetvAppSyncIntervalId: NodeJS.Timeout | null = null;
   private isRunning = false;
   private hasDelayedGames = false;
   private lastCleanup: Date | null = null;
@@ -102,6 +104,18 @@ class SchedulerService {
     // First probe after 90 seconds (let DirecTV devices be fully discovered)
     setTimeout(() => this.runPpvProbe(), 90000);
 
+    // Fire TV app sync — every 5 minutes, reconcile input_sources.installed_apps
+    // and .available_networks against the latest Sports Bar Scout heartbeat.
+    // See packages/scheduler/src/firetv-app-sync.ts for the rationale.
+    if (this.firetvAppSyncIntervalId) {
+      clearInterval(this.firetvAppSyncIntervalId);
+    }
+    this.firetvAppSyncIntervalId = setInterval(() => {
+      this.runFiretvAppSync();
+    }, 300000); // 5 minutes
+    // First sync 60 seconds after startup (let scout heartbeats catch up)
+    setTimeout(() => this.runFiretvAppSync(), 60000);
+
     schedulerLogger.info(
       'scheduler-service',
       'startup',
@@ -121,6 +135,20 @@ class SchedulerService {
       await probeAllDirecTVTuned();
     } catch (error: any) {
       logger.error('[DTV-PROBE] Unexpected probe sweep failure:', { error });
+    }
+  }
+
+  /**
+   * Run a single sweep of the Fire TV app sync. Wrapper around
+   * runFiretvAppSyncSweep() that catches errors so a sync failure never
+   * crashes the scheduler tick. Per-input errors are already swallowed
+   * inside the sweep; this catch is for the unexpected (DB unavailable, etc.).
+   */
+  private async runFiretvAppSync() {
+    try {
+      await runFiretvAppSyncSweep();
+    } catch (error: any) {
+      logger.error('[FIRETV-APP-SYNC] Unexpected sweep failure:', { error });
     }
   }
 
