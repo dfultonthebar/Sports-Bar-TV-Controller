@@ -49,16 +49,44 @@ export async function POST(request: NextRequest) {
   const data = bodyValidation.data
   const now = new Date().toISOString()
 
+  // v2.28.10 — Canonical deviceId resolution by IP.
+  // Scout's compile-time IP_DEVICE_MAP only knows Stoneyard IPs (10.40.10.x),
+  // so Holmgren Fire TVs (10.11.3.x) all heartbeat with deviceId='fire-tv-unknown'
+  // — multiple boxes overwrite each other's row. Resolve the canonical deviceId
+  // server-side by matching ipAddress against the FireTVDevice table. This makes
+  // heartbeat data useful for downstream consumers (input_sources sync, AI Suggest)
+  // without requiring a scout rebuild + redeploy at every location.
+  let resolvedDeviceId = data.deviceId
+  let resolvedDeviceName = data.deviceName
+  if (data.ipAddress && (data.deviceId === 'fire-tv-unknown' || data.deviceId.startsWith('amazon-') || data.deviceId.startsWith('fire-tv-'))) {
+    try {
+      const ftDevice = await db
+        .select()
+        .from(schema.fireTVDevices)
+        .where(eq(schema.fireTVDevices.ipAddress, data.ipAddress))
+        .get()
+      if (ftDevice) {
+        if (resolvedDeviceId !== ftDevice.id) {
+          logger.info(`[FIRESTICK_SCOUT] Resolved heartbeat from ${data.deviceId} (${data.ipAddress}) → canonical ${ftDevice.id} (${ftDevice.name})`)
+        }
+        resolvedDeviceId = ftDevice.id
+        resolvedDeviceName = ftDevice.name
+      }
+    } catch (resolveErr: any) {
+      logger.warn(`[FIRESTICK_SCOUT] Canonical deviceId resolution failed for ${data.ipAddress}: ${resolveErr.message}`)
+    }
+  }
+
   try {
     // Check if device already exists
     const existing = await db
       .select()
       .from(schema.firestickLiveStatus)
-      .where(eq(schema.firestickLiveStatus.deviceId, data.deviceId))
+      .where(eq(schema.firestickLiveStatus.deviceId, resolvedDeviceId))
       .get()
 
     const statusData = {
-      deviceName: data.deviceName || data.deviceId,
+      deviceName: resolvedDeviceName || resolvedDeviceId,
       ipAddress: data.ipAddress || null,
       currentApp: data.currentApp || null,
       currentAppName: data.currentAppName || null,
@@ -86,22 +114,22 @@ export async function POST(request: NextRequest) {
         .where(eq(schema.firestickLiveStatus.id, existing.id))
         .run()
 
-      logger.debug(`[FIRESTICK_SCOUT] Updated status for ${data.deviceId}: ${data.currentAppName || 'idle'}`)
+      logger.debug(`[FIRESTICK_SCOUT] Updated status for ${resolvedDeviceId}: ${data.currentAppName || 'idle'}`)
     } else {
       // Create new status entry
       await db.insert(schema.firestickLiveStatus).values({
-        deviceId: data.deviceId,
+        deviceId: resolvedDeviceId,
         ...statusData,
         createdAt: now
       }).run()
 
-      logger.info(`[FIRESTICK_SCOUT] New device registered: ${data.deviceId} (${data.deviceName})`)
+      logger.info(`[FIRESTICK_SCOUT] New device registered: ${resolvedDeviceId} (${resolvedDeviceName})`)
     }
 
     return NextResponse.json({
       success: true,
       message: 'Heartbeat received',
-      deviceId: data.deviceId,
+      deviceId: resolvedDeviceId,
       timestamp: now
     })
   } catch (error: any) {
