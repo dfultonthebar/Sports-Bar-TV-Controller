@@ -639,6 +639,19 @@ If blanked, restore: `git show HEAD~1:apps/web/data/tv-layout.json > apps/web/da
 ### 9. BartenderLayout Must Include Rooms
 The bartender Video tab reads both `zones` and `rooms` from the `BartenderLayout` DB table (migrated from `tv-layout.json` in v2.11.0). If `rooms` is empty or the column is missing, the room filter tabs won't appear. The auto-seeder in `seed-from-json.ts` handles this for fresh installs. For existing locations, ensure the `rooms` column exists and is populated.
 
+### 10. Prime Video on Fire TV Cubes is hosted by the launcher, not a separate APK
+On Fire TV Cube 2nd gen (model **AFTR**, Fire OS 7.7) and other PVFTV-build Cubes, **`com.amazon.avod` is NOT installed as a standalone app** — `pm list packages` will not show it. Prime Video is hosted entirely inside the Fire TV launcher (`com.amazon.firebat`). What `Settings → Applications → Manage Installed Applications` shows as "Prime Video" with version `PVFTV-215.5200-L` IS the launcher itself; Amazon brands the launcher entry as "Prime Video" in the user-facing list.
+
+**Don't waste time hunting for the AVOD package.** v2.28.8 added `com.amazon.firebat` as a `packageAlias` for the `amazon-prime` catalog entry (`packages/streaming/src/streaming-apps-database.ts`). When `streamingManager.launchApp('amazon-prime')` runs on a Cube without `com.amazon.avod`, it falls through to firebat. `adb-client.launchApp()` then resolves `cmd package resolve-activity --brief -c android.intent.category.LEANBACK_LAUNCHER com.amazon.firebat` to `com.amazon.firebat/com.amazon.firebatcore.deeplink.DeepLinkRoutingActivity`, which routes to `livingroom.landing.LandingActivity` (the Prime Video browse screen — exact same activity the home-screen tile invokes).
+
+If a future Cube model ships Prime Video under yet another package name, the diagnostic flow is:
+1. Confirm device truly lacks `com.amazon.avod`: `pm path com.amazon.avod` returns failure.
+2. Have an operator open Prime Video manually on the device, then capture `dumpsys window windows | grep mCurrentFocus` to see the foreground activity.
+3. Confirm the package is launchable: `cmd package resolve-activity --brief -c android.intent.category.LEANBACK_LAUNCHER <package>` returns a real activity.
+4. Add the package to `packageAliases` for `amazon-prime` in the streaming catalog.
+
+The same reasoning applies to **other Amazon-branded apps that may be launcher-hosted on certain Fire OS builds** (Amazon Music, Photos). Don't trust the catalog package name as authoritative — trust what `pm path` returns on the actual device.
+
 ## Development Workflow
 
 ### Standing Rules (MUST follow in every session)
