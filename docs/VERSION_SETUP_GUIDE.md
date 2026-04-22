@@ -187,6 +187,69 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.28.7 — Fix smart-input-allocator excluding Fire TVs from every Prime Video / Hulu / Netflix / Max / YouTube TV game
+**Released:** 2026-04-22
+
+**What changed:**
+
+- `packages/scheduler/src/smart-input-allocator.ts` `findCapableInputs()`:
+  - Removed the Fire-TV-specific override that was filtering out every
+    Fire TV input for almost every streaming game. Now uses the same
+    `availableNetworks.includes(targetNetwork)` check that ai-suggest,
+    bartender-remote, and conflict-detector all use.
+
+**Why this was needed:**
+
+The override had two compounding bugs that made it always-false-for-firetv-streaming:
+
+1. **Hardcoded whitelist was missing most apps.** The list was literally
+   `['ESPN', 'Peacock', 'Paramount+', 'Apple TV']` — no Prime Video, no
+   Hulu, no Netflix, no Max, no YouTube TV, no MLB.TV, no NBA League Pass,
+   no ESPN+. A Prime Video TNF game requested via `POST /api/scheduling/allocate`
+   would silently exclude every Fire TV input ("Prime Video".includes('ESPN')
+   = false, etc.).
+2. **Wrong shape on the second predicate.** `installedApps.includes(app)`
+   compared display names ('ESPN') against an array of Android package names
+   (`com.amazon.avod`, `com.peacocktv.peacock`, ...). Even for the four
+   whitelisted apps, this always returned false.
+
+Net effect: any allocation request whose `preferredNetwork` was a streaming
+service silently filtered out every Fire TV input. The bartender's "approve
+this AI Suggest" or "Schedule from channel guide" flows for Prime Video games
+would either fail to allocate or fall back to a non-streaming source (cable
+boxes that don't have the game). Operator at Holmgren noticed that Fire TV 2
+and Fire TV 3 weren't being picked up for Prime Video — both have
+`com.amazon.avod` in `installed_apps` and `"Prime Video"` in
+`available_networks`, but the broken gate hid them anyway.
+
+ai-suggest's GET handler (which generates the suggestions) was unaffected
+because it uses a separate, correct gate based on `availableNetworks`.
+The bug was only at the approve/allocate step. So suggestions could mention
+Prime Video games but the approval would silently fall over.
+
+**Required steps PER LOCATION:**
+
+**No DB or .env changes.** The fix is code-only. After auto-update merges
++ rebuilds + restarts PM2, the next streaming-game allocation request will
+correctly consider Fire TVs whose `availableNetworks` lists the network.
+
+**Verify your Fire TV inputs are populated correctly:**
+```bash
+sqlite3 -header /home/ubuntu/sports-bar-data/production.db \
+  "SELECT name, available_networks FROM input_sources WHERE type='firetv' ORDER BY name;"
+```
+Each Fire TV's `available_networks` should be a JSON array of display names
+matching what the network resolver returns (e.g. `"Prime Video"`, `"Apple TV+"`,
+`"Peacock"`, `"ESPN+"`, `"Max"`, `"Paramount+"`, `"Hulu"`, `"Netflix"`,
+`"YouTube TV"`). If a Fire TV is missing an app it actually has, edit it via
+the Device Config UI — the missing entry is what was hiding it.
+
+`installed_apps` (the package-name list) is no longer consulted by the
+allocator gate, so it does not need to be perfect. It's still kept for
+device-side launch via ADB.
+
+---
+
 ### v2.28.6 — Cancel pending allocations whose game already ended (stops infinite tune retries)
 **Released:** 2026-04-22
 
