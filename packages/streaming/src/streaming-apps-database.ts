@@ -251,7 +251,15 @@ export const STREAMING_APPS_DATABASE: StreamingApp[] = [
     id: 'amazon-prime',
     name: 'Amazon Prime Video',
     packageName: 'com.amazon.avod',
-    packageAliases: ['com.amazon.avod.thirdpartyclient'],
+    // v2.28.8 — On Fire TV Cube 2nd gen (AFTR) and other Fire OS Cubes that
+    // ship Prime Video baked into the launcher (com.amazon.firebat / PVFTV
+    // build), there is no separate com.amazon.avod APK on disk. The launcher
+    // hosts Prime Video as its default LEANBACK_LAUNCHER activity
+    // (DeepLinkRoutingActivity → livingroom.landing.LandingActivity), so
+    // adding firebat as an alias lets streaming-service-manager find a
+    // launchable package on these Cubes. adb-client.launchApp() will resolve
+    // the LEANBACK_LAUNCHER activity automatically.
+    packageAliases: ['com.amazon.avod.thirdpartyclient', 'com.amazon.firebat'],
     category: 'general',
     hasPublicApi: false,
     deepLinkSupport: true,

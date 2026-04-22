@@ -187,6 +187,68 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.28.8 — Launch Prime Video on Fire TV Cubes that ship it baked into the launcher (no com.amazon.avod APK)
+**Released:** 2026-04-22
+
+**What changed:**
+
+- `packages/streaming/src/streaming-apps-database.ts`:
+  - Added `com.amazon.firebat` as a `packageAlias` on the `amazon-prime`
+    catalog entry (now `[com.amazon.avod.thirdpartyclient, com.amazon.firebat]`).
+
+**Why this was needed:**
+
+On Fire TV Cube 2nd gen (model AFTR, Fire OS 7.7) and other Cubes shipping
+the PVFTV (Prime Video Fire TV) launcher build, **there is no separate
+`com.amazon.avod` APK on disk** — Prime Video is hosted entirely inside the
+launcher (`com.amazon.firebat`). Settings → Applications → Manage Installed
+Applications shows a "Prime Video" entry with version like `PVFTV-215.5200-L`,
+but that entry is the launcher itself (Amazon brands it as "Prime Video"
+in the user-facing list). The actual installable Amazon Prime Video app
+(`com.amazon.avod`) is NOT present.
+
+Result before this fix: `streamingManager.launchApp('amazon-prime')` would
+probe `com.amazon.avod` and `com.amazon.avod.thirdpartyclient`, find neither,
+log "Amazon Prime Video is not installed on device", and return failure —
+even though the bartender can click the Prime Video tile on the home screen
+and have it work fine. AI Suggest's Prime Video suggestions and bartender
+remote launches both failed silently for these Cubes.
+
+After this fix: the launcher (`com.amazon.firebat`) is registered as a valid
+Prime Video host. `adb-client.launchApp()` resolves
+`cmd package resolve-activity --brief -c android.intent.category.LEANBACK_LAUNCHER com.amazon.firebat`,
+which returns `com.amazon.firebat/com.amazon.firebatcore.deeplink.DeepLinkRoutingActivity`
+— the same activity the home-screen Prime Video tile invokes, routing to
+`livingroom.landing.LandingActivity` (the Prime Video browse screen).
+Verified end-to-end on Fire TV Cube 2nd gen at Holmgren Way (Fire TV 2,
+10.11.3.50): foreground activity post-launch matches the user's manual
+tile-click.
+
+**Required steps PER LOCATION:**
+
+**No DB or .env changes.** The catalog change ships in v2.28.8. After
+auto-update merges + rebuilds + restarts PM2, `POST /api/streaming/launch`
+with `appId='amazon-prime'` will succeed on any Fire TV Cube whose Prime
+Video is launcher-hosted (in addition to all Cubes that have the standalone
+`com.amazon.avod` APK, which were already supported).
+
+**Verify your Fire TV Cubes' Prime Video launch path** (optional sanity check):
+```bash
+# Replace deviceId/ipAddress with one of your Fire TV Cubes:
+curl -s -X POST http://localhost:3001/api/streaming/launch \
+  -H "Content-Type: application/json" \
+  -d '{"deviceId":"<your-firetv-id>","ipAddress":"<ip>","appId":"amazon-prime","port":5555}'
+# Expect: {"success":true,"message":"Successfully launched app amazon-prime",...}
+# Walk to the TV — Prime Video browse screen should be visible.
+```
+
+If `success:false` with "Amazon Prime Video is not installed", the Cube has
+neither `com.amazon.avod` NOR `com.amazon.firebat` (uncommon — would suggest
+an unusual build). Check `pm list packages` on the device for the actual
+Prime Video host package and add it as an alias.
+
+---
+
 ### v2.28.7 — Fix smart-input-allocator excluding Fire TVs from every Prime Video / Hulu / Netflix / Max / YouTube TV game
 **Released:** 2026-04-22
 
