@@ -187,6 +187,122 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.29.0 — Per-box auto-discovery of Fire TV streaming apps via Sports Bar Scout
+**Released:** 2026-04-22
+
+**What changed:**
+
+- `packages/scheduler/src/firetv-app-sync.ts` (new):
+  - `runFiretvAppSyncSweep()` reconciles every active firetv `input_source`
+    against the latest scout heartbeat in `firestick_live_status`. Pulls
+    `loggedInApps` (or falls back to `installedApps`) from scout, translates
+    Android package names → display names, writes the truth back to
+    `input_sources.installed_apps` and `input_sources.available_networks`.
+  - Staleness guard: skips inputs whose scout heartbeat is >5 min old
+    (preserves prior data instead of blanking on a temporary scout outage).
+  - Idempotent: only writes when the computed list differs from stored.
+  - Launcher-hosted Prime Video back-fill: scout's AppDetector hard-codes
+    `com.amazon.avod` and misses launcher-hosted Prime Video on AFTR Cubes
+    (CLAUDE.md gotcha #10). When scout reports no Prime Video, this job
+    probes `pm path com.amazon.firebat` directly via the device control
+    endpoint; if firebat is present, "Prime Video" is added to
+    `available_networks` and `com.amazon.firebat` to `installed_apps`.
+
+- `apps/web/src/app/api/firestick-scout/route.ts` (v2.28.10 — bundled into this entry):
+  - When a heartbeat arrives with `deviceId='fire-tv-unknown'` or a legacy
+    id (`amazon-N`, `fire-tv-N`), the server resolves the canonical
+    `FireTVDevice.id` by matching `ipAddress`. Fixes the Holmgren-class
+    bug where scout's compile-time IP_DEVICE_MAP only knew Stoneyard IPs
+    (`10.40.10.x`) and every Fire TV at any other location heartbeated as
+    `fire-tv-unknown` — multiple boxes overwriting each other's row.
+
+- `packages/scheduler/src/scheduler-service.ts`:
+  - Wired `runFiretvAppSync()` into the startup sequence: 60s after boot
+    + every 5 minutes thereafter. Errors are caught so a sync failure
+    never crashes the scheduler tick.
+
+**Why this was needed:**
+
+`input_sources.available_networks` and `installed_apps` were originally
+hand-maintained admin metadata. Operators forget to update them when apps
+are installed/uninstalled at the device, so AI Suggest ends up either
+promising games on Fire TVs that no longer have the app or hiding games
+Fire TVs CAN play. Sports Bar Scout (deployed as `com.sportsbar.scout`
+on every venue's Fire TVs) already heartbeats the on-device truth every
+30 seconds — this job is the bridge that makes the rest of the
+scheduling stack consume that truth instead of trusting stale metadata.
+
+Verified at Holmgren Way 2026-04-22:
+
+```
+Fire TV 2 (firetv_1741700000002_holmgren2) → fubo, YouTube, ESPN, NFHS,
+                                              Peacock, Apple TV+, Netflix,
+                                              Prime Video (via firebat probe)
+Fire TV 3 (firetv_1741700000003_holmgren3) → YouTube, ESPN, NFHS, Peacock,
+                                              Prime Video (via firebat probe)
+```
+
+Note Fire TV 2 has Netflix + fubo + Apple TV+ that Fire TV 3 doesn't —
+the per-box differentiation that previously was invisible to AI Suggest.
+
+**Required steps PER LOCATION:**
+
+**No DB or .env changes.** The sync is automatic.
+
+**Verify scout is heartbeating from each Fire TV:**
+```bash
+sqlite3 -header /home/ubuntu/sports-bar-data/production.db \
+  "SELECT deviceId, deviceName, ipAddress, datetime(lastHeartbeat) as last_hb
+   FROM firestick_live_status
+   ORDER BY lastHeartbeat DESC;"
+```
+- Each active Fire TV input should have a row with `lastHeartbeat` within
+  the last 2 minutes.
+- `deviceId` should match the corresponding `FireTVDevice.id` (the canonical
+  id, e.g. `firetv_1741700000002_holmgren2`). Legacy `amazon-N` /
+  `fire-tv-unknown` rows are auto-resolved by the v2.28.10 IP resolver but
+  you can clean up old rows if any persist:
+  ```bash
+  sqlite3 /home/ubuntu/sports-bar-data/production.db \
+    "DELETE FROM firestick_live_status
+     WHERE deviceId NOT LIKE 'firetv_%'
+       AND lastHeartbeat < datetime('now', '-1 hour');"
+  ```
+
+**If scout isn't heartbeating** on a particular Fire TV: scout's
+compile-time `scoutServerUrl` may be wrong for your location. Send a
+CONFIG broadcast via ADB to repoint it:
+```bash
+curl -X POST http://localhost:3001/api/firetv-devices/send-command \
+  -H "Content-Type: application/json" \
+  -d '{
+    "deviceId":"<your-firetv-input.deviceId>",
+    "command":"am broadcast -a com.sportsbar.scout.CONFIG --es server_url http://<your-server-ip>:3001/api/firestick-scout -n com.sportsbar.scout/.ConfigReceiver"
+  }'
+```
+Then force-stop and relaunch scout:
+```bash
+curl -X POST http://localhost:3001/api/firetv-devices/send-command \
+  -H "Content-Type: application/json" \
+  -d '{"deviceId":"<your-firetv-input.deviceId>","command":"am force-stop com.sportsbar.scout"}'
+curl -X POST http://localhost:3001/api/firetv-devices/send-command \
+  -H "Content-Type: application/json" \
+  -d '{"deviceId":"<your-firetv-input.deviceId>","command":"monkey -p com.sportsbar.scout -c android.intent.category.LAUNCHER 1"}'
+```
+
+**Verify the sync is updating input_sources** (after waiting one cycle):
+```bash
+sqlite3 -header /home/ubuntu/sports-bar-data/production.db \
+  "SELECT name, available_networks FROM input_sources WHERE type='firetv' ORDER BY name;"
+```
+Each row's `available_networks` should reflect the actual installed apps
+from scout, plus Prime Video if firebat is present (Cubes).
+
+To force a sync immediately without waiting 5 min, restart PM2 and the
+sync will fire 60 seconds after startup.
+
+---
+
 ### v2.28.8 — Launch Prime Video on Fire TV Cubes that ship it baked into the launcher (no com.amazon.avod APK)
 **Released:** 2026-04-22
 

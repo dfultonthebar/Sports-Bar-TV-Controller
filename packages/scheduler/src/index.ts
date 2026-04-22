@@ -152,3 +152,8 @@ export {
   probeAllDirecTVTuned,
   type ProbeResult as DirecTVProbeResult
 } from './directv-probe'
+
+// Fire TV App Sync - Periodic sync of scout-reported installed apps into input_sources
+export {
+  runFiretvAppSyncSweep,
+} from './firetv-app-sync'
