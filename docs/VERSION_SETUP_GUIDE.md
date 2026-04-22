@@ -187,6 +187,310 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.28.4 — AI Suggest enforces HomeTeam.minTVsWhenActive (Packers gets 20 TVs, not 2)
+**Released:** 2026-04-21
+
+**What changed:**
+
+- `apps/web/src/app/api/scheduling/ai-suggest/route.ts`:
+  - NEW exported helper `matchHomeTeamRule(homeTeam, awayTeam, rules)` —
+    case-insensitive contains-match against HomeTeam.aliases.
+  - GET handler now loads `HomeTeam` rows where `isActive=true AND
+    isPrimary=true AND minTVsWhenActive > 0`, parses the JSON `aliases`
+    column, and passes a `HomeTeamRule[]` array to `buildPrompt()` and
+    `parseOllamaResponse()`.
+  - `buildPrompt()` per-game line now uses the rule's `minTVs` as the target
+    when the game matches a home team (vs the flat `tvPerGame` default).
+    Each home-team game line is tagged `[HOME TEAM: <Name> — REQUIRES N
+    TVs MINIMUM]` and the assign clause says "do NOT go lower".
+  - Rule 12 in the prompt now spells out the operator's per-team minimums
+    (Packers=20, Bucks=5, Brewers=3, Badgers=3) and notes that the server
+    WILL pad if the LLM under-assigns.
+  - `parseOllamaResponse()` enforces minimums: when an accepted suggestion
+    is for a home-team game and `suggestedOutputs.length < rule.minTVs`,
+    it pads with TVs 1..minTVs (deduped). Logs a `[AI-SUGGEST] Home-team
+    pad` line so operators can see when the LLM had to be backstopped.
+
+**Why this was needed:**
+
+`HomeTeam.minTVsWhenActive` has been in the schema since the table was
+seeded (Packers=20, Bucks=5, Brewers=3, Badgers=3 at Holmgren), but the
+AI Suggest prompt and parser never read or enforced it. Result: a Packers
+game would get the same 2-3 TVs as a random college baseball game. Operator
+report after observing the AI Suggest output multiple times: "the rules of
+how many TVs we want them on are not being followed".
+
+**Required steps PER LOCATION** (Claude Code at each location must run these):
+
+The HomeTeam table is seeded per-location. Each location has its own
+`minTVsWhenActive` values and its own home-team list. The new code uses
+whatever is in the table — no behavior change is needed for locations
+whose values are already correct.
+
+**Step 1 — Verify your location's home-team minimums:**
+```bash
+sqlite3 -header /home/ubuntu/sports-bar-data/production.db \
+  "SELECT teamName, sport, league, priority, minTVsWhenActive
+   FROM HomeTeam
+   WHERE isActive=1 AND isPrimary=1
+   ORDER BY priority DESC, teamName;"
+```
+Confirm `minTVsWhenActive` is set to a value the operator wants. NULL or 0
+means the rule is INACTIVE for that team — the AI Suggest will treat it
+as a non-home game (use the default `tvPerGame` share).
+
+**Step 2 — Update minimums via SQL** (idempotent — safe to re-run):
+
+Replace the values to match what each location's operator wants:
+```bash
+# Example template — substitute your team names + counts:
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "UPDATE HomeTeam SET minTVsWhenActive = 20 WHERE teamName = 'Green Bay Packers';"
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "UPDATE HomeTeam SET minTVsWhenActive = 5  WHERE teamName = 'Milwaukee Bucks';"
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "UPDATE HomeTeam SET minTVsWhenActive = 3  WHERE teamName = 'Milwaukee Brewers';"
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "UPDATE HomeTeam SET minTVsWhenActive = 3  WHERE teamName = 'Wisconsin Badgers';"
+```
+
+Or set ALL primary home teams to the same minimum at once:
+```bash
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "UPDATE HomeTeam SET minTVsWhenActive = 5 WHERE isPrimary=1 AND isActive=1;"
+```
+
+**Step 3 — Verify the new behavior fires:**
+```bash
+# Trigger AI Suggest and check the prompt log line for the loaded rules
+curl -s 'http://127.0.0.1:3001/api/scheduling/ai-suggest' --max-time 320 > /dev/null
+grep "Loaded.*home-team minTV rules" ~/.pm2/logs/sports-bar-tv-controller-out.log | tail -1
+# Expected: a line like "Loaded 4 home-team minTV rules: Packers=20, Bucks=5, ..."
+
+# When a home-team game is in the next AI Suggest response, look for the pad event
+grep "Home-team pad" ~/.pm2/logs/sports-bar-tv-controller-out.log | tail -5
+# Expected (when LLM under-assigns): "Home-team pad: Green Bay Packers
+# (Bears @ Packers) — LLM gave 3 TVs, padded to 20 (rule minTVs=20)"
+```
+
+**Per-location reference** (current Holmgren values as of v2.28.4 release):
+
+| Team | Priority | minTVsWhenActive |
+|---|---|---|
+| Green Bay Packers | 100 | 20 |
+| Milwaukee Brewers | 90 | 3 |
+| Milwaukee Bucks | 90 | 5 |
+| Wisconsin Badgers | 85 | 3 |
+| Green Bay Phoenix (UWGB) | 60 | 1 (effectively off) |
+| Marquette Golden Eagles | 60 | 1 (effectively off) |
+
+Other locations should set values that match their bar size and
+clientele expectations. A 12-TV bar should NOT use Packers=20.
+
+---
+
+### v2.28.3 — DirecTV revert-to-default-channel (extends Step 6 to handle directv sources)
+**Released:** 2026-04-21
+
+**What changed:**
+
+- `packages/scheduler/src/auto-reallocator.ts` — Step 6 ("tune source box back
+  to default channel") was previously gated on `inputSource.type === 'cable'`,
+  so DirecTV receivers used by a scheduled game stayed on the game's last
+  channel after revert. Now handles BOTH `cable` and `directv`:
+  - Matrix input lookup branches by type: `irDevices.matrixInput` for cable,
+    `direcTVDevices.inputChannel` for DirecTV.
+  - Operator's existing `cableBoxDefaults` config is shared — it's keyed by
+    matrix input number, which is unique across box types. Holmgren's setup
+    uses keys 1-4 for cable boxes, 5-10 for the 6 DirecTVs.
+  - Tune API payload differs by type: `cable` uses `cableBoxId` (IR via
+    Global Cache), `directv` uses `directTVId` (IP control via SHEF
+    `/tv/tune`). Both go through `/api/channel-presets/tune`.
+  - SchedulerLog metadata now includes `sourceType` and uses
+    `${type}_tuned_*` / `${type}_tune_*` reason codes for filtering.
+- Auto-seed-from-tune-history (v2.27.0) extended to DirecTVs too — same
+  ChannelTuneLog query path, same persist into `cableBoxDefaults`.
+
+**Why this was needed:**
+
+Wolves @ Nuggets on 2026-04-20 (DirecTV 6) and Orioles @ Royals (DirecTV 5)
+both reverted their TV outputs correctly but left the DirecTV boxes on the
+game channel. Operator had already configured `cableBoxDefaults` for inputs
+5-10 expecting it to apply to the DirecTVs — config was right, the gate was
+wrong.
+
+**Required steps PER LOCATION** (Claude Code at each location must execute these):
+
+The auto-update pipeline handles build + restart automatically. The new
+revert path is then enabled, but ONLY tunes a DirecTV box back to default
+if `cableBoxDefaults` has an entry for that box's matrix input number.
+
+**Step 1 — Discover this location's DirecTV matrix input numbers:**
+```bash
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "SELECT name, inputChannel FROM DirecTVDevice ORDER BY inputChannel;"
+```
+Note each `(name, inputChannel)` pair. inputChannel is the matrix input
+number, also the key in `cableBoxDefaults`.
+
+**Step 2 — Check what's already configured:**
+```bash
+curl -s http://127.0.0.1:3001/api/settings/default-sources | \
+  python3 -c "import json,sys; d=json.load(sys.stdin)['defaults']; \
+              keys=sorted(d.get('cableBoxDefaults',{}).keys(), key=lambda k:int(k)); \
+              print('configured keys:', keys); \
+              [print(f'  {k}: ch {v[\"channelNumber\"]} ({v.get(\"channelName\",\"?\")})') \
+               for k,v in sorted(d.get('cableBoxDefaults',{}).items(), key=lambda kv:int(kv[0]))]"
+```
+For each DirecTV inputChannel from Step 1, confirm there's a matching
+`cableBoxDefaults` key. If missing, go to Step 3.
+
+**Step 3 — Populate missing DirecTV defaults via the UI** (preferred):
+
+1. Open `http://<location-ip>:3001/system-admin` (or whichever path the
+   "Default Sources" settings page is at — varies slightly per version,
+   check the nav for "Default Sources" or "Defaults").
+2. In the Cable Box Defaults section (covers ALL tunable boxes despite the
+   name), find each DirecTV row by matrix input number and pick a
+   sensible idle channel. Save.
+
+**Step 3 alternative — via SQL** (when UI access isn't available):
+
+The config lives in `SystemSetting` keyed `default_sources` as JSON. To
+add a DirecTV default in-place:
+```bash
+# Replace MATRIX_INPUT_NUM, CHANNEL_NUM, CHANNEL_NAME with your values.
+sqlite3 /home/ubuntu/sports-bar-data/production.db "
+UPDATE SystemSetting
+SET value = json_set(
+  value,
+  '\$.cableBoxDefaults.\"MATRIX_INPUT_NUM\"',
+  json_object('channelNumber', 'CHANNEL_NUM', 'channelName', 'CHANNEL_NAME')
+)
+WHERE key = 'default_sources';
+"
+```
+Idempotent — re-running with the same values produces the same result.
+
+**Step 4 — Verify the new revert path fires after the next DirecTV game:**
+```bash
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "SELECT datetime(createdAt,'unixepoch','localtime'), level,
+          json_extract(metadata,'\$.reason') AS reason,
+          json_extract(metadata,'\$.sourceType') AS type,
+          message
+   FROM SchedulerLog
+   WHERE component='auto-reallocator' AND operation='revert'
+     AND json_extract(metadata,'\$.sourceType')='directv'
+   ORDER BY createdAt DESC LIMIT 10;"
+```
+Expected after the next DirecTV-allocated game completes: rows with
+`reason='directv_tuned_configured'` (or `directv_tuned_auto_seeded` if the
+operator skipped Step 3 and the auto-seed-from-tune-history fallback
+kicked in).
+
+**Per-location reference values** (current settings as of v2.28.3 release):
+
+| Location | Box | inputChannel | Default channel |
+|---|---|---|---|
+| Holmgren Way | DirecTV 1 | 5 | ch 219 Fox Sports 1 |
+| Holmgren Way | DirecTV 2 | 6 | ch 220 NFL Network |
+| Holmgren Way | DirecTV 3 | 7 | ch 602 CBS Sports Network |
+| Holmgren Way | DirecTV 4 | 8 | ch 611 SEC Network |
+| Holmgren Way | DirecTV 5 | 9 | ch 612 ACC Network |
+| Holmgren Way | DirecTV 6 | 10 | ch 610 Big 10 |
+
+Other locations: fill in your own values from Step 1 + Step 2 output. The
+defaults table above is Holmgren-only and SHOULD NOT be applied at other
+sites — channel lineups vary by DirecTV market.
+
+---
+
+### v2.28.2 — Channel guide includes in-progress games whose start is in the past
+**Released:** 2026-04-21
+
+**What changed:**
+
+- `apps/web/src/app/api/channel-guide/route.ts` — three fixes to the
+  `game_schedules` fallback:
+  1. Window filter changed from start-only (`gte(scheduledStart, windowStart)`)
+     to overlap-based (`scheduledStart <= windowEnd AND estimatedEnd >= windowStart`)
+     PLUS `OR(status='in_progress')` catch-all for games that ran past their
+     estimated end.
+  2. `isLive` is now derived from `game.status === 'in_progress'` OR
+     (now within `[scheduledStart, estimatedEnd]` AND status not completed/final).
+     Previously hardcoded `false`.
+  3. The 2-hour `[CLEANUP] Filtered out N old programs` filter now exempts
+     any program with `isLive === true`. Previously, OT games whose ESPN
+     status was still `in_progress` would be removed from the response by
+     the cleanup, hiding them from the bartender even though they were
+     actively playing.
+- Same three fixes applied to both the cable/directv path and the streaming
+  path of the fallback.
+
+**Why this was needed:**
+
+Wolves @ Nuggets ran into OT past midnight on 2026-04-20. The bartender
+remote channel guide showed "no live games" even though the game was on
+DirecTV 6 ch 26 (NBC) and the schedule view correctly listed it. Three
+overlapping bugs combined to filter the game out.
+
+**Required manual steps:** NONE.
+
+**Verify after update:**
+
+```bash
+# Hit the channel-guide POST endpoint and check for at least one live game
+# during a window where ESPN has any status='in_progress' games:
+curl -s -X POST http://127.0.0.1:3001/api/channel-guide \
+  -H 'Content-Type: application/json' \
+  -d '{"inputNumber":1,"deviceType":"satellite","deviceId":"<any-directv-id>"}' \
+  | python3 -c "import json,sys; d=json.load(sys.stdin); \
+                live=[p for p in d.get('programs',[]) if p.get('isLive')]; \
+                print(f'live programs: {len(live)}'); \
+                [print(f'  - {p[\"awayTeam\"]} @ {p[\"homeTeam\"]} on ch {p[\"channel\"][\"number\"]}') for p in live[:5]]"
+```
+
+---
+
+### v2.28.1 — Wolf Pack 65535 sentinel: DB fallback in /api/matrix/routes
+**Released:** 2026-04-21
+
+**What changed:**
+
+- `apps/web/src/app/api/matrix/routes/route.ts` — when `queryWolfpackRouteState`
+  returns the 65535 firmware sentinel for an output (post-route settling
+  window), the response previously dropped that output silently. Now falls
+  back to the persistent `MatrixRoute` DB table value for any output present
+  in DB but missing from the live response. Each fallback entry is tagged
+  `source: 'db-fallback'` and the response includes a `fallbackCount` field.
+
+**Why this was needed:**
+
+Operator-reported pattern: TV 1 loses its source checkmark when the bartender
+switches from Audio or Guide tab back to Video or Routing tab. Physical TV
+is correctly routed; only the UI shows blank. Root cause: the iPad that made
+the route had its `currentSources` Map preserve the value via the existing
+client-side merge logic, but ANY OTHER iPad (or the same iPad after a hard
+refresh) had no prior state to preserve and showed TV 1 as unrouted because
+the live Wolf Pack response was missing that output. DB fallback closes the
+gap so any device gets a correct response on first load.
+
+**Required manual steps:** NONE.
+
+**Verify after update:**
+
+```bash
+# When the Wolf Pack returns sentinels, the response should fill them from
+# DB and log the count. Look for the line in PM2 logs:
+grep "Wolf Pack returned sentinel" ~/.pm2/logs/sports-bar-tv-controller-out.log | tail -5
+# Expected (when it actually fires): lines like
+# "[api/matrix/routes] Wolf Pack returned sentinel for 1 output(s); filled
+#  from MatrixRoute DB: out1=in1"
+```
+
+---
+
 ### v2.28.0 — UFC/PPV event scheduling support (ESPN MMA name backfill + DirecTV PPV probe + AI Suggest empty-team tolerance)
 **Released:** 2026-04-20
 

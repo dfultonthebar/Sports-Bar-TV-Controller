@@ -79,6 +79,7 @@ data/*.json
 data/scene-logs/
 data/atlas-configs/
 apps/web/data/atlas-configs/
+apps/web/data/reports/
 data/backups/
 
 # IDE
