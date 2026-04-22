@@ -813,6 +813,95 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // v2.30.0 — Per-box on-device catalog injection.
+    // Sports Bar Scout's CatalogWalker reports per-box per-app sports content
+    // tiles (regional broadcasts ESPN doesn't tag, on-demand sports docuseries,
+    // app-specific live events). This data fills the gap left by the
+    // broadcast_networks fallback above, which only covers content ESPN syncs.
+    // Catalog rows live in firetv_streaming_catalog with a 36h TTL — older
+    // rows are pruned by the daily cron (Phase 3).
+    if (deviceType === 'streaming' && deviceId) {
+      try {
+        const { db } = await import('@/db')
+        const { schema } = await import('@/db')
+        const { eq, gt, and: dAnd } = await import('drizzle-orm')
+
+        const nowSec = Math.floor(Date.now() / 1000)
+        const catalogRows = await db
+          .select()
+          .from(schema.firetvStreamingCatalog)
+          .where(
+            dAnd(
+              eq(schema.firetvStreamingCatalog.deviceId, deviceId),
+              gt(schema.firetvStreamingCatalog.expiresAt, nowSec)
+            )
+          )
+          .all()
+
+        let catInjected = 0
+        let catSkippedDupe = 0
+        for (const row of catalogRows) {
+          // Dedupe against programs already added — same app + same title
+          const dupe = programs.some(
+            (p) =>
+              p.channel?.streamingApp === row.app &&
+              (p.description?.includes(row.contentTitle) || p.homeTeam === row.contentTitle)
+          )
+          if (dupe) {
+            catSkippedDupe++
+            continue
+          }
+
+          const appChannelId = `stream-${row.app.replace(/\s+/g, '-').toLowerCase()}`
+          let appChannel = channels.get(appChannelId)
+          if (!appChannel) {
+            appChannel = {
+              id: appChannelId,
+              name: row.app,
+              number: row.app,
+              type: 'streaming',
+              cost: 'subscription',
+              platforms: ['Fire TV', 'Streaming'],
+              channelNumber: row.app,
+              deviceType: 'streaming',
+              streamingApp: row.app,
+              packages: [],
+            }
+            channels.set(appChannelId, appChannel)
+          }
+
+          programs.push({
+            id: `cat-${row.id}`,
+            league: row.sportTag || 'Sports',
+            homeTeam: row.contentTitle,
+            awayTeam: '',
+            gameTime: row.isLive ? 'LIVE' : 'On demand',
+            startTime: new Date(row.capturedAt * 1000).toISOString(),
+            endTime: new Date(row.expiresAt * 1000).toISOString(),
+            channel: appChannel,
+            description: `${row.contentTitle} (${row.app}${row.deepLink ? ' · deep-linkable' : ''})`,
+            isSports: true,
+            isLive: !!row.isLive,
+            venue: '',
+            station: row.app,
+            // Carry the deep link through so a downstream client can launch
+            // directly to the content if scout captured one.
+            deepLink: row.deepLink || undefined,
+            sportTag: row.sportTag || undefined,
+          } as any)
+          catInjected++
+        }
+
+        if (catInjected > 0 || catSkippedDupe > 0) {
+          logInfo(
+            `firetv_streaming_catalog injection for ${deviceId}: +${catInjected} from scout walker, ${catSkippedDupe} dedup`
+          )
+        }
+      } catch (catalogError: any) {
+        logger.error('[Channel-Guide-API] catalog injection failed (non-fatal):', { error: catalogError.message })
+      }
+    }
+
     // For streaming devices, check if NFHS Network is logged in and add NFHS games
     if (deviceType === 'streaming' && deviceId) {
       const hasNfhsLogin = NFHS_PACKAGES.some(pkg => deviceLoggedInPackages.includes(pkg))

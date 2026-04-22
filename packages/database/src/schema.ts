@@ -1924,6 +1924,65 @@ export const firestickAppRegistry = sqliteTable('firestick_app_registry', {
   updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
 })
 
+// Per-box per-app sports content catalog populated by Sports Bar Scout's
+// CatalogWalker (scout v1.9+). Each row is one playable item discovered on
+// one Fire TV box's specific app. The catalog is overwritten daily (or
+// whenever scout completes a fresh walk) — rows expire 36h after capture
+// so a single bad walk doesn't strand stale content.
+//
+// Channel guide and AI Suggest read this table to surface streaming-only
+// sports content that ESPN's broadcast_networks doesn't tag (regional
+// broadcasts, Drive-to-Survive-style docuseries, replays). Each row says:
+// "Fire TV X has app Y and you can play content Z".
+//
+// Indexed on (deviceId, app) for the common channel-guide query and on
+// expiresAt for the cleanup sweep.
+export const firetvStreamingCatalog = sqliteTable('firetv_streaming_catalog', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+
+  // Which Fire TV reported this — FireTVDevice.id (the canonical id, not
+  // scout's compile-time deviceId). The firestick-scout ingest endpoint
+  // resolves canonical id by IP before insert (see v2.28.10).
+  deviceId: text('deviceId').notNull(),
+
+  // Which app this content is in (e.g. "Prime Video", "Peacock", "Hulu").
+  // Matches input_sources.available_networks display names so consumers
+  // can join by app.
+  app: text('app').notNull(),
+
+  // Display title scout pulled off the tile (e.g. "Thursday Night Football",
+  // "MLB.TV: Brewers vs. Cubs", "Drive to Survive S6E1"). Best-effort —
+  // accessibility text capture varies by app.
+  contentTitle: text('contentTitle').notNull(),
+
+  // Optional explicit deep-link URI scout could extract (e.g.
+  // "primevideo://detail?gti=..."). When present, the bartender-remote /
+  // scheduler can launch directly to the content instead of just opening
+  // the app's home screen. Most apps don't expose this externally — null
+  // is normal.
+  deepLink: text('deepLink'),
+
+  // True when scout determined the content is currently airing live
+  // (badge, "LIVE NOW" text, etc.). False for on-demand. Drives the
+  // channel-guide sort order (live first).
+  isLive: integer('isLive', { mode: 'boolean' }).default(false),
+
+  // Best-guess sport label (NFL, NBA, MLB, soccer, mma, motorsport, etc.)
+  // derived from tile text or app section heading. May be null if scout
+  // couldn't classify.
+  sportTag: text('sportTag'),
+
+  // When this row was captured by scout, and when it expires (default
+  // captured + 36h). Cleanup sweep deletes rows past expiresAt.
+  capturedAt: integer('capturedAt').notNull(),
+  expiresAt: integer('expiresAt').notNull(),
+
+  createdAt: integer('createdAt').notNull().default(sql`(strftime('%s','now'))`),
+}, (table) => ({
+  byDeviceApp: index('firetv_catalog_device_app_idx').on(table.deviceId, table.app),
+  byExpiresAt: index('firetv_catalog_expires_idx').on(table.expiresAt),
+}))
+
 // ============================================================================
 // DMX LIGHTING CONTROL
 // ============================================================================
