@@ -32,6 +32,7 @@ export type SchedulerOperation =
   | 'recover'
   | 'allocate'
   | 'reallocate'
+  | 'revert'
   | 'distribute'
   | 'calculate-priority'
   | 'detect-conflict'

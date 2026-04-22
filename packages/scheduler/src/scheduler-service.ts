@@ -8,6 +8,7 @@
 import { db, schema, eq, findMany } from '@sports-bar/database'
 import { logger } from '@sports-bar/logger'
 import { schedulerLogger } from './scheduler-logger'
+import { probeAllDirecTVTuned } from './directv-probe'
 
 // Get API port from environment or default to 3001
 const API_PORT = process.env.PORT || 3001
@@ -19,6 +20,7 @@ class SchedulerService {
   private intervalId: NodeJS.Timeout | null = null;
   private tvStatusIntervalId: NodeJS.Timeout | null = null;
   private fastPollIntervalId: NodeJS.Timeout | null = null;
+  private ppvProbeIntervalId: NodeJS.Timeout | null = null;
   private isRunning = false;
   private hasDelayedGames = false;
   private lastCleanup: Date | null = null;
@@ -88,12 +90,38 @@ class SchedulerService {
     // Run first poll after 30 seconds (let app fully start)
     setTimeout(() => this.pollTVStatus(), 30000);
 
+    // PPV channel probe — every 10 minutes, ask each DirecTV box what it's
+    // tuned to and record any PPV-band channel into discovered_ppv_channels.
+    // See packages/scheduler/src/directv-probe.ts for the rationale.
+    if (this.ppvProbeIntervalId) {
+      clearInterval(this.ppvProbeIntervalId);
+    }
+    this.ppvProbeIntervalId = setInterval(() => {
+      this.runPpvProbe();
+    }, 600000); // 10 minutes
+    // First probe after 90 seconds (let DirecTV devices be fully discovered)
+    setTimeout(() => this.runPpvProbe(), 90000);
+
     schedulerLogger.info(
       'scheduler-service',
       'startup',
       'Scheduler service started successfully',
       correlationId
     );
+  }
+
+  /**
+   * Run a single sweep of the DirecTV PPV-channel probe. Wrapper around
+   * probeAllDirecTVTuned() that catches errors so a probe failure never
+   * crashes the scheduler tick. Per-box errors are already swallowed inside
+   * the probe; this catch is for the unexpected (DB unavailable, etc.).
+   */
+  private async runPpvProbe() {
+    try {
+      await probeAllDirecTVTuned();
+    } catch (error: any) {
+      logger.error('[DTV-PROBE] Unexpected probe sweep failure:', { error });
+    }
   }
 
   /**
@@ -639,6 +667,50 @@ class SchedulerService {
 
       for (const { allocation, inputSource, game } of dueAllocations) {
         const tuneStartTime = Date.now();
+
+        // v2.28.6 — Skip + cancel allocations whose game already ended.
+        // Without this, a pending allocation whose tune keeps failing (e.g.
+        // bad channel for the device) is retried every minute forever: the
+        // revert sweep never runs because the allocation never went 'active',
+        // and there's no failure cap. On 2026-04-21 a stuck Celtics@76ers
+        // allocation pointed at DirecTV ch 220 (NBCSN, doesn't exist on
+        // DirecTV) racked up 2,094 failed tunes over 41 hours before manual
+        // cleanup. Cancel anything where the game is over by status OR is
+        // 30+ min past its estimated end.
+        const POST_END_GRACE_SECONDS = 30 * 60;
+        const gameEndedStatuses = new Set(['completed', 'final', 'postponed', 'canceled', 'cancelled']);
+        const gameStatusOver = gameEndedStatuses.has(String(game.status || '').toLowerCase());
+        const estimatedEndUnix = game.estimatedEnd || 0;
+        const wallClockOver = estimatedEndUnix > 0 && nowUnix > estimatedEndUnix + POST_END_GRACE_SECONDS;
+
+        if (gameStatusOver || wallClockOver) {
+          await db.update(schema.inputSourceAllocations)
+            .set({
+              status: 'cancelled',
+              actuallyFreedAt: nowUnix,
+              qualityNotes: `Cancelled before tune: game already ended (status=${game.status}${wallClockOver ? ', wall-clock past est_end+30min' : ''})`,
+              updatedAt: nowUnix,
+            })
+            .where(eq(schema.inputSourceAllocations.id, allocation.id));
+
+          await schedulerLogger.info(
+            'scheduler-service',
+            'tune',
+            `Cancelled stale pending allocation for ${game.homeTeamName} vs ${game.awayTeamName} — game already ended (${game.status})`,
+            correlationId,
+            {
+              gameId: game.id,
+              inputSourceId: inputSource.id,
+              allocationId: allocation.id,
+              channelNumber: allocation.channelNumber,
+              metadata: { gameStatus: game.status, estimatedEnd: estimatedEndUnix, wallClockOver, reason: 'game_ended_before_tune' },
+            }
+          );
+
+          logger.info(`[SCHEDULER] 🚫 Cancelled stale pending allocation for ${game.homeTeamName} vs ${game.awayTeamName} (game ${game.status}, channel ${allocation.channelNumber})`);
+          continue;
+        }
+
         try {
           logger.info(`[SCHEDULER] 🎯 Checking if ready to tune: ${inputSource.name} to channel ${allocation.channelNumber} for ${game.homeTeamName} vs ${game.awayTeamName}`);
 

@@ -448,6 +448,48 @@ function DefaultSourceSettings() {
         </div>
       )}
 
+      {/* Unconfigured Cable-Box Defaults Warning (v2.27.0)
+          Lists cable boxes with no default channel configured. The
+          auto-reallocator will attempt to auto-seed a default from recent
+          tune history when a game ends, but operators should still set
+          these explicitly so the behavior is predictable. */}
+      {(() => {
+        const unconfiguredCableBoxes = inputs
+          .filter(
+            (i) =>
+              i.deviceType === 'CableBox' ||
+              i.deviceType === 'Cable Box' ||
+              i.label?.toLowerCase().includes('cable'),
+          )
+          .filter((box) => {
+            const key = String(box.channelNumber)
+            const current = config.cableBoxDefaults?.[key]
+            return !current || !current.channelNumber
+          })
+
+        if (unconfiguredCableBoxes.length === 0) return null
+
+        return (
+          <div className="rounded-lg border border-amber-500/30 bg-amber-950/30 p-4 flex items-start gap-3">
+            <AlertTriangle className="h-5 w-5 text-amber-400 shrink-0 mt-0.5" />
+            <div className="text-sm text-amber-200 space-y-1">
+              <p className="font-semibold">
+                {unconfiguredCableBoxes.length} cable box
+                {unconfiguredCableBoxes.length === 1 ? '' : 'es'} missing default channel
+              </p>
+              <p className="text-amber-300">
+                {unconfiguredCableBoxes.map((b) => b.label).join(', ')}
+              </p>
+              <p className="text-amber-300">
+                When games end, these boxes will stay on whatever channel the game was on. The
+                system will attempt to auto-seed a default from recent tune history, but you
+                should set one explicitly below.
+              </p>
+            </div>
+          </div>
+        )
+      })()}
+
       {/* Description */}
       <div className="rounded-lg border border-slate-700 bg-slate-800/30 p-4">
         <p className="text-sm text-slate-400">

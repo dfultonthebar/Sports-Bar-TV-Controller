@@ -187,6 +187,800 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.28.8 — Launch Prime Video on Fire TV Cubes that ship it baked into the launcher (no com.amazon.avod APK)
+**Released:** 2026-04-22
+
+**What changed:**
+
+- `packages/streaming/src/streaming-apps-database.ts`:
+  - Added `com.amazon.firebat` as a `packageAlias` on the `amazon-prime`
+    catalog entry (now `[com.amazon.avod.thirdpartyclient, com.amazon.firebat]`).
+
+**Why this was needed:**
+
+On Fire TV Cube 2nd gen (model AFTR, Fire OS 7.7) and other Cubes shipping
+the PVFTV (Prime Video Fire TV) launcher build, **there is no separate
+`com.amazon.avod` APK on disk** — Prime Video is hosted entirely inside the
+launcher (`com.amazon.firebat`). Settings → Applications → Manage Installed
+Applications shows a "Prime Video" entry with version like `PVFTV-215.5200-L`,
+but that entry is the launcher itself (Amazon brands it as "Prime Video"
+in the user-facing list). The actual installable Amazon Prime Video app
+(`com.amazon.avod`) is NOT present.
+
+Result before this fix: `streamingManager.launchApp('amazon-prime')` would
+probe `com.amazon.avod` and `com.amazon.avod.thirdpartyclient`, find neither,
+log "Amazon Prime Video is not installed on device", and return failure —
+even though the bartender can click the Prime Video tile on the home screen
+and have it work fine. AI Suggest's Prime Video suggestions and bartender
+remote launches both failed silently for these Cubes.
+
+After this fix: the launcher (`com.amazon.firebat`) is registered as a valid
+Prime Video host. `adb-client.launchApp()` resolves
+`cmd package resolve-activity --brief -c android.intent.category.LEANBACK_LAUNCHER com.amazon.firebat`,
+which returns `com.amazon.firebat/com.amazon.firebatcore.deeplink.DeepLinkRoutingActivity`
+— the same activity the home-screen Prime Video tile invokes, routing to
+`livingroom.landing.LandingActivity` (the Prime Video browse screen).
+Verified end-to-end on Fire TV Cube 2nd gen at Holmgren Way (Fire TV 2,
+10.11.3.50): foreground activity post-launch matches the user's manual
+tile-click.
+
+**Required steps PER LOCATION:**
+
+**No DB or .env changes.** The catalog change ships in v2.28.8. After
+auto-update merges + rebuilds + restarts PM2, `POST /api/streaming/launch`
+with `appId='amazon-prime'` will succeed on any Fire TV Cube whose Prime
+Video is launcher-hosted (in addition to all Cubes that have the standalone
+`com.amazon.avod` APK, which were already supported).
+
+**Verify your Fire TV Cubes' Prime Video launch path** (optional sanity check):
+```bash
+# Replace deviceId/ipAddress with one of your Fire TV Cubes:
+curl -s -X POST http://localhost:3001/api/streaming/launch \
+  -H "Content-Type: application/json" \
+  -d '{"deviceId":"<your-firetv-id>","ipAddress":"<ip>","appId":"amazon-prime","port":5555}'
+# Expect: {"success":true,"message":"Successfully launched app amazon-prime",...}
+# Walk to the TV — Prime Video browse screen should be visible.
+```
+
+If `success:false` with "Amazon Prime Video is not installed", the Cube has
+neither `com.amazon.avod` NOR `com.amazon.firebat` (uncommon — would suggest
+an unusual build). Check `pm list packages` on the device for the actual
+Prime Video host package and add it as an alias.
+
+---
+
+### v2.28.7 — Fix smart-input-allocator excluding Fire TVs from every Prime Video / Hulu / Netflix / Max / YouTube TV game
+**Released:** 2026-04-22
+
+**What changed:**
+
+- `packages/scheduler/src/smart-input-allocator.ts` `findCapableInputs()`:
+  - Removed the Fire-TV-specific override that was filtering out every
+    Fire TV input for almost every streaming game. Now uses the same
+    `availableNetworks.includes(targetNetwork)` check that ai-suggest,
+    bartender-remote, and conflict-detector all use.
+
+**Why this was needed:**
+
+The override had two compounding bugs that made it always-false-for-firetv-streaming:
+
+1. **Hardcoded whitelist was missing most apps.** The list was literally
+   `['ESPN', 'Peacock', 'Paramount+', 'Apple TV']` — no Prime Video, no
+   Hulu, no Netflix, no Max, no YouTube TV, no MLB.TV, no NBA League Pass,
+   no ESPN+. A Prime Video TNF game requested via `POST /api/scheduling/allocate`
+   would silently exclude every Fire TV input ("Prime Video".includes('ESPN')
+   = false, etc.).
+2. **Wrong shape on the second predicate.** `installedApps.includes(app)`
+   compared display names ('ESPN') against an array of Android package names
+   (`com.amazon.avod`, `com.peacocktv.peacock`, ...). Even for the four
+   whitelisted apps, this always returned false.
+
+Net effect: any allocation request whose `preferredNetwork` was a streaming
+service silently filtered out every Fire TV input. The bartender's "approve
+this AI Suggest" or "Schedule from channel guide" flows for Prime Video games
+would either fail to allocate or fall back to a non-streaming source (cable
+boxes that don't have the game). Operator at Holmgren noticed that Fire TV 2
+and Fire TV 3 weren't being picked up for Prime Video — both have
+`com.amazon.avod` in `installed_apps` and `"Prime Video"` in
+`available_networks`, but the broken gate hid them anyway.
+
+ai-suggest's GET handler (which generates the suggestions) was unaffected
+because it uses a separate, correct gate based on `availableNetworks`.
+The bug was only at the approve/allocate step. So suggestions could mention
+Prime Video games but the approval would silently fall over.
+
+**Required steps PER LOCATION:**
+
+**No DB or .env changes.** The fix is code-only. After auto-update merges
++ rebuilds + restarts PM2, the next streaming-game allocation request will
+correctly consider Fire TVs whose `availableNetworks` lists the network.
+
+**Verify your Fire TV inputs are populated correctly:**
+```bash
+sqlite3 -header /home/ubuntu/sports-bar-data/production.db \
+  "SELECT name, available_networks FROM input_sources WHERE type='firetv' ORDER BY name;"
+```
+Each Fire TV's `available_networks` should be a JSON array of display names
+matching what the network resolver returns (e.g. `"Prime Video"`, `"Apple TV+"`,
+`"Peacock"`, `"ESPN+"`, `"Max"`, `"Paramount+"`, `"Hulu"`, `"Netflix"`,
+`"YouTube TV"`). If a Fire TV is missing an app it actually has, edit it via
+the Device Config UI — the missing entry is what was hiding it.
+
+`installed_apps` (the package-name list) is no longer consulted by the
+allocator gate, so it does not need to be perfect. It's still kept for
+device-side launch via ADB.
+
+---
+
+### v2.28.6 — Cancel pending allocations whose game already ended (stops infinite tune retries)
+**Released:** 2026-04-22
+
+**What changed:**
+
+- `packages/scheduler/src/scheduler-service.ts`:
+  - `checkAndExecuteBartenderSchedules()` now guards every loop iteration
+    with a "game already ended?" check BEFORE attempting the tune. If
+    `game.status` is one of `completed`/`final`/`postponed`/`canceled`/`cancelled`,
+    OR the wall-clock is more than 30 minutes past `game.estimatedEnd`,
+    the allocation is marked `cancelled` (with `actually_freed_at=now` and
+    a `qualityNotes` reason), a `scheduler-service tune` SchedulerLog row
+    is written with `metadata.reason='game_ended_before_tune'`, and the
+    iteration `continue`s instead of calling the tune API.
+
+**Why this was needed:**
+
+Until v2.28.6, an allocation that stayed `pending` (because every tune
+attempt failed) would be re-selected every minute by the scheduler poll
+forever. There was no failure cap and no game-end gate. On 2026-04-21 a
+single stuck Celtics @ 76ers allocation pointed at DirecTV channel 220
+(NBCSN — channel 220 doesn't exist on DirecTV; NBCSN ceased operations
+in 2022 and the broadcast actually ran on Peacock) racked up **2,094**
+failed tune attempts over 41 hours before it was caught manually. The
+revert sweep can't help because reverts only fire when the allocation
+transitions from `active` → freed; an allocation that never reaches
+`active` is invisible to revert.
+
+**Required steps PER LOCATION** (Claude Code at each location must run):
+
+**Step 1 — Acute cleanup: cancel any allocation already stuck in this state.**
+This finds pending allocations whose game has ended and the tune is
+clearly never going to succeed. Idempotent — safe to re-run on a clean DB
+(returns 0 rows updated).
+```bash
+sqlite3 /home/ubuntu/sports-bar-data/production.db "
+UPDATE input_source_allocations
+SET status='cancelled',
+    actually_freed_at=strftime('%s','now'),
+    quality_notes='v2.28.6 backfill: pending allocation whose game already ended',
+    updated_at=strftime('%s','now')
+WHERE status='pending'
+  AND game_schedule_id IN (
+    SELECT id FROM game_schedules
+    WHERE LOWER(status) IN ('completed','final','postponed','canceled','cancelled')
+       OR estimated_end < strftime('%s','now') - 1800
+  );
+SELECT changes() as cleaned_up;"
+```
+
+**Step 2 — No code-side action required.** The new guard ships in the v2.28.6
+build. After the auto-update merges + rebuilds + restarts PM2, future
+stale-pending allocations will self-cancel on the next 60s poll cycle and
+each cancellation writes a `scheduler-service tune` log row with
+`level='info'`, `metadata.reason='game_ended_before_tune'` for visibility.
+
+**Step 3 — Verify the guard fires (optional, when the next stale pending
+allocation appears naturally):**
+```bash
+sqlite3 /home/ubuntu/sports-bar-data/production.db "
+SELECT datetime(createdAt, 'unixepoch', 'localtime') as ts,
+       message,
+       json_extract(metadata, '$.reason') as reason
+FROM SchedulerLog
+WHERE component='scheduler-service'
+  AND operation='tune'
+  AND json_extract(metadata, '$.reason')='game_ended_before_tune'
+ORDER BY createdAt DESC LIMIT 10;"
+```
+
+**Follow-up (separate work item, not v2.28.6):** the Celtics @ 76ers
+trigger was that NBCSN → channel 220 mapping is wrong on DirecTV (220 is
+Fox Sports 2; NBCSN is defunct and the broadcast was actually on Peacock).
+The channel resolver should drop NBCSN as a DirecTV target and prefer the
+Peacock streaming path when available.
+
+---
+
+### v2.28.4 — AI Suggest enforces HomeTeam.minTVsWhenActive (Packers gets 20 TVs, not 2)
+**Released:** 2026-04-21
+
+**What changed:**
+
+- `apps/web/src/app/api/scheduling/ai-suggest/route.ts`:
+  - NEW exported helper `matchHomeTeamRule(homeTeam, awayTeam, rules)` —
+    case-insensitive contains-match against HomeTeam.aliases.
+  - GET handler now loads `HomeTeam` rows where `isActive=true AND
+    isPrimary=true AND minTVsWhenActive > 0`, parses the JSON `aliases`
+    column, and passes a `HomeTeamRule[]` array to `buildPrompt()` and
+    `parseOllamaResponse()`.
+  - `buildPrompt()` per-game line now uses the rule's `minTVs` as the target
+    when the game matches a home team (vs the flat `tvPerGame` default).
+    Each home-team game line is tagged `[HOME TEAM: <Name> — REQUIRES N
+    TVs MINIMUM]` and the assign clause says "do NOT go lower".
+  - Rule 12 in the prompt now spells out the operator's per-team minimums
+    (Packers=20, Bucks=5, Brewers=3, Badgers=3) and notes that the server
+    WILL pad if the LLM under-assigns.
+  - `parseOllamaResponse()` enforces minimums: when an accepted suggestion
+    is for a home-team game and `suggestedOutputs.length < rule.minTVs`,
+    it pads with TVs 1..minTVs (deduped). Logs a `[AI-SUGGEST] Home-team
+    pad` line so operators can see when the LLM had to be backstopped.
+
+**Why this was needed:**
+
+`HomeTeam.minTVsWhenActive` has been in the schema since the table was
+seeded (Packers=20, Bucks=5, Brewers=3, Badgers=3 at Holmgren), but the
+AI Suggest prompt and parser never read or enforced it. Result: a Packers
+game would get the same 2-3 TVs as a random college baseball game. Operator
+report after observing the AI Suggest output multiple times: "the rules of
+how many TVs we want them on are not being followed".
+
+**Required steps PER LOCATION** (Claude Code at each location must run these):
+
+The HomeTeam table is seeded per-location. Each location has its own
+`minTVsWhenActive` values and its own home-team list. The new code uses
+whatever is in the table — no behavior change is needed for locations
+whose values are already correct.
+
+**Step 1 — Verify your location's home-team minimums:**
+```bash
+sqlite3 -header /home/ubuntu/sports-bar-data/production.db \
+  "SELECT teamName, sport, league, priority, minTVsWhenActive
+   FROM HomeTeam
+   WHERE isActive=1 AND isPrimary=1
+   ORDER BY priority DESC, teamName;"
+```
+Confirm `minTVsWhenActive` is set to a value the operator wants. NULL or 0
+means the rule is INACTIVE for that team — the AI Suggest will treat it
+as a non-home game (use the default `tvPerGame` share).
+
+**Step 2 — Update minimums via SQL** (idempotent — safe to re-run):
+
+Replace the values to match what each location's operator wants:
+```bash
+# Example template — substitute your team names + counts:
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "UPDATE HomeTeam SET minTVsWhenActive = 20 WHERE teamName = 'Green Bay Packers';"
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "UPDATE HomeTeam SET minTVsWhenActive = 5  WHERE teamName = 'Milwaukee Bucks';"
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "UPDATE HomeTeam SET minTVsWhenActive = 3  WHERE teamName = 'Milwaukee Brewers';"
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "UPDATE HomeTeam SET minTVsWhenActive = 3  WHERE teamName = 'Wisconsin Badgers';"
+```
+
+Or set ALL primary home teams to the same minimum at once:
+```bash
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "UPDATE HomeTeam SET minTVsWhenActive = 5 WHERE isPrimary=1 AND isActive=1;"
+```
+
+**Step 3 — Verify the new behavior fires:**
+```bash
+# Trigger AI Suggest and check the prompt log line for the loaded rules
+curl -s 'http://127.0.0.1:3001/api/scheduling/ai-suggest' --max-time 320 > /dev/null
+grep "Loaded.*home-team minTV rules" ~/.pm2/logs/sports-bar-tv-controller-out.log | tail -1
+# Expected: a line like "Loaded 4 home-team minTV rules: Packers=20, Bucks=5, ..."
+
+# When a home-team game is in the next AI Suggest response, look for the pad event
+grep "Home-team pad" ~/.pm2/logs/sports-bar-tv-controller-out.log | tail -5
+# Expected (when LLM under-assigns): "Home-team pad: Green Bay Packers
+# (Bears @ Packers) — LLM gave 3 TVs, padded to 20 (rule minTVs=20)"
+```
+
+**Per-location reference** (current Holmgren values as of v2.28.4 release):
+
+| Team | Priority | minTVsWhenActive |
+|---|---|---|
+| Green Bay Packers | 100 | 20 |
+| Milwaukee Brewers | 90 | 3 |
+| Milwaukee Bucks | 90 | 5 |
+| Wisconsin Badgers | 85 | 3 |
+| Green Bay Phoenix (UWGB) | 60 | 1 (effectively off) |
+| Marquette Golden Eagles | 60 | 1 (effectively off) |
+
+Other locations should set values that match their bar size and
+clientele expectations. A 12-TV bar should NOT use Packers=20.
+
+---
+
+### v2.28.3 — DirecTV revert-to-default-channel (extends Step 6 to handle directv sources)
+**Released:** 2026-04-21
+
+**What changed:**
+
+- `packages/scheduler/src/auto-reallocator.ts` — Step 6 ("tune source box back
+  to default channel") was previously gated on `inputSource.type === 'cable'`,
+  so DirecTV receivers used by a scheduled game stayed on the game's last
+  channel after revert. Now handles BOTH `cable` and `directv`:
+  - Matrix input lookup branches by type: `irDevices.matrixInput` for cable,
+    `direcTVDevices.inputChannel` for DirecTV.
+  - Operator's existing `cableBoxDefaults` config is shared — it's keyed by
+    matrix input number, which is unique across box types. Holmgren's setup
+    uses keys 1-4 for cable boxes, 5-10 for the 6 DirecTVs.
+  - Tune API payload differs by type: `cable` uses `cableBoxId` (IR via
+    Global Cache), `directv` uses `directTVId` (IP control via SHEF
+    `/tv/tune`). Both go through `/api/channel-presets/tune`.
+  - SchedulerLog metadata now includes `sourceType` and uses
+    `${type}_tuned_*` / `${type}_tune_*` reason codes for filtering.
+- Auto-seed-from-tune-history (v2.27.0) extended to DirecTVs too — same
+  ChannelTuneLog query path, same persist into `cableBoxDefaults`.
+
+**Why this was needed:**
+
+Wolves @ Nuggets on 2026-04-20 (DirecTV 6) and Orioles @ Royals (DirecTV 5)
+both reverted their TV outputs correctly but left the DirecTV boxes on the
+game channel. Operator had already configured `cableBoxDefaults` for inputs
+5-10 expecting it to apply to the DirecTVs — config was right, the gate was
+wrong.
+
+**Required steps PER LOCATION** (Claude Code at each location must execute these):
+
+The auto-update pipeline handles build + restart automatically. The new
+revert path is then enabled, but ONLY tunes a DirecTV box back to default
+if `cableBoxDefaults` has an entry for that box's matrix input number.
+
+**Step 1 — Discover this location's DirecTV matrix input numbers:**
+```bash
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "SELECT name, inputChannel FROM DirecTVDevice ORDER BY inputChannel;"
+```
+Note each `(name, inputChannel)` pair. inputChannel is the matrix input
+number, also the key in `cableBoxDefaults`.
+
+**Step 2 — Check what's already configured:**
+```bash
+curl -s http://127.0.0.1:3001/api/settings/default-sources | \
+  python3 -c "import json,sys; d=json.load(sys.stdin)['defaults']; \
+              keys=sorted(d.get('cableBoxDefaults',{}).keys(), key=lambda k:int(k)); \
+              print('configured keys:', keys); \
+              [print(f'  {k}: ch {v[\"channelNumber\"]} ({v.get(\"channelName\",\"?\")})') \
+               for k,v in sorted(d.get('cableBoxDefaults',{}).items(), key=lambda kv:int(kv[0]))]"
+```
+For each DirecTV inputChannel from Step 1, confirm there's a matching
+`cableBoxDefaults` key. If missing, go to Step 3.
+
+**Step 3 — Populate missing DirecTV defaults via the UI** (preferred):
+
+1. Open `http://<location-ip>:3001/system-admin` (or whichever path the
+   "Default Sources" settings page is at — varies slightly per version,
+   check the nav for "Default Sources" or "Defaults").
+2. In the Cable Box Defaults section (covers ALL tunable boxes despite the
+   name), find each DirecTV row by matrix input number and pick a
+   sensible idle channel. Save.
+
+**Step 3 alternative — via SQL** (when UI access isn't available):
+
+The config lives in `SystemSetting` keyed `default_sources` as JSON. To
+add a DirecTV default in-place:
+```bash
+# Replace MATRIX_INPUT_NUM, CHANNEL_NUM, CHANNEL_NAME with your values.
+sqlite3 /home/ubuntu/sports-bar-data/production.db "
+UPDATE SystemSetting
+SET value = json_set(
+  value,
+  '\$.cableBoxDefaults.\"MATRIX_INPUT_NUM\"',
+  json_object('channelNumber', 'CHANNEL_NUM', 'channelName', 'CHANNEL_NAME')
+)
+WHERE key = 'default_sources';
+"
+```
+Idempotent — re-running with the same values produces the same result.
+
+**Step 4 — Verify the new revert path fires after the next DirecTV game:**
+```bash
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "SELECT datetime(createdAt,'unixepoch','localtime'), level,
+          json_extract(metadata,'\$.reason') AS reason,
+          json_extract(metadata,'\$.sourceType') AS type,
+          message
+   FROM SchedulerLog
+   WHERE component='auto-reallocator' AND operation='revert'
+     AND json_extract(metadata,'\$.sourceType')='directv'
+   ORDER BY createdAt DESC LIMIT 10;"
+```
+Expected after the next DirecTV-allocated game completes: rows with
+`reason='directv_tuned_configured'` (or `directv_tuned_auto_seeded` if the
+operator skipped Step 3 and the auto-seed-from-tune-history fallback
+kicked in).
+
+**Per-location reference values** (current settings as of v2.28.3 release):
+
+| Location | Box | inputChannel | Default channel |
+|---|---|---|---|
+| Holmgren Way | DirecTV 1 | 5 | ch 219 Fox Sports 1 |
+| Holmgren Way | DirecTV 2 | 6 | ch 220 NFL Network |
+| Holmgren Way | DirecTV 3 | 7 | ch 602 CBS Sports Network |
+| Holmgren Way | DirecTV 4 | 8 | ch 611 SEC Network |
+| Holmgren Way | DirecTV 5 | 9 | ch 612 ACC Network |
+| Holmgren Way | DirecTV 6 | 10 | ch 610 Big 10 |
+
+Other locations: fill in your own values from Step 1 + Step 2 output. The
+defaults table above is Holmgren-only and SHOULD NOT be applied at other
+sites — channel lineups vary by DirecTV market.
+
+---
+
+### v2.28.2 — Channel guide includes in-progress games whose start is in the past
+**Released:** 2026-04-21
+
+**What changed:**
+
+- `apps/web/src/app/api/channel-guide/route.ts` — three fixes to the
+  `game_schedules` fallback:
+  1. Window filter changed from start-only (`gte(scheduledStart, windowStart)`)
+     to overlap-based (`scheduledStart <= windowEnd AND estimatedEnd >= windowStart`)
+     PLUS `OR(status='in_progress')` catch-all for games that ran past their
+     estimated end.
+  2. `isLive` is now derived from `game.status === 'in_progress'` OR
+     (now within `[scheduledStart, estimatedEnd]` AND status not completed/final).
+     Previously hardcoded `false`.
+  3. The 2-hour `[CLEANUP] Filtered out N old programs` filter now exempts
+     any program with `isLive === true`. Previously, OT games whose ESPN
+     status was still `in_progress` would be removed from the response by
+     the cleanup, hiding them from the bartender even though they were
+     actively playing.
+- Same three fixes applied to both the cable/directv path and the streaming
+  path of the fallback.
+
+**Why this was needed:**
+
+Wolves @ Nuggets ran into OT past midnight on 2026-04-20. The bartender
+remote channel guide showed "no live games" even though the game was on
+DirecTV 6 ch 26 (NBC) and the schedule view correctly listed it. Three
+overlapping bugs combined to filter the game out.
+
+**Required manual steps:** NONE.
+
+**Verify after update:**
+
+```bash
+# Hit the channel-guide POST endpoint and check for at least one live game
+# during a window where ESPN has any status='in_progress' games:
+curl -s -X POST http://127.0.0.1:3001/api/channel-guide \
+  -H 'Content-Type: application/json' \
+  -d '{"inputNumber":1,"deviceType":"satellite","deviceId":"<any-directv-id>"}' \
+  | python3 -c "import json,sys; d=json.load(sys.stdin); \
+                live=[p for p in d.get('programs',[]) if p.get('isLive')]; \
+                print(f'live programs: {len(live)}'); \
+                [print(f'  - {p[\"awayTeam\"]} @ {p[\"homeTeam\"]} on ch {p[\"channel\"][\"number\"]}') for p in live[:5]]"
+```
+
+---
+
+### v2.28.1 — Wolf Pack 65535 sentinel: DB fallback in /api/matrix/routes
+**Released:** 2026-04-21
+
+**What changed:**
+
+- `apps/web/src/app/api/matrix/routes/route.ts` — when `queryWolfpackRouteState`
+  returns the 65535 firmware sentinel for an output (post-route settling
+  window), the response previously dropped that output silently. Now falls
+  back to the persistent `MatrixRoute` DB table value for any output present
+  in DB but missing from the live response. Each fallback entry is tagged
+  `source: 'db-fallback'` and the response includes a `fallbackCount` field.
+
+**Why this was needed:**
+
+Operator-reported pattern: TV 1 loses its source checkmark when the bartender
+switches from Audio or Guide tab back to Video or Routing tab. Physical TV
+is correctly routed; only the UI shows blank. Root cause: the iPad that made
+the route had its `currentSources` Map preserve the value via the existing
+client-side merge logic, but ANY OTHER iPad (or the same iPad after a hard
+refresh) had no prior state to preserve and showed TV 1 as unrouted because
+the live Wolf Pack response was missing that output. DB fallback closes the
+gap so any device gets a correct response on first load.
+
+**Required manual steps:** NONE.
+
+**Verify after update:**
+
+```bash
+# When the Wolf Pack returns sentinels, the response should fill them from
+# DB and log the count. Look for the line in PM2 logs:
+grep "Wolf Pack returned sentinel" ~/.pm2/logs/sports-bar-tv-controller-out.log | tail -5
+# Expected (when it actually fires): lines like
+# "[api/matrix/routes] Wolf Pack returned sentinel for 1 output(s); filled
+#  from MatrixRoute DB: out1=in1"
+```
+
+---
+
+### v2.28.0 — UFC/PPV event scheduling support (ESPN MMA name backfill + DirecTV PPV probe + AI Suggest empty-team tolerance)
+**Released:** 2026-04-20
+
+**What changed:**
+
+- `packages/scheduler/src/espn-sync-service.ts` — when `sport === 'mma'` and
+  ESPN returns empty `displayName` for both fighters (which it does for
+  every UFC event — ESPN structures MMA as fighters, not teams), parse
+  `event.name` ("UFC Fight Night: Topuria vs. Holloway") on ` vs.? `,
+  strip leading "UFC <whatever>: " from the first half, and assign the
+  two halves to `awayTeamName` / `homeTeamName`. Falls back to the whole
+  event name in `awayTeamName` if the split fails.
+- `packages/database/src/schema.ts` — NEW table `discovered_ppv_channels`
+  with `(directvDeviceId, channelMajor)` unique index. Tracks observations
+  of PPV-band channels seen on DirecTV `/tv/getTuned`.
+- `packages/scheduler/src/directv-probe.ts` — NEW. Polls every active
+  DirecTV box's SHEF `/tv/getTuned` and upserts any tuned channel where
+  `callsign === 'PPV'` OR (major in 100-199 AND title non-empty) into
+  `discovered_ppv_channels`. Per-box errors are caught and reported.
+- `packages/scheduler/src/scheduler-service.ts` — wires the probe into a
+  10-minute cron interval (first run 90s after startup) alongside the
+  existing TV-status poll. New `ppvProbeIntervalId` + `runPpvProbe()`.
+- `packages/scheduler/src/index.ts` — re-exports `probeAllDirecTVTuned` and
+  `DirecTVProbeResult` so app routes can call the probe.
+- `apps/web/src/app/api/directv/probe-tuned/route.ts` — NEW POST endpoint
+  for on-demand probe execution (testing / verification).
+- `apps/web/src/app/api/scheduling/ai-suggest/route.ts` — `buildPrompt()`
+  game line now tolerates empty `homeTeam`/`awayTeam`: renders whichever
+  half is non-empty, falls back to `"<LEAGUE> event"` when both empty.
+  Same fallback applied to the `title` field built in `fetchUpcomingGames()`.
+
+**Schema changes:** New table `discovered_ppv_channels`. The auto-update
+schema-push handles this on most locations, but if `drizzle-kit push`
+silently aborts on a pre-existing index (CLAUDE.md Known Gotcha #7), the
+verify step below will catch it and the manual CREATE TABLE block must
+be run.
+
+**Why this was needed:**
+
+A manager at Holmgren Way scheduled a UFC PPV on a DirecTV box for
+Saturday 2026-04-18. The scheduler never created an allocation for it,
+which meant no auto-revert when the fight ended and the box stayed on
+the PPV channel until manual cleanup. Two root causes:
+
+1. ESPN's MMA scoreboard returns null for both `homeTeam.displayName`
+   and `awayTeam.displayName`. Our sync stored them as empty strings,
+   so AI Suggest's prompt rendered " at " for every UFC row, and the
+   LLM ignored those rows entirely.
+2. ESPN doesn't surface a reliable PPV channel number in
+   `broadcastNetworks`, so even if the row had names, the AI had no
+   channel to route to. We now reactively learn the PPV channel from
+   what the manager already tuned the box to.
+
+**Required manual steps:** NONE for the auto-update path. The pipeline
+handles build, schema push, restart, and (where the box is currently
+tuned to PPV) the first probe sweep at +90s.
+
+**Optional: backfill historical UFC rows** that synced under the old
+code with empty names:
+```bash
+# Fetches the past week and re-syncs — names get backfilled in place.
+TODAY=$(date +%Y%m%d)
+WEEK_AGO=$(date -d '7 days ago' +%Y%m%d)
+curl -s -X POST http://127.0.0.1:3001/api/scheduling/sync \
+  -H 'Content-Type: application/json' \
+  -d "{\"sport\":\"mma\",\"league\":\"ufc\",\"startDate\":\"$WEEK_AGO\",\"endDate\":\"$TODAY\"}"
+```
+
+**Verify after update (per location):**
+
+```bash
+# 1. New table exists
+sqlite3 /home/ubuntu/sports-bar-data/production.db ".tables" | grep ppv
+# Expected: discovered_ppv_channels
+
+# 2. UFC rows have populated names (run after a UFC week and the next sync)
+sqlite3 /home/ubuntu/sports-bar-data/production.db "
+SELECT id, home_team_name, away_team_name,
+       datetime(scheduled_start,'unixepoch') as start_ct
+FROM game_schedules
+WHERE sport='mma' OR league='ufc'
+ORDER BY scheduled_start DESC LIMIT 5;"
+# Expected: home_team_name and away_team_name both non-empty for any row
+# whose scheduled_start fell within the last sync window.
+
+# 3. Trigger an on-demand probe (no PPV active = empty result, that's fine)
+curl -s -X POST http://127.0.0.1:3001/api/directv/probe-tuned | python3 -m json.tool
+# Expected: {"success":true,"result":{"devicesProbed":N,...}}
+# Where N = number of rows in DirecTVDevice.
+
+# 4. After a manager tunes any box to a PPV channel and waits ≤10 min
+#    (or hits the endpoint above), confirm a row appears:
+sqlite3 /home/ubuntu/sports-bar-data/production.db "
+SELECT directv_device_id, channel_major, callsign, title,
+       datetime(last_seen_at,'unixepoch') as last_seen_ct, seen_count
+FROM discovered_ppv_channels ORDER BY last_seen_at DESC LIMIT 10;"
+```
+
+**Per-location notes:** None. All locations have at least one DirecTV box
+in production; the probe scales by DirecTV device count and is harmless
+at any location size.
+
+**If the schema push silently skipped the new table** (Known Gotcha #7):
+```bash
+sqlite3 /home/ubuntu/sports-bar-data/production.db <<'SQL'
+CREATE TABLE IF NOT EXISTS discovered_ppv_channels (
+  id TEXT PRIMARY KEY,
+  directv_device_id TEXT NOT NULL,
+  channel_major INTEGER NOT NULL,
+  channel_minor INTEGER,
+  callsign TEXT,
+  title TEXT,
+  first_seen_at INTEGER NOT NULL,
+  last_seen_at INTEGER NOT NULL,
+  seen_count INTEGER NOT NULL DEFAULT 1
+);
+CREATE UNIQUE INDEX IF NOT EXISTS discovered_ppv_channels_device_major_unique
+  ON discovered_ppv_channels (directv_device_id, channel_major);
+CREATE INDEX IF NOT EXISTS discovered_ppv_channels_lastSeen_idx
+  ON discovered_ppv_channels (last_seen_at);
+SQL
+pm2 restart sports-bar-tv-controller
+```
+
+**Known errors & fixes:** none observed yet — will append if any surface.
+
+---
+
+### v2.27.1 — AI Suggest spread + collision hardening (zero-output guard, in-batch tracker)
+**Released:** 2026-04-20
+
+**What changed:**
+
+- `apps/web/src/app/api/scheduling/ai-suggest/route.ts` — prompt rewrite:
+  removed the "[BOTH] games go DirecTV by default" exclusivity rule that
+  was biasing every dual-route game to DirecTV and packing 5 games on one
+  receiver. New rules: explicit no-double-booking, spread-before-stack,
+  channel-tells-device-class, dynamic free-set re-check per game, and a
+  hard "every suggestion MUST include at least 1 TV output" rule with a
+  per-game tvPerGame hint.
+- `apps/web/src/app/api/scheduling/ai-suggest/route.ts` — parser changes:
+  (1) `parseOllamaResponse` now returns `{ suggestions, rejections }`.
+  (2) Empty `suggestedOutputs` arrays are REJECTED (not silently passed)
+  with `reason='zero_outputs'`. Bug A root cause was Ollama tail-attention
+  drop on long 12-game prompts producing `suggestedOutputs:[]`.
+  (3) New `inBatchClaims` map tracks each accepted suggestion's 3h time
+  window per input, so a second suggestion that overlaps gets rerouted
+  to an idle same-class input (cable→cable, dtv→dtv) or rejected with
+  `reason='in_batch_collision'`.
+  (4) The post-LLM "DirecTV-default rerouter" block was DELETED entirely —
+  it was the second source of cable-box-bias-the-other-way bug.
+  (5) All rejection paths (existing_collision, in_batch_collision,
+  zero_outputs, no_route, duplicate_combo, over_per_input_cap,
+  over_per_game_cap) now persist a `SchedulerLog` row with
+  `component='ai-suggest'`, `operation='reject'`, `level='warn'` for
+  the high-signal cases.
+- `packages/scheduler/src/allocation-conflicts.ts` — NEW. Duplicates
+  `apps/web/src/lib/scheduling/allocation-conflicts.ts` so the package
+  allocator can guard `createAllocation` without a cross-package import.
+- `packages/scheduler/src/smart-input-allocator.ts` — `createAllocation`
+  now refuses to insert when `tvOutputIds.length === 0` (throws
+  `[ALLOCATOR]` error) AND pre-flight conflict-checks the chosen input
+  before the insert (was only checked post-insert by
+  `/api/scheduling/allocate`).
+- `apps/web/src/app/api/scheduling/allocate/route.ts` — maps
+  `[ALLOCATOR]`-prefixed throws to HTTP 409 (was 500) so the UI can
+  show a useful retry message.
+
+**Schema changes:** None. Writes additional rows to existing
+`SchedulerLog` table (`component='ai-suggest'`, `operation='reject'`).
+
+**Why this was needed:**
+
+At Holmgren Way on 2026-04-20, the AI Suggest tab returned a Hawks/Knicks
+suggestion with `suggestedOutputs:[]` (no TVs assigned) and double-booked
+DirecTV 3 across overlapping Brewers and 76ers windows. Operator
+investigation traced both to (a) LLM tail-attention drop on the 12-game
+prompt and (b) the post-LLM "Prefer DirecTV for [BOTH] games" rerouter
+ignoring already-claimed slots in the same response.
+
+**Required manual steps:** NONE. Idempotent. Auto-update pipeline handles
+build, schema (no changes), restart.
+
+**Verify after update (per location):**
+
+```bash
+# 1. Hit the endpoint and confirm no zero-output suggestions returned
+curl -s 'http://127.0.0.1:3001/api/scheduling/ai-suggest' | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+zeros = [s for s in d.get("suggestions", []) if len(s.get("suggestedOutputs", [])) == 0]
+print(f"Suggestions: {len(d.get(\"suggestions\", []))}, zero-output: {len(zeros)}")
+'
+
+# 2. Confirm rejection telemetry is being written when LLM misbehaves
+sqlite3 /home/ubuntu/sports-bar-data/production.db "
+SELECT datetime(createdAt,'unixepoch','localtime') AS when_ct,
+       level, json_extract(metadata,'\$.reason') AS reason,
+       gameId, message
+FROM SchedulerLog
+WHERE component='ai-suggest' AND operation='reject'
+ORDER BY createdAt DESC LIMIT 10;"
+
+# 3. Confirm allocator now refuses 0-output requests with 409
+curl -s -X POST http://127.0.0.1:3001/api/scheduling/allocate \
+  -H 'Content-Type: application/json' \
+  -d '{"gameId":"NONEXISTENT","tvOutputIds":[]}' \
+  | python3 -m json.tool
+# Expected: 4xx response, NOT a 200 with an empty allocation.
+```
+
+**Known errors & fixes:** none observed yet — will append if any surface.
+
+---
+
+### v2.27.0 — Cable-box tune-back: auto-seed defaults from tune history + observability
+**Released:** 2026-04-20
+
+**What changed:**
+
+- `packages/scheduler/src/auto-reallocator.ts` — `revertTVsToDefaults()`
+  no longer silently skips Step 6 when `defaults.cableBoxDefaults` is empty.
+  If a cable-input is missing an explicit default, the service queries
+  `ChannelTuneLog` for the most recent successful tune BEFORE the game's
+  `scheduledStart` on that `inputNum`, constructs a `{channelNumber, channelName}`
+  fallback, persists it to `SystemSettings.default_sources` in-process so
+  the UI shows it going forward, and proceeds with the tune. If no prior
+  tune exists either, the box is left where it is with a `warn` row logged.
+- `packages/scheduler/src/auto-reallocator.ts` — every branch of
+  `revertTVsToDefaults()` (skip, success, failure) now writes a
+  `SchedulerLog` row with `component='auto-reallocator'`, `operation='revert'`,
+  and structured metadata including `gameId`, `inputSourceType`,
+  `inputSourceName`, `tvCount`, `cableBoxTuned`, `cableBoxChannel`,
+  `autoSeededCableDefault`, plus a `reason` string from a finite set
+  (`tv_reverted`, `cable_tuned_configured`, `cable_tuned_auto_seeded`,
+  `auto_seeded_from_tune_history`, `no_default_no_history`, `revert_complete`,
+  etc.). A single summary row fires at the end.
+- `packages/scheduler/src/scheduler-logger.ts` — `'revert'` added to the
+  `SchedulerOperation` union.
+- `apps/web/src/components/DefaultSourceSettings.tsx` — amber warning
+  banner lists any cable boxes with no default channel configured and
+  explains the auto-seed fallback.
+
+**Schema changes:** None. Reads `ChannelTuneLog` (no write), writes to
+`SystemSettings` row with `key='default_sources'` (existing row, updated
+in place).
+
+**Why this was needed:**
+
+At Holmgren Way on 2026-04-20, after v2.26.2 unblocked the matrix-route
+enum path, Cable Box 2 and Cable Box 4 still remained on channel 13
+(Magic/Spurs games) after those games ended — because `defaults.cableBoxDefaults`
+was empty. The prior logic `if (...cableBoxDefaults && Object.keys(...).length > 0)`
+silently no-op'd. Operators don't reliably set per-box defaults up front,
+so relying on them was a footgun; the most recent pre-game tune is a
+reasonable signal.
+
+**Required manual steps:** NONE. Idempotent — auto-seeding the same box
+twice produces the same result. The auto-update pipeline handles build
+and restart.
+
+**Verify after update (per location):**
+
+```bash
+# 1. Route still responds
+curl -s http://127.0.0.1:3001/api/settings/default-sources | jq '.defaults | keys'
+
+# 2. After the next game ends, confirm a revert-complete row appears
+sqlite3 /home/ubuntu/sports-bar-data/production.db "
+SELECT datetime(createdAt,'unixepoch','localtime') AS when_ct,
+       level, message, json_extract(metadata,'$.reason'),
+       json_extract(metadata,'$.cableBoxTuned')
+FROM SchedulerLog
+WHERE component='auto-reallocator' AND operation='revert'
+ORDER BY createdAt DESC LIMIT 10;"
+
+# 3. After a game ends on a cable input that had no default set,
+#    confirm default_sources now has a cableBoxDefaults entry
+sqlite3 /home/ubuntu/sports-bar-data/production.db "
+SELECT json_extract(value,'$.cableBoxDefaults') FROM SystemSettings
+WHERE key='default_sources';"
+```
+
+**Known errors & fixes:** none observed yet — will append if any surface.
+
+---
+
 ### v2.25.5 — Auto-update shared-software conflict fallback
 **Released:** 2026-04-19
 
