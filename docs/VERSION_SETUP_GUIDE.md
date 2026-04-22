@@ -187,6 +187,84 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.28.6 — Cancel pending allocations whose game already ended (stops infinite tune retries)
+**Released:** 2026-04-22
+
+**What changed:**
+
+- `packages/scheduler/src/scheduler-service.ts`:
+  - `checkAndExecuteBartenderSchedules()` now guards every loop iteration
+    with a "game already ended?" check BEFORE attempting the tune. If
+    `game.status` is one of `completed`/`final`/`postponed`/`canceled`/`cancelled`,
+    OR the wall-clock is more than 30 minutes past `game.estimatedEnd`,
+    the allocation is marked `cancelled` (with `actually_freed_at=now` and
+    a `qualityNotes` reason), a `scheduler-service tune` SchedulerLog row
+    is written with `metadata.reason='game_ended_before_tune'`, and the
+    iteration `continue`s instead of calling the tune API.
+
+**Why this was needed:**
+
+Until v2.28.6, an allocation that stayed `pending` (because every tune
+attempt failed) would be re-selected every minute by the scheduler poll
+forever. There was no failure cap and no game-end gate. On 2026-04-21 a
+single stuck Celtics @ 76ers allocation pointed at DirecTV channel 220
+(NBCSN — channel 220 doesn't exist on DirecTV; NBCSN ceased operations
+in 2022 and the broadcast actually ran on Peacock) racked up **2,094**
+failed tune attempts over 41 hours before it was caught manually. The
+revert sweep can't help because reverts only fire when the allocation
+transitions from `active` → freed; an allocation that never reaches
+`active` is invisible to revert.
+
+**Required steps PER LOCATION** (Claude Code at each location must run):
+
+**Step 1 — Acute cleanup: cancel any allocation already stuck in this state.**
+This finds pending allocations whose game has ended and the tune is
+clearly never going to succeed. Idempotent — safe to re-run on a clean DB
+(returns 0 rows updated).
+```bash
+sqlite3 /home/ubuntu/sports-bar-data/production.db "
+UPDATE input_source_allocations
+SET status='cancelled',
+    actually_freed_at=strftime('%s','now'),
+    quality_notes='v2.28.6 backfill: pending allocation whose game already ended',
+    updated_at=strftime('%s','now')
+WHERE status='pending'
+  AND game_schedule_id IN (
+    SELECT id FROM game_schedules
+    WHERE LOWER(status) IN ('completed','final','postponed','canceled','cancelled')
+       OR estimated_end < strftime('%s','now') - 1800
+  );
+SELECT changes() as cleaned_up;"
+```
+
+**Step 2 — No code-side action required.** The new guard ships in the v2.28.6
+build. After the auto-update merges + rebuilds + restarts PM2, future
+stale-pending allocations will self-cancel on the next 60s poll cycle and
+each cancellation writes a `scheduler-service tune` log row with
+`level='info'`, `metadata.reason='game_ended_before_tune'` for visibility.
+
+**Step 3 — Verify the guard fires (optional, when the next stale pending
+allocation appears naturally):**
+```bash
+sqlite3 /home/ubuntu/sports-bar-data/production.db "
+SELECT datetime(createdAt, 'unixepoch', 'localtime') as ts,
+       message,
+       json_extract(metadata, '$.reason') as reason
+FROM SchedulerLog
+WHERE component='scheduler-service'
+  AND operation='tune'
+  AND json_extract(metadata, '$.reason')='game_ended_before_tune'
+ORDER BY createdAt DESC LIMIT 10;"
+```
+
+**Follow-up (separate work item, not v2.28.6):** the Celtics @ 76ers
+trigger was that NBCSN → channel 220 mapping is wrong on DirecTV (220 is
+Fox Sports 2; NBCSN is defunct and the broadcast was actually on Peacock).
+The channel resolver should drop NBCSN as a DirecTV target and prefer the
+Peacock streaming path when available.
+
+---
+
 ### v2.28.4 — AI Suggest enforces HomeTeam.minTVsWhenActive (Packers gets 20 TVs, not 2)
 **Released:** 2026-04-21
 
