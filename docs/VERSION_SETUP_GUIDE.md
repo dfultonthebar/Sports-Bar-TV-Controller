@@ -187,6 +187,143 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.31.0 + v2.31.1 — Per-box per-app sports content catalog (Phase 2b-2 + Phase 3)
+**Released:** 2026-04-22
+
+**What changed:**
+
+- `packages/database/src/schema.ts` (v2.30.0):
+  - New table `firetv_streaming_catalog` (deviceId, app, contentTitle,
+    deepLink, isLive, sportTag, capturedAt, expiresAt, createdAt) with
+    indexes on (deviceId, app) and expiresAt. Per-box per-app sports
+    content tile inventory — overwritten daily by the walker.
+
+- `apps/web/src/app/api/firestick-scout/catalog/route.ts` (v2.30.0, new):
+  - POST ingests fresh catalog from the walker; per-app replace semantics
+    (delete then insert per app present in the upload). IP-based canonical
+    deviceId resolver mirrors v2.28.10's heartbeat resolver.
+  - GET reads catalog filtered by deviceId / app / liveOnly. Auto-prunes
+    expired rows.
+
+- `apps/web/src/app/api/channel-guide/route.ts` (v2.30.0):
+  - After the broadcast_networks fallback, queries firetv_streaming_catalog
+    for the requested deviceId, dedupes against existing programs, injects
+    each remaining catalog row as a streaming program. Carries deepLink
+    and sportTag through. Non-fatal — channel guide continues if catalog
+    query fails.
+
+- `packages/scheduler/src/firetv-catalog-walker.ts` (v2.31.0, new):
+  - `runFiretvCatalogWalk()`: for each active firetv input_source, for
+    each app in `available_networks` that has a rule in APP_WALK_RULES,
+    sends HOME, launches the app via /api/streaming/launch, waits for
+    first screen render (per-app delay), runs `uiautomator dump`, parses
+    tiles via the per-app extractor, POSTs to /api/firestick-scout/catalog,
+    sends HOME, moves to next app.
+  - Prime Video extractor empirically validated against Fire TV Cube 2nd
+    gen (AFTR) on 2026-04-22 — captured 10 real tiles in one walk
+    (4 LIVE: ATP/WTA tennis, PSL cricket, squash + 6 UPCOMING NBA
+    playoff games). Per-app rules in APP_WALK_RULES — apps without a
+    rule are skipped silently (no false data).
+  - Architecture: server-side ADB walker (NOT Kotlin AccessibilityService).
+    Reasons documented in the file's header comment — short version:
+    AccessibilityService requires manual Settings toggle ADB can't
+    reliably bypass; TypeScript per-app rules iterate at edit-and-restart
+    speed instead of compile-and-flash speed.
+
+- `packages/scheduler/src/scheduler-service.ts` (v2.31.0):
+  - `maybeRunCatalogWalk()`: triggers daily catalog walk between 04:00–04:05
+    America/Chicago OR after 25h+ gap (catch-up after long downtime).
+    6h cooldown prevents double-runs. Tick every 5 min.
+  - `triggerCatalogWalkNow()`: public method for manual ad-hoc trigger.
+
+- `apps/web/src/app/api/firestick-scout/catalog/walk/route.ts` (v2.31.0, new):
+  - POST endpoint for operator to trigger an immediate walk (e.g. after
+    installing a new app on a Fire TV). Bypasses the cooldown.
+
+- `packages/scheduler/src/firetv-catalog-walker.ts` (v2.31.1):
+  - Removed `2>/dev/null` from the uiautomator dump command. The
+    send-command API mangles shell redirections; without the suffix, the
+    dump succeeds and the file is readable. Added `rm -f` before dump
+    to prevent stale files from masking failures, plus a 500ms grace
+    after dump for the file write to flush. First production walk after
+    this fix captured 10 tiles in 22s.
+
+**Why this was needed:**
+
+Earlier phases (v2.28.10 → v2.29.1) made the scheduler aware of per-box
+APP availability (which Fire TV has Prime Video, which has Peacock, etc.).
+But "what's actually playable inside each app right now" — the per-box
+sports catalog — was still missing. Without it, the bartender opens the
+channel guide for a Fire TV box and sees only games tagged in ESPN's
+broadcast_networks JSON. Anything Prime Video shows on its sports tab
+(LIVE NOW tennis, NBA Playoffs row, cricket overflow, etc.) was invisible
+unless ESPN happened to tag the same game.
+
+This version delivers the missing per-box catalog by walking each app's
+first screen via uiautomator dump (no APK rebuild, no AccessibilityService
+permission gate) and surfacing the captured tiles in the channel guide
+alongside ESPN-broadcast_networks games. Per-app extraction rules — start
+with Prime Video, add others incrementally as the operator needs them.
+
+**Required steps PER LOCATION:**
+
+**No DB migrations needed beyond the table creation.** The
+`firetv_streaming_catalog` table is auto-created on schema push (or via the
+manual SQL snippet below if drizzle-kit silently skips it — see CLAUDE.md
+gotcha #7).
+
+**Manual table creation if drizzle-kit push fails:**
+```bash
+sqlite3 /home/ubuntu/sports-bar-data/production.db <<'SQL'
+CREATE TABLE IF NOT EXISTS firetv_streaming_catalog (
+  id TEXT PRIMARY KEY NOT NULL,
+  deviceId TEXT NOT NULL,
+  app TEXT NOT NULL,
+  contentTitle TEXT NOT NULL,
+  deepLink TEXT,
+  isLive INTEGER DEFAULT 0,
+  sportTag TEXT,
+  capturedAt INTEGER NOT NULL,
+  expiresAt INTEGER NOT NULL,
+  createdAt INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+);
+CREATE INDEX IF NOT EXISTS firetv_catalog_device_app_idx ON firetv_streaming_catalog (deviceId, app);
+CREATE INDEX IF NOT EXISTS firetv_catalog_expires_idx ON firetv_streaming_catalog (expiresAt);
+SQL
+```
+
+**Verify the daily walk fires** (after 04:00 local OR via manual trigger):
+```bash
+# Manual trigger (bypasses cooldown):
+curl -X POST http://localhost:3001/api/firestick-scout/catalog/walk
+
+# Then check what was captured:
+sqlite3 -header /home/ubuntu/sports-bar-data/production.db \
+  "SELECT deviceId, app, contentTitle, isLive, sportTag
+   FROM firetv_streaming_catalog
+   ORDER BY deviceId, isLive DESC, contentTitle;"
+```
+
+If a Fire TV's row count is 0 for an app it should have:
+1. Confirm scout heartbeat is fresh and shows the app installed:
+   `sqlite3 production.db "SELECT deviceId, installedApps FROM firestick_live_status WHERE deviceId LIKE '%firetv%';"`
+2. Confirm the app has an APP_WALK_RULES entry in
+   `packages/scheduler/src/firetv-catalog-walker.ts` (only Prime Video as
+   of v2.31.0 — other apps are silently skipped).
+3. Run the manual walk endpoint with `pm2 logs sports-bar-tv-controller`
+   tailing in another shell to see [FIRETV-CATALOG] messages.
+
+**Adding a new app's per-app extraction rule:**
+1. Manually open the app on a Fire TV.
+2. Run `uiautomator dump /sdcard/d.xml` then `cat /sdcard/d.xml` via the
+   send-command endpoint to capture the tile XML pattern.
+3. Add a new entry to `APP_WALK_RULES` in
+   `packages/scheduler/src/firetv-catalog-walker.ts` mirroring the
+   `extractPrimeVideoTiles` shape.
+4. Restart PM2; the daily cron + manual trigger will pick up the new app.
+
+---
+
 ### v2.29.0 — Per-box auto-discovery of Fire TV streaming apps via Sports Bar Scout
 **Released:** 2026-04-22
 

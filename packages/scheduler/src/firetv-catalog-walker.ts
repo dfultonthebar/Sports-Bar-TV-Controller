@@ -301,11 +301,30 @@ async function walkOneApp(
     // 3. Wait for first screen to render
     await sleep(rule.postLaunchDelayMs)
 
-    // 4. Dump UI hierarchy
+    // 4. Dump UI hierarchy.
+    //
+    // Two implementation notes baked in from earlier diagnosis:
+    //   - The send-command API mangles shell redirections (`2>/dev/null`),
+    //     so we don't try to silence stderr — just call uiautomator directly.
+    //   - Always remove the dump file first; if a previous walk left a stale
+    //     copy and uiautomator silently fails, we don't want to read the
+    //     wrong content.
+    //   - `uiautomator dump` writes its success message ("UI hierchary
+    //     dumped to: ...") to stderr on Fire OS 7, which the send-command
+    //     wrapper sometimes misreports as failure. The actual file write
+    //     succeeds — we read it back via `cat` regardless of dump's
+    //     reported status. If the file is genuinely missing, cat returns
+    //     empty and we surface "empty dump".
     const dumpPath = '/sdcard/scout_walker_dump.xml'
-    await adbShell(deviceId, `uiautomator dump ${dumpPath} 2>/dev/null`)
+    await adbShell(deviceId, `rm -f ${dumpPath}`)
+    await adbShell(deviceId, `uiautomator dump ${dumpPath}`)
+    // small grace for the file write to flush
+    await sleep(500)
     const xml = await adbShell(deviceId, `cat ${dumpPath}`)
     if (!xml || xml.length < 200) {
+      logger.warn(
+        `[FIRETV-CATALOG] empty dump on ${inputSource.name} / ${rule.displayName} — cat returned ${xml?.length ?? 0} chars`
+      )
       return { app: rule.displayName, tilesFound: 0, uploaded: false, error: 'empty dump' }
     }
 
