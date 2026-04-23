@@ -147,8 +147,10 @@ function inferSportTag(title: string, contextSportRow: string | null): string | 
   // (Power Tennis Tour) events as "Apr 23 - PTT Clemson Men" / similar
   // — those were landing as untagged in earlier walks.
   if (/atp|wta|tennis|\bptt\b/.test(lower)) return 'tennis'
-  if (/cricket|psl|ipl|hyderabad|sultan/.test(lower)) return 'cricket'
+  if (/cricket|\bpsl\b|\bipl\b|hyderabad|sultan|mumbai indians|super kings|royal challengers|kolkata knight|delhi capitals|punjab kings|rajasthan royals/.test(lower)) return 'cricket'
   if (/squash|grasshopper cup/.test(lower)) return 'squash'
+  if (/\bchess\b/.test(lower)) return 'chess'
+  if (/\brace(s)?\b|day at the races|horse|kentucky derby|breeders/.test(lower)) return 'horse-racing'
   // v2.31.5 — soccer recognition for Saudi Pro League fixtures Prime
   // Video carries (Al-team-name vs Al-team-name pattern is distinctive).
   if (/^al |\bvs\.?\s+al /i.test(lower) || /\bsaudi\b|\bspl\b/i.test(lower)) return 'soccer'
@@ -198,10 +200,13 @@ function extractPrimeVideoTiles(xmlDump: string): CatalogTile[] {
     if (/^Watch now$/.test(t)) continue
     if (/^TV-(MA|14|PG|G|Y)/.test(t)) continue
     if (/^#\d+ in/.test(t)) continue
-    // v2.31.4 — additional Sports-tab noise filters
+    // v2.31.4 + v2.31.6 — additional Sports-tab noise filters
     if (/^(More details|All|all)$/i.test(t)) continue
     if (/^(LIVE|LIVE NOW|UPCOMING)$/i.test(t)) continue       // standalone badge text
     if (/^Live at \d/i.test(t)) continue                        // "Live at 5:30 PM" generic timeslot
+    if (/^(Live and upcoming events|Live now|Live & upcoming)$/i.test(t)) {
+      lastSportRow = t; continue                                // row header, not a tile
+    }
     if (/^Sports for you$/i.test(t)) { lastSportRow = t; continue }
 
     // Game matchup signal — the strongest tile indicator
@@ -232,8 +237,21 @@ function extractPrimeVideoTiles(xmlDump: string): CatalogTile[] {
       continue
     }
 
-    // Strip trailing ", LIVE" / ", UPCOMING" from the title for cleanliness
-    const cleanTitle = t.replace(/,?\s*(LIVE|LIVE NOW|UPCOMING)\s*$/i, '').trim()
+    // v2.31.6 — Strip trailing decoration suffixes from the title.
+    // Prime Video tiles often have multi-segment trailers like
+    //   "Foo Bar, LIVE, Free trial"
+    //   "Foo Bar, LIVE, Subscribe"
+    //   "Foo Bar, UPCOMING"
+    // Run the strip in a loop so multiple suffix segments come off cleanly.
+    let cleanTitle = t
+    for (let i = 0; i < 4; i++) {
+      const stripped = cleanTitle.replace(
+        /,?\s*(LIVE|LIVE NOW|UPCOMING|Free trial|Subscribe|Watch now)\s*$/i,
+        ''
+      ).trim()
+      if (stripped === cleanTitle) break
+      cleanTitle = stripped
+    }
     if (!cleanTitle || cleanTitle.length < 3) continue
 
     const key = cleanTitle.toLowerCase()
