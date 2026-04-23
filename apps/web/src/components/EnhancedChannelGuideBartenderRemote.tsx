@@ -119,6 +119,14 @@ interface ChannelInfo {
   channelNumber?: string
   appCommand?: string
   packageName?: string
+  // v2.31.7 — fields populated by the channel-guide route's streaming
+  // injection paths (broadcast_networks fallback + catalog injection).
+  // The bartender remote reads `appId` to route through /api/streaming/launch
+  // which knows about Cube launcher-hosted Prime Video; falls back to
+  // packageName + monkey if appId is absent.
+  appId?: string
+  streamingApp?: string
+  packages?: string[]
   deviceType?: 'cable' | 'satellite' | 'streaming' | 'gaming'
   _presetMapped?: boolean  // Flag to indicate this was mapped from a preset
 }
@@ -1073,8 +1081,8 @@ export default function EnhancedChannelGuideBartenderRemote() {
           // fail on those boxes because the package doesn't exist; firebat
           // is the host. Falls back to the legacy direct-launch path when
           // no appId is set (e.g. Rail Media programs that pre-date this).
-          if ((game.channel as any).appId) {
-            await launchStreamingAppByCatalog((game.channel as any).appId, game.channel.name)
+          if (game.channel.appId) {
+            await launchStreamingAppByCatalog(game.channel.appId, game.channel.name)
           } else if (game.channel.packageName) {
             await launchStreamingApp(game.channel.packageName, game.channel.name)
           }

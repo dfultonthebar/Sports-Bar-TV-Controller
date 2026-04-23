@@ -620,6 +620,23 @@ function parseOllamaResponse(
     const normalize = (s: string) => (s || '').toLowerCase().replace(/\s+/g, '').replace(/box/g, '')
     const digitsOf = (s: string) => (s || '').match(/\d+/)?.[0] || ''
     const cableSources = inputSources.filter((src: any) => src.type === 'cable')
+
+    // v2.31.7 — Parse availableNetworks JSON ONCE per input source up front
+    // and cache as a lowercase Set per input id. The previous version's
+    // inputHasApp() did JSON.parse + .some() inside a per-suggestion closure
+    // that the .filter() also called per-input, making the work O(M × N)
+    // for M suggestions and N inputs.
+    const appsByInputId = new Map<string, Set<string>>()
+    for (const src of inputSources) {
+      try {
+        const apps = JSON.parse(src.availableNetworks || '[]') as string[]
+        appsByInputId.set(src.id, new Set(apps.map((a) => a.toLowerCase().trim())))
+      } catch {
+        appsByInputId.set(src.id, new Set())
+      }
+    }
+    const inputHasApp = (src: any, appLower: string): boolean =>
+      !!src && (appsByInputId.get(src.id)?.has(appLower) ?? false)
     const resolveInput = (suggestedId: string, suggestedName: string) => {
       if (!suggestedId && !suggestedName) return cableSources[0] || null
       // 1. Exact id match
@@ -675,21 +692,12 @@ function parseOllamaResponse(
         // that has the app, or reject the suggestion entirely.
         if (appName) {
           const appLower = appName.toLowerCase().trim()
-          const inputHasApp = (src: any): boolean => {
-            if (!src) return false
-            try {
-              const apps = JSON.parse(src.availableNetworks || '[]') as string[]
-              return apps.some((a) => a.toLowerCase().trim() === appLower)
-            } catch {
-              return false
-            }
-          }
-          if (!inputHasApp(input)) {
+          if (!inputHasApp(input, appLower)) {
             // LLM picked a Fire TV that doesn't have this app — reroute to
             // the first firetv input that DOES (excluding currently-allocated
             // boxes already busy with another game). If none, reject.
             const firetvCandidates = inputSources.filter(
-              (src: any) => src.type === 'firetv' && inputHasApp(src) && !src.currentlyAllocated
+              (src: any) => src.type === 'firetv' && inputHasApp(src, appLower) && !src.currentlyAllocated
             )
             const fallback = firetvCandidates[0]
             if (fallback) {

@@ -72,6 +72,52 @@ function findStreamingAppByDisplayName(name: string | undefined | null) {
     (a) => a.name === name || a.name.toLowerCase() === name.toLowerCase()
   )
 }
+
+// v2.31.7 — Shared streaming channel builder. Both injection paths
+// (broadcast_networks fallback + per-box catalog injection) construct the
+// same shape and call findStreamingAppByDisplayName for the same reason —
+// without appId/packageName populated the bartender click silently does
+// nothing. Centralizing keeps any new field (e.g. a future deep-link
+// format) in one spot.
+interface StreamingAppChannel {
+  id: string
+  name: string
+  number: string
+  type: 'streaming'
+  cost: 'subscription'
+  platforms: string[]
+  channelNumber: string
+  deviceType: 'streaming'
+  streamingApp: string
+  appId?: string
+  packageName?: string
+  packages: string[]
+}
+function buildStreamingAppChannel(opts: {
+  appName: string
+  channelNumber: string
+  packagesOverride?: string[]   // broadcast_networks path supplies matchedAppInfo.packages
+}): StreamingAppChannel {
+  const catalogApp = findStreamingAppByDisplayName(opts.appName)
+  const fallbackPackages = catalogApp
+    ? [catalogApp.packageName, ...(catalogApp.packageAliases || [])]
+    : []
+  const packages = opts.packagesOverride ?? fallbackPackages
+  return {
+    id: `stream-${opts.appName.replace(/\s+/g, '-').toLowerCase()}`,
+    name: opts.appName,
+    number: opts.channelNumber,
+    type: 'streaming',
+    cost: 'subscription',
+    platforms: ['Fire TV', 'Streaming'],
+    channelNumber: opts.channelNumber,
+    deviceType: 'streaming',
+    streamingApp: opts.appName,
+    appId: catalogApp?.id,
+    packageName: catalogApp?.packageName ?? packages[0],
+    packages,
+  }
+}
 export const dynamic = 'force-dynamic'
 
 // NFHS Network packages for detecting if device has NFHS login.
@@ -805,25 +851,12 @@ export async function POST(request: NextRequest) {
             continue
           }
 
-          // v2.31.2 + v2.31.3 — populate appId + packageName so bartender
-          // remote can actually launch. Use the alias-aware lookup so display
-          // name drift ("ESPN+" vs "ESPN", "Prime Video" vs "Amazon Prime
-          // Video") doesn't hide the catalog entry.
-          const catalogAppForGs = findStreamingAppByDisplayName(matchedAppInfo.app)
-          const appChannel = {
-            id: `stream-${matchedAppInfo.app.replace(/\s+/g, '-').toLowerCase()}`,
-            name: matchedAppInfo.app,
-            number: matchedNetwork || matchedAppInfo.code,
-            type: 'streaming',
-            cost: 'subscription',
-            platforms: ['Fire TV', 'Streaming'],
+          // v2.31.7 — shared builder; carries appId+packageName so bartender click works
+          const appChannel = buildStreamingAppChannel({
+            appName: matchedAppInfo.app,
             channelNumber: matchedNetwork || matchedAppInfo.code,
-            deviceType: 'streaming',
-            streamingApp: matchedAppInfo.app,
-            appId: catalogAppForGs?.id,
-            packageName: catalogAppForGs?.packageName ?? matchedAppInfo.packages[0],
-            packages: matchedAppInfo.packages,
-          }
+            packagesOverride: matchedAppInfo.packages,
+          })
           if (!channels.has(appChannel.id)) {
             channels.set(appChannel.id, appChannel)
           }
@@ -911,33 +944,15 @@ export async function POST(request: NextRequest) {
           const appChannelId = `stream-${row.app.replace(/\s+/g, '-').toLowerCase()}`
           let appChannel = channels.get(appChannelId)
           if (!appChannel) {
-            // v2.31.2 + v2.31.3 — populate appId + packageName + packages on
-            // the channel via the alias-aware lookup. Without these fields the
-            // bartender click silently does nothing (channel.packageName is the
-            // field the remote reads, channel.appId selects the catalog-aware
-            // /api/streaming/launch path which knows about firebat-hosted
-            // Prime Video on Cubes).
-            const catalogApp = findStreamingAppByDisplayName(row.app)
-            const fallbackPackages = catalogApp
-              ? [catalogApp.packageName, ...(catalogApp.packageAliases || [])]
-              : []
-            appChannel = {
-              id: appChannelId,
-              name: row.app,
-              number: row.app,
-              type: 'streaming',
-              cost: 'subscription',
-              platforms: ['Fire TV', 'Streaming'],
-              channelNumber: row.app,
-              deviceType: 'streaming',
-              streamingApp: row.app,
-              appId: catalogApp?.id,                                 // canonical id for /api/streaming/launch
-              packageName: catalogApp?.packageName ?? fallbackPackages[0],
-              packages: fallbackPackages,
-            }
+            // v2.31.7 — shared builder
+            appChannel = buildStreamingAppChannel({ appName: row.app, channelNumber: row.app })
             channels.set(appChannelId, appChannel)
           }
 
+          // v2.31.7 — extra `deepLink` + `sportTag` fields ride along for
+          // any client that wants to consume them (the bartender remote
+          // ignores them today). The `programs` array is loosely typed so
+          // no cast is needed — TypeScript infers a union of pushed shapes.
           programs.push({
             id: `cat-${row.id}`,
             league: row.sportTag || 'Sports',
@@ -952,11 +967,9 @@ export async function POST(request: NextRequest) {
             isLive: !!row.isLive,
             venue: '',
             station: row.app,
-            // Carry the deep link through so a downstream client can launch
-            // directly to the content if scout captured one.
             deepLink: row.deepLink || undefined,
             sportTag: row.sportTag || undefined,
-          } as any)
+          })
           catInjected++
         }
 
