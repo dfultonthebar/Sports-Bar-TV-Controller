@@ -88,13 +88,24 @@ export interface CatalogTile {
 
 // Helper: pull all text= and content-desc= attributes from a uiautomator
 // XML dump. Filters out trivial tokens (numbers only, very short, common
-// nav chrome strings). Returns deduped, in-order.
+// nav chrome strings). Returns deduped, in-order. Decodes the handful of
+// XML entities uiautomator emits so downstream sees clean strings
+// (`&amp;` → `&`, `&apos;` → `'`, etc.).
+function decodeXmlEntities(s: string): string {
+  return s
+    .replace(/&amp;/g, '&')
+    .replace(/&apos;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&#10;/g, ' ')
+}
 function extractAccessibleText(xmlDump: string): string[] {
   const matches: string[] = []
   const re = /(?:text|content-desc)="([^"]+)"/g
   let m: RegExpExecArray | null
   while ((m = re.exec(xmlDump)) !== null) {
-    const t = m[1].trim()
+    const t = decodeXmlEntities(m[1]).trim()
     if (t.length < 3) continue
     if (/^\d+$/.test(t)) continue
     matches.push(t)
@@ -132,9 +143,15 @@ function inferSportTag(title: string, contextSportRow: string | null): string | 
   if (/\bnfl\b/.test(lower)) return 'NFL'
   if (/\bmlb\b|brewers|cubs|yankees|dodgers/.test(lower)) return 'MLB'
   if (/\bnhl\b/.test(lower)) return 'NHL'
-  if (/atp|wta|tennis/.test(lower)) return 'tennis'
-  if (/cricket|psl|ipl/.test(lower)) return 'cricket'
-  if (/squash/.test(lower)) return 'squash'
+  // v2.31.5 — broaden tennis recognition. Prime Video also tags PTT
+  // (Power Tennis Tour) events as "Apr 23 - PTT Clemson Men" / similar
+  // — those were landing as untagged in earlier walks.
+  if (/atp|wta|tennis|\bptt\b/.test(lower)) return 'tennis'
+  if (/cricket|psl|ipl|hyderabad|sultan/.test(lower)) return 'cricket'
+  if (/squash|grasshopper cup/.test(lower)) return 'squash'
+  // v2.31.5 — soccer recognition for Saudi Pro League fixtures Prime
+  // Video carries (Al-team-name vs Al-team-name pattern is distinctive).
+  if (/^al |\bvs\.?\s+al /i.test(lower) || /\bsaudi\b|\bspl\b/i.test(lower)) return 'soccer'
   return null
 }
 
