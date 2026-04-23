@@ -24,6 +24,54 @@ import {
   normalizeStation,
 } from '@/lib/network-channel-resolver'
 import { STREAMING_APPS_DATABASE } from '@/lib/streaming/streaming-apps-database'
+
+// v2.31.3 — Map any display name we might see (from scout, from the
+// network-channel-resolver, from a UI label) to a streaming-apps-database
+// catalog id. Keeps the lookup robust against the cosmetic name drift
+// between sources ("Prime Video" vs "Amazon Prime Video", "ESPN" vs "ESPN+",
+// etc.). Add new aliases here as new app sources are wired in.
+const DISPLAY_NAME_TO_CATALOG_ID: Record<string, string> = {
+  'prime video': 'amazon-prime',
+  'amazon prime video': 'amazon-prime',
+  'amazon prime': 'amazon-prime',
+  'amazon-prime': 'amazon-prime',
+  'espn': 'espn-plus',
+  'espn+': 'espn-plus',
+  'espn plus': 'espn-plus',
+  'peacock': 'peacock',
+  'paramount': 'paramount-plus',
+  'paramount+': 'paramount-plus',
+  'apple tv': 'apple-tv',
+  'apple tv+': 'apple-tv',
+  'hulu': 'hulu-live',
+  'hulu live': 'hulu-live',
+  'fubotv': 'fubo-tv',
+  'fubo': 'fubo-tv',
+  'youtube tv': 'youtube-tv',
+  'youtube': 'youtube-tv',
+  'netflix': 'netflix',
+  'mlb.tv': 'mlb-tv',
+  'mlb tv': 'mlb-tv',
+  'nhl': 'nhl-tv',
+  'nba league pass': 'nba-league-pass',
+  'fox sports': 'fox-sports',
+  'nbc sports': 'nbc-sports',
+  'sling tv': 'sling-tv',
+  'sling': 'sling-tv',
+  'dazn': 'dazn',
+  'nfhs network': 'nfhs-network',
+  'nfhs': 'nfhs-network',
+}
+
+function findStreamingAppByDisplayName(name: string | undefined | null) {
+  if (!name) return undefined
+  const id = DISPLAY_NAME_TO_CATALOG_ID[name.toLowerCase().trim()]
+  if (id) return STREAMING_APPS_DATABASE.find((a) => a.id === id)
+  // Last-resort exact name match (catalog entries that haven't been aliased yet)
+  return STREAMING_APPS_DATABASE.find(
+    (a) => a.name === name || a.name.toLowerCase() === name.toLowerCase()
+  )
+}
 export const dynamic = 'force-dynamic'
 
 // NFHS Network packages for detecting if device has NFHS login.
@@ -757,13 +805,11 @@ export async function POST(request: NextRequest) {
             continue
           }
 
-          // v2.31.2 — populate appId + packageName so bartender remote can
-          // actually launch (it reads channel.packageName, not channel.packages,
-          // and prefers channel.appId via /api/streaming/launch which handles
-          // launcher-hosted Prime Video on Cubes).
-          const catalogAppForGs = STREAMING_APPS_DATABASE.find(
-            (a) => a.name === matchedAppInfo.app || a.name.toLowerCase() === matchedAppInfo.app.toLowerCase()
-          )
+          // v2.31.2 + v2.31.3 — populate appId + packageName so bartender
+          // remote can actually launch. Use the alias-aware lookup so display
+          // name drift ("ESPN+" vs "ESPN", "Prime Video" vs "Amazon Prime
+          // Video") doesn't hide the catalog entry.
+          const catalogAppForGs = findStreamingAppByDisplayName(matchedAppInfo.app)
           const appChannel = {
             id: `stream-${matchedAppInfo.app.replace(/\s+/g, '-').toLowerCase()}`,
             name: matchedAppInfo.app,
@@ -865,17 +911,13 @@ export async function POST(request: NextRequest) {
           const appChannelId = `stream-${row.app.replace(/\s+/g, '-').toLowerCase()}`
           let appChannel = channels.get(appChannelId)
           if (!appChannel) {
-            // v2.31.2 — Look up the streaming-apps catalog to populate
-            // appId + packageName + packages on the channel. The bartender
-            // remote's handleGameClick reads channel.packageName (singular)
-            // to launch the app via monkey, AND will prefer a channel.appId
-            // when present (going through /api/streaming/launch which
-            // handles Cube launcher-hosted Prime Video via the firebat alias
-            // — see CLAUDE.md gotcha #10). Without these fields the click
-            // silently does nothing.
-            const catalogApp = STREAMING_APPS_DATABASE.find(
-              (a) => a.name === row.app || a.id === row.app.toLowerCase().replace(/\s+/g, '-') || a.name.toLowerCase() === row.app.toLowerCase()
-            )
+            // v2.31.2 + v2.31.3 — populate appId + packageName + packages on
+            // the channel via the alias-aware lookup. Without these fields the
+            // bartender click silently does nothing (channel.packageName is the
+            // field the remote reads, channel.appId selects the catalog-aware
+            // /api/streaming/launch path which knows about firebat-hosted
+            // Prime Video on Cubes).
+            const catalogApp = findStreamingAppByDisplayName(row.app)
             const fallbackPackages = catalogApp
               ? [catalogApp.packageName, ...(catalogApp.packageAliases || [])]
               : []
