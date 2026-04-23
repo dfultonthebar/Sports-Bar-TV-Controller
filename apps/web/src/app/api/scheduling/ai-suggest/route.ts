@@ -656,12 +656,58 @@ function parseOllamaResponse(
       //   firetv → streaming app name
       const inputType = input?.type || 'cable'
       const isDirectv = inputType === 'directv' || inputType === 'satellite'
-      const isFiretv = inputType === 'firetv'
+      let isFiretv = inputType === 'firetv'
       let channelNumberStr = ''
       let appName = ''
+      let resolvedInput = input
       if (isFiretv) {
         appName = game.streamingApp || ''
         channelNumberStr = appName // display value carries the app name
+
+        // v2.29.1 — Per-box app availability enforcement.
+        // Until v2.29.0 the gate was venue-wide ("does ANY firetv have this
+        // app?"). Now that input_sources.available_networks is reconciled
+        // per-box every 5 min from scout heartbeats (firetv-app-sync.ts),
+        // we can enforce that the LLM-chosen input ACTUALLY has the app.
+        // The prompt already tells the LLM each input's app list (line ~466)
+        // and Rule 3 forbids picking the wrong box, but the LLM occasionally
+        // ignores it. This server-side reroute ensures we land on a Fire TV
+        // that has the app, or reject the suggestion entirely.
+        if (appName) {
+          const appLower = appName.toLowerCase().trim()
+          const inputHasApp = (src: any): boolean => {
+            if (!src) return false
+            try {
+              const apps = JSON.parse(src.availableNetworks || '[]') as string[]
+              return apps.some((a) => a.toLowerCase().trim() === appLower)
+            } catch {
+              return false
+            }
+          }
+          if (!inputHasApp(input)) {
+            // LLM picked a Fire TV that doesn't have this app — reroute to
+            // the first firetv input that DOES (excluding currently-allocated
+            // boxes already busy with another game). If none, reject.
+            const firetvCandidates = inputSources.filter(
+              (src: any) => src.type === 'firetv' && inputHasApp(src) && !src.currentlyAllocated
+            )
+            const fallback = firetvCandidates[0]
+            if (fallback) {
+              logger.info(
+                `[AI-SUGGEST] Rerouted firetv game "${game.title}" — LLM picked ${input?.name || '?'} (no ${appName}); using ${fallback.name} instead`
+              )
+              resolvedInput = fallback
+            } else {
+              rejections.push({
+                gameId: `game-${gameIdx}`,
+                suggestedInput: input?.name || s.suggestedInput || '?',
+                reason: 'wrong_firetv_app',
+                detail: `${appName} is not installed/logged-in on any free Fire TV input`,
+              })
+              continue
+            }
+          }
+        }
       } else if (isDirectv) {
         channelNumberStr = game.directvChannel || game.channelNumber || ''
       } else {
@@ -672,7 +718,7 @@ function parseOllamaResponse(
       if (!channelNumberStr) {
         rejections.push({
           gameId: `game-${gameIdx}`,
-          suggestedInput: input?.name || s.suggestedInput || '?',
+          suggestedInput: resolvedInput?.name || s.suggestedInput || '?',
           reason: 'no_route',
           detail: `inputType=${inputType} but game has no matching channel/app`,
         })
@@ -697,9 +743,9 @@ function parseOllamaResponse(
         channelNumber: channelNumberStr,
         channelName: game.channelName || '',
         appName: appName || undefined,
-        suggestedInput: input?.name || s.suggestedInput || 'Unknown',
-        suggestedInputId: input?.id || '',
-        suggestedDeviceId: input?.deviceId || '',
+        suggestedInput: resolvedInput?.name || s.suggestedInput || 'Unknown',
+        suggestedInputId: resolvedInput?.id || '',
+        suggestedDeviceId: resolvedInput?.deviceId || '',
         suggestedDeviceType: resolvedDeviceType,
         suggestedOutputs: suggestedOutputsInt,
         confidence: typeof s.confidence === 'number' ? Math.min(1, Math.max(0, s.confidence)) : 0.5,

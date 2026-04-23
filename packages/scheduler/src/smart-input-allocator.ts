@@ -179,18 +179,19 @@ class SmartInputAllocator {
     return inputSources.filter(i => {
       if (!i.isActive) return false;
 
-      // Check if network is available on this input
-      const hasNetwork = i.availableNetworks.includes(targetNetwork);
-
-      // For streaming-only networks (ESPN+, Peacock), check if app is installed on Fire TV
-      if (i.type === 'firetv' && i.installedApps) {
-        const streamingApps = ['ESPN', 'Peacock', 'Paramount+', 'Apple TV'];
-        return streamingApps.some(app =>
-          targetNetwork.includes(app) && i.installedApps!.includes(app)
-        );
-      }
-
-      return hasNetwork;
+      // v2.28.7 — Trust availableNetworks (display-name list) for the match.
+      // The previous Fire-TV-specific override was broken in two ways:
+      //   1. Hardcoded whitelist [ESPN, Peacock, Paramount+, Apple TV] omitted
+      //      Prime Video, Hulu, Netflix, Max, YouTube TV, MLB.TV, NBA League
+      //      Pass, ESPN+ — every Prime Video TNF / MNF allocation silently
+      //      filtered out every Fire TV.
+      //   2. installedApps contains Android package names (com.amazon.avod,
+      //      com.peacocktv.peacock, etc.), so installedApps.includes('ESPN')
+      //      always returned false even for the four whitelisted apps.
+      // ai-suggest, bartender-remote, and conflict-detector all use
+      // availableNetworks directly — the override here was the only divergent
+      // gate, and it was always-false-for-firetv-streaming. Drop it.
+      return i.availableNetworks.includes(targetNetwork);
     });
   }
 

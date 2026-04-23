@@ -9,6 +9,8 @@ import { db, schema, eq, findMany } from '@sports-bar/database'
 import { logger } from '@sports-bar/logger'
 import { schedulerLogger } from './scheduler-logger'
 import { probeAllDirecTVTuned } from './directv-probe'
+import { runFiretvAppSyncSweep } from './firetv-app-sync'
+import { runFiretvCatalogWalk } from './firetv-catalog-walker'
 
 // Get API port from environment or default to 3001
 const API_PORT = process.env.PORT || 3001
@@ -21,6 +23,9 @@ class SchedulerService {
   private tvStatusIntervalId: NodeJS.Timeout | null = null;
   private fastPollIntervalId: NodeJS.Timeout | null = null;
   private ppvProbeIntervalId: NodeJS.Timeout | null = null;
+  private firetvAppSyncIntervalId: NodeJS.Timeout | null = null;
+  private firetvCatalogWalkIntervalId: NodeJS.Timeout | null = null;
+  private lastCatalogWalk: Date | null = null;
   private isRunning = false;
   private hasDelayedGames = false;
   private lastCleanup: Date | null = null;
@@ -102,6 +107,34 @@ class SchedulerService {
     // First probe after 90 seconds (let DirecTV devices be fully discovered)
     setTimeout(() => this.runPpvProbe(), 90000);
 
+    // Fire TV app sync — every 5 minutes, reconcile input_sources.installed_apps
+    // and .available_networks against the latest Sports Bar Scout heartbeat.
+    // See packages/scheduler/src/firetv-app-sync.ts for the rationale.
+    if (this.firetvAppSyncIntervalId) {
+      clearInterval(this.firetvAppSyncIntervalId);
+    }
+    this.firetvAppSyncIntervalId = setInterval(() => {
+      this.runFiretvAppSync();
+    }, 300000); // 5 minutes
+    // First sync 60 seconds after startup (let scout heartbeats catch up)
+    setTimeout(() => this.runFiretvAppSync(), 60000);
+
+    // Fire TV catalog walker — daily at 04:00 local. Walks every active
+    // Fire TV's installed sports apps and uploads per-box content tiles
+    // to firetv_streaming_catalog. See firetv-catalog-walker.ts for why
+    // this runs server-side via uiautomator dump (not in-APK).
+    // Tick every 5 min and fire when within the 04:00–04:05 window OR
+    // when the last walk was >25h ago — both gates prevent double-runs
+    // while still catching up after long downtime.
+    if (this.firetvCatalogWalkIntervalId) {
+      clearInterval(this.firetvCatalogWalkIntervalId);
+    }
+    this.firetvCatalogWalkIntervalId = setInterval(() => {
+      this.maybeRunCatalogWalk();
+    }, 300000); // 5 minutes
+    // Run once 5 minutes after startup if it's been >24h since last walk
+    setTimeout(() => this.maybeRunCatalogWalk(), 300000);
+
     schedulerLogger.info(
       'scheduler-service',
       'startup',
@@ -122,6 +155,64 @@ class SchedulerService {
     } catch (error: any) {
       logger.error('[DTV-PROBE] Unexpected probe sweep failure:', { error });
     }
+  }
+
+  /**
+   * Run a single sweep of the Fire TV app sync. Wrapper around
+   * runFiretvAppSyncSweep() that catches errors so a sync failure never
+   * crashes the scheduler tick. Per-input errors are already swallowed
+   * inside the sweep; this catch is for the unexpected (DB unavailable, etc.).
+   */
+  private async runFiretvAppSync() {
+    try {
+      await runFiretvAppSyncSweep();
+    } catch (error: any) {
+      logger.error('[FIRETV-APP-SYNC] Unexpected sweep failure:', { error });
+    }
+  }
+
+  /**
+   * Decide whether to run the daily catalog walk and execute if so.
+   * Two gates: time-of-day window (04:00–04:05 local) OR last-walk-was-25h+
+   * for catch-up after long downtime. The Date.now() guard prevents
+   * double-runs within the same window.
+   */
+  private async maybeRunCatalogWalk() {
+    const now = new Date();
+    const localHour = parseInt(
+      now.toLocaleString('en-US', { timeZone: VENUE_TIMEZONE, hour: 'numeric', hourCycle: 'h23' }),
+      10
+    );
+    const localMinute = parseInt(
+      now.toLocaleString('en-US', { timeZone: VENUE_TIMEZONE, minute: 'numeric' }),
+      10
+    );
+    const inWindow = localHour === 4 && localMinute < 5;
+    const last = this.lastCatalogWalk;
+    const longGap = !last || (now.getTime() - last.getTime() > 25 * 60 * 60 * 1000);
+
+    // Cooldown: don't re-run within 6h regardless of window
+    const recent = last && (now.getTime() - last.getTime() < 6 * 60 * 60 * 1000);
+    if (recent) return;
+
+    if (!inWindow && !longGap) return;
+
+    logger.info(`[FIRETV-CATALOG] Triggering daily walk (window=${inWindow}, longGap=${longGap})`);
+    this.lastCatalogWalk = now;
+    try {
+      await runFiretvCatalogWalk();
+    } catch (error: any) {
+      logger.error('[FIRETV-CATALOG] Unexpected walk failure:', { error });
+    }
+  }
+
+  /**
+   * Manual trigger for the catalog walk — used by /api/firestick-scout/catalog/walk
+   * and the daily-cron internal trigger. Always runs regardless of cooldown.
+   */
+  public async triggerCatalogWalkNow() {
+    this.lastCatalogWalk = new Date();
+    return runFiretvCatalogWalk();
   }
 
   /**
@@ -667,6 +758,50 @@ class SchedulerService {
 
       for (const { allocation, inputSource, game } of dueAllocations) {
         const tuneStartTime = Date.now();
+
+        // v2.28.6 — Skip + cancel allocations whose game already ended.
+        // Without this, a pending allocation whose tune keeps failing (e.g.
+        // bad channel for the device) is retried every minute forever: the
+        // revert sweep never runs because the allocation never went 'active',
+        // and there's no failure cap. On 2026-04-21 a stuck Celtics@76ers
+        // allocation pointed at DirecTV ch 220 (NBCSN, doesn't exist on
+        // DirecTV) racked up 2,094 failed tunes over 41 hours before manual
+        // cleanup. Cancel anything where the game is over by status OR is
+        // 30+ min past its estimated end.
+        const POST_END_GRACE_SECONDS = 30 * 60;
+        const gameEndedStatuses = new Set(['completed', 'final', 'postponed', 'canceled', 'cancelled']);
+        const gameStatusOver = gameEndedStatuses.has(String(game.status || '').toLowerCase());
+        const estimatedEndUnix = game.estimatedEnd || 0;
+        const wallClockOver = estimatedEndUnix > 0 && nowUnix > estimatedEndUnix + POST_END_GRACE_SECONDS;
+
+        if (gameStatusOver || wallClockOver) {
+          await db.update(schema.inputSourceAllocations)
+            .set({
+              status: 'cancelled',
+              actuallyFreedAt: nowUnix,
+              qualityNotes: `Cancelled before tune: game already ended (status=${game.status}${wallClockOver ? ', wall-clock past est_end+30min' : ''})`,
+              updatedAt: nowUnix,
+            })
+            .where(eq(schema.inputSourceAllocations.id, allocation.id));
+
+          await schedulerLogger.info(
+            'scheduler-service',
+            'tune',
+            `Cancelled stale pending allocation for ${game.homeTeamName} vs ${game.awayTeamName} — game already ended (${game.status})`,
+            correlationId,
+            {
+              gameId: game.id,
+              inputSourceId: inputSource.id,
+              allocationId: allocation.id,
+              channelNumber: allocation.channelNumber,
+              metadata: { gameStatus: game.status, estimatedEnd: estimatedEndUnix, wallClockOver, reason: 'game_ended_before_tune' },
+            }
+          );
+
+          logger.info(`[SCHEDULER] 🚫 Cancelled stale pending allocation for ${game.homeTeamName} vs ${game.awayTeamName} (game ${game.status}, channel ${allocation.channelNumber})`);
+          continue;
+        }
+
         try {
           logger.info(`[SCHEDULER] 🎯 Checking if ready to tune: ${inputSource.name} to channel ${allocation.channelNumber} for ${game.homeTeamName} vs ${game.awayTeamName}`);
 
