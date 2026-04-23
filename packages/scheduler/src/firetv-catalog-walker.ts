@@ -92,13 +92,21 @@ export interface CatalogTile {
 // XML entities uiautomator emits so downstream sees clean strings
 // (`&amp;` → `&`, `&apos;` → `'`, etc.).
 function decodeXmlEntities(s: string): string {
+  // Decode numeric entities first (`&#10;`, `&#9;`, etc.) so any LF/TAB
+  // becomes whitespace before the named-entity pass. uiautomator on Fire OS 7
+  // emits both — the named-only decoder we shipped in v2.31.5 missed the
+  // numeric ones and corrupted any title with a tab in it.
   return s
+    .replace(/&#(\d+);/g, (_, n) => {
+      const code = Number(n)
+      // 9=TAB, 10=LF, 13=CR — collapse to space; everything else fromCharCode
+      return code === 9 || code === 10 || code === 13 ? ' ' : String.fromCharCode(code)
+    })
     .replace(/&amp;/g, '&')
     .replace(/&apos;/g, "'")
     .replace(/&quot;/g, '"')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
-    .replace(/&#10;/g, ' ')
 }
 function extractAccessibleText(xmlDump: string): string[] {
   const matches: string[] = []
