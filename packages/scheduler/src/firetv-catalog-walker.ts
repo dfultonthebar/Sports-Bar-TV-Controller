@@ -65,6 +65,17 @@ export interface AppWalkRule {
   catalogId: string                                    // /api/streaming/launch appId
   displayName: string                                  // matches input_sources.available_networks
   postLaunchDelayMs: number                            // wait for first screen
+  // v2.31.4 — optional ADB key navigation to reach the app's sports tab
+  // before dumping. ADB keyevent codes: UP=19 DOWN=20 LEFT=21 RIGHT=22
+  // OK/CENTER=23. Sent in order with `interKeyDelayMs` between each.
+  // Many apps' home screens rotate content (TV shows in afternoon, sports
+  // in morning, etc.) — navigating to a dedicated Sports tab gives a
+  // stable, sports-only catalog regardless of when the walk runs.
+  navigation?: {
+    keyevents: number[]
+    interKeyDelayMs?: number  // default 400ms
+    postNavDelayMs?: number   // default 4000ms — let new tab content render
+  }
   extractTiles: (xmlDump: string) => CatalogTile[]
 }
 
@@ -170,6 +181,11 @@ function extractPrimeVideoTiles(xmlDump: string): CatalogTile[] {
     if (/^Watch now$/.test(t)) continue
     if (/^TV-(MA|14|PG|G|Y)/.test(t)) continue
     if (/^#\d+ in/.test(t)) continue
+    // v2.31.4 — additional Sports-tab noise filters
+    if (/^(More details|All|all)$/i.test(t)) continue
+    if (/^(LIVE|LIVE NOW|UPCOMING)$/i.test(t)) continue       // standalone badge text
+    if (/^Live at \d/i.test(t)) continue                        // "Live at 5:30 PM" generic timeslot
+    if (/^Sports for you$/i.test(t)) { lastSportRow = t; continue }
 
     // Game matchup signal — the strongest tile indicator
     const isMatchup = / vs\.? /i.test(t)
@@ -224,6 +240,19 @@ const APP_WALK_RULES: Record<string, AppWalkRule> = {
     catalogId: 'amazon-prime',
     displayName: 'Prime Video',
     postLaunchDelayMs: 6000,
+    // v2.31.4 — Navigate to the Sports tab before dumping. Empirical
+    // sequence on Fire TV Cube 2nd gen (AFTR) PVFTV-215.5200-L: from the
+    // launcher's LandingActivity, two UPs focus the top tab row, three
+    // RIGHTs land on Sports (Home → Movies → TV shows → Sports), OK
+    // activates. Without this we get whatever Prime Video happens to be
+    // featuring on the home screen — often non-sports (TV shows on
+    // weekday afternoons, our 2026-04-23 4am walk only captured
+    // "Live at 5:30 PM" because home screen was rotating).
+    navigation: {
+      keyevents: [19, 19, 22, 22, 22, 23],
+      interKeyDelayMs: 400,
+      postNavDelayMs: 4500,
+    },
     extractTiles: extractPrimeVideoTiles,
   },
   // Future entries (Phase 2b-2.C):
@@ -300,6 +329,20 @@ async function walkOneApp(
 
     // 3. Wait for first screen to render
     await sleep(rule.postLaunchDelayMs)
+
+    // 3a. (v2.31.4) Optional navigation to a sports/live tab. Without
+    // this, apps whose home screen rotates content (Prime Video, Peacock,
+    // etc.) yield inconsistent walks — TV shows in the afternoon, sports
+    // in the morning. Navigation lets us land on the same Sports tab
+    // every walk regardless of time of day.
+    if (rule.navigation && rule.navigation.keyevents.length > 0) {
+      const interKey = rule.navigation.interKeyDelayMs ?? 400
+      for (const code of rule.navigation.keyevents) {
+        await adbShell(deviceId, `input keyevent ${code}`)
+        await sleep(interKey)
+      }
+      await sleep(rule.navigation.postNavDelayMs ?? 4000)
+    }
 
     // 4. Dump UI hierarchy.
     //

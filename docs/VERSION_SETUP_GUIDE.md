@@ -187,6 +187,125 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.31.2 + v2.31.3 + v2.31.4 — Streaming click actually launches; walker navigates to Sports tab
+**Released:** 2026-04-23
+
+**What changed:**
+
+- `apps/web/src/app/api/channel-guide/route.ts` (v2.31.2 + v2.31.3):
+  - Both streaming injection paths (broadcast_networks fallback AND v2.30.0
+    catalog injection) now look up the streaming-apps-database catalog by
+    display name and populate `appId`, `packageName`, `packages` on the
+    channel object.
+  - v2.31.3 added `DISPLAY_NAME_TO_CATALOG_ID` alias map keyed by
+    lowercase display name → catalog id. Covers display-name drift where
+    scout reports `"Prime Video"` but catalog has `name="Amazon Prime Video"`,
+    resolver returns `"ESPN+"` but catalog has `name="ESPN"`, and so on.
+    `findStreamingAppByDisplayName(name)` is the canonical lookup helper.
+
+- `apps/web/src/components/EnhancedChannelGuideBartenderRemote.tsx` (v2.31.2):
+  - `handleGameClick` streaming case now prefers `/api/streaming/launch`
+    (via new helper `launchStreamingAppByCatalog`) when `channel.appId` is
+    present. That path goes through `streamingManager.launchApp()` which
+    knows about the firebat alias for `amazon-prime` (v2.28.8) and
+    correctly resolves the LEANBACK_LAUNCHER activity (DeepLinkRoutingActivity
+    → LandingActivity) — the same activity the home-screen Prime Video
+    tile invokes.
+  - Falls back to the legacy `monkey -p ${packageName}` direct launch when
+    `appId` is absent (preserves Rail Media compatibility for programs
+    that pre-date this).
+
+- `packages/scheduler/src/firetv-catalog-walker.ts` (v2.31.4):
+  - `AppWalkRule.navigation` (new optional field): list of ADB key codes
+    sent after launch to navigate to a sports/live tab. Sent in order with
+    `interKeyDelayMs` between each (default 400ms), then `postNavDelayMs`
+    after the sequence (default 4000ms).
+  - Prime Video rule now includes `navigation: { keyevents: [19,19,22,22,22,23] }`
+    — UP UP RIGHT RIGHT RIGHT OK navigates from the LandingActivity to
+    the Sports tab on Fire TV Cube 2nd gen (AFTR) PVFTV-215.5200-L.
+  - Extractor noise filter tightened: drops standalone `LIVE`/`UPCOMING`
+    badges, `"Live at <time>"` generic timeslots, `"More details"`, and
+    standalone `"all"`. Recognizes `"Sports for you"` as a sport-row
+    context anchor.
+
+**Why this was needed:**
+
+Operator reported clicking a Prime Video program in the channel guide
+"and nothing happened." Three stacked bugs caused the silent failure:
+
+1. The channel-guide injection set `channel.packages` (plural array) but
+   left `channel.packageName` undefined. The bartender remote reads
+   `channel.packageName` (singular) — undefined triggered no fall-through,
+   so the click was a no-op.
+2. Even when `packageName` got populated (Rail Media path), the launch
+   used `monkey -p ${packageName} 1` directly. On Fire TV Cube 2nd gen
+   Prime Video lives inside `com.amazon.firebat` (the launcher) — there's
+   no `com.amazon.avod` package. `monkey -p com.amazon.avod` fails
+   silently. `monkey -p com.amazon.firebat` launches the home screen, NOT
+   the Prime Video LandingActivity.
+3. The walker's daily 04:00 walk only captured 1 useless tile per box
+   (`"Live at 5:30 PM"`) because Prime Video's home screen rotates
+   content — TV shows in the afternoon, sports in the morning. The walk
+   needed to navigate to the Sports tab for stable sports-only catalog.
+
+**Required steps PER LOCATION:**
+
+**No DB or .env changes.** All three fixes are code-only.
+
+**Verify the click works end-to-end (server-simulated, no Fire TV
+operator needed):**
+```bash
+# 1. Send HOME on the Fire TV
+curl -X POST http://localhost:3001/api/firetv-devices/send-command \
+  -H "Content-Type: application/json" \
+  -d '{"deviceId":"<your-firetv-id>","command":"input keyevent 3"}'
+sleep 2
+
+# 2. Simulate the bartender click (this is exactly what the React
+# component does when channel.appId is present)
+curl -X POST http://localhost:3001/api/streaming/launch \
+  -H "Content-Type: application/json" \
+  -d '{"deviceId":"<your-firetv-id>","ipAddress":"<ip>","appId":"amazon-prime","port":5555}'
+sleep 4
+
+# 3. Confirm Prime Video LandingActivity is now in the foreground
+curl -X POST http://localhost:3001/api/firetv-devices/send-command \
+  -H "Content-Type: application/json" \
+  -d '{"deviceId":"<your-firetv-id>","command":"dumpsys window windows"}' \
+  | grep mCurrentFocus
+# Expect: ...com.amazon.firebat/com.amazon.firebat.livingroom.landing.LandingActivity
+```
+
+**Verify the walker now captures rich sports content:**
+```bash
+# Trigger an immediate walk (bypasses the 6h cooldown)
+curl -X POST http://localhost:3001/api/firestick-scout/catalog/walk
+
+# Check what was captured
+sqlite3 -header /home/ubuntu/sports-bar-data/production.db \
+  "SELECT deviceId, app, contentTitle, isLive, sportTag
+   FROM firetv_streaming_catalog
+   ORDER BY isLive DESC, contentTitle;"
+```
+Expected: ~10 tiles per Fire TV with Prime Video — mix of LIVE
+(tennis/squash/soccer) and UPCOMING (NBA Playoffs in current season).
+If still only 1-2 tiles, Prime Video's UI may have changed and the
+`navigation.keyevents` sequence in firetv-catalog-walker.ts needs
+re-mapping (run a manual `uiautomator dump` and confirm the Sports tab
+position is still 4 of 8).
+
+**Adding navigation for a new app's rule:**
+1. Manually launch the app on a Fire TV.
+2. Watch where focus lands — usually the first content row.
+3. Identify the keyevents needed to reach the Sports tab. ADB keyevents:
+   UP=19 DOWN=20 LEFT=21 RIGHT=22 OK=23.
+4. Test the sequence by sending each keyevent via
+   `/api/firetv-devices/send-command` then `dumpsys window windows` to
+   confirm the focused activity changed.
+5. Add the `navigation` block to the new app's `APP_WALK_RULES` entry.
+
+---
+
 ### v2.31.0 + v2.31.1 — Per-box per-app sports content catalog (Phase 2b-2 + Phase 3)
 **Released:** 2026-04-22
 
