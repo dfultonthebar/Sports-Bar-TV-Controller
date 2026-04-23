@@ -1066,8 +1066,16 @@ export default function EnhancedChannelGuideBartenderRemote() {
           break
           
         case 'streaming':
-          // Launch streaming app
-          if (game.channel.packageName) {
+          // v2.31.2 — Prefer /api/streaming/launch when the program carries
+          // a catalog appId. That path uses streamingManager which resolves
+          // launcher-hosted Prime Video correctly on AFTR Cubes (firebat
+          // alias from v2.28.8) — direct `monkey -p com.amazon.avod` would
+          // fail on those boxes because the package doesn't exist; firebat
+          // is the host. Falls back to the legacy direct-launch path when
+          // no appId is set (e.g. Rail Media programs that pre-date this).
+          if ((game.channel as any).appId) {
+            await launchStreamingAppByCatalog((game.channel as any).appId, game.channel.name)
+          } else if (game.channel.packageName) {
             await launchStreamingApp(game.channel.packageName, game.channel.name)
           }
           break
@@ -1117,9 +1125,31 @@ export default function EnhancedChannelGuideBartenderRemote() {
     }
   }
 
+  // v2.31.2 — preferred launcher: routes through streamingManager which knows
+  // about Cube launcher-hosted Prime Video (firebat alias) and correctly
+  // resolves the LEANBACK_LAUNCHER activity instead of just hitting MAIN.
+  const launchStreamingAppByCatalog = async (appId: string, appName: string) => {
+    const fireTVDevice = selectedDevice as FireTVDevice
+    const response = await fetch('/api/streaming/launch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        deviceId: fireTVDevice.id,
+        ipAddress: fireTVDevice.ipAddress,
+        port: fireTVDevice.port,
+        appId,
+      }),
+    })
+    const data = await response.json()
+    if (!response.ok || !data?.success) {
+      throw new Error(`Failed to launch ${appName}: ${data?.error || data?.message || response.statusText}`)
+    }
+    setCommandStatus(`Launched ${appName}`)
+  }
+
   const launchStreamingApp = async (packageName: string, appName: string) => {
     const fireTVDevice = selectedDevice as FireTVDevice
-    
+
     const response = await fetch('/api/firetv-devices/send-command', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

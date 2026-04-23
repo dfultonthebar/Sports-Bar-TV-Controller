@@ -23,6 +23,7 @@ import {
   getStreamingAppInfoForStation,
   normalizeStation,
 } from '@/lib/network-channel-resolver'
+import { STREAMING_APPS_DATABASE } from '@/lib/streaming/streaming-apps-database'
 export const dynamic = 'force-dynamic'
 
 // NFHS Network packages for detecting if device has NFHS login.
@@ -756,6 +757,13 @@ export async function POST(request: NextRequest) {
             continue
           }
 
+          // v2.31.2 — populate appId + packageName so bartender remote can
+          // actually launch (it reads channel.packageName, not channel.packages,
+          // and prefers channel.appId via /api/streaming/launch which handles
+          // launcher-hosted Prime Video on Cubes).
+          const catalogAppForGs = STREAMING_APPS_DATABASE.find(
+            (a) => a.name === matchedAppInfo.app || a.name.toLowerCase() === matchedAppInfo.app.toLowerCase()
+          )
           const appChannel = {
             id: `stream-${matchedAppInfo.app.replace(/\s+/g, '-').toLowerCase()}`,
             name: matchedAppInfo.app,
@@ -766,6 +774,8 @@ export async function POST(request: NextRequest) {
             channelNumber: matchedNetwork || matchedAppInfo.code,
             deviceType: 'streaming',
             streamingApp: matchedAppInfo.app,
+            appId: catalogAppForGs?.id,
+            packageName: catalogAppForGs?.packageName ?? matchedAppInfo.packages[0],
             packages: matchedAppInfo.packages,
           }
           if (!channels.has(appChannel.id)) {
@@ -855,6 +865,20 @@ export async function POST(request: NextRequest) {
           const appChannelId = `stream-${row.app.replace(/\s+/g, '-').toLowerCase()}`
           let appChannel = channels.get(appChannelId)
           if (!appChannel) {
+            // v2.31.2 — Look up the streaming-apps catalog to populate
+            // appId + packageName + packages on the channel. The bartender
+            // remote's handleGameClick reads channel.packageName (singular)
+            // to launch the app via monkey, AND will prefer a channel.appId
+            // when present (going through /api/streaming/launch which
+            // handles Cube launcher-hosted Prime Video via the firebat alias
+            // — see CLAUDE.md gotcha #10). Without these fields the click
+            // silently does nothing.
+            const catalogApp = STREAMING_APPS_DATABASE.find(
+              (a) => a.name === row.app || a.id === row.app.toLowerCase().replace(/\s+/g, '-') || a.name.toLowerCase() === row.app.toLowerCase()
+            )
+            const fallbackPackages = catalogApp
+              ? [catalogApp.packageName, ...(catalogApp.packageAliases || [])]
+              : []
             appChannel = {
               id: appChannelId,
               name: row.app,
@@ -865,7 +889,9 @@ export async function POST(request: NextRequest) {
               channelNumber: row.app,
               deviceType: 'streaming',
               streamingApp: row.app,
-              packages: [],
+              appId: catalogApp?.id,                                 // canonical id for /api/streaming/launch
+              packageName: catalogApp?.packageName ?? fallbackPackages[0],
+              packages: fallbackPackages,
             }
             channels.set(appChannelId, appChannel)
           }
