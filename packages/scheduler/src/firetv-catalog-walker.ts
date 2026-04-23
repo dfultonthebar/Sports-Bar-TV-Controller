@@ -76,6 +76,14 @@ export interface AppWalkRule {
     interKeyDelayMs?: number  // default 400ms
     postNavDelayMs?: number   // default 4000ms — let new tab content render
   }
+  // v2.31.9 — Mark apps that render their UI inside an android.webkit.WebView
+  // (Peacock, Hulu, fubo, MLB.TV are all confirmed or likely WebView-based on
+  // Fire TV). uiautomator dump cannot read text content from inside a
+  // WebView — the tree shows one big WebView node with no text= attributes.
+  // Walker skips these apps with a single info log instead of attempting
+  // a walk that would always return zero tiles. Future work: HTTP catalog
+  // fetch from each provider's public API, or screen-capture + OCR.
+  usesWebView?: boolean
   extractTiles: (xmlDump: string) => CatalogTile[]
 }
 
@@ -276,6 +284,64 @@ function extractPrimeVideoTiles(xmlDump: string): CatalogTile[] {
   return tiles
 }
 
+// ESPN extractor (v2.31.9).
+// Verified empirically on Fire TV Cube 2nd gen 2026-04-23: the ESPN Fire TV
+// app (com.espn.gtv) is a NATIVE Android TV app — uiautomator dump returns
+// rich text/content-desc data for every visible tile.
+//
+// Tile shapes seen on the landing screen:
+//   text:         "College GameDay ESPN • NCAA Football Live"
+//   content-desc: "College GameDay, College GameDay, NCAA Football, Live Now,"
+//
+// The text version pairs `<title> <network> • <sport> [Live]`.
+// The content-desc version is a comma-separated tuple `<title>, <title>, <sport>, <status>,`.
+// We prefer the content-desc when available because it splits cleanly; fall
+// back to text and parse around the bullet separator.
+function extractEspnTiles(xmlDump: string): CatalogTile[] {
+  const all = extractAccessibleText(xmlDump)
+  const tiles: CatalogTile[] = []
+  const seen = new Set<string>()
+
+  // Skip ESPN nav chrome
+  const navChrome = /^(Search|Home|Films & Shows|Browse|Highlights|Settings|Featured|Featured Group \d|Watch, button \d of \d|button \d of \d)$/i
+
+  for (const t of all) {
+    if (navChrome.test(t)) continue
+    if (t.length < 5) continue
+
+    let title = ''
+    let sportTag: string | null = null
+    let isLive = false
+
+    // Pattern A: comma-separated content-desc — "Title, Title, Sport, Live Now,"
+    const commaParts = t.split(',').map(s => s.trim()).filter(Boolean)
+    if (commaParts.length >= 3 && /Live( Now)?/i.test(commaParts[commaParts.length - 1])) {
+      // Last segment is status; second-to-last is sport; first is title
+      title = commaParts[0]
+      sportTag = inferSportTag(commaParts[commaParts.length - 2], commaParts[commaParts.length - 2])
+      isLive = true
+    }
+    // Pattern B: bullet-separated text — "Title NETWORK • Sport Live"
+    else if (/ • /.test(t)) {
+      const beforeBullet = t.split(' • ')[0]
+      const afterBullet = t.split(' • ')[1]
+      // Strip trailing network token from title (last word: ESPN, ESPN2, ESPN+, etc.)
+      title = beforeBullet.replace(/\s+(ESPN\+?|ESPN2|ABC|SEC Network|ACC Network|Big Ten Network|FS1|FS2)\s*$/, '').trim()
+      sportTag = inferSportTag(afterBullet || '', afterBullet || '')
+      isLive = / Live\b/i.test(afterBullet || '')
+    } else {
+      continue
+    }
+
+    if (!title || title.length < 3) continue
+    const key = title.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    tiles.push({ contentTitle: title, isLive, sportTag })
+  }
+  return tiles
+}
+
 // Add per-app rules here as you confirm dump formats. Apps without a rule
 // are silently skipped (no false data lands in the catalog).
 const APP_WALK_RULES: Record<string, AppWalkRule> = {
@@ -298,10 +364,31 @@ const APP_WALK_RULES: Record<string, AppWalkRule> = {
     },
     extractTiles: extractPrimeVideoTiles,
   },
-  // Future entries (Phase 2b-2.C):
-  //   'Peacock': { catalogId: 'peacock', ..., extractTiles: extractPeacockTiles }
-  //   'Hulu': ...
-  //   'fuboTV': ...
+  'ESPN': {
+    catalogId: 'espn-plus',
+    displayName: 'ESPN',
+    postLaunchDelayMs: 8000,           // ESPN's content cards finish rendering ~7s after launch
+    // No navigation needed — ESPN's first screen IS the live-sports landing.
+    extractTiles: extractEspnTiles,
+  },
+  // v2.31.9 — Peacock (and likely Hulu, fubo, MLB.TV, Netflix on Fire TV)
+  // renders inside an android.webkit.WebView. uiautomator can't read text
+  // content from inside a WebView — the dump shows one big WebView node
+  // with no extractable text/content-desc. Walker skips with a logged
+  // info line instead of pretending to walk and capturing zero. Future
+  // work: pull Peacock's NBC Sports schedule from a public API, or
+  // screen-capture + OCR.
+  'Peacock': {
+    catalogId: 'peacock',
+    displayName: 'Peacock',
+    postLaunchDelayMs: 0,
+    usesWebView: true,
+    extractTiles: () => [],
+  },
+  // Future entries (when adding):
+  //   'Hulu': likely usesWebView (verify)
+  //   'fuboTV': likely usesWebView (verify)
+  //   'NFHS Network': likely native (similar to ESPN — verify)
 }
 
 // Helper: send a shell command via the existing send-command endpoint.
@@ -347,6 +434,17 @@ async function walkOneApp(
   const deviceId = inputSource.deviceId
   if (!deviceId) {
     return { app: rule.displayName, tilesFound: 0, uploaded: false, error: 'no-device-id' }
+  }
+
+  // v2.31.9 — WebView-based apps (Peacock, likely Hulu/fubo/MLB.TV)
+  // can't be walked via uiautomator (the dump shows one big WebView
+  // node with no extractable text). Mark in the rule + skip cleanly
+  // instead of attempting a no-op walk every cycle.
+  if (rule.usesWebView) {
+    logger.info(
+      `[FIRETV-CATALOG] ${inputSource.name} / ${rule.displayName}: skipped (webview-based — uiautomator can't read)`
+    )
+    return { app: rule.displayName, tilesFound: 0, uploaded: true }
   }
 
   try {

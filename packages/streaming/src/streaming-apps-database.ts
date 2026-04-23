@@ -188,6 +188,14 @@ export const STREAMING_APPS_DATABASE: StreamingApp[] = [
     id: 'peacock',
     name: 'Peacock',
     packageName: 'com.peacocktv.peacockandroid',
+    // v2.31.9 — Holmgren Way Fire TV Cubes ship Peacock as
+    // `com.peacock.peacockfiretv` (the Fire TV-specific build), not the
+    // generic Android TV `com.peacocktv.peacockandroid`. Same launcher-
+    // hosted situation as Prime Video / firebat (CLAUDE.md gotcha #10) —
+    // streamingManager probes the alias when the primary package isn't
+    // found and falls through. Without this, walker / bartender click
+    // for Peacock games silently fails on these Cubes.
+    packageAliases: ['com.peacock.peacockfiretv'],
     category: 'live-tv',
     hasPublicApi: false,
     deepLinkSupport: true,
