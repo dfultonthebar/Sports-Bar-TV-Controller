@@ -187,6 +187,85 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.11 → v2.32.17 — Bartender remote: input tracking + logos + scheduler guards
+**Released:** 2026-04-24
+
+Seven small ships during a single Holmgren operator session. All
+software-only / additive — no schema changes, no env vars required, no
+seed data. Auto-update.sh handles the rebuild + PM2 restart.
+
+**v2.32.11** — `bartender-schedule` POST: tolerant lookup when client
+sends `awayTeam="Unknown"` or `""`. Fallback path matches `homeTeamName`
++ empty `awayTeamName` + ±1hr time window. Unblocks NFL Draft, UFC PPV,
+and other single-entity events from 404'ing.
+
+**v2.32.12** — Past-game guards (server + client). POST returns 400 if
+`endTime < now`. Channel-guide remote short-circuits with operator hint
+before POST when program endTime (or startTime + 3h fallback) is past.
+Stops auto-reverter churn from operators tapping yesterday's session
+of a multi-day event still visible in Rail Media (NFL Draft, Masters).
+
+**v2.32.13** — Fire TV current-app mirrored into `InputCurrentChannel`.
+Two write paths: (a) `firestick-scout` heartbeat upserts when scout
+reports `currentApp`; (b) `channel-presets/tune` route resolves Fire TV
+matrix input via `FireTVDevice.inputChannel` and runs the same upsert
+that cable/DirecTV use. Stored as `channelNumber="APP"`,
+`channelName=<friendly>`. UI render branches on `"APP"` to show app
+name instead of `Ch APP`.
+
+**v2.32.14** — 17 new streaming-app logo registers in `channel-logos.ts`
+(Netflix, Disney+, Hulu, Max, YouTube, fubo, Sling, DAZN, Tubi, Pluto,
+Vudu, DirecTV Stream, MLB.TV, NBA, NHL, NFL, NFHS, B1G+, NBC Sports,
+Fox Sports app, Atmosphere, Home).
+
+**v2.32.15** — `GET /api/matrix/current-channels` hydrates empty
+`channelName` from `ChannelPreset` table by `${deviceType}|${channelNumber}`
+lookup. Fixes missing logos on cable/DirecTV inputs (tune route only sets
+channelName when user clicks a labeled preset; manual tunes left it null,
+which suppressed logo render).
+
+**v2.32.16** — Server-side current-app poll. New `pollFiretvCurrentApp`
+tick in scheduler-service (60s interval, 45s initial delay) hits
+`/api/firetv-devices/[id]/current-app` for each online + non-disabled +
+inputChannel-mapped Fire TV. The endpoint also upserts InputCurrentChannel
+after the ADB probe. Workaround for older Sports Bar Scout APK builds at
+Holmgren that report empty `currentApp` in heartbeats.
+
+**v2.32.17** — Channel logo badge fallback. SimpleIcons removed many
+trademarked sports brand logos in 2025 (espn, nfl, hulu, peacock,
+primevideo, foxsports, sling, pluto, disneyplus all 404). New
+`apps/web/src/components/ui/channel-logo.tsx` `<ChannelLogo>` component
+swaps to text badge on `<img>` onError. 9 broken `SI()` calls null'd
+in channel-logos.ts (each already has colored badge defined). 14 new
+register entries (Spanish networks, Bally MW, NHL Center Ice, UEFA,
+Willow Cricket, Overtime, Fox Sports Prime, DTV PPV, FDNOR+, AMZNP).
+`normalizeForLogo()` strips parens + trailing `-SD`.
+
+**Required Manual Step:** None. All seven versions are software-only;
+build + PM2 restart (handled by auto-update.sh) is sufficient.
+
+**Verification (post-update, optional):**
+
+```bash
+# v2.32.13 + v2.32.16 — Fire TV input rows should appear within 60s of restart
+DB=/home/ubuntu/sports-bar-data/production.db
+sqlite3 "$DB" "SELECT inputNum, inputLabel, channelNumber, channelName FROM InputCurrentChannel WHERE deviceType='firetv';"
+# Expect: rows for each online Fire TV with channelNumber='APP' and friendly app name.
+
+# v2.32.15 — current-channels endpoint should return non-null channelName for cable/DirecTV with known channels
+curl -s http://localhost:3001/api/matrix/current-channels | python3 -c "import sys,json; d=json.load(sys.stdin); [print(k, v.get('inputLabel'), v.get('channelNumber'), v.get('channelName')) for k,v in sorted(d['channels'].items(), key=lambda x: int(x[0]))]"
+# Expect: cable boxes 1-4 show ESPN/ESPN2/ESPN U/ESPN News, DirecTV inputs show their network names.
+```
+
+**Rollback:** `git revert` is clean for any of these — pure software,
+no DB/data side effects. InputCurrentChannel rows added by v2.32.13/16
+are harmless if left after revert (UI just won't read them).
+
+<!-- verify-description: production.db reachable + Fire TV devices have inputChannel mapping (required by v2.32.13/16 mirror path) -->
+<!-- verify-sql: SELECT id FROM FireTVDevice WHERE inputChannel IS NOT NULL AND inputChannel > 0 LIMIT 1 -->
+
+---
+
 ### v2.32.4 → v2.32.7 — Auto-update robustness Phases 1-4
 **Released:** 2026-04-23
 
