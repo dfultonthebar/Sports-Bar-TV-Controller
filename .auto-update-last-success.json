@@ -1,9 +1,24 @@
 {
-  "version": "2.32.3",
+  "version": "2.32.10",
   "branch": "location/graystone",
-  "commitSha": "5326fee5c6637683f96785a5be023b166372bf05",
-  "successAt": "2026-04-24T04:22:47Z",
-  "successAtUnix": 1777004567,
-  "runId": "auto-update-2026-04-23-23-16",
-  "verifyInstall": {"status":"PASS","passed":7,"total":7,"durationSecs":2,"failed":[],"layers":[{"name":"pm2_online","passed":true,"detail":"status=online restart_time=20"},{"name":"health_http","passed":true,"detail":"status=healthy"},{"name":"metrics_http","passed":true,"detail":"cores=16"},{"name":"bartender_proxy","passed":true,"detail":"http=302"},{"name":"critical_tables","passed":true,"detail":"presets=185 aliases=49 directv=8 firetv=4"},{"name":"matrix_config","passed":true,"detail":"multi-card WP-36X36 offset=32"},{"name":"crash_logs","passed":true,"detail":"clean"}]}
+  "commitSha": "001f63b0f022ea4f31639f8b865181cf86e1bb59",
+  "successAt": "2026-04-24T14:36:16Z",
+  "successAtUnix": 1777041376,
+  "runId": "auto-update-2026-04-24-09-29",
+  "verifyInstall": {"status":"PASS","passed":7,"total":7,"durationSecs":2,"failed":[],"layers":[{"name":"pm2_online","passed":true,"detail":"status=online restart_time=21"},{"name":"health_http","passed":true,"detail":"status=healthy"},{"name":"metrics_http","passed":true,"detail":"cores=16"},{"name":"bartender_proxy","passed":true,"detail":"http=302"},{"name":"critical_tables","passed":true,"detail":"presets=185 aliases=49 directv=8 firetv=4"},{"name":"matrix_config","passed":true,"detail":"multi-card WP-36X36 offset=32"},{"name":"crash_logs","passed":true,"detail":"clean"}]},
+  "configChecksums": {
+    ".env": "f3a5e2286f8b53d1",
+    "apps/web/data/tv-layout.json": "32cdbd2120ba9ea5",
+    "apps/web/data/station-aliases-local.json": "4c136f829dd122e0",
+    "apps/web/src/lib/hardware-config.ts": "35284569d93a69ab"
+  },
+  "dbRowCounts": {
+    "Location": 1,
+    "AuthPin": 2,
+    "MatrixConfiguration": 1,
+    "HomeTeam": 20,
+    "ChannelPreset": 185,
+    "station_aliases": 49
+  },
+  "heartbeatSchemaVersion": 2
 }
