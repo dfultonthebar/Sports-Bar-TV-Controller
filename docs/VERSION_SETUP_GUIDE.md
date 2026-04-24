@@ -187,6 +187,67 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.24 — bootstrap + auto-update WARN for missing ANTHROPIC_API_KEY
+**Released:** 2026-04-24
+
+All locations share the same `ANTHROPIC_API_KEY` (operator's
+single key). Without it in `.env`, auto-update.sh falls back to the
+Claude Code CLI subscription path — same path that hit "monthly usage
+limit" today and triggered v2.32.20.
+
+**Changes:**
+- `scripts/bootstrap-new-location.sh` accepts `--anthropic-api-key sk-ant-...`
+  and writes it to `.env` at first install. If neither flag nor existing
+  `.env` value, prints a WARN.
+- `scripts/auto-update.sh` preflight prints 3 WARN lines when the key is
+  missing, with the exact `echo ... >> .env` snippet.
+
+**Required Manual Step (CRITICAL — apply at every location):**
+
+The same API key from the operator goes in every location's `.env`. SSH
+into each host and run (idempotent — skips if already set):
+
+```bash
+KEY='sk-ant-...'  # paste the operator's shared key
+ENV=/home/ubuntu/Sports-Bar-TV-Controller/.env
+if ! grep -q '^ANTHROPIC_API_KEY=' "$ENV"; then
+  echo "ANTHROPIC_API_KEY=$KEY" >> "$ENV"
+  echo "[OK] added ANTHROPIC_API_KEY at $(hostname)"
+else
+  echo "[SKIP] $(hostname) already has ANTHROPIC_API_KEY"
+fi
+```
+
+Locations to apply (in order; all 6):
+
+1. holmgren-way (already done 2026-04-24)
+2. graystone
+3. lucky-s-1313
+4. leg-lamp
+5. stoneyard-appleton
+6. stoneyard-greenville
+
+**Verification:**
+
+```bash
+grep '^ANTHROPIC_API_KEY=' /home/ubuntu/Sports-Bar-TV-Controller/.env | sed 's/=.*/=<set>/'
+# Expect: ANTHROPIC_API_KEY=<set>
+```
+
+After the next auto-update at each location, look for this log line:
+```
+Claude path: Anthropic API (model=claude-opus-4-7)
+```
+NOT this:
+```
+Claude path: Claude Code CLI (...)
+WARN: ANTHROPIC_API_KEY missing from .env — using subscription CLI path.
+```
+
+**Rollback:** `git revert` is clean. The key in `.env` is harmless to leave in place.
+
+---
+
 ### v2.32.23 — Hardware package READMEs + all location stubs (729 → 672 lines)
 **Released:** 2026-04-24
 
