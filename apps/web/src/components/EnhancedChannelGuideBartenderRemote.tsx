@@ -8,6 +8,7 @@ import { Button } from './ui/button'
 import { Badge } from './ui/badge'
 import { useLogging } from '@/hooks/useLogging'
 import { getChannelLogoOrBadge } from '@/lib/channel-logos'
+import { ChannelLogo } from '@/components/ui/channel-logo'
 import ChannelPresetGrid from './ChannelPresetGrid'
 import RemoteControlPopup from './remotes/RemoteControlPopup'
 import FireTVAppShortcuts from './FireTVAppShortcuts'
@@ -373,6 +374,19 @@ export default function EnhancedChannelGuideBartenderRemote() {
 
   const handleScheduleGame = async (game: GameListing, event: React.MouseEvent) => {
     event.stopPropagation() // Don't trigger the game click (Watch)
+
+    // Block scheduling games whose end time is already in the past. The Rail
+    // Media program list often keeps multi-day events (NFL Draft, Masters)
+    // visible after Day 1 ended, with startTime pointing at the past session
+    // — bartender taps "Schedule" expecting tonight's session and the server
+    // creates an alloc that auto-reverter kills seconds later.
+    const endMs = game.endTime ? new Date(game.endTime).getTime() : null
+    const startMs = game.startTime ? new Date(game.startTime).getTime() : null
+    const refMs = endMs ?? (startMs !== null ? startMs + 3 * 60 * 60 * 1000 : null)
+    if (refMs !== null && refMs < Date.now()) {
+      setCommandStatus(`That session already ended. Pick the upcoming session if this is a multi-day event.`)
+      return
+    }
 
     // Pre-select device type based on the currently selected input
     const currentDeviceType = selectedInput ? getDeviceTypeForInput(selectedInput) : null
@@ -1557,33 +1571,15 @@ export default function EnhancedChannelGuideBartenderRemote() {
                               {(() => {
                                 const channelName = currentChannels[input.channelNumber]?.channelName
                                 if (!channelName) return null
-                                const { src, badge, alt } = getChannelLogoOrBadge(channelName)
-                                return src ? (
-                                  <img
-                                    src={src}
-                                    alt={alt}
-                                    title={alt}
-                                    className="h-8 w-8 object-contain flex-shrink-0 bg-white/10 rounded p-0.5"
-                                    loading="lazy"
-                                    onError={(e) => {
-                                      const img = e.currentTarget as HTMLImageElement
-                                      img.style.display = 'none'
-                                    }}
-                                  />
-                                ) : (
-                                  <span
-                                    title={alt}
-                                    className="inline-flex items-center justify-center h-8 px-1.5 rounded text-[10px] font-bold flex-shrink-0 tracking-tight"
-                                    style={{ backgroundColor: badge.bg, color: badge.fg, minWidth: '32px' }}
-                                  >
-                                    {badge.text}
-                                  </span>
-                                )
+                                return <ChannelLogo name={channelName} />
                               })()}
                               <span>
-                                {currentChannels[input.channelNumber]?.channelNumber
-                                  ? `Ch ${currentChannels[input.channelNumber].channelNumber}`
-                                  : `Input ${input.channelNumber}`} • {deviceType || input.inputType}
+                                {(() => {
+                                  const cur = currentChannels[input.channelNumber]
+                                  if (!cur?.channelNumber) return `Input ${input.channelNumber}`
+                                  if (cur.channelNumber === 'APP') return cur.channelName || 'App'
+                                  return `Ch ${cur.channelNumber}`
+                                })()} • {deviceType || input.inputType}
                               </span>
                             </div>
                           </div>
