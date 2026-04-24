@@ -804,6 +804,31 @@ else
   fi
 fi
 
+# v2.32.5 — Detect destructive schema operations and mark the pre-update
+# DB backup as required for rollback. Without this marker, rollback.sh
+# resets git + .next but leaves the DB in the half-migrated state — a
+# DROP COLUMN / DROP TABLE in this run is permanent. The marker is a
+# small companion file alongside $BACKUP_FILE; rollback.sh checks for
+# it after git reset and restores the DB BEFORE rebuilding so the build
+# runs against the schema the reset code expects.
+#
+# Conservative grep — only flags operations drizzle ANNOUNCES as data-
+# loss in its push output. Pure additive schema (CREATE TABLE / ADD
+# COLUMN) doesn't trip this and rollback continues to leave the DB
+# alone (the additive schema is forward-compatible with old code).
+if [ -f "$SCHEMA_PUSH_LOG" ] && grep -qiE "you're about to (delete|drop)|drop (table|column)|data.loss|truncate" "$SCHEMA_PUSH_LOG" 2>/dev/null; then
+  DESTRUCTIVE_MARKER="$BACKUP_FILE.destructive"
+  log "Schema push included destructive operations — writing $DESTRUCTIVE_MARKER (rollback will auto-restore DB)"
+  {
+    echo "runId=$(basename "$LOG_FILE" .log)"
+    echo "detectedAtUtc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    echo "preMergeSha=${PRE_MERGE_SHA:-unknown}"
+    echo "postMergeSha=${POST_MERGE_SHA:-unknown}"
+    echo "--- detected lines ---"
+    grep -iE "you're about to|drop (table|column)|data.loss|truncate|dropping" "$SCHEMA_PUSH_LOG" 2>/dev/null | head -20
+  } > "$DESTRUCTIVE_MARKER" 2>/dev/null || log "WARNING: could not write destructive marker"
+fi
+
 # ===========================================================================
 # PHASE: OLLAMA MODEL — ensure AI Suggest has the required LLM
 # ===========================================================================
