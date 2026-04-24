@@ -187,6 +187,47 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.21 — CLAUDE.md simplify pass (1122 → 961 lines)
+**Released:** 2026-04-24
+
+Tightened CLAUDE.md by ~14% via the bundled `simplify` skill workflow.
+No semantic rule changes — just removed duplication, dead refs, and
+prose bloat. All Standing Rules preserved with same intent, just
+reformatted.
+
+**Changes:**
+- READ FIRST block trimmed to 2 numbered bullets (was 11 lines of prose).
+- §5 Cable Box: dropped legacy CEC file list (`cable-box-cec-service.ts`
+  etc — those files don't exist in repo anymore), kept the rule "no new
+  CEC".
+- §8 Wolf Pack Multi-View: was tagged "Future Implementation" but
+  `packages/multiview/` is built (commands.ts, multiview-service.ts,
+  serial-client.ts, types.ts). Reflected as implemented.
+- API Route Patterns: replaced 50-line code block with 1-line summary
+  + reference to canonical example route (50+ existing routes already
+  document the pattern).
+- Common Gotchas: collapsed #1 (body-stream) + #2 (GET no body) into
+  one entry; removed dead `/api/cec/cable-box/test` curl example;
+  renumbered #5a/#6/#7/#8/#9/#10 → #4/#5/#6/#7/#8/#9 (sequential).
+- Standing Rules 1-8: kept all 8, tightened wording. Each is now 1-3
+  sentences instead of paragraph-length. Defer-to-docs lines preserved
+  for rules 5/7/8.
+- Documentation References: removed broken link to non-existent
+  `CEC_DEPRECATION_NOTICE.md`; added OBSBOT_TAIL_2_PLAN.md.
+
+**Required Manual Step:** None. Pure docs change, no behavior impact.
+
+**Verification:**
+
+```bash
+wc -l /home/ubuntu/Sports-Bar-TV-Controller/CLAUDE.md
+# Expect: 961
+```
+
+**Rollback:** `git revert` is clean.
+
+---
+
 ### v2.32.20 — auto-update.sh: Anthropic API path replaces CLI subscription
 **Released:** 2026-04-24
 
