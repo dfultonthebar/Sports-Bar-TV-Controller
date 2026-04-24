@@ -9,5 +9,12 @@ export {
   getAppsWithPublicApi,
   getStreamingAppsBySport,
   searchStreamingApps,
-  getPackageNameByAppId
+  getPackageNameByAppId,
+  // v2.32.9 — display-name + package-name lookup helpers (single source
+  // of truth, replaces the inline DISPLAY_NAME_TO_CATALOG_ID +
+  // PACKAGE_TO_DISPLAY_NAME maps that lived in channel-guide and
+  // firetv-app-sync respectively)
+  findStreamingAppByDisplayName,
+  findStreamingAppByPackageName,
+  getDisplayNameForPackage,
 } from '@sports-bar/streaming'
