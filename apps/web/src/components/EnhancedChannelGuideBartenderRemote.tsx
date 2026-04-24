@@ -1594,9 +1594,12 @@ export default function EnhancedChannelGuideBartenderRemote() {
                                 )
                               })()}
                               <span>
-                                {currentChannels[input.channelNumber]?.channelNumber
-                                  ? `Ch ${currentChannels[input.channelNumber].channelNumber}`
-                                  : `Input ${input.channelNumber}`} • {deviceType || input.inputType}
+                                {(() => {
+                                  const cur = currentChannels[input.channelNumber]
+                                  if (!cur?.channelNumber) return `Input ${input.channelNumber}`
+                                  if (cur.channelNumber === 'APP') return cur.channelName || 'App'
+                                  return `Ch ${cur.channelNumber}`
+                                })()} • {deviceType || input.inputType}
                               </span>
                             </div>
                           </div>
