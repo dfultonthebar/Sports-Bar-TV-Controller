@@ -143,6 +143,28 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Special-broadcast fallback: NFL Draft, UFC/PPV, awards shows, etc. are
+    // seeded with home_team_name=event title and away_team_name="" because they
+    // have no opposing team. The bartender remote sends awayTeam="Unknown" (a
+    // React fallback for empty strings), so the strict eq() above misses. Retry
+    // with home + time only when the client signaled "no away team."
+    if (!gameSchedule && (gameInfo.awayTeam === '' || gameInfo.awayTeam === 'Unknown')) {
+      const results = await db.select().from(schema.gameSchedules)
+        .where(
+          and(
+            eq(schema.gameSchedules.homeTeamName, gameInfo.homeTeam),
+            eq(schema.gameSchedules.awayTeamName, ''),
+            gte(schema.gameSchedules.scheduledStart, startTimeUnix - 3600),
+            lte(schema.gameSchedules.scheduledStart, startTimeUnix + 3600)
+          )
+        )
+        .all()
+
+      if (results.length > 0) {
+        gameSchedule = results[0]
+      }
+    }
+
     // If still not found, fail explicitly rather than silently creating a phantom game row
     if (!gameSchedule) {
       const gameTime = new Date(gameInfo.startTime).toLocaleString()
