@@ -194,33 +194,17 @@ export async function POST(request: NextRequest) {
     }
 
     // Reject overlapping allocations on the same input — only one game can be
-    // live per input at a time. An overlap exists if any pending/active allocation
-    // on the same input has a time window that intersects this one.
-    const sameInputAllocs = await db.select({
-      alloc: schema.inputSourceAllocations,
-      game: schema.gameSchedules,
-    })
-      .from(schema.inputSourceAllocations)
-      .innerJoin(schema.gameSchedules, eq(schema.inputSourceAllocations.gameScheduleId, schema.gameSchedules.id))
-      .where(
-        and(
-          eq(schema.inputSourceAllocations.inputSourceId, inputSource.id),
-          or(
-            eq(schema.inputSourceAllocations.status, 'pending'),
-            eq(schema.inputSourceAllocations.status, 'active')
-          )
-        )
-      )
-      .all()
-
-    const overlap = sameInputAllocs.find(r =>
-      r.alloc.allocatedAt < endTimeUnix && r.alloc.expectedFreeAt > tuneAtUnix
-    )
-    if (overlap) {
-      const msg = `Input ${inputSource.name} already has "${overlap.game.awayTeamName} @ ${overlap.game.homeTeamName}" scheduled during that window`
+    // live per input at a time. Delegates to the shared
+    // checkAllocationConflict helper (v2.25.4) so every allocation path
+    // (this one, /api/scheduling/allocate, and future callers) uses the
+    // same overlap logic.
+    const { checkAllocationConflict } = await import('@/lib/scheduling/allocation-conflicts')
+    const { conflict } = await checkAllocationConflict(inputSource.id, tuneAtUnix, endTimeUnix)
+    if (conflict) {
+      const msg = `Input ${inputSource.name} already has "${conflict.gameLabel}" scheduled during that window`
       logger.warn(`[BARTENDER-SCHEDULE] ${msg}`)
       return NextResponse.json(
-        { success: false, error: msg, conflictingAllocationId: overlap.alloc.id },
+        { success: false, error: msg, conflictingAllocationId: conflict.allocationId },
         { status: 409 }
       )
     }

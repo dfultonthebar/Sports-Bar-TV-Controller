@@ -146,3 +146,22 @@ export {
   type SafetyCheckResult,
   type RampPlan
 } from './volume-safety'
+
+// DirecTV PPV Probe - Periodic /tv/getTuned scrape for PPV channel discovery
+export {
+  probeAllDirecTVTuned,
+  type ProbeResult as DirecTVProbeResult
+} from './directv-probe'
+
+// Fire TV App Sync - Periodic sync of scout-reported installed apps into input_sources
+export {
+  runFiretvAppSyncSweep,
+} from './firetv-app-sync'
+
+// Fire TV Catalog Walker - Per-box per-app sports content discovery via uiautomator
+export {
+  runFiretvCatalogWalk,
+  type AppWalkRule,
+  type CatalogTile,
+  type CatalogWalkStats,
+} from './firetv-catalog-walker'

@@ -6,6 +6,7 @@
 
 import { db, schema, eq, and, gte, lte, isNull } from '@sports-bar/database'
 import { logger } from '@sports-bar/logger'
+import { checkAllocationConflict } from './allocation-conflicts'
 
 export interface InputSource {
   id: string;
@@ -178,18 +179,19 @@ class SmartInputAllocator {
     return inputSources.filter(i => {
       if (!i.isActive) return false;
 
-      // Check if network is available on this input
-      const hasNetwork = i.availableNetworks.includes(targetNetwork);
-
-      // For streaming-only networks (ESPN+, Peacock), check if app is installed on Fire TV
-      if (i.type === 'firetv' && i.installedApps) {
-        const streamingApps = ['ESPN', 'Peacock', 'Paramount+', 'Apple TV'];
-        return streamingApps.some(app =>
-          targetNetwork.includes(app) && i.installedApps!.includes(app)
-        );
-      }
-
-      return hasNetwork;
+      // v2.28.7 — Trust availableNetworks (display-name list) for the match.
+      // The previous Fire-TV-specific override was broken in two ways:
+      //   1. Hardcoded whitelist [ESPN, Peacock, Paramount+, Apple TV] omitted
+      //      Prime Video, Hulu, Netflix, Max, YouTube TV, MLB.TV, NBA League
+      //      Pass, ESPN+ — every Prime Video TNF / MNF allocation silently
+      //      filtered out every Fire TV.
+      //   2. installedApps contains Android package names (com.amazon.avod,
+      //      com.peacocktv.peacock, etc.), so installedApps.includes('ESPN')
+      //      always returned false even for the four whitelisted apps.
+      // ai-suggest, bartender-remote, and conflict-detector all use
+      // availableNetworks directly — the override here was the only divergent
+      // gate, and it was always-false-for-firetv-streaming. Drop it.
+      return i.availableNetworks.includes(targetNetwork);
     });
   }
 
@@ -335,6 +337,34 @@ class SmartInputAllocator {
     }
   ): Promise<AllocationResult> {
     try {
+      // v2.27.1: hard guard against empty TV-output allocations. Allocator
+      // callers (apply route, scheduler) MUST provide at least one output
+      // — an allocation with 0 TVs is meaningless and used to silently
+      // create empty rows that broke downstream tune logic.
+      if (!request.tvOutputIds || request.tvOutputIds.length === 0) {
+        const msg = `[ALLOCATOR] Refusing to create allocation with 0 TV outputs (game=${request.gameId}, input=${inputSource.name}). Caller must supply at least one tvOutputId.`
+        logger.warn(msg)
+        throw new Error(msg)
+      }
+
+      // v2.27.1: pre-flight conflict check. The post-allocation revert in
+      // /api/scheduling/allocate (v2.25.4) is a fallback — checking up
+      // front avoids the wasted insert+delete and surfaces a clear error
+      // if a preempting flow tries to wedge into an already-booked input.
+      const startUnix = Math.floor(game.scheduledStart.getTime() / 1000)
+      const endUnix = Math.floor(game.estimatedEnd.getTime() / 1000)
+      const { conflict } = await checkAllocationConflict(
+        inputSource.id,
+        startUnix,
+        endUnix,
+        options?.preempts || null,
+      )
+      if (conflict && !options?.preempts) {
+        const msg = `[ALLOCATOR] Input ${inputSource.name} is already allocated to ${conflict.gameLabel} (allocation ${conflict.allocationId}, ${conflict.allocatedAt}-${conflict.expectedFreeAt}).`
+        logger.warn(msg)
+        throw new Error(msg)
+      }
+
       const allocationId = crypto.randomUUID();
 
       // Determine channel/app based on input type
@@ -469,11 +499,19 @@ class SmartInputAllocator {
    */
   async freeAllocation(allocationId: string): Promise<void> {
     try {
+      // v2.26.2: actuallyFreedAt is an INTEGER column (unix seconds),
+      // not a Date. Previously `new Date()` was being coerced into
+      // a timestamp string by Drizzle, producing inconsistent values
+      // vs the rest of the codebase. Match the format used in
+      // auto-reallocator.endAllocation and scheduler-service.
+      // revertAttemptedAt is intentionally NOT set here — if this
+      // free path is called without a revert plan, the v2.26.1 sweep
+      // will pick it up on the next 5-min tick.
       await db
         .update(schema.inputSourceAllocations)
         .set({
           status: 'completed',
-          actuallyFreedAt: new Date(),
+          actuallyFreedAt: Math.floor(Date.now() / 1000),
         })
         .where(eq(schema.inputSourceAllocations.id, allocationId));
 

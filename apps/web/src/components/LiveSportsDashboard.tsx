@@ -385,7 +385,16 @@ export default function LiveSportsDashboard({
                         <Tv className="w-3 h-3 inline mr-1" />Ch {game.direcTVChannel}
                       </button>
                     )}
-                    {game.streamingApp && (
+                    {/* v2.32.2 — gate the streaming-app launch button to
+                        when a Fire TV is actually the selected input.
+                        Operator reported the Apple TV+ / Prime Video buttons
+                        appearing on cable-box and DirecTV-selected views;
+                        clicking them would launch on the FIRST Fire TV
+                        (handleLaunchApp uses fireTVDevices[0]) instead of
+                        the input the bartender was actually controlling.
+                        Quick-launch only makes sense when the selected
+                        input IS a Fire TV. */}
+                    {game.streamingApp && selectedDeviceType === 'streaming' && (
                       <button
                         onClick={() => handleLaunchApp(game.streamingApp!.appId, game.streamingApp!.packageName)}
                         className="text-xs px-2 py-1 rounded bg-blue-600/20 text-blue-400 border border-blue-500/30 hover:bg-blue-600/30 transition-colors"

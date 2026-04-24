@@ -131,3 +131,41 @@ export async function applyOverrideDefaults(
 // Explicit `or` import so tree-shaking doesn't drop it; drizzle's dynamic
 // query building can't signal the import usage to some bundlers.
 void or
+
+/**
+ * Read-only preview of which override rules WOULD apply to a game,
+ * without modifying tvOutputIds or writing an audit log. Used by
+ * GameWithContext (v2.26.0) so consumers (tooltips, the Scheduler
+ * "why this allocation?" UI) can show the rules that are in play
+ * for a given game without the allocator side effects.
+ */
+export async function previewOverrideDefaults(
+  homeTeamName: string | null | undefined,
+  awayTeamName: string | null | undefined,
+): Promise<{
+  rulesInPlay: Array<{ team: string; outputNum: number; action: 'exclude' | 'include'; isHomeTeam: boolean; occurrences: number }>
+}> {
+  const teams = [homeTeamName, awayTeamName].filter((t): t is string => !!t && t.length > 0)
+  if (teams.length === 0) return { rulesInPlay: [] }
+
+  try {
+    const rules = await db
+      .select()
+      .from(schema.scheduledOverrideDefaults)
+      .where(inArray(schema.scheduledOverrideDefaults.team, teams))
+      .all()
+
+    return {
+      rulesInPlay: rules.map(r => ({
+        team: r.team,
+        outputNum: r.outputNum,
+        action: (r.action === 'include' ? 'include' : 'exclude') as 'exclude' | 'include',
+        isHomeTeam: !!r.isHomeTeam,
+        occurrences: r.occurrences,
+      })),
+    }
+  } catch (err) {
+    logger.warn('[OVERRIDE-DEFAULTS] preview lookup failed:', err)
+    return { rulesInPlay: [] }
+  }
+}
