@@ -112,6 +112,24 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Reject schedules whose game has already ended. Auto-reallocator would
+    // immediately revert these (it sweeps allocations whose estimatedEnd has
+    // passed), so creating them just churns the DB and confuses the operator
+    // by showing a "scheduled" tile that vanishes a few seconds later.
+    // Multi-day events like NFL Draft expose this most often: Day 1 and Day 2
+    // share the same homeTeamName, the operator picks "NFL Draft" without
+    // realizing the channel guide entry resolved to yesterday's day.
+    const nowUnix = Math.floor(Date.now() / 1000)
+    if (endTimeUnix < nowUnix) {
+      const gameTime = new Date(gameInfo.startTime).toLocaleString()
+      const msg = `Game already ended at ${new Date(endTimeUnix * 1000).toLocaleString()} (started ${gameTime}). Pick the next session if this is a multi-day event (e.g. NFL Draft Day 2/3).`
+      logger.warn(`[BARTENDER-SCHEDULE] ${msg}`)
+      return NextResponse.json(
+        { success: false, error: msg },
+        { status: 400 }
+      )
+    }
+
     let gameSchedule = null
 
     // Try to find existing game by ESPN ID first
