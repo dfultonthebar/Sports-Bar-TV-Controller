@@ -6,23 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## ⚠️ READ FIRST — REQUIRED BEFORE ANY NON-TRIVIAL WORK
 
-Before starting any task on this repo, you MUST read these two companion
-guides in addition to this file. They hold the detailed rules that were
-extracted from CLAUDE.md to keep it focused. Standing Rules 5, 7, and 8
-below are just SUMMARIES — the full "how to apply" lives in those guides.
+Standing Rules 5, 7, and 8 below are SUMMARIES. Full application lives in:
 
-1. **`docs/CLAUDE_MEMORY_GUIDE.md`** — the three memory systems
-   (auto-memory, Memory Bank, CLAUDE.md), how to sync between them, when
-   to save vs. not save, and how Rules 5 and 7 apply to edge cases.
-
-2. **`docs/CLAUDE_VERSIONING_GUIDE.md`** — version-bumping rules, the
-   interlock between `VERSION_SETUP_GUIDE.md` / `LOCATION_UPDATE_NOTES.md`
-   / CLAUDE.md, commit strategy for release changes, how auto-update's
-   Checkpoint A/B/C consume these docs.
-
-If you haven't read both, you're missing context needed to apply Standing
-Rules 5, 7, and 8 correctly — and you will silently break cross-location
-sync, memory propagation, or release tracking.
+1. **`docs/CLAUDE_MEMORY_GUIDE.md`** — three memory systems, sync rules, edge cases for Rules 5 & 7.
+2. **`docs/CLAUDE_VERSIONING_GUIDE.md`** — version bumping, the three release docs interlock, Checkpoint A/B/C usage, Rule 8.
 
 ---
 
@@ -302,19 +289,8 @@ logger.debug('[COMPONENT] Debug info')
 **Enhanced Logging:** `packages/logger/src/enhanced-logger.ts` - Stores logs in database for System Admin analytics
 **Component Tags:** Use `[COMPONENT]` prefix for searchable log filtering (e.g., `[CEC]`, `[MATRIX]`, `[IR]`)
 
-#### 5. Cable Box Control (IR only — CEC is deprecated)
-**The Wolf Pack HDMI matrix does NOT pass CEC signals.** All cable box control uses IR via Global Cache iTach IP2IR devices. CEC code exists in the codebase from earlier development but is non-functional at all current locations and should be removed.
-
-**Cable Box Control Method:** IR commands via Global Cache iTach IP2IR
-- Channel tuning sends learned IR codes for each digit
-- Power management via IR power toggle
-- IR codes stored in `IRCommand` table, learned via the IR Learning Panel
-
-**Important Files:**
-- `apps/web/src/components/remotes/CableBoxRemote.tsx` - Cable box remote (IR path)
-- `apps/web/src/components/BartenderRemoteSelector.tsx` - Channel preset UI
-
-**Legacy CEC code (to be removed):** `cable-box-cec-service.ts`, `cec-commands.ts`, CEC API routes, `CECCommandLog` table writes, EverPass CEC commands. These are dead code — the Wolf Pack matrix blocks CEC passthrough, and Spectrum boxes have CEC disabled in firmware.
+#### 5. Cable Box Control (IR only — CEC dead, do not extend)
+Wolf Pack matrix does NOT pass CEC + Spectrum disables CEC in firmware → all cable box control is IR via Global Cache iTach IP2IR. IR codes live in the `IRCommand` table, learned via the IR Learning Panel. UI: `apps/web/src/components/remotes/CableBoxRemote.tsx` + `BartenderRemoteSelector.tsx`. Do not add new CEC features.
 
 #### 6. Crestron Matrix Switcher Control
 **Package:** `packages/crestron/`
@@ -376,103 +352,15 @@ DUMPDMROUTEI              # Get current routing state
 **UI Location:** Device Config page → Audio Processors section
 **Component:** `apps/web/src/components/AudioProcessorManager.tsx`
 
-#### 8. Wolf Pack Multi-View Card Control (Future Implementation)
-**Purpose:** Control HDTVSupply Multi-View output cards installed in Wolf Pack matrix slots
-**Compatibility:** Wolf Pack matrices ONLY (8x8, 16x16, 36x36)
-
-**Hardware:** 4K60 Quad-View Output Card - plugs into Wolf Pack output card slots
-
-**Display Modes (8 total):**
-| Mode | Description | Hex Command Byte |
-|------|-------------|------------------|
-| 0 | Single Window | `32 00` |
-| 1 | 2-Window Split | `32 01` |
-| 2 | PIP Left Top | `32 02` |
-| 3 | PIP Right Bottom | `32 03` |
-| 4 | 3-Window (1 top, 2 bottom) | `32 04` |
-| 5 | 3-Window Alt | `32 05` |
-| 6 | 3-Window PIP x2 | `32 06` |
-| 7 | 4-Window Quad | `32 07` |
-
-**Control Protocol:**
-- RS-232 via USB adapter: 115200 baud, 8-bit, 1 stop, no parity
-- Serial port assignment: `/dev/ttyUSB0`, `/dev/ttyUSB1`, etc.
-- Commands terminate with period (`.`)
-- Response: "OK" or "ERR"
-
-**Hex Command Format:**
-```
-EB 90 00 11 00 ff 32 [mode] 00 01 02 03 00 00 00 00 00 00
-```
-
-**Configuration Requirements:**
-- **Slot Assignment:** Specify which Wolf Pack output slots (e.g., 21-24) the card occupies
-- **Serial Port:** Assign USB serial port (e.g., `/dev/ttyUSB0`) for RS-232 control
-- **Input Mapping:** Which Wolf Pack inputs feed the 4 multi-view windows
-
-**Implementation Status:** Planned - requires:
-- Database table: `WolfpackMultiViewCard` (name, startSlot, endSlot, serialPort, currentMode, inputAssignments)
-- Package: `packages/multiview/` for serial communication and mode control
-- API routes for mode switching and input assignment
-- UI component in Matrix Control page for slot/serial port configuration
-- Integration with existing Wolf Pack matrix routing display
+#### 8. Wolf Pack Multi-View Card Control
+**Package:** `packages/multiview/` (commands, serial-client, multiview-service)
+**Purpose:** Control HDTVSupply 4K60 Quad-View output cards in Wolf Pack matrix slots (8x8, 16x16, 36x36).
+**Protocol:** RS-232 via USB (115200 baud, 8N1). 8 display modes (single → quad). Hex frame: `EB 90 00 11 00 ff 32 [mode] 00 01 02 03 00 00 00 00 00 00`. Mode bytes 0-7 (single, 2-split, PIP-LT, PIP-RB, 3-win, 3-win-alt, 3-PIPx2, quad).
+**DB:** `WolfpackMultiViewCard` (name, startSlot, endSlot, serialPort, currentMode, inputAssignments).
 
 ### API Route Patterns
 
-#### Standard API Route Structure
-```typescript
-// apps/web/src/app/api/example/route.ts
-import { NextRequest, NextResponse } from 'next/server'
-import { withRateLimit } from '@/lib/rate-limiting/middleware'
-import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
-import { validateRequestBody, ValidationSchemas, z } from '@/lib/validation'
-import { logger } from '@/lib/logger'
-
-export async function POST(request: NextRequest) {
-  // 1. Rate limiting
-  const rateLimit = await withRateLimit(request, RateLimitConfigs.DEFAULT)
-  if (!rateLimit.allowed) return rateLimit.response
-
-  // 2. Input validation
-  const bodyValidation = await validateRequestBody(request, ValidationSchemas.someSchema)
-  if (!bodyValidation.success) return bodyValidation.error
-
-  // 3. Use validated data (NOT request.json())
-  const { field1, field2 } = bodyValidation.data
-
-  try {
-    // 4. Business logic
-    const result = await someService.doSomething(field1, field2)
-
-    // 5. Return response
-    return NextResponse.json({ success: true, data: result })
-  } catch (error: any) {
-    logger.error('[COMPONENT] Error:', error)
-    return NextResponse.json(
-      { success: false, error: error.message },
-      { status: 500 }
-    )
-  }
-}
-```
-
-#### GET Request Validation
-```typescript
-export async function GET(request: NextRequest) {
-  const rateLimit = await withRateLimit(request, RateLimitConfigs.DEFAULT)
-  if (!rateLimit.allowed) return rateLimit.response
-
-  // Query params validation (NOT body validation for GET)
-  const queryValidation = validateQueryParams(request, z.object({
-    page: z.coerce.number().int().min(1).optional(),
-    limit: z.coerce.number().int().min(1).max(100).optional()
-  }))
-  if (!queryValidation.success) return queryValidation.error
-
-  const { page = 1, limit = 20 } = queryValidation.data
-  // ... rest of handler
-}
-```
+Standard order: `withRateLimit` → `validateRequestBody`/`validateQueryParams` → use `bodyValidation.data` (NEVER `request.json()` after) → business logic → `NextResponse.json({success, data/error})` → catch logs `[COMPONENT]` tag. POST validates body, GET validates query params. See `apps/web/src/app/api/matrix/current-channels/route.ts` or `apps/web/src/app/api/schedules/bartender-schedule/route.ts` for canonical examples.
 
 ### Authentication System
 **Location:** `packages/auth/`
@@ -516,53 +404,16 @@ const endpoint = isCECDevice ? '/api/cec/cable-box/command' : '/api/ir-devices/s
 
 ## Common Gotchas
 
-### 1. Request Body Consumption Bug
-**Most common bug in this codebase:**
-```typescript
-// ❌ This will fail!
-const validation = await validateRequestBody(request, schema)
-const body = await request.json() // ERROR: body stream already consumed
+### 1. Body Stream Already Consumed
+`validateRequestBody()` reads the request body. Never call `request.json()` after — use `validation.data`. POST/PUT only; GET has no body, use `validateQueryParams()`.
 
-// ✅ Correct approach
-const validation = await validateRequestBody(request, schema)
-const body = validation.data
-```
+### 2. PM2 Restart vs Delete+Start
+`pm2 restart` does NOT re-read `.env` via `ecosystem.config.js` — only `delete` + `start` does. Use restart for code-only changes after rebuild; delete+start when env vars or ecosystem config changed. Force-rebuild before restarting if package-source changed: `rm -rf apps/web/.next .turbo node_modules/.cache && npx turbo run build --force` (Turbo cache misses package changes — caused the v2.11.7 routing fix to not take effect at Holmgren).
 
-### 2. GET Requests Don't Have Bodies
-```typescript
-// ❌ Wrong
-export async function GET(request: NextRequest) {
-  const bodyValidation = await validateRequestBody(request, schema) // ERROR!
-}
+### 3. Production DB Path
+Always `/home/ubuntu/sports-bar-data/production.db`. Set in `drizzle.config.ts` + env. Dev may differ.
 
-// ✅ Correct
-export async function GET(request: NextRequest) {
-  const queryValidation = validateQueryParams(request, schema)
-}
-```
-
-### 3. PM2 Requires Rebuild After Code Changes
-```bash
-# CRITICAL: Use --force to bypass Turbo cache for package changes
-rm -rf apps/web/.next .turbo node_modules/.cache
-npx turbo run build --force
-pm2 delete sports-bar-tv-controller && pm2 start ecosystem.config.js
-```
-**Why `--force`:** Turbo caches package builds. If you change code in `packages/*/src/`, plain `npm run build` may serve the old compiled version. This caused the Wolf Pack routing pre-check fix (v2.11.7) to not take effect at Holmgren Way despite correct source code.
-
-**Why `delete` + `start` instead of `restart`:** `pm2 restart` and `--update-env` do NOT re-read `.env` via `ecosystem.config.js`. Only `delete` + `start` forces PM2 to re-execute `require('dotenv').config()` and pick up new env variables like `LOCATION_ID`.
-
-### 4. Database Location Mismatch
-- Development: May use different database
-- Production: Always `/home/ubuntu/sports-bar-data/production.db`
-- Configured in: `drizzle.config.ts` and environment variables
-
-### 5. No CEC — IR Only
-- **Wolf Pack matrix does NOT pass CEC signals** — CEC cannot work at any location using the matrix
-- **All cable box control uses IR** via Global Cache iTach IP2IR
-- **CEC code is legacy dead weight** — do not add new CEC features, plan to remove existing CEC code
-
-### 5a. Matrix Config Per-Location Values (CRITICAL)
+### 4. Matrix Config Per-Location Values (CRITICAL — outputOffset)
 
 `MatrixConfiguration.outputOffset` is ADDED to every output number before
 routing commands go to the Wolf Pack. If set wrong, routing silently lands
@@ -614,14 +465,14 @@ BEFORE the first auto-update merges it into this file. When changing physical
 cabling on an existing Wolf Pack, update both the live DB value AND the row
 here.
 
-### 6. Device Data: DB is Source of Truth
+### 5. Device Data: DB is Source of Truth
 - Devices are now stored in database tables (`DirecTVDevice`, `FireTVDevice`), not JSON files
 - JSON files (`data/directv-devices.json`, `data/firetv-devices.json`) are only used for initial seeding
 - All CRUD operations go through `apps/web/src/lib/device-db.ts`
 - To re-seed from JSON: delete rows from the DB table, restart the app
 - The `@sports-bar/directv` package still reads JSON for guide fetching (known tech debt)
 
-### 7. drizzle-kit push Fails Silently on Pre-Existing Indexes
+### 6. drizzle-kit push Fails Silently on Pre-Existing Indexes
 `npx drizzle-kit push` aborts entirely when it hits an index that already exists (e.g., `ApiKey_provider_keyName_key already exists`). Any tables or columns scheduled to be created AFTER that index in the push order are silently skipped. **Always verify new columns/tables exist after push:**
 ```bash
 sqlite3 /home/ubuntu/sports-bar-data/production.db "PRAGMA table_info(TableName);"
@@ -629,17 +480,17 @@ sqlite3 /home/ubuntu/sports-bar-data/production.db ".tables"
 ```
 If a column is missing, add it manually with `ALTER TABLE ... ADD COLUMN`.
 
-### 8. Location Data Files Get Blanked on Merge from Main
+### 7. Location Data Files Get Blanked on Merge from Main
 Main has empty template JSON files (`tv-layout.json` = 61 bytes, `directv-devices.json` = 15 bytes). When merging main into a location branch, git can silently overwrite real data with these templates if there's no conflict. **After every merge from main, verify:**
 ```bash
 wc -c apps/web/data/tv-layout.json  # Must be >500 bytes at a configured location
 ```
 If blanked, restore: `git show HEAD~1:apps/web/data/tv-layout.json > apps/web/data/tv-layout.json`
 
-### 9. BartenderLayout Must Include Rooms
+### 8. BartenderLayout Must Include Rooms
 The bartender Video tab reads both `zones` and `rooms` from the `BartenderLayout` DB table (migrated from `tv-layout.json` in v2.11.0). If `rooms` is empty or the column is missing, the room filter tabs won't appear. The auto-seeder in `seed-from-json.ts` handles this for fresh installs. For existing locations, ensure the `rooms` column exists and is populated.
 
-### 10. Prime Video on Fire TV Cubes is hosted by the launcher, not a separate APK
+### 9. Prime Video on Fire TV Cubes is hosted by the launcher, not a separate APK
 On Fire TV Cube 2nd gen (model **AFTR**, Fire OS 7.7) and other PVFTV-build Cubes, **`com.amazon.avod` is NOT installed as a standalone app** — `pm list packages` will not show it. Prime Video is hosted entirely inside the Fire TV launcher (`com.amazon.firebat`). What `Settings → Applications → Manage Installed Applications` shows as "Prime Video" with version `PVFTV-215.5200-L` IS the launcher itself; Amazon brands the launcher entry as "Prime Video" in the user-facing list.
 
 **Don't waste time hunting for the AVOD package.** v2.28.8 added `com.amazon.firebat` as a `packageAlias` for the `amazon-prime` catalog entry (`packages/streaming/src/streaming-apps-database.ts`). When `streamingManager.launchApp('amazon-prime')` runs on a Cube without `com.amazon.avod`, it falls through to firebat. `adb-client.launchApp()` then resolves `cmd package resolve-activity --brief -c android.intent.category.LEANBACK_LAUNCHER com.amazon.firebat` to `com.amazon.firebat/com.amazon.firebatcore.deeplink.DeepLinkRoutingActivity`, which routes to `livingroom.landing.LandingActivity` (the Prime Video browse screen — exact same activity the home-screen tile invokes).
@@ -656,24 +507,24 @@ The same reasoning applies to **other Amazon-branded apps that may be launcher-h
 
 ### Standing Rules (MUST follow in every session)
 
-1. **Read docs before work, update docs after.** Before starting any non-trivial task, read `CLAUDE.md` and any `/docs/*.md` files relevant to the area being touched. After completing code changes, update the relevant docs — API references if routes changed, hardware guides if device config changed, CLAUDE.md if architecture/conventions changed. If you add a new feature with no matching doc, create one under `/docs/`. Never say "docs updated" unless you actually edited the file.
+1. **Read docs before work, update docs after.** Read CLAUDE.md + relevant `/docs/*.md` before non-trivial work. After code changes update matching docs (API_REFERENCE if routes changed, HARDWARE_CONFIGURATION if devices, CLAUDE.md if architecture). New feature → new doc. Never claim "docs updated" without actually editing.
 
-2. **Always commit and push after completing work.** After a unit of work is verified working (build passes, tests confirm), commit and push to GitHub automatically — do not wait for an explicit "please commit" instruction. Follow the commit strategy below (software to `main` first, then merge to location). Still confirm before destructive git operations (force push, reset, branch delete).
+2. **Commit + push after completing work.** Verified working (build passes, tests confirm) → commit + push automatically. Software-to-main first, then merge to location. Confirm before destructive git ops (force push, reset, branch delete).
 
-3. **Never break working features during cleanup.** Before deleting anything, establish positive evidence it's unused — zero callers, zero UI references, zero scheduled jobs. When in doubt, hide from UI before deleting code. Stage refactors into small verifiable steps. After each step, confirm build + PM2 restart + core flow sanity check. Never delete DB tables in the same pass as code changes.
+3. **Never break working features during cleanup.** Positive evidence of zero callers/UI refs/scheduled jobs before deleting. When in doubt hide from UI before deleting code. Stage refactors into small verifiable steps; build + PM2 restart + sanity check between each. Never delete DB tables in the same pass as code.
 
-4. **Force-rebuild when Turbo cache lies.** If `npm run build` completes in under 1 second with `FULL TURBO` and all tasks cached, the source changes did NOT get compiled. Run `npx turbo run build --force` (or `rm -rf apps/web/.next && npm run build`) to bypass the cache. This commonly happens after switching branches or cherry-picking.
+4. **Force-rebuild when Turbo cache lies.** `npm run build` finishes <1s with FULL TURBO + all cached → source did NOT compile. Use `npx turbo run build --force` (or `rm -rf apps/web/.next .turbo && npm run build`) after switching branches or cherry-picking.
 
-5. **When told to "remember" something, update CLAUDE.md too.** Save to local auto-memory AND add to the appropriate CLAUDE.md section, then commit+push with a version bump so the rule propagates to every location. **Full application details in `docs/CLAUDE_MEMORY_GUIDE.md` → "Rule 5".** This rule interacts with the three memory systems — read the guide before applying.
+5. **"Remember" → update CLAUDE.md too.** Local auto-memory + matching CLAUDE.md section + version bump + commit+push. Details: `docs/CLAUDE_MEMORY_GUIDE.md` → Rule 5.
 
-6. **Always use `scripts/auto-update.sh` for updates.** When asked to update a location or "auto update yourself", run `bash scripts/auto-update.sh --triggered-by=manual_cli`. Never manually merge main, run npm ci, or restart PM2 — the script handles conflict resolution, DB schema push, backup creation, Turbo cache busting, PM2 restart, verify-install checks, and Claude checkpoint reviews. Manual updates skip safety checks and are error-prone.
+6. **Always use `scripts/auto-update.sh`.** `bash scripts/auto-update.sh --triggered-by=manual_cli`. Never manual merge/npm ci/PM2 restart — script handles conflicts, DB schema push, backup, Turbo bust, PM2, verify, checkpoints.
 
-7. **Sync memory ↔ CLAUDE.md bidirectionally on every read.** When reading CLAUDE.md (especially at auto-update Checkpoint B), diff it against host auto-memory in BOTH directions: CLAUDE.md→memory (save missing rules locally), memory→CLAUDE.md (promote location-only knowledge to shared). **Full application details in `docs/CLAUDE_MEMORY_GUIDE.md` → "Rule 7"**, including how to handle stale entries and conflict resolution.
+7. **Sync memory ↔ CLAUDE.md bidirectionally.** At Checkpoint B + every CLAUDE.md read, diff both ways: CLAUDE.md→memory (save missing rules), memory→CLAUDE.md (promote shared knowledge). Details: `docs/CLAUDE_MEMORY_GUIDE.md` → Rule 7.
 
-8. **Read and CONTRIBUTE to `docs/VERSION_SETUP_GUIDE.md` on every update.** On auto-update, read the entry for the target version and execute its Required Manual Steps (or flag them). When bumping a version to main, write a new entry in the same commit. When fixing a location error, append to Known Errors & Fixes. **Full application details in `docs/CLAUDE_VERSIONING_GUIDE.md` → "Standing Rule 8"**, including the split between `VERSION_SETUP_GUIDE.md` (what-to-do) and `LOCATION_UPDATE_NOTES.md` (whether-to-update).
+8. **Read + CONTRIBUTE to `docs/VERSION_SETUP_GUIDE.md` every update.** At auto-update read target version's Required Manual Steps + execute (or flag). Bumping → write new entry in the same commit. Fixing location error → append to Known Errors & Fixes. Details: `docs/CLAUDE_VERSIONING_GUIDE.md` → Standing Rule 8.
 
 ### Version Bumping (REQUIRED — every commit to main)
-**Every commit pushed to `main` MUST include a version bump in root `package.json`.** Same commit or at minimum same push. Code-change-without-bump creates debugging hell when locations report matching versions for mismatched code. Minor bump for features/migrations; patch for bug fixes/docs. **Full rules in `docs/CLAUDE_VERSIONING_GUIDE.md` → "Version Bumping".**
+Every commit to `main` MUST include a `package.json` version bump (same commit or same push). Code-change-without-bump → locations report matching versions for mismatched code → undebuggable. Minor for features/migrations; patch for bug fixes/docs. Details: `docs/CLAUDE_VERSIONING_GUIDE.md`.
 
 ### Making Schema Changes
 ```bash
@@ -699,18 +550,7 @@ pm2 restart sports-bar-tv-controller
 5. Test with appropriate test file in `/tests/integration/`
 
 ### Testing Hardware Integrations
-```bash
-# Test CEC adapters
-npm run test:hardware
-
-# Test specific device type
-npm run test:api -- --testPathPattern=cec
-
-# Manual hardware testing via API
-curl -X POST http://localhost:3001/api/cec/cable-box/test \
-  -H "Content-Type: application/json" \
-  -d '{"cableBoxId": "cable-box-1", "command": "power"}'
-```
+`npm run test:hardware` (Wolf Pack/IR/CEC adapters), `npm run test:api -- --testPathPattern=<area>` for targeted route tests. Live device probes go through the existing API routes (e.g. `/api/firetv-devices/[id]/current-app`, `/api/wolfpack/route`) — don't write per-device curl examples here, they rot.
 
 ## Key Configuration Files
 
@@ -995,14 +835,13 @@ See `.claude/locations/` for per-location details (device IPs, input maps, chann
 
 - API Reference: `/docs/API_REFERENCE.md`
 - Hardware Setup: `/docs/HARDWARE_CONFIGURATION.md`
-- CEC Implementation: `/docs/CEC_CABLE_BOX_IMPLEMENTATION.md` (deprecated for Spectrum boxes)
-- CEC Deprecation: `/docs/CEC_DEPRECATION_NOTICE.md`
 - IR Learning Demo: `/docs/IR_LEARNING_DEMO_SCRIPT.md`
 - IR Emitter Placement: `/docs/IR_EMITTER_PLACEMENT_GUIDE.md`
-- CEC to IR Migration: `/docs/CEC_TO_IR_MIGRATION_GUIDE.md`
+- CEC → IR Migration (historical): `/docs/CEC_TO_IR_MIGRATION_GUIDE.md`
 - Soundtrack Integration: `/docs/SOUNDTRACK_INTEGRATION_GUIDE.md`
 - Authentication: `/docs/AUTHENTICATION_GUIDE.md`
 - Wolf Pack HTTP API: `/docs/WOLFPACK_HTTP_API_REFERENCE.md`
+- OBSBOT Tail 2 Plan: `/docs/OBSBOT_TAIL_2_PLAN.md`
 
 ## UI Styling Guide - Location Tab Style (Dark Theme)
 
