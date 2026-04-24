@@ -41,83 +41,28 @@
 
 import { db, schema, eq, and } from '@sports-bar/database'
 import { logger } from '@sports-bar/logger'
+import { getDisplayNameForPackage } from '@sports-bar/streaming'
 import { schedulerLogger } from './scheduler-logger'
 
 const API_PORT = process.env.PORT || 3001
 const SCOUT_STALE_THRESHOLD_MS = 5 * 60 * 1000 // 5 minutes
 
-// Package-name → display-name map for translating scout's package list into
-// the human-readable availableNetworks list. Mirror of the canonical mapping
-// in packages/streaming/src/streaming-apps-database.ts. Inlined here to keep
-// scheduler's dep graph minimal — if this drifts from the catalog, update
-// both. Add new entries when scout's AppDetector grows new packages.
-const PACKAGE_TO_DISPLAY_NAME: Record<string, string> = {
-  // Live TV
-  'com.google.android.youtube.tvunplugged': 'YouTube TV',
-  'com.google.android.apps.youtube.unplugged': 'YouTube TV',
-  'com.fubo.firetv.screen': 'fuboTV',
-  'com.fubotv.android': 'fuboTV',
-  'com.sling': 'Sling TV',
-  'com.sling.livingroom': 'Sling TV',
-
-  // YouTube (free)
-  'com.amazon.firetv.youtube': 'YouTube',
-  'com.amazon.firetv.youtube.tv': 'YouTube',
-  'com.google.android.youtube.tv': 'YouTube',
-
-  // Sports
-  'com.espn.score_center': 'ESPN+',
-  'com.espn.gtv': 'ESPN',
-  'com.espn': 'ESPN',
-  'com.foxsports.android': 'Fox Sports',
-  'com.foxsports.android.foxsportsgo': 'Fox Sports',
-  'com.foxsports.bigten.android': 'Big Ten+',
-  'com.dazn': 'DAZN',
-  'com.flosports.signal.tv': 'FloSports',
-  'com.flosports.apps.android': 'FloSports',
-  'com.bfrapp': 'Bally Sports',
-  'com.ballysports.ftv': 'Bally Sports',
-  'com.btn2go': 'BTN2Go',
-  'com.nfl.fantasy': 'NFL',
-  'com.nfl.app.android': 'NFL',
-  'com.nba.app': 'NBA',
-  'com.nba.leaguepass': 'NBA League Pass',
-  'com.nbaimd.gametime.nba2011': 'NBA League Pass',
-  'com.mlb.android': 'MLB.TV',
-  'com.mlb.atbat': 'MLB.TV',
-  'com.bamnetworks.mobile.android.gameday.atbat': 'MLB.TV',
-  'com.nhl.gc': 'NHL',
-  'com.nhl.gc1415': 'NHL',
-  'com.nfhsnetwork.ui': 'NFHS Network',
-  'com.nfhsnetwork.app': 'NFHS Network',
-  'com.playon.nfhslive': 'NFHS Network',
-  'com.nwlplus.app': 'NWSL+',
-
-  // Streaming
-  'com.peacocktv.peacockandroid': 'Peacock',
-  'com.peacock.peacockfiretv': 'Peacock',
-  'com.cbs.ott': 'Paramount+',
-  'com.cbs.app': 'Paramount+',
-  'com.apple.atve.amazon.appletv': 'Apple TV+',
-  'com.apple.atve.androidtv.appletv': 'Apple TV+',
-  'com.amazon.avod': 'Prime Video',
-  'com.amazon.avod.thirdpartyclient': 'Prime Video',
-  'com.amazon.firebat': 'Prime Video', // launcher-hosted on AFTR Cubes — see CLAUDE.md #10
-  'com.netflix.ninja': 'Netflix',
-  'com.netflix.mediaclient': 'Netflix',
-  'com.hulu.plus': 'Hulu',
-  'com.hulu.livingroomplus': 'Hulu',
-  'com.wbd.stream': 'Max',
-  'com.disney.disneyplus': 'Disney+',
-  'tv.pluto.android': 'Pluto TV',
-  'com.tubitv.ott': 'Tubi',
-}
+// v2.32.9 — Package → display-name lookup is now centralized in
+// @sports-bar/streaming via the catalog's packageName + packageAliases
+// fields. The previous inline PACKAGE_TO_DISPLAY_NAME map (~75 entries)
+// drifted from the catalog over time — adding a new app to the catalog
+// without updating this map silently dropped it from
+// input_sources.available_networks. Single source of truth fixes it.
+//
+// One special case the catalog DOES carry: com.amazon.firebat as a
+// packageAlias for amazon-prime (CLAUDE.md gotcha #10 — Cube launcher
+// hosts Prime Video).
 
 function packagesToDisplayNames(packageNames: string[]): string[] {
   const seen = new Set<string>()
   const out: string[] = []
   for (const pkg of packageNames) {
-    const display = PACKAGE_TO_DISPLAY_NAME[pkg]
+    const display = getDisplayNameForPackage(pkg)
     if (display && !seen.has(display)) {
       seen.add(display)
       out.push(display)
@@ -238,7 +183,8 @@ export async function runFiretvAppSyncSweep(): Promise<FiretvAppSyncStats> {
         // Back-fill launcher-hosted Prime Video on AFTR Cubes (CLAUDE.md #10).
         // Only probe if Prime Video isn't already in scout's list — the
         // direct ADB call costs ~50ms so we avoid it when not needed.
-        const hasPrimeAlready = scoutPackages.some((p) => PACKAGE_TO_DISPLAY_NAME[p] === 'Prime Video')
+        // v2.32.9 — uses shared catalog lookup instead of inline map.
+        const hasPrimeAlready = scoutPackages.some((p) => getDisplayNameForPackage(p) === 'Prime Video')
         if (!hasPrimeAlready) {
           const firebatPresent = await probeFirebatPresent(input.deviceId)
           if (firebatPresent === true && !scoutPackages.includes('com.amazon.firebat')) {

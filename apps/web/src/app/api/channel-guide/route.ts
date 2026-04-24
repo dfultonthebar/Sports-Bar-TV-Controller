@@ -23,55 +23,14 @@ import {
   getStreamingAppInfoForStation,
   normalizeStation,
 } from '@/lib/network-channel-resolver'
-import { STREAMING_APPS_DATABASE } from '@/lib/streaming/streaming-apps-database'
-
-// v2.31.3 — Map any display name we might see (from scout, from the
-// network-channel-resolver, from a UI label) to a streaming-apps-database
-// catalog id. Keeps the lookup robust against the cosmetic name drift
-// between sources ("Prime Video" vs "Amazon Prime Video", "ESPN" vs "ESPN+",
-// etc.). Add new aliases here as new app sources are wired in.
-const DISPLAY_NAME_TO_CATALOG_ID: Record<string, string> = {
-  'prime video': 'amazon-prime',
-  'amazon prime video': 'amazon-prime',
-  'amazon prime': 'amazon-prime',
-  'amazon-prime': 'amazon-prime',
-  'espn': 'espn-plus',
-  'espn+': 'espn-plus',
-  'espn plus': 'espn-plus',
-  'peacock': 'peacock',
-  'paramount': 'paramount-plus',
-  'paramount+': 'paramount-plus',
-  'apple tv': 'apple-tv',
-  'apple tv+': 'apple-tv',
-  'hulu': 'hulu-live',
-  'hulu live': 'hulu-live',
-  'fubotv': 'fubo-tv',
-  'fubo': 'fubo-tv',
-  'youtube tv': 'youtube-tv',
-  'youtube': 'youtube-tv',
-  'netflix': 'netflix',
-  'mlb.tv': 'mlb-tv',
-  'mlb tv': 'mlb-tv',
-  'nhl': 'nhl-tv',
-  'nba league pass': 'nba-league-pass',
-  'fox sports': 'fox-sports',
-  'nbc sports': 'nbc-sports',
-  'sling tv': 'sling-tv',
-  'sling': 'sling-tv',
-  'dazn': 'dazn',
-  'nfhs network': 'nfhs-network',
-  'nfhs': 'nfhs-network',
-}
-
-function findStreamingAppByDisplayName(name: string | undefined | null) {
-  if (!name) return undefined
-  const id = DISPLAY_NAME_TO_CATALOG_ID[name.toLowerCase().trim()]
-  if (id) return STREAMING_APPS_DATABASE.find((a) => a.id === id)
-  // Last-resort exact name match (catalog entries that haven't been aliased yet)
-  return STREAMING_APPS_DATABASE.find(
-    (a) => a.name === name || a.name.toLowerCase() === name.toLowerCase()
-  )
-}
+// v2.32.9 — display-name lookup is now centralized in
+// @sports-bar/streaming via the displayNameAliases field on each
+// catalog entry. The previous inline DISPLAY_NAME_TO_CATALOG_ID +
+// findStreamingAppByDisplayName here (added v2.31.3) was a cosmetic-
+// drift footgun: a new app added to the catalog without also being
+// added to this local map silently failed to resolve. Single source
+// of truth fixes it.
+import { findStreamingAppByDisplayName } from '@/lib/streaming/streaming-apps-database'
 
 // v2.31.7 — Shared streaming channel builder. Both injection paths
 // (broadcast_networks fallback + per-box catalog injection) construct the

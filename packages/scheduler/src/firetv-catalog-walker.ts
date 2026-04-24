@@ -148,6 +148,17 @@ function inferSportTag(title: string, contextSportRow: string | null): string | 
   const lower = title.toLowerCase()
   if (contextSportRow) {
     const rl = contextSportRow.toLowerCase()
+    // v2.32.9 — Order matters: check 'ncaa'/'college' BEFORE NFL, because
+    // "NCAA Football" matched /nfl|football/ and tagged College GameDay
+    // (clearly a college show) as NFL. Check the more specific labels
+    // first.
+    if (/college|ncaa/.test(rl)) {
+      if (/football/.test(rl)) return 'college-football'
+      if (/basketball|hoops/.test(rl)) return 'college-basketball'
+      if (/baseball/.test(rl)) return 'college-baseball'
+      if (/hockey/.test(rl)) return 'college-hockey'
+      return 'college-sports'
+    }
     if (/nba|playoffs|basketball/.test(rl)) return 'NBA'
     if (/nfl|football/.test(rl)) return 'NFL'
     if (/mlb|baseball/.test(rl)) return 'MLB'
@@ -158,6 +169,10 @@ function inferSportTag(title: string, contextSportRow: string | null): string | 
     if (/golf|pga|lpga/.test(rl)) return 'golf'
     if (/ufc|mma|boxing/.test(rl)) return 'mma'
     if (/f1|nascar|indycar|motorsport/.test(rl)) return 'motorsport'
+    if (/volleyball/.test(rl)) return 'volleyball'
+    if (/lacrosse/.test(rl)) return 'lacrosse'
+    if (/wrestling/.test(rl)) return 'wrestling'
+    if (/rugby/.test(rl)) return 'rugby'
   }
   if (/\bnba\b/.test(lower)) return 'NBA'
   if (/\bnfl\b/.test(lower)) return 'NFL'
@@ -171,6 +186,11 @@ function inferSportTag(title: string, contextSportRow: string | null): string | 
   if (/squash|grasshopper cup/.test(lower)) return 'squash'
   if (/\bchess\b/.test(lower)) return 'chess'
   if (/\brace(s)?\b|day at the races|horse|kentucky derby|breeders/.test(lower)) return 'horse-racing'
+  // v2.32.9 — beach volleyball + indoor volleyball misses (Sun Belt /
+  // OVC women's beach volleyball was untagged in the v2.31.6 walks)
+  if (/volleyball/.test(lower)) return 'volleyball'
+  if (/lacrosse/.test(lower)) return 'lacrosse'
+  if (/wrestling/.test(lower)) return 'wrestling'
   // v2.31.5 — soccer recognition for Saudi Pro League fixtures Prime
   // Video carries (Al-team-name vs Al-team-name pattern is distinctive).
   if (/^al |\bvs\.?\s+al /i.test(lower) || /\bsaudi\b|\bspl\b/i.test(lower)) return 'soccer'
