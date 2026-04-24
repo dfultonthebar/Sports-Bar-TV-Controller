@@ -82,9 +82,17 @@ async function fetchUpcomingGames(): Promise<GameListing[]> {
     const nowUnix = Math.floor(Date.now() / 1000)
     const twelveHoursLater = nowUnix + 12 * 60 * 60
 
+    // v2.32.0 — Same fix as channel-guide v2.28.2: an in-progress game whose
+    // scheduled_start is in the past should still surface in AI Suggest's
+    // window. Without this catch-all, a long broadcast (NFL Draft Day 1 runs
+    // 7-11pm CT — 4 hours; tonight's Brewers game starts 7pm and runs to 10)
+    // disappears from suggestions the moment "now" passes scheduled_start
+    // even though the game is still airing for hours. Use the same overlap
+    // semantics: include any game whose start is in the future-12h window
+    // OR whose status='in_progress' (set by ESPN sync when the game is live).
     const rows = await db.select().from(schema.gameSchedules).where(
       and(
-        gte(schema.gameSchedules.scheduledStart, nowUnix),
+        sql`(${schema.gameSchedules.scheduledStart} >= ${nowUnix} OR ${schema.gameSchedules.status} = 'in_progress')`,
         sql`${schema.gameSchedules.scheduledStart} <= ${twelveHoursLater}`,
         sql`${schema.gameSchedules.status} != 'completed'`,
       )
