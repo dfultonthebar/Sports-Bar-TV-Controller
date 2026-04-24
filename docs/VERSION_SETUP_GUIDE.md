@@ -187,6 +187,45 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.22 — CLAUDE.md deep simplify (961 → 729 lines)
+**Released:** 2026-04-24
+
+Second simplify pass. Cumulative 1122 → 729 (-35%). Extracted three
+sections to satellite docs/files; preserved all rules + behavior.
+
+**Extracted:**
+- §Key Package @sports-bar/config (28 lines) → `packages/config/README.md` (new)
+- §10 Holmgren Way Hardware (24 lines) → `.claude/locations/holmgren-way.md` (new). Per-location IPs were stale (192.168.4.x; actual is 10.11.3.x); new file pulls live IPs from DB.
+- UI Styling Guide (103 lines) → `docs/UI_STYLING.md` (new). Tagged "recommended pattern, not hard rule" to match reality.
+
+**Compressed in-place:**
+- V2 Monorepo Architecture: dropped the inline 26-line package tree (operators run `ls packages/` for the live list).
+- §8a Sports Guide Phase A/B/C/D narrative (15 lines → 1 paragraph). Consolidation is complete; phases are history.
+- §9 AI Scheduling: dropped "prior to vX.Y.Z" historical prose, kept current behavior (~30 lines saved).
+
+**New satellite files:**
+- `.claude/locations/holmgren-way.md` — DB-sourced hardware reference for Holmgren.
+- `packages/config/README.md` — full @sports-bar/config API + ConfigChangeTracker.
+- `docs/UI_STYLING.md` — dark theme styling guide.
+
+**Required Manual Step:** None. Pure docs reorganization.
+
+**Verification:**
+
+```bash
+wc -l /home/ubuntu/Sports-Bar-TV-Controller/CLAUDE.md
+# Expect: 729
+
+ls /home/ubuntu/Sports-Bar-TV-Controller/.claude/locations/holmgren-way.md \
+   /home/ubuntu/Sports-Bar-TV-Controller/packages/config/README.md \
+   /home/ubuntu/Sports-Bar-TV-Controller/docs/UI_STYLING.md
+# Expect: all 3 files present
+```
+
+**Rollback:** `git revert` is clean.
+
+---
+
 ### v2.32.21 — CLAUDE.md simplify pass (1122 → 961 lines)
 **Released:** 2026-04-24
 

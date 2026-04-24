@@ -15,82 +15,11 @@ Standing Rules 5, 7, and 8 below are SUMMARIES. Full application lives in:
 
 ## V2 Monorepo Architecture
 
-This project uses **Turborepo** with npm workspaces. The codebase is organized as:
+Turborepo + npm workspaces. `apps/web/` (Next.js 16) consumes `packages/*` (37 shared packages — `ls packages/` for the live list). Hardware control packages are named after the device family they wrap: `atlas`, `wolfpack`, `crestron`, `bss-blu`, `dbx-zonepro`, `directv`, `firecube`, `ir-control`, `multiview`. Cross-cutting packages: `auth`, `cache-manager`, `circuit-breaker`, `config`, `database`, `logger`, `rate-limiting`, `streaming`, `tv-guide`, `sports-apis`, `validation`, `ui-utils`, `utils`.
 
-```
-/
-├── apps/
-│   └── web/              # Next.js 16 application (main app)
-├── packages/             # 36+ shared packages
-│   ├── atlas/           # AtlasIED audio processor control
-│   ├── auth/            # Authentication utilities
-│   ├── bss-blu/         # BSS Soundweb London BLU audio processors (HiQnet)
-│   ├── cache-manager/   # Caching with TTL support
-│   ├── circuit-breaker/ # Opossum circuit breaker wrapper
-│   ├── config/          # Shared configuration (validation, rate limits, config tracking)
-│   ├── crestron/        # Crestron DM matrix switcher control (Telnet/CIP)
-│   ├── data/            # Static data files
-│   ├── database/        # Drizzle ORM database layer
-│   ├── dbx-zonepro/     # dbx ZonePRO audio processors (RS-232/TCP)
-│   ├── directv/         # DirecTV IP control
-│   ├── firecube/        # Amazon Fire TV/Cube ADB control
-│   ├── ir-control/      # Global Cache IR blaster control
-│   ├── logger/          # Structured logging
-│   ├── rate-limiting/   # API rate limiting
-│   ├── soundtrack/      # Soundtrack Your Brand API
-│   ├── sports-apis/     # ESPN, NFL, etc. API clients
-│   ├── streaming/       # Streaming platform integrations
-│   ├── tv-guide/        # TV guide services (Gracenote, Spectrum)
-│   ├── ui-utils/        # Tailwind CSS utilities (cn function)
-│   ├── utils/           # Shared utilities
-│   ├── validation/      # Zod schemas and validators
-│   └── wolfpack/        # Atlas Wolf Pack matrix control
-└── turbo.json           # Turborepo configuration
-```
+**Import convention:** `@sports-bar/<package>` (e.g. `import { logger } from '@sports-bar/logger'`).
 
-**Import Convention:** Use `@sports-bar/<package>` for shared packages:
-```typescript
-import { logger } from '@sports-bar/logger'
-import { cn } from '@sports-bar/ui-utils'
-import { wolfpackService } from '@sports-bar/wolfpack'
-```
-
-### Key Package: @sports-bar/config
-
-**Location:** `packages/config/`
-**Purpose:** Centralized configuration management, validation schemas, rate limiting policies, and configuration change tracking.
-
-**Exports:**
-```typescript
-// Validation schemas (re-exported from @sports-bar/validation)
-import { z, uuidSchema, deviceIdSchema } from '@sports-bar/config/validation'
-
-// Rate limiting policies
-import { RATE_LIMIT_POLICIES, getRateLimitForEndpoint } from '@sports-bar/config'
-
-// Fire TV configuration
-import { getFireTVConfig, calculateBackoffDelay } from '@sports-bar/config'
-
-// Configuration change tracking
-import {
-  ConfigChangeTracker,
-  createConfigChangeTracker,
-  type ConfigChangeEvent
-} from '@sports-bar/config'
-```
-
-**ConfigChangeTracker:**
-- Monitors configuration files for changes using file system watchers
-- Calculates checksums to detect modifications
-- Integrates with auto-sync system for GitHub commits
-- Uses dependency injection pattern for logger and HTTP client
-- Framework-agnostic implementation (no Next.js dependencies)
-
-**Bridge Pattern:** Apps use bridge files (`apps/web/src/lib/config-change-tracker.ts`) that:
-1. Import the core implementation from `@sports-bar/config`
-2. Provide app-specific adapters (logger, auto-sync client)
-3. Export a configured singleton instance
-4. Maintain backward compatibility with existing imports
+**Notable:** `@sports-bar/config` centralizes validation schemas, rate-limit policies, Fire TV config, and `ConfigChangeTracker`. Apps use bridge files (e.g. `apps/web/src/lib/config-change-tracker.ts`) to inject app-specific adapters. Full API: `packages/config/README.md`.
 
 ## Build & Development Commands
 
@@ -653,89 +582,30 @@ const result = await queryDocs({
 
 **Spectrum Cable Box Note:** Spectrum/Charter disables CEC in firmware. IR learning is the ONLY way to control Spectrum boxes.
 
-#### 8a. Sports Guide Admin Consolidation (v2.4.0, April 2026)
-
-The admin UI for Sports Guide, Smart Scheduler, and AI Game Plan is being consolidated into a single `/sports-guide-admin` page with 8 tabs (Guide, Games, Schedule, Home Teams, Channels, Providers, Configuration, Logs). The bartender remote at `/remote` is **not** affected. See `docs/SPORTS_GUIDE_ADMIN_CONSOLIDATION.md` for the full plan and per-item disposition.
-
-**Phase A completed in v2.4.0** — dead-weight cleanup. 16 unused API routes deleted, 7 orphaned components/pages deleted, 1 stale bootstrap script deleted, broken `/scheduler` nav link fixed to point at `/scheduling`, Leagues tab hidden in `/sports-guide-config`. Net change: 4,961 lines deleted, 12 added, zero regressions.
-
-**Deleted routes** (never reintroduce these unless designing something new): `/api/scheduler/{status,manage,settings,system-state,test-match,distribution-plan}`, `/api/schedules/{logs,by-game}`, `/api/scheduling/{analyze,auto-reallocate}`, `/api/sports-guide/{test-providers,current-time,channels,ollama/query,scheduled}`, `/api/channel-presets/statistics`.
-
-**Kept despite zero UI callers** (internal cron callers in `packages/scheduler/src/scheduler-service.ts`): `/api/sports-guide/cleanup-old` (line 516), `/api/scheduling/live-status` (line 885). Do not delete these without updating the caller.
-
-**Phase B completed in v2.4.0** — new `/sports-guide-admin` page with 8 tabs wrapping existing components. Old pages still live on disk unchanged.
-
-**Phase C completed in v2.4.1** — navigation consolidated to a single "Sports Guide" entry pointing at `/sports-guide-admin`. Next.js `redirects()` forward `/sports-guide`, `/sports-guide-config`, `/ai-gameplan`, `/scheduling` to the corresponding tabs (307 temporary redirects). Admin page honors `?tab=` query param for deep links. Dashboard home card updated.
-
-**Phase D completed in v2.4.4** — old page files deleted (`/sports-guide`, `/sports-guide-config`, `/ai-gameplan`, `/scheduling`), the orphaned `LegacySchedulingManager.tsx` (1,314 unused lines) removed, and the `/system-admin` Scheduler tab deleted. Old URLs still work as bookmarks because the Next.js `redirects()` rules in `next.config.js` are preserved — they fire before page resolution. **Consolidation is now complete.**
+#### 8a. Sports Guide Admin Consolidation
+Consolidation complete (v2.4.0–v2.4.4). All admin UI lives at `/sports-guide-admin` with 8 tabs. Old URLs (`/sports-guide`, `/sports-guide-config`, `/ai-gameplan`, `/scheduling`) redirect via `next.config.js`. Bartender remote `/remote` is unaffected. **Do not reintroduce** the deleted API routes (full list in `docs/SPORTS_GUIDE_ADMIN_CONSOLIDATION.md`). Two routes look orphaned but ARE called by internal cron in `packages/scheduler/src/scheduler-service.ts` — keep: `/api/sports-guide/cleanup-old` and `/api/scheduling/live-status`.
 
 #### 9. AI Scheduling Intelligence
-**Purpose:** Smart scheduling recommendations using pattern analysis and local AI (Ollama)
+**Components:** `pattern-analyzer.ts` (historical viewing → optimal channel assignment), `ai-suggest/route.ts` (Ollama llama3.1:8b, 90s timeout), per-location scheduling preferences, default source config, DJ mode (locks TVs during special events).
+**API:** `GET/POST /api/scheduling/preferences`, `GET /api/scheduling/suggestions`, `POST /api/scheduling/apply`.
 
-**Key Components:**
-- **Pattern Analyzer** (`packages/scheduler/src/pattern-analyzer.ts`) - Analyzes historical viewing patterns to predict optimal channel assignments
-- **AI Suggestions** (`apps/web/src/app/api/scheduling/ai-suggest/route.ts`) - Uses Ollama LLM (llama3.1:8b, 90s timeout) to generate scheduling recommendations
-- **Scheduling Preferences** - Per-location configuration for preferred sports, channels, and time slots
-- **Default Source Configuration** - Fallback source assignments for TVs when no scheduled content is active
-- **DJ Mode Control** - Override mode that locks TV assignments for special events, preventing automatic scheduling changes
+**ESPN sync** runs from `apps/web/src/instrumentation.ts` on startup (30s delay) + every 60min. Covers MLB/NBA/NHL/NFL/CFB/MCBB/WCBB → `game_schedules` table (lowercase league labels). AI Game Monitor's `Schedule` row auto-creates on first use; populate `HomeTeam` table for home-team prioritization (Packers/Bucks/Brewers/Badgers).
 
-**API Endpoints:**
-- `GET/POST /api/scheduling/preferences` - Manage scheduling preferences
-- `GET /api/scheduling/suggestions` - Get AI-powered scheduling suggestions
-- `POST /api/scheduling/apply` - Apply a scheduling suggestion
+**bartender-schedule POST** accepts optional `tvOutputIds: number[]`. Guide tab flow creates allocation then PATCHes; AI-suggest approve sends inline. Lookup: `homeTeamName + awayTeamName + ±1hr window` (special-event fallback when client sends `awayTeam="Unknown"` or `""` v2.32.11). Fails 404 with a sync-pointer message if no match.
 
-**AI Game Monitor Schedule (auto-created):** The AI Auto Pilot feature (`GET /api/schedules/ai-game-plan`) requires a row in the `Schedule` table with `scheduleType='continuous'`. As of v2.3.0, this row is **auto-created on first use** if missing — no manual setup required. The auto-create looks up home team IDs from the `HomeTeam` table by case-insensitive name match for Packers/Bucks/Brewers/Badgers. If `HomeTeam` is empty, the row is still created but with `homeTeamIds: "[]"` and Auto Pilot runs without home-team prioritization. Populate the `HomeTeam` table to enable prioritization. See `docs/SCHEDULER_FIXES_APRIL_2026.md` for full details.
+**Channel Guide fallback (v2.3.0+):** Rail Media misses regional games (e.g., Brewers on Brewers.TV). After the Rail loop, `POST /api/channel-guide` queries `game_schedules` in the same window and injects any whose `broadcast_networks` resolve to a preset via `stationToPreset` (+ station-alias fallback). Dedup vs Rail by channel + team. `normalizeStation` strips `HD`/`NETWORK`/`CHANNEL`/`-TV` + spaces + dashes — new aliases must normalize to the target preset name.
 
-**ESPN Sync (automatic):** As of v2.3.0, ESPN game data is synced automatically on startup (30s after Next.js boot) and then every 60 minutes. This is wired into `apps/web/src/instrumentation.ts` via `espnSyncService.syncLeague()` from `@sports-bar/scheduler`, covering MLB, NBA, NHL, NFL, college football, men's college basketball, and women's college basketball. Data lands in the `game_schedules` table with lowercase league labels (e.g. `"mlb"`, `"nba"`). Prior to this fix, the sync existed but was never invoked — new installations had empty `game_schedules` until someone manually hit `POST /api/scheduling/sync`.
+**WI RSN split (CRITICAL):** `Channel 40` = `FanDuelWI` (Bucks + general WI; ESPN code `FSWI`). `Channel 308` = `BallyWIPlus` (Brewers-only; ESPN tag `Brewers.TV`). Never combine alias bundles or Bucks games route wrong. Canonical lists in `apps/web/src/lib/seed-from-json.ts`.
 
-**Bartender-Schedule POST — tvOutputIds handling:** `POST /api/schedules/bartender-schedule` accepts `tvOutputIds: number[]` in the body (the matrix output channel numbers the bartender is assigning). This field is **optional** — the bartender-remote Guide tab flow creates the allocation without it and then PATCHes outputs from a prior allocation on the same device. The AI-suggestion approve flow sends outputs inline. Prior to v2.3.0 this field was silently dropped entirely and the insert hardcoded `JSON.stringify([])`, which broke the downstream allocator and auto-revert flows. If the team-name + start-time lookup against `game_schedules` fails, the route now returns 404 with a clear message pointing at the sync as the likely cause.
-
-**Channel Guide fallback to game_schedules:** `POST /api/channel-guide` (used by the bartender remote's Guide tab) is primarily backed by The Rail Media API (`guide.thedailyrail.com`), which only covers nationally-televised games and a subset of RSN broadcasts — it misses many regional games (e.g., the Brewers game on Brewers.TV when Rail doesn't include it). As of v2.3.0, after the Rail Media loop the route queries our local `game_schedules` table for games in the same time window and injects any whose `broadcast_networks` array resolves to a user preset via the `stationToPreset` lookup (with station-alias fallback). Deduped against Rail programs by channel + team matchup. See `docs/SCHEDULER_FIXES_APRIL_2026.md` section 5 for details.
-
-**Station alias conventions for Wisconsin RSNs:** Green Bay area Spectrum cable has TWO Wisconsin RSN channels that must be kept separate:
-- **Channel 40** ("Fan Duel" preset) — main WI RSN, carries Bucks and general WI sports. ESPN and The Rail Media use station code `FSWI`. Aliases live under the `FanDuelWI` standard_name in the `station_aliases` table.
-- **Channel 308** ("Bally Sports WI" preset) — **Brewers-only** overflow feed. ESPN tags these broadcasts as `Brewers.TV`. Aliases live under the `BallyWIPlus` standard_name.
-
-Never combine them into a single alias bundle or Bucks games will wrongly route to 308. See `apps/web/src/lib/seed-from-json.ts` for the canonical alias lists that seed new installations.
-
-**channel_guide normalizeStation:** The helper strips `HD`, `NETWORK`, `CHANNEL`, and `-TV` suffixes, and removes spaces and dashes, before matching. If adding new alias entries, ensure at least one alias in the list normalizes to the target preset's name (also normalized) so the preset-build loop can link the alias to the preset.
-
-**Override-learn hook (v2.18.0):** When a bartender issues a manual matrix route (`POST /api/matrix/route` with `source='bartender'`) within 10 minutes of an active/pending `input_source_allocation` being created, the route handler patches that allocation's `tv_output_ids` to reflect the bartender's correction. Logic: if the new `inputNum` matches the allocation's mapped input → add `outputNum` to the list; if `outputNum` was in the list but the new input is different → remove it. Every patch writes a `SchedulerLog` row with `component='override-learn'`, operation `add`/`remove`, and full metadata (prev/new outputs, team, league, `isHomeTeam`). Home-team overrides (teams matched against the `HomeTeam` table — Brewers, Bucks, Badgers, etc.) log at `level='warn'` so operators can filter the strongest signals. Why it matters: `pattern-analyzer.ts` reads `tv_output_ids` hourly to build team-routing patterns. Since bartenders often know the room's sight-lines better than the original scheduler, their corrections within the first 10 min of a tune are the highest-quality training signal we have. Manual changes made after the 10-minute window are treated as unrelated decisions and are not learned from.
+**Override-learn (v2.18.0):** Manual `/api/matrix/route` with `source='bartender'` within 10min of an alloc → patches alloc's `tv_output_ids` (add if input matches, remove if input differs). SchedulerLog row written with `component='override-learn'`, op `add|remove`, metadata (team/league/isHomeTeam/prev/new). Home-team overrides log at `level='warn'`. `pattern-analyzer.ts` reads these hourly. After 10min window the bartender's change is treated as unrelated, not learned.
 
 #### 9a. Live Channel Mapping (Network → Channel)
-**Purpose:** Map ESPN broadcast network names to local channel numbers for live game display
+`apps/web/src/app/api/sports-guide/live-by-channel/route.ts` holds `NETWORK_TO_CABLE` + `NETWORK_TO_DIRECTV` dicts mapping ESPN broadcast names (e.g. `"FanDuel SN WI"`, `"Brewers.TV"`) → local channel numbers. When a game doesn't appear in live games, capture ESPN's exact network string + add ALL variants to both dicts.
 
-**Location:** `apps/web/src/app/api/sports-guide/live-by-channel/route.ts`
+#### 10. Per-location hardware references
+Hardware IPs/ports/quirks live per-location in `.claude/locations/<branch>.md` (e.g. `holmgren-way.md`, `graystone.md`, `lucky-s.md`). DB is the source of truth; those files are quick references for operators + Claude. Do NOT put per-location IPs in this file — they drift across locations and pollute the shared template.
 
-**How it works:** ESPN API returns broadcast info like `"FanDuel SN WI"` or `"Bucks.TV"`. The `NETWORK_TO_CABLE` and `NETWORK_TO_DIRECTV` dictionaries map these to local channel numbers so games appear in the bartender's live games section.
-
-**Adding New Mappings:** When a game doesn't appear in live games, check the ESPN API response for the exact network name, then add it to both mapping dictionaries in `live-by-channel/route.ts`.
-
-**Common Mapping Issues:** ESPN uses different names than expected (e.g., `"FanDuel SN WI"` instead of `"Bally Sports Wisconsin"`). Add ALL known variants for each regional sports network.
-
-#### 10. Holmgren Way Hardware Configuration
-**Location:** Holmgren Way sports bar (current active installation)
-
-**Source Devices (13 total):**
-- **4 Spectrum Cable Boxes** - IR control via Global Cache iTach IP2IR at 192.168.4.40 (ports 1-2) and 192.168.4.41 (ports 1-2)
-- **6 DirecTV Receivers** - IP control at 192.168.4.42 through 192.168.4.47, port 8080
-- **3 Fire TV Cubes** - ADB control at 192.168.4.49, .50, .51, port 5555
-- **1 Atmosphere TV** - ADB control at 192.168.4.48, port 5555
-
-**Display Devices:**
-- **24 Samsung TVs** - 192.168.4.1 through 192.168.4.27 (Samsung SmartThings/WoL)
-- **1 VAVA Projector** - 192.168.4.15 (CAUTION: power off/sleep kills NIC, power off is blocked)
-- **1 Epson Projector** - 192.168.4.14
-
-**Audio & Lighting:**
-- **AtlasIED AZM8 Audio Processor** - 192.168.4.246, TCP port 5321
-- **PKnight CR011R ArtNet DMX Controller** - 192.168.4.240, universe 1
-
-**Matrix Switching:**
-- **Wolf Pack 48-port HDMI Matrix** - Outputs 37-40 are audio outputs (not video displays)
-
-**IR Port Adjustment (CRITICAL):**
-All learned IR codes have `sendir,1:1,...` hardcoded (port 1 on module 1). When sending commands, the system must replace the port address with the device's configured `globalCachePortNumber` before transmission. For multi-port Global Cache devices (iTach with 3 IR ports), sending to the wrong port means the wrong emitter fires.
+**IR port adjustment (applies everywhere):** Learned IR codes have `sendir,1:1,...` hardcoded. The runtime substitutes the device's `globalCachePortNumber` before transmission. For multi-port iTach devices, port assignment matters or the wrong emitter fires.
 
 ## Multi-Location Deployment
 
@@ -842,109 +712,7 @@ See `.claude/locations/` for per-location details (device IPs, input maps, chann
 - Authentication: `/docs/AUTHENTICATION_GUIDE.md`
 - Wolf Pack HTTP API: `/docs/WOLFPACK_HTTP_API_REFERENCE.md`
 - OBSBOT Tail 2 Plan: `/docs/OBSBOT_TAIL_2_PLAN.md`
-
-## UI Styling Guide - Location Tab Style (Dark Theme)
-
-When creating new dashboard components, follow the **Location tab** styling patterns. This approach uses bordered divs with dark backgrounds throughout - **no white backgrounds or Card components**.
-
-### Core Principles
-- **NO Card components** - Use bordered divs instead
-- **NO white backgrounds** - All backgrounds are dark slate variants
-- **Consistent borders** - Use `border-slate-700` for sections
-- **Semi-transparent backgrounds** - Use opacity modifiers like `bg-slate-800/50`
-
-### Section Container Pattern
-```tsx
-// Main section wrapper - matching Location tab style
-<div className="rounded-lg border border-slate-700 p-6">
-  <h3 className="text-lg font-semibold text-white flex items-center gap-2 mb-4">
-    <IconName className="h-5 w-5 text-blue-400" />
-    Section Title
-  </h3>
-  {/* Content */}
-</div>
-```
-
-### Summary Stats Pattern
-```tsx
-// Stats row with dark backgrounds
-<div className="grid grid-cols-4 gap-4 mb-6">
-  <div className="rounded-lg bg-slate-800/50 p-4 flex items-center gap-3">
-    <IconName className="h-8 w-8 text-blue-400" />
-    <div>
-      <p className="text-xs text-slate-400">Label</p>
-      <p className="text-2xl font-bold text-white">Value</p>
-    </div>
-  </div>
-</div>
-```
-
-### Form Inputs Pattern
-```tsx
-// Select dropdowns
-<SelectTrigger className="bg-slate-800 border-slate-600">
-
-// Text inputs
-<Input className="bg-slate-800 border-slate-600" placeholder="..." />
-
-// Buttons
-<Button variant="outline" className="border-slate-600 hover:bg-slate-700">
-```
-
-### Color-Coded Badges
-```tsx
-const COMPONENT_COLORS: Record<string, string> = {
-  'scheduler-service': 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-  'auto-reallocator': 'bg-purple-500/20 text-purple-400 border-purple-500/30',
-  'distribution-engine': 'bg-green-500/20 text-green-400 border-green-500/30',
-}
-
-const OPERATION_COLORS: Record<string, string> = {
-  'tune': 'bg-green-500/20 text-green-400 border-green-500/30',
-  'recover': 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
-  'check': 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30',
-  'startup': 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
-}
-```
-
-### Level Badges with Icons
-- **Error:** `bg-red-500/20 text-red-400` with XCircle icon
-- **Warning:** `bg-amber-500/20 text-amber-400` with AlertTriangle icon
-- **Info:** `bg-blue-500/20 text-blue-400` with Activity icon
-- **Debug:** `bg-slate-500/20 text-slate-400` with Search icon
-
-### Table Styling
-```tsx
-// Table header
-<thead className="bg-slate-800">
-  <tr><th className="text-left p-3 text-slate-300 font-medium">...</th></tr>
-</thead>
-
-// Alternating rows
-<tr className={index % 2 === 0 ? "bg-slate-800/30" : "bg-slate-800/50"}>
-
-// Error/warning row backgrounds
-className="bg-red-950/30"   // Error rows
-className="bg-amber-950/20" // Warning rows
-```
-
-### Filter Labels Pattern
-```tsx
-<div className="space-y-2">
-  <label className="text-xs font-medium text-slate-400 flex items-center gap-1">
-    <Calendar className="h-3 w-3" /> Time Range
-  </label>
-  <Select>
-    <SelectTrigger className="bg-slate-800 border-slate-600">
-      <SelectValue placeholder="Select..." />
-    </SelectTrigger>
-    ...
-  </Select>
-</div>
-```
-
-### Reference Component
-See `apps/web/src/components/SchedulerLogsDashboard.tsx` for a complete implementation of this styling pattern.
+- UI Styling Guide (dark theme): `/docs/UI_STYLING.md` — recommended pattern for new dashboard components.
 
 ## Bartender Remote - iPad/Tablet UI
 
