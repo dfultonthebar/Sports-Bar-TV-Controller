@@ -374,6 +374,19 @@ export default function EnhancedChannelGuideBartenderRemote() {
   const handleScheduleGame = async (game: GameListing, event: React.MouseEvent) => {
     event.stopPropagation() // Don't trigger the game click (Watch)
 
+    // Block scheduling games whose end time is already in the past. The Rail
+    // Media program list often keeps multi-day events (NFL Draft, Masters)
+    // visible after Day 1 ended, with startTime pointing at the past session
+    // — bartender taps "Schedule" expecting tonight's session and the server
+    // creates an alloc that auto-reverter kills seconds later.
+    const endMs = game.endTime ? new Date(game.endTime).getTime() : null
+    const startMs = game.startTime ? new Date(game.startTime).getTime() : null
+    const refMs = endMs ?? (startMs !== null ? startMs + 3 * 60 * 60 * 1000 : null)
+    if (refMs !== null && refMs < Date.now()) {
+      setCommandStatus(`That session already ended. Pick the upcoming session if this is a multi-day event.`)
+      return
+    }
+
     // Pre-select device type based on the currently selected input
     const currentDeviceType = selectedInput ? getDeviceTypeForInput(selectedInput) : null
     let defaultType: 'cable' | 'directv' | 'firetv' = 'cable'
