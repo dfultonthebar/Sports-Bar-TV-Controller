@@ -96,7 +96,17 @@ async function gatherShiftContext() {
     .where(eq(schema.inputSourceAllocations.status, 'active'))
     .all()
 
-  const recentFailureClusters = await db.select()
+  // v2.32.2 — Filter the failure clusters that get into the brief.
+  // failure-sweep buckets ALL recurring scheduler-log failures, but
+  // AI Suggest rejections (wrong_firetv_app, no_route, in_batch_collision,
+  // etc.) are scheduling-time DECISIONS, not hardware/software failures
+  // the bartender should pre-test. Worse, when they appear in the brief
+  // context the LLM hallucinates concrete-sounding details (e.g.
+  // "Wrong FireTV app on Cable Box 2" — Cable Box 2 wasn't actually in
+  // the source data; the LLM mixed it with a nearby active allocation).
+  // Filter rows whose metadata.component is one of the AI-side decision
+  // components — they don't belong in a "things to pre-test" list.
+  const allFailureClusters = await db.select()
     .from(schema.schedulerLogs)
     .where(and(
       eq(schema.schedulerLogs.component, 'failure-sweep'),
@@ -104,8 +114,22 @@ async function gatherShiftContext() {
       gte(schema.schedulerLogs.createdAt, nowUnix - 24 * 3600),
     ))
     .orderBy(sql`${schema.schedulerLogs.createdAt} DESC`)
-    .limit(5)
+    .limit(20)
     .all()
+
+  const SCHEDULING_DECISION_COMPONENTS = new Set([
+    'ai-suggest', 'smart-input-allocator', 'priority-calculator', 'conflict-detector',
+  ])
+  const recentFailureClusters = allFailureClusters
+    .filter((r) => {
+      try {
+        const meta = JSON.parse(r.metadata || '{}')
+        return !SCHEDULING_DECISION_COMPONENTS.has(meta.component)
+      } catch {
+        return true // can't parse metadata = err on the side of including it
+      }
+    })
+    .slice(0, 5)
 
   const newOverrideRecs = await db.select()
     .from(schema.schedulerLogs)

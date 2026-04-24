@@ -187,6 +187,378 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.31.2 + v2.31.3 + v2.31.4 — Streaming click actually launches; walker navigates to Sports tab
+**Released:** 2026-04-23
+
+**What changed:**
+
+- `apps/web/src/app/api/channel-guide/route.ts` (v2.31.2 + v2.31.3):
+  - Both streaming injection paths (broadcast_networks fallback AND v2.30.0
+    catalog injection) now look up the streaming-apps-database catalog by
+    display name and populate `appId`, `packageName`, `packages` on the
+    channel object.
+  - v2.31.3 added `DISPLAY_NAME_TO_CATALOG_ID` alias map keyed by
+    lowercase display name → catalog id. Covers display-name drift where
+    scout reports `"Prime Video"` but catalog has `name="Amazon Prime Video"`,
+    resolver returns `"ESPN+"` but catalog has `name="ESPN"`, and so on.
+    `findStreamingAppByDisplayName(name)` is the canonical lookup helper.
+
+- `apps/web/src/components/EnhancedChannelGuideBartenderRemote.tsx` (v2.31.2):
+  - `handleGameClick` streaming case now prefers `/api/streaming/launch`
+    (via new helper `launchStreamingAppByCatalog`) when `channel.appId` is
+    present. That path goes through `streamingManager.launchApp()` which
+    knows about the firebat alias for `amazon-prime` (v2.28.8) and
+    correctly resolves the LEANBACK_LAUNCHER activity (DeepLinkRoutingActivity
+    → LandingActivity) — the same activity the home-screen Prime Video
+    tile invokes.
+  - Falls back to the legacy `monkey -p ${packageName}` direct launch when
+    `appId` is absent (preserves Rail Media compatibility for programs
+    that pre-date this).
+
+- `packages/scheduler/src/firetv-catalog-walker.ts` (v2.31.4):
+  - `AppWalkRule.navigation` (new optional field): list of ADB key codes
+    sent after launch to navigate to a sports/live tab. Sent in order with
+    `interKeyDelayMs` between each (default 400ms), then `postNavDelayMs`
+    after the sequence (default 4000ms).
+  - Prime Video rule now includes `navigation: { keyevents: [19,19,22,22,22,23] }`
+    — UP UP RIGHT RIGHT RIGHT OK navigates from the LandingActivity to
+    the Sports tab on Fire TV Cube 2nd gen (AFTR) PVFTV-215.5200-L.
+  - Extractor noise filter tightened: drops standalone `LIVE`/`UPCOMING`
+    badges, `"Live at <time>"` generic timeslots, `"More details"`, and
+    standalone `"all"`. Recognizes `"Sports for you"` as a sport-row
+    context anchor.
+
+**Why this was needed:**
+
+Operator reported clicking a Prime Video program in the channel guide
+"and nothing happened." Three stacked bugs caused the silent failure:
+
+1. The channel-guide injection set `channel.packages` (plural array) but
+   left `channel.packageName` undefined. The bartender remote reads
+   `channel.packageName` (singular) — undefined triggered no fall-through,
+   so the click was a no-op.
+2. Even when `packageName` got populated (Rail Media path), the launch
+   used `monkey -p ${packageName} 1` directly. On Fire TV Cube 2nd gen
+   Prime Video lives inside `com.amazon.firebat` (the launcher) — there's
+   no `com.amazon.avod` package. `monkey -p com.amazon.avod` fails
+   silently. `monkey -p com.amazon.firebat` launches the home screen, NOT
+   the Prime Video LandingActivity.
+3. The walker's daily 04:00 walk only captured 1 useless tile per box
+   (`"Live at 5:30 PM"`) because Prime Video's home screen rotates
+   content — TV shows in the afternoon, sports in the morning. The walk
+   needed to navigate to the Sports tab for stable sports-only catalog.
+
+**Required steps PER LOCATION:**
+
+**No DB or .env changes.** All three fixes are code-only.
+
+**Verify the click works end-to-end (server-simulated, no Fire TV
+operator needed):**
+```bash
+# 1. Send HOME on the Fire TV
+curl -X POST http://localhost:3001/api/firetv-devices/send-command \
+  -H "Content-Type: application/json" \
+  -d '{"deviceId":"<your-firetv-id>","command":"input keyevent 3"}'
+sleep 2
+
+# 2. Simulate the bartender click (this is exactly what the React
+# component does when channel.appId is present)
+curl -X POST http://localhost:3001/api/streaming/launch \
+  -H "Content-Type: application/json" \
+  -d '{"deviceId":"<your-firetv-id>","ipAddress":"<ip>","appId":"amazon-prime","port":5555}'
+sleep 4
+
+# 3. Confirm Prime Video LandingActivity is now in the foreground
+curl -X POST http://localhost:3001/api/firetv-devices/send-command \
+  -H "Content-Type: application/json" \
+  -d '{"deviceId":"<your-firetv-id>","command":"dumpsys window windows"}' \
+  | grep mCurrentFocus
+# Expect: ...com.amazon.firebat/com.amazon.firebat.livingroom.landing.LandingActivity
+```
+
+**Verify the walker now captures rich sports content:**
+```bash
+# Trigger an immediate walk (bypasses the 6h cooldown)
+curl -X POST http://localhost:3001/api/firestick-scout/catalog/walk
+
+# Check what was captured
+sqlite3 -header /home/ubuntu/sports-bar-data/production.db \
+  "SELECT deviceId, app, contentTitle, isLive, sportTag
+   FROM firetv_streaming_catalog
+   ORDER BY isLive DESC, contentTitle;"
+```
+Expected: ~10 tiles per Fire TV with Prime Video — mix of LIVE
+(tennis/squash/soccer) and UPCOMING (NBA Playoffs in current season).
+If still only 1-2 tiles, Prime Video's UI may have changed and the
+`navigation.keyevents` sequence in firetv-catalog-walker.ts needs
+re-mapping (run a manual `uiautomator dump` and confirm the Sports tab
+position is still 4 of 8).
+
+**Adding navigation for a new app's rule:**
+1. Manually launch the app on a Fire TV.
+2. Watch where focus lands — usually the first content row.
+3. Identify the keyevents needed to reach the Sports tab. ADB keyevents:
+   UP=19 DOWN=20 LEFT=21 RIGHT=22 OK=23.
+4. Test the sequence by sending each keyevent via
+   `/api/firetv-devices/send-command` then `dumpsys window windows` to
+   confirm the focused activity changed.
+5. Add the `navigation` block to the new app's `APP_WALK_RULES` entry.
+
+---
+
+### v2.31.0 + v2.31.1 — Per-box per-app sports content catalog (Phase 2b-2 + Phase 3)
+**Released:** 2026-04-22
+
+**What changed:**
+
+- `packages/database/src/schema.ts` (v2.30.0):
+  - New table `firetv_streaming_catalog` (deviceId, app, contentTitle,
+    deepLink, isLive, sportTag, capturedAt, expiresAt, createdAt) with
+    indexes on (deviceId, app) and expiresAt. Per-box per-app sports
+    content tile inventory — overwritten daily by the walker.
+
+- `apps/web/src/app/api/firestick-scout/catalog/route.ts` (v2.30.0, new):
+  - POST ingests fresh catalog from the walker; per-app replace semantics
+    (delete then insert per app present in the upload). IP-based canonical
+    deviceId resolver mirrors v2.28.10's heartbeat resolver.
+  - GET reads catalog filtered by deviceId / app / liveOnly. Auto-prunes
+    expired rows.
+
+- `apps/web/src/app/api/channel-guide/route.ts` (v2.30.0):
+  - After the broadcast_networks fallback, queries firetv_streaming_catalog
+    for the requested deviceId, dedupes against existing programs, injects
+    each remaining catalog row as a streaming program. Carries deepLink
+    and sportTag through. Non-fatal — channel guide continues if catalog
+    query fails.
+
+- `packages/scheduler/src/firetv-catalog-walker.ts` (v2.31.0, new):
+  - `runFiretvCatalogWalk()`: for each active firetv input_source, for
+    each app in `available_networks` that has a rule in APP_WALK_RULES,
+    sends HOME, launches the app via /api/streaming/launch, waits for
+    first screen render (per-app delay), runs `uiautomator dump`, parses
+    tiles via the per-app extractor, POSTs to /api/firestick-scout/catalog,
+    sends HOME, moves to next app.
+  - Prime Video extractor empirically validated against Fire TV Cube 2nd
+    gen (AFTR) on 2026-04-22 — captured 10 real tiles in one walk
+    (4 LIVE: ATP/WTA tennis, PSL cricket, squash + 6 UPCOMING NBA
+    playoff games). Per-app rules in APP_WALK_RULES — apps without a
+    rule are skipped silently (no false data).
+  - Architecture: server-side ADB walker (NOT Kotlin AccessibilityService).
+    Reasons documented in the file's header comment — short version:
+    AccessibilityService requires manual Settings toggle ADB can't
+    reliably bypass; TypeScript per-app rules iterate at edit-and-restart
+    speed instead of compile-and-flash speed.
+
+- `packages/scheduler/src/scheduler-service.ts` (v2.31.0):
+  - `maybeRunCatalogWalk()`: triggers daily catalog walk between 04:00–04:05
+    America/Chicago OR after 25h+ gap (catch-up after long downtime).
+    6h cooldown prevents double-runs. Tick every 5 min.
+  - `triggerCatalogWalkNow()`: public method for manual ad-hoc trigger.
+
+- `apps/web/src/app/api/firestick-scout/catalog/walk/route.ts` (v2.31.0, new):
+  - POST endpoint for operator to trigger an immediate walk (e.g. after
+    installing a new app on a Fire TV). Bypasses the cooldown.
+
+- `packages/scheduler/src/firetv-catalog-walker.ts` (v2.31.1):
+  - Removed `2>/dev/null` from the uiautomator dump command. The
+    send-command API mangles shell redirections; without the suffix, the
+    dump succeeds and the file is readable. Added `rm -f` before dump
+    to prevent stale files from masking failures, plus a 500ms grace
+    after dump for the file write to flush. First production walk after
+    this fix captured 10 tiles in 22s.
+
+**Why this was needed:**
+
+Earlier phases (v2.28.10 → v2.29.1) made the scheduler aware of per-box
+APP availability (which Fire TV has Prime Video, which has Peacock, etc.).
+But "what's actually playable inside each app right now" — the per-box
+sports catalog — was still missing. Without it, the bartender opens the
+channel guide for a Fire TV box and sees only games tagged in ESPN's
+broadcast_networks JSON. Anything Prime Video shows on its sports tab
+(LIVE NOW tennis, NBA Playoffs row, cricket overflow, etc.) was invisible
+unless ESPN happened to tag the same game.
+
+This version delivers the missing per-box catalog by walking each app's
+first screen via uiautomator dump (no APK rebuild, no AccessibilityService
+permission gate) and surfacing the captured tiles in the channel guide
+alongside ESPN-broadcast_networks games. Per-app extraction rules — start
+with Prime Video, add others incrementally as the operator needs them.
+
+**Required steps PER LOCATION:**
+
+**No DB migrations needed beyond the table creation.** The
+`firetv_streaming_catalog` table is auto-created on schema push (or via the
+manual SQL snippet below if drizzle-kit silently skips it — see CLAUDE.md
+gotcha #7).
+
+**Manual table creation if drizzle-kit push fails:**
+```bash
+sqlite3 /home/ubuntu/sports-bar-data/production.db <<'SQL'
+CREATE TABLE IF NOT EXISTS firetv_streaming_catalog (
+  id TEXT PRIMARY KEY NOT NULL,
+  deviceId TEXT NOT NULL,
+  app TEXT NOT NULL,
+  contentTitle TEXT NOT NULL,
+  deepLink TEXT,
+  isLive INTEGER DEFAULT 0,
+  sportTag TEXT,
+  capturedAt INTEGER NOT NULL,
+  expiresAt INTEGER NOT NULL,
+  createdAt INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+);
+CREATE INDEX IF NOT EXISTS firetv_catalog_device_app_idx ON firetv_streaming_catalog (deviceId, app);
+CREATE INDEX IF NOT EXISTS firetv_catalog_expires_idx ON firetv_streaming_catalog (expiresAt);
+SQL
+```
+
+**Verify the daily walk fires** (after 04:00 local OR via manual trigger):
+```bash
+# Manual trigger (bypasses cooldown):
+curl -X POST http://localhost:3001/api/firestick-scout/catalog/walk
+
+# Then check what was captured:
+sqlite3 -header /home/ubuntu/sports-bar-data/production.db \
+  "SELECT deviceId, app, contentTitle, isLive, sportTag
+   FROM firetv_streaming_catalog
+   ORDER BY deviceId, isLive DESC, contentTitle;"
+```
+
+If a Fire TV's row count is 0 for an app it should have:
+1. Confirm scout heartbeat is fresh and shows the app installed:
+   `sqlite3 production.db "SELECT deviceId, installedApps FROM firestick_live_status WHERE deviceId LIKE '%firetv%';"`
+2. Confirm the app has an APP_WALK_RULES entry in
+   `packages/scheduler/src/firetv-catalog-walker.ts` (only Prime Video as
+   of v2.31.0 — other apps are silently skipped).
+3. Run the manual walk endpoint with `pm2 logs sports-bar-tv-controller`
+   tailing in another shell to see [FIRETV-CATALOG] messages.
+
+**Adding a new app's per-app extraction rule:**
+1. Manually open the app on a Fire TV.
+2. Run `uiautomator dump /sdcard/d.xml` then `cat /sdcard/d.xml` via the
+   send-command endpoint to capture the tile XML pattern.
+3. Add a new entry to `APP_WALK_RULES` in
+   `packages/scheduler/src/firetv-catalog-walker.ts` mirroring the
+   `extractPrimeVideoTiles` shape.
+4. Restart PM2; the daily cron + manual trigger will pick up the new app.
+
+---
+
+### v2.29.0 — Per-box auto-discovery of Fire TV streaming apps via Sports Bar Scout
+**Released:** 2026-04-22
+
+**What changed:**
+
+- `packages/scheduler/src/firetv-app-sync.ts` (new):
+  - `runFiretvAppSyncSweep()` reconciles every active firetv `input_source`
+    against the latest scout heartbeat in `firestick_live_status`. Pulls
+    `loggedInApps` (or falls back to `installedApps`) from scout, translates
+    Android package names → display names, writes the truth back to
+    `input_sources.installed_apps` and `input_sources.available_networks`.
+  - Staleness guard: skips inputs whose scout heartbeat is >5 min old
+    (preserves prior data instead of blanking on a temporary scout outage).
+  - Idempotent: only writes when the computed list differs from stored.
+  - Launcher-hosted Prime Video back-fill: scout's AppDetector hard-codes
+    `com.amazon.avod` and misses launcher-hosted Prime Video on AFTR Cubes
+    (CLAUDE.md gotcha #10). When scout reports no Prime Video, this job
+    probes `pm path com.amazon.firebat` directly via the device control
+    endpoint; if firebat is present, "Prime Video" is added to
+    `available_networks` and `com.amazon.firebat` to `installed_apps`.
+
+- `apps/web/src/app/api/firestick-scout/route.ts` (v2.28.10 — bundled into this entry):
+  - When a heartbeat arrives with `deviceId='fire-tv-unknown'` or a legacy
+    id (`amazon-N`, `fire-tv-N`), the server resolves the canonical
+    `FireTVDevice.id` by matching `ipAddress`. Fixes the Holmgren-class
+    bug where scout's compile-time IP_DEVICE_MAP only knew Stoneyard IPs
+    (`10.40.10.x`) and every Fire TV at any other location heartbeated as
+    `fire-tv-unknown` — multiple boxes overwriting each other's row.
+
+- `packages/scheduler/src/scheduler-service.ts`:
+  - Wired `runFiretvAppSync()` into the startup sequence: 60s after boot
+    + every 5 minutes thereafter. Errors are caught so a sync failure
+    never crashes the scheduler tick.
+
+**Why this was needed:**
+
+`input_sources.available_networks` and `installed_apps` were originally
+hand-maintained admin metadata. Operators forget to update them when apps
+are installed/uninstalled at the device, so AI Suggest ends up either
+promising games on Fire TVs that no longer have the app or hiding games
+Fire TVs CAN play. Sports Bar Scout (deployed as `com.sportsbar.scout`
+on every venue's Fire TVs) already heartbeats the on-device truth every
+30 seconds — this job is the bridge that makes the rest of the
+scheduling stack consume that truth instead of trusting stale metadata.
+
+Verified at Holmgren Way 2026-04-22:
+
+```
+Fire TV 2 (firetv_1741700000002_holmgren2) → fubo, YouTube, ESPN, NFHS,
+                                              Peacock, Apple TV+, Netflix,
+                                              Prime Video (via firebat probe)
+Fire TV 3 (firetv_1741700000003_holmgren3) → YouTube, ESPN, NFHS, Peacock,
+                                              Prime Video (via firebat probe)
+```
+
+Note Fire TV 2 has Netflix + fubo + Apple TV+ that Fire TV 3 doesn't —
+the per-box differentiation that previously was invisible to AI Suggest.
+
+**Required steps PER LOCATION:**
+
+**No DB or .env changes.** The sync is automatic.
+
+**Verify scout is heartbeating from each Fire TV:**
+```bash
+sqlite3 -header /home/ubuntu/sports-bar-data/production.db \
+  "SELECT deviceId, deviceName, ipAddress, datetime(lastHeartbeat) as last_hb
+   FROM firestick_live_status
+   ORDER BY lastHeartbeat DESC;"
+```
+- Each active Fire TV input should have a row with `lastHeartbeat` within
+  the last 2 minutes.
+- `deviceId` should match the corresponding `FireTVDevice.id` (the canonical
+  id, e.g. `firetv_1741700000002_holmgren2`). Legacy `amazon-N` /
+  `fire-tv-unknown` rows are auto-resolved by the v2.28.10 IP resolver but
+  you can clean up old rows if any persist:
+  ```bash
+  sqlite3 /home/ubuntu/sports-bar-data/production.db \
+    "DELETE FROM firestick_live_status
+     WHERE deviceId NOT LIKE 'firetv_%'
+       AND lastHeartbeat < datetime('now', '-1 hour');"
+  ```
+
+**If scout isn't heartbeating** on a particular Fire TV: scout's
+compile-time `scoutServerUrl` may be wrong for your location. Send a
+CONFIG broadcast via ADB to repoint it:
+```bash
+curl -X POST http://localhost:3001/api/firetv-devices/send-command \
+  -H "Content-Type: application/json" \
+  -d '{
+    "deviceId":"<your-firetv-input.deviceId>",
+    "command":"am broadcast -a com.sportsbar.scout.CONFIG --es server_url http://<your-server-ip>:3001/api/firestick-scout -n com.sportsbar.scout/.ConfigReceiver"
+  }'
+```
+Then force-stop and relaunch scout:
+```bash
+curl -X POST http://localhost:3001/api/firetv-devices/send-command \
+  -H "Content-Type: application/json" \
+  -d '{"deviceId":"<your-firetv-input.deviceId>","command":"am force-stop com.sportsbar.scout"}'
+curl -X POST http://localhost:3001/api/firetv-devices/send-command \
+  -H "Content-Type: application/json" \
+  -d '{"deviceId":"<your-firetv-input.deviceId>","command":"monkey -p com.sportsbar.scout -c android.intent.category.LAUNCHER 1"}'
+```
+
+**Verify the sync is updating input_sources** (after waiting one cycle):
+```bash
+sqlite3 -header /home/ubuntu/sports-bar-data/production.db \
+  "SELECT name, available_networks FROM input_sources WHERE type='firetv' ORDER BY name;"
+```
+Each row's `available_networks` should reflect the actual installed apps
+from scout, plus Prime Video if firebat is present (Cubes).
+
+To force a sync immediately without waiting 5 min, restart PM2 and the
+sync will fire 60 seconds after startup.
+
+---
+
 ### v2.28.8 — Launch Prime Video on Fire TV Cubes that ship it baked into the launcher (no com.amazon.avod APK)
 **Released:** 2026-04-22
 

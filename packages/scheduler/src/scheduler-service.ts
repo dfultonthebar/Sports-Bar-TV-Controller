@@ -5,10 +5,12 @@
  * It checks every minute for schedules that need to be executed.
  */
 
-import { db, schema, eq, findMany } from '@sports-bar/database'
+import { db, schema, eq, and, findMany } from '@sports-bar/database'
 import { logger } from '@sports-bar/logger'
 import { schedulerLogger } from './scheduler-logger'
 import { probeAllDirecTVTuned } from './directv-probe'
+import { runFiretvAppSyncSweep } from './firetv-app-sync'
+import { runFiretvCatalogWalk } from './firetv-catalog-walker'
 
 // Get API port from environment or default to 3001
 const API_PORT = process.env.PORT || 3001
@@ -17,15 +19,45 @@ const API_PORT = process.env.PORT || 3001
 const VENUE_TIMEZONE = 'America/Chicago'
 
 class SchedulerService {
+  // v2.31.8 — Polling intervals are now registered via registerPoll() and
+  // tracked centrally in this Map. stop() iterates this map and clears
+  // everything, which structurally prevents the per-interval leak we had
+  // before (ppv, firetv-app-sync, firetv-catalog-walk handles were never
+  // cleared on stop).
+  private polls = new Map<string, NodeJS.Timeout>();
+
+  // intervalId + fastPollIntervalId have special lifecycle (sequenced
+  // startup, conditional creation toggled by hasDelayedGames) so they
+  // remain as named fields rather than living in `polls`.
   private intervalId: NodeJS.Timeout | null = null;
-  private tvStatusIntervalId: NodeJS.Timeout | null = null;
   private fastPollIntervalId: NodeJS.Timeout | null = null;
-  private ppvProbeIntervalId: NodeJS.Timeout | null = null;
+  private lastCatalogWalk: Date | null = null;
   private isRunning = false;
   private hasDelayedGames = false;
   private lastCleanup: Date | null = null;
   private lastWeeklySummary: Date | null = null;
   private executingSchedules = new Set<string>();
+
+  // v2.31.8 — Hardware/config caches. These rows essentially never change
+  // at runtime, but the original code re-queried them on every tick (every
+  // 5 minutes for VAVA, once per allocation-with-audio-zone for audio
+  // processors). Cleared on stop() in case a new instance loads different
+  // hardware on next start.
+  private cachedVavaDevices: any[] | null = null;
+  private cachedAudioProcessor: any | null = null;
+
+  /**
+   * v2.31.8 — Register a polling job. Replaces the boilerplate triplet
+   * (clear-existing + setInterval + setTimeout-for-initial) that was
+   * copy-pasted four times in start(). Stored in this.polls so stop()
+   * can clear every registered poll without per-name knowledge.
+   */
+  private registerPoll(name: string, fn: () => void, intervalMs: number, initialDelayMs: number): void {
+    const existing = this.polls.get(name);
+    if (existing) clearInterval(existing);
+    this.polls.set(name, setInterval(fn, intervalMs));
+    setTimeout(fn, initialDelayMs);
+  }
 
   /**
    * Start the scheduler service
@@ -80,27 +112,14 @@ class SchedulerService {
       this.checkAndExecuteSchedules();
     });
 
-    // Poll TV status every 5 minutes
-    if (this.tvStatusIntervalId) {
-      clearInterval(this.tvStatusIntervalId);
-    }
-    this.tvStatusIntervalId = setInterval(() => {
-      this.pollTVStatus();
-    }, 300000); // 5 minutes
-    // Run first poll after 30 seconds (let app fully start)
-    setTimeout(() => this.pollTVStatus(), 30000);
-
-    // PPV channel probe — every 10 minutes, ask each DirecTV box what it's
-    // tuned to and record any PPV-band channel into discovered_ppv_channels.
-    // See packages/scheduler/src/directv-probe.ts for the rationale.
-    if (this.ppvProbeIntervalId) {
-      clearInterval(this.ppvProbeIntervalId);
-    }
-    this.ppvProbeIntervalId = setInterval(() => {
-      this.runPpvProbe();
-    }, 600000); // 10 minutes
-    // First probe after 90 seconds (let DirecTV devices be fully discovered)
-    setTimeout(() => this.runPpvProbe(), 90000);
+    // v2.31.8 — Polling jobs registered via shared helper. See registerPoll()
+    // for the rationale (handles tracked centrally so stop() can clear all
+    // of them; previous code leaked ppv/firetv-app-sync/firetv-catalog-walk
+    // handles on stop+restart).
+    this.registerPoll('pollTVStatus', () => this.pollTVStatus(), 300000, 30000);
+    this.registerPoll('runPpvProbe', () => this.runPpvProbe(), 600000, 90000);
+    this.registerPoll('runFiretvAppSync', () => this.runFiretvAppSync(), 300000, 60000);
+    this.registerPoll('maybeRunCatalogWalk', () => this.maybeRunCatalogWalk(), 300000, 300000);
 
     schedulerLogger.info(
       'scheduler-service',
@@ -122,6 +141,64 @@ class SchedulerService {
     } catch (error: any) {
       logger.error('[DTV-PROBE] Unexpected probe sweep failure:', { error });
     }
+  }
+
+  /**
+   * Run a single sweep of the Fire TV app sync. Wrapper around
+   * runFiretvAppSyncSweep() that catches errors so a sync failure never
+   * crashes the scheduler tick. Per-input errors are already swallowed
+   * inside the sweep; this catch is for the unexpected (DB unavailable, etc.).
+   */
+  private async runFiretvAppSync() {
+    try {
+      await runFiretvAppSyncSweep();
+    } catch (error: any) {
+      logger.error('[FIRETV-APP-SYNC] Unexpected sweep failure:', { error });
+    }
+  }
+
+  /**
+   * Decide whether to run the daily catalog walk and execute if so.
+   * Two gates: time-of-day window (04:00–04:05 local) OR last-walk-was-25h+
+   * for catch-up after long downtime. The Date.now() guard prevents
+   * double-runs within the same window.
+   */
+  private async maybeRunCatalogWalk() {
+    const now = new Date();
+    const localHour = parseInt(
+      now.toLocaleString('en-US', { timeZone: VENUE_TIMEZONE, hour: 'numeric', hourCycle: 'h23' }),
+      10
+    );
+    const localMinute = parseInt(
+      now.toLocaleString('en-US', { timeZone: VENUE_TIMEZONE, minute: 'numeric' }),
+      10
+    );
+    const inWindow = localHour === 4 && localMinute < 5;
+    const last = this.lastCatalogWalk;
+    const longGap = !last || (now.getTime() - last.getTime() > 25 * 60 * 60 * 1000);
+
+    // Cooldown: don't re-run within 6h regardless of window
+    const recent = last && (now.getTime() - last.getTime() < 6 * 60 * 60 * 1000);
+    if (recent) return;
+
+    if (!inWindow && !longGap) return;
+
+    logger.info(`[FIRETV-CATALOG] Triggering daily walk (window=${inWindow}, longGap=${longGap})`);
+    this.lastCatalogWalk = now;
+    try {
+      await runFiretvCatalogWalk();
+    } catch (error: any) {
+      logger.error('[FIRETV-CATALOG] Unexpected walk failure:', { error });
+    }
+  }
+
+  /**
+   * Manual trigger for the catalog walk — used by /api/firestick-scout/catalog/walk
+   * and the daily-cron internal trigger. Always runs regardless of cooldown.
+   */
+  public async triggerCatalogWalkNow() {
+    this.lastCatalogWalk = new Date();
+    return runFiretvCatalogWalk();
   }
 
   /**
@@ -208,11 +285,15 @@ class SchedulerService {
 
     // Keep VAVA projector alive - send a harmless volume query to prevent deep sleep
     // VAVA shuts down all network services when it sleeps, making it uncontrollable
+    // v2.31.8 — Cache the device list; it never changes at runtime.
     try {
-      const vavaDevices = await db.select()
-        .from(schema.networkTVDevices)
-        .where(eq(schema.networkTVDevices.brand, 'VAVA'))
-        .all();
+      if (!this.cachedVavaDevices) {
+        this.cachedVavaDevices = await db.select()
+          .from(schema.networkTVDevices)
+          .where(eq(schema.networkTVDevices.brand, 'VAVA'))
+          .all();
+      }
+      const vavaDevices = this.cachedVavaDevices;
 
       for (const vava of vavaDevices) {
         try {
@@ -242,14 +323,22 @@ class SchedulerService {
       clearInterval(this.intervalId);
       this.intervalId = null;
     }
-    if (this.tvStatusIntervalId) {
-      clearInterval(this.tvStatusIntervalId);
-      this.tvStatusIntervalId = null;
-    }
     if (this.fastPollIntervalId) {
       clearInterval(this.fastPollIntervalId);
       this.fastPollIntervalId = null;
     }
+    // v2.31.8 — Clear every poll registered via registerPoll() in one
+    // shot. Previously the per-named-field clearing in stop() forgot
+    // ppvProbeIntervalId, firetvAppSyncIntervalId, and
+    // firetvCatalogWalkIntervalId (added at different times); the Map
+    // pattern is leak-proof.
+    for (const handle of this.polls.values()) clearInterval(handle);
+    this.polls.clear();
+
+    // Drop runtime caches so a subsequent start() reloads from DB.
+    this.cachedVavaDevices = null;
+    this.cachedAudioProcessor = null;
+
     this.isRunning = false;
 
     await schedulerLogger.info(
@@ -300,8 +389,13 @@ class SchedulerService {
           const { patternAnalyzer } = await import('./pattern-analyzer');
           patternAnalyzer.analyzeAll().then(result => {
             logger.info(`[SCHEDULER] Pattern analysis: ${result.teamRouting?.length || 0} team, ${result.leaguePriority?.length || 0} league, ${result.leagueDuration?.length || 0} league-duration, ${result.timeSlots?.length || 0} timeslot patterns`);
-          }).catch(() => {});
-        } catch {}
+          }).catch((err) => logger.warn('[SCHEDULER] Pattern analysis run failed:', err));
+        } catch (err) {
+          // v2.31.8 — log import failures instead of swallowing. A missing
+          // build artifact (Turbo cache miss, syntax error in module) used
+          // to silently disable the hourly task forever.
+          logger.warn('[SCHEDULER] Failed to load pattern-analyzer module:', err);
+        }
 
         // Digest recent bartender overrides into stable recommendations.
         // Complements pattern-analyzer: that reads post-correction state
@@ -315,7 +409,9 @@ class SchedulerService {
           }).catch((err) => {
             logger.warn('[SCHEDULER] Override digest failed:', err);
           });
-        } catch {}
+        } catch (err) {
+          logger.warn('[SCHEDULER] Failed to load override-digester module:', err);
+        }
 
         // Scan recent SchedulerLog failures for recurring clusters and
         // promote them to high-visibility warn rows. This is how new
@@ -329,7 +425,9 @@ class SchedulerService {
           }).catch((err) => {
             logger.warn('[SCHEDULER] Failure sweep failed:', err);
           });
-        } catch {}
+        } catch (err) {
+          logger.warn('[SCHEDULER] Failed to load failure-sweeper module:', err);
+        }
 
         this.lastCleanup = now;
       }
@@ -665,6 +763,33 @@ class SchedulerService {
 
       logger.info(`[SCHEDULER] 📺 Found ${dueAllocations.length} pending bartender-scheduled tunes to execute`);
 
+      // v2.31.8 — Hoist active-allocations query out of the per-allocation
+      // loop. Previously each successful tune fired a full
+      // `SELECT * FROM input_source_allocations WHERE status='active'`
+      // (N due allocations × full table scan). Fetch once per tick; we'll
+      // mutate the local Set as we route outputs in this batch.
+      const tickActiveAllocations = await db.select()
+        .from(schema.inputSourceAllocations)
+        .where(eq(schema.inputSourceAllocations.status, 'active'))
+        .all();
+      const tickClaimedOutputs = new Set<number>();
+      for (const a of tickActiveAllocations) {
+        if (!a.tvOutputIds) continue;
+        try {
+          const ids: number[] = JSON.parse(a.tvOutputIds);
+          ids.forEach((o) => tickClaimedOutputs.add(o));
+        } catch {}
+      }
+
+      // v2.31.8 — One ESPN live-status fetch per tick instead of per
+      // allocation. checkCurrentGameStatus accepts liveData as an optional
+      // argument; pass the cached snapshot to skip the loopback fetch.
+      let tickLiveData: any = null;
+      try {
+        const espnResp = await fetch(`http://127.0.0.1:${API_PORT}/api/scheduling/live-status`);
+        if (espnResp.ok) tickLiveData = await espnResp.json();
+      } catch { /* fall back to per-call fetch inside checkCurrentGameStatus */ }
+
       for (const { allocation, inputSource, game } of dueAllocations) {
         const tuneStartTime = Date.now();
 
@@ -714,8 +839,9 @@ class SchedulerService {
         try {
           logger.info(`[SCHEDULER] 🎯 Checking if ready to tune: ${inputSource.name} to channel ${allocation.channelNumber} for ${game.homeTeamName} vs ${game.awayTeamName}`);
 
-          // Check if there's a scheduled game currently on this input that's still in progress
-          const currentGameStatus = await this.checkCurrentGameStatus(inputSource.id);
+          // Check if there's a scheduled game currently on this input that's still in progress.
+          // v2.31.8 — pass the per-tick live-status snapshot to avoid N loopback fetches.
+          const currentGameStatus = await this.checkCurrentGameStatus(inputSource.id, tickLiveData);
           const timePastScheduled = nowUnix - (allocation.allocatedAt || 0);
           const forceOverride = timePastScheduled >= MAX_DELAY_SECONDS;
 
@@ -829,26 +955,15 @@ class SchedulerService {
                 const matrixInput = matrixInputRow[0]?.channelNumber ?? NaN;
 
                 if (outputIds.length > 0 && !isNaN(matrixInput)) {
-                  // Check for conflicting active allocations that claim the same outputs
-                  const otherActiveAllocations = await db.select()
-                    .from(schema.inputSourceAllocations)
-                    .where(eq(schema.inputSourceAllocations.status, 'active'))
-                    .all();
-
-                  const claimedOutputs = new Set<number>();
-                  for (const other of otherActiveAllocations) {
-                    if (other.id === allocation.id) continue; // Skip self
-                    if (other.tvOutputIds) {
-                      try {
-                        const otherOutputs: number[] = JSON.parse(other.tvOutputIds);
-                        otherOutputs.forEach(o => claimedOutputs.add(o));
-                      } catch {}
-                    }
-                  }
-
-                  // Filter out outputs already claimed by other active games
-                  const safeOutputs = outputIds.filter(o => !claimedOutputs.has(o));
-                  const skippedOutputs = outputIds.filter(o => claimedOutputs.has(o));
+                  // v2.31.8 — Use the per-tick claimedOutputs set hoisted
+                  // above; previously each successful tune fired a fresh
+                  // full-table active-allocations scan inside this loop.
+                  // Add this allocation's outputs to the set so subsequent
+                  // iterations see the same view (live mutation across
+                  // batched tunes, same semantics as the old query result).
+                  const safeOutputs = outputIds.filter(o => !tickClaimedOutputs.has(o));
+                  const skippedOutputs = outputIds.filter(o => tickClaimedOutputs.has(o));
+                  for (const o of safeOutputs) tickClaimedOutputs.add(o);
 
                   if (skippedOutputs.length > 0) {
                     logger.info(`[SCHEDULER] ⚠️ Skipping outputs [${skippedOutputs.join(', ')}] — already claimed by another active game`);
@@ -901,8 +1016,13 @@ class SchedulerService {
               try {
                 const audioZones: number[] = JSON.parse(allocation.audioZoneIds);
                 if (audioZones.length > 0) {
-                  // Look up the active audio processor from the database instead of hardcoding an ID
-                  const processor = await db.select().from(schema.audioProcessors).get();
+                  // v2.31.8 — Cache the audio processor lookup. It's a single
+                  // hardware row that never changes at runtime; previously
+                  // re-queried for every allocation that had audio zones.
+                  if (!this.cachedAudioProcessor) {
+                    this.cachedAudioProcessor = await db.select().from(schema.audioProcessors).get();
+                  }
+                  const processor = this.cachedAudioProcessor;
                   if (!processor) {
                     logger.error('[SCHEDULER] ❌ No audio processor found in database — skipping audio zone switching');
                   } else {
@@ -1015,29 +1135,37 @@ class SchedulerService {
 
   /**
    * Check if there's a game currently in progress on a given input source
-   * Uses ESPN API to verify game status
+   * Uses ESPN API to verify game status.
+   *
+   * v2.31.8 — Optimizations:
+   *  * status='active' filter pushed into the SQL WHERE (was fetching the
+   *    full per-input allocation history and filtering in JS — full-table
+   *    scan brought into Node memory every tick on a long-running install).
+   *  * Optional `liveData` parameter lets the caller pass in the ESPN
+   *    snapshot once per tick instead of refetching it per allocation
+   *    (callers that do N invocations per tick previously triggered N
+   *    loopback fetches to the same endpoint within the same scheduler run).
    */
-  private async checkCurrentGameStatus(inputSourceId: string): Promise<{
+  private async checkCurrentGameStatus(inputSourceId: string, liveData?: any): Promise<{
     gameInProgress: boolean;
     gameDescription?: string;
     status?: string;
   }> {
     try {
-      // Find the currently active allocation for this input
-      const activeAllocations = await db.select({
+      const activeAlloc = await db.select({
         allocation: schema.inputSourceAllocations,
         game: schema.gameSchedules,
       })
       .from(schema.inputSourceAllocations)
       .innerJoin(schema.gameSchedules, eq(schema.inputSourceAllocations.gameScheduleId, schema.gameSchedules.id))
-      .where(eq(schema.inputSourceAllocations.inputSourceId, inputSourceId))
-      .all();
-
-      // Filter for active allocations
-      const activeAlloc = activeAllocations.find(a => a.allocation.status === 'active');
+      .where(and(
+        eq(schema.inputSourceAllocations.inputSourceId, inputSourceId),
+        eq(schema.inputSourceAllocations.status, 'active')
+      ))
+      .limit(1)
+      .get();
 
       if (!activeAlloc) {
-        // No active game on this input
         return { gameInProgress: false };
       }
 
@@ -1047,10 +1175,13 @@ class SchedulerService {
       // Check ESPN API for live game status
       if (game.espnEventId && !game.espnEventId.startsWith('bartender-')) {
         try {
-          const espnResponse = await fetch(`http://localhost:${API_PORT}/api/scheduling/live-status`);
-
-          if (espnResponse.ok) {
-            const liveData = await espnResponse.json();
+          if (!liveData) {
+            const espnResponse = await fetch(`http://127.0.0.1:${API_PORT}/api/scheduling/live-status`);
+            if (espnResponse.ok) {
+              liveData = await espnResponse.json();
+            }
+          }
+          if (liveData) {
 
             if (liveData.success && liveData.games) {
               // Find this specific game in live data

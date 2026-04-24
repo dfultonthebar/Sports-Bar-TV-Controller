@@ -23,9 +23,15 @@ export type SchedulerComponent =
   | 'state-reader'
   | 'tournament-detector'
   | 'firetv-detector'
+  | 'firetv-app-sync'
+  | 'firetv-catalog-walker'
   | 'bartender-remote'
   | 'directv-api'
   | 'cable-ir-api'
+  | 'override-learn'
+  | 'override-digest'
+  | 'failure-sweep'
+  | 'ai-suggest'
 
 export type SchedulerOperation =
   | 'tune'
@@ -40,6 +46,14 @@ export type SchedulerOperation =
   | 'cleanup'
   | 'startup'
   | 'check'
+  | 'reconcile'
+  | 'walk'
+  | 'scan'
+  | 'summarize'
+  | 'reject'
+  | 'cluster'
+  | 'add'
+  | 'remove'
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error'
 
