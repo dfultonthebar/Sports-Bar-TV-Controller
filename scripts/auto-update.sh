@@ -463,6 +463,37 @@ log "Commits pending merge: $COMMITS_TO_MERGE"
 history_insert_start
 log "History row id=$HISTORY_ID"
 
+# v2.32.4 — Scan the incoming diff for newly-introduced process.env.X
+# references and warn if they're not in the current .env. Warn-only —
+# many env vars have `|| 'fallback'` defaults, so a missing var isn't
+# automatically a failure. Operator can review the list before the merge
+# proceeds. Real enforcement still happens at verify-install + Checkpoint
+# B if the missing var actually breaks something at runtime.
+NEW_ENV_REFS=$(git diff "$PRE_MERGE_SHA..$TARGET_SHA" -- '*.ts' '*.tsx' '*.js' 2>/dev/null \
+  | grep -E '^\+[^+].*process\.env\.[A-Z][A-Z0-9_]+' \
+  | grep -oE 'process\.env\.[A-Z][A-Z0-9_]+' \
+  | sort -u || true)
+if [ -n "$NEW_ENV_REFS" ]; then
+  CURRENT_ENV_KEYS=$(grep -oE '^[A-Z][A-Z0-9_]+(?==)' "$REPO_ROOT/.env" 2>/dev/null \
+                     || grep -oE '^[A-Z][A-Z0-9_]+' "$REPO_ROOT/.env" 2>/dev/null | head -200 \
+                     || echo "")
+  MISSING_ENV=()
+  for ref in $NEW_ENV_REFS; do
+    key="${ref#process.env.}"
+    # Skip well-known optional keys with code-side fallbacks
+    case "$key" in NODE_ENV|PORT|DATABASE_URL) continue ;; esac
+    if ! printf '%s\n' "$CURRENT_ENV_KEYS" | grep -qx "$key"; then
+      MISSING_ENV+=("$key")
+    fi
+  done
+  if [ "${#MISSING_ENV[@]}" -gt 0 ]; then
+    log "⚠ env-var pre-flight: incoming diff references env vars not in current .env:"
+    for k in "${MISSING_ENV[@]}"; do log "    $k"; done
+    log "    These may have code-side fallbacks. Verify before continuing if any are required."
+    log "    Real enforcement runs at verify-install + Checkpoint B."
+  fi
+fi
+
 # ===========================================================================
 # CHECKPOINT A — Pre-update analysis
 # ===========================================================================
@@ -513,6 +544,13 @@ LOCATION_PATHS_OURS=(
   "apps/web/data/channel-presets-cable.json"
   "apps/web/data/channel-presets-directv.json"
   "apps/web/data/everpass-devices.json"
+  # v2.32.4 — per-location OTA broadcast affiliates (introduced v2.23.0).
+  # Holmgren has WBAY/WFRV/WLUK/WGBA station aliases; Stoneyard's set is
+  # different; Lucky's smaller. Without this entry, any future merge that
+  # touches this file at any location with custom OTA aliases would hit
+  # "unexpected conflict" and abort auto-update with exit 3 (no rollback,
+  # half-merged tree). Always keep the location's version.
+  "apps/web/data/station-aliases-local.json"
   "apps/web/public/uploads/layouts"
   "data"
   ".env"
@@ -553,6 +591,28 @@ LOCATION_PATHS_THEIRS=(
   "scripts/prompts/checkpoint-c.txt"
 )
 
+# Prefix-based fallback: any remaining conflict under a shared-software
+# prefix takes MAIN. These subtrees are pure software and location
+# branches should never carry divergent edits. Prior to v2.22.2 a single
+# stale edit anywhere under apps/web/src/app/ would abort the entire
+# auto-update (remote/page.tsx at Lucky's 1313 on 2026-04-19 is the
+# case that prompted this fix). Ordered most-specific-first — a later
+# match does NOT override an earlier one, so putting OURS-exempt paths
+# in LOCATION_PATHS_OURS above is what protects them from this fallback.
+SHARED_SOFTWARE_PREFIXES=(
+  "apps/web/src/app/"
+  "apps/web/src/components/"
+  "apps/web/src/lib/"
+  "apps/web/src/hooks/"
+  "apps/web/src/db/"
+  "apps/web/src/types/"
+  "apps/web/src/utils/"
+  "apps/web/public/"
+  "packages/"
+  "docs/"
+  "drizzle/"
+)
+
 log "git merge origin/main --no-ff -m 'chore: auto-update merge $RUN_TS'"
 set +e
 git merge origin/main --no-ff -m "chore: auto-update merge $RUN_TS" 2>&1 | tee -a "$LOG_FILE"
@@ -576,9 +636,30 @@ if [ "$MERGE_EXIT" -ne 0 ]; then
     fi
   done
 
-  # Any remaining conflict = unexpected file, human required
+  # Prefix-based shared-software fallback. Any remaining UU file whose
+  # path starts with a SHARED_SOFTWARE_PREFIXES entry takes MAIN. Files
+  # in LOCATION_PATHS_OURS were already resolved above so the fallback
+  # only fires on files that ARE shared code.
   if git status --porcelain | grep -q "^UU"; then
-    log "Unexpected merge conflict on non-whitelisted files:"
+    while IFS= read -r conflict_line; do
+      # conflict_line looks like "UU apps/web/src/app/remote/page.tsx"
+      conflict_path="${conflict_line:3}"
+      for prefix in "${SHARED_SOFTWARE_PREFIXES[@]}"; do
+        case "$conflict_path" in
+          "$prefix"*)
+            log "  taking MAIN version (shared-software fallback): $conflict_path"
+            git checkout --theirs "$conflict_path" 2>&1 | tee -a "$LOG_FILE"
+            git add "$conflict_path"
+            break
+            ;;
+        esac
+      done
+    done < <(git status --porcelain | grep "^UU")
+  fi
+
+  # Any STILL-remaining conflict = unexpected file, human required
+  if git status --porcelain | grep -q "^UU"; then
+    log "Unexpected merge conflict on non-whitelisted files (not covered by OURS/THEIRS/prefix fallback):"
     git status --porcelain | grep "^UU" | tee -a "$LOG_FILE"
     git merge --abort 2>/dev/null || true
     fail "merge conflict on non-whitelisted file" 3
@@ -721,6 +802,31 @@ else
     cat "$SCHEMA_PUSH_LOG" >> "$LOG_FILE"
     fail "drizzle-kit push failed with an unrecognized error — see $SCHEMA_PUSH_LOG" 4
   fi
+fi
+
+# v2.32.5 — Detect destructive schema operations and mark the pre-update
+# DB backup as required for rollback. Without this marker, rollback.sh
+# resets git + .next but leaves the DB in the half-migrated state — a
+# DROP COLUMN / DROP TABLE in this run is permanent. The marker is a
+# small companion file alongside $BACKUP_FILE; rollback.sh checks for
+# it after git reset and restores the DB BEFORE rebuilding so the build
+# runs against the schema the reset code expects.
+#
+# Conservative grep — only flags operations drizzle ANNOUNCES as data-
+# loss in its push output. Pure additive schema (CREATE TABLE / ADD
+# COLUMN) doesn't trip this and rollback continues to leave the DB
+# alone (the additive schema is forward-compatible with old code).
+if [ -f "$SCHEMA_PUSH_LOG" ] && grep -qiE "you're about to (delete|drop)|drop (table|column)|data.loss|truncate" "$SCHEMA_PUSH_LOG" 2>/dev/null; then
+  DESTRUCTIVE_MARKER="$BACKUP_FILE.destructive"
+  log "Schema push included destructive operations — writing $DESTRUCTIVE_MARKER (rollback will auto-restore DB)"
+  {
+    echo "runId=$(basename "$LOG_FILE" .log)"
+    echo "detectedAtUtc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    echo "preMergeSha=${PRE_MERGE_SHA:-unknown}"
+    echo "postMergeSha=${POST_MERGE_SHA:-unknown}"
+    echo "--- detected lines ---"
+    grep -iE "you're about to|drop (table|column)|data.loss|truncate|dropping" "$SCHEMA_PUSH_LOG" 2>/dev/null | head -20
+  } > "$DESTRUCTIVE_MARKER" 2>/dev/null || log "WARNING: could not write destructive marker"
 fi
 
 # ===========================================================================
@@ -870,6 +976,33 @@ fi
 # update at this location") but tracked on location branches. We force-
 # add it here with `git add -f` so the gitignore doesn't block the commit.
 if [ -n "${VERIFY_INSTALL_JSON:-}" ]; then
+  # v2.32.4 — Enrich the heartbeat with config-file checksums and DB
+  # row-count snapshots. Lets the Fleet Dashboard detect post-update
+  # config drift (operator hand-edited .env after auto-update; tv-layout
+  # got blanked by a stale merge; AuthPin rows missing) WITHOUT polling
+  # each location. The dashboard compares last-success snapshot to the
+  # current commit's expected values and flags drift.
+  HB_FILE_CHECKSUMS=$(
+    {
+      for f in ".env" "apps/web/data/tv-layout.json" "apps/web/data/station-aliases-local.json" "apps/web/src/lib/hardware-config.ts"; do
+        if [ -f "$REPO_ROOT/$f" ]; then
+          h=$(sha256sum "$REPO_ROOT/$f" 2>/dev/null | awk '{print substr($1,1,16)}')
+          [ -n "$h" ] && printf '    "%s": "%s",\n' "$f" "$h"
+        fi
+      done
+    } | sed '$ s/,$//'
+  )
+  HB_ROW_COUNTS=$(
+    {
+      DB_PATH="${DATABASE_PATH:-/home/ubuntu/sports-bar-data/production.db}"
+      if [ -f "$DB_PATH" ]; then
+        for tbl in Location AuthPin MatrixConfiguration HomeTeam ChannelPreset station_aliases; do
+          c=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM $tbl;" 2>/dev/null || echo "")
+          [ -n "$c" ] && printf '    "%s": %d,\n' "$tbl" "$c"
+        done
+      fi
+    } | sed '$ s/,$//'
+  )
   {
     printf '{\n'
     printf '  "version": "%s",\n' "${POST_MERGE_VERSION:-unknown}"
@@ -878,7 +1011,15 @@ if [ -n "${VERIFY_INSTALL_JSON:-}" ]; then
     printf '  "successAt": "%s",\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     printf '  "successAtUnix": %d,\n' "$(date +%s)"
     printf '  "runId": "%s",\n' "$(basename "$LOG_FILE" .log)"
-    printf '  "verifyInstall": %s\n' "$VERIFY_INSTALL_JSON"
+    printf '  "verifyInstall": %s,\n' "$VERIFY_INSTALL_JSON"
+    if [ -n "$HB_FILE_CHECKSUMS" ]; then
+      printf '  "configChecksums": {\n%s\n  },\n' "$HB_FILE_CHECKSUMS"
+    fi
+    if [ -n "$HB_ROW_COUNTS" ]; then
+      printf '  "dbRowCounts": {\n%s\n  },\n' "$HB_ROW_COUNTS"
+    fi
+    # Schema version of this heartbeat record so dashboard knows which fields are present
+    printf '  "heartbeatSchemaVersion": 2\n'
     printf '}\n'
   } > "$REPO_ROOT/.auto-update-last-success.json"
   git -C "$REPO_ROOT" add -f ".auto-update-last-success.json" 2>/dev/null || true

@@ -22,7 +22,12 @@ export async function POST(request: NextRequest) {
   const extendedSchema = z.object({
     input: z.union([z.string(), z.number()]),
     output: z.union([z.string(), z.number()]),
-    source: z.enum(['bartender', 'ai_scheduler', 'manual', 'system']).optional().default('bartender'),
+    // 'auto-reallocator' added in v2.26.2 — the scheduler's revert-to-defaults
+    // path calls this endpoint with source='auto-reallocator'. Previously
+    // rejected by the enum, causing silent revert failure (the calling code
+    // logged "revert complete" even though every matrix route was 400'd
+    // before reaching the Wolf Pack).
+    source: z.enum(['bartender', 'ai_scheduler', 'manual', 'system', 'auto-reallocator']).optional().default('bartender'),
     bartenderId: z.string().optional(),
   })
 
