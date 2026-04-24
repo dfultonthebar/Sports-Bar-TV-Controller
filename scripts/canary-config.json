@@ -1,0 +1,6 @@
+{
+  "enabled": false,
+  "canaryBranch": "location/leg-lamp",
+  "minBlessAgeMinutes": 240,
+  "comment": "Canary location pattern (v2.32.6+). When `enabled` is true, every non-canary location's auto-update.sh waits for the canary location to successfully install a given commit + soak for `minBlessAgeMinutes` BEFORE that commit is merged at the non-canary location. Bad commits break only the canary instead of all 6 locations at once. The canary writes .canary-blessed.json to its branch after a successful run; non-canary locations read it via `git show origin/<canaryBranch>:.canary-blessed.json` (no new endpoint, no shared DB). Set `enabled: true` AND choose the canary location to opt in. The canary itself is unaffected — it always proceeds without gating."
+}
