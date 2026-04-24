@@ -142,6 +142,14 @@ export const STREAMING_APPS_DATABASE: StreamingApp[] = [
     id: 'fubo-tv',
     name: 'FuboTV',
     packageName: 'com.fubotv.android',
+    // v2.32.8 — Holmgren Way Fire TV Cubes ship Fubo as
+    // `com.fubo.firetv.screen` (the Fire TV-specific build), not the
+    // generic Android TV `com.fubotv.android`. Same launcher-aliased
+    // pattern as Prime Video (v2.28.8 / firebat) and Peacock (v2.31.9 /
+    // peacockfiretv). Without this alias, streamingManager.launchApp
+    // probes only the primary and reports "not installed" — bartender
+    // click + walker both silently fail on these Cubes.
+    packageAliases: ['com.fubo.firetv.screen'],
     category: 'sports',
     hasPublicApi: false,
     deepLinkSupport: true,
