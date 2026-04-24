@@ -187,6 +187,92 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.4 → v2.32.7 — Auto-update robustness Phases 1-4
+**Released:** 2026-04-23
+
+Hardens `scripts/auto-update.sh` against the cross-location failure modes
+mapped during the v2.31-tonight session. Four orthogonal pieces, all
+backward-compatible (no behavior change at locations until they next
+auto-update).
+
+**v2.32.4 (Phase 1 — quick wins):**
+- `apps/web/data/station-aliases-local.json` added to
+  `LOCATION_PATHS_OURS`. Closes a ticking time bomb: any future merge
+  touching this file at any location with custom OTA aliases would have
+  hit "unexpected conflict" and aborted with exit 3 (no rollback,
+  half-merged tree).
+- Pre-flight env-var scan after fetch / before Checkpoint A. Greps the
+  incoming diff for new `process.env.X` references and warns if X isn't
+  in the current `.env`. Warn-only — no STOP — many env vars have
+  code-side fallbacks.
+- Heartbeat (`.auto-update-last-success.json`) v2 schema: adds
+  `configChecksums` (16-char SHA-256 prefixes of `.env`,
+  `tv-layout.json`, `station-aliases-local.json`,
+  `hardware-config.ts`) and `dbRowCounts` (Location, AuthPin,
+  MatrixConfiguration, HomeTeam, ChannelPreset, station_aliases).
+  Lets the Fleet Dashboard detect drift without polling each location.
+
+**v2.32.5 (Phase 2 — DB rollback hardening):**
+- `auto-update.sh` schema_push phase greps drizzle output for
+  destructive operations (DROP TABLE / DROP COLUMN / data-loss /
+  truncate). If detected, writes a small companion file
+  `$BACKUP_FILE.destructive` next to the pre-update SQLite backup.
+- `rollback.sh` checks for the marker after git reset. If present (and
+  the backup file exists), snapshots the current half-migrated DB and
+  restores production.db from the pre-update backup BEFORE rebuilding,
+  so the rolled-back code runs against the schema it expects. Also
+  removes WAL/SHM files for clean reopen.
+- Additive schema (the normal case) leaves the DB untouched on rollback
+  because additive changes are forward-compatible with old code.
+
+**v2.32.6 (Phase 3 — canary location pattern):**
+- New `scripts/canary-config.json` with `enabled: false` default. Opt-in.
+- When enabled AND non-canary branch: `auto-update.sh` checks the
+  canary's `.canary-blessed.json` (in the canary's git branch) before
+  merging. Skips with no-op if canary hasn't blessed the target SHA OR
+  if the bless is younger than `minBlessAgeMinutes` (default 240).
+- When enabled AND canary branch: writes/commits/pushes
+  `.canary-blessed.json` after a successful run.
+- Bad commits break only the canary; the other 5 locations skip and
+  retry on the next nightly cron.
+
+**v2.32.7 (Phase 4 — VERSION_SETUP_GUIDE verify markers):**
+- New marker format in version entries: `<!-- verify-sql: SELECT ... -->`
+  with optional `<!-- verify-description: ... -->`.
+- Checkpoint B parses entries between PRE/POST_MERGE_VERSION, runs each
+  marker's SQL, returns `DECISION: STOP` if any returns 0 rows.
+- Forward-only enforcement: entries pre-dating v2.32.7 stay advisory.
+- See `docs/CLAUDE_VERSIONING_GUIDE.md` "Verify-SQL markers" for usage
+  rules.
+
+**Required manual steps PER LOCATION:** None for any of these. All four
+ship as auto-update.sh changes that take effect on the next cron run at
+each location. Verify post-deploy:
+
+```bash
+# After a location's auto-update runs once on v2.32.4+, the heartbeat
+# file should have configChecksums + dbRowCounts + heartbeatSchemaVersion=2:
+cat /home/ubuntu/Sports-Bar-TV-Controller/.auto-update-last-success.json | head -20
+```
+
+**To opt INTO canary mode** (Phase 3) at a future date:
+1. Decide which location is the canary (recommended: Leg Lamp — single-card
+   matrix, lowest blast-radius).
+2. On `main`, edit `scripts/canary-config.json` to set `"enabled": true`
+   and `"canaryBranch": "location/leg-lamp"`. Commit + push.
+3. Next auto-update run at any non-canary location will start gating on
+   the canary's bless. The canary itself is exempt and proceeds normally.
+
+**Worked example of a verify-sql marker** (proof-of-concept; this entry's
+own preconditions are met by the auto-update changes themselves, no DB
+state required, but the marker below confirms the production DB is
+reachable from Checkpoint B at all):
+
+<!-- verify-description: production.db is reachable and has the canonical Location row seeded -->
+<!-- verify-sql: SELECT id FROM Location LIMIT 1 -->
+
+---
+
 ### v2.31.2 + v2.31.3 + v2.31.4 — Streaming click actually launches; walker navigates to Sports tab
 **Released:** 2026-04-23
 

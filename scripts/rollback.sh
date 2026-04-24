@@ -61,6 +61,46 @@ if [ "${PIPESTATUS[0]}" -ne 0 ]; then
   exit 99
 fi
 
+# --- 2.5. Restore DB if the failed run did a destructive schema_push -------
+# v2.32.5 — auto-update.sh writes $BACKUP_FILE.destructive next to the
+# pre-update DB backup whenever drizzle-kit push includes DROP TABLE /
+# DROP COLUMN / data-loss operations. If that marker is present, the
+# in-place DB has destructive changes git reset can't undo, so restore
+# from the SQLite backup BEFORE rebuilding (so the rolled-back code runs
+# against the schema it expects).
+#
+# Pure additive schema (CREATE TABLE / ADD COLUMN — the normal case)
+# leaves the DB untouched by rollback because additive changes are
+# forward-compatible with the old code; restoring then would lose the
+# new columns when we re-merge the same commit on a successful retry.
+RUN_TS="${ROLLBACK_TAG#rollback-}"
+BACKUP_FILE="/home/ubuntu/sports-bar-data/backups/pre-update-$RUN_TS.db"
+DESTRUCTIVE_MARKER="$BACKUP_FILE.destructive"
+DB_PATH="/home/ubuntu/sports-bar-data/production.db"
+if [ -f "$DESTRUCTIVE_MARKER" ]; then
+  if [ -f "$BACKUP_FILE" ]; then
+    log "Destructive schema_push detected (marker: $DESTRUCTIVE_MARKER); restoring DB"
+    # Belt-and-suspenders: snapshot the current half-migrated DB so an
+    # operator can forensic the failed migration if needed.
+    cp "$DB_PATH" "$BACKUP_FILE.pre-rollback-snapshot" 2>/dev/null || true
+    # Use cp not mv: BACKUP_FILE is the canonical pre-update state, we
+    # want to preserve it for re-rollback if this attempt also fails.
+    if cp "$BACKUP_FILE" "$DB_PATH"; then
+      # SQLite WAL/SHM files become inconsistent after a binary swap of
+      # the main DB file. Delete them so SQLite recreates fresh ones on
+      # next open.
+      rm -f "$DB_PATH-wal" "$DB_PATH-shm" 2>/dev/null || true
+      log "DB restored from $BACKUP_FILE (pre-rollback snapshot at $BACKUP_FILE.pre-rollback-snapshot)"
+    else
+      critical "Failed to restore DB from $BACKUP_FILE — schema is half-migrated"
+      exit 99
+    fi
+  else
+    log "WARNING: destructive marker present but backup file $BACKUP_FILE missing"
+    log "         DB cannot be auto-restored; manual recovery may be required"
+  fi
+fi
+
 # --- 3. Reinstall dependencies to match the reset package-lock.json --------
 # If the failed-forward run pulled new packages, node_modules now mismatches
 # the lockfile we just reset to. Skipping npm ci would let the rollback build
