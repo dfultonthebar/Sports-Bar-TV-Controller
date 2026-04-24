@@ -342,7 +342,7 @@ register(['PARAMOUNT+', 'PARAMOUNT'], {
   badgeBg: '#0064FF', badgeFg: '#FFFFFF', badgeText: 'PARA+',
   name: 'Paramount+',
 })
-register(['PRIME', 'PRIMEVIDEO', 'AMAZONPRIME', 'AMZN'], {
+register(['PRIME', 'PRIMEVIDEO', 'AMAZONPRIME', 'AMAZONPRIMEVIDEO', 'AMZN'], {
   src: SI('primevideo'),
   badgeBg: '#00A8E1', badgeFg: '#FFFFFF', badgeText: 'PRIME',
   name: 'Prime Video',
@@ -351,6 +351,123 @@ register(['APPLETV+', 'APPLETV'], {
   src: SI('appletv'),
   badgeBg: '#000000', badgeFg: '#FFFFFF', badgeText: 'TV+',
   name: 'Apple TV+',
+})
+
+// ------------------------------------------------------------------
+// Streaming apps (Fire TV / Roku — surface as input "channel" via
+// scout heartbeat, see firestick-scout/route.ts InputCurrentChannel
+// mirror). Names match both the streaming-apps-database `name` and the
+// fallback APP_NAMES map in firetv-devices/[deviceId]/current-app.
+// ------------------------------------------------------------------
+register(['NETFLIX'], {
+  src: SI('netflix'),
+  badgeBg: '#E50914', badgeFg: '#FFFFFF', badgeText: 'NFLX',
+  name: 'Netflix',
+})
+register(['DISNEY+', 'DISNEYPLUS', 'DISNEY'], {
+  src: SI('disneyplus'),
+  badgeBg: '#113CCF', badgeFg: '#FFFFFF', badgeText: 'D+',
+  name: 'Disney+',
+})
+register(['HULU'], {
+  src: SI('hulu'),
+  badgeBg: '#1CE783', badgeFg: '#000000', badgeText: 'HULU',
+  name: 'Hulu',
+})
+register(['MAX', 'HBOMAX', 'HBO'], {
+  src: SI('max'),
+  badgeBg: '#002BE7', badgeFg: '#FFFFFF', badgeText: 'MAX',
+  name: 'Max',
+})
+register(['YOUTUBE', 'YOUTUBETV', 'YT', 'YTTV'], {
+  src: SI('youtube'),
+  badgeBg: '#FF0000', badgeFg: '#FFFFFF', badgeText: 'YT',
+  name: 'YouTube',
+})
+register(['FUBOTV', 'FUBO'], {
+  src: SI('fubo'),
+  badgeBg: '#FA4616', badgeFg: '#FFFFFF', badgeText: 'FUBO',
+  name: 'fuboTV',
+})
+register(['SLING', 'SLINGTV'], {
+  src: SI('sling'),
+  badgeBg: '#FF6600', badgeFg: '#FFFFFF', badgeText: 'SLING',
+  name: 'Sling TV',
+})
+register(['DAZN'], {
+  src: SI('dazn'),
+  badgeBg: '#F8FE00', badgeFg: '#000000', badgeText: 'DAZN',
+  name: 'DAZN',
+})
+register(['TUBI'], {
+  src: SI('tubi'),
+  badgeBg: '#FA382F', badgeFg: '#FFFFFF', badgeText: 'TUBI',
+  name: 'Tubi',
+})
+register(['PLUTOTV', 'PLUTO'], {
+  src: SI('pluto'),
+  badgeBg: '#FFE000', badgeFg: '#000000', badgeText: 'PLUTO',
+  name: 'Pluto TV',
+})
+register(['VUDU'], {
+  src: null,
+  badgeBg: '#5C00B3', badgeFg: '#FFFFFF', badgeText: 'VUDU',
+  name: 'Vudu',
+})
+register(['DIRECTVSTREAM', 'DIRECTV'], {
+  src: null,
+  badgeBg: '#003DA5', badgeFg: '#FFFFFF', badgeText: 'DTV',
+  name: 'DirecTV Stream',
+})
+register(['MLB.TV', 'MLBTV'], {
+  src: SI('mlb'),
+  badgeBg: '#041E42', badgeFg: '#FFFFFF', badgeText: 'MLB.TV',
+  name: 'MLB.TV',
+})
+register(['NBALEAGUEPASS', 'NBAAPP'], {
+  src: SI('nba'),
+  badgeBg: '#1D428A', badgeFg: '#C8102E', badgeText: 'NBA',
+  name: 'NBA League Pass',
+})
+register(['NHLONESPN+', 'NHLTV'], {
+  src: SI('nhl'),
+  badgeBg: '#000000', badgeFg: '#FFFFFF', badgeText: 'NHL',
+  name: 'NHL',
+})
+register(['NFL', 'NFLAPP'], {
+  src: SI('nfl'),
+  badgeBg: '#013369', badgeFg: '#FFFFFF', badgeText: 'NFL',
+  name: 'NFL',
+})
+register(['NFHSNETWORK', 'NFHS'], {
+  src: null,
+  badgeBg: '#003DA5', badgeFg: '#FFD100', badgeText: 'NFHS',
+  name: 'NFHS Network',
+})
+register(['BIGTEN+', 'BIGTENPLUS', 'BTN+'], {
+  src: null,
+  badgeBg: '#0088CE', badgeFg: '#FFFFFF', badgeText: 'B1G+',
+  name: 'Big Ten+',
+})
+register(['NBCSPORTS', 'NBCSN'], {
+  src: SI('nbc'),
+  badgeBg: '#000000', badgeFg: '#FFFFFF', badgeText: 'NBC',
+  name: 'NBC Sports',
+})
+register(['FOXSPORTS', 'FOXSPORTSAPP'], {
+  src: SI('foxsports'),
+  badgeBg: '#0033A0', badgeFg: '#FFFFFF', badgeText: 'FOX',
+  name: 'Fox Sports',
+})
+register(['ATMOSPHERE', 'ATMOSPHERETV'], {
+  src: null,
+  badgeBg: '#1A1A1A', badgeFg: '#FFD700', badgeText: 'ATMO',
+  name: 'Atmosphere TV',
+})
+register(['HOME', 'LAUNCHER', 'FIRETVHOME'], {
+  src: null,
+  badgeBg: '#1F2937', badgeFg: '#9CA3AF', badgeText: 'HOME',
+  name: 'Home',
 })
 
 // ------------------------------------------------------------------
