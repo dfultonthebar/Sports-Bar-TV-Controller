@@ -1626,6 +1626,16 @@ export const inputSourceAllocations = sqliteTable('input_source_allocations', {
   expectedFreeAt: integer('expected_free_at').notNull(), // Unix timestamp (estimated game end + buffer)
   actuallyFreedAt: integer('actually_freed_at'), // Unix timestamp
 
+  // Revert bookkeeping (v2.26.1)
+  // Set when the auto-reallocator's revert-sweep has processed this
+  // allocation — regardless of whether it actually tuned TVs (a revert
+  // can be skipped if another game starts on the same input within 30
+  // min, but we still mark it attempted so the sweep doesn't re-scan).
+  // NULL = allocation has not yet been through the revert sweep.
+  // Existing rows are backfilled to `actually_freed_at` on first deploy
+  // so pre-v2.26.1 completed allocations don't get retroactively reverted.
+  revertAttemptedAt: integer('revert_attempted_at'),
+
   // Status
   status: text('status').notNull().default('pending'), // 'pending', 'active', 'completed', 'preempted', 'cancelled'
 
@@ -1913,6 +1923,65 @@ export const firestickAppRegistry = sqliteTable('firestick_app_registry', {
   createdAt: timestamp('createdAt').notNull().default(timestampNow()),
   updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
 })
+
+// Per-box per-app sports content catalog populated by Sports Bar Scout's
+// CatalogWalker (scout v1.9+). Each row is one playable item discovered on
+// one Fire TV box's specific app. The catalog is overwritten daily (or
+// whenever scout completes a fresh walk) — rows expire 36h after capture
+// so a single bad walk doesn't strand stale content.
+//
+// Channel guide and AI Suggest read this table to surface streaming-only
+// sports content that ESPN's broadcast_networks doesn't tag (regional
+// broadcasts, Drive-to-Survive-style docuseries, replays). Each row says:
+// "Fire TV X has app Y and you can play content Z".
+//
+// Indexed on (deviceId, app) for the common channel-guide query and on
+// expiresAt for the cleanup sweep.
+export const firetvStreamingCatalog = sqliteTable('firetv_streaming_catalog', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+
+  // Which Fire TV reported this — FireTVDevice.id (the canonical id, not
+  // scout's compile-time deviceId). The firestick-scout ingest endpoint
+  // resolves canonical id by IP before insert (see v2.28.10).
+  deviceId: text('deviceId').notNull(),
+
+  // Which app this content is in (e.g. "Prime Video", "Peacock", "Hulu").
+  // Matches input_sources.available_networks display names so consumers
+  // can join by app.
+  app: text('app').notNull(),
+
+  // Display title scout pulled off the tile (e.g. "Thursday Night Football",
+  // "MLB.TV: Brewers vs. Cubs", "Drive to Survive S6E1"). Best-effort —
+  // accessibility text capture varies by app.
+  contentTitle: text('contentTitle').notNull(),
+
+  // Optional explicit deep-link URI scout could extract (e.g.
+  // "primevideo://detail?gti=..."). When present, the bartender-remote /
+  // scheduler can launch directly to the content instead of just opening
+  // the app's home screen. Most apps don't expose this externally — null
+  // is normal.
+  deepLink: text('deepLink'),
+
+  // True when scout determined the content is currently airing live
+  // (badge, "LIVE NOW" text, etc.). False for on-demand. Drives the
+  // channel-guide sort order (live first).
+  isLive: integer('isLive', { mode: 'boolean' }).default(false),
+
+  // Best-guess sport label (NFL, NBA, MLB, soccer, mma, motorsport, etc.)
+  // derived from tile text or app section heading. May be null if scout
+  // couldn't classify.
+  sportTag: text('sportTag'),
+
+  // When this row was captured by scout, and when it expires (default
+  // captured + 36h). Cleanup sweep deletes rows past expiresAt.
+  capturedAt: integer('capturedAt').notNull(),
+  expiresAt: integer('expiresAt').notNull(),
+
+  createdAt: integer('createdAt').notNull().default(sql`(strftime('%s','now'))`),
+}, (table) => ({
+  byDeviceApp: index('firetv_catalog_device_app_idx').on(table.deviceId, table.app),
+  byExpiresAt: index('firetv_catalog_expires_idx').on(table.expiresAt),
+}))
 
 // ============================================================================
 // DMX LIGHTING CONTROL
@@ -2742,4 +2811,30 @@ export const scheduledOverrideDefaults = sqliteTable('ScheduledOverrideDefaults'
     table.outputNum,
     table.action,
   ),
+}))
+
+// ============================================================================
+// PPV / EVENT CHANNEL DISCOVERY (v2.28.0)
+// ============================================================================
+
+// Track DirecTV PPV channel observations from /tv/getTuned probe runs.
+// ESPN doesn't reliably surface PPV broadcast info for UFC/boxing events,
+// so we discover channels reactively: every 10 minutes the scheduler asks
+// each DirecTV box what it's tuned to and upserts any "PPV"-callsigned or
+// 100-199 channel-range result here. This gives operators a list of recently
+// active PPV channels they can pin to scheduled events when ESPN is silent.
+export const discoveredPpvChannels = sqliteTable('discovered_ppv_channels', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  directvDeviceId: text('directv_device_id').notNull(),
+  channelMajor: integer('channel_major').notNull(),
+  channelMinor: integer('channel_minor'),
+  callsign: text('callsign'),
+  title: text('title'),
+  firstSeenAt: integer('first_seen_at').notNull(),
+  lastSeenAt: integer('last_seen_at').notNull(),
+  seenCount: integer('seen_count').notNull().default(1),
+}, (table) => ({
+  uniquePerDeviceChannel: uniqueIndex('discovered_ppv_channels_device_major_unique')
+    .on(table.directvDeviceId, table.channelMajor),
+  lastSeenIdx: index('discovered_ppv_channels_lastSeen_idx').on(table.lastSeenAt),
 }))

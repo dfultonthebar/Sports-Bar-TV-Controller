@@ -17,6 +17,7 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { logger } from '@sports-bar/logger'
 import { z } from 'zod'
 import { validateRequestBody, isValidationError } from '@/lib/validation'
+import { resolveCanonicalFireTVDeviceId } from '@/lib/firetv-device-resolver'
 
 // Schema for Scout heartbeat
 const heartbeatSchema = z.object({
@@ -49,16 +50,24 @@ export async function POST(request: NextRequest) {
   const data = bodyValidation.data
   const now = new Date().toISOString()
 
+  // v2.31.7 — Canonical deviceId resolution extracted to shared helper.
+  // See apps/web/src/lib/firetv-device-resolver.ts for rationale.
+  const { resolvedDeviceId, resolvedDeviceName } = await resolveCanonicalFireTVDeviceId(
+    data.deviceId,
+    data.ipAddress,
+    data.deviceName
+  )
+
   try {
     // Check if device already exists
     const existing = await db
       .select()
       .from(schema.firestickLiveStatus)
-      .where(eq(schema.firestickLiveStatus.deviceId, data.deviceId))
+      .where(eq(schema.firestickLiveStatus.deviceId, resolvedDeviceId))
       .get()
 
     const statusData = {
-      deviceName: data.deviceName || data.deviceId,
+      deviceName: resolvedDeviceName || resolvedDeviceId,
       ipAddress: data.ipAddress || null,
       currentApp: data.currentApp || null,
       currentAppName: data.currentAppName || null,
@@ -86,22 +95,22 @@ export async function POST(request: NextRequest) {
         .where(eq(schema.firestickLiveStatus.id, existing.id))
         .run()
 
-      logger.debug(`[FIRESTICK_SCOUT] Updated status for ${data.deviceId}: ${data.currentAppName || 'idle'}`)
+      logger.debug(`[FIRESTICK_SCOUT] Updated status for ${resolvedDeviceId}: ${data.currentAppName || 'idle'}`)
     } else {
       // Create new status entry
       await db.insert(schema.firestickLiveStatus).values({
-        deviceId: data.deviceId,
+        deviceId: resolvedDeviceId,
         ...statusData,
         createdAt: now
       }).run()
 
-      logger.info(`[FIRESTICK_SCOUT] New device registered: ${data.deviceId} (${data.deviceName})`)
+      logger.info(`[FIRESTICK_SCOUT] New device registered: ${resolvedDeviceId} (${resolvedDeviceName})`)
     }
 
     return NextResponse.json({
       success: true,
       message: 'Heartbeat received',
-      deviceId: data.deviceId,
+      deviceId: resolvedDeviceId,
       timestamp: now
     })
   } catch (error: any) {

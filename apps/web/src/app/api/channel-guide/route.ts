@@ -23,6 +23,60 @@ import {
   getStreamingAppInfoForStation,
   normalizeStation,
 } from '@/lib/network-channel-resolver'
+// v2.32.9 — display-name lookup is now centralized in
+// @sports-bar/streaming via the displayNameAliases field on each
+// catalog entry. The previous inline DISPLAY_NAME_TO_CATALOG_ID +
+// findStreamingAppByDisplayName here (added v2.31.3) was a cosmetic-
+// drift footgun: a new app added to the catalog without also being
+// added to this local map silently failed to resolve. Single source
+// of truth fixes it.
+import { findStreamingAppByDisplayName } from '@/lib/streaming/streaming-apps-database'
+
+// v2.31.7 — Shared streaming channel builder. Both injection paths
+// (broadcast_networks fallback + per-box catalog injection) construct the
+// same shape and call findStreamingAppByDisplayName for the same reason —
+// without appId/packageName populated the bartender click silently does
+// nothing. Centralizing keeps any new field (e.g. a future deep-link
+// format) in one spot.
+interface StreamingAppChannel {
+  id: string
+  name: string
+  number: string
+  type: 'streaming'
+  cost: 'subscription'
+  platforms: string[]
+  channelNumber: string
+  deviceType: 'streaming'
+  streamingApp: string
+  appId?: string
+  packageName?: string
+  packages: string[]
+}
+function buildStreamingAppChannel(opts: {
+  appName: string
+  channelNumber: string
+  packagesOverride?: string[]   // broadcast_networks path supplies matchedAppInfo.packages
+}): StreamingAppChannel {
+  const catalogApp = findStreamingAppByDisplayName(opts.appName)
+  const fallbackPackages = catalogApp
+    ? [catalogApp.packageName, ...(catalogApp.packageAliases || [])]
+    : []
+  const packages = opts.packagesOverride ?? fallbackPackages
+  return {
+    id: `stream-${opts.appName.replace(/\s+/g, '-').toLowerCase()}`,
+    name: opts.appName,
+    number: opts.channelNumber,
+    type: 'streaming',
+    cost: 'subscription',
+    platforms: ['Fire TV', 'Streaming'],
+    channelNumber: opts.channelNumber,
+    deviceType: 'streaming',
+    streamingApp: opts.appName,
+    appId: catalogApp?.id,
+    packageName: catalogApp?.packageName ?? packages[0],
+    packages,
+  }
+}
 export const dynamic = 'force-dynamic'
 
 // NFHS Network packages for detecting if device has NFHS login.
@@ -348,13 +402,27 @@ export async function POST(request: NextRequest) {
         const windowStartSec = Math.floor(new Date(startTime).getTime() / 1000)
         const windowEndSec = Math.floor(new Date(endTime).getTime() / 1000)
 
+        // v2.28.2 — overlap filter PLUS in_progress catch-all. Previously
+        // we filtered on scheduledStart only (`gte(start, windowStart) && lte(start, windowEnd)`)
+        // which excluded any game that started BEFORE windowStart even if it
+        // was still airing. The overlap check fixes upcoming + recently-started.
+        // The OR(status='in_progress') catches games that ran past their
+        // estimated_end (OT, weather delay, etc.) — ESPN still has them as
+        // in_progress so we trust that label even when our duration estimate
+        // is stale. Manager case: Wolves @ Nuggets ran into OT past midnight,
+        // estimated_end was 90min in the past, but ESPN status was still
+        // 'in_progress' and the game was actively playing on DirecTV 6.
+        const { or, eq } = await import('drizzle-orm')
         const localGames = await db
           .select()
           .from(schema.gameSchedules)
           .where(
-            and(
-              gte(schema.gameSchedules.scheduledStart, windowStartSec),
-              lte(schema.gameSchedules.scheduledStart, windowEndSec)
+            or(
+              and(
+                lte(schema.gameSchedules.scheduledStart, windowEndSec),
+                gte(schema.gameSchedules.estimatedEnd, windowStartSec)
+              ),
+              eq(schema.gameSchedules.status, 'in_progress')
             )
           )
           .all()
@@ -362,6 +430,8 @@ export async function POST(request: NextRequest) {
         let gsInjected = 0
         let gsSkippedNoChannel = 0
         let gsSkippedDupe = 0
+
+        const nowSec = Math.floor(Date.now() / 1000)
 
         for (const game of localGames) {
           // Skip games without real team matchups
@@ -429,6 +499,14 @@ export async function POST(request: NextRequest) {
             channels.set(channelInfo.id, channelInfo)
           }
 
+          // v2.28.2 — derive isLive from current time + game status. ESPN
+          // sometimes lags marking a game 'completed' (especially OT games);
+          // trust the time window AND the explicit in_progress status when
+          // either is true.
+          const isLive =
+            game.status === 'in_progress' ||
+            (nowSec >= game.scheduledStart && nowSec <= game.estimatedEnd && game.status !== 'completed' && game.status !== 'final')
+
           programs.push({
             id: `gs-${game.id}`,
             league: game.league || 'Sports',
@@ -440,7 +518,7 @@ export async function POST(request: NextRequest) {
             channel: channelInfo,
             description: `${game.awayTeamName} @ ${game.homeTeamName}${game.venueName ? ' · ' + game.venueName : ''}`,
             isSports: true,
-            isLive: false,
+            isLive,
             venue: game.venueName || '',
             date: startDate.toDateString(),
             station: matchedStation,
@@ -660,13 +738,18 @@ export async function POST(request: NextRequest) {
         const windowStartSec = Math.floor(new Date(startTime).getTime() / 1000)
         const windowEndSec = Math.floor(new Date(endTime).getTime() / 1000)
 
+        // v2.28.2 — overlap filter + in_progress catch-all (see cable/directv path)
+        const { or, eq } = await import('drizzle-orm')
         const localGames = await db
           .select()
           .from(schema.gameSchedules)
           .where(
-            and(
-              gte(schema.gameSchedules.scheduledStart, windowStartSec),
-              lte(schema.gameSchedules.scheduledStart, windowEndSec)
+            or(
+              and(
+                lte(schema.gameSchedules.scheduledStart, windowEndSec),
+                gte(schema.gameSchedules.estimatedEnd, windowStartSec)
+              ),
+              eq(schema.gameSchedules.status, 'in_progress')
             )
           )
           .all()
@@ -675,6 +758,8 @@ export async function POST(request: NextRequest) {
         let gsSkippedNoApp = 0
         let gsSkippedNotLoggedIn = 0
         let gsSkippedDupe = 0
+
+        const nowSec = Math.floor(Date.now() / 1000)
 
         for (const game of localGames) {
           if (!game.homeTeamName || !game.awayTeamName) continue
@@ -725,18 +810,12 @@ export async function POST(request: NextRequest) {
             continue
           }
 
-          const appChannel = {
-            id: `stream-${matchedAppInfo.app.replace(/\s+/g, '-').toLowerCase()}`,
-            name: matchedAppInfo.app,
-            number: matchedNetwork || matchedAppInfo.code,
-            type: 'streaming',
-            cost: 'subscription',
-            platforms: ['Fire TV', 'Streaming'],
+          // v2.31.7 — shared builder; carries appId+packageName so bartender click works
+          const appChannel = buildStreamingAppChannel({
+            appName: matchedAppInfo.app,
             channelNumber: matchedNetwork || matchedAppInfo.code,
-            deviceType: 'streaming',
-            streamingApp: matchedAppInfo.app,
-            packages: matchedAppInfo.packages,
-          }
+            packagesOverride: matchedAppInfo.packages,
+          })
           if (!channels.has(appChannel.id)) {
             channels.set(appChannel.id, appChannel)
           }
@@ -749,6 +828,11 @@ export async function POST(request: NextRequest) {
             hour12: true,
           }).toLowerCase()
 
+          // v2.28.2 — derive isLive (see cable/directv path)
+          const isLive =
+            game.status === 'in_progress' ||
+            (nowSec >= game.scheduledStart && nowSec <= game.estimatedEnd && game.status !== 'completed' && game.status !== 'final')
+
           programs.push({
             id: `gs-stream-${game.id}`,
             league: game.league || 'Sports',
@@ -760,7 +844,7 @@ export async function POST(request: NextRequest) {
             channel: appChannel,
             description: `${game.awayTeamName} @ ${game.homeTeamName}${game.venueName ? ' · ' + game.venueName : ''} (${matchedAppInfo.app})`,
             isSports: true,
-            isLive: false,
+            isLive,
             venue: game.venueName || '',
             station: matchedNetwork,
           })
@@ -774,6 +858,87 @@ export async function POST(request: NextRequest) {
         }
       } catch (fallbackError: any) {
         logger.error('[Channel-Guide-API] game_schedules streaming fallback failed (non-fatal):', { error: fallbackError.message })
+      }
+    }
+
+    // v2.30.0 — Per-box on-device catalog injection.
+    // Sports Bar Scout's CatalogWalker reports per-box per-app sports content
+    // tiles (regional broadcasts ESPN doesn't tag, on-demand sports docuseries,
+    // app-specific live events). This data fills the gap left by the
+    // broadcast_networks fallback above, which only covers content ESPN syncs.
+    // Catalog rows live in firetv_streaming_catalog with a 36h TTL — older
+    // rows are pruned by the daily cron (Phase 3).
+    if (deviceType === 'streaming' && deviceId) {
+      try {
+        const { db } = await import('@/db')
+        const { schema } = await import('@/db')
+        const { eq, gt, and: dAnd } = await import('drizzle-orm')
+
+        const nowSec = Math.floor(Date.now() / 1000)
+        const catalogRows = await db
+          .select()
+          .from(schema.firetvStreamingCatalog)
+          .where(
+            dAnd(
+              eq(schema.firetvStreamingCatalog.deviceId, deviceId),
+              gt(schema.firetvStreamingCatalog.expiresAt, nowSec)
+            )
+          )
+          .all()
+
+        let catInjected = 0
+        let catSkippedDupe = 0
+        for (const row of catalogRows) {
+          // Dedupe against programs already added — same app + same title
+          const dupe = programs.some(
+            (p) =>
+              p.channel?.streamingApp === row.app &&
+              (p.description?.includes(row.contentTitle) || p.homeTeam === row.contentTitle)
+          )
+          if (dupe) {
+            catSkippedDupe++
+            continue
+          }
+
+          const appChannelId = `stream-${row.app.replace(/\s+/g, '-').toLowerCase()}`
+          let appChannel = channels.get(appChannelId)
+          if (!appChannel) {
+            // v2.31.7 — shared builder
+            appChannel = buildStreamingAppChannel({ appName: row.app, channelNumber: row.app })
+            channels.set(appChannelId, appChannel)
+          }
+
+          // v2.31.7 — extra `deepLink` + `sportTag` fields ride along for
+          // any client that wants to consume them (the bartender remote
+          // ignores them today). The `programs` array is loosely typed so
+          // no cast is needed — TypeScript infers a union of pushed shapes.
+          programs.push({
+            id: `cat-${row.id}`,
+            league: row.sportTag || 'Sports',
+            homeTeam: row.contentTitle,
+            awayTeam: '',
+            gameTime: row.isLive ? 'LIVE' : 'On demand',
+            startTime: new Date(row.capturedAt * 1000).toISOString(),
+            endTime: new Date(row.expiresAt * 1000).toISOString(),
+            channel: appChannel,
+            description: `${row.contentTitle} (${row.app}${row.deepLink ? ' · deep-linkable' : ''})`,
+            isSports: true,
+            isLive: !!row.isLive,
+            venue: '',
+            station: row.app,
+            deepLink: row.deepLink || undefined,
+            sportTag: row.sportTag || undefined,
+          })
+          catInjected++
+        }
+
+        if (catInjected > 0 || catSkippedDupe > 0) {
+          logInfo(
+            `firetv_streaming_catalog injection for ${deviceId}: +${catInjected} from scout walker, ${catSkippedDupe} dedup`
+          )
+        }
+      } catch (catalogError: any) {
+        logger.error('[Channel-Guide-API] catalog injection failed (non-fatal):', { error: catalogError.message })
       }
     }
 
@@ -854,9 +1019,14 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Filter out games that started more than 2 hours ago to keep the guide fresh
+    // Filter out games that started more than 2 hours ago to keep the guide fresh.
+    // v2.28.2 — EXCEPT keep games that are explicitly isLive=true regardless of
+    // start time. ESPN sometimes leaves OT games in_progress for hours past
+    // estimated_end; the bartender absolutely needs to see those in the guide
+    // because they're still on a TV right now (Wolves @ Nuggets case 2026-04-21).
     const twoHoursAgo = new Date(Date.now() - (2 * 60 * 60 * 1000))
     const freshPrograms = programs.filter(program => {
+      if (program.isLive) return true // never filter live-now games on age
       if (program.startTime) {
         const gameStart = new Date(program.startTime)
         return gameStart >= twoHoursAgo
