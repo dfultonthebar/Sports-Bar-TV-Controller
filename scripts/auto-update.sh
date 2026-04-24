@@ -459,6 +459,55 @@ fi
 COMMITS_TO_MERGE=$(git log --oneline HEAD..origin/main | wc -l)
 log "Commits pending merge: $COMMITS_TO_MERGE"
 
+# v2.32.6 — Canary location gate. When scripts/canary-config.json has
+# enabled=true AND this is NOT the canary branch, refuse to merge a
+# commit until the canary has successfully installed it AND soaked for
+# minBlessAgeMinutes. Bad commits break only the canary; the other 5
+# locations skip with exit 0 (no-op) and try again on the next nightly
+# run. The canary itself is exempt — it always proceeds without gating.
+CANARY_CFG="$REPO_ROOT/scripts/canary-config.json"
+if [ -f "$CANARY_CFG" ]; then
+  CANARY_ENABLED=$(node -e "try{const c=require('$CANARY_CFG');console.log(c.enabled?'true':'false')}catch(e){console.log('false')}" 2>/dev/null || echo "false")
+  CANARY_BRANCH=$(node -e "try{const c=require('$CANARY_CFG');console.log(c.canaryBranch||'')}catch(e){console.log('')}" 2>/dev/null || echo "")
+  CANARY_MIN_AGE_MIN=$(node -e "try{const c=require('$CANARY_CFG');console.log(c.minBlessAgeMinutes||240)}catch(e){console.log('240')}" 2>/dev/null || echo "240")
+  if [ "$CANARY_ENABLED" = "true" ] && [ -n "$CANARY_BRANCH" ] && [ "$BRANCH" != "$CANARY_BRANCH" ]; then
+    log "Canary gate: this branch ($BRANCH) is non-canary; canary is $CANARY_BRANCH (min age ${CANARY_MIN_AGE_MIN}min)"
+    git fetch origin "$CANARY_BRANCH" 2>&1 | tee -a "$LOG_FILE" || true
+    BLESS_JSON=$(git show "origin/$CANARY_BRANCH:.canary-blessed.json" 2>/dev/null || echo "")
+    if [ -z "$BLESS_JSON" ]; then
+      log "Canary gate: no .canary-blessed.json on origin/$CANARY_BRANCH yet — skipping (will retry on next cron run)"
+      history_insert_start
+      history_update_result "pass" "skipped — canary $CANARY_BRANCH has not blessed any commit"
+      state_update "pass" "skipped — waiting on canary"
+      write_summary_json "pass" "skipped — waiting on canary"
+      exit 0
+    fi
+    BLESSED_SHA=$(printf '%s' "$BLESS_JSON" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{console.log(JSON.parse(s).blessedCommitSha||'')}catch(e){console.log('')}})" 2>/dev/null || echo "")
+    BLESSED_UNIX=$(printf '%s' "$BLESS_JSON" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{console.log(JSON.parse(s).blessedAtUnix||0)}catch(e){console.log('0')}})" 2>/dev/null || echo "0")
+    if [ "$BLESSED_SHA" != "$TARGET_SHA" ]; then
+      log "Canary gate: canary blessed $BLESSED_SHA but target is $TARGET_SHA — skipping (canary still on older commit)"
+      history_insert_start
+      history_update_result "pass" "skipped — canary not yet on target commit"
+      state_update "pass" "skipped — waiting on canary catch-up"
+      write_summary_json "pass" "skipped — canary not yet on target commit"
+      exit 0
+    fi
+    NOW_UNIX=$(date +%s)
+    AGE_MIN=$(( (NOW_UNIX - BLESSED_UNIX) / 60 ))
+    if [ "$AGE_MIN" -lt "$CANARY_MIN_AGE_MIN" ]; then
+      log "Canary gate: canary blessed target commit ${AGE_MIN}min ago, need ${CANARY_MIN_AGE_MIN}min soak — skipping (will retry on next cron run)"
+      history_insert_start
+      history_update_result "pass" "skipped — canary soak in progress (${AGE_MIN}/${CANARY_MIN_AGE_MIN}min)"
+      state_update "pass" "skipped — canary soaking"
+      write_summary_json "pass" "skipped — canary soaking ${AGE_MIN}/${CANARY_MIN_AGE_MIN}min"
+      exit 0
+    fi
+    log "Canary gate: passed — $CANARY_BRANCH blessed $TARGET_SHA ${AGE_MIN}min ago (≥${CANARY_MIN_AGE_MIN}min required)"
+  elif [ "$CANARY_ENABLED" = "true" ] && [ "$BRANCH" = "$CANARY_BRANCH" ]; then
+    log "Canary gate: this IS the canary ($BRANCH) — proceeding without gating"
+  fi
+fi
+
 # Insert history start row now that we know we have work to do
 history_insert_start
 log "History row id=$HISTORY_ID"
@@ -1026,6 +1075,34 @@ if [ -n "${VERIFY_INSTALL_JSON:-}" ]; then
   if ! git -C "$REPO_ROOT" diff --cached --quiet -- ".auto-update-last-success.json" 2>/dev/null; then
     git -C "$REPO_ROOT" commit -q -m "chore(heartbeat): update .auto-update-last-success.json ($(date +%Y-%m-%d-%H-%M))" 2>/dev/null || true
     log "Heartbeat file committed"
+  fi
+fi
+
+# v2.32.6 — Canary bless write. If this location IS the canary AND
+# canary mode is enabled in scripts/canary-config.json, write
+# .canary-blessed.json with the just-verified commit so non-canary
+# locations can gate their own auto-update on it. The bless file is
+# committed + pushed alongside the heartbeat so other locations can
+# read it via `git show origin/<canaryBranch>:.canary-blessed.json`.
+if [ -f "$REPO_ROOT/scripts/canary-config.json" ]; then
+  CANARY_ENABLED=$(node -e "try{const c=require('$REPO_ROOT/scripts/canary-config.json');console.log(c.enabled?'true':'false')}catch(e){console.log('false')}" 2>/dev/null || echo "false")
+  CANARY_BRANCH=$(node -e "try{const c=require('$REPO_ROOT/scripts/canary-config.json');console.log(c.canaryBranch||'')}catch(e){console.log('')}" 2>/dev/null || echo "")
+  if [ "$CANARY_ENABLED" = "true" ] && [ "$BRANCH" = "$CANARY_BRANCH" ]; then
+    {
+      printf '{\n'
+      printf '  "blessedCommitSha": "%s",\n' "${POST_MERGE_SHA:-unknown}"
+      printf '  "blessedAtUtc": "%s",\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+      printf '  "blessedAtUnix": %d,\n' "$(date +%s)"
+      printf '  "verifyResult": "PASS",\n'
+      printf '  "blesserBranch": "%s",\n' "$BRANCH"
+      printf '  "blesserVersion": "%s"\n' "${POST_MERGE_VERSION:-unknown}"
+      printf '}\n'
+    } > "$REPO_ROOT/.canary-blessed.json"
+    git -C "$REPO_ROOT" add -f ".canary-blessed.json" 2>/dev/null || true
+    if ! git -C "$REPO_ROOT" diff --cached --quiet -- ".canary-blessed.json" 2>/dev/null; then
+      git -C "$REPO_ROOT" commit -q -m "chore(canary): bless commit ${POST_MERGE_SHA:-unknown} ($(date +%Y-%m-%d-%H-%M))" 2>/dev/null || true
+      log "Canary bless file committed (other locations will gate on this)"
+    fi
   fi
 fi
 
