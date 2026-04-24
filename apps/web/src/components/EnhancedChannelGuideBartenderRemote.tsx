@@ -8,6 +8,7 @@ import { Button } from './ui/button'
 import { Badge } from './ui/badge'
 import { useLogging } from '@/hooks/useLogging'
 import { getChannelLogoOrBadge } from '@/lib/channel-logos'
+import { ChannelLogo } from '@/components/ui/channel-logo'
 import ChannelPresetGrid from './ChannelPresetGrid'
 import RemoteControlPopup from './remotes/RemoteControlPopup'
 import FireTVAppShortcuts from './FireTVAppShortcuts'
@@ -1570,28 +1571,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
                               {(() => {
                                 const channelName = currentChannels[input.channelNumber]?.channelName
                                 if (!channelName) return null
-                                const { src, badge, alt } = getChannelLogoOrBadge(channelName)
-                                return src ? (
-                                  <img
-                                    src={src}
-                                    alt={alt}
-                                    title={alt}
-                                    className="h-8 w-8 object-contain flex-shrink-0 bg-white/10 rounded p-0.5"
-                                    loading="lazy"
-                                    onError={(e) => {
-                                      const img = e.currentTarget as HTMLImageElement
-                                      img.style.display = 'none'
-                                    }}
-                                  />
-                                ) : (
-                                  <span
-                                    title={alt}
-                                    className="inline-flex items-center justify-center h-8 px-1.5 rounded text-[10px] font-bold flex-shrink-0 tracking-tight"
-                                    style={{ backgroundColor: badge.bg, color: badge.fg, minWidth: '32px' }}
-                                  >
-                                    {badge.text}
-                                  </span>
-                                )
+                                return <ChannelLogo name={channelName} />
                               })()}
                               <span>
                                 {(() => {
