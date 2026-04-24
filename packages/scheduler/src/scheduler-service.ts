@@ -120,6 +120,7 @@ class SchedulerService {
     this.registerPoll('runPpvProbe', () => this.runPpvProbe(), 600000, 90000);
     this.registerPoll('runFiretvAppSync', () => this.runFiretvAppSync(), 300000, 60000);
     this.registerPoll('maybeRunCatalogWalk', () => this.maybeRunCatalogWalk(), 300000, 300000);
+    this.registerPoll('pollFiretvCurrentApp', () => this.pollFiretvCurrentApp(), 60000, 45000);
 
     schedulerLogger.info(
       'scheduler-service',
@@ -154,6 +155,37 @@ class SchedulerService {
       await runFiretvAppSyncSweep();
     } catch (error: any) {
       logger.error('[FIRETV-APP-SYNC] Unexpected sweep failure:', { error });
+    }
+  }
+
+  /**
+   * Poll each online Fire TV for its current foreground app and mirror
+   * into InputCurrentChannel. Pairs with v2.32.13 InputCurrentChannel
+   * mirror — the GET /api/firetv-devices/[id]/current-app handler does
+   * the ADB call AND the upsert, so this scheduler tick just needs to
+   * trigger it on a cadence. The scout heartbeat path also writes the
+   * same row when scout reports a current app, so this poll only matters
+   * for boxes whose scout doesn't report (older builds, scout-disabled).
+   */
+  private async pollFiretvCurrentApp() {
+    try {
+      const { db, schema } = await import('@sports-bar/database');
+      const devices = await db.select().from(schema.fireTVDevices).all();
+      const online = devices.filter((d: any) => d.isOnline && !d.disabled && d.inputChannel);
+      const port = process.env.PORT || 3001;
+      await Promise.allSettled(
+        online.map(async (d: any) => {
+          try {
+            await fetch(`http://localhost:${port}/api/firetv-devices/${encodeURIComponent(d.id)}/current-app`, {
+              signal: AbortSignal.timeout(5000),
+            });
+          } catch {
+            // Per-device failures are silent; the endpoint logs internally.
+          }
+        })
+      );
+    } catch (error: any) {
+      logger.error('[FIRETV-CURRENT-APP-POLL] Unexpected failure:', { error: error.message });
     }
   }
 
