@@ -187,6 +187,62 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.20 — auto-update.sh: Anthropic API path replaces CLI subscription
+**Released:** 2026-04-24
+
+`scripts/auto-update.sh` now invokes the Anthropic API directly for
+Checkpoint A/B/C decisions when `ANTHROPIC_API_KEY` is set in `.env`.
+Falls back to the Claude Code CLI subscription path when the env var
+is unset.
+
+**Why:** The CLI path uses the user's Claude Pro/Max subscription,
+which has a monthly token cap. Holmgren hit "You've hit your org's
+monthly usage limit" on Checkpoint B mid-day 2026-04-24 → checkpoint
+returned UNDETERMINED → automatic rollback. API path bills per-token
+and has no monthly cap, so unattended cron updates can't be silently
+defeated by quota exhaustion.
+
+**Changes:**
+- `run_checkpoint()` chooses path by `ANTHROPIC_API_KEY` presence.
+  API path uses `curl` + `python3` to POST to `/v1/messages`, default
+  model `claude-opus-4-7` (override via `CLAUDE_API_MODEL`).
+- Preflight check accepts EITHER API key OR CLI binary; fails only
+  when neither is available.
+- `.env` is now sourced at the start of preflight so checkpoint phases
+  see the API key. The original `.env` source at the build phase
+  (line ~966) is preserved for Turbo/Next.js.
+
+**Required Manual Step:** None per location IF `ANTHROPIC_API_KEY` is
+already in `.env`. Locations without the key keep using the CLI path
+automatically, no breakage.
+
+**To opt INTO the API path** at a location that doesn't have the key:
+
+```bash
+# Get the actual key from the operator (1Password / shared secrets)
+if ! grep -q '^ANTHROPIC_API_KEY=' /home/ubuntu/Sports-Bar-TV-Controller/.env; then
+  echo 'ANTHROPIC_API_KEY=sk-ant-...' >> /home/ubuntu/Sports-Bar-TV-Controller/.env
+fi
+```
+
+After this, the next auto-update.sh run will use the API path. No
+restart required (the script sources .env each invocation).
+
+**Verification:**
+
+```bash
+# Confirm API path is being chosen at this location:
+grep -E "Claude path:" /home/ubuntu/sports-bar-data/update-logs/$(ls -t /home/ubuntu/sports-bar-data/update-logs/ | head -1)
+# Expect: "Claude path: Anthropic API (model=claude-opus-4-7)"
+# CLI fallback shows: "Claude path: Claude Code CLI (...)"
+```
+
+**Rollback:** `git revert` is clean. The CLI path is preserved as the
+fallback so removing the API call code doesn't break anything as long
+as the CLI is still installed.
+
+---
+
 ### v2.32.11 → v2.32.17 — Bartender remote: input tracking + logos + scheduler guards
 **Released:** 2026-04-24
 
