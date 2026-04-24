@@ -187,6 +187,53 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.23 — Hardware package READMEs + all location stubs (729 → 672 lines)
+**Released:** 2026-04-24
+
+Final cleanup pass. Cumulative CLAUDE.md size: 1122 → 672 (-40%). All
+remaining "satellite extraction" candidates done.
+
+**Per-package READMEs created (4 new):**
+- `packages/crestron/README.md` — DM/HD-MD/DMPS/NVX models, Telnet/CTP/CIP, output slot offset table.
+- `packages/bss-blu/README.md` — BSS Soundweb London BLU models, HiQnet TCP 1023.
+- `packages/dbx-zonepro/README.md` — ZonePRO TCP 3804, NO F0/64/00 prefix, failsafe Scene 1 workaround.
+- `packages/multiview/README.md` — 4K60 Quad-View hex frames, mode table, RS-232.
+
+CLAUDE.md §6 (Crestron) / §7 (Audio) / §8 (Multi-View) compressed to
+1-3 line refs pointing at the per-package READMEs.
+
+**Location stubs created (4 new):**
+- `.claude/locations/leg-lamp.md` (canary candidate; single-card matrix)
+- `.claude/locations/stoneyard-appleton.md` (multi-card)
+- `.claude/locations/stoneyard-greenville.md` (multi-card; v2.32.18 origin)
+- Renamed `.claude/locations/lucky-s.md` → `lucky-s-1313.md` (matches `location/lucky-s-1313` branch).
+
+`.claude/locations/README.md` updated with all 6 active locations + the
+matching hardware-ref filenames + the per-location-IPs-go-here rule.
+
+**Required Manual Step:** None at any location. Pure docs reorganization.
+
+**Verification:**
+
+```bash
+wc -l /home/ubuntu/Sports-Bar-TV-Controller/CLAUDE.md
+# Expect: 672
+
+ls /home/ubuntu/Sports-Bar-TV-Controller/.claude/locations/ | wc -l
+# Expect: 7 (README + 6 location files)
+
+ls /home/ubuntu/Sports-Bar-TV-Controller/packages/{crestron,bss-blu,dbx-zonepro,multiview}/README.md
+# Expect: all 4 files present
+```
+
+**At each location's next auto-update**, Claude at Checkpoint B should
+populate the location's `<branch>.md` device tables from the live DB
+if they're still TBD stubs (already documented in the stubs).
+
+**Rollback:** `git revert` is clean.
+
+---
+
 ### v2.32.22 — CLAUDE.md deep simplify (961 → 729 lines)
 **Released:** 2026-04-24
 
