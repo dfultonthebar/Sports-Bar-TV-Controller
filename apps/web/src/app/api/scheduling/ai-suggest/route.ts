@@ -511,6 +511,36 @@ function buildPrompt(
     return `${i + 1}. [${tag}]${homeTag} ${teams} (${g.league}) — ${time} CT — ${routes || 'no route'}${assignClause}`
   }).join('\n')
 
+  // v2.32.0 — Same-channel-same-device grouping hint.
+  // When ESPN runs College GameDay 11am-2pm followed by NBA Playoffs 2pm-5pm
+  // followed by NFL Draft 7pm-11pm, all three games are on cable ch 27.
+  // Without this hint the LLM might pick three different inputs to route
+  // them, churning channel changes the bartender doesn't need. With it,
+  // the LLM keeps them on one cable box — saves tunes, keeps the
+  // bartender's mental model simple, frees other inputs for diverse
+  // content. Built per device type because the ch 27 on cable IS NOT
+  // the same as ch 27 on directv.
+  const groupGames = (selector: (g: GameListing) => string | undefined) => {
+    const m = new Map<string, number[]>()
+    games.forEach((g, i) => {
+      const k = selector(g)
+      if (!k) return
+      if (!m.has(k)) m.set(k, [])
+      m.get(k)!.push(i + 1)
+    })
+    return [...m.entries()].filter(([_, ids]) => ids.length >= 2)
+  }
+  const cableGroups = groupGames((g) => g.channelNumber || undefined)
+  const directvGroups = groupGames((g) => g.directvChannel || undefined)
+  const streamingGroups = groupGames((g) => g.streamingApp || undefined)
+  const sameChannelLines: string[] = []
+  for (const [ch, ids] of cableGroups) sameChannelLines.push(`  cable ch ${ch}: games #${ids.join(', #')}`)
+  for (const [ch, ids] of directvGroups) sameChannelLines.push(`  directv ch ${ch}: games #${ids.join(', #')}`)
+  for (const [app, ids] of streamingGroups) sameChannelLines.push(`  firetv app "${app}": games #${ids.join(', #')}`)
+  const sameChannelHint = sameChannelLines.length > 0
+    ? `\nSAME-CHANNEL GROUPS (prefer one input for each group — see Rule 14):\n${sameChannelLines.join('\n')}\n`
+    : ''
+
   // Pattern hints
   let patternHints = ''
   if (patterns.length > 0) {
@@ -560,7 +590,7 @@ ${inputLines.join('\n')}
 
 GAMES (next 12 hours):
 ${gameLines}
-
+${sameChannelHint}
 SETUP: ${tvCount} TVs across ${totalInputs} inputs. Home teams: Packers, Brewers, Bucks, Badgers.
 ${patternHints}
 
@@ -578,6 +608,7 @@ RULES:
 11. MANDATORY OUTPUTS: Every suggestion MUST include at least 1 TV output number in suggestedOutputs. Empty arrays are REJECTED server-side. Use any TV channel number from 1 to ${tvCount}.
 12. HOME-TEAM TV MINIMUMS (NON-NEGOTIABLE): Each game line carries an "assign N TVs" clause. For lines tagged [HOME TEAM: <name>] the N is a HARD MINIMUM — your suggestedOutputs.length MUST be >= N. Server-side enforcement WILL pad your output to N if you under-assign, but the LLM should respect the rule directly so it can pick visually-grouped TVs rather than getting padded with TVs 1..N. Operator-set: Packers=20, Bucks=5, Brewers=3, Badgers=3.
 13. PRIORITY ORDER: Home-team games get top priority — always propose them first. Then diverse options across leagues (MLB, NBA, NHL, MLS, UFL, UFC, Premier League, college sports) so the manager can compare.
+14. SAME-CHANNEL GROUPING: When the SAME-CHANNEL GROUPS section above lists multiple games on the same channel (e.g. "cable ch 27: games #3, #7, #11"), prefer to put ALL those games on the SAME input. Reasons: (a) saves tunes — no channel change needed, (b) the bartender's view stays consistent, (c) frees other inputs for content on different channels. Only split the group across inputs if the home-team minimums (Rule 12) force you to spread that game across many TVs and there isn't enough room on one input.
 
 Return ONLY valid JSON:
 {"suggestions":[{"gameIndex":1,"suggestedInput":"${exampleInput}","channelNumber":"669","suggestedOutputs":[1,2,3],"confidence":0.9,"reasoning":"Brewers home game on DirecTV"}]}
