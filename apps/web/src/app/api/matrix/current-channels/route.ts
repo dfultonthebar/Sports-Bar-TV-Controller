@@ -90,6 +90,28 @@ export async function GET(request: NextRequest) {
       .from(schema.inputCurrentChannels)
       .all()
 
+    // Hydrate channelName from ChannelPreset for any rows that have a
+    // channelNumber but no channelName. Tune route only sets channelName
+    // when the user clicks a labeled preset; a manual numeric entry or a
+    // bare API tune leaves it null, which then suppresses the channel
+    // logo in the bartender remote (logo block early-returns on empty
+    // channelName). Hydrating here keeps the source of truth (DB) clean
+    // while restoring the visual.
+    const numbersToHydrate = currentChannels
+      .filter(c => c.channelNumber && c.channelNumber !== 'APP' && !c.channelName)
+      .map(c => ({ channelNumber: c.channelNumber, deviceType: c.deviceType }))
+
+    const presetLookup = new Map<string, string>()
+    if (numbersToHydrate.length > 0) {
+      const allPresets = await db.select().from(schema.channelPresets).all()
+      for (const p of allPresets) {
+        // Key by `${deviceType}|${channelNumber}` so cable ch 27 and directv
+        // ch 27 don't collide on different network names.
+        const key = `${p.deviceType}|${p.channelNumber}`
+        if (!presetLookup.has(key)) presetLookup.set(key, p.name)
+      }
+    }
+
     // Transform into a map for easy lookup by input number
     const channelMap: Record<number, {
       channelNumber: string
@@ -100,9 +122,13 @@ export async function GET(request: NextRequest) {
     }> = {}
 
     currentChannels.forEach(channel => {
+      let resolvedName = channel.channelName
+      if (!resolvedName && channel.channelNumber && channel.channelNumber !== 'APP') {
+        resolvedName = presetLookup.get(`${channel.deviceType}|${channel.channelNumber}`) || null
+      }
       channelMap[channel.inputNum] = {
         channelNumber: channel.channelNumber,
-        channelName: channel.channelName,
+        channelName: resolvedName,
         deviceType: channel.deviceType,
         inputLabel: channel.inputLabel,
         lastTuned: channel.lastTuned
