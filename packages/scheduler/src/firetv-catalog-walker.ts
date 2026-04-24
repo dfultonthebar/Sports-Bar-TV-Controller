@@ -76,11 +76,15 @@ export interface AppWalkRule {
     interKeyDelayMs?: number  // default 400ms
     postNavDelayMs?: number   // default 4000ms — let new tab content render
   }
-  // v2.31.9 — Mark apps that render their UI inside an android.webkit.WebView
-  // (Peacock, Hulu, fubo, MLB.TV are all confirmed or likely WebView-based on
-  // Fire TV). uiautomator dump cannot read text content from inside a
-  // WebView — the tree shows one big WebView node with no text= attributes.
-  // Walker skips these apps with a single info log instead of attempting
+  // v2.31.9 + v2.32.8 — Mark apps the walker can't extract content from.
+  // Two failure modes both flagged with this single flag:
+  //   1. WebView-based apps: entire UI renders inside android.webkit.WebView.
+  //      uiautomator dump shows one big WebView node with no text=. Confirmed
+  //      on Peacock; likely Hulu/fubo/MLB.TV.
+  //   2. Accessibility-blind native apps: native Android views but every
+  //      node has empty text/content-desc. Confirmed on Apple TV+ on Fire TV
+  //      Cube — dump returns 3KB but 0 unique text nodes.
+  // Either way, walker skips with a single info log instead of attempting
   // a walk that would always return zero tiles. Future work: HTTP catalog
   // fetch from each provider's public API, or screen-capture + OCR.
   usesWebView?: boolean
@@ -144,6 +148,17 @@ function inferSportTag(title: string, contextSportRow: string | null): string | 
   const lower = title.toLowerCase()
   if (contextSportRow) {
     const rl = contextSportRow.toLowerCase()
+    // v2.32.9 — Order matters: check 'ncaa'/'college' BEFORE NFL, because
+    // "NCAA Football" matched /nfl|football/ and tagged College GameDay
+    // (clearly a college show) as NFL. Check the more specific labels
+    // first.
+    if (/college|ncaa/.test(rl)) {
+      if (/football/.test(rl)) return 'college-football'
+      if (/basketball|hoops/.test(rl)) return 'college-basketball'
+      if (/baseball/.test(rl)) return 'college-baseball'
+      if (/hockey/.test(rl)) return 'college-hockey'
+      return 'college-sports'
+    }
     if (/nba|playoffs|basketball/.test(rl)) return 'NBA'
     if (/nfl|football/.test(rl)) return 'NFL'
     if (/mlb|baseball/.test(rl)) return 'MLB'
@@ -154,6 +169,10 @@ function inferSportTag(title: string, contextSportRow: string | null): string | 
     if (/golf|pga|lpga/.test(rl)) return 'golf'
     if (/ufc|mma|boxing/.test(rl)) return 'mma'
     if (/f1|nascar|indycar|motorsport/.test(rl)) return 'motorsport'
+    if (/volleyball/.test(rl)) return 'volleyball'
+    if (/lacrosse/.test(rl)) return 'lacrosse'
+    if (/wrestling/.test(rl)) return 'wrestling'
+    if (/rugby/.test(rl)) return 'rugby'
   }
   if (/\bnba\b/.test(lower)) return 'NBA'
   if (/\bnfl\b/.test(lower)) return 'NFL'
@@ -167,6 +186,11 @@ function inferSportTag(title: string, contextSportRow: string | null): string | 
   if (/squash|grasshopper cup/.test(lower)) return 'squash'
   if (/\bchess\b/.test(lower)) return 'chess'
   if (/\brace(s)?\b|day at the races|horse|kentucky derby|breeders/.test(lower)) return 'horse-racing'
+  // v2.32.9 — beach volleyball + indoor volleyball misses (Sun Belt /
+  // OVC women's beach volleyball was untagged in the v2.31.6 walks)
+  if (/volleyball/.test(lower)) return 'volleyball'
+  if (/lacrosse/.test(lower)) return 'lacrosse'
+  if (/wrestling/.test(lower)) return 'wrestling'
   // v2.31.5 — soccer recognition for Saudi Pro League fixtures Prime
   // Video carries (Al-team-name vs Al-team-name pattern is distinctive).
   if (/^al |\bvs\.?\s+al /i.test(lower) || /\bsaudi\b|\bspl\b/i.test(lower)) return 'soccer'
@@ -371,7 +395,7 @@ const APP_WALK_RULES: Record<string, AppWalkRule> = {
     // No navigation needed — ESPN's first screen IS the live-sports landing.
     extractTiles: extractEspnTiles,
   },
-  // v2.31.9 — Peacock (and likely Hulu, fubo, MLB.TV, Netflix on Fire TV)
+  // v2.31.9 — Peacock (and likely Hulu, MLB.TV, Netflix on Fire TV)
   // renders inside an android.webkit.WebView. uiautomator can't read text
   // content from inside a WebView — the dump shows one big WebView node
   // with no extractable text/content-desc. Walker skips with a logged
@@ -385,10 +409,45 @@ const APP_WALK_RULES: Record<string, AppWalkRule> = {
     usesWebView: true,
     extractTiles: () => [],
   },
+  // v2.32.8 — Apple TV+ on Fire TV Cube is NATIVE (no WebView) but
+  // accessibility-blind. uiautomator dump on its MainActivity returns
+  // ~3KB with 0 unique text nodes — every node has empty text and
+  // content-desc, so tile titles can't be extracted. Same effective
+  // behavior as a WebView app from the walker's perspective; reuses
+  // the usesWebView flag (see AppWalkRule docstring).
+  'Apple TV+': {
+    catalogId: 'apple-tv',
+    displayName: 'Apple TV+',
+    postLaunchDelayMs: 0,
+    usesWebView: true,
+    extractTiles: () => [],
+  },
+  // v2.32.8 — fuboTV on Fire TV is web-based (consumer pattern: most
+  // sports streaming services are WebView shells with a thin native
+  // launcher). Pre-emptive skip with usesWebView; if a future operator
+  // logs in and a manual probe shows accessibility text IS available,
+  // remove the flag and add an extractor at that point.
+  // packageAlias com.fubo.firetv.screen registered in
+  // packages/streaming/src/streaming-apps-database.ts so launch resolves
+  // to the right APK on these Cubes.
+  'fuboTV': {
+    catalogId: 'fubo-tv',
+    displayName: 'fuboTV',
+    postLaunchDelayMs: 0,
+    usesWebView: true,
+    extractTiles: () => [],
+  },
   // Future entries (when adding):
-  //   'Hulu': likely usesWebView (verify)
-  //   'fuboTV': likely usesWebView (verify)
-  //   'NFHS Network': likely native (similar to ESPN — verify)
+  //   'Hulu': likely usesWebView (verify when an FT has it logged in)
+  //   'MLB.TV': likely usesWebView (verify)
+  //   'NFHS Network': native + extractable, but ONLY when logged in.
+  //     Probed on FT2 2026-04-23: walker landed on IntroActivity (Subscribe
+  //     / Log In / Skip For Now) — operator login required before adding
+  //     a rule. Once logged in, NFHS likely has a native catalog grid
+  //     similar to ESPN.
+  //   'Netflix': launch failed during 2026-04-23 probe despite package
+  //     match (com.netflix.ninja in scout report + same in catalog).
+  //     Needs debug — likely a LEANBACK_LAUNCHER intent issue. Defer.
 }
 
 // Helper: send a shell command via the existing send-command endpoint.

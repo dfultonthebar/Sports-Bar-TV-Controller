@@ -23,55 +23,14 @@ import {
   getStreamingAppInfoForStation,
   normalizeStation,
 } from '@/lib/network-channel-resolver'
-import { STREAMING_APPS_DATABASE } from '@/lib/streaming/streaming-apps-database'
-
-// v2.31.3 — Map any display name we might see (from scout, from the
-// network-channel-resolver, from a UI label) to a streaming-apps-database
-// catalog id. Keeps the lookup robust against the cosmetic name drift
-// between sources ("Prime Video" vs "Amazon Prime Video", "ESPN" vs "ESPN+",
-// etc.). Add new aliases here as new app sources are wired in.
-const DISPLAY_NAME_TO_CATALOG_ID: Record<string, string> = {
-  'prime video': 'amazon-prime',
-  'amazon prime video': 'amazon-prime',
-  'amazon prime': 'amazon-prime',
-  'amazon-prime': 'amazon-prime',
-  'espn': 'espn-plus',
-  'espn+': 'espn-plus',
-  'espn plus': 'espn-plus',
-  'peacock': 'peacock',
-  'paramount': 'paramount-plus',
-  'paramount+': 'paramount-plus',
-  'apple tv': 'apple-tv',
-  'apple tv+': 'apple-tv',
-  'hulu': 'hulu-live',
-  'hulu live': 'hulu-live',
-  'fubotv': 'fubo-tv',
-  'fubo': 'fubo-tv',
-  'youtube tv': 'youtube-tv',
-  'youtube': 'youtube-tv',
-  'netflix': 'netflix',
-  'mlb.tv': 'mlb-tv',
-  'mlb tv': 'mlb-tv',
-  'nhl': 'nhl-tv',
-  'nba league pass': 'nba-league-pass',
-  'fox sports': 'fox-sports',
-  'nbc sports': 'nbc-sports',
-  'sling tv': 'sling-tv',
-  'sling': 'sling-tv',
-  'dazn': 'dazn',
-  'nfhs network': 'nfhs-network',
-  'nfhs': 'nfhs-network',
-}
-
-function findStreamingAppByDisplayName(name: string | undefined | null) {
-  if (!name) return undefined
-  const id = DISPLAY_NAME_TO_CATALOG_ID[name.toLowerCase().trim()]
-  if (id) return STREAMING_APPS_DATABASE.find((a) => a.id === id)
-  // Last-resort exact name match (catalog entries that haven't been aliased yet)
-  return STREAMING_APPS_DATABASE.find(
-    (a) => a.name === name || a.name.toLowerCase() === name.toLowerCase()
-  )
-}
+// v2.32.9 — display-name lookup is now centralized in
+// @sports-bar/streaming via the displayNameAliases field on each
+// catalog entry. The previous inline DISPLAY_NAME_TO_CATALOG_ID +
+// findStreamingAppByDisplayName here (added v2.31.3) was a cosmetic-
+// drift footgun: a new app added to the catalog without also being
+// added to this local map silently failed to resolve. Single source
+// of truth fixes it.
+import { findStreamingAppByDisplayName } from '@/lib/streaming/streaming-apps-database'
 
 // v2.31.7 — Shared streaming channel builder. Both injection paths
 // (broadcast_networks fallback + per-box catalog injection) construct the
@@ -696,18 +655,16 @@ export async function POST(request: NextRequest) {
                 // Check if the Fire TV device has this service LOGGED IN (not just installed)
                 const hasLoggedIn = deviceLoggedInPackages.some(pkg => appInfo.packages.includes(pkg))
                 if (hasLoggedIn) {
-                  channelInfo = {
-                    id: `stream-${appInfo.app.replace(/\s+/g, '-').toLowerCase()}`,
-                    name: appInfo.app,
-                    number: station,
-                    type: 'streaming',
-                    cost: 'subscription',
-                    platforms: ['Fire TV', 'Streaming'],
+                  // v2.32.9 — use shared builder so Rail Media-sourced
+                  // streaming programs ALSO carry appId/packageName
+                  // (without these the bartender click silently does
+                  // nothing — same fix as v2.31.2 applied to this third
+                  // injection path).
+                  channelInfo = buildStreamingAppChannel({
+                    appName: appInfo.app,
                     channelNumber: station,
-                    deviceType: 'streaming',
-                    streamingApp: appInfo.app,
-                    packages: appInfo.packages
-                  }
+                    packagesOverride: appInfo.packages,
+                  })
                   logInfo(`Matched streaming station ${station} to app ${appInfo.app} on device ${deviceId}`)
                   break
                 }
@@ -1000,18 +957,14 @@ export async function POST(request: NextRequest) {
               logInfo(`Found ${nfhsData.games.length} NFHS games to add`)
 
               // Add NFHS channel
-              const nfhsChannel = {
-                id: 'stream-nfhs-network',
-                name: 'NFHS Network',
-                number: 'NFHS',
-                type: 'streaming',
-                cost: 'subscription',
-                platforms: ['Fire TV', 'Streaming'],
+              // v2.32.9 — shared builder so NFHS programs carry appId+
+              // packageName (was previously omitted, breaking the
+              // bartender click for NFHS games per v2.31.2 root cause).
+              const nfhsChannel = buildStreamingAppChannel({
+                appName: 'NFHS Network',
                 channelNumber: 'NFHS',
-                deviceType: 'streaming',
-                streamingApp: 'NFHS Network',
-                packages: NFHS_PACKAGES
-              }
+                packagesOverride: NFHS_PACKAGES,
+              })
               channels.set(nfhsChannel.id, nfhsChannel)
 
               // Add NFHS games as programs
