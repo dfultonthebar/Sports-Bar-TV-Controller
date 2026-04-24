@@ -35,12 +35,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
 import { schema } from '@/db'
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray, gt, lt } from 'drizzle-orm'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { logger } from '@sports-bar/logger'
 import { z } from 'zod'
 import { validateRequestBody, isValidationError } from '@/lib/validation'
+import { resolveCanonicalFireTVDeviceId } from '@/lib/firetv-device-resolver'
 
 const catalogItemSchema = z.object({
   app: z.string().min(1).max(60),
@@ -69,24 +70,11 @@ export async function POST(request: NextRequest) {
 
   const data = bodyValidation.data
 
-  // Mirror the canonical-deviceId resolver from the heartbeat endpoint
-  // (v2.28.10). Scout's compile-time IP_DEVICE_MAP only covers Stoneyard
-  // IPs, so other locations heartbeat as fire-tv-unknown / amazon-N. Look
-  // up the canonical FireTVDevice id by IP so the catalog rows key on
-  // something downstream consumers can join.
-  let resolvedDeviceId = data.deviceId
-  if (data.ipAddress && (data.deviceId === 'fire-tv-unknown' || data.deviceId.startsWith('amazon-') || data.deviceId.startsWith('fire-tv-'))) {
-    try {
-      const ftDevice = await db
-        .select()
-        .from(schema.fireTVDevices)
-        .where(eq(schema.fireTVDevices.ipAddress, data.ipAddress))
-        .get()
-      if (ftDevice) resolvedDeviceId = ftDevice.id
-    } catch (err: any) {
-      logger.warn(`[FIRESTICK_SCOUT_CATALOG] IP resolution failed for ${data.ipAddress}: ${err.message}`)
-    }
-  }
+  // v2.31.7 — Canonical deviceId resolution via shared helper.
+  const { resolvedDeviceId } = await resolveCanonicalFireTVDeviceId(
+    data.deviceId,
+    data.ipAddress
+  )
 
   const nowSec = Math.floor(Date.now() / 1000)
   const capturedAt = data.capturedAt || nowSec
@@ -170,23 +158,28 @@ export async function GET(request: NextRequest) {
 
     const nowSec = Math.floor(Date.now() / 1000)
 
-    // Cleanup expired rows (cheap; happens on every GET so the table stays small)
+    // v2.31.7 — Real cleanup of expired rows. The previous version used
+    // eq(expiresAt, nowSec) which only matches rows whose expiry equals
+    // the current second exactly — a no-op. lt() is what we actually want.
     try {
       await db
         .delete(schema.firetvStreamingCatalog)
-        .where(eq(schema.firetvStreamingCatalog.expiresAt, nowSec)) // placeholder — see below
+        .where(lt(schema.firetvStreamingCatalog.expiresAt, nowSec))
         .run()
-    } catch { /* non-fatal */ }
-    // Note: the placeholder above is a no-op (eq on a strictly-greater
-    // condition isn't expressible via drizzle-kit shorthand here); the
-    // real cleanup runs in the daily cron (Phase 3) which uses raw SQL.
+    } catch { /* non-fatal — daily cron is the authoritative cleanup */ }
 
-    let rows = await db.select().from(schema.firetvStreamingCatalog).all()
-
-    rows = rows.filter((r) => r.expiresAt >= nowSec)
-    if (deviceId) rows = rows.filter((r) => r.deviceId === deviceId)
-    if (app) rows = rows.filter((r) => r.app === app)
-    if (liveOnly) rows = rows.filter((r) => r.isLive)
+    // v2.31.7 — Push filters into the SQL query instead of selecting the
+    // whole table and filtering in JS. Cheap today, but compounds once
+    // the daily walker writes ~20 rows per box per day with a 36h TTL.
+    const conditions = [gt(schema.firetvStreamingCatalog.expiresAt, nowSec)]
+    if (deviceId) conditions.push(eq(schema.firetvStreamingCatalog.deviceId, deviceId))
+    if (app) conditions.push(eq(schema.firetvStreamingCatalog.app, app))
+    if (liveOnly) conditions.push(eq(schema.firetvStreamingCatalog.isLive, true))
+    const rows = await db
+      .select()
+      .from(schema.firetvStreamingCatalog)
+      .where(and(...conditions))
+      .all()
 
     return NextResponse.json({
       success: true,

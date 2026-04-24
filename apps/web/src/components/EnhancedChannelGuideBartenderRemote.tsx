@@ -119,6 +119,14 @@ interface ChannelInfo {
   channelNumber?: string
   appCommand?: string
   packageName?: string
+  // v2.31.7 — fields populated by the channel-guide route's streaming
+  // injection paths (broadcast_networks fallback + catalog injection).
+  // The bartender remote reads `appId` to route through /api/streaming/launch
+  // which knows about Cube launcher-hosted Prime Video; falls back to
+  // packageName + monkey if appId is absent.
+  appId?: string
+  streamingApp?: string
+  packages?: string[]
   deviceType?: 'cable' | 'satellite' | 'streaming' | 'gaming'
   _presetMapped?: boolean  // Flag to indicate this was mapped from a preset
 }
@@ -1066,8 +1074,16 @@ export default function EnhancedChannelGuideBartenderRemote() {
           break
           
         case 'streaming':
-          // Launch streaming app
-          if (game.channel.packageName) {
+          // v2.31.2 — Prefer /api/streaming/launch when the program carries
+          // a catalog appId. That path uses streamingManager which resolves
+          // launcher-hosted Prime Video correctly on AFTR Cubes (firebat
+          // alias from v2.28.8) — direct `monkey -p com.amazon.avod` would
+          // fail on those boxes because the package doesn't exist; firebat
+          // is the host. Falls back to the legacy direct-launch path when
+          // no appId is set (e.g. Rail Media programs that pre-date this).
+          if (game.channel.appId) {
+            await launchStreamingAppByCatalog(game.channel.appId, game.channel.name)
+          } else if (game.channel.packageName) {
             await launchStreamingApp(game.channel.packageName, game.channel.name)
           }
           break
@@ -1117,9 +1133,31 @@ export default function EnhancedChannelGuideBartenderRemote() {
     }
   }
 
+  // v2.31.2 — preferred launcher: routes through streamingManager which knows
+  // about Cube launcher-hosted Prime Video (firebat alias) and correctly
+  // resolves the LEANBACK_LAUNCHER activity instead of just hitting MAIN.
+  const launchStreamingAppByCatalog = async (appId: string, appName: string) => {
+    const fireTVDevice = selectedDevice as FireTVDevice
+    const response = await fetch('/api/streaming/launch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        deviceId: fireTVDevice.id,
+        ipAddress: fireTVDevice.ipAddress,
+        port: fireTVDevice.port,
+        appId,
+      }),
+    })
+    const data = await response.json()
+    if (!response.ok || !data?.success) {
+      throw new Error(`Failed to launch ${appName}: ${data?.error || data?.message || response.statusText}`)
+    }
+    setCommandStatus(`Launched ${appName}`)
+  }
+
   const launchStreamingApp = async (packageName: string, appName: string) => {
     const fireTVDevice = selectedDevice as FireTVDevice
-    
+
     const response = await fetch('/api/firetv-devices/send-command', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1728,21 +1766,35 @@ export default function EnhancedChannelGuideBartenderRemote() {
                                 </span>
                               )}
 
-                              {/* Scheduled Tune Indicator - Show on other inputs */}
+                              {/* Scheduled Tune Indicator — distinguish "scheduled here"
+                                  (green, current input) from "scheduled elsewhere"
+                                  (orange, cross-input visibility). v2.32.2 added the
+                                  green case after operators reported scheduled games
+                                  not appearing as scheduled in the guide for the same
+                                  input they were scheduled on (e.g. West De Pere on
+                                  Amazon 3 — the Schedule button switched to Cancel
+                                  but no badge made it obvious). */}
                               {(() => {
                                 const scheduledInputs = getScheduledInputsForGame(game)
                                 const currentLabel = inputs.find(i => i.channelNumber === selectedInput)?.label
-                                const otherInputs = scheduledInputs.filter(s => s.inputLabel !== currentLabel)
-
-                                if (otherInputs.length > 0) {
-                                  return (
-                                    <span className="flex items-center space-x-1 text-xs backdrop-blur-xl bg-orange-500/20 text-orange-400 border border-orange-400/30 rounded-full px-2 py-0.5">
-                                      <Calendar className="w-3 h-3" />
-                                      <span>Scheduled on {otherInputs.map(s => s.inputLabel).join(', ')}</span>
-                                    </span>
-                                  )
-                                }
-                                return null
+                                const onCurrent = scheduledInputs.filter(s => s.inputLabel === currentLabel)
+                                const onOther = scheduledInputs.filter(s => s.inputLabel !== currentLabel)
+                                return (
+                                  <>
+                                    {onCurrent.length > 0 && (
+                                      <span className="flex items-center space-x-1 text-xs backdrop-blur-xl bg-green-500/20 text-green-300 border border-green-400/40 rounded-full px-2 py-0.5">
+                                        <Calendar className="w-3 h-3" />
+                                        <span>Scheduled here</span>
+                                      </span>
+                                    )}
+                                    {onOther.length > 0 && (
+                                      <span className="flex items-center space-x-1 text-xs backdrop-blur-xl bg-orange-500/20 text-orange-400 border border-orange-400/30 rounded-full px-2 py-0.5">
+                                        <Calendar className="w-3 h-3" />
+                                        <span>Scheduled on {onOther.map(s => s.inputLabel).join(', ')}</span>
+                                      </span>
+                                    )}
+                                  </>
+                                )
                               })()}
 
                               {/* Time Remaining (for live games) */}

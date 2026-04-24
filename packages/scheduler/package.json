@@ -12,7 +12,8 @@
     "@sports-bar/config": "*",
     "@sports-bar/database": "*",
     "@sports-bar/logger": "*",
-    "@sports-bar/sports-apis": "*"
+    "@sports-bar/sports-apis": "*",
+    "@sports-bar/streaming": "*"
   },
   "devDependencies": {
     "@types/node": "^24.5.2",

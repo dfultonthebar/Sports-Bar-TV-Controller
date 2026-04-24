@@ -82,9 +82,17 @@ async function fetchUpcomingGames(): Promise<GameListing[]> {
     const nowUnix = Math.floor(Date.now() / 1000)
     const twelveHoursLater = nowUnix + 12 * 60 * 60
 
+    // v2.32.0 — Same fix as channel-guide v2.28.2: an in-progress game whose
+    // scheduled_start is in the past should still surface in AI Suggest's
+    // window. Without this catch-all, a long broadcast (NFL Draft Day 1 runs
+    // 7-11pm CT — 4 hours; tonight's Brewers game starts 7pm and runs to 10)
+    // disappears from suggestions the moment "now" passes scheduled_start
+    // even though the game is still airing for hours. Use the same overlap
+    // semantics: include any game whose start is in the future-12h window
+    // OR whose status='in_progress' (set by ESPN sync when the game is live).
     const rows = await db.select().from(schema.gameSchedules).where(
       and(
-        gte(schema.gameSchedules.scheduledStart, nowUnix),
+        sql`(${schema.gameSchedules.scheduledStart} >= ${nowUnix} OR ${schema.gameSchedules.status} = 'in_progress')`,
         sql`${schema.gameSchedules.scheduledStart} <= ${twelveHoursLater}`,
         sql`${schema.gameSchedules.status} != 'completed'`,
       )
@@ -109,20 +117,29 @@ async function fetchUpcomingGames(): Promise<GameListing[]> {
     }
     logger.info(`[AI-SUGGEST] Available firetv apps at venue: ${[...availableApps].join(', ') || '(none)'}`)
 
-    const games: GameListing[] = []
-    let skippedNoChannel = 0
-    for (const row of rows) {
-      // Parse broadcast networks from JSON
+    // v2.32.3 — Parallelize resolveChannelsForGame across all rows
+    // (was awaited serially in a for-loop, ~30 sequential resolver calls
+    // per request). One Promise.all fans out, then a fast synchronous
+    // pass builds the games array.
+    const resolverInputs = rows.map((row) => {
       let networks: string[] = []
       try { networks = JSON.parse(row.broadcastNetworks || '[]') } catch { /* ignore */ }
-
-      // Resolve channels using the same resolver as the bartender remote.
-      // Include 'streaming' so Prime Video / Apple TV+ / Peacock games can
-      // be routed to a Fire TV input.
-      const resolved = await resolveChannelsForGame(
-        { networks, primaryNetwork: networks[0] || null, league: row.league, sport: row.sport },
-        ['cable', 'directv', 'streaming']
+      return { row, networks }
+    })
+    const resolverResults = await Promise.all(
+      resolverInputs.map(({ row, networks }) =>
+        resolveChannelsForGame(
+          { networks, primaryNetwork: networks[0] || null, league: row.league, sport: row.sport },
+          ['cable', 'directv', 'streaming']
+        )
       )
+    )
+
+    const games: GameListing[] = []
+    let skippedNoChannel = 0
+    for (let i = 0; i < resolverInputs.length; i++) {
+      const { row, networks } = resolverInputs[i]
+      const resolved = resolverResults[i]
 
       // Gate the streaming route against apps actually installed on our
       // Fire TVs. If the resolved app is MLB.TV but no venue Fire TV has
@@ -134,18 +151,11 @@ async function fetchUpcomingGames(): Promise<GameListing[]> {
       }
 
       // Skip games that don't have ANY playable route at this venue.
-      // Out-of-market RSN broadcasts (e.g. BravesVision, Marquee Sports Net)
-      // with no streaming fallback fall out here — our cable/DirecTV lineup
-      // doesn't carry them and there's no Fire TV app for them either.
       if (!resolved.cableChannel && !resolved.directvChannel && !streamingAppName) {
         skippedNoChannel++
         continue
       }
 
-      const gameTime = new Date(row.scheduledStart * 1000)
-
-      // Tolerate empty home/away names (UFC/PPV — see espn-sync-service.ts).
-      // The prompt builder applies its own fallback when both are empty.
       const awayName = row.awayTeamName || ''
       const homeName = row.homeTeamName || ''
       const titleStr = (awayName && homeName)
@@ -153,7 +163,7 @@ async function fetchUpcomingGames(): Promise<GameListing[]> {
         : (awayName || homeName || `${row.league || 'event'}`.toUpperCase())
 
       games.push({
-        time: gameTime.toISOString(),
+        time: new Date(row.scheduledStart * 1000).toISOString(),
         title: titleStr,
         league: row.league || 'Unknown',
         homeTeam: homeName,
@@ -191,13 +201,18 @@ async function fetchUpcomingGames(): Promise<GameListing[]> {
       if (TOP_COLLEGE.has(g.league)) return 3
       return 4
     }
-    games.sort((a, b) => {
-      const pa = priorityOf(a)
-      const pb = priorityOf(b)
-      if (pa !== pb) return pa - pb
-      return new Date(a.time).getTime() - new Date(b.time).getTime()
-    })
-    const capped = games.slice(0, 30)
+    // v2.32.3 — Pre-compute priority + timestamp once per game instead of
+    // 2× per sort comparator (priorityOf was being called for both a and b
+    // on every comparison; new Date() too). For 30 games × ~150 comparator
+    // calls = 300 priorityOf invocations becomes 30. Same fix avoids the
+    // repeated `new Date(g.time).getTime()` allocation.
+    const scored = games.map((g) => ({
+      g,
+      p: priorityOf(g),
+      t: new Date(g.time).getTime(),
+    }))
+    scored.sort((a, b) => (a.p !== b.p ? a.p - b.p : a.t - b.t))
+    const capped = scored.slice(0, 30).map((s) => s.g)
     logger.info(
       `[AI-SUGGEST] Games in window: ${rows.length}, playable at this venue: ${games.length} (skipped ${skippedNoChannel} with no resolvable channel), capped to ${capped.length}`
     )
@@ -332,7 +347,17 @@ async function loadInputSources() {
       currentlyAllocated: bookings.some(b => b.allocatedAt <= nowUnix && b.expectedFreeAt >= nowUnix),
       currentChannel: s.currentChannel,
       priorityRank: s.priorityRank,
-      availableNetworks: (() => { try { return JSON.parse(s.availableNetworks) } catch { return [] } })(),
+      availableNetworks: (() => {
+        try { return JSON.parse(s.availableNetworks) }
+        catch (err: any) {
+          // v2.32.3 — log instead of swallow. A malformed availableNetworks
+          // JSON in the DB silently filters every streaming game off this
+          // input — the operator never sees why the box stopped getting
+          // recommendations.
+          logger.warn(`[AI-SUGGEST] Bad availableNetworks JSON on input ${s.id} (${s.name}): ${err.message}`)
+          return []
+        }
+      })(),
       bookings: bookings.map(b => ({
         startUnix: b.allocatedAt,
         endUnix: b.expectedFreeAt,
@@ -511,6 +536,36 @@ function buildPrompt(
     return `${i + 1}. [${tag}]${homeTag} ${teams} (${g.league}) — ${time} CT — ${routes || 'no route'}${assignClause}`
   }).join('\n')
 
+  // v2.32.0 — Same-channel-same-device grouping hint.
+  // When ESPN runs College GameDay 11am-2pm followed by NBA Playoffs 2pm-5pm
+  // followed by NFL Draft 7pm-11pm, all three games are on cable ch 27.
+  // Without this hint the LLM might pick three different inputs to route
+  // them, churning channel changes the bartender doesn't need. With it,
+  // the LLM keeps them on one cable box — saves tunes, keeps the
+  // bartender's mental model simple, frees other inputs for diverse
+  // content. Built per device type because the ch 27 on cable IS NOT
+  // the same as ch 27 on directv.
+  const groupGames = (selector: (g: GameListing) => string | undefined) => {
+    const m = new Map<string, number[]>()
+    games.forEach((g, i) => {
+      const k = selector(g)
+      if (!k) return
+      if (!m.has(k)) m.set(k, [])
+      m.get(k)!.push(i + 1)
+    })
+    return [...m.entries()].filter(([_, ids]) => ids.length >= 2)
+  }
+  const cableGroups = groupGames((g) => g.channelNumber || undefined)
+  const directvGroups = groupGames((g) => g.directvChannel || undefined)
+  const streamingGroups = groupGames((g) => g.streamingApp || undefined)
+  const sameChannelLines: string[] = []
+  for (const [ch, ids] of cableGroups) sameChannelLines.push(`  cable ch ${ch}: games #${ids.join(', #')}`)
+  for (const [ch, ids] of directvGroups) sameChannelLines.push(`  directv ch ${ch}: games #${ids.join(', #')}`)
+  for (const [app, ids] of streamingGroups) sameChannelLines.push(`  firetv app "${app}": games #${ids.join(', #')}`)
+  const sameChannelHint = sameChannelLines.length > 0
+    ? `\nSAME-CHANNEL GROUPS (prefer one input for each group — see Rule 14):\n${sameChannelLines.join('\n')}\n`
+    : ''
+
   // Pattern hints
   let patternHints = ''
   if (patterns.length > 0) {
@@ -560,7 +615,7 @@ ${inputLines.join('\n')}
 
 GAMES (next 12 hours):
 ${gameLines}
-
+${sameChannelHint}
 SETUP: ${tvCount} TVs across ${totalInputs} inputs. Home teams: Packers, Brewers, Bucks, Badgers.
 ${patternHints}
 
@@ -578,6 +633,7 @@ RULES:
 11. MANDATORY OUTPUTS: Every suggestion MUST include at least 1 TV output number in suggestedOutputs. Empty arrays are REJECTED server-side. Use any TV channel number from 1 to ${tvCount}.
 12. HOME-TEAM TV MINIMUMS (NON-NEGOTIABLE): Each game line carries an "assign N TVs" clause. For lines tagged [HOME TEAM: <name>] the N is a HARD MINIMUM — your suggestedOutputs.length MUST be >= N. Server-side enforcement WILL pad your output to N if you under-assign, but the LLM should respect the rule directly so it can pick visually-grouped TVs rather than getting padded with TVs 1..N. Operator-set: Packers=20, Bucks=5, Brewers=3, Badgers=3.
 13. PRIORITY ORDER: Home-team games get top priority — always propose them first. Then diverse options across leagues (MLB, NBA, NHL, MLS, UFL, UFC, Premier League, college sports) so the manager can compare.
+14. SAME-CHANNEL GROUPING: When the SAME-CHANNEL GROUPS section above lists multiple games on the same channel (e.g. "cable ch 27: games #3, #7, #11"), prefer to put ALL those games on the SAME input. Reasons: (a) saves tunes — no channel change needed, (b) the bartender's view stays consistent, (c) frees other inputs for content on different channels. Only split the group across inputs if the home-team minimums (Rule 12) force you to spread that game across many TVs and there isn't enough room on one input.
 
 Return ONLY valid JSON:
 {"suggestions":[{"gameIndex":1,"suggestedInput":"${exampleInput}","channelNumber":"669","suggestedOutputs":[1,2,3],"confidence":0.9,"reasoning":"Brewers home game on DirecTV"}]}
@@ -590,7 +646,15 @@ Return ${Math.min(totalInputs * 2, games.length, 12)} suggestions — at least o
 interface ParsedSuggestionRejection {
   gameId: string
   suggestedInput: string
-  reason: 'zero_outputs' | 'existing_collision' | 'in_batch_collision' | 'no_route' | 'duplicate_combo' | 'over_per_input_cap' | 'over_per_game_cap'
+  reason:
+    | 'zero_outputs'
+    | 'existing_collision'
+    | 'in_batch_collision'
+    | 'no_route'
+    | 'duplicate_combo'
+    | 'over_per_input_cap'
+    | 'over_per_game_cap'
+    | 'wrong_firetv_app'   // v2.32.3 — was being pushed at runtime but not in the union
   detail?: string
 }
 
@@ -620,8 +684,25 @@ function parseOllamaResponse(
     const normalize = (s: string) => (s || '').toLowerCase().replace(/\s+/g, '').replace(/box/g, '')
     const digitsOf = (s: string) => (s || '').match(/\d+/)?.[0] || ''
     const cableSources = inputSources.filter((src: any) => src.type === 'cable')
+
+    // v2.31.7 — Parse availableNetworks JSON ONCE per input source up front
+    // and cache as a lowercase Set per input id. The previous version's
+    // inputHasApp() did JSON.parse + .some() inside a per-suggestion closure
+    // that the .filter() also called per-input, making the work O(M × N)
+    // for M suggestions and N inputs.
+    const appsByInputId = new Map<string, Set<string>>()
+    for (const src of inputSources) {
+      try {
+        const apps = JSON.parse(src.availableNetworks || '[]') as string[]
+        appsByInputId.set(src.id, new Set(apps.map((a) => a.toLowerCase().trim())))
+      } catch {
+        appsByInputId.set(src.id, new Set())
+      }
+    }
+    const inputHasApp = (src: any, appLower: string): boolean =>
+      !!src && (appsByInputId.get(src.id)?.has(appLower) ?? false)
     const resolveInput = (suggestedId: string, suggestedName: string) => {
-      if (!suggestedId && !suggestedName) return cableSources[0] || null
+      if (!suggestedId && !suggestedName) return null
       // 1. Exact id match
       const byId = inputSources.find((src: any) => src.id && src.id === suggestedId)
       if (byId) return byId
@@ -632,14 +713,32 @@ function parseOllamaResponse(
       const nsug = normalize(suggestedName)
       const byNormName = inputSources.find((src: any) => normalize(src.name) === nsug)
       if (byNormName) return byNormName
-      // 4. Digit match — "Cable Box 1" and "Cable 1" share "1"
+      // v2.32.3 — Step 4 widened to ALL inputs (was cable-only), so the
+      // LLM saying "DirecTV 2" with garbled punctuation can still match a
+      // DirecTV input by digit instead of falling through to a wrong-type
+      // substitution. Match within the device class implied by the
+      // suggested name first, then fall back to any input with that digit.
       const dsug = digitsOf(suggestedName)
       if (dsug) {
-        const byDigit = cableSources.find((src: any) => digitsOf(src.name) === dsug)
+        const lname = (suggestedName || '').toLowerCase()
+        const sameClass = inputSources.filter((src: any) => {
+          if (lname.includes('directv') || lname.includes('satellite')) return src.type === 'directv' || src.type === 'satellite'
+          if (lname.includes('fire') || lname.includes('amazon') || lname.includes('atmosphere')) return src.type === 'firetv'
+          if (lname.includes('cable')) return src.type === 'cable'
+          return true
+        })
+        const byDigit = sameClass.find((src: any) => digitsOf(src.name) === dsug)
+                     || inputSources.find((src: any) => digitsOf(src.name) === dsug)
         if (byDigit) return byDigit
       }
-      // 5. Fall back to first cable input so approve can proceed
-      return cableSources[0] || null
+      // v2.32.3 — Removed the silent step-5 cable fallback. Returning the
+      // first cable input when none of the above match meant the LLM
+      // hallucinating an input name resulted in the suggestion proceeding
+      // with a WRONG suggestedInputId / suggestedDeviceId / suggestedDeviceType
+      // — approve would write the allocation to the wrong physical device
+      // and route the wrong TV. A clean rejection is correct: the caller
+      // pushes a 'no_route' rejection when input is null.
+      return null
     }
 
     for (const s of parsed.suggestions || []) {
@@ -648,6 +747,18 @@ function parseOllamaResponse(
       if (!game) continue
 
       const input = resolveInput(s.suggestedInputId || '', s.suggestedInput || '')
+      // v2.32.3 — resolveInput now returns null when the LLM names a
+      // non-existent input (was silently substituting first cable; see
+      // the function for context). Reject cleanly.
+      if (!input) {
+        rejections.push({
+          gameId: `game-${gameIdx}`,
+          suggestedInput: s.suggestedInput || s.suggestedInputId || '?',
+          reason: 'no_route',
+          detail: `Input "${s.suggestedInput || s.suggestedInputId}" not found in current input list`,
+        })
+        continue
+      }
 
       // CRITICAL: Don't trust the LLM's channel number — it hallucinates.
       // Use the server-side resolved identifier based on the input type:
@@ -675,21 +786,12 @@ function parseOllamaResponse(
         // that has the app, or reject the suggestion entirely.
         if (appName) {
           const appLower = appName.toLowerCase().trim()
-          const inputHasApp = (src: any): boolean => {
-            if (!src) return false
-            try {
-              const apps = JSON.parse(src.availableNetworks || '[]') as string[]
-              return apps.some((a) => a.toLowerCase().trim() === appLower)
-            } catch {
-              return false
-            }
-          }
-          if (!inputHasApp(input)) {
+          if (!inputHasApp(input, appLower)) {
             // LLM picked a Fire TV that doesn't have this app — reroute to
             // the first firetv input that DOES (excluding currently-allocated
             // boxes already busy with another game). If none, reject.
             const firetvCandidates = inputSources.filter(
-              (src: any) => src.type === 'firetv' && inputHasApp(src) && !src.currentlyAllocated
+              (src: any) => src.type === 'firetv' && inputHasApp(src, appLower) && !src.currentlyAllocated
             )
             const fallback = firetvCandidates[0]
             if (fallback) {
@@ -767,9 +869,19 @@ function parseOllamaResponse(
     const inputAssignmentCount = new Map<string, number>()
     const gameAssignmentCount = new Map<string, number>()
     const gameInputCombos = new Set<string>()
-    const HOME_TEAMS = ['Packers', 'Brewers', 'Bucks', 'Badgers']
-    const isHomeTeamGame = (s: AISuggestion) =>
-      HOME_TEAMS.some(t => s.homeTeam.includes(t) || s.awayTeam.includes(t))
+    // v2.32.3 — Use the canonical matchHomeTeamRule (DB-loaded HomeTeam
+    // rows + aliases) instead of a hardcoded substring check. The
+    // hardcoded array missed any home team an operator added via the UI
+    // (e.g. Brewers AAA affiliates, college teams) and missed alias
+    // variations (Green Bay Packers vs GB Packers vs Packers). Falls
+    // back to the hardcoded list only when no DB rules are loaded.
+    const HOME_TEAMS_FALLBACK = ['Packers', 'Brewers', 'Bucks', 'Badgers']
+    const isHomeTeamGame = (s: AISuggestion): boolean => {
+      if (homeTeamRules.length > 0) {
+        return matchHomeTeamRule(s.homeTeam, s.awayTeam, homeTeamRules) !== null
+      }
+      return HOME_TEAMS_FALLBACK.some(t => s.homeTeam.includes(t) || s.awayTeam.includes(t))
+    }
 
     // Sort order for the suggestion list returned to the manager:
     //   1. Home team games first (Brewers/Bucks/Packers/Badgers).
@@ -1170,12 +1282,14 @@ export async function GET(request: NextRequest) {
     if (rejections.length > 0) {
       const correlationId = crypto.randomUUID()
       try {
-        for (const r of rejections) {
-          await db.insert(schema.schedulerLogs).values({
+        // v2.32.3 — Batch the per-rejection inserts into one statement.
+        // Was N sequential round-trips (up to ~12 per request); now 1.
+        await db.insert(schema.schedulerLogs).values(
+          rejections.map((r) => ({
             correlationId,
-            component: 'ai-suggest',
-            operation: 'reject',
-            level: r.reason === 'zero_outputs' || r.reason === 'in_batch_collision' ? 'warn' : 'info',
+            component: 'ai-suggest' as const,
+            operation: 'reject' as const,
+            level: (r.reason === 'zero_outputs' || r.reason === 'in_batch_collision' ? 'warn' : 'info') as 'warn' | 'info',
             message: `Rejected AI suggestion: ${r.reason}${r.detail ? ` (${r.detail})` : ''}`,
             gameId: r.gameId,
             success: false,
@@ -1184,8 +1298,8 @@ export async function GET(request: NextRequest) {
               detail: r.detail || null,
               suggestedInput: r.suggestedInput,
             }),
-          })
-        }
+          }))
+        )
       } catch (logErr) {
         logger.warn('[AI-SUGGEST] Failed to persist rejection telemetry:', logErr)
       }

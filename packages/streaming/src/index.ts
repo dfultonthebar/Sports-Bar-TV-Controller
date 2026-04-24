@@ -17,7 +17,13 @@ export {
   getAppsWithPublicApi,
   getStreamingAppsBySport,
   searchStreamingApps,
-  getPackageNameByAppId
+  getPackageNameByAppId,
+  // v2.32.9 — display-name + package-name lookup helpers (single source
+  // of truth, replaces inline DISPLAY_NAME_TO_CATALOG_ID and
+  // PACKAGE_TO_DISPLAY_NAME maps)
+  findStreamingAppByDisplayName,
+  findStreamingAppByPackageName,
+  getDisplayNameForPackage,
 } from './streaming-apps-database'
 
 // ESPN API

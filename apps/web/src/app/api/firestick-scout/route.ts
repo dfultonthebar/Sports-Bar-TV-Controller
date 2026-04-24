@@ -17,6 +17,7 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { logger } from '@sports-bar/logger'
 import { z } from 'zod'
 import { validateRequestBody, isValidationError } from '@/lib/validation'
+import { resolveCanonicalFireTVDeviceId } from '@/lib/firetv-device-resolver'
 
 // Schema for Scout heartbeat
 const heartbeatSchema = z.object({
@@ -49,33 +50,13 @@ export async function POST(request: NextRequest) {
   const data = bodyValidation.data
   const now = new Date().toISOString()
 
-  // v2.28.10 — Canonical deviceId resolution by IP.
-  // Scout's compile-time IP_DEVICE_MAP only knows Stoneyard IPs (10.40.10.x),
-  // so Holmgren Fire TVs (10.11.3.x) all heartbeat with deviceId='fire-tv-unknown'
-  // — multiple boxes overwrite each other's row. Resolve the canonical deviceId
-  // server-side by matching ipAddress against the FireTVDevice table. This makes
-  // heartbeat data useful for downstream consumers (input_sources sync, AI Suggest)
-  // without requiring a scout rebuild + redeploy at every location.
-  let resolvedDeviceId = data.deviceId
-  let resolvedDeviceName = data.deviceName
-  if (data.ipAddress && (data.deviceId === 'fire-tv-unknown' || data.deviceId.startsWith('amazon-') || data.deviceId.startsWith('fire-tv-'))) {
-    try {
-      const ftDevice = await db
-        .select()
-        .from(schema.fireTVDevices)
-        .where(eq(schema.fireTVDevices.ipAddress, data.ipAddress))
-        .get()
-      if (ftDevice) {
-        if (resolvedDeviceId !== ftDevice.id) {
-          logger.info(`[FIRESTICK_SCOUT] Resolved heartbeat from ${data.deviceId} (${data.ipAddress}) → canonical ${ftDevice.id} (${ftDevice.name})`)
-        }
-        resolvedDeviceId = ftDevice.id
-        resolvedDeviceName = ftDevice.name
-      }
-    } catch (resolveErr: any) {
-      logger.warn(`[FIRESTICK_SCOUT] Canonical deviceId resolution failed for ${data.ipAddress}: ${resolveErr.message}`)
-    }
-  }
+  // v2.31.7 — Canonical deviceId resolution extracted to shared helper.
+  // See apps/web/src/lib/firetv-device-resolver.ts for rationale.
+  const { resolvedDeviceId, resolvedDeviceName } = await resolveCanonicalFireTVDeviceId(
+    data.deviceId,
+    data.ipAddress,
+    data.deviceName
+  )
 
   try {
     // Check if device already exists

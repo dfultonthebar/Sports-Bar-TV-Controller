@@ -65,6 +65,29 @@ export interface AppWalkRule {
   catalogId: string                                    // /api/streaming/launch appId
   displayName: string                                  // matches input_sources.available_networks
   postLaunchDelayMs: number                            // wait for first screen
+  // v2.31.4 — optional ADB key navigation to reach the app's sports tab
+  // before dumping. ADB keyevent codes: UP=19 DOWN=20 LEFT=21 RIGHT=22
+  // OK/CENTER=23. Sent in order with `interKeyDelayMs` between each.
+  // Many apps' home screens rotate content (TV shows in afternoon, sports
+  // in morning, etc.) — navigating to a dedicated Sports tab gives a
+  // stable, sports-only catalog regardless of when the walk runs.
+  navigation?: {
+    keyevents: number[]
+    interKeyDelayMs?: number  // default 400ms
+    postNavDelayMs?: number   // default 4000ms — let new tab content render
+  }
+  // v2.31.9 + v2.32.8 — Mark apps the walker can't extract content from.
+  // Two failure modes both flagged with this single flag:
+  //   1. WebView-based apps: entire UI renders inside android.webkit.WebView.
+  //      uiautomator dump shows one big WebView node with no text=. Confirmed
+  //      on Peacock; likely Hulu/fubo/MLB.TV.
+  //   2. Accessibility-blind native apps: native Android views but every
+  //      node has empty text/content-desc. Confirmed on Apple TV+ on Fire TV
+  //      Cube — dump returns 3KB but 0 unique text nodes.
+  // Either way, walker skips with a single info log instead of attempting
+  // a walk that would always return zero tiles. Future work: HTTP catalog
+  // fetch from each provider's public API, or screen-capture + OCR.
+  usesWebView?: boolean
   extractTiles: (xmlDump: string) => CatalogTile[]
 }
 
@@ -77,13 +100,32 @@ export interface CatalogTile {
 
 // Helper: pull all text= and content-desc= attributes from a uiautomator
 // XML dump. Filters out trivial tokens (numbers only, very short, common
-// nav chrome strings). Returns deduped, in-order.
+// nav chrome strings). Returns deduped, in-order. Decodes the handful of
+// XML entities uiautomator emits so downstream sees clean strings
+// (`&amp;` → `&`, `&apos;` → `'`, etc.).
+function decodeXmlEntities(s: string): string {
+  // Decode numeric entities first (`&#10;`, `&#9;`, etc.) so any LF/TAB
+  // becomes whitespace before the named-entity pass. uiautomator on Fire OS 7
+  // emits both — the named-only decoder we shipped in v2.31.5 missed the
+  // numeric ones and corrupted any title with a tab in it.
+  return s
+    .replace(/&#(\d+);/g, (_, n) => {
+      const code = Number(n)
+      // 9=TAB, 10=LF, 13=CR — collapse to space; everything else fromCharCode
+      return code === 9 || code === 10 || code === 13 ? ' ' : String.fromCharCode(code)
+    })
+    .replace(/&amp;/g, '&')
+    .replace(/&apos;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+}
 function extractAccessibleText(xmlDump: string): string[] {
   const matches: string[] = []
   const re = /(?:text|content-desc)="([^"]+)"/g
   let m: RegExpExecArray | null
   while ((m = re.exec(xmlDump)) !== null) {
-    const t = m[1].trim()
+    const t = decodeXmlEntities(m[1]).trim()
     if (t.length < 3) continue
     if (/^\d+$/.test(t)) continue
     matches.push(t)
@@ -106,6 +148,17 @@ function inferSportTag(title: string, contextSportRow: string | null): string | 
   const lower = title.toLowerCase()
   if (contextSportRow) {
     const rl = contextSportRow.toLowerCase()
+    // v2.32.9 — Order matters: check 'ncaa'/'college' BEFORE NFL, because
+    // "NCAA Football" matched /nfl|football/ and tagged College GameDay
+    // (clearly a college show) as NFL. Check the more specific labels
+    // first.
+    if (/college|ncaa/.test(rl)) {
+      if (/football/.test(rl)) return 'college-football'
+      if (/basketball|hoops/.test(rl)) return 'college-basketball'
+      if (/baseball/.test(rl)) return 'college-baseball'
+      if (/hockey/.test(rl)) return 'college-hockey'
+      return 'college-sports'
+    }
     if (/nba|playoffs|basketball/.test(rl)) return 'NBA'
     if (/nfl|football/.test(rl)) return 'NFL'
     if (/mlb|baseball/.test(rl)) return 'MLB'
@@ -116,14 +169,31 @@ function inferSportTag(title: string, contextSportRow: string | null): string | 
     if (/golf|pga|lpga/.test(rl)) return 'golf'
     if (/ufc|mma|boxing/.test(rl)) return 'mma'
     if (/f1|nascar|indycar|motorsport/.test(rl)) return 'motorsport'
+    if (/volleyball/.test(rl)) return 'volleyball'
+    if (/lacrosse/.test(rl)) return 'lacrosse'
+    if (/wrestling/.test(rl)) return 'wrestling'
+    if (/rugby/.test(rl)) return 'rugby'
   }
   if (/\bnba\b/.test(lower)) return 'NBA'
   if (/\bnfl\b/.test(lower)) return 'NFL'
   if (/\bmlb\b|brewers|cubs|yankees|dodgers/.test(lower)) return 'MLB'
   if (/\bnhl\b/.test(lower)) return 'NHL'
-  if (/atp|wta|tennis/.test(lower)) return 'tennis'
-  if (/cricket|psl|ipl/.test(lower)) return 'cricket'
-  if (/squash/.test(lower)) return 'squash'
+  // v2.31.5 — broaden tennis recognition. Prime Video also tags PTT
+  // (Power Tennis Tour) events as "Apr 23 - PTT Clemson Men" / similar
+  // — those were landing as untagged in earlier walks.
+  if (/atp|wta|tennis|\bptt\b/.test(lower)) return 'tennis'
+  if (/cricket|\bpsl\b|\bipl\b|hyderabad|sultan|mumbai indians|super kings|royal challengers|kolkata knight|delhi capitals|punjab kings|rajasthan royals/.test(lower)) return 'cricket'
+  if (/squash|grasshopper cup/.test(lower)) return 'squash'
+  if (/\bchess\b/.test(lower)) return 'chess'
+  if (/\brace(s)?\b|day at the races|horse|kentucky derby|breeders/.test(lower)) return 'horse-racing'
+  // v2.32.9 — beach volleyball + indoor volleyball misses (Sun Belt /
+  // OVC women's beach volleyball was untagged in the v2.31.6 walks)
+  if (/volleyball/.test(lower)) return 'volleyball'
+  if (/lacrosse/.test(lower)) return 'lacrosse'
+  if (/wrestling/.test(lower)) return 'wrestling'
+  // v2.31.5 — soccer recognition for Saudi Pro League fixtures Prime
+  // Video carries (Al-team-name vs Al-team-name pattern is distinctive).
+  if (/^al |\bvs\.?\s+al /i.test(lower) || /\bsaudi\b|\bspl\b/i.test(lower)) return 'soccer'
   return null
 }
 
@@ -170,6 +240,14 @@ function extractPrimeVideoTiles(xmlDump: string): CatalogTile[] {
     if (/^Watch now$/.test(t)) continue
     if (/^TV-(MA|14|PG|G|Y)/.test(t)) continue
     if (/^#\d+ in/.test(t)) continue
+    // v2.31.4 + v2.31.6 — additional Sports-tab noise filters
+    if (/^(More details|All|all)$/i.test(t)) continue
+    if (/^(LIVE|LIVE NOW|UPCOMING)$/i.test(t)) continue       // standalone badge text
+    if (/^Live at \d/i.test(t)) continue                        // "Live at 5:30 PM" generic timeslot
+    if (/^(Live and upcoming events|Live now|Live & upcoming)$/i.test(t)) {
+      lastSportRow = t; continue                                // row header, not a tile
+    }
+    if (/^Sports for you$/i.test(t)) { lastSportRow = t; continue }
 
     // Game matchup signal — the strongest tile indicator
     const isMatchup = / vs\.? /i.test(t)
@@ -199,8 +277,21 @@ function extractPrimeVideoTiles(xmlDump: string): CatalogTile[] {
       continue
     }
 
-    // Strip trailing ", LIVE" / ", UPCOMING" from the title for cleanliness
-    const cleanTitle = t.replace(/,?\s*(LIVE|LIVE NOW|UPCOMING)\s*$/i, '').trim()
+    // v2.31.6 — Strip trailing decoration suffixes from the title.
+    // Prime Video tiles often have multi-segment trailers like
+    //   "Foo Bar, LIVE, Free trial"
+    //   "Foo Bar, LIVE, Subscribe"
+    //   "Foo Bar, UPCOMING"
+    // Run the strip in a loop so multiple suffix segments come off cleanly.
+    let cleanTitle = t
+    for (let i = 0; i < 4; i++) {
+      const stripped = cleanTitle.replace(
+        /,?\s*(LIVE|LIVE NOW|UPCOMING|Free trial|Subscribe|Watch now)\s*$/i,
+        ''
+      ).trim()
+      if (stripped === cleanTitle) break
+      cleanTitle = stripped
+    }
     if (!cleanTitle || cleanTitle.length < 3) continue
 
     const key = cleanTitle.toLowerCase()
@@ -217,6 +308,64 @@ function extractPrimeVideoTiles(xmlDump: string): CatalogTile[] {
   return tiles
 }
 
+// ESPN extractor (v2.31.9).
+// Verified empirically on Fire TV Cube 2nd gen 2026-04-23: the ESPN Fire TV
+// app (com.espn.gtv) is a NATIVE Android TV app — uiautomator dump returns
+// rich text/content-desc data for every visible tile.
+//
+// Tile shapes seen on the landing screen:
+//   text:         "College GameDay ESPN • NCAA Football Live"
+//   content-desc: "College GameDay, College GameDay, NCAA Football, Live Now,"
+//
+// The text version pairs `<title> <network> • <sport> [Live]`.
+// The content-desc version is a comma-separated tuple `<title>, <title>, <sport>, <status>,`.
+// We prefer the content-desc when available because it splits cleanly; fall
+// back to text and parse around the bullet separator.
+function extractEspnTiles(xmlDump: string): CatalogTile[] {
+  const all = extractAccessibleText(xmlDump)
+  const tiles: CatalogTile[] = []
+  const seen = new Set<string>()
+
+  // Skip ESPN nav chrome
+  const navChrome = /^(Search|Home|Films & Shows|Browse|Highlights|Settings|Featured|Featured Group \d|Watch, button \d of \d|button \d of \d)$/i
+
+  for (const t of all) {
+    if (navChrome.test(t)) continue
+    if (t.length < 5) continue
+
+    let title = ''
+    let sportTag: string | null = null
+    let isLive = false
+
+    // Pattern A: comma-separated content-desc — "Title, Title, Sport, Live Now,"
+    const commaParts = t.split(',').map(s => s.trim()).filter(Boolean)
+    if (commaParts.length >= 3 && /Live( Now)?/i.test(commaParts[commaParts.length - 1])) {
+      // Last segment is status; second-to-last is sport; first is title
+      title = commaParts[0]
+      sportTag = inferSportTag(commaParts[commaParts.length - 2], commaParts[commaParts.length - 2])
+      isLive = true
+    }
+    // Pattern B: bullet-separated text — "Title NETWORK • Sport Live"
+    else if (/ • /.test(t)) {
+      const beforeBullet = t.split(' • ')[0]
+      const afterBullet = t.split(' • ')[1]
+      // Strip trailing network token from title (last word: ESPN, ESPN2, ESPN+, etc.)
+      title = beforeBullet.replace(/\s+(ESPN\+?|ESPN2|ABC|SEC Network|ACC Network|Big Ten Network|FS1|FS2)\s*$/, '').trim()
+      sportTag = inferSportTag(afterBullet || '', afterBullet || '')
+      isLive = / Live\b/i.test(afterBullet || '')
+    } else {
+      continue
+    }
+
+    if (!title || title.length < 3) continue
+    const key = title.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    tiles.push({ contentTitle: title, isLive, sportTag })
+  }
+  return tiles
+}
+
 // Add per-app rules here as you confirm dump formats. Apps without a rule
 // are silently skipped (no false data lands in the catalog).
 const APP_WALK_RULES: Record<string, AppWalkRule> = {
@@ -224,12 +373,81 @@ const APP_WALK_RULES: Record<string, AppWalkRule> = {
     catalogId: 'amazon-prime',
     displayName: 'Prime Video',
     postLaunchDelayMs: 6000,
+    // v2.31.4 — Navigate to the Sports tab before dumping. Empirical
+    // sequence on Fire TV Cube 2nd gen (AFTR) PVFTV-215.5200-L: from the
+    // launcher's LandingActivity, two UPs focus the top tab row, three
+    // RIGHTs land on Sports (Home → Movies → TV shows → Sports), OK
+    // activates. Without this we get whatever Prime Video happens to be
+    // featuring on the home screen — often non-sports (TV shows on
+    // weekday afternoons, our 2026-04-23 4am walk only captured
+    // "Live at 5:30 PM" because home screen was rotating).
+    navigation: {
+      keyevents: [19, 19, 22, 22, 22, 23],
+      interKeyDelayMs: 400,
+      postNavDelayMs: 4500,
+    },
     extractTiles: extractPrimeVideoTiles,
   },
-  // Future entries (Phase 2b-2.C):
-  //   'Peacock': { catalogId: 'peacock', ..., extractTiles: extractPeacockTiles }
-  //   'Hulu': ...
-  //   'fuboTV': ...
+  'ESPN': {
+    catalogId: 'espn-plus',
+    displayName: 'ESPN',
+    postLaunchDelayMs: 8000,           // ESPN's content cards finish rendering ~7s after launch
+    // No navigation needed — ESPN's first screen IS the live-sports landing.
+    extractTiles: extractEspnTiles,
+  },
+  // v2.31.9 — Peacock (and likely Hulu, MLB.TV, Netflix on Fire TV)
+  // renders inside an android.webkit.WebView. uiautomator can't read text
+  // content from inside a WebView — the dump shows one big WebView node
+  // with no extractable text/content-desc. Walker skips with a logged
+  // info line instead of pretending to walk and capturing zero. Future
+  // work: pull Peacock's NBC Sports schedule from a public API, or
+  // screen-capture + OCR.
+  'Peacock': {
+    catalogId: 'peacock',
+    displayName: 'Peacock',
+    postLaunchDelayMs: 0,
+    usesWebView: true,
+    extractTiles: () => [],
+  },
+  // v2.32.8 — Apple TV+ on Fire TV Cube is NATIVE (no WebView) but
+  // accessibility-blind. uiautomator dump on its MainActivity returns
+  // ~3KB with 0 unique text nodes — every node has empty text and
+  // content-desc, so tile titles can't be extracted. Same effective
+  // behavior as a WebView app from the walker's perspective; reuses
+  // the usesWebView flag (see AppWalkRule docstring).
+  'Apple TV+': {
+    catalogId: 'apple-tv',
+    displayName: 'Apple TV+',
+    postLaunchDelayMs: 0,
+    usesWebView: true,
+    extractTiles: () => [],
+  },
+  // v2.32.8 — fuboTV on Fire TV is web-based (consumer pattern: most
+  // sports streaming services are WebView shells with a thin native
+  // launcher). Pre-emptive skip with usesWebView; if a future operator
+  // logs in and a manual probe shows accessibility text IS available,
+  // remove the flag and add an extractor at that point.
+  // packageAlias com.fubo.firetv.screen registered in
+  // packages/streaming/src/streaming-apps-database.ts so launch resolves
+  // to the right APK on these Cubes.
+  'fuboTV': {
+    catalogId: 'fubo-tv',
+    displayName: 'fuboTV',
+    postLaunchDelayMs: 0,
+    usesWebView: true,
+    extractTiles: () => [],
+  },
+  // Future entries (when adding):
+  //   'Hulu': likely usesWebView (verify when an FT has it logged in)
+  //   'MLB.TV': likely usesWebView (verify)
+  //   'NFHS Network': native + extractable, but ONLY when logged in.
+  //     Probed on FT2 2026-04-23: walker landed on IntroActivity (Subscribe
+  //     / Log In / Skip For Now) — operator login required before adding
+  //     a rule. Once logged in, NFHS likely has a native catalog grid
+  //     similar to ESPN.
+  //   'Netflix': launch failed during 2026-04-23 probe despite package
+  //     match (com.netflix.ninja in scout report + same in catalog).
+  //     Needs debug — likely a LEANBACK_LAUNCHER intent issue. Defer.
 }
 
 // Helper: send a shell command via the existing send-command endpoint.
@@ -277,6 +495,17 @@ async function walkOneApp(
     return { app: rule.displayName, tilesFound: 0, uploaded: false, error: 'no-device-id' }
   }
 
+  // v2.31.9 — WebView-based apps (Peacock, likely Hulu/fubo/MLB.TV)
+  // can't be walked via uiautomator (the dump shows one big WebView
+  // node with no extractable text). Mark in the rule + skip cleanly
+  // instead of attempting a no-op walk every cycle.
+  if (rule.usesWebView) {
+    logger.info(
+      `[FIRETV-CATALOG] ${inputSource.name} / ${rule.displayName}: skipped (webview-based — uiautomator can't read)`
+    )
+    return { app: rule.displayName, tilesFound: 0, uploaded: true }
+  }
+
   try {
     // 1. HOME to clear
     await adbShell(deviceId, 'input keyevent 3')
@@ -300,6 +529,20 @@ async function walkOneApp(
 
     // 3. Wait for first screen to render
     await sleep(rule.postLaunchDelayMs)
+
+    // 3a. (v2.31.4) Optional navigation to a sports/live tab. Without
+    // this, apps whose home screen rotates content (Prime Video, Peacock,
+    // etc.) yield inconsistent walks — TV shows in the afternoon, sports
+    // in the morning. Navigation lets us land on the same Sports tab
+    // every walk regardless of time of day.
+    if (rule.navigation && rule.navigation.keyevents.length > 0) {
+      const interKey = rule.navigation.interKeyDelayMs ?? 400
+      for (const code of rule.navigation.keyevents) {
+        await adbShell(deviceId, `input keyevent ${code}`)
+        await sleep(interKey)
+      }
+      await sleep(rule.navigation.postNavDelayMs ?? 4000)
+    }
 
     // 4. Dump UI hierarchy.
     //

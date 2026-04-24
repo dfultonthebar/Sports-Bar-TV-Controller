@@ -87,6 +87,45 @@ export a new env var, run a one-time SQL patch, configure a plugin.
   doesn't break), or STOP (if the missing step breaks a working
   feature).
 
+#### Verify-SQL markers (v2.32.7+)
+
+For preconditions you want HARD-ENFORCED at every location (vs. the
+softer "advisory step in the decision body" pattern above), embed an
+HTML-comment marker inside the version entry:
+
+```markdown
+<!-- verify-description: At least one home team must have minTVsWhenActive set -->
+<!-- verify-sql: SELECT id FROM HomeTeam WHERE isActive=1 AND isPrimary=1 AND minTVsWhenActive > 0 LIMIT 1 -->
+```
+
+The format:
+
+- `verify-sql:` is a single-line SQL SELECT against
+  `production.db`. Must return ≥1 row to pass; 0 rows → STOP.
+- `verify-description:` (optional, immediately preceding) is the
+  human-readable label that appears in the STOP message. Plain text,
+  no quotes.
+- Multiple markers are allowed per entry. ALL must pass.
+- Markers can sit anywhere inside the entry — top, beneath the manual
+  steps, at the bottom. Auto-update parses them by greppable signature,
+  not position.
+
+Checkpoint B parses the entries between PRE_MERGE_VERSION and
+POST_MERGE_VERSION, runs each marker's SQL, and STOPS the update with
+a clear message if any returns 0 rows. Forward-only enforcement —
+entries that pre-date v2.32.7 don't have markers and remain advisory
+(handled by the original "flag in DECISION body" path).
+
+When to use markers vs. advisory steps:
+
+- **Marker** when: the precondition is something the running code
+  EXPECTS to be true (a row in HomeTeam, a non-empty ChannelPreset
+  table, a specific config row). Missing it → app may run but
+  silently mis-route or hide content.
+- **Advisory** when: the step is informational, requires operator
+  judgment (e.g., "decide which audio output is room 3"), or is for
+  features the operator may legitimately not need yet.
+
 `LOCATION_UPDATE_NOTES.md` tells you WHETHER to update.
 `VERSION_SETUP_GUIDE.md` tells you WHAT TO DO so it works after
 updating. Both are authoritative for their scope.

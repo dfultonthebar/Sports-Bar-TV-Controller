@@ -459,9 +459,89 @@ fi
 COMMITS_TO_MERGE=$(git log --oneline HEAD..origin/main | wc -l)
 log "Commits pending merge: $COMMITS_TO_MERGE"
 
+# v2.32.6 — Canary location gate. When scripts/canary-config.json has
+# enabled=true AND this is NOT the canary branch, refuse to merge a
+# commit until the canary has successfully installed it AND soaked for
+# minBlessAgeMinutes. Bad commits break only the canary; the other 5
+# locations skip with exit 0 (no-op) and try again on the next nightly
+# run. The canary itself is exempt — it always proceeds without gating.
+CANARY_CFG="$REPO_ROOT/scripts/canary-config.json"
+if [ -f "$CANARY_CFG" ]; then
+  CANARY_ENABLED=$(node -e "try{const c=require('$CANARY_CFG');console.log(c.enabled?'true':'false')}catch(e){console.log('false')}" 2>/dev/null || echo "false")
+  CANARY_BRANCH=$(node -e "try{const c=require('$CANARY_CFG');console.log(c.canaryBranch||'')}catch(e){console.log('')}" 2>/dev/null || echo "")
+  CANARY_MIN_AGE_MIN=$(node -e "try{const c=require('$CANARY_CFG');console.log(c.minBlessAgeMinutes||240)}catch(e){console.log('240')}" 2>/dev/null || echo "240")
+  if [ "$CANARY_ENABLED" = "true" ] && [ -n "$CANARY_BRANCH" ] && [ "$BRANCH" != "$CANARY_BRANCH" ]; then
+    log "Canary gate: this branch ($BRANCH) is non-canary; canary is $CANARY_BRANCH (min age ${CANARY_MIN_AGE_MIN}min)"
+    git fetch origin "$CANARY_BRANCH" 2>&1 | tee -a "$LOG_FILE" || true
+    BLESS_JSON=$(git show "origin/$CANARY_BRANCH:.canary-blessed.json" 2>/dev/null || echo "")
+    if [ -z "$BLESS_JSON" ]; then
+      log "Canary gate: no .canary-blessed.json on origin/$CANARY_BRANCH yet — skipping (will retry on next cron run)"
+      history_insert_start
+      history_update_result "pass" "skipped — canary $CANARY_BRANCH has not blessed any commit"
+      state_update "pass" "skipped — waiting on canary"
+      write_summary_json "pass" "skipped — waiting on canary"
+      exit 0
+    fi
+    BLESSED_SHA=$(printf '%s' "$BLESS_JSON" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{console.log(JSON.parse(s).blessedCommitSha||'')}catch(e){console.log('')}})" 2>/dev/null || echo "")
+    BLESSED_UNIX=$(printf '%s' "$BLESS_JSON" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{console.log(JSON.parse(s).blessedAtUnix||0)}catch(e){console.log('0')}})" 2>/dev/null || echo "0")
+    if [ "$BLESSED_SHA" != "$TARGET_SHA" ]; then
+      log "Canary gate: canary blessed $BLESSED_SHA but target is $TARGET_SHA — skipping (canary still on older commit)"
+      history_insert_start
+      history_update_result "pass" "skipped — canary not yet on target commit"
+      state_update "pass" "skipped — waiting on canary catch-up"
+      write_summary_json "pass" "skipped — canary not yet on target commit"
+      exit 0
+    fi
+    NOW_UNIX=$(date +%s)
+    AGE_MIN=$(( (NOW_UNIX - BLESSED_UNIX) / 60 ))
+    if [ "$AGE_MIN" -lt "$CANARY_MIN_AGE_MIN" ]; then
+      log "Canary gate: canary blessed target commit ${AGE_MIN}min ago, need ${CANARY_MIN_AGE_MIN}min soak — skipping (will retry on next cron run)"
+      history_insert_start
+      history_update_result "pass" "skipped — canary soak in progress (${AGE_MIN}/${CANARY_MIN_AGE_MIN}min)"
+      state_update "pass" "skipped — canary soaking"
+      write_summary_json "pass" "skipped — canary soaking ${AGE_MIN}/${CANARY_MIN_AGE_MIN}min"
+      exit 0
+    fi
+    log "Canary gate: passed — $CANARY_BRANCH blessed $TARGET_SHA ${AGE_MIN}min ago (≥${CANARY_MIN_AGE_MIN}min required)"
+  elif [ "$CANARY_ENABLED" = "true" ] && [ "$BRANCH" = "$CANARY_BRANCH" ]; then
+    log "Canary gate: this IS the canary ($BRANCH) — proceeding without gating"
+  fi
+fi
+
 # Insert history start row now that we know we have work to do
 history_insert_start
 log "History row id=$HISTORY_ID"
+
+# v2.32.4 — Scan the incoming diff for newly-introduced process.env.X
+# references and warn if they're not in the current .env. Warn-only —
+# many env vars have `|| 'fallback'` defaults, so a missing var isn't
+# automatically a failure. Operator can review the list before the merge
+# proceeds. Real enforcement still happens at verify-install + Checkpoint
+# B if the missing var actually breaks something at runtime.
+NEW_ENV_REFS=$(git diff "$PRE_MERGE_SHA..$TARGET_SHA" -- '*.ts' '*.tsx' '*.js' 2>/dev/null \
+  | grep -E '^\+[^+].*process\.env\.[A-Z][A-Z0-9_]+' \
+  | grep -oE 'process\.env\.[A-Z][A-Z0-9_]+' \
+  | sort -u || true)
+if [ -n "$NEW_ENV_REFS" ]; then
+  CURRENT_ENV_KEYS=$(grep -oE '^[A-Z][A-Z0-9_]+(?==)' "$REPO_ROOT/.env" 2>/dev/null \
+                     || grep -oE '^[A-Z][A-Z0-9_]+' "$REPO_ROOT/.env" 2>/dev/null | head -200 \
+                     || echo "")
+  MISSING_ENV=()
+  for ref in $NEW_ENV_REFS; do
+    key="${ref#process.env.}"
+    # Skip well-known optional keys with code-side fallbacks
+    case "$key" in NODE_ENV|PORT|DATABASE_URL) continue ;; esac
+    if ! printf '%s\n' "$CURRENT_ENV_KEYS" | grep -qx "$key"; then
+      MISSING_ENV+=("$key")
+    fi
+  done
+  if [ "${#MISSING_ENV[@]}" -gt 0 ]; then
+    log "⚠ env-var pre-flight: incoming diff references env vars not in current .env:"
+    for k in "${MISSING_ENV[@]}"; do log "    $k"; done
+    log "    These may have code-side fallbacks. Verify before continuing if any are required."
+    log "    Real enforcement runs at verify-install + Checkpoint B."
+  fi
+fi
 
 # ===========================================================================
 # CHECKPOINT A — Pre-update analysis
@@ -513,6 +593,13 @@ LOCATION_PATHS_OURS=(
   "apps/web/data/channel-presets-cable.json"
   "apps/web/data/channel-presets-directv.json"
   "apps/web/data/everpass-devices.json"
+  # v2.32.4 — per-location OTA broadcast affiliates (introduced v2.23.0).
+  # Holmgren has WBAY/WFRV/WLUK/WGBA station aliases; Stoneyard's set is
+  # different; Lucky's smaller. Without this entry, any future merge that
+  # touches this file at any location with custom OTA aliases would hit
+  # "unexpected conflict" and abort auto-update with exit 3 (no rollback,
+  # half-merged tree). Always keep the location's version.
+  "apps/web/data/station-aliases-local.json"
   "apps/web/public/uploads/layouts"
   "data"
   ".env"
@@ -766,6 +853,31 @@ else
   fi
 fi
 
+# v2.32.5 — Detect destructive schema operations and mark the pre-update
+# DB backup as required for rollback. Without this marker, rollback.sh
+# resets git + .next but leaves the DB in the half-migrated state — a
+# DROP COLUMN / DROP TABLE in this run is permanent. The marker is a
+# small companion file alongside $BACKUP_FILE; rollback.sh checks for
+# it after git reset and restores the DB BEFORE rebuilding so the build
+# runs against the schema the reset code expects.
+#
+# Conservative grep — only flags operations drizzle ANNOUNCES as data-
+# loss in its push output. Pure additive schema (CREATE TABLE / ADD
+# COLUMN) doesn't trip this and rollback continues to leave the DB
+# alone (the additive schema is forward-compatible with old code).
+if [ -f "$SCHEMA_PUSH_LOG" ] && grep -qiE "you're about to (delete|drop)|drop (table|column)|data.loss|truncate" "$SCHEMA_PUSH_LOG" 2>/dev/null; then
+  DESTRUCTIVE_MARKER="$BACKUP_FILE.destructive"
+  log "Schema push included destructive operations — writing $DESTRUCTIVE_MARKER (rollback will auto-restore DB)"
+  {
+    echo "runId=$(basename "$LOG_FILE" .log)"
+    echo "detectedAtUtc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    echo "preMergeSha=${PRE_MERGE_SHA:-unknown}"
+    echo "postMergeSha=${POST_MERGE_SHA:-unknown}"
+    echo "--- detected lines ---"
+    grep -iE "you're about to|drop (table|column)|data.loss|truncate|dropping" "$SCHEMA_PUSH_LOG" 2>/dev/null | head -20
+  } > "$DESTRUCTIVE_MARKER" 2>/dev/null || log "WARNING: could not write destructive marker"
+fi
+
 # ===========================================================================
 # PHASE: OLLAMA MODEL — ensure AI Suggest has the required LLM
 # ===========================================================================
@@ -913,6 +1025,33 @@ fi
 # update at this location") but tracked on location branches. We force-
 # add it here with `git add -f` so the gitignore doesn't block the commit.
 if [ -n "${VERIFY_INSTALL_JSON:-}" ]; then
+  # v2.32.4 — Enrich the heartbeat with config-file checksums and DB
+  # row-count snapshots. Lets the Fleet Dashboard detect post-update
+  # config drift (operator hand-edited .env after auto-update; tv-layout
+  # got blanked by a stale merge; AuthPin rows missing) WITHOUT polling
+  # each location. The dashboard compares last-success snapshot to the
+  # current commit's expected values and flags drift.
+  HB_FILE_CHECKSUMS=$(
+    {
+      for f in ".env" "apps/web/data/tv-layout.json" "apps/web/data/station-aliases-local.json" "apps/web/src/lib/hardware-config.ts"; do
+        if [ -f "$REPO_ROOT/$f" ]; then
+          h=$(sha256sum "$REPO_ROOT/$f" 2>/dev/null | awk '{print substr($1,1,16)}')
+          [ -n "$h" ] && printf '    "%s": "%s",\n' "$f" "$h"
+        fi
+      done
+    } | sed '$ s/,$//'
+  )
+  HB_ROW_COUNTS=$(
+    {
+      DB_PATH="${DATABASE_PATH:-/home/ubuntu/sports-bar-data/production.db}"
+      if [ -f "$DB_PATH" ]; then
+        for tbl in Location AuthPin MatrixConfiguration HomeTeam ChannelPreset station_aliases; do
+          c=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM $tbl;" 2>/dev/null || echo "")
+          [ -n "$c" ] && printf '    "%s": %d,\n' "$tbl" "$c"
+        done
+      fi
+    } | sed '$ s/,$//'
+  )
   {
     printf '{\n'
     printf '  "version": "%s",\n' "${POST_MERGE_VERSION:-unknown}"
@@ -921,13 +1060,49 @@ if [ -n "${VERIFY_INSTALL_JSON:-}" ]; then
     printf '  "successAt": "%s",\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     printf '  "successAtUnix": %d,\n' "$(date +%s)"
     printf '  "runId": "%s",\n' "$(basename "$LOG_FILE" .log)"
-    printf '  "verifyInstall": %s\n' "$VERIFY_INSTALL_JSON"
+    printf '  "verifyInstall": %s,\n' "$VERIFY_INSTALL_JSON"
+    if [ -n "$HB_FILE_CHECKSUMS" ]; then
+      printf '  "configChecksums": {\n%s\n  },\n' "$HB_FILE_CHECKSUMS"
+    fi
+    if [ -n "$HB_ROW_COUNTS" ]; then
+      printf '  "dbRowCounts": {\n%s\n  },\n' "$HB_ROW_COUNTS"
+    fi
+    # Schema version of this heartbeat record so dashboard knows which fields are present
+    printf '  "heartbeatSchemaVersion": 2\n'
     printf '}\n'
   } > "$REPO_ROOT/.auto-update-last-success.json"
   git -C "$REPO_ROOT" add -f ".auto-update-last-success.json" 2>/dev/null || true
   if ! git -C "$REPO_ROOT" diff --cached --quiet -- ".auto-update-last-success.json" 2>/dev/null; then
     git -C "$REPO_ROOT" commit -q -m "chore(heartbeat): update .auto-update-last-success.json ($(date +%Y-%m-%d-%H-%M))" 2>/dev/null || true
     log "Heartbeat file committed"
+  fi
+fi
+
+# v2.32.6 — Canary bless write. If this location IS the canary AND
+# canary mode is enabled in scripts/canary-config.json, write
+# .canary-blessed.json with the just-verified commit so non-canary
+# locations can gate their own auto-update on it. The bless file is
+# committed + pushed alongside the heartbeat so other locations can
+# read it via `git show origin/<canaryBranch>:.canary-blessed.json`.
+if [ -f "$REPO_ROOT/scripts/canary-config.json" ]; then
+  CANARY_ENABLED=$(node -e "try{const c=require('$REPO_ROOT/scripts/canary-config.json');console.log(c.enabled?'true':'false')}catch(e){console.log('false')}" 2>/dev/null || echo "false")
+  CANARY_BRANCH=$(node -e "try{const c=require('$REPO_ROOT/scripts/canary-config.json');console.log(c.canaryBranch||'')}catch(e){console.log('')}" 2>/dev/null || echo "")
+  if [ "$CANARY_ENABLED" = "true" ] && [ "$BRANCH" = "$CANARY_BRANCH" ]; then
+    {
+      printf '{\n'
+      printf '  "blessedCommitSha": "%s",\n' "${POST_MERGE_SHA:-unknown}"
+      printf '  "blessedAtUtc": "%s",\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+      printf '  "blessedAtUnix": %d,\n' "$(date +%s)"
+      printf '  "verifyResult": "PASS",\n'
+      printf '  "blesserBranch": "%s",\n' "$BRANCH"
+      printf '  "blesserVersion": "%s"\n' "${POST_MERGE_VERSION:-unknown}"
+      printf '}\n'
+    } > "$REPO_ROOT/.canary-blessed.json"
+    git -C "$REPO_ROOT" add -f ".canary-blessed.json" 2>/dev/null || true
+    if ! git -C "$REPO_ROOT" diff --cached --quiet -- ".canary-blessed.json" 2>/dev/null; then
+      git -C "$REPO_ROOT" commit -q -m "chore(canary): bless commit ${POST_MERGE_SHA:-unknown} ($(date +%Y-%m-%d-%H-%M))" 2>/dev/null || true
+      log "Canary bless file committed (other locations will gate on this)"
+    fi
   fi
 fi
 

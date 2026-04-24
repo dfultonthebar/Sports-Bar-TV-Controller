@@ -43,6 +43,34 @@ REQUIRED READS:
    that as a DRIFT issue — whoever bumped the version skipped documenting
    setup requirements. Mention it after the DECISION line so the operator
    can backfill the doc.
+
+2b. **Verify-SQL markers (v2.32.7+)** — within each version entry from
+   step 2a, look for HTML comments shaped like
+   `<!-- verify-sql: SELECT ... -->` (one or more). Each is a HARD
+   precondition for the version to be considered correctly applied at
+   this location.
+
+   To extract them safely (the SQL may contain `>` which would trip a
+   naive `[^>]+` regex), use grep -oP non-greedy:
+     `grep -oP '<!--\s*verify-sql:.*?-->' docs/VERSION_SETUP_GUIDE.md`
+
+   For each marker found:
+     i.   Strip the wrapping comment to get just the SQL.
+     ii.  Run the SQL: `sqlite3 /home/ubuntu/sports-bar-data/production.db
+          "<the SQL>"` and capture the row count returned.
+     iii. If the SELECT returns 0 rows: that precondition is NOT met.
+          You MUST return `DECISION: STOP - <version> verify-sql failed:
+          <the SQL>` with a follow-up line explaining what the operator
+          needs to do to satisfy it (usually visible in the same entry's
+          "Required manual steps" section just above the marker).
+     iv.  If it returns ≥1 row: the precondition is met. Continue to
+          the next marker.
+
+   Each marker may also have an adjacent `<!-- verify-description: ... -->`
+   comment with human-readable context — include it in your STOP message
+   if present. Markers are forward-only enforcement: entries that
+   pre-date v2.32.7 don't have markers and remain advisory (covered by
+   step 2a's flag-it-in-the-DECISION behavior).
 3. Current state of /home/ubuntu/Sports-Bar-TV-Controller/apps/web/data/*.json
    — these should NOT have changed during merge.
 4. The .env file at /home/ubuntu/Sports-Bar-TV-Controller/.env — confirm

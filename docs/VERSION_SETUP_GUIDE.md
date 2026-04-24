@@ -187,6 +187,211 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.4 → v2.32.7 — Auto-update robustness Phases 1-4
+**Released:** 2026-04-23
+
+Hardens `scripts/auto-update.sh` against the cross-location failure modes
+mapped during the v2.31-tonight session. Four orthogonal pieces, all
+backward-compatible (no behavior change at locations until they next
+auto-update).
+
+**v2.32.4 (Phase 1 — quick wins):**
+- `apps/web/data/station-aliases-local.json` added to
+  `LOCATION_PATHS_OURS`. Closes a ticking time bomb: any future merge
+  touching this file at any location with custom OTA aliases would have
+  hit "unexpected conflict" and aborted with exit 3 (no rollback,
+  half-merged tree).
+- Pre-flight env-var scan after fetch / before Checkpoint A. Greps the
+  incoming diff for new `process.env.X` references and warns if X isn't
+  in the current `.env`. Warn-only — no STOP — many env vars have
+  code-side fallbacks.
+- Heartbeat (`.auto-update-last-success.json`) v2 schema: adds
+  `configChecksums` (16-char SHA-256 prefixes of `.env`,
+  `tv-layout.json`, `station-aliases-local.json`,
+  `hardware-config.ts`) and `dbRowCounts` (Location, AuthPin,
+  MatrixConfiguration, HomeTeam, ChannelPreset, station_aliases).
+  Lets the Fleet Dashboard detect drift without polling each location.
+
+**v2.32.5 (Phase 2 — DB rollback hardening):**
+- `auto-update.sh` schema_push phase greps drizzle output for
+  destructive operations (DROP TABLE / DROP COLUMN / data-loss /
+  truncate). If detected, writes a small companion file
+  `$BACKUP_FILE.destructive` next to the pre-update SQLite backup.
+- `rollback.sh` checks for the marker after git reset. If present (and
+  the backup file exists), snapshots the current half-migrated DB and
+  restores production.db from the pre-update backup BEFORE rebuilding,
+  so the rolled-back code runs against the schema it expects. Also
+  removes WAL/SHM files for clean reopen.
+- Additive schema (the normal case) leaves the DB untouched on rollback
+  because additive changes are forward-compatible with old code.
+
+**v2.32.6 (Phase 3 — canary location pattern):**
+- New `scripts/canary-config.json` with `enabled: false` default. Opt-in.
+- When enabled AND non-canary branch: `auto-update.sh` checks the
+  canary's `.canary-blessed.json` (in the canary's git branch) before
+  merging. Skips with no-op if canary hasn't blessed the target SHA OR
+  if the bless is younger than `minBlessAgeMinutes` (default 240).
+- When enabled AND canary branch: writes/commits/pushes
+  `.canary-blessed.json` after a successful run.
+- Bad commits break only the canary; the other 5 locations skip and
+  retry on the next nightly cron.
+
+**v2.32.7 (Phase 4 — VERSION_SETUP_GUIDE verify markers):**
+- New marker format in version entries: `<!-- verify-sql: SELECT ... -->`
+  with optional `<!-- verify-description: ... -->`.
+- Checkpoint B parses entries between PRE/POST_MERGE_VERSION, runs each
+  marker's SQL, returns `DECISION: STOP` if any returns 0 rows.
+- Forward-only enforcement: entries pre-dating v2.32.7 stay advisory.
+- See `docs/CLAUDE_VERSIONING_GUIDE.md` "Verify-SQL markers" for usage
+  rules.
+
+**Required manual steps PER LOCATION:** None for any of these. All four
+ship as auto-update.sh changes that take effect on the next cron run at
+each location. Verify post-deploy:
+
+```bash
+# After a location's auto-update runs once on v2.32.4+, the heartbeat
+# file should have configChecksums + dbRowCounts + heartbeatSchemaVersion=2:
+cat /home/ubuntu/Sports-Bar-TV-Controller/.auto-update-last-success.json | head -20
+```
+
+**To opt INTO canary mode** (Phase 3) at a future date:
+1. Decide which location is the canary (recommended: Leg Lamp — single-card
+   matrix, lowest blast-radius).
+2. On `main`, edit `scripts/canary-config.json` to set `"enabled": true`
+   and `"canaryBranch": "location/leg-lamp"`. Commit + push.
+3. Next auto-update run at any non-canary location will start gating on
+   the canary's bless. The canary itself is exempt and proceeds normally.
+
+**Worked example of a verify-sql marker** (proof-of-concept; this entry's
+own preconditions are met by the auto-update changes themselves, no DB
+state required, but the marker below confirms the production DB is
+reachable from Checkpoint B at all):
+
+<!-- verify-description: production.db is reachable and has the canonical Location row seeded -->
+<!-- verify-sql: SELECT id FROM Location LIMIT 1 -->
+
+---
+
+### v2.31.2 + v2.31.3 + v2.31.4 — Streaming click actually launches; walker navigates to Sports tab
+**Released:** 2026-04-23
+
+**What changed:**
+
+- `apps/web/src/app/api/channel-guide/route.ts` (v2.31.2 + v2.31.3):
+  - Both streaming injection paths (broadcast_networks fallback AND v2.30.0
+    catalog injection) now look up the streaming-apps-database catalog by
+    display name and populate `appId`, `packageName`, `packages` on the
+    channel object.
+  - v2.31.3 added `DISPLAY_NAME_TO_CATALOG_ID` alias map keyed by
+    lowercase display name → catalog id. Covers display-name drift where
+    scout reports `"Prime Video"` but catalog has `name="Amazon Prime Video"`,
+    resolver returns `"ESPN+"` but catalog has `name="ESPN"`, and so on.
+    `findStreamingAppByDisplayName(name)` is the canonical lookup helper.
+
+- `apps/web/src/components/EnhancedChannelGuideBartenderRemote.tsx` (v2.31.2):
+  - `handleGameClick` streaming case now prefers `/api/streaming/launch`
+    (via new helper `launchStreamingAppByCatalog`) when `channel.appId` is
+    present. That path goes through `streamingManager.launchApp()` which
+    knows about the firebat alias for `amazon-prime` (v2.28.8) and
+    correctly resolves the LEANBACK_LAUNCHER activity (DeepLinkRoutingActivity
+    → LandingActivity) — the same activity the home-screen Prime Video
+    tile invokes.
+  - Falls back to the legacy `monkey -p ${packageName}` direct launch when
+    `appId` is absent (preserves Rail Media compatibility for programs
+    that pre-date this).
+
+- `packages/scheduler/src/firetv-catalog-walker.ts` (v2.31.4):
+  - `AppWalkRule.navigation` (new optional field): list of ADB key codes
+    sent after launch to navigate to a sports/live tab. Sent in order with
+    `interKeyDelayMs` between each (default 400ms), then `postNavDelayMs`
+    after the sequence (default 4000ms).
+  - Prime Video rule now includes `navigation: { keyevents: [19,19,22,22,22,23] }`
+    — UP UP RIGHT RIGHT RIGHT OK navigates from the LandingActivity to
+    the Sports tab on Fire TV Cube 2nd gen (AFTR) PVFTV-215.5200-L.
+  - Extractor noise filter tightened: drops standalone `LIVE`/`UPCOMING`
+    badges, `"Live at <time>"` generic timeslots, `"More details"`, and
+    standalone `"all"`. Recognizes `"Sports for you"` as a sport-row
+    context anchor.
+
+**Why this was needed:**
+
+Operator reported clicking a Prime Video program in the channel guide
+"and nothing happened." Three stacked bugs caused the silent failure:
+
+1. The channel-guide injection set `channel.packages` (plural array) but
+   left `channel.packageName` undefined. The bartender remote reads
+   `channel.packageName` (singular) — undefined triggered no fall-through,
+   so the click was a no-op.
+2. Even when `packageName` got populated (Rail Media path), the launch
+   used `monkey -p ${packageName} 1` directly. On Fire TV Cube 2nd gen
+   Prime Video lives inside `com.amazon.firebat` (the launcher) — there's
+   no `com.amazon.avod` package. `monkey -p com.amazon.avod` fails
+   silently. `monkey -p com.amazon.firebat` launches the home screen, NOT
+   the Prime Video LandingActivity.
+3. The walker's daily 04:00 walk only captured 1 useless tile per box
+   (`"Live at 5:30 PM"`) because Prime Video's home screen rotates
+   content — TV shows in the afternoon, sports in the morning. The walk
+   needed to navigate to the Sports tab for stable sports-only catalog.
+
+**Required steps PER LOCATION:**
+
+**No DB or .env changes.** All three fixes are code-only.
+
+**Verify the click works end-to-end (server-simulated, no Fire TV
+operator needed):**
+```bash
+# 1. Send HOME on the Fire TV
+curl -X POST http://localhost:3001/api/firetv-devices/send-command \
+  -H "Content-Type: application/json" \
+  -d '{"deviceId":"<your-firetv-id>","command":"input keyevent 3"}'
+sleep 2
+
+# 2. Simulate the bartender click (this is exactly what the React
+# component does when channel.appId is present)
+curl -X POST http://localhost:3001/api/streaming/launch \
+  -H "Content-Type: application/json" \
+  -d '{"deviceId":"<your-firetv-id>","ipAddress":"<ip>","appId":"amazon-prime","port":5555}'
+sleep 4
+
+# 3. Confirm Prime Video LandingActivity is now in the foreground
+curl -X POST http://localhost:3001/api/firetv-devices/send-command \
+  -H "Content-Type: application/json" \
+  -d '{"deviceId":"<your-firetv-id>","command":"dumpsys window windows"}' \
+  | grep mCurrentFocus
+# Expect: ...com.amazon.firebat/com.amazon.firebat.livingroom.landing.LandingActivity
+```
+
+**Verify the walker now captures rich sports content:**
+```bash
+# Trigger an immediate walk (bypasses the 6h cooldown)
+curl -X POST http://localhost:3001/api/firestick-scout/catalog/walk
+
+# Check what was captured
+sqlite3 -header /home/ubuntu/sports-bar-data/production.db \
+  "SELECT deviceId, app, contentTitle, isLive, sportTag
+   FROM firetv_streaming_catalog
+   ORDER BY isLive DESC, contentTitle;"
+```
+Expected: ~10 tiles per Fire TV with Prime Video — mix of LIVE
+(tennis/squash/soccer) and UPCOMING (NBA Playoffs in current season).
+If still only 1-2 tiles, Prime Video's UI may have changed and the
+`navigation.keyevents` sequence in firetv-catalog-walker.ts needs
+re-mapping (run a manual `uiautomator dump` and confirm the Sports tab
+position is still 4 of 8).
+
+**Adding navigation for a new app's rule:**
+1. Manually launch the app on a Fire TV.
+2. Watch where focus lands — usually the first content row.
+3. Identify the keyevents needed to reach the Sports tab. ADB keyevents:
+   UP=19 DOWN=20 LEFT=21 RIGHT=22 OK=23.
+4. Test the sequence by sending each keyevent via
+   `/api/firetv-devices/send-command` then `dumpsys window windows` to
+   confirm the focused activity changed.
+5. Add the `navigation` block to the new app's `APP_WALK_RULES` entry.
+
+---
+
 ### v2.31.0 + v2.31.1 — Per-box per-app sports content catalog (Phase 2b-2 + Phase 3)
 **Released:** 2026-04-22
 
