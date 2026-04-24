@@ -356,6 +356,22 @@ export async function POST(request: NextRequest) {
           } catch (dbError) {
             logger.warn('[Channel Tracking] Could not load DirecTV devices from database:', dbError)
           }
+        } else if (deviceTypeStr === 'firetv' && fireTVIdStr) {
+          // Fire TV: look up matrix input from FireTVDevice.inputChannel.
+          // For streaming, channelNumberStr is the app name (e.g. "Prime Video").
+          // We store it with channelNumber="APP" and channelName=app name so the
+          // UI can render `${app name}` instead of `Ch APP` (see channel-name
+          // rendering in EnhancedChannelGuideBartenderRemote / BartenderRemoteSelector).
+          try {
+            const ftRow = await db.select().from(schema.fireTVDevices)
+              .where(eq(schema.fireTVDevices.id, fireTVIdStr)).get()
+            if (ftRow?.inputChannel) {
+              inputNum = ftRow.inputChannel
+              inputLabel = ftRow.name || 'Fire TV'
+            }
+          } catch (dbError) {
+            logger.warn('[Channel Tracking] Could not load Fire TV from database:', dbError)
+          }
         }
 
         if (inputNum) {
