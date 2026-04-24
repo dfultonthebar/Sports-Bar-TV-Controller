@@ -463,6 +463,37 @@ log "Commits pending merge: $COMMITS_TO_MERGE"
 history_insert_start
 log "History row id=$HISTORY_ID"
 
+# v2.32.4 — Scan the incoming diff for newly-introduced process.env.X
+# references and warn if they're not in the current .env. Warn-only —
+# many env vars have `|| 'fallback'` defaults, so a missing var isn't
+# automatically a failure. Operator can review the list before the merge
+# proceeds. Real enforcement still happens at verify-install + Checkpoint
+# B if the missing var actually breaks something at runtime.
+NEW_ENV_REFS=$(git diff "$PRE_MERGE_SHA..$TARGET_SHA" -- '*.ts' '*.tsx' '*.js' 2>/dev/null \
+  | grep -E '^\+[^+].*process\.env\.[A-Z][A-Z0-9_]+' \
+  | grep -oE 'process\.env\.[A-Z][A-Z0-9_]+' \
+  | sort -u || true)
+if [ -n "$NEW_ENV_REFS" ]; then
+  CURRENT_ENV_KEYS=$(grep -oE '^[A-Z][A-Z0-9_]+(?==)' "$REPO_ROOT/.env" 2>/dev/null \
+                     || grep -oE '^[A-Z][A-Z0-9_]+' "$REPO_ROOT/.env" 2>/dev/null | head -200 \
+                     || echo "")
+  MISSING_ENV=()
+  for ref in $NEW_ENV_REFS; do
+    key="${ref#process.env.}"
+    # Skip well-known optional keys with code-side fallbacks
+    case "$key" in NODE_ENV|PORT|DATABASE_URL) continue ;; esac
+    if ! printf '%s\n' "$CURRENT_ENV_KEYS" | grep -qx "$key"; then
+      MISSING_ENV+=("$key")
+    fi
+  done
+  if [ "${#MISSING_ENV[@]}" -gt 0 ]; then
+    log "⚠ env-var pre-flight: incoming diff references env vars not in current .env:"
+    for k in "${MISSING_ENV[@]}"; do log "    $k"; done
+    log "    These may have code-side fallbacks. Verify before continuing if any are required."
+    log "    Real enforcement runs at verify-install + Checkpoint B."
+  fi
+fi
+
 # ===========================================================================
 # CHECKPOINT A — Pre-update analysis
 # ===========================================================================
@@ -513,6 +544,13 @@ LOCATION_PATHS_OURS=(
   "apps/web/data/channel-presets-cable.json"
   "apps/web/data/channel-presets-directv.json"
   "apps/web/data/everpass-devices.json"
+  # v2.32.4 — per-location OTA broadcast affiliates (introduced v2.23.0).
+  # Holmgren has WBAY/WFRV/WLUK/WGBA station aliases; Stoneyard's set is
+  # different; Lucky's smaller. Without this entry, any future merge that
+  # touches this file at any location with custom OTA aliases would hit
+  # "unexpected conflict" and abort auto-update with exit 3 (no rollback,
+  # half-merged tree). Always keep the location's version.
+  "apps/web/data/station-aliases-local.json"
   "apps/web/public/uploads/layouts"
   "data"
   ".env"
@@ -913,6 +951,33 @@ fi
 # update at this location") but tracked on location branches. We force-
 # add it here with `git add -f` so the gitignore doesn't block the commit.
 if [ -n "${VERIFY_INSTALL_JSON:-}" ]; then
+  # v2.32.4 — Enrich the heartbeat with config-file checksums and DB
+  # row-count snapshots. Lets the Fleet Dashboard detect post-update
+  # config drift (operator hand-edited .env after auto-update; tv-layout
+  # got blanked by a stale merge; AuthPin rows missing) WITHOUT polling
+  # each location. The dashboard compares last-success snapshot to the
+  # current commit's expected values and flags drift.
+  HB_FILE_CHECKSUMS=$(
+    {
+      for f in ".env" "apps/web/data/tv-layout.json" "apps/web/data/station-aliases-local.json" "apps/web/src/lib/hardware-config.ts"; do
+        if [ -f "$REPO_ROOT/$f" ]; then
+          h=$(sha256sum "$REPO_ROOT/$f" 2>/dev/null | awk '{print substr($1,1,16)}')
+          [ -n "$h" ] && printf '    "%s": "%s",\n' "$f" "$h"
+        fi
+      done
+    } | sed '$ s/,$//'
+  )
+  HB_ROW_COUNTS=$(
+    {
+      DB_PATH="${DATABASE_PATH:-/home/ubuntu/sports-bar-data/production.db}"
+      if [ -f "$DB_PATH" ]; then
+        for tbl in Location AuthPin MatrixConfiguration HomeTeam ChannelPreset station_aliases; do
+          c=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM $tbl;" 2>/dev/null || echo "")
+          [ -n "$c" ] && printf '    "%s": %d,\n' "$tbl" "$c"
+        done
+      fi
+    } | sed '$ s/,$//'
+  )
   {
     printf '{\n'
     printf '  "version": "%s",\n' "${POST_MERGE_VERSION:-unknown}"
@@ -921,7 +986,15 @@ if [ -n "${VERIFY_INSTALL_JSON:-}" ]; then
     printf '  "successAt": "%s",\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     printf '  "successAtUnix": %d,\n' "$(date +%s)"
     printf '  "runId": "%s",\n' "$(basename "$LOG_FILE" .log)"
-    printf '  "verifyInstall": %s\n' "$VERIFY_INSTALL_JSON"
+    printf '  "verifyInstall": %s,\n' "$VERIFY_INSTALL_JSON"
+    if [ -n "$HB_FILE_CHECKSUMS" ]; then
+      printf '  "configChecksums": {\n%s\n  },\n' "$HB_FILE_CHECKSUMS"
+    fi
+    if [ -n "$HB_ROW_COUNTS" ]; then
+      printf '  "dbRowCounts": {\n%s\n  },\n' "$HB_ROW_COUNTS"
+    fi
+    # Schema version of this heartbeat record so dashboard knows which fields are present
+    printf '  "heartbeatSchemaVersion": 2\n'
     printf '}\n'
   } > "$REPO_ROOT/.auto-update-last-success.json"
   git -C "$REPO_ROOT" add -f ".auto-update-last-success.json" 2>/dev/null || true
