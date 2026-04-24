@@ -22,6 +22,7 @@
 #     [--timezone America/Chicago]
 #     [--admin-pin 7819]
 #     [--staff-pin 1234]
+#     [--anthropic-api-key sk-ant-...]
 #     [--non-interactive]
 #     [--create-branch]
 #
@@ -44,6 +45,7 @@ LOCATION_SLUG=""
 LOCATION_TIMEZONE="America/Chicago"
 ADMIN_PIN=""
 STAFF_PIN=""
+ANTHROPIC_API_KEY_ARG=""
 
 die() {
   echo "[bootstrap] ERROR: $*" >&2
@@ -61,6 +63,7 @@ while [ $# -gt 0 ]; do
     --timezone) LOCATION_TIMEZONE="$2"; shift 2 ;;
     --admin-pin) ADMIN_PIN="$2"; shift 2 ;;
     --staff-pin) STAFF_PIN="$2"; shift 2 ;;
+    --anthropic-api-key) ANTHROPIC_API_KEY_ARG="$2"; shift 2 ;;
     --non-interactive) NON_INTERACTIVE=1; shift ;;
     --create-branch) CREATE_BRANCH=1; shift ;;
     -h|--help)
@@ -182,6 +185,19 @@ upsert_env() {
 upsert_env "LOCATION_ID" "$LOCATION_ID"
 upsert_env "LOCATION_NAME" "$LOCATION_NAME"
 upsert_env "AUTH_COOKIE_SECURE" "false"
+
+# v2.32.24 — All locations share the same ANTHROPIC_API_KEY for auto-update
+# Checkpoints A/B/C (per CLAUDE.md / VERSION_SETUP_GUIDE v2.32.20). Without
+# the key, auto-update.sh falls back to the Claude Code CLI subscription
+# path which has a monthly token cap that defeats unattended cron updates.
+if [ -n "$ANTHROPIC_API_KEY_ARG" ]; then
+  upsert_env "ANTHROPIC_API_KEY" "$ANTHROPIC_API_KEY_ARG"
+elif ! grep -q '^ANTHROPIC_API_KEY=' "$ENV_FILE" 2>/dev/null; then
+  info "  WARN: ANTHROPIC_API_KEY not set in .env and --anthropic-api-key not provided."
+  info "        auto-update.sh will fall back to the Claude Code CLI subscription path"
+  info "        and may hit the monthly cap. Add the key with:"
+  info "          echo 'ANTHROPIC_API_KEY=sk-ant-...' >> $ENV_FILE"
+fi
 
 # ---------------------------------------------------------------------------
 # 3. AuthPin rows (STAFF + ADMIN)

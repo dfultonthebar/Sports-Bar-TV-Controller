@@ -473,6 +473,9 @@ else
     fail "Claude Code CLI not responding (--version failed or timed out)" 2
   fi
   log "Claude path: Claude Code CLI ($(claude --version 2>/dev/null | head -1))"
+  log "WARN: ANTHROPIC_API_KEY missing from .env — using subscription CLI path."
+  log "WARN: This path has a monthly token cap. To switch to the API path:"
+  log "WARN:   echo 'ANTHROPIC_API_KEY=sk-ant-...' >> $REPO_ROOT/.env"
 fi
 
 # 3. Verify/rollback scripts present and executable
