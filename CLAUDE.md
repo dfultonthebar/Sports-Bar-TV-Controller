@@ -222,70 +222,13 @@ logger.debug('[COMPONENT] Debug info')
 Wolf Pack matrix does NOT pass CEC + Spectrum disables CEC in firmware → all cable box control is IR via Global Cache iTach IP2IR. IR codes live in the `IRCommand` table, learned via the IR Learning Panel. UI: `apps/web/src/components/remotes/CableBoxRemote.tsx` + `BartenderRemoteSelector.tsx`. Do not add new CEC features.
 
 #### 6. Crestron Matrix Switcher Control
-**Package:** `packages/crestron/`
-**Purpose:** Control Crestron DigitalMedia (DM) matrix switchers for video routing
-
-**Supported Models (18 total across 4 series):**
-- **DM-MD Series:** DM-MD8X8, DM-MD16X16, DM-MD32X32, DM-MD64X64, DM-MD128X128
-- **HD-MD Series:** HD-MD8X8, HD-MD8X4, HD-MD6X2, HD-MD4X2, HD-MD4X1
-- **DMPS Series:** DMPS3-4K-350-C, DMPS3-4K-250-C, DMPS3-4K-150-C
-- **NVX Series:** DM-NVX-350, DM-NVX-351, DM-NVX-352, DM-NVX-360, DM-NVX-363
-
-**Control Protocols:**
-- Telnet (port 23) - Primary, simplest for routing
-- CTP (port 41795) - Crestron Terminal Protocol
-- CIP (port 41794) - Crestron Internet Protocol
-
-**Key Commands:**
-```
-SETAVROUTE input output    # Route input to output (video + audio)
-SETVIDEOROUTE input output # Route video only
-SETAUDIOROUTE input output # Route audio only (audio breakaway)
-DUMPDMROUTEI              # Get current routing state
-```
-
-**Output Slot Offset:** DM matrices use offset numbering:
-- 8x8/16x16: Output slots start at 17
-- 32x32: Output slots start at 33
-- 64x64: Output slots start at 65
-
-**API Routes:**
-- `GET/POST /api/crestron/matrices` - List/create matrices
-- `GET/PUT/DELETE /api/crestron/matrices/[id]` - Individual matrix CRUD
-- `POST /api/crestron/matrices/[id]/test` - Connection test
-
-**UI Location:** Matrix Control page → "Crestron DM" tab
-**Component:** `apps/web/src/components/CrestronMatrixManager.tsx`
-
-**Database Table:** `CrestronMatrix` (id, name, model, ipAddress, port, status, inputs, outputs)
+`packages/crestron/` — DM/HD-MD/DMPS/NVX series, Telnet/CTP/CIP. **Output slot offset gotcha:** DM 8x8/16x16 outputs start at 17, 32x32 at 33, 64x64 at 65 — add the offset before issuing routing commands. Full models, ports, command list, API routes: `packages/crestron/README.md`.
 
 #### 7. Audio Processor Control
-**Packages:** `packages/bss-blu/`, `packages/dbx-zonepro/`, `packages/atlas/`
-
-**BSS Soundweb London (HiQnet Protocol):**
-- Models: BLU-50, BLU-100, BLU-120, BLU-160, BLU-320, BLU-800, BLU-806, BLU-806DA
-- Protocol: HiQnet over TCP (port 1023)
-- Features: Dante/CobraNet support on some models
-- Control: Zone volume, mute, source selection
-
-**dbx ZonePRO (TCP/RS-232):**
-- Models: 640, 640m, 641, 641m, 1260, 1260m, 1261, 1261m
-- Protocol: TCP (port 3804) preferred, RS-232 (serial) also supported
-- Control: Zone volume, mute, source routing, scene recall
-- **CRITICAL:** TCP framing is different from RS-232 — NO F0/64/00 prefix, NO checksum over TCP
-- Router SV IDs: 0x0000=Source (UBYTE), 0x0001=Volume (UWORD 0-415), 0x0002=Mute (UBYTE)
-- Object ID formula: device-specific, configured in ZonePRO Designer
-- **Failsafe gotcha:** New TCP connections trigger failsafe mode which shifts source indices. Fix: auto-recall Scene 1 on connect (`sceneOnConnect` in DbxTcpClient)
-- Fire-and-forget protocol: no response expected from device
-
-**UI Location:** Device Config page → Audio Processors section
-**Component:** `apps/web/src/components/AudioProcessorManager.tsx`
+`packages/bss-blu/` (HiQnet TCP 1023), `packages/dbx-zonepro/` (TCP 3804 preferred — **NO F0/64/00 prefix or checksum** over TCP, fire-and-forget; **CRITICAL** auto-recall Scene 1 on connect to escape failsafe-mode source-shift), `packages/atlas/` (AtlasIED). UI: Device Config → Audio Processors. Per-package READMEs hold full model lists, SV IDs, and protocol detail.
 
 #### 8. Wolf Pack Multi-View Card Control
-**Package:** `packages/multiview/` (commands, serial-client, multiview-service)
-**Purpose:** Control HDTVSupply 4K60 Quad-View output cards in Wolf Pack matrix slots (8x8, 16x16, 36x36).
-**Protocol:** RS-232 via USB (115200 baud, 8N1). 8 display modes (single → quad). Hex frame: `EB 90 00 11 00 ff 32 [mode] 00 01 02 03 00 00 00 00 00 00`. Mode bytes 0-7 (single, 2-split, PIP-LT, PIP-RB, 3-win, 3-win-alt, 3-PIPx2, quad).
-**DB:** `WolfpackMultiViewCard` (name, startSlot, endSlot, serialPort, currentMode, inputAssignments).
+`packages/multiview/` — HDTVSupply 4K60 Quad-View cards in Wolf Pack slots. RS-232 USB (115200 8N1), 8 display modes (single → quad), hex frame format. DB: `WolfpackMultiViewCard`. Full hex frames + mode table: `packages/multiview/README.md`.
 
 ### API Route Patterns
 
