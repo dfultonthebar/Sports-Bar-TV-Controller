@@ -1766,21 +1766,35 @@ export default function EnhancedChannelGuideBartenderRemote() {
                                 </span>
                               )}
 
-                              {/* Scheduled Tune Indicator - Show on other inputs */}
+                              {/* Scheduled Tune Indicator — distinguish "scheduled here"
+                                  (green, current input) from "scheduled elsewhere"
+                                  (orange, cross-input visibility). v2.32.2 added the
+                                  green case after operators reported scheduled games
+                                  not appearing as scheduled in the guide for the same
+                                  input they were scheduled on (e.g. West De Pere on
+                                  Amazon 3 — the Schedule button switched to Cancel
+                                  but no badge made it obvious). */}
                               {(() => {
                                 const scheduledInputs = getScheduledInputsForGame(game)
                                 const currentLabel = inputs.find(i => i.channelNumber === selectedInput)?.label
-                                const otherInputs = scheduledInputs.filter(s => s.inputLabel !== currentLabel)
-
-                                if (otherInputs.length > 0) {
-                                  return (
-                                    <span className="flex items-center space-x-1 text-xs backdrop-blur-xl bg-orange-500/20 text-orange-400 border border-orange-400/30 rounded-full px-2 py-0.5">
-                                      <Calendar className="w-3 h-3" />
-                                      <span>Scheduled on {otherInputs.map(s => s.inputLabel).join(', ')}</span>
-                                    </span>
-                                  )
-                                }
-                                return null
+                                const onCurrent = scheduledInputs.filter(s => s.inputLabel === currentLabel)
+                                const onOther = scheduledInputs.filter(s => s.inputLabel !== currentLabel)
+                                return (
+                                  <>
+                                    {onCurrent.length > 0 && (
+                                      <span className="flex items-center space-x-1 text-xs backdrop-blur-xl bg-green-500/20 text-green-300 border border-green-400/40 rounded-full px-2 py-0.5">
+                                        <Calendar className="w-3 h-3" />
+                                        <span>Scheduled here</span>
+                                      </span>
+                                    )}
+                                    {onOther.length > 0 && (
+                                      <span className="flex items-center space-x-1 text-xs backdrop-blur-xl bg-orange-500/20 text-orange-400 border border-orange-400/30 rounded-full px-2 py-0.5">
+                                        <Calendar className="w-3 h-3" />
+                                        <span>Scheduled on {onOther.map(s => s.inputLabel).join(', ')}</span>
+                                      </span>
+                                    )}
+                                  </>
+                                )
                               })()}
 
                               {/* Time Remaining (for live games) */}
