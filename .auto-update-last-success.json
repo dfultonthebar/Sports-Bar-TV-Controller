@@ -1,11 +1,11 @@
 {
-  "version": "2.32.9",
+  "version": "2.32.10",
   "branch": "location/stoneyard-appleton",
-  "commitSha": "a6f633e8089f283a1809466fb2f212dee6e6e768",
-  "successAt": "2026-04-24T14:33:05Z",
-  "successAtUnix": 1777041185,
-  "runId": "auto-update-2026-04-24-14-23",
-  "verifyInstall": {"status":"PASS","passed":7,"total":7,"durationSecs":2,"failed":[],"layers":[{"name":"pm2_online","passed":true,"detail":"status=online restart_time=41"},{"name":"health_http","passed":true,"detail":"status=healthy"},{"name":"metrics_http","passed":true,"detail":"cores=20"},{"name":"bartender_proxy","passed":true,"detail":"http=302"},{"name":"critical_tables","passed":true,"detail":"presets=120 aliases=45 directv=0 firetv=3"},{"name":"matrix_config","passed":true,"detail":"multi-card WP-36X36 offset=0"},{"name":"crash_logs","passed":true,"detail":"clean"}]},
+  "commitSha": "639858ab0ea98267dbf87852c757e944731f4de3",
+  "successAt": "2026-04-24T14:48:16Z",
+  "successAtUnix": 1777042096,
+  "runId": "auto-update-2026-04-24-14-43",
+  "verifyInstall": {"status":"PASS","passed":7,"total":7,"durationSecs":2,"failed":[],"layers":[{"name":"pm2_online","passed":true,"detail":"status=online restart_time=42"},{"name":"health_http","passed":true,"detail":"status=healthy"},{"name":"metrics_http","passed":true,"detail":"cores=20"},{"name":"bartender_proxy","passed":true,"detail":"http=302"},{"name":"critical_tables","passed":true,"detail":"presets=120 aliases=45 directv=0 firetv=3"},{"name":"matrix_config","passed":true,"detail":"multi-card WP-36X36 offset=0"},{"name":"crash_logs","passed":true,"detail":"clean"}]},
   "configChecksums": {
     ".env": "2b02aeb51f722199",
     "apps/web/data/tv-layout.json": "e6dcf0b487c0c16b",
