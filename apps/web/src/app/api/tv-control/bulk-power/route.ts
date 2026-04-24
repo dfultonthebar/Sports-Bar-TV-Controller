@@ -389,37 +389,6 @@ async function controlDevicePower(
       }
     }
 
-    case 'lg': {
-      // LG WebOS TVs: powerOn via Wake-on-LAN, powerOff via WebSocket SSAP.
-      // The single-TV route already uses this pattern (see controlLGPower
-      // in apps/web/src/app/api/tv-control/[deviceId]/power/route.ts).
-      const client = new LGTVClient({
-        ipAddress: device.ipAddress,
-        port: device.port || 3001,
-        brand: TVBrand.LG,
-        macAddress: device.macAddress,
-      })
-      try {
-        if (action === 'on') {
-          // WoL is idempotent — harmless if TV is already on.
-          // Don't short-circuit on device.status because the DB may be
-          // stale between scheduler polls.
-          return await client.powerOn()
-        }
-        if (action === 'off') {
-          // WebSocket SSAP to send ssap://system/turnOff. Fails gracefully
-          // if the TV is already off (connection will refuse).
-          return await client.powerOff()
-        }
-        // toggle — rely on DB status as the bulk route already does for
-        // non-Samsung brands in the state probe loop above.
-        const isOn = device.status === 'online'
-        return isOn ? await client.powerOff() : await client.powerOn()
-      } finally {
-        client.disconnect()
-      }
-    }
-
     case 'sharp': {
       const client = new SharpTVClient({
         ipAddress: device.ipAddress,
