@@ -395,6 +395,8 @@ The same reasoning applies to **other Amazon-branded apps that may be launcher-h
 
 8. **Read + CONTRIBUTE to `docs/VERSION_SETUP_GUIDE.md` every update.** At auto-update read target version's Required Manual Steps + execute (or flag). Bumping → write new entry in the same commit. Fixing location error → append to Known Errors & Fixes. Details: `docs/CLAUDE_VERSIONING_GUIDE.md` → Standing Rule 8.
 
+9. **CLAUDE.md is main-only.** Never commit to `CLAUDE.md` from a location branch — it is shared documentation, edits made on a location branch will conflict with main on the next auto-update merge. New rules/gotchas/architecture notes go to `main` first, then propagate via the normal merge. Auto-update's conflict resolver takes main's version of `CLAUDE.md` (since v2.32.26) so any stray location-branch edit will be silently lost on the next merge — do not rely on it surviving.
+
 ### Version Bumping (REQUIRED — every commit to main)
 Every commit to `main` MUST include a `package.json` version bump (same commit or same push). Code-change-without-bump → locations report matching versions for mismatched code → undebuggable. Minor for features/migrations; patch for bug fixes/docs. Details: `docs/CLAUDE_VERSIONING_GUIDE.md`.
 
