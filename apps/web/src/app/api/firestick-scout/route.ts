@@ -107,6 +107,47 @@ export async function POST(request: NextRequest) {
       logger.info(`[FIRESTICK_SCOUT] New device registered: ${resolvedDeviceId} (${resolvedDeviceName})`)
     }
 
+    // Mirror current app into InputCurrentChannel so the bartender remote's
+    // input list shows Fire TV apps the same way it shows cable channels.
+    // Skipped when no app reported (boot, sleep, scout-only-installed-list
+    // heartbeat) to avoid wiping a freshly-tuned entry. The matrix-input
+    // lookup uses FireTVDevice.inputChannel — same column the tune route
+    // reads — so the canonical key is identical.
+    if (data.currentApp || data.currentAppName) {
+      try {
+        const ftRow = await db.select().from(schema.fireTVDevices)
+          .where(eq(schema.fireTVDevices.id, resolvedDeviceId)).get()
+        if (ftRow?.inputChannel) {
+          const friendlyName = data.currentAppName || data.currentApp || 'Unknown App'
+          const existingChannel = await db.select().from(schema.inputCurrentChannels)
+            .where(eq(schema.inputCurrentChannels.inputNum, ftRow.inputChannel)).get()
+          const channelData = {
+            inputLabel: ftRow.name || resolvedDeviceName || 'Fire TV',
+            deviceType: 'firetv',
+            deviceId: resolvedDeviceId,
+            channelNumber: 'APP',
+            channelName: friendlyName,
+            presetId: null,
+            lastTuned: now,
+            updatedAt: now,
+          }
+          if (existingChannel) {
+            await db.update(schema.inputCurrentChannels)
+              .set(channelData)
+              .where(eq(schema.inputCurrentChannels.id, existingChannel.id))
+          } else {
+            await db.insert(schema.inputCurrentChannels).values({
+              id: crypto.randomUUID(),
+              inputNum: ftRow.inputChannel,
+              ...channelData,
+            })
+          }
+        }
+      } catch (channelErr: any) {
+        logger.warn('[FIRESTICK_SCOUT] Failed to mirror app into InputCurrentChannel:', channelErr.message)
+      }
+    }
+
     return NextResponse.json({
       success: true,
       message: 'Heartbeat received',

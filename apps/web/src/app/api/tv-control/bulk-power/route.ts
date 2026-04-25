@@ -71,40 +71,11 @@ export async function POST(request: NextRequest) {
 
     logger.info(`[TV-CONTROL] Bulk power ${action} for ${devices.length} device(s)`)
 
-    // Determine desired state by probing the first 2 Samsung TVs
-    // If they're on → we want everything on. If they're off → everything off.
-    // This handles the toggle problem: KEY_POWER is a toggle on Samsung,
-    // so we need to know each TV's actual state before sending commands.
-    let desiredState: 'on' | 'off' = action === 'on' ? 'on' : 'off'
-
-    if (action === 'on' || action === 'off') {
-      // For explicit on/off, use the action directly
-      desiredState = action
-    } else {
-      // For toggle, probe first 2 Samsung TVs to determine intent
-      const samsungTVs = devices.filter(d => d.brand?.toLowerCase() === 'samsung').slice(0, 2)
-      let onCount = 0
-      for (const tv of samsungTVs) {
-        try {
-          const controller = new AbortController()
-          const timeout = setTimeout(() => controller.abort(), 2000)
-          const resp = await fetch(`http://${tv.ipAddress}:8001/api/v2/`, { signal: controller.signal })
-          clearTimeout(timeout)
-          if (resp.ok) {
-            const data = await resp.json()
-            const ps = data?.device?.PowerState
-            if (ps === 'on' || !ps) onCount++
-          }
-        } catch {
-          // Unreachable = off
-        }
-      }
-      desiredState = onCount > 0 ? 'off' : 'on'
-      logger.info(`[TV-CONTROL] Toggle: ${onCount}/${samsungTVs.length} reference TVs are on → desired state: ${desiredState}`)
-    }
-
     // Step 1: Probe all Samsung TVs for actual power state via port 8002
     // (the remote-control WebSocket). Port 8001 lies — see isSamsungTVOn doc.
+    // Non-Samsung TVs (LG etc.) rely on DB status, which is refreshed by the
+    // scheduler poller. We need this map populated BEFORE deciding toggle
+    // intent so the majority-rule covers the full fleet, not just Samsung.
     const samsungDevices = devices.filter(d => d.brand?.toLowerCase() === 'samsung')
     const tvStates = new Map<string, boolean>() // deviceId → isOn
 
@@ -120,7 +91,21 @@ export async function POST(request: NextRequest) {
       tvStates.set(d.id, d.status === 'online')
     })
 
-    logger.info(`[TV-CONTROL] State check: ${[...tvStates.values()].filter(v => v).length} on, ${[...tvStates.values()].filter(v => !v).length} off`)
+    const onTotal = [...tvStates.values()].filter(v => v).length
+    const offTotal = [...tvStates.values()].filter(v => !v).length
+    logger.info(`[TV-CONTROL] State check: ${onTotal} on, ${offTotal} off`)
+
+    // Determine desired state AFTER the fleet-wide probe. For toggle, flip
+    // based on the majority. A lone offline Samsung at a 19-LG location
+    // used to force desired='on' and skip every LG ("already on") — the
+    // exact "button does nothing" bug operators report.
+    let desiredState: 'on' | 'off'
+    if (action === 'on' || action === 'off') {
+      desiredState = action
+    } else {
+      desiredState = onTotal > offTotal ? 'off' : 'on'
+      logger.info(`[TV-CONTROL] Toggle: fleet majority ${onTotal}/${devices.length} on → desired state: ${desiredState}`)
+    }
 
     // Step 2: Send power commands in batches of 5
     const BATCH_SIZE = 5

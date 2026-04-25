@@ -6,104 +6,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## ⚠️ READ FIRST — REQUIRED BEFORE ANY NON-TRIVIAL WORK
 
-Before starting any task on this repo, you MUST read these two companion
-guides in addition to this file. They hold the detailed rules that were
-extracted from CLAUDE.md to keep it focused. Standing Rules 5, 7, and 8
-below are just SUMMARIES — the full "how to apply" lives in those guides.
+Standing Rules 5, 7, and 8 below are SUMMARIES. Full application lives in:
 
-1. **`docs/CLAUDE_MEMORY_GUIDE.md`** — the three memory systems
-   (auto-memory, Memory Bank, CLAUDE.md), how to sync between them, when
-   to save vs. not save, and how Rules 5 and 7 apply to edge cases.
-
-2. **`docs/CLAUDE_VERSIONING_GUIDE.md`** — version-bumping rules, the
-   interlock between `VERSION_SETUP_GUIDE.md` / `LOCATION_UPDATE_NOTES.md`
-   / CLAUDE.md, commit strategy for release changes, how auto-update's
-   Checkpoint A/B/C consume these docs.
-
-If you haven't read both, you're missing context needed to apply Standing
-Rules 5, 7, and 8 correctly — and you will silently break cross-location
-sync, memory propagation, or release tracking.
+1. **`docs/CLAUDE_MEMORY_GUIDE.md`** — three memory systems, sync rules, edge cases for Rules 5 & 7.
+2. **`docs/CLAUDE_VERSIONING_GUIDE.md`** — version bumping, the three release docs interlock, Checkpoint A/B/C usage, Rule 8.
 
 ---
 
 ## V2 Monorepo Architecture
 
-This project uses **Turborepo** with npm workspaces. The codebase is organized as:
+Turborepo + npm workspaces. `apps/web/` (Next.js 16) consumes `packages/*` (37 shared packages — `ls packages/` for the live list). Hardware control packages are named after the device family they wrap: `atlas`, `wolfpack`, `crestron`, `bss-blu`, `dbx-zonepro`, `directv`, `firecube`, `ir-control`, `multiview`. Cross-cutting packages: `auth`, `cache-manager`, `circuit-breaker`, `config`, `database`, `logger`, `rate-limiting`, `streaming`, `tv-guide`, `sports-apis`, `validation`, `ui-utils`, `utils`.
 
-```
-/
-├── apps/
-│   └── web/              # Next.js 16 application (main app)
-├── packages/             # 36+ shared packages
-│   ├── atlas/           # AtlasIED audio processor control
-│   ├── auth/            # Authentication utilities
-│   ├── bss-blu/         # BSS Soundweb London BLU audio processors (HiQnet)
-│   ├── cache-manager/   # Caching with TTL support
-│   ├── circuit-breaker/ # Opossum circuit breaker wrapper
-│   ├── config/          # Shared configuration (validation, rate limits, config tracking)
-│   ├── crestron/        # Crestron DM matrix switcher control (Telnet/CIP)
-│   ├── data/            # Static data files
-│   ├── database/        # Drizzle ORM database layer
-│   ├── dbx-zonepro/     # dbx ZonePRO audio processors (RS-232/TCP)
-│   ├── directv/         # DirecTV IP control
-│   ├── firecube/        # Amazon Fire TV/Cube ADB control
-│   ├── ir-control/      # Global Cache IR blaster control
-│   ├── logger/          # Structured logging
-│   ├── rate-limiting/   # API rate limiting
-│   ├── soundtrack/      # Soundtrack Your Brand API
-│   ├── sports-apis/     # ESPN, NFL, etc. API clients
-│   ├── streaming/       # Streaming platform integrations
-│   ├── tv-guide/        # TV guide services (Gracenote, Spectrum)
-│   ├── ui-utils/        # Tailwind CSS utilities (cn function)
-│   ├── utils/           # Shared utilities
-│   ├── validation/      # Zod schemas and validators
-│   └── wolfpack/        # Atlas Wolf Pack matrix control
-└── turbo.json           # Turborepo configuration
-```
+**Import convention:** `@sports-bar/<package>` (e.g. `import { logger } from '@sports-bar/logger'`).
 
-**Import Convention:** Use `@sports-bar/<package>` for shared packages:
-```typescript
-import { logger } from '@sports-bar/logger'
-import { cn } from '@sports-bar/ui-utils'
-import { wolfpackService } from '@sports-bar/wolfpack'
-```
-
-### Key Package: @sports-bar/config
-
-**Location:** `packages/config/`
-**Purpose:** Centralized configuration management, validation schemas, rate limiting policies, and configuration change tracking.
-
-**Exports:**
-```typescript
-// Validation schemas (re-exported from @sports-bar/validation)
-import { z, uuidSchema, deviceIdSchema } from '@sports-bar/config/validation'
-
-// Rate limiting policies
-import { RATE_LIMIT_POLICIES, getRateLimitForEndpoint } from '@sports-bar/config'
-
-// Fire TV configuration
-import { getFireTVConfig, calculateBackoffDelay } from '@sports-bar/config'
-
-// Configuration change tracking
-import {
-  ConfigChangeTracker,
-  createConfigChangeTracker,
-  type ConfigChangeEvent
-} from '@sports-bar/config'
-```
-
-**ConfigChangeTracker:**
-- Monitors configuration files for changes using file system watchers
-- Calculates checksums to detect modifications
-- Integrates with auto-sync system for GitHub commits
-- Uses dependency injection pattern for logger and HTTP client
-- Framework-agnostic implementation (no Next.js dependencies)
-
-**Bridge Pattern:** Apps use bridge files (`apps/web/src/lib/config-change-tracker.ts`) that:
-1. Import the core implementation from `@sports-bar/config`
-2. Provide app-specific adapters (logger, auto-sync client)
-3. Export a configured singleton instance
-4. Maintain backward compatibility with existing imports
+**Notable:** `@sports-bar/config` centralizes validation schemas, rate-limit policies, Fire TV config, and `ConfigChangeTracker`. Apps use bridge files (e.g. `apps/web/src/lib/config-change-tracker.ts`) to inject app-specific adapters. Full API: `packages/config/README.md`.
 
 ## Build & Development Commands
 
@@ -302,241 +218,21 @@ logger.debug('[COMPONENT] Debug info')
 **Enhanced Logging:** `packages/logger/src/enhanced-logger.ts` - Stores logs in database for System Admin analytics
 **Component Tags:** Use `[COMPONENT]` prefix for searchable log filtering (e.g., `[CEC]`, `[MATRIX]`, `[IR]`)
 
-#### 5. Cable Box Control (IR only — CEC is deprecated)
-**The Wolf Pack HDMI matrix does NOT pass CEC signals.** All cable box control uses IR via Global Cache iTach IP2IR devices. CEC code exists in the codebase from earlier development but is non-functional at all current locations and should be removed.
-
-**Cable Box Control Method:** IR commands via Global Cache iTach IP2IR
-- Channel tuning sends learned IR codes for each digit
-- Power management via IR power toggle
-- IR codes stored in `IRCommand` table, learned via the IR Learning Panel
-
-**Important Files:**
-- `apps/web/src/components/remotes/CableBoxRemote.tsx` - Cable box remote (IR path)
-- `apps/web/src/components/BartenderRemoteSelector.tsx` - Channel preset UI
-
-**Legacy CEC code (to be removed):** `cable-box-cec-service.ts`, `cec-commands.ts`, CEC API routes, `CECCommandLog` table writes, EverPass CEC commands. These are dead code — the Wolf Pack matrix blocks CEC passthrough, and Spectrum boxes have CEC disabled in firmware.
+#### 5. Cable Box Control (IR only — CEC dead, do not extend)
+Wolf Pack matrix does NOT pass CEC + Spectrum disables CEC in firmware → all cable box control is IR via Global Cache iTach IP2IR. IR codes live in the `IRCommand` table, learned via the IR Learning Panel. UI: `apps/web/src/components/remotes/CableBoxRemote.tsx` + `BartenderRemoteSelector.tsx`. Do not add new CEC features.
 
 #### 6. Crestron Matrix Switcher Control
-**Package:** `packages/crestron/`
-**Purpose:** Control Crestron DigitalMedia (DM) matrix switchers for video routing
-
-**Supported Models (18 total across 4 series):**
-- **DM-MD Series:** DM-MD8X8, DM-MD16X16, DM-MD32X32, DM-MD64X64, DM-MD128X128
-- **HD-MD Series:** HD-MD8X8, HD-MD8X4, HD-MD6X2, HD-MD4X2, HD-MD4X1
-- **DMPS Series:** DMPS3-4K-350-C, DMPS3-4K-250-C, DMPS3-4K-150-C
-- **NVX Series:** DM-NVX-350, DM-NVX-351, DM-NVX-352, DM-NVX-360, DM-NVX-363
-
-**Control Protocols:**
-- Telnet (port 23) - Primary, simplest for routing
-- CTP (port 41795) - Crestron Terminal Protocol
-- CIP (port 41794) - Crestron Internet Protocol
-
-**Key Commands:**
-```
-SETAVROUTE input output    # Route input to output (video + audio)
-SETVIDEOROUTE input output # Route video only
-SETAUDIOROUTE input output # Route audio only (audio breakaway)
-DUMPDMROUTEI              # Get current routing state
-```
-
-**Output Slot Offset:** DM matrices use offset numbering:
-- 8x8/16x16: Output slots start at 17
-- 32x32: Output slots start at 33
-- 64x64: Output slots start at 65
-
-**API Routes:**
-- `GET/POST /api/crestron/matrices` - List/create matrices
-- `GET/PUT/DELETE /api/crestron/matrices/[id]` - Individual matrix CRUD
-- `POST /api/crestron/matrices/[id]/test` - Connection test
-
-**UI Location:** Matrix Control page → "Crestron DM" tab
-**Component:** `apps/web/src/components/CrestronMatrixManager.tsx`
-
-**Database Table:** `CrestronMatrix` (id, name, model, ipAddress, port, status, inputs, outputs)
+`packages/crestron/` — DM/HD-MD/DMPS/NVX series, Telnet/CTP/CIP. **Output slot offset gotcha:** DM 8x8/16x16 outputs start at 17, 32x32 at 33, 64x64 at 65 — add the offset before issuing routing commands. Full models, ports, command list, API routes: `packages/crestron/README.md`.
 
 #### 7. Audio Processor Control
-**Packages:** `packages/bss-blu/`, `packages/dbx-zonepro/`, `packages/atlas/`
+`packages/bss-blu/` (HiQnet TCP 1023), `packages/dbx-zonepro/` (TCP 3804 preferred — **NO F0/64/00 prefix or checksum** over TCP, fire-and-forget; **CRITICAL** auto-recall Scene 1 on connect to escape failsafe-mode source-shift), `packages/atlas/` (AtlasIED). UI: Device Config → Audio Processors. Per-package READMEs hold full model lists, SV IDs, and protocol detail.
 
-**BSS Soundweb London (HiQnet Protocol):**
-- Models: BLU-50, BLU-100, BLU-120, BLU-160, BLU-320, BLU-800, BLU-806, BLU-806DA
-- Protocol: HiQnet over TCP (port 1023)
-- Features: Dante/CobraNet support on some models
-- Control: Zone volume, mute, source selection
-
-**dbx ZonePRO (TCP/RS-232):**
-- Models: 640, 640m, 641, 641m, 1260, 1260m, 1261, 1261m
-- Protocol: TCP (port 3804) preferred, RS-232 (serial) also supported
-- Control: Zone volume, mute, source routing, scene recall
-- **CRITICAL:** TCP framing is different from RS-232 — NO F0/64/00 prefix, NO checksum over TCP
-- Router SV IDs: 0x0000=Source (UBYTE), 0x0001=Volume (UWORD 0-415), 0x0002=Mute (UBYTE)
-- Object ID formula: device-specific, configured in ZonePRO Designer
-- **Failsafe gotcha:** New TCP connections trigger failsafe mode which shifts source indices. Fix: auto-recall Scene 1 on connect (`sceneOnConnect` in DbxTcpClient)
-- Fire-and-forget protocol: no response expected from device
-
-**UI Location:** Device Config page → Audio Processors section
-**Component:** `apps/web/src/components/AudioProcessorManager.tsx`
-
-#### 8. Wolf Pack Multi-Chassis Device Driver System
-**Purpose:** Support multiple Wolf Pack matrices per location (e.g., video + audio breakaway)
-
-**Architecture: JSON + Database Hybrid**
-- **JSON driver file** (`apps/web/data/wolfpack-devices.json`) = source of truth for hardware topology (IP, model, inputs, outputs, credentials)
-- **Database** (`matrixConfigurations` table with `chassisId` column) = runtime state (current routes, connection status)
-- **Template on main:** `{"chassis":[]}` — real data lives on location branches only
-
-**Key Files:**
-- `packages/wolfpack/src/chassis-config.ts` — `WolfpackChassisConfig` interface
-- `packages/wolfpack/src/models.ts` — Shared `WOLFPACK_MODELS` constant (single source of truth)
-- `apps/web/src/lib/wolfpack/chassis-loader.ts` — Reads/caches JSON driver file
-- `apps/web/src/lib/wolfpack/get-active-chassis.ts` — `getActiveChassisConfig(chassisId?)` helper
-- `packages/wolfpack/src/matrix-control.ts` — `routeMatrix(input, output, chassisId?)` with optional chassis
-
-**API Routes:**
-- `GET /api/wolfpack/chassis` — List all chassis from JSON + DB status
-- `GET /api/wolfpack/chassis/[chassisId]` — Single chassis config + runtime state
-- `POST /api/wolfpack/chassis/[chassisId]/route` — Route input→output on specific chassis
-- `GET /api/wolfpack/chassis/[chassisId]/routes` — Current routes for chassis
-- `POST /api/wolfpack/chassis/sync` — Sync JSON driver → DB (create/update configs)
-
-**Backward Compatibility:** All new DB columns are nullable. All API params are optional. Without `chassisId`, the system falls back to `WHERE isActive = true` (single-chassis behavior).
-
-**Database Columns Added:**
-- `matrixConfigurations.chassisId` — Links DB row to JSON driver entry
-- `matrixRoutes.chassisId` — Which chassis this route belongs to
-- `wolfpackMatrixRoutings.chassisId` — Chassis-specific routing
-- `wolfpackMatrixStates.chassisId` — Chassis-specific state
-
-#### 9. Wolf Pack Multi-View Card Control (Future Implementation)
-**Purpose:** Control HDTVSupply Multi-View output cards installed in Wolf Pack matrix slots
-**Compatibility:** Wolf Pack matrices ONLY (8x8, 16x16, 36x36)
-
-**Hardware:** 4K60 Quad-View Output Card - plugs into Wolf Pack output card slots
-
-**Display Modes (8 total):**
-| Mode | Description | Hex Command Byte |
-|------|-------------|------------------|
-| 0 | Single Window | `32 00` |
-| 1 | 2-Window Split | `32 01` |
-| 2 | PIP Left Top | `32 02` |
-| 3 | PIP Right Bottom | `32 03` |
-| 4 | 3-Window (1 top, 2 bottom) | `32 04` |
-| 5 | 3-Window Alt | `32 05` |
-| 6 | 3-Window PIP x2 | `32 06` |
-| 7 | 4-Window Quad | `32 07` |
-
-**Control Protocol:**
-- RS-232 via USB adapter: 115200 baud, 8-bit, 1 stop, no parity
-- Serial port assignment: `/dev/ttyUSB0`, `/dev/ttyUSB1`, etc.
-- Commands terminate with period (`.`)
-- Response: "OK" or "ERR"
-
-**Hex Command Format:**
-```
-EB 90 00 11 00 ff 32 [mode] 00 01 02 03 00 00 00 00 00 00
-```
-
-**Configuration Requirements:**
-- **Slot Assignment:** Specify which Wolf Pack output slots (e.g., 21-24) the card occupies
-- **Serial Port:** Assign USB serial port (e.g., `/dev/ttyUSB0`) for RS-232 control
-- **Input Mapping:** Which Wolf Pack inputs feed the 4 multi-view windows
-
-**Implementation Status:** Planned - requires:
-- Database table: `WolfpackMultiViewCard` (name, startSlot, endSlot, serialPort, currentMode, inputAssignments)
-- Package: `packages/multiview/` for serial communication and mode control
-- API routes for mode switching and input assignment
-- UI component in Matrix Control page for slot/serial port configuration
-- Integration with existing Wolf Pack matrix routing display
-
-#### 10. Atlas Audio AI Learning System
-**Purpose:** Passive learning from Atlas audio processor operations to discover patterns
-
-**Architecture: 3 Layers (same as Wolf Pack learning)**
-1. **Event Collector** (`packages/atlas/src/atlas-learning-collector.ts`) — fire-and-forget recording of gain adjustments, clipping, zone changes, connection state
-2. **Pattern Learner** (`packages/atlas/src/atlas-pattern-learner.ts`) — periodic analysis (every 6h) discovers 6 audio-specific pattern types
-3. **Enhanced Analyzer** — `atlasAIAnalyzer.analyzeWithLearning()` blends static + learned patterns into existing `AtlasAIAnalysisResult`
-
-**Database Table:** `AtlasLearningEvent` (eventType, processorId, inputNumber, zoneNumber, gain/level fields, dayOfWeek, hourOfDay)
-
-**Event Types:** `gain_adjustment`, `gain_adjustment_failed`, `clipping_detected`, `zone_volume_change`, `zone_mute_toggle`, `zone_source_change`, `connection_online`, `connection_offline`, `signal_snapshot`
-
-**6 Collector Functions:**
-- `recordGainAdjustment()` — after successful AI gain set (wired into `ai-gain-service.ts`)
-- `recordGainAdjustmentFailure()` — after failed AI gain set
-- `recordClippingEvent()` — when meter reading has `clipping=true` (wired into `atlas-meter-service.ts`)
-- `recordZoneChange()` — after volume/mute/source commands (wired into `audio-processor/control/route.ts`)
-- `recordConnectionChange()` — processor online/offline transitions
-- `recordSignalSnapshot()` — periodic (5-min throttled) JSON summary of all input levels
-
-**6 Pattern Analysis Functions:**
-- `analyzeInputHealth()` — chronic clipping inputs
-- `analyzeGainEffectiveness()` — AI gain "fighting" (moving away from target >30%)
-- `analyzeTimePatterns()` — peak clipping time windows (game nights)
-- `analyzeZoneUsage()` — frequently muted or over-adjusted zones
-- `analyzeProcessorReliability()` — connection drop frequency
-- `analyzeAdjustmentEfficiency()` — inputs requiring excessive adjustments/day
-
-**API Routes:**
-- `GET /api/atlas/ai-learning` — Learning stats + cached patterns
-- `POST /api/atlas/ai-learning` — Trigger learning cycle manually
-
-**Instrumentation:** 90s warm-up delay (staggered 30s after wolfpack's 60s), then every 6 hours
+#### 8. Wolf Pack Multi-View Card Control
+`packages/multiview/` — HDTVSupply 4K60 Quad-View cards in Wolf Pack slots. RS-232 USB (115200 8N1), 8 display modes (single → quad), hex frame format. DB: `WolfpackMultiViewCard`. Full hex frames + mode table: `packages/multiview/README.md`.
 
 ### API Route Patterns
 
-#### Standard API Route Structure
-```typescript
-// apps/web/src/app/api/example/route.ts
-import { NextRequest, NextResponse } from 'next/server'
-import { withRateLimit } from '@/lib/rate-limiting/middleware'
-import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
-import { validateRequestBody, ValidationSchemas, z } from '@/lib/validation'
-import { logger } from '@/lib/logger'
-
-export async function POST(request: NextRequest) {
-  // 1. Rate limiting
-  const rateLimit = await withRateLimit(request, RateLimitConfigs.DEFAULT)
-  if (!rateLimit.allowed) return rateLimit.response
-
-  // 2. Input validation
-  const bodyValidation = await validateRequestBody(request, ValidationSchemas.someSchema)
-  if (!bodyValidation.success) return bodyValidation.error
-
-  // 3. Use validated data (NOT request.json())
-  const { field1, field2 } = bodyValidation.data
-
-  try {
-    // 4. Business logic
-    const result = await someService.doSomething(field1, field2)
-
-    // 5. Return response
-    return NextResponse.json({ success: true, data: result })
-  } catch (error: any) {
-    logger.error('[COMPONENT] Error:', error)
-    return NextResponse.json(
-      { success: false, error: error.message },
-      { status: 500 }
-    )
-  }
-}
-```
-
-#### GET Request Validation
-```typescript
-export async function GET(request: NextRequest) {
-  const rateLimit = await withRateLimit(request, RateLimitConfigs.DEFAULT)
-  if (!rateLimit.allowed) return rateLimit.response
-
-  // Query params validation (NOT body validation for GET)
-  const queryValidation = validateQueryParams(request, z.object({
-    page: z.coerce.number().int().min(1).optional(),
-    limit: z.coerce.number().int().min(1).max(100).optional()
-  }))
-  if (!queryValidation.success) return queryValidation.error
-
-  const { page = 1, limit = 20 } = queryValidation.data
-  // ... rest of handler
-}
-```
+Standard order: `withRateLimit` → `validateRequestBody`/`validateQueryParams` → use `bodyValidation.data` (NEVER `request.json()` after) → business logic → `NextResponse.json({success, data/error})` → catch logs `[COMPONENT]` tag. POST validates body, GET validates query params. See `apps/web/src/app/api/matrix/current-channels/route.ts` or `apps/web/src/app/api/schedules/bartender-schedule/route.ts` for canonical examples.
 
 ### Authentication System
 **Location:** `packages/auth/`
@@ -580,53 +276,16 @@ const endpoint = isCECDevice ? '/api/cec/cable-box/command' : '/api/ir-devices/s
 
 ## Common Gotchas
 
-### 1. Request Body Consumption Bug
-**Most common bug in this codebase:**
-```typescript
-// ❌ This will fail!
-const validation = await validateRequestBody(request, schema)
-const body = await request.json() // ERROR: body stream already consumed
+### 1. Body Stream Already Consumed
+`validateRequestBody()` reads the request body. Never call `request.json()` after — use `validation.data`. POST/PUT only; GET has no body, use `validateQueryParams()`.
 
-// ✅ Correct approach
-const validation = await validateRequestBody(request, schema)
-const body = validation.data
-```
+### 2. PM2 Restart vs Delete+Start
+`pm2 restart` does NOT re-read `.env` via `ecosystem.config.js` — only `delete` + `start` does. Use restart for code-only changes after rebuild; delete+start when env vars or ecosystem config changed. Force-rebuild before restarting if package-source changed: `rm -rf apps/web/.next .turbo node_modules/.cache && npx turbo run build --force` (Turbo cache misses package changes — caused the v2.11.7 routing fix to not take effect at Holmgren).
 
-### 2. GET Requests Don't Have Bodies
-```typescript
-// ❌ Wrong
-export async function GET(request: NextRequest) {
-  const bodyValidation = await validateRequestBody(request, schema) // ERROR!
-}
+### 3. Production DB Path
+Always `/home/ubuntu/sports-bar-data/production.db`. Set in `drizzle.config.ts` + env. Dev may differ.
 
-// ✅ Correct
-export async function GET(request: NextRequest) {
-  const queryValidation = validateQueryParams(request, schema)
-}
-```
-
-### 3. PM2 Requires Rebuild After Code Changes
-```bash
-# CRITICAL: Use --force to bypass Turbo cache for package changes
-rm -rf apps/web/.next .turbo node_modules/.cache
-npx turbo run build --force
-pm2 delete sports-bar-tv-controller && pm2 start ecosystem.config.js
-```
-**Why `--force`:** Turbo caches package builds. If you change code in `packages/*/src/`, plain `npm run build` may serve the old compiled version. This caused the Wolf Pack routing pre-check fix (v2.11.7) to not take effect at Holmgren Way despite correct source code.
-
-**Why `delete` + `start` instead of `restart`:** `pm2 restart` and `--update-env` do NOT re-read `.env` via `ecosystem.config.js`. Only `delete` + `start` forces PM2 to re-execute `require('dotenv').config()` and pick up new env variables like `LOCATION_ID`.
-
-### 4. Database Location Mismatch
-- Development: May use different database
-- Production: Always `/home/ubuntu/sports-bar-data/production.db`
-- Configured in: `drizzle.config.ts` and environment variables
-
-### 5. No CEC — IR Only
-- **Wolf Pack matrix does NOT pass CEC signals** — CEC cannot work at any location using the matrix
-- **All cable box control uses IR** via Global Cache iTach IP2IR
-- **CEC code is legacy dead weight** — do not add new CEC features, plan to remove existing CEC code
-
-### 5a. Matrix Config Per-Location Values (CRITICAL)
+### 4. Matrix Config Per-Location Values (CRITICAL — outputOffset)
 
 `MatrixConfiguration.outputOffset` is ADDED to every output number before
 routing commands go to the Wolf Pack. If set wrong, routing silently lands
@@ -678,14 +337,14 @@ BEFORE the first auto-update merges it into this file. When changing physical
 cabling on an existing Wolf Pack, update both the live DB value AND the row
 here.
 
-### 6. Device Data: DB is Source of Truth
+### 5. Device Data: DB is Source of Truth
 - Devices are now stored in database tables (`DirecTVDevice`, `FireTVDevice`), not JSON files
 - JSON files (`data/directv-devices.json`, `data/firetv-devices.json`) are only used for initial seeding
 - All CRUD operations go through `apps/web/src/lib/device-db.ts`
 - To re-seed from JSON: delete rows from the DB table, restart the app
 - The `@sports-bar/directv` package still reads JSON for guide fetching (known tech debt)
 
-### 7. drizzle-kit push Fails Silently on Pre-Existing Indexes
+### 6. drizzle-kit push Fails Silently on Pre-Existing Indexes
 `npx drizzle-kit push` aborts entirely when it hits an index that already exists (e.g., `ApiKey_provider_keyName_key already exists`). Any tables or columns scheduled to be created AFTER that index in the push order are silently skipped. **Always verify new columns/tables exist after push:**
 ```bash
 sqlite3 /home/ubuntu/sports-bar-data/production.db "PRAGMA table_info(TableName);"
@@ -693,17 +352,17 @@ sqlite3 /home/ubuntu/sports-bar-data/production.db ".tables"
 ```
 If a column is missing, add it manually with `ALTER TABLE ... ADD COLUMN`.
 
-### 8. Location Data Files Get Blanked on Merge from Main
+### 7. Location Data Files Get Blanked on Merge from Main
 Main has empty template JSON files (`tv-layout.json` = 61 bytes, `directv-devices.json` = 15 bytes). When merging main into a location branch, git can silently overwrite real data with these templates if there's no conflict. **After every merge from main, verify:**
 ```bash
 wc -c apps/web/data/tv-layout.json  # Must be >500 bytes at a configured location
 ```
 If blanked, restore: `git show HEAD~1:apps/web/data/tv-layout.json > apps/web/data/tv-layout.json`
 
-### 9. BartenderLayout Must Include Rooms
+### 8. BartenderLayout Must Include Rooms
 The bartender Video tab reads both `zones` and `rooms` from the `BartenderLayout` DB table (migrated from `tv-layout.json` in v2.11.0). If `rooms` is empty or the column is missing, the room filter tabs won't appear. The auto-seeder in `seed-from-json.ts` handles this for fresh installs. For existing locations, ensure the `rooms` column exists and is populated.
 
-### 10. Prime Video on Fire TV Cubes is hosted by the launcher, not a separate APK
+### 9. Prime Video on Fire TV Cubes is hosted by the launcher, not a separate APK
 On Fire TV Cube 2nd gen (model **AFTR**, Fire OS 7.7) and other PVFTV-build Cubes, **`com.amazon.avod` is NOT installed as a standalone app** — `pm list packages` will not show it. Prime Video is hosted entirely inside the Fire TV launcher (`com.amazon.firebat`). What `Settings → Applications → Manage Installed Applications` shows as "Prime Video" with version `PVFTV-215.5200-L` IS the launcher itself; Amazon brands the launcher entry as "Prime Video" in the user-facing list.
 
 **Don't waste time hunting for the AVOD package.** v2.28.8 added `com.amazon.firebat` as a `packageAlias` for the `amazon-prime` catalog entry (`packages/streaming/src/streaming-apps-database.ts`). When `streamingManager.launchApp('amazon-prime')` runs on a Cube without `com.amazon.avod`, it falls through to firebat. `adb-client.launchApp()` then resolves `cmd package resolve-activity --brief -c android.intent.category.LEANBACK_LAUNCHER com.amazon.firebat` to `com.amazon.firebat/com.amazon.firebatcore.deeplink.DeepLinkRoutingActivity`, which routes to `livingroom.landing.LandingActivity` (the Prime Video browse screen — exact same activity the home-screen tile invokes).
@@ -720,24 +379,26 @@ The same reasoning applies to **other Amazon-branded apps that may be launcher-h
 
 ### Standing Rules (MUST follow in every session)
 
-1. **Read docs before work, update docs after.** Before starting any non-trivial task, read `CLAUDE.md` and any `/docs/*.md` files relevant to the area being touched. After completing code changes, update the relevant docs — API references if routes changed, hardware guides if device config changed, CLAUDE.md if architecture/conventions changed. If you add a new feature with no matching doc, create one under `/docs/`. Never say "docs updated" unless you actually edited the file.
+1. **Read docs before work, update docs after.** Read CLAUDE.md + relevant `/docs/*.md` before non-trivial work. After code changes update matching docs (API_REFERENCE if routes changed, HARDWARE_CONFIGURATION if devices, CLAUDE.md if architecture). New feature → new doc. Never claim "docs updated" without actually editing.
 
-2. **Always commit and push after completing work.** After a unit of work is verified working (build passes, tests confirm), commit and push to GitHub automatically — do not wait for an explicit "please commit" instruction. Follow the commit strategy below (software to `main` first, then merge to location). Still confirm before destructive git operations (force push, reset, branch delete).
+2. **Commit + push after completing work.** Verified working (build passes, tests confirm) → commit + push automatically. Software-to-main first, then merge to location. Confirm before destructive git ops (force push, reset, branch delete).
 
-3. **Never break working features during cleanup.** Before deleting anything, establish positive evidence it's unused — zero callers, zero UI references, zero scheduled jobs. When in doubt, hide from UI before deleting code. Stage refactors into small verifiable steps. After each step, confirm build + PM2 restart + core flow sanity check. Never delete DB tables in the same pass as code changes.
+3. **Never break working features during cleanup.** Positive evidence of zero callers/UI refs/scheduled jobs before deleting. When in doubt hide from UI before deleting code. Stage refactors into small verifiable steps; build + PM2 restart + sanity check between each. Never delete DB tables in the same pass as code.
 
-4. **Force-rebuild when Turbo cache lies.** If `npm run build` completes in under 1 second with `FULL TURBO` and all tasks cached, the source changes did NOT get compiled. Run `npx turbo run build --force` (or `rm -rf apps/web/.next && npm run build`) to bypass the cache. This commonly happens after switching branches or cherry-picking.
+4. **Force-rebuild when Turbo cache lies.** `npm run build` finishes <1s with FULL TURBO + all cached → source did NOT compile. Use `npx turbo run build --force` (or `rm -rf apps/web/.next .turbo && npm run build`) after switching branches or cherry-picking.
 
-5. **When told to "remember" something, update CLAUDE.md too.** Save to local auto-memory AND add to the appropriate CLAUDE.md section, then commit+push with a version bump so the rule propagates to every location. **Full application details in `docs/CLAUDE_MEMORY_GUIDE.md` → "Rule 5".** This rule interacts with the three memory systems — read the guide before applying.
+5. **"Remember" → update CLAUDE.md too.** Local auto-memory + matching CLAUDE.md section + version bump + commit+push. Details: `docs/CLAUDE_MEMORY_GUIDE.md` → Rule 5.
 
-6. **Always use `scripts/auto-update.sh` for updates.** When asked to update a location or "auto update yourself", run `bash scripts/auto-update.sh --triggered-by=manual_cli`. Never manually merge main, run npm ci, or restart PM2 — the script handles conflict resolution, DB schema push, backup creation, Turbo cache busting, PM2 restart, verify-install checks, and Claude checkpoint reviews. Manual updates skip safety checks and are error-prone.
+6. **Always use `scripts/auto-update.sh`.** `bash scripts/auto-update.sh --triggered-by=manual_cli`. Never manual merge/npm ci/PM2 restart — script handles conflicts, DB schema push, backup, Turbo bust, PM2, verify, checkpoints.
 
-7. **Sync memory ↔ CLAUDE.md bidirectionally on every read.** When reading CLAUDE.md (especially at auto-update Checkpoint B), diff it against host auto-memory in BOTH directions: CLAUDE.md→memory (save missing rules locally), memory→CLAUDE.md (promote location-only knowledge to shared). **Full application details in `docs/CLAUDE_MEMORY_GUIDE.md` → "Rule 7"**, including how to handle stale entries and conflict resolution.
+7. **Sync memory ↔ CLAUDE.md bidirectionally.** At Checkpoint B + every CLAUDE.md read, diff both ways: CLAUDE.md→memory (save missing rules), memory→CLAUDE.md (promote shared knowledge). Details: `docs/CLAUDE_MEMORY_GUIDE.md` → Rule 7.
 
-8. **Read and CONTRIBUTE to `docs/VERSION_SETUP_GUIDE.md` on every update.** On auto-update, read the entry for the target version and execute its Required Manual Steps (or flag them). When bumping a version to main, write a new entry in the same commit. When fixing a location error, append to Known Errors & Fixes. **Full application details in `docs/CLAUDE_VERSIONING_GUIDE.md` → "Standing Rule 8"**, including the split between `VERSION_SETUP_GUIDE.md` (what-to-do) and `LOCATION_UPDATE_NOTES.md` (whether-to-update).
+8. **Read + CONTRIBUTE to `docs/VERSION_SETUP_GUIDE.md` every update.** At auto-update read target version's Required Manual Steps + execute (or flag). Bumping → write new entry in the same commit. Fixing location error → append to Known Errors & Fixes. Details: `docs/CLAUDE_VERSIONING_GUIDE.md` → Standing Rule 8.
+
+9. **CLAUDE.md is main-only.** Never commit to `CLAUDE.md` from a location branch — it is shared documentation, edits made on a location branch will conflict with main on the next auto-update merge. New rules/gotchas/architecture notes go to `main` first, then propagate via the normal merge. Auto-update's conflict resolver takes main's version of `CLAUDE.md` (since v2.32.26) so any stray location-branch edit will be silently lost on the next merge — do not rely on it surviving.
 
 ### Version Bumping (REQUIRED — every commit to main)
-**Every commit pushed to `main` MUST include a version bump in root `package.json`.** Same commit or at minimum same push. Code-change-without-bump creates debugging hell when locations report matching versions for mismatched code. Minor bump for features/migrations; patch for bug fixes/docs. **Full rules in `docs/CLAUDE_VERSIONING_GUIDE.md` → "Version Bumping".**
+Every commit to `main` MUST include a `package.json` version bump (same commit or same push). Code-change-without-bump → locations report matching versions for mismatched code → undebuggable. Minor for features/migrations; patch for bug fixes/docs. Details: `docs/CLAUDE_VERSIONING_GUIDE.md`.
 
 ### Making Schema Changes
 ```bash
@@ -763,18 +424,7 @@ pm2 restart sports-bar-tv-controller
 5. Test with appropriate test file in `/tests/integration/`
 
 ### Testing Hardware Integrations
-```bash
-# Test CEC adapters
-npm run test:hardware
-
-# Test specific device type
-npm run test:api -- --testPathPattern=cec
-
-# Manual hardware testing via API
-curl -X POST http://localhost:3001/api/cec/cable-box/test \
-  -H "Content-Type: application/json" \
-  -d '{"cableBoxId": "cable-box-1", "command": "power"}'
-```
+`npm run test:hardware` (Wolf Pack/IR/CEC adapters), `npm run test:api -- --testPathPattern=<area>` for targeted route tests. Live device probes go through the existing API routes (e.g. `/api/firetv-devices/[id]/current-app`, `/api/wolfpack/route`) — don't write per-device curl examples here, they rot.
 
 ## Key Configuration Files
 
@@ -877,89 +527,30 @@ const result = await queryDocs({
 
 **Spectrum Cable Box Note:** Spectrum/Charter disables CEC in firmware. IR learning is the ONLY way to control Spectrum boxes.
 
-#### 8a. Sports Guide Admin Consolidation (v2.4.0, April 2026)
-
-The admin UI for Sports Guide, Smart Scheduler, and AI Game Plan is being consolidated into a single `/sports-guide-admin` page with 8 tabs (Guide, Games, Schedule, Home Teams, Channels, Providers, Configuration, Logs). The bartender remote at `/remote` is **not** affected. See `docs/SPORTS_GUIDE_ADMIN_CONSOLIDATION.md` for the full plan and per-item disposition.
-
-**Phase A completed in v2.4.0** — dead-weight cleanup. 16 unused API routes deleted, 7 orphaned components/pages deleted, 1 stale bootstrap script deleted, broken `/scheduler` nav link fixed to point at `/scheduling`, Leagues tab hidden in `/sports-guide-config`. Net change: 4,961 lines deleted, 12 added, zero regressions.
-
-**Deleted routes** (never reintroduce these unless designing something new): `/api/scheduler/{status,manage,settings,system-state,test-match,distribution-plan}`, `/api/schedules/{logs,by-game}`, `/api/scheduling/{analyze,auto-reallocate}`, `/api/sports-guide/{test-providers,current-time,channels,ollama/query,scheduled}`, `/api/channel-presets/statistics`.
-
-**Kept despite zero UI callers** (internal cron callers in `packages/scheduler/src/scheduler-service.ts`): `/api/sports-guide/cleanup-old` (line 516), `/api/scheduling/live-status` (line 885). Do not delete these without updating the caller.
-
-**Phase B completed in v2.4.0** — new `/sports-guide-admin` page with 8 tabs wrapping existing components. Old pages still live on disk unchanged.
-
-**Phase C completed in v2.4.1** — navigation consolidated to a single "Sports Guide" entry pointing at `/sports-guide-admin`. Next.js `redirects()` forward `/sports-guide`, `/sports-guide-config`, `/ai-gameplan`, `/scheduling` to the corresponding tabs (307 temporary redirects). Admin page honors `?tab=` query param for deep links. Dashboard home card updated.
-
-**Phase D completed in v2.4.4** — old page files deleted (`/sports-guide`, `/sports-guide-config`, `/ai-gameplan`, `/scheduling`), the orphaned `LegacySchedulingManager.tsx` (1,314 unused lines) removed, and the `/system-admin` Scheduler tab deleted. Old URLs still work as bookmarks because the Next.js `redirects()` rules in `next.config.js` are preserved — they fire before page resolution. **Consolidation is now complete.**
+#### 8a. Sports Guide Admin Consolidation
+Consolidation complete (v2.4.0–v2.4.4). All admin UI lives at `/sports-guide-admin` with 8 tabs. Old URLs (`/sports-guide`, `/sports-guide-config`, `/ai-gameplan`, `/scheduling`) redirect via `next.config.js`. Bartender remote `/remote` is unaffected. **Do not reintroduce** the deleted API routes (full list in `docs/SPORTS_GUIDE_ADMIN_CONSOLIDATION.md`). Two routes look orphaned but ARE called by internal cron in `packages/scheduler/src/scheduler-service.ts` — keep: `/api/sports-guide/cleanup-old` and `/api/scheduling/live-status`.
 
 #### 9. AI Scheduling Intelligence
-**Purpose:** Smart scheduling recommendations using pattern analysis and local AI (Ollama)
+**Components:** `pattern-analyzer.ts` (historical viewing → optimal channel assignment), `ai-suggest/route.ts` (Ollama llama3.1:8b, 90s timeout), per-location scheduling preferences, default source config, DJ mode (locks TVs during special events).
+**API:** `GET/POST /api/scheduling/preferences`, `GET /api/scheduling/suggestions`, `POST /api/scheduling/apply`.
 
-**Key Components:**
-- **Pattern Analyzer** (`packages/scheduler/src/pattern-analyzer.ts`) - Analyzes historical viewing patterns to predict optimal channel assignments
-- **AI Suggestions** (`apps/web/src/app/api/scheduling/ai-suggest/route.ts`) - Uses Ollama LLM (llama3.1:8b, 90s timeout) to generate scheduling recommendations
-- **Scheduling Preferences** - Per-location configuration for preferred sports, channels, and time slots
-- **Default Source Configuration** - Fallback source assignments for TVs when no scheduled content is active
-- **DJ Mode Control** - Override mode that locks TV assignments for special events, preventing automatic scheduling changes
+**ESPN sync** runs from `apps/web/src/instrumentation.ts` on startup (30s delay) + every 60min. Covers MLB/NBA/NHL/NFL/CFB/MCBB/WCBB → `game_schedules` table (lowercase league labels). AI Game Monitor's `Schedule` row auto-creates on first use; populate `HomeTeam` table for home-team prioritization (Packers/Bucks/Brewers/Badgers).
 
-**API Endpoints:**
-- `GET/POST /api/scheduling/preferences` - Manage scheduling preferences
-- `GET /api/scheduling/suggestions` - Get AI-powered scheduling suggestions
-- `POST /api/scheduling/apply` - Apply a scheduling suggestion
+**bartender-schedule POST** accepts optional `tvOutputIds: number[]`. Guide tab flow creates allocation then PATCHes; AI-suggest approve sends inline. Lookup: `homeTeamName + awayTeamName + ±1hr window` (special-event fallback when client sends `awayTeam="Unknown"` or `""` v2.32.11). Fails 404 with a sync-pointer message if no match.
 
-**AI Game Monitor Schedule (auto-created):** The AI Auto Pilot feature (`GET /api/schedules/ai-game-plan`) requires a row in the `Schedule` table with `scheduleType='continuous'`. As of v2.3.0, this row is **auto-created on first use** if missing — no manual setup required. The auto-create looks up home team IDs from the `HomeTeam` table by case-insensitive name match for Packers/Bucks/Brewers/Badgers. If `HomeTeam` is empty, the row is still created but with `homeTeamIds: "[]"` and Auto Pilot runs without home-team prioritization. Populate the `HomeTeam` table to enable prioritization. See `docs/SCHEDULER_FIXES_APRIL_2026.md` for full details.
+**Channel Guide fallback (v2.3.0+):** Rail Media misses regional games (e.g., Brewers on Brewers.TV). After the Rail loop, `POST /api/channel-guide` queries `game_schedules` in the same window and injects any whose `broadcast_networks` resolve to a preset via `stationToPreset` (+ station-alias fallback). Dedup vs Rail by channel + team. `normalizeStation` strips `HD`/`NETWORK`/`CHANNEL`/`-TV` + spaces + dashes — new aliases must normalize to the target preset name.
 
-**ESPN Sync (automatic):** As of v2.3.0, ESPN game data is synced automatically on startup (30s after Next.js boot) and then every 60 minutes. This is wired into `apps/web/src/instrumentation.ts` via `espnSyncService.syncLeague()` from `@sports-bar/scheduler`, covering MLB, NBA, NHL, NFL, college football, men's college basketball, and women's college basketball. Data lands in the `game_schedules` table with lowercase league labels (e.g. `"mlb"`, `"nba"`). Prior to this fix, the sync existed but was never invoked — new installations had empty `game_schedules` until someone manually hit `POST /api/scheduling/sync`.
+**WI RSN split (CRITICAL):** `Channel 40` = `FanDuelWI` (Bucks + general WI; ESPN code `FSWI`). `Channel 308` = `BallyWIPlus` (Brewers-only; ESPN tag `Brewers.TV`). Never combine alias bundles or Bucks games route wrong. Canonical lists in `apps/web/src/lib/seed-from-json.ts`.
 
-**Bartender-Schedule POST — tvOutputIds handling:** `POST /api/schedules/bartender-schedule` accepts `tvOutputIds: number[]` in the body (the matrix output channel numbers the bartender is assigning). This field is **optional** — the bartender-remote Guide tab flow creates the allocation without it and then PATCHes outputs from a prior allocation on the same device. The AI-suggestion approve flow sends outputs inline. Prior to v2.3.0 this field was silently dropped entirely and the insert hardcoded `JSON.stringify([])`, which broke the downstream allocator and auto-revert flows. If the team-name + start-time lookup against `game_schedules` fails, the route now returns 404 with a clear message pointing at the sync as the likely cause.
-
-**Channel Guide fallback to game_schedules:** `POST /api/channel-guide` (used by the bartender remote's Guide tab) is primarily backed by The Rail Media API (`guide.thedailyrail.com`), which only covers nationally-televised games and a subset of RSN broadcasts — it misses many regional games (e.g., the Brewers game on Brewers.TV when Rail doesn't include it). As of v2.3.0, after the Rail Media loop the route queries our local `game_schedules` table for games in the same time window and injects any whose `broadcast_networks` array resolves to a user preset via the `stationToPreset` lookup (with station-alias fallback). Deduped against Rail programs by channel + team matchup. See `docs/SCHEDULER_FIXES_APRIL_2026.md` section 5 for details.
-
-**Station alias conventions for Wisconsin RSNs:** Green Bay area Spectrum cable has TWO Wisconsin RSN channels that must be kept separate:
-- **Channel 40** ("Fan Duel" preset) — main WI RSN, carries Bucks and general WI sports. ESPN and The Rail Media use station code `FSWI`. Aliases live under the `FanDuelWI` standard_name in the `station_aliases` table.
-- **Channel 308** ("Bally Sports WI" preset) — **Brewers-only** overflow feed. ESPN tags these broadcasts as `Brewers.TV`. Aliases live under the `BallyWIPlus` standard_name.
-
-Never combine them into a single alias bundle or Bucks games will wrongly route to 308. See `apps/web/src/lib/seed-from-json.ts` for the canonical alias lists that seed new installations.
-
-**channel_guide normalizeStation:** The helper strips `HD`, `NETWORK`, `CHANNEL`, and `-TV` suffixes, and removes spaces and dashes, before matching. If adding new alias entries, ensure at least one alias in the list normalizes to the target preset's name (also normalized) so the preset-build loop can link the alias to the preset.
-
-**Override-learn hook (v2.18.0):** When a bartender issues a manual matrix route (`POST /api/matrix/route` with `source='bartender'`) within 10 minutes of an active/pending `input_source_allocation` being created, the route handler patches that allocation's `tv_output_ids` to reflect the bartender's correction. Logic: if the new `inputNum` matches the allocation's mapped input → add `outputNum` to the list; if `outputNum` was in the list but the new input is different → remove it. Every patch writes a `SchedulerLog` row with `component='override-learn'`, operation `add`/`remove`, and full metadata (prev/new outputs, team, league, `isHomeTeam`). Home-team overrides (teams matched against the `HomeTeam` table — Brewers, Bucks, Badgers, etc.) log at `level='warn'` so operators can filter the strongest signals. Why it matters: `pattern-analyzer.ts` reads `tv_output_ids` hourly to build team-routing patterns. Since bartenders often know the room's sight-lines better than the original scheduler, their corrections within the first 10 min of a tune are the highest-quality training signal we have. Manual changes made after the 10-minute window are treated as unrelated decisions and are not learned from.
+**Override-learn (v2.18.0):** Manual `/api/matrix/route` with `source='bartender'` within 10min of an alloc → patches alloc's `tv_output_ids` (add if input matches, remove if input differs). SchedulerLog row written with `component='override-learn'`, op `add|remove`, metadata (team/league/isHomeTeam/prev/new). Home-team overrides log at `level='warn'`. `pattern-analyzer.ts` reads these hourly. After 10min window the bartender's change is treated as unrelated, not learned.
 
 #### 9a. Live Channel Mapping (Network → Channel)
-**Purpose:** Map ESPN broadcast network names to local channel numbers for live game display
+`apps/web/src/app/api/sports-guide/live-by-channel/route.ts` holds `NETWORK_TO_CABLE` + `NETWORK_TO_DIRECTV` dicts mapping ESPN broadcast names (e.g. `"FanDuel SN WI"`, `"Brewers.TV"`) → local channel numbers. When a game doesn't appear in live games, capture ESPN's exact network string + add ALL variants to both dicts.
 
-**Location:** `apps/web/src/app/api/sports-guide/live-by-channel/route.ts`
+#### 10. Per-location hardware references
+Hardware IPs/ports/quirks live per-location in `.claude/locations/<branch>.md` (e.g. `holmgren-way.md`, `graystone.md`, `lucky-s.md`). DB is the source of truth; those files are quick references for operators + Claude. Do NOT put per-location IPs in this file — they drift across locations and pollute the shared template.
 
-**How it works:** ESPN API returns broadcast info like `"FanDuel SN WI"` or `"Bucks.TV"`. The `NETWORK_TO_CABLE` and `NETWORK_TO_DIRECTV` dictionaries map these to local channel numbers so games appear in the bartender's live games section.
-
-**Adding New Mappings:** When a game doesn't appear in live games, check the ESPN API response for the exact network name, then add it to both mapping dictionaries in `live-by-channel/route.ts`.
-
-**Common Mapping Issues:** ESPN uses different names than expected (e.g., `"FanDuel SN WI"` instead of `"Bally Sports Wisconsin"`). Add ALL known variants for each regional sports network.
-
-#### 10. Holmgren Way Hardware Configuration
-**Location:** Holmgren Way sports bar (current active installation)
-
-**Source Devices (13 total):**
-- **4 Spectrum Cable Boxes** - IR control via Global Cache iTach IP2IR at 192.168.4.40 (ports 1-2) and 192.168.4.41 (ports 1-2)
-- **6 DirecTV Receivers** - IP control at 192.168.4.42 through 192.168.4.47, port 8080
-- **3 Fire TV Cubes** - ADB control at 192.168.4.49, .50, .51, port 5555
-- **1 Atmosphere TV** - ADB control at 192.168.4.48, port 5555
-
-**Display Devices:**
-- **24 Samsung TVs** - 192.168.4.1 through 192.168.4.27 (Samsung SmartThings/WoL)
-- **1 VAVA Projector** - 192.168.4.15 (CAUTION: power off/sleep kills NIC, power off is blocked)
-- **1 Epson Projector** - 192.168.4.14
-
-**Audio & Lighting:**
-- **AtlasIED AZM8 Audio Processor** - 192.168.4.246, TCP port 5321
-- **PKnight CR011R ArtNet DMX Controller** - 192.168.4.240, universe 1
-
-**Matrix Switching:**
-- **Wolf Pack 48-port HDMI Matrix** - Outputs 37-40 are audio outputs (not video displays)
-
-**IR Port Adjustment (CRITICAL):**
-All learned IR codes have `sendir,1:1,...` hardcoded (port 1 on module 1). When sending commands, the system must replace the port address with the device's configured `globalCachePortNumber` before transmission. For multi-port Global Cache devices (iTach with 3 IR ports), sending to the wrong port means the wrong emitter fires.
+**IR port adjustment (applies everywhere):** Learned IR codes have `sendir,1:1,...` hardcoded. The runtime substitutes the device's `globalCachePortNumber` before transmission. For multi-port iTach devices, port assignment matters or the wrong emitter fires.
 
 ## Multi-Location Deployment
 
@@ -1059,117 +650,14 @@ See `.claude/locations/` for per-location details (device IPs, input maps, chann
 
 - API Reference: `/docs/API_REFERENCE.md`
 - Hardware Setup: `/docs/HARDWARE_CONFIGURATION.md`
-- CEC Implementation: `/docs/CEC_CABLE_BOX_IMPLEMENTATION.md` (deprecated for Spectrum boxes)
-- CEC Deprecation: `/docs/CEC_DEPRECATION_NOTICE.md`
 - IR Learning Demo: `/docs/IR_LEARNING_DEMO_SCRIPT.md`
 - IR Emitter Placement: `/docs/IR_EMITTER_PLACEMENT_GUIDE.md`
-- CEC to IR Migration: `/docs/CEC_TO_IR_MIGRATION_GUIDE.md`
+- CEC → IR Migration (historical): `/docs/CEC_TO_IR_MIGRATION_GUIDE.md`
 - Soundtrack Integration: `/docs/SOUNDTRACK_INTEGRATION_GUIDE.md`
 - Authentication: `/docs/AUTHENTICATION_GUIDE.md`
 - Wolf Pack HTTP API: `/docs/WOLFPACK_HTTP_API_REFERENCE.md`
-
-## UI Styling Guide - Location Tab Style (Dark Theme)
-
-When creating new dashboard components, follow the **Location tab** styling patterns. This approach uses bordered divs with dark backgrounds throughout - **no white backgrounds or Card components**.
-
-### Core Principles
-- **NO Card components** - Use bordered divs instead
-- **NO white backgrounds** - All backgrounds are dark slate variants
-- **Consistent borders** - Use `border-slate-700` for sections
-- **Semi-transparent backgrounds** - Use opacity modifiers like `bg-slate-800/50`
-
-### Section Container Pattern
-```tsx
-// Main section wrapper - matching Location tab style
-<div className="rounded-lg border border-slate-700 p-6">
-  <h3 className="text-lg font-semibold text-white flex items-center gap-2 mb-4">
-    <IconName className="h-5 w-5 text-blue-400" />
-    Section Title
-  </h3>
-  {/* Content */}
-</div>
-```
-
-### Summary Stats Pattern
-```tsx
-// Stats row with dark backgrounds
-<div className="grid grid-cols-4 gap-4 mb-6">
-  <div className="rounded-lg bg-slate-800/50 p-4 flex items-center gap-3">
-    <IconName className="h-8 w-8 text-blue-400" />
-    <div>
-      <p className="text-xs text-slate-400">Label</p>
-      <p className="text-2xl font-bold text-white">Value</p>
-    </div>
-  </div>
-</div>
-```
-
-### Form Inputs Pattern
-```tsx
-// Select dropdowns
-<SelectTrigger className="bg-slate-800 border-slate-600">
-
-// Text inputs
-<Input className="bg-slate-800 border-slate-600" placeholder="..." />
-
-// Buttons
-<Button variant="outline" className="border-slate-600 hover:bg-slate-700">
-```
-
-### Color-Coded Badges
-```tsx
-const COMPONENT_COLORS: Record<string, string> = {
-  'scheduler-service': 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-  'auto-reallocator': 'bg-purple-500/20 text-purple-400 border-purple-500/30',
-  'distribution-engine': 'bg-green-500/20 text-green-400 border-green-500/30',
-}
-
-const OPERATION_COLORS: Record<string, string> = {
-  'tune': 'bg-green-500/20 text-green-400 border-green-500/30',
-  'recover': 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
-  'check': 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30',
-  'startup': 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
-}
-```
-
-### Level Badges with Icons
-- **Error:** `bg-red-500/20 text-red-400` with XCircle icon
-- **Warning:** `bg-amber-500/20 text-amber-400` with AlertTriangle icon
-- **Info:** `bg-blue-500/20 text-blue-400` with Activity icon
-- **Debug:** `bg-slate-500/20 text-slate-400` with Search icon
-
-### Table Styling
-```tsx
-// Table header
-<thead className="bg-slate-800">
-  <tr><th className="text-left p-3 text-slate-300 font-medium">...</th></tr>
-</thead>
-
-// Alternating rows
-<tr className={index % 2 === 0 ? "bg-slate-800/30" : "bg-slate-800/50"}>
-
-// Error/warning row backgrounds
-className="bg-red-950/30"   // Error rows
-className="bg-amber-950/20" // Warning rows
-```
-
-### Filter Labels Pattern
-```tsx
-<div className="space-y-2">
-  <label className="text-xs font-medium text-slate-400 flex items-center gap-1">
-    <Calendar className="h-3 w-3" /> Time Range
-  </label>
-  <Select>
-    <SelectTrigger className="bg-slate-800 border-slate-600">
-      <SelectValue placeholder="Select..." />
-    </SelectTrigger>
-    ...
-  </Select>
-</div>
-```
-
-### Reference Component
-See `apps/web/src/components/SchedulerLogsDashboard.tsx` for a complete implementation of this styling pattern.
+- OBSBOT Tail 2 Plan: `/docs/OBSBOT_TAIL_2_PLAN.md`
+- UI Styling Guide (dark theme): `/docs/UI_STYLING.md` — recommended pattern for new dashboard components.
 
 ## Bartender Remote - iPad/Tablet UI
 
