@@ -187,6 +187,33 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.34 — Tolerate markdown-bold DECISION lines from Haiku
+**Released:** 2026-04-25
+
+Haiku 4.5 wraps the DECISION line in markdown bold (`**DECISION: GO**`).
+The case-statement matcher in `run_checkpoint()` required the literal
+prefix `DECISION:` so it didn't match → UNDETERMINED → STOP. Appleton
+hit this on the first Haiku run; everything else worked but the rollup
+classified the success as failure.
+
+**Changes:**
+- `scripts/auto-update.sh run_checkpoint()` strips leading non-alpha
+  chars before the case match (`sed -E 's/^[^A-Z]*//'`). Now
+  `**DECISION: GO**`, `> DECISION: GO`, ` DECISION: GO`, etc. all
+  classify correctly.
+
+**Required Manual Step:** None.
+
+**Verification:**
+```bash
+echo '**DECISION: GO**' | sed -E 's/^[^A-Z]*//'
+# Expect: DECISION: GO
+```
+
+**Rollback:** `git revert` is clean.
+
+---
+
 ### v2.32.33 — Risk-aware checkpoint-model picker via LOCATION_UPDATE_NOTES
 **Released:** 2026-04-25
 
