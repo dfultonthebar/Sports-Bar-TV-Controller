@@ -4,6 +4,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Star, TrendingUp, Tv, Radio, Zap } from 'lucide-react'
 import { getChannelLogoOrBadge } from '@/lib/channel-logos'
+import { ChannelLogo } from '@/components/ui/channel-logo'
 
 import { logger } from '@sports-bar/logger'
 interface ChannelPreset {
@@ -269,7 +270,7 @@ export default function ChannelPresetGrid({
 
   if (loading) {
     return (
-      <div className="bg-slate-800/50 backdrop-blur-xs rounded-lg p-4 mt-4">
+      <div className="bg-slate-800/50 backdrop-blur-sm rounded-lg p-4 mt-4">
         <div className="flex items-center justify-center py-4">
           <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-400"></div>
           <span className="ml-2 text-slate-400">Loading presets...</span>
@@ -280,7 +281,7 @@ export default function ChannelPresetGrid({
 
   if (error) {
     return (
-      <div className="bg-slate-800/50 backdrop-blur-xs rounded-lg p-4 mt-4">
+      <div className="bg-slate-800/50 backdrop-blur-sm rounded-lg p-4 mt-4">
         <div className="text-center py-4 text-red-400">
           {error}
         </div>
@@ -290,7 +291,7 @@ export default function ChannelPresetGrid({
 
   if (presets.length === 0) {
     return (
-      <div className="bg-slate-800/50 backdrop-blur-xs rounded-lg p-4 mt-4">
+      <div className="bg-slate-800/50 backdrop-blur-sm rounded-lg p-4 mt-4">
         <div className="text-center py-4 text-slate-400">
           <Star className="w-8 h-8 mx-auto mb-2 opacity-50" />
           <p className="text-sm">No channel presets configured</p>
@@ -304,7 +305,7 @@ export default function ChannelPresetGrid({
   const hasMore = sortedPresets.length > maxVisible
 
   return (
-    <div className="bg-slate-800/50 backdrop-blur-xs rounded-lg p-4 mt-4">
+    <div className="bg-slate-800/50 backdrop-blur-sm rounded-lg p-4 mt-4">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-semibold text-white flex items-center">
           <Star className="w-4 h-4 mr-2 text-yellow-400" />
@@ -339,49 +340,28 @@ export default function ChannelPresetGrid({
               onClick={() => handlePresetClick(preset)}
               className={`group relative text-white rounded-lg p-3 transition-all transform hover:scale-105 active:scale-95 shadow-lg hover:shadow-xl ${
                 isLive
-                  ? 'bg-linear-to-br from-green-600 to-green-700 hover:from-green-500 hover:to-green-600 ring-2 ring-green-400/50'
+                  ? 'bg-gradient-to-br from-green-600 to-green-700 hover:from-green-500 hover:to-green-600 ring-2 ring-green-400/50'
                   : isCompleted
-                  ? 'bg-linear-to-br from-slate-600 to-slate-700 hover:from-slate-500 hover:to-slate-600'
+                  ? 'bg-gradient-to-br from-slate-600 to-slate-700 hover:from-slate-500 hover:to-slate-600'
                   : hasGame
-                  ? 'bg-linear-to-br from-purple-600 to-purple-700 hover:from-purple-500 hover:to-purple-600'
-                  : 'bg-linear-to-br from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600'
+                  ? 'bg-gradient-to-br from-purple-600 to-purple-700 hover:from-purple-500 hover:to-purple-600'
+                  : 'bg-gradient-to-br from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600'
               }`}
             >
               <div className="flex flex-col items-start text-left">
                 {/* Channel name + logo + number */}
                 <div className="flex items-center justify-between w-full mb-1 gap-2">
                   <div className="flex items-center gap-2 flex-1 min-w-0">
-                    {(() => {
-                      const { src, badge, alt } = getChannelLogoOrBadge(preset.name)
-                      return src ? (
-                        <img
-                          src={src}
-                          alt={alt}
-                          title={alt}
-                          className="h-10 w-10 object-contain shrink-0 opacity-95 bg-white/10 rounded-sm p-1"
-                          loading="lazy"
-                          onError={(e) => {
-                            // CDN hiccup — hide the broken img and the
-                            // surrounding flex keeps the text aligned
-                            const img = e.currentTarget as HTMLImageElement
-                            img.style.display = 'none'
-                          }}
-                        />
-                      ) : (
-                        <span
-                          title={alt}
-                          className="inline-flex items-center justify-center h-10 px-2 rounded-sm text-[11px] font-bold shrink-0 tracking-tight"
-                          style={{ backgroundColor: badge.bg, color: badge.fg, minWidth: '40px' }}
-                        >
-                          {badge.text}
-                        </span>
-                      )
-                    })()}
+                    <ChannelLogo
+                      name={preset.name}
+                      className="h-10 w-10 object-contain flex-shrink-0 opacity-95 bg-white/10 rounded p-1"
+                    />
+
                     <div className="text-xs font-medium opacity-90 truncate">
                       {preset.name}
                     </div>
                   </div>
-                  <div className="text-xs font-bold opacity-75 shrink-0">
+                  <div className="text-xs font-bold opacity-75 flex-shrink-0">
                     Ch {preset.channelNumber}
                   </div>
                 </div>
@@ -443,7 +423,7 @@ export default function ChannelPresetGrid({
 
                 {/* Usage count badge - bottom right so channel number is visible */}
                 {preset.usageCount > 0 && (
-                  <div className="absolute bottom-1 right-1 bg-black/40 text-white/80 text-[10px] px-1.5 py-0.5 rounded-sm font-medium">
+                  <div className="absolute bottom-1 right-1 bg-black/40 text-white/80 text-[10px] px-1.5 py-0.5 rounded font-medium">
                     {preset.usageCount}x
                   </div>
                 )}

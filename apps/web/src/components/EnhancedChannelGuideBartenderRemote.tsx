@@ -8,6 +8,7 @@ import { Button } from './ui/button'
 import { Badge } from './ui/badge'
 import { useLogging } from '@/hooks/useLogging'
 import { getChannelLogoOrBadge } from '@/lib/channel-logos'
+import { ChannelLogo } from '@/components/ui/channel-logo'
 import ChannelPresetGrid from './ChannelPresetGrid'
 import RemoteControlPopup from './remotes/RemoteControlPopup'
 import FireTVAppShortcuts from './FireTVAppShortcuts'
@@ -1478,7 +1479,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
   }
 
   return (
-    <div className="min-h-screen bg-linear-to-br from-slate-950 via-blue-950 to-purple-950 relative overflow-hidden p-4 pb-20">
+    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-purple-950 relative overflow-hidden p-4 pb-20">
       {/* Animated background orbs */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl animate-pulse"></div>
@@ -1495,7 +1496,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
 
       {/* Header */}
       <div className="relative z-10 text-center mb-6">
-        <h1 className="text-2xl md:text-3xl font-bold bg-linear-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent mb-2">
+        <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent mb-2">
           Bartender Channel Guide
         </h1>
         <div className="flex items-center justify-center space-x-2 text-sm flex-wrap">
@@ -1514,7 +1515,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
             onClick={() => setShowChannelGuide(!showChannelGuide)}
             className={`group relative px-3 py-1 backdrop-blur-xl rounded-full font-medium flex items-center space-x-1 transition-all duration-300 ${
               showChannelGuide
-                ? 'bg-linear-to-br from-orange-500/20 to-pink-500/20 text-orange-400 border border-orange-400/30 scale-105'
+                ? 'bg-gradient-to-br from-orange-500/20 to-pink-500/20 text-orange-400 border border-orange-400/30 scale-105'
                 : 'bg-white/5 text-slate-400 border border-white/10 hover:bg-white/10 hover:scale-105'
             }`}
           >
@@ -1524,9 +1525,9 @@ export default function EnhancedChannelGuideBartenderRemote() {
           {selectedDevice && (
             <button
               onClick={() => setShowRemotePopup(true)}
-              className="group relative px-3 py-1 backdrop-blur-xl bg-linear-to-br from-blue-500/20 to-indigo-500/20 rounded-full font-medium flex items-center space-x-1 transition-all duration-300 border border-blue-400/30 hover:border-blue-400/50 hover:scale-105 shadow-xl"
+              className="group relative px-3 py-1 backdrop-blur-xl bg-gradient-to-br from-blue-500/20 to-indigo-500/20 rounded-full font-medium flex items-center space-x-1 transition-all duration-300 border border-blue-400/30 hover:border-blue-400/50 hover:scale-105 shadow-xl"
             >
-              <div className="absolute inset-0 bg-linear-to-br from-blue-500/10 to-indigo-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-full"></div>
+              <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 to-indigo-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-full"></div>
               <div className="relative z-10 flex items-center space-x-1 text-blue-400">
                 <Gamepad2 className="w-3 h-3" />
                 <span>Remote Control</span>
@@ -1540,7 +1541,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
         {/* Left Panel - Input Selection */}
         <div className="lg:col-span-1">
           <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl shadow-2xl p-4 h-fit">
-            <h2 className="text-lg font-bold bg-linear-to-r from-blue-400 via-indigo-400 to-purple-400 bg-clip-text text-transparent mb-3 flex items-center">
+            <h2 className="text-lg font-bold bg-gradient-to-r from-blue-400 via-indigo-400 to-purple-400 bg-clip-text text-transparent mb-3 flex items-center">
               <Tv className="mr-2 w-5 h-5 text-blue-400" />
               Select Input
             </h2>
@@ -1554,13 +1555,13 @@ export default function EnhancedChannelGuideBartenderRemote() {
                       onClick={() => handleInputSelection(input.channelNumber)}
                       className={`group relative w-full p-3 rounded-xl text-left transition-all duration-300 ${
                         selectedInput === input.channelNumber
-                          ? 'backdrop-blur-xl bg-linear-to-br from-blue-500/30 to-indigo-500/30 border-2 border-blue-400/50 shadow-2xl scale-105'
+                          ? 'backdrop-blur-xl bg-gradient-to-br from-blue-500/30 to-indigo-500/30 border-2 border-blue-400/50 shadow-2xl scale-105'
                           : 'backdrop-blur-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:scale-105 hover:border-white/20'
                       }`}
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center space-x-3 flex-1 overflow-hidden">
-                          <div className="flex items-center space-x-2 shrink-0">
+                          <div className="flex items-center space-x-2 flex-shrink-0">
                             {getInputIcon(deviceType || input.inputType)}
                             {getDeviceStatusIcon(input.channelNumber)}
                           </div>
@@ -1570,33 +1571,15 @@ export default function EnhancedChannelGuideBartenderRemote() {
                               {(() => {
                                 const channelName = currentChannels[input.channelNumber]?.channelName
                                 if (!channelName) return null
-                                const { src, badge, alt } = getChannelLogoOrBadge(channelName)
-                                return src ? (
-                                  <img
-                                    src={src}
-                                    alt={alt}
-                                    title={alt}
-                                    className="h-8 w-8 object-contain shrink-0 bg-white/10 rounded-sm p-0.5"
-                                    loading="lazy"
-                                    onError={(e) => {
-                                      const img = e.currentTarget as HTMLImageElement
-                                      img.style.display = 'none'
-                                    }}
-                                  />
-                                ) : (
-                                  <span
-                                    title={alt}
-                                    className="inline-flex items-center justify-center h-8 px-1.5 rounded-sm text-[10px] font-bold shrink-0 tracking-tight"
-                                    style={{ backgroundColor: badge.bg, color: badge.fg, minWidth: '32px' }}
-                                  >
-                                    {badge.text}
-                                  </span>
-                                )
+                                return <ChannelLogo name={channelName} />
                               })()}
                               <span>
-                                {currentChannels[input.channelNumber]?.channelNumber
-                                  ? `Ch ${currentChannels[input.channelNumber].channelNumber}`
-                                  : `Input ${input.channelNumber}`} • {deviceType || input.inputType}
+                                {(() => {
+                                  const cur = currentChannels[input.channelNumber]
+                                  if (!cur?.channelNumber) return `Input ${input.channelNumber}`
+                                  if (cur.channelNumber === 'APP') return cur.channelName || 'App'
+                                  return `Ch ${cur.channelNumber}`
+                                })()} • {deviceType || input.inputType}
                               </span>
                             </div>
                           </div>
@@ -1661,14 +1644,14 @@ export default function EnhancedChannelGuideBartenderRemote() {
           ) : !selectedInput ? (
             <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl shadow-2xl p-8 text-center">
               <Tv className="w-16 h-16 text-purple-400 mx-auto mb-4 opacity-50" />
-              <h3 className="text-xl font-medium bg-linear-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent mb-2">Select an Input</h3>
+              <h3 className="text-xl font-medium bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent mb-2">Select an Input</h3>
               <p className="text-slate-400">Choose an input from the left panel to load its channel guide</p>
             </div>
           ) : (
             <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl shadow-2xl p-4">
               <div className="flex items-center justify-between mb-4">
                 <div>
-                  <h2 className="text-xl font-bold bg-linear-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent flex items-center">
+                  <h2 className="text-xl font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent flex items-center">
                     <Calendar className="mr-2 w-5 h-5 text-blue-400" />
                     {inputs.find(i => i.channelNumber === selectedInput)?.label} Guide
                   </h2>
@@ -1704,7 +1687,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
                     placeholder="Search games, teams, leagues..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2 backdrop-blur-xl bg-white/5 border border-white/10 rounded-xl text-white placeholder-slate-400 focus:border-blue-400/50 focus:bg-white/10 focus:outline-hidden transition-all duration-300"
+                    className="w-full pl-10 pr-4 py-2 backdrop-blur-xl bg-white/5 border border-white/10 rounded-xl text-white placeholder-slate-400 focus:border-blue-400/50 focus:bg-white/10 focus:outline-none transition-all duration-300"
                   />
                 </div>
               </div>
@@ -1732,10 +1715,10 @@ export default function EnhancedChannelGuideBartenderRemote() {
                     {filteredPrograms.map((game) => (
                       <div
                         key={game.id}
-                        className="group relative backdrop-blur-xl bg-linear-to-br from-purple-500/10 to-pink-500/10 border border-purple-400/20 rounded-xl p-4 hover:border-purple-400/40 hover:scale-105 transition-all duration-300 cursor-pointer shadow-xl"
+                        className="group relative backdrop-blur-xl bg-gradient-to-br from-purple-500/10 to-pink-500/10 border border-purple-400/20 rounded-xl p-4 hover:border-purple-400/40 hover:scale-105 transition-all duration-300 cursor-pointer shadow-xl"
                         onClick={() => handleGameClick(game)}
                       >
-                        <div className="absolute inset-0 bg-linear-to-br from-purple-500/5 to-pink-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-xl"></div>
+                        <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 to-pink-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-xl"></div>
                         <div className="relative z-10 flex items-center justify-between">
                           <div className="flex-1">
                             <div className="flex items-center space-x-3 mb-2">
@@ -1863,8 +1846,8 @@ export default function EnhancedChannelGuideBartenderRemote() {
 
                           <div className="ml-4 flex flex-col space-y-2">
                             {/* Watch Button */}
-                            <button className="group/btn relative backdrop-blur-xl bg-linear-to-br from-green-500/20 to-emerald-500/20 rounded-xl border-2 border-green-400/30 hover:border-green-400/50 hover:scale-110 transition-all duration-300 shadow-xl px-3 py-2">
-                              <div className="absolute inset-0 bg-linear-to-br from-green-500/10 to-emerald-500/10 opacity-0 group-hover/btn:opacity-100 transition-opacity duration-300 rounded-xl"></div>
+                            <button className="group/btn relative backdrop-blur-xl bg-gradient-to-br from-green-500/20 to-emerald-500/20 rounded-xl border-2 border-green-400/30 hover:border-green-400/50 hover:scale-110 transition-all duration-300 shadow-xl px-3 py-2">
+                              <div className="absolute inset-0 bg-gradient-to-br from-green-500/10 to-emerald-500/10 opacity-0 group-hover/btn:opacity-100 transition-opacity duration-300 rounded-xl"></div>
                               <div className="relative z-10 flex items-center space-x-1 text-green-300 font-medium text-sm">
                                 <Play className="w-3 h-3" />
                                 <span>Watch</span>
@@ -1887,9 +1870,9 @@ export default function EnhancedChannelGuideBartenderRemote() {
                                   <div className="flex items-center gap-2 flex-wrap">
                                     <button
                                       onClick={(e) => handleCancelSchedule(currentScheduleId, e)}
-                                      className="group/btn relative backdrop-blur-xl bg-linear-to-br from-red-500/20 to-rose-500/20 rounded-xl border-2 border-red-400/30 hover:border-red-400/50 hover:scale-110 transition-all duration-300 shadow-xl px-3 py-2"
+                                      className="group/btn relative backdrop-blur-xl bg-gradient-to-br from-red-500/20 to-rose-500/20 rounded-xl border-2 border-red-400/30 hover:border-red-400/50 hover:scale-110 transition-all duration-300 shadow-xl px-3 py-2"
                                     >
-                                      <div className="absolute inset-0 bg-linear-to-br from-red-500/10 to-rose-500/10 opacity-0 group-hover/btn:opacity-100 transition-opacity duration-300 rounded-xl"></div>
+                                      <div className="absolute inset-0 bg-gradient-to-br from-red-500/10 to-rose-500/10 opacity-0 group-hover/btn:opacity-100 transition-opacity duration-300 rounded-xl"></div>
                                       <div className="relative z-10 flex items-center space-x-1 text-red-300 font-medium text-sm">
                                         <Calendar className="w-3 h-3" />
                                         <span>Cancel</span>
@@ -1913,9 +1896,9 @@ export default function EnhancedChannelGuideBartenderRemote() {
                                   <button
                                     onClick={(e) => handleScheduleGame(game, e)}
                                     disabled={schedulingGame === game.id}
-                                    className="group/btn relative backdrop-blur-xl bg-linear-to-br from-blue-500/20 to-indigo-500/20 rounded-xl border-2 border-blue-400/30 hover:border-blue-400/50 hover:scale-110 transition-all duration-300 shadow-xl px-3 py-2 disabled:opacity-50"
+                                    className="group/btn relative backdrop-blur-xl bg-gradient-to-br from-blue-500/20 to-indigo-500/20 rounded-xl border-2 border-blue-400/30 hover:border-blue-400/50 hover:scale-110 transition-all duration-300 shadow-xl px-3 py-2 disabled:opacity-50"
                                   >
-                                    <div className="absolute inset-0 bg-linear-to-br from-blue-500/10 to-indigo-500/10 opacity-0 group-hover/btn:opacity-100 transition-opacity duration-300 rounded-xl"></div>
+                                    <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 to-indigo-500/10 opacity-0 group-hover/btn:opacity-100 transition-opacity duration-300 rounded-xl"></div>
                                     <div className="relative z-10 flex items-center space-x-1 text-blue-300 font-medium text-sm">
                                       <Calendar className="w-3 h-3" />
                                       <span>{schedulingGame === game.id ? '...' : 'Schedule'}</span>
@@ -1941,15 +1924,15 @@ export default function EnhancedChannelGuideBartenderRemote() {
               {/* Streaming Apps (for Fire TV ONLY — not cable or DirecTV) */}
               {guideData?.type === 'streaming' && guideData.apps && getDeviceTypeForInput(selectedInput) === 'streaming' && (
                 <div className="mt-6 pt-4 border-t border-white/10">
-                  <h3 className="text-lg font-medium bg-linear-to-r from-green-400 to-emerald-400 bg-clip-text text-transparent mb-3">Quick Access Sports Apps</h3>
+                  <h3 className="text-lg font-medium bg-gradient-to-r from-green-400 to-emerald-400 bg-clip-text text-transparent mb-3">Quick Access Sports Apps</h3>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                     {guideData.apps.filter(app => app.sportsContent).map((app) => (
                       <button
                         key={app.packageName}
                         onClick={() => launchStreamingApp(app.packageName, app.displayName)}
-                        className="group relative p-2 backdrop-blur-xl bg-linear-to-br from-green-500/10 to-emerald-500/10 border border-green-400/20 hover:border-green-400/40 rounded-xl transition-all duration-300 text-center hover:scale-105 shadow-xl"
+                        className="group relative p-2 backdrop-blur-xl bg-gradient-to-br from-green-500/10 to-emerald-500/10 border border-green-400/20 hover:border-green-400/40 rounded-xl transition-all duration-300 text-center hover:scale-105 shadow-xl"
                       >
-                        <div className="absolute inset-0 bg-linear-to-br from-green-500/5 to-emerald-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-xl"></div>
+                        <div className="absolute inset-0 bg-gradient-to-br from-green-500/5 to-emerald-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-xl"></div>
                         <div className="relative z-10">
                           <div className="text-xs font-medium text-white">{app.displayName}</div>
                           <div className="text-xs text-green-400 mt-1">{app.category}</div>
@@ -1966,7 +1949,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
 
       {/* Schedule Device Picker Modal */}
       {schedulePickerGame && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50" onClick={() => setSchedulePickerGame(null)}>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50" onClick={() => setSchedulePickerGame(null)}>
           <div
             className="backdrop-blur-xl bg-slate-900/95 border border-white/20 rounded-2xl shadow-2xl p-5 mx-4 max-w-md w-full"
             onClick={(e) => e.stopPropagation()}
@@ -2073,9 +2056,9 @@ export default function EnhancedChannelGuideBartenderRemote() {
                             <div className="text-xs text-slate-400 mt-0.5">{device.receiverType}{device.inputChannel ? ` -- Input ${device.inputChannel}` : ''}</div>
                           </div>
                           {device.isOnline ? (
-                            <CheckCircle className="w-4 h-4 text-green-400 shrink-0" />
+                            <CheckCircle className="w-4 h-4 text-green-400 flex-shrink-0" />
                           ) : (
-                            <AlertCircle className="w-4 h-4 text-slate-500 shrink-0" />
+                            <AlertCircle className="w-4 h-4 text-slate-500 flex-shrink-0" />
                           )}
                         </div>
                       </button>
@@ -2103,9 +2086,9 @@ export default function EnhancedChannelGuideBartenderRemote() {
                             <div className="text-xs text-slate-400 mt-0.5">{device.deviceType}{device.inputChannel ? ` -- Input ${device.inputChannel}` : ''}</div>
                           </div>
                           {(device as any).isOnline ? (
-                            <CheckCircle className="w-4 h-4 text-green-400 shrink-0" />
+                            <CheckCircle className="w-4 h-4 text-green-400 flex-shrink-0" />
                           ) : (
-                            <AlertCircle className="w-4 h-4 text-slate-500 shrink-0" />
+                            <AlertCircle className="w-4 h-4 text-slate-500 flex-shrink-0" />
                           )}
                         </div>
                       </button>
@@ -2138,7 +2121,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
 
       {/* Loading Overlay */}
       {loading && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
           <div className="backdrop-blur-xl bg-white/10 border border-white/20 p-6 rounded-2xl shadow-2xl">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-400 mx-auto mb-4"></div>
             <p className="text-sm text-slate-300">Processing request...</p>

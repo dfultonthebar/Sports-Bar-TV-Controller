@@ -550,9 +550,12 @@ export default function BartenderRemoteSelector() {
                                 ? 'bg-white/20 text-white'
                                 : 'bg-white/10 text-slate-400 group-hover:text-slate-300'
                             }`}>
-                              {currentChannels[input.channelNumber]?.channelNumber
-                                ? `Ch ${currentChannels[input.channelNumber].channelNumber}`
-                                : `Input ${input.channelNumber}`}
+                              {(() => {
+                                const cur = currentChannels[input.channelNumber]
+                                if (!cur?.channelNumber) return `Input ${input.channelNumber}`
+                                if (cur.channelNumber === 'APP') return cur.channelName || 'App'
+                                return `Ch ${cur.channelNumber}`
+                              })()}
                             </span>
                             <span className="text-xs text-slate-400 group-hover:text-slate-300">
                               {direcTVDevice ? 'DirecTV' :
