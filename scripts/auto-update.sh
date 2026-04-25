@@ -610,6 +610,25 @@ fi
 # CHECKPOINT A — Pre-update analysis
 # ===========================================================================
 step "checkpoint_a"
+
+# v2.32.33 — Risk-aware model picker. If LOCATION_UPDATE_NOTES.md flags this
+# update with `**Checkpoint model:** sonnet|opus`, override the default Haiku
+# for all three checkpoints. Useful for big refactors that need cross-file
+# reasoning. Skip if operator already set CLAUDE_API_MODEL in .env.
+if [ -z "${CLAUDE_API_MODEL:-}" ]; then
+  RISK_MODEL=$(grep -m1 -oE "Checkpoint model:[[:space:]]*(haiku|sonnet|opus)" "$REPO_ROOT/docs/LOCATION_UPDATE_NOTES.md" 2>/dev/null | grep -oE "(haiku|sonnet|opus)$" | head -1)
+  case "$RISK_MODEL" in
+    sonnet)
+      export CLAUDE_API_MODEL="claude-sonnet-4-6"
+      log "Risk-model override → claude-sonnet-4-6 (per LOCATION_UPDATE_NOTES.md)"
+      ;;
+    opus)
+      export CLAUDE_API_MODEL="claude-opus-4-7"
+      log "Risk-model override → claude-opus-4-7 (per LOCATION_UPDATE_NOTES.md)"
+      ;;
+  esac
+fi
+
 run_checkpoint "A" "$PROMPTS_DIR/checkpoint-a.txt" 600
 
 # If dry-run, report what we WOULD do and stop here (before any state change).
