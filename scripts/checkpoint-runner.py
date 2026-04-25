@@ -28,13 +28,14 @@ import urllib.error
 import urllib.request
 
 API_URL = "https://api.anthropic.com/v1/messages"
-# v2.32.29 — Default switched from claude-opus-4-7 → claude-sonnet-4-6.
-# Opus 4.7 has a 30k input-token-per-minute cap; in a tool-use loop with 5+
-# turns, each request re-sends the full message history → cumulative input
-# tokens hit the cap → HTTP 429. Sonnet 4.6 has ~4x the rate limit and is
-# fully capable for checkpoint verification (it's running git/sqlite reads,
-# not synthesizing novel code). Override via CLAUDE_API_MODEL env if needed.
-MODEL = os.environ.get("CLAUDE_API_MODEL", "claude-sonnet-4-6")
+# v2.32.32 — Default switched from claude-sonnet-4-6 → claude-haiku-4-5-20251001.
+# The org-wide 30k input-token-per-minute cap applies to BOTH Sonnet and Opus
+# (we tested at Lucky's + Greenville). Haiku 4.5 has a much higher per-org
+# rate limit (~5x Sonnet) — when 4 locations auto-update in parallel, only
+# Haiku has headroom. Checkpoints are bounded verify-tasks (run SQL, compare,
+# decide GO/CAUTION/STOP) — no novel reasoning needed; Haiku is plenty.
+# Override via CLAUDE_API_MODEL env if a specific checkpoint needs Sonnet/Opus.
+MODEL = os.environ.get("CLAUDE_API_MODEL", "claude-haiku-4-5-20251001")
 WORKING_DIR = "/home/ubuntu/Sports-Bar-TV-Controller"
 MAX_TURNS = 6  # v2.32.31 — was 15; hard cap matches the per-prompt tool budget so an over-eager Claude can't loop forever
 TOOL_TIMEOUT_SEC = 60
@@ -100,7 +101,11 @@ def read_file(path: str) -> str:
 def call_api(messages):
     payload = {
         "model": MODEL,
-        "max_tokens": 4096,
+        # v2.32.36 — bumped 4096 → 8192. Haiku produces verbose analysis prose
+        # before emitting DECISION; 4k tokens cut off mid-explanation at Leg
+        # Lamp checkpoint B. 8k gives enough room and is still well below
+        # rate-limit relevance.
+        "max_tokens": 8192,
         "tools": TOOLS,
         "messages": messages,
     }
