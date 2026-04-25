@@ -187,6 +187,49 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.33 — Risk-aware checkpoint-model picker via LOCATION_UPDATE_NOTES
+**Released:** 2026-04-25
+
+v2.32.32 made Haiku 4.5 the default checkpoint model. Cheap + fast +
+high rate limit, but might miss subtle cross-file implications on big
+refactors. v2.32.33 adds an opt-in escalation: tag a release entry in
+`docs/LOCATION_UPDATE_NOTES.md` with `**Checkpoint model:** sonnet`
+(or `opus`) and `auto-update.sh` will use that beefier model for the
+whole update run.
+
+**Changes:**
+- `scripts/auto-update.sh` greps `LOCATION_UPDATE_NOTES.md` for
+  `Checkpoint model: (haiku|sonnet|opus)` before checkpoint A. If
+  found, exports `CLAUDE_API_MODEL` to override the default. Operator's
+  pre-set `CLAUDE_API_MODEL` in `.env` still wins (env var takes
+  precedence — script only sets it when unset).
+- `docs/LOCATION_UPDATE_NOTES.md` format docs updated to document the
+  new optional flag.
+
+**Usage:** when shipping a risky release (schema migration, big
+refactor, cross-cutting change) add this line to the LOCATION_UPDATE_NOTES
+entry alongside Risk/What-changed:
+```
+**Checkpoint model:** sonnet
+```
+Each location's next auto-update will use Sonnet 4.6 instead of
+Haiku 4.5 for the deeper reasoning. Remove the flag from the entry
+once the risky update has crossed the fleet (Haiku is cheaper and
+faster for routine work).
+
+**Required Manual Step:** None.
+
+**Verification:**
+```bash
+grep -A2 "Risk-model override" /home/ubuntu/sports-bar-data/update-logs/$(ls -t /home/ubuntu/sports-bar-data/update-logs/ | head -1) | head
+# Expect a line if the active LOCATION_UPDATE_NOTES entry has a model flag.
+```
+
+**Rollback:** `git revert` is clean. The flag is optional; entries
+without it just use the default Haiku.
+
+---
+
 ### v2.32.32 — Default checkpoint model: Haiku 4.5 (~5x rate-limit headroom)
 **Released:** 2026-04-25
 
