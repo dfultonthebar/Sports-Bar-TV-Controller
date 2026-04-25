@@ -32,7 +32,7 @@ export default function Home() {
                 <span className="text-2xl">🏈</span>
               </div>
               <div>
-                <h1 className="text-xl font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
+                <h1 className="text-xl font-bold text-white">
                   Sports Bar AI Assistant
                 </h1>
                 <p className="text-sm text-slate-300">Professional AV Management System</p>
@@ -46,7 +46,7 @@ export default function Home() {
         {/* Main Status Card */}
         <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl shadow-2xl mb-8 overflow-hidden">
           <div className="p-8 text-center">
-            <h2 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent mb-4">
+            <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
               🚀 Sports Bar AI Assistant
             </h2>
             <p className="text-slate-300 mb-6 text-lg">System is now running successfully!</p>
