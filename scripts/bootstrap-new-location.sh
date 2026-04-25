@@ -171,9 +171,17 @@ touch "$ENV_FILE"
 upsert_env() {
   local key=$1
   local value=$2
+  # v2.32.37 — Single-quote any value containing whitespace or shell-special
+  # chars so `set -a; source .env; set +a` (used by auto-update.sh build
+  # phase) parses it correctly. Without this, "LOCATION_NAME=Leg Lamp"
+  # gets parsed as `LOCATION_NAME=Leg` followed by `Lamp` command → 127
+  # → trap fires → entire build phase aborts.
+  if [[ "$value" =~ [[:space:]\$\`\"\!#\&\|] ]] && [[ "$value" != \'*\' ]]; then
+    value="'${value//\'/\'\\\'\'}'"  # quote + escape any inner '
+  fi
   if grep -q "^${key}=" "$ENV_FILE" 2>/dev/null; then
-    # Use sed to replace in place; escape any / in value for sed
-    local escaped_value=$(printf '%s' "$value" | sed 's:[\/&]:\\&:g')
+    local escaped_value
+    escaped_value=$(printf '%s' "$value" | sed 's:[\/&]:\\&:g')
     sed -i -E "s/^${key}=.*/${key}=${escaped_value}/" "$ENV_FILE"
     info "  updated ${key}=${value}"
   else

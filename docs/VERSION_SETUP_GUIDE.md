@@ -187,6 +187,262 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.38 — Remove Stoneyard secrets from main + ecosystem/hardware-config to OURS
+**Released:** 2026-04-25
+
+Lucky's checkpoint A flagged a real security issue: `ecosystem.config.js`
+on main had Stoneyard's `SPORTS_GUIDE_API_KEY='12548RK0...'` and
+`SPORTS_GUIDE_USER_ID='258351'` hardcoded. `hardware-config.ts` had
+`processorIp='10.40.10.102'` + `processorId='atlas-stoneyard'`. Both
+came in via Stoneyard's location-setup commits earlier in the month
+that landed on main when they shouldn't have.
+
+**OPERATOR ACTION REQUIRED — rotate the leaked Sports Guide API key:**
+The key `12548RK0000000d2bb701f55b82bfa192e680985919` was exposed in
+git history (commit cbd4eaeb and earlier). It's still readable on
+GitHub. Generate a new key from The Rail Media admin portal, update
+`.env` at every location, then revoke the old key. Until rotated,
+the old key is leaked.
+
+**Changes:**
+- `ecosystem.config.js`: `SPORTS_GUIDE_API_KEY` + `SPORTS_GUIDE_USER_ID`
+  reverted to `process.env.X` (read from .env per location).
+- `apps/web/src/lib/hardware-config.ts`: atlas + wolfpack values reset
+  to generic empty defaults; each location overrides on its own branch.
+- `scripts/auto-update.sh LOCATION_PATHS_OURS` adds
+  `ecosystem.config.js` + `apps/web/src/lib/hardware-config.ts` so
+  location's version always wins on conflict — prevents recurrence.
+
+**Required Manual Step at every location** (CRITICAL — do BEFORE
+auto-updating):
+
+```bash
+# 1. Verify .env has SPORTS_GUIDE_API_KEY + SPORTS_GUIDE_USER_ID
+ENV=/home/ubuntu/Sports-Bar-TV-Controller/.env
+grep -E '^SPORTS_GUIDE_(API_KEY|USER_ID)=' "$ENV"
+# If missing, add the location's values from your operator's password manager:
+#   echo 'SPORTS_GUIDE_API_KEY=...' >> "$ENV"
+#   echo 'SPORTS_GUIDE_USER_ID=...' >> "$ENV"
+
+# 2. Verify your location's hardware-config.ts has the right values
+grep -E "processorIp|processorId" /home/ubuntu/Sports-Bar-TV-Controller/apps/web/src/lib/hardware-config.ts
+# Should show YOUR location's atlas, not Stoneyard's.
+```
+
+**Rollback:** `git revert` is clean. The key was already leaked
+publicly; reverting only fixes future merges, not git history. Key
+rotation is the only real fix.
+
+---
+
+### v2.32.37 — bootstrap auto-quotes .env values containing whitespace
+**Released:** 2026-04-25
+
+Leg Lamp + Stoneyard Greenville both had `LOCATION_NAME=Leg Lamp`
+(unquoted, with space) in `.env`. Auto-update.sh's build-phase
+`set -a; source .env; set +a` parses that line as
+`LOCATION_NAME=Leg` followed by `Lamp` command → 127 → trap fires →
+build phase aborts → rollback. Tonight cost two extra retry rounds
+to diagnose + manually fix.
+
+**Changes:**
+- `scripts/bootstrap-new-location.sh upsert_env()` now single-quotes
+  any value containing whitespace or shell-special chars
+  (`[[:space:]\$\`"!#&|]`). Inner single-quotes are escaped via
+  `'\''` pattern.
+
+**Required Manual Step at existing locations** that have problematic
+`.env` values (only the 2 fixed during tonight's session were
+affected, but verify):
+
+```bash
+# At each location, look for unquoted spaces in .env:
+grep -nE "^[A-Z_]+=[^\"\x27].* " /home/ubuntu/Sports-Bar-TV-Controller/.env
+# If output appears, manually edit those lines to wrap the value in
+# single quotes, e.g.:
+#   LOCATION_NAME=Leg Lamp        →   LOCATION_NAME='Leg Lamp'
+```
+
+**Verification:**
+```bash
+# After bootstrap-new-location.sh adds an env var, the value with
+# whitespace should be single-quoted in .env:
+grep '^LOCATION_NAME=' /home/ubuntu/Sports-Bar-TV-Controller/.env
+# Expect single-quoted if value contains a space.
+```
+
+**Rollback:** `git revert` is clean. Existing quoted values stay quoted.
+
+---
+
+### v2.32.36 — Bigger max_tokens + DECISION-line-first + tolerant Fire TV marker
+**Released:** 2026-04-25
+
+Three small fixes for tonight's checkpoint reliability:
+
+1. **`max_tokens` 4096 → 8192** in `checkpoint-runner.py`. Haiku produces
+   verbose analysis prose; 4k cut off mid-explanation at Leg Lamp B → no
+   DECISION line emitted → UNDETERMINED → STOP.
+2. **All 3 prompts** now require `DECISION:` to be the FIRST line of the
+   response. Avoids the case where Claude analyzes thoroughly then runs
+   out of tokens before committing.
+3. **Fire TV verify-sql marker** in v2.32.13/16 entry was scoped wrong:
+   it required `inputChannel > 0` to exist — but Leg Lamp has zero Fire
+   TV devices (cable-box-only location). The marker now passes when
+   either the location has Fire TV devices with inputChannel set, OR
+   the location has no Fire TV devices at all (the mirror code is a
+   no-op in that case).
+4. **checkpoint-b prompt** now explicitly tells Claude: a marker that
+   fails because the feature isn't used at this location is NOT a real
+   blocker; emit CAUTION instead of STOP.
+
+**Required Manual Step:** None.
+
+**Verification:**
+```bash
+grep "max_tokens" /home/ubuntu/Sports-Bar-TV-Controller/scripts/checkpoint-runner.py
+grep "OUTPUT SHAPE" /home/ubuntu/Sports-Bar-TV-Controller/scripts/prompts/checkpoint-*.txt
+```
+
+**Rollback:** `git revert` is clean.
+
+---
+
+### v2.32.35 — Resolver handles add/add + .claude/locations to OURS
+**Released:** 2026-04-25
+
+Stoneyard-Appleton's auto-update kept failing at merge step on
+`.claude/locations/stoneyard-appleton.md`. v2.32.23 added stub files
+to main for all 6 locations; some location branches had their own
+pre-existing versions → git "add/add" conflict (status `^AA`, not
+`^UU`) → resolver didn't catch it → exit 3.
+
+**Changes:**
+- `.claude/locations` added to `LOCATION_PATHS_OURS`. Each location
+  maintains its own hardware reference; main's stub is just a starting
+  point for new locations.
+- Conflict resolver now matches `^(UU|AA|DU|UD)` (modify/modify,
+  add/add, delete-by-them, delete-by-us) instead of just `^UU`. The
+  loops also iterate per-conflict-file so directory entries in the
+  path arrays resolve every nested conflict.
+
+**Required Manual Step:** None.
+
+**Verification:**
+```bash
+grep -E "CONFLICT_RE|.claude/locations" /home/ubuntu/Sports-Bar-TV-Controller/scripts/auto-update.sh
+# Expect: CONFLICT_RE='^(UU|AA|DU|UD)' and ".claude/locations" in OURS array
+```
+
+**Rollback:** `git revert` is clean.
+
+---
+
+### v2.32.34 — Tolerate markdown-bold DECISION lines from Haiku
+**Released:** 2026-04-25
+
+Haiku 4.5 wraps the DECISION line in markdown bold (`**DECISION: GO**`).
+The case-statement matcher in `run_checkpoint()` required the literal
+prefix `DECISION:` so it didn't match → UNDETERMINED → STOP. Appleton
+hit this on the first Haiku run; everything else worked but the rollup
+classified the success as failure.
+
+**Changes:**
+- `scripts/auto-update.sh run_checkpoint()` strips leading non-alpha
+  chars before the case match (`sed -E 's/^[^A-Z]*//'`). Now
+  `**DECISION: GO**`, `> DECISION: GO`, ` DECISION: GO`, etc. all
+  classify correctly.
+
+**Required Manual Step:** None.
+
+**Verification:**
+```bash
+echo '**DECISION: GO**' | sed -E 's/^[^A-Z]*//'
+# Expect: DECISION: GO
+```
+
+**Rollback:** `git revert` is clean.
+
+---
+
+### v2.32.33 — Risk-aware checkpoint-model picker via LOCATION_UPDATE_NOTES
+**Released:** 2026-04-25
+
+v2.32.32 made Haiku 4.5 the default checkpoint model. Cheap + fast +
+high rate limit, but might miss subtle cross-file implications on big
+refactors. v2.32.33 adds an opt-in escalation: tag a release entry in
+`docs/LOCATION_UPDATE_NOTES.md` with `**Checkpoint model:** sonnet`
+(or `opus`) and `auto-update.sh` will use that beefier model for the
+whole update run.
+
+**Changes:**
+- `scripts/auto-update.sh` greps `LOCATION_UPDATE_NOTES.md` for
+  `Checkpoint model: (haiku|sonnet|opus)` before checkpoint A. If
+  found, exports `CLAUDE_API_MODEL` to override the default. Operator's
+  pre-set `CLAUDE_API_MODEL` in `.env` still wins (env var takes
+  precedence — script only sets it when unset).
+- `docs/LOCATION_UPDATE_NOTES.md` format docs updated to document the
+  new optional flag.
+
+**Usage:** when shipping a risky release (schema migration, big
+refactor, cross-cutting change) add this line to the LOCATION_UPDATE_NOTES
+entry alongside Risk/What-changed:
+```
+**Checkpoint model:** sonnet
+```
+Each location's next auto-update will use Sonnet 4.6 instead of
+Haiku 4.5 for the deeper reasoning. Remove the flag from the entry
+once the risky update has crossed the fleet (Haiku is cheaper and
+faster for routine work).
+
+**Required Manual Step:** None.
+
+**Verification:**
+```bash
+grep -A2 "Risk-model override" /home/ubuntu/sports-bar-data/update-logs/$(ls -t /home/ubuntu/sports-bar-data/update-logs/ | head -1) | head
+# Expect a line if the active LOCATION_UPDATE_NOTES entry has a model flag.
+```
+
+**Rollback:** `git revert` is clean. The flag is optional; entries
+without it just use the default Haiku.
+
+---
+
+### v2.32.32 — Default checkpoint model: Haiku 4.5 (~5x rate-limit headroom)
+**Released:** 2026-04-25
+
+Sonnet 4.6 hits the same 30k input-tokens/min org cap as Opus 4.7 — the
+limit is per-org, not per-model. When 4 locations auto-update in
+parallel (4-host fleet bootstrap), Sonnet runs out of headroom even
+with the v2.32.31 4/5/3 tool-call budget. Greenville + Appleton both
+exhausted retries during a 4-way parallel run.
+
+**Changes:**
+- `scripts/checkpoint-runner.py` `MODEL` default switched from
+  `claude-sonnet-4-6` → `claude-haiku-4-5-20251001`. Haiku 4.5 has ~5x
+  higher per-org rate limit. Checkpoints are bounded verify-tasks
+  (run SQL/git, compare, decide GO/CAUTION/STOP) — no novel reasoning
+  needed; Haiku is plenty.
+- `scripts/auto-update.sh` log line updated to show the new default.
+- Override via `CLAUDE_API_MODEL` env in `.env` if a specific
+  checkpoint needs Sonnet/Opus.
+
+**Smoke-tested:** Haiku 4.5 returned correct DECISION in 2 turns on
+the same test prompt as v2.32.28/29.
+
+**Required Manual Step:** None.
+
+**Verification:**
+```bash
+grep "MODEL = " /home/ubuntu/Sports-Bar-TV-Controller/scripts/checkpoint-runner.py
+# Expect: MODEL = os.environ.get("CLAUDE_API_MODEL", "claude-haiku-4-5-20251001")
+```
+
+**Rollback:** `git revert` is clean. To revert just the model default,
+set `CLAUDE_API_MODEL=claude-sonnet-4-6` in `.env`.
+
+---
+
 ### v2.32.31 — Hard tool budget on checkpoint prompts (4/5/3 calls max)
 **Released:** 2026-04-25
 
@@ -762,8 +1018,8 @@ curl -s http://localhost:3001/api/matrix/current-channels | python3 -c "import s
 no DB/data side effects. InputCurrentChannel rows added by v2.32.13/16
 are harmless if left after revert (UI just won't read them).
 
-<!-- verify-description: production.db reachable + Fire TV devices have inputChannel mapping (required by v2.32.13/16 mirror path) -->
-<!-- verify-sql: SELECT id FROM FireTVDevice WHERE inputChannel IS NOT NULL AND inputChannel > 0 LIMIT 1 -->
+<!-- verify-description: production.db reachable + Fire TV devices have inputChannel mapping (required by v2.32.13/16 mirror path) — OR location has no Fire TVs configured (mirror code is a no-op there) -->
+<!-- verify-sql: SELECT 1 WHERE NOT EXISTS (SELECT 1 FROM FireTVDevice) UNION SELECT id FROM FireTVDevice WHERE inputChannel IS NOT NULL AND inputChannel > 0 LIMIT 1 -->
 
 ---
 
