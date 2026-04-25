@@ -187,6 +187,41 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.32 — Default checkpoint model: Haiku 4.5 (~5x rate-limit headroom)
+**Released:** 2026-04-25
+
+Sonnet 4.6 hits the same 30k input-tokens/min org cap as Opus 4.7 — the
+limit is per-org, not per-model. When 4 locations auto-update in
+parallel (4-host fleet bootstrap), Sonnet runs out of headroom even
+with the v2.32.31 4/5/3 tool-call budget. Greenville + Appleton both
+exhausted retries during a 4-way parallel run.
+
+**Changes:**
+- `scripts/checkpoint-runner.py` `MODEL` default switched from
+  `claude-sonnet-4-6` → `claude-haiku-4-5-20251001`. Haiku 4.5 has ~5x
+  higher per-org rate limit. Checkpoints are bounded verify-tasks
+  (run SQL/git, compare, decide GO/CAUTION/STOP) — no novel reasoning
+  needed; Haiku is plenty.
+- `scripts/auto-update.sh` log line updated to show the new default.
+- Override via `CLAUDE_API_MODEL` env in `.env` if a specific
+  checkpoint needs Sonnet/Opus.
+
+**Smoke-tested:** Haiku 4.5 returned correct DECISION in 2 turns on
+the same test prompt as v2.32.28/29.
+
+**Required Manual Step:** None.
+
+**Verification:**
+```bash
+grep "MODEL = " /home/ubuntu/Sports-Bar-TV-Controller/scripts/checkpoint-runner.py
+# Expect: MODEL = os.environ.get("CLAUDE_API_MODEL", "claude-haiku-4-5-20251001")
+```
+
+**Rollback:** `git revert` is clean. To revert just the model default,
+set `CLAUDE_API_MODEL=claude-sonnet-4-6` in `.env`.
+
+---
+
 ### v2.32.31 — Hard tool budget on checkpoint prompts (4/5/3 calls max)
 **Released:** 2026-04-25
 
