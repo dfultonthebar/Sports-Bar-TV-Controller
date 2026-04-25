@@ -187,6 +187,65 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.26 — auto-update.sh: pre-clean working tree + CLAUDE.md takes main
+**Released:** 2026-04-24
+
+Unblocks the fleet from 4+ days of stuck nightly auto-updates. Two distinct
+failure classes resolved:
+
+**Class 1 — CLAUDE.md merge conflict (graystone today, others imminent).**
+Main shipped v2.32.21/22 simplify pass (1122 → 672 lines, extracted to
+satellites). Location branches carried local commits like holmgren-way's
+`8610e1e2 docs(claude): add Fire TV Cube launcher-hosted Prime Video
+gotcha (v2.28.9)`. Auto-resolver did NOT have `CLAUDE.md` in any
+LOCATION_PATHS list → "merge conflict on non-whitelisted file" → exit 3.
+
+**Class 2 — auto-update.sh self-update conflict (every location after the
+bootstrap-fix dance).** Operator hot-patches a new `auto-update.sh` into
+the working tree without committing. Next merge step then aborts with
+"Your local changes would be overwritten by merge" → exit 4. Today's
+workaround was a manual commit; that's now obviated.
+
+**Changes:**
+- `scripts/auto-update.sh` LOCATION_PATHS_THEIRS gains `CLAUDE.md`. Any
+  conflict on `CLAUDE.md` automatically takes main's version.
+- New PRE_MERGE_RESET_PATHS loop in the preflight phase: for any path that
+  will take main's version anyway (auto-update.sh, rollback.sh,
+  CLAUDE.md, package.json, etc.), `git checkout HEAD -- <path>` discards
+  uncommitted edits before the fetch+merge step. The merge then proceeds
+  cleanly and the conflict resolver overlays main's version on top.
+- `CLAUDE.md` adds Standing Rule 9: "CLAUDE.md is main-only."
+
+**Required Manual Step:** None. The fix lands as part of the merge into
+each location. First post-fix update may still hit the bootstrap dance
+once if it's already in flight; subsequent runs are clean.
+
+**Verification:**
+```bash
+# After merge lands, on each location branch:
+grep -A1 'LOCATION_PATHS_THEIRS=' scripts/auto-update.sh | grep CLAUDE.md
+# Expect: "CLAUDE.md" inside the array (with the v2.32.26 comment block above it).
+
+# Confirm pre-clean loop exists:
+grep -n 'PRE_MERGE_RESET_PATHS' scripts/auto-update.sh
+# Expect: a line in the preflight section (~line 487) plus the array def.
+```
+
+**Rollback:** `git revert <sha>` is safe — script reverts to v2.32.25
+behavior. Only side effect: locations that had hot-patched
+`auto-update.sh` in their working trees would again need a manual
+commit before the next auto-update.
+
+**Doesn't fix (intentionally):**
+- Class 3 (Claude Code CLI not installed at graystone/appleton) is
+  already handled by v2.32.20's API path — preflight at
+  `scripts/auto-update.sh:466` skips the `claude --version` check when
+  `ANTHROPIC_API_KEY` is set in `.env`.
+- Class 4 (CLI cap exhaustion at Holmgren/leglamp) is the same — API
+  path bills per-token with no monthly cap.
+
+---
+
 ### v2.32.25 — Shift brief surfaces fleet-stuck alerts to bartender
 **Released:** 2026-04-25
 
