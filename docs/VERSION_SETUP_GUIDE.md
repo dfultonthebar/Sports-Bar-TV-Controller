@@ -187,6 +187,38 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.29 — Checkpoint runner: Sonnet 4.6 default + 429 retry
+**Released:** 2026-04-25
+
+v2.32.28's tool-use loop made 5+ turns of bash inspection per checkpoint.
+Each turn re-sends the full message history → cumulative input tokens hit
+Opus 4.7's 30k-tokens-per-minute rate limit → HTTP 429 → checkpoint failed.
+
+**Changes:**
+- `scripts/checkpoint-runner.py` default model switched from
+  `claude-opus-4-7` → `claude-sonnet-4-6`. Sonnet has ~4x the rate limit
+  and is fully capable for checkpoint verification (running git/sqlite
+  reads, not synthesizing novel code). Override via `CLAUDE_API_MODEL`
+  env var if a specific checkpoint needs Opus.
+- New retry loop on HTTP 429: honors `retry-after` header if present,
+  else exponential backoff (30s, 60s, 120s), 3 retries max.
+
+**Smoke-tested:** Sonnet 4.6 ran the same test prompt as v2.32.28,
+returned correct DECISION in 2 turns.
+
+**Required Manual Step:** None.
+
+**Verification:**
+```bash
+grep -E "model=|HTTP 429" /home/ubuntu/sports-bar-data/update-logs/$(ls -t /home/ubuntu/sports-bar-data/update-logs/ | head -1) | head
+# Expect: "model=claude-sonnet-4-6" lines, no 429s.
+```
+
+**Rollback:** `git revert` is clean. Setting `CLAUDE_API_MODEL=claude-opus-4-7`
+in `.env` reverts to the older default model only (still uses tool use loop).
+
+---
+
 ### v2.32.28 — Checkpoint API path now supports tool use (bash + read_file)
 **Released:** 2026-04-25
 
