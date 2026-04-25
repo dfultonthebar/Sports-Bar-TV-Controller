@@ -338,7 +338,7 @@ run_checkpoint() {
     # said "I cannot execute commands" and emitted DECISION: STOP. The new
     # runner exposes `bash` and `read_file` tools and loops the
     # tool_use → tool_result cycle until the model returns a text-only DECISION.
-    log "Checkpoint $label: invoking Anthropic API w/ tool use (model=${CLAUDE_API_MODEL:-claude-sonnet-4-6}, timeout ${timeout_secs}s)"
+    log "Checkpoint $label: invoking Anthropic API w/ tool use (model=${CLAUDE_API_MODEL:-claude-haiku-4-5-20251001}, timeout ${timeout_secs}s)"
     if ! timeout "$timeout_secs" python3 "$REPO_ROOT/scripts/checkpoint-runner.py" "$label" "$prompt_file" \
          > "$out_file" 2>>"$LOG_FILE"; then
       log "Checkpoint $label: checkpoint-runner.py failed or timed out"
@@ -372,15 +372,18 @@ run_checkpoint() {
   local decision
   # Try line-start first, then fall back to anywhere in the response.
   # Claude sometimes writes a summary before the DECISION line.
+  # v2.32.34 — Haiku sometimes wraps the decision line in markdown bold
+  # (`**DECISION: GO**`). Strip leading non-alphanumeric chars before the
+  # case match so wildcard matching stays simple.
   decision=$(grep -m1 '^DECISION:' "$out_file" || grep -m1 'DECISION:' "$out_file" || true)
+  decision_normalized=$(echo "$decision" | sed -E 's/^[^A-Z]*//')
   log "Checkpoint $label: $decision"
-  # Also dump full response to log for forensics
   log "--- Checkpoint $label full response ---"
   cat "$out_file" >> "$LOG_FILE"
   log "--- end Checkpoint $label response ---"
   rm -f "$out_file"
 
-  case "$decision" in
+  case "$decision_normalized" in
     "DECISION: GO"*)
       return 0
       ;;
@@ -390,7 +393,7 @@ run_checkpoint() {
       return 0
       ;;
     "DECISION: STOP"*)
-      fail "Checkpoint $label: STOP — ${decision#DECISION: STOP}" 2
+      fail "Checkpoint $label: STOP — ${decision_normalized#DECISION: STOP}" 2
       ;;
     *)
       fail "Checkpoint $label: UNDETERMINED response from Claude Code" 2
@@ -610,6 +613,25 @@ fi
 # CHECKPOINT A — Pre-update analysis
 # ===========================================================================
 step "checkpoint_a"
+
+# v2.32.33 — Risk-aware model picker. If LOCATION_UPDATE_NOTES.md flags this
+# update with `**Checkpoint model:** sonnet|opus`, override the default Haiku
+# for all three checkpoints. Useful for big refactors that need cross-file
+# reasoning. Skip if operator already set CLAUDE_API_MODEL in .env.
+if [ -z "${CLAUDE_API_MODEL:-}" ]; then
+  RISK_MODEL=$(grep -m1 -oE "Checkpoint model:[[:space:]]*(haiku|sonnet|opus)" "$REPO_ROOT/docs/LOCATION_UPDATE_NOTES.md" 2>/dev/null | grep -oE "(haiku|sonnet|opus)$" | head -1)
+  case "$RISK_MODEL" in
+    sonnet)
+      export CLAUDE_API_MODEL="claude-sonnet-4-6"
+      log "Risk-model override → claude-sonnet-4-6 (per LOCATION_UPDATE_NOTES.md)"
+      ;;
+    opus)
+      export CLAUDE_API_MODEL="claude-opus-4-7"
+      log "Risk-model override → claude-opus-4-7 (per LOCATION_UPDATE_NOTES.md)"
+      ;;
+  esac
+fi
+
 run_checkpoint "A" "$PROMPTS_DIR/checkpoint-a.txt" 600
 
 # If dry-run, report what we WOULD do and stop here (before any state change).
@@ -656,6 +678,13 @@ LOCATION_PATHS_OURS=(
   "apps/web/data/channel-presets-cable.json"
   "apps/web/data/channel-presets-directv.json"
   "apps/web/data/everpass-devices.json"
+  # v2.32.35 — per-location hardware reference docs. v2.32.23 added stub
+  # files for all 6 locations to main; some location branches (Stoneyard
+  # Appleton, Greenville) had their own pre-existing versions → add/add
+  # conflict on merge → exit 3. Location's version wins because each
+  # location maintains its own hardware notes (DB is the source of truth
+  # for actual IPs; these files are quick-reference for operators).
+  ".claude/locations"
   # v2.32.4 — per-location OTA broadcast affiliates (introduced v2.23.0).
   # Holmgren has WBAY/WFRV/WLUK/WGBA station aliases; Stoneyard's set is
   # different; Lucky's smaller. Without this entry, any future merge that
@@ -741,28 +770,38 @@ set -e 2>/dev/null || true
 
 if [ "$MERGE_EXIT" -ne 0 ]; then
   log "Merge had conflicts — applying auto-resolve rules"
+  # v2.32.35 — also catch add/add (^AA) + delete-by-them/us (DU/UD) in
+  # addition to modify/modify (^UU). Stoneyard-Appleton hit add/add on
+  # .claude/locations/stoneyard-appleton.md when v2.32.23 added a stub on
+  # main and the location had its own pre-existing version.
+  CONFLICT_RE='^(UU|AA|DU|UD)'
   for path in "${LOCATION_PATHS_OURS[@]}"; do
-    if git status --porcelain "$path" 2>/dev/null | grep -q "^UU"; then
-      log "  keeping LOCATION version: $path"
-      git checkout --ours "$path" 2>&1 | tee -a "$LOG_FILE"
-      git add "$path"
-    fi
+    # If the path is a directory, the status query lists every conflicted
+    # file inside it; resolve each one individually.
+    while IFS= read -r line; do
+      [ -z "$line" ] && continue
+      conflict_path="${line:3}"
+      log "  keeping LOCATION version: $conflict_path"
+      git checkout --ours "$conflict_path" 2>&1 | tee -a "$LOG_FILE"
+      git add "$conflict_path"
+    done < <(git status --porcelain "$path" 2>/dev/null | grep -E "$CONFLICT_RE")
   done
   for path in "${LOCATION_PATHS_THEIRS[@]}"; do
-    if git status --porcelain "$path" 2>/dev/null | grep -q "^UU"; then
-      log "  taking MAIN version: $path"
-      git checkout --theirs "$path" 2>&1 | tee -a "$LOG_FILE"
-      git add "$path"
-    fi
+    while IFS= read -r line; do
+      [ -z "$line" ] && continue
+      conflict_path="${line:3}"
+      log "  taking MAIN version: $conflict_path"
+      git checkout --theirs "$conflict_path" 2>&1 | tee -a "$LOG_FILE"
+      git add "$conflict_path"
+    done < <(git status --porcelain "$path" 2>/dev/null | grep -E "$CONFLICT_RE")
   done
 
-  # Prefix-based shared-software fallback. Any remaining UU file whose
-  # path starts with a SHARED_SOFTWARE_PREFIXES entry takes MAIN. Files
-  # in LOCATION_PATHS_OURS were already resolved above so the fallback
-  # only fires on files that ARE shared code.
-  if git status --porcelain | grep -q "^UU"; then
+  # Prefix-based shared-software fallback. Any remaining conflicted file
+  # whose path starts with a SHARED_SOFTWARE_PREFIXES entry takes MAIN.
+  # Files in LOCATION_PATHS_OURS were already resolved above so the
+  # fallback only fires on files that ARE shared code.
+  if git status --porcelain | grep -qE "$CONFLICT_RE"; then
     while IFS= read -r conflict_line; do
-      # conflict_line looks like "UU apps/web/src/app/remote/page.tsx"
       conflict_path="${conflict_line:3}"
       for prefix in "${SHARED_SOFTWARE_PREFIXES[@]}"; do
         case "$conflict_path" in
@@ -774,13 +813,13 @@ if [ "$MERGE_EXIT" -ne 0 ]; then
             ;;
         esac
       done
-    done < <(git status --porcelain | grep "^UU")
+    done < <(git status --porcelain | grep -E "$CONFLICT_RE")
   fi
 
   # Any STILL-remaining conflict = unexpected file, human required
-  if git status --porcelain | grep -q "^UU"; then
+  if git status --porcelain | grep -qE "$CONFLICT_RE"; then
     log "Unexpected merge conflict on non-whitelisted files (not covered by OURS/THEIRS/prefix fallback):"
-    git status --porcelain | grep "^UU" | tee -a "$LOG_FILE"
+    git status --porcelain | grep -E "$CONFLICT_RE" | tee -a "$LOG_FILE"
     git merge --abort 2>/dev/null || true
     fail "merge conflict on non-whitelisted file" 3
   fi
