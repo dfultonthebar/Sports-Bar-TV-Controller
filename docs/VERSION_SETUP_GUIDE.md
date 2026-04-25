@@ -187,6 +187,41 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.25 — Shift brief surfaces fleet-stuck alerts to bartender
+**Released:** 2026-04-25
+
+When sister locations are stuck on auto-update, the bartender's pre-shift
+brief now flags it with a "TELL OWNER" line. Operator gets a heads-up
+without having to navigate to /fleet.
+
+**Why:** 4+ days of silent fleet-wide auto-update failures (graystone +
+appleton: CLI not installed; leglamp: CLI cap exhausted). Fleet dashboard
+showed `staleness: 'stuck'` but no notification path; operator had to
+remember to check.
+
+**Changes:**
+- `apps/web/src/app/api/ai/shift-brief/route.ts` `gatherShiftContext()`
+  fetches `/api/fleet/status` (8s timeout, soft-fail if unreachable) and
+  builds a `fleetAlerts` array of stuck/warning sister locations.
+- Prompt template adds a "Sister-location health" section + Format rule:
+  "If STUCK locations, add ONE line: TELL OWNER: <names> stuck on
+  auto-update."
+- Fallback brief (LLM unavailable) appends the same alerts.
+
+**Required Manual Step:** None. Pure additive change. Cache invalidates
+on the existing 10-minute TTL — bartender sees alerts within 10 minutes
+of fleet API turning red.
+
+**Verification:**
+```bash
+curl -s 'http://localhost:3001/api/ai/shift-brief?force=true' | python3 -c "import sys,json; print(json.load(sys.stdin).get('brief',''))"
+# If any sister location is stuck, expect a "TELL OWNER" line in the output.
+```
+
+**Rollback:** `git revert` is clean.
+
+---
+
 ### v2.32.24 — bootstrap + auto-update WARN for missing ANTHROPIC_API_KEY
 **Released:** 2026-04-24
 
