@@ -307,53 +307,90 @@ run_checkpoint() {
     fail "Checkpoint $label: prompt file missing: $prompt_file" 2
   fi
 
-  log "Checkpoint $label: invoking Claude Code CLI (timeout ${timeout_secs}s)"
   local prompt
   prompt=$(cat "$prompt_file")
 
-  # Per Pre-work 3 validation: `claude -p "<prompt>"` works in cron-minimal env
-  # without ANTHROPIC_API_KEY (persistent login handles auth).
-  # --dangerously-skip-permissions: checkpoints need to run sqlite3/git/etc.
-  # without hanging on an interactive permission prompt in headless mode.
+  # v2.32.20 — Default path is direct Anthropic API (pay-per-token, no
+  # subscription cap). The Claude Code CLI subscription path was hitting
+  # "You've hit your org's monthly usage limit" mid-month, failing
+  # Checkpoint B with UNDETERMINED → rollback. API path bills per-token
+  # against ANTHROPIC_API_KEY in .env and has no monthly cap.
   #
-  # `env -u ANTHROPIC_API_KEY` strips any pay-per-token API key that leaked
-  # in from .env/PM2. --dangerously-skip-permissions requires the claude.ai
-  # OAuth credential from ~/.claude/.credentials.json; if Claude Code sees
-  # an API key in env it tries that path and rejects the skip-permissions
-  # flag with "Invalid API key · Fix external API key", failing the
-  # checkpoint in ~2 seconds. Stripping the var forces OAuth mode.
-  #
-  # `script -qfc ...` wraps the invocation in a pseudo-TTY because
-  # Claude Code CLI 2.1.113+ aborts non-interactive invocations with
-  # "Interactive prompts require a TTY terminal" even when stdin is
-  # piped and --dangerously-skip-permissions is set. The PTY from
-  # `script` satisfies the isTTY check. We write the prompt to a file
-  # and read it via `< $prompt_file` inside the script'd shell because
-  # passing a multi-KB prompt on the command line can exceed ARG_MAX
-  # once script/sh layers stack up.
-  #
-  # IMPORTANT: `script -qfc` invokes the command via `sh -c`, which
-  # does NOT inherit the interactive bash PATH. On hosts where claude
-  # lives in ~/.local/bin (native install), sh can't find it. Resolve
-  # claude to its absolute path BEFORE passing to script so the
-  # command doesn't rely on PATH inside the script'd subshell.
-  local claude_bin
-  claude_bin=$(command -v claude)
-  if [ -z "$claude_bin" ]; then
-    fail "Checkpoint $label: claude binary not on PATH in run_checkpoint context" 2
+  # Falls back to the CLI path (with the original PTY/skip-permissions
+  # dance) only when ANTHROPIC_API_KEY is unset — useful for hosts that
+  # haven't been provisioned with an API key yet.
+  if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
+    log "Checkpoint $label: invoking Anthropic API (model=${CLAUDE_API_MODEL:-claude-opus-4-7}, timeout ${timeout_secs}s)"
+    local model="${CLAUDE_API_MODEL:-claude-opus-4-7}"
+    local request_file
+    request_file=$(mktemp)
+    # Build JSON safely via python — handles multi-KB prompts + special chars
+    # without shell escape headaches that caustic jq -Rs would still leave.
+    python3 -c "
+import json, sys
+with open('$prompt_file') as f:
+    prompt = f.read()
+sys.stdout.write(json.dumps({
+    'model': '$model',
+    'max_tokens': 4096,
+    'messages': [{'role': 'user', 'content': prompt}]
+}))
+" > "$request_file" || {
+      rm -f "$request_file"
+      fail "Checkpoint $label: failed to build API request JSON" 2
+    }
+    local http_status
+    http_status=$(timeout "$timeout_secs" curl -sS -o "$out_file.raw" -w '%{http_code}' \
+      -X POST https://api.anthropic.com/v1/messages \
+      -H "x-api-key: $ANTHROPIC_API_KEY" \
+      -H "anthropic-version: 2023-06-01" \
+      -H "content-type: application/json" \
+      --data @"$request_file" 2>>"$LOG_FILE") || {
+      rm -f "$request_file" "$out_file.raw"
+      fail "Checkpoint $label: API call timed out or curl errored" 2
+    }
+    rm -f "$request_file"
+    if [ "$http_status" != "200" ]; then
+      log "Checkpoint $label: API returned HTTP $http_status"
+      log "Checkpoint $label body: $(head -c 1000 "$out_file.raw" 2>/dev/null)"
+      rm -f "$out_file.raw"
+      fail "Checkpoint $label: API HTTP $http_status" 2
+    fi
+    # Extract text from messages response: content[0].text
+    python3 -c "
+import json
+with open('$out_file.raw') as f:
+    d = json.load(f)
+print(d.get('content', [{}])[0].get('text', ''))
+" > "$out_file" 2>>"$LOG_FILE" || {
+      log "Checkpoint $label: failed to parse API response"
+      log "Checkpoint $label raw body: $(head -c 500 "$out_file.raw" 2>/dev/null)"
+      rm -f "$out_file.raw" "$out_file"
+      fail "Checkpoint $label: API response parse failure" 2
+    }
+    rm -f "$out_file.raw"
+  else
+    log "Checkpoint $label: ANTHROPIC_API_KEY unset — falling back to Claude Code CLI (timeout ${timeout_secs}s)"
+    # Original CLI path. PTY wrap + --dangerously-skip-permissions, with
+    # ANTHROPIC_API_KEY stripped (mutually exclusive with OAuth flag).
+    local claude_bin
+    claude_bin=$(command -v claude)
+    if [ -z "$claude_bin" ]; then
+      fail "Checkpoint $label: ANTHROPIC_API_KEY unset AND claude binary not on PATH" 2
+    fi
+    local prompt_file_tmp
+    prompt_file_tmp=$(mktemp)
+    printf '%s' "$prompt" > "$prompt_file_tmp"
+    if ! env -u ANTHROPIC_API_KEY timeout "$timeout_secs" \
+         script -qfc "$claude_bin -p --dangerously-skip-permissions \"\$(cat $prompt_file_tmp)\"" /dev/null \
+         >"$out_file" 2>&1; then
+      log "Checkpoint $label: Claude Code timed out or errored"
+      log "Checkpoint $label output: $(head -40 "$out_file" 2>/dev/null)"
+      rm -f "$out_file" "$prompt_file_tmp"
+      fail "Checkpoint $label: Claude Code CLI failure" 2
+    fi
+    rm -f "$prompt_file_tmp"
   fi
-  local prompt_file_tmp
-  prompt_file_tmp=$(mktemp)
-  printf '%s' "$prompt" > "$prompt_file_tmp"
-  if ! env -u ANTHROPIC_API_KEY timeout "$timeout_secs" \
-       script -qfc "$claude_bin -p --dangerously-skip-permissions \"\$(cat $prompt_file_tmp)\"" /dev/null \
-       >"$out_file" 2>&1; then
-    log "Checkpoint $label: Claude Code timed out or errored"
-    log "Checkpoint $label output: $(head -40 "$out_file" 2>/dev/null)"
-    rm -f "$out_file" "$prompt_file_tmp"
-    fail "Checkpoint $label: Claude Code CLI failure" 2
-  fi
-  rm -f "$prompt_file_tmp"
 
   local decision
   # Try line-start first, then fall back to anywhere in the response.
@@ -399,6 +436,17 @@ else
 step "preflight"
 log "Triggered by: $TRIGGERED_BY (dry-run=$DRY_RUN)"
 
+# 0a. Source .env so checkpoint phases see ANTHROPIC_API_KEY (v2.32.20).
+# The build phase sources .env again at line ~966 — that source is for
+# Turbo/Next.js, this earlier source is for Claude API calls in the
+# Checkpoint A/B/C helpers below. set -a so child processes inherit.
+if [ -f "$REPO_ROOT/.env" ]; then
+  set -a
+  # shellcheck disable=SC1091
+  source "$REPO_ROOT/.env"
+  set +a
+fi
+
 # 0. Confirm we're in a clean git repo on a location branch
 cd "$REPO_ROOT" || fail "cannot cd to $REPO_ROOT" 2
 BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
@@ -414,12 +462,21 @@ if [ "$TRIGGERED_BY" = "cron" ]; then
   fi
 fi
 
-# 2. Claude Code CLI reachability
-command -v claude >/dev/null 2>&1 || fail "Claude Code CLI not installed on PATH" 2
-if ! timeout 15 claude --version >/dev/null 2>&1; then
-  fail "Claude Code CLI not responding (--version failed or timed out)" 2
+# 2. Claude reachability — API path preferred, CLI as fallback
+if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
+  command -v curl >/dev/null 2>&1 || fail "curl not on PATH (required for Anthropic API)" 2
+  command -v python3 >/dev/null 2>&1 || fail "python3 not on PATH (required for API JSON build)" 2
+  log "Claude path: Anthropic API (model=${CLAUDE_API_MODEL:-claude-opus-4-7})"
+else
+  command -v claude >/dev/null 2>&1 || fail "Neither ANTHROPIC_API_KEY set nor Claude Code CLI installed" 2
+  if ! timeout 15 claude --version >/dev/null 2>&1; then
+    fail "Claude Code CLI not responding (--version failed or timed out)" 2
+  fi
+  log "Claude path: Claude Code CLI ($(claude --version 2>/dev/null | head -1))"
+  log "WARN: ANTHROPIC_API_KEY missing from .env — using subscription CLI path."
+  log "WARN: This path has a monthly token cap. To switch to the API path:"
+  log "WARN:   echo 'ANTHROPIC_API_KEY=sk-ant-...' >> $REPO_ROOT/.env"
 fi
-log "Claude Code CLI: $(claude --version 2>/dev/null | head -1)"
 
 # 3. Verify/rollback scripts present and executable
 [ -x "$VERIFY_SCRIPT" ] || fail "verify-install.sh missing or not executable at $VERIFY_SCRIPT" 2
