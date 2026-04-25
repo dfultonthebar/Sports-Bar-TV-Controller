@@ -187,6 +187,65 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.42 — Homepage title: solid white instead of fragile gradient text
+**Released:** 2026-04-25
+
+Operator at Lucky's reported "Sports Bar AI Assistant can't be read."
+Root cause: homepage h1 + h2 used `bg-gradient + bg-clip-text +
+text-transparent` for branded gradient text. On certain browsers (older
+iPad Safari, some Chromium builds) bg-clip-text fails → text renders
+truly transparent → invisible on the dark backdrop.
+
+**Changes:**
+- `apps/web/src/app/page.tsx` h1 (header) and h2 (main card title)
+  switched from gradient text to solid `text-white`. Always readable,
+  no browser-support assumptions.
+- 21 other gradient-text instances across sub-pages (BartenderRemote*,
+  SportsGuide, etc.) left alone — they're polish, not visibility-
+  critical. Operator can flag if others have the same issue.
+
+**Required Manual Step:** None.
+
+**Verification:**
+```bash
+grep -A1 "Sports Bar AI Assistant" /home/ubuntu/Sports-Bar-TV-Controller/apps/web/src/app/page.tsx | grep className
+# Should show "text-white" not "text-transparent" for both h1 and h2.
+```
+
+**Rollback:** `git revert` is clean. Operators who liked the gradient
+can revert to it on any browser that supports bg-clip-text reliably.
+
+---
+
+### v2.32.41 — Comprehensive false-positive guide for Haiku in checkpoint-b
+**Released:** 2026-04-25
+
+Operator feedback: "we need clearer details if we are gonna use a lower
+model." v2.32.40 added one note about hardware-config.ts; v2.32.41 adds
+a full table covering every "looks weird but actually fine" pattern
+Haiku has flagged tonight, plus a parallel table of REAL stop conditions
+to anchor Haiku's judgment.
+
+**Changes:**
+- `scripts/prompts/checkpoint-b.txt` adds two tables:
+  1. **COMMON FALSE POSITIVES** — 11 rows covering empty TS configs,
+     15-byte JSON seeds, env-driven `process.env.X` patterns, schema
+     tables already pushed, route consolidation, big version jumps.
+  2. **REAL STOP CONDITIONS** — concrete examples of what IS a blocker
+     so Haiku has positive examples to match against.
+
+**Required Manual Step:** None.
+
+**Verification:**
+```bash
+grep -c "COMMON FALSE POSITIVES" /home/ubuntu/Sports-Bar-TV-Controller/scripts/prompts/checkpoint-b.txt
+# Expect: 1
+```
+
+**Rollback:** `git revert` is clean.
+
+---
+
 ### v2.32.40 — Tell Haiku that empty hardware-config.ts is OK (DB is source of truth)
 **Released:** 2026-04-25
 

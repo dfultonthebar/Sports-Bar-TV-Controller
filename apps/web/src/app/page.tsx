@@ -16,7 +16,7 @@ export default function Home() {
   }, [])
 
   return (
-    <div className="min-h-screen bg-linear-to-br from-slate-950 via-blue-950 to-purple-950 relative overflow-hidden">
+    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-purple-950 relative overflow-hidden">
       {/* Animated Background Gradient Orbs */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl animate-pulse"></div>
@@ -28,11 +28,11 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center space-x-4">
-              <div className="bg-linear-to-br from-blue-500 to-purple-500 rounded-xl p-2.5 shadow-lg transform transition-transform hover:scale-110">
+              <div className="bg-gradient-to-br from-blue-500 to-purple-500 rounded-xl p-2.5 shadow-lg transform transition-transform hover:scale-110">
                 <span className="text-2xl">🏈</span>
               </div>
               <div>
-                <h1 className="text-xl font-bold bg-linear-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
+                <h1 className="text-xl font-bold text-white">
                   Sports Bar AI Assistant
                 </h1>
                 <p className="text-sm text-slate-300">Professional AV Management System</p>
@@ -46,7 +46,7 @@ export default function Home() {
         {/* Main Status Card */}
         <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl shadow-2xl mb-8 overflow-hidden">
           <div className="p-8 text-center">
-            <h2 className="text-3xl md:text-4xl font-bold bg-linear-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent mb-4">
+            <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
               🚀 Sports Bar AI Assistant
             </h2>
             <p className="text-slate-300 mb-6 text-lg">System is now running successfully!</p>
@@ -63,7 +63,7 @@ export default function Home() {
               </div>
 
               {/* Bulk Operations & Quick Actions */}
-              <div className="mt-6 p-6 bg-linear-to-br from-purple-600/20 to-blue-600/20 rounded-xl border-2 border-purple-400/30">
+              <div className="mt-6 p-6 bg-gradient-to-br from-purple-600/20 to-blue-600/20 rounded-xl border-2 border-purple-400/30">
                 <h3 className="text-lg font-bold text-purple-200 mb-4 flex items-center">
                   <span className="mr-2">⚡</span>
                   Quick Power Controls
@@ -84,9 +84,9 @@ export default function Home() {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-8">
                 <a
                   href="/system-health"
-                  className="group relative block p-6 backdrop-blur-xl bg-linear-to-br from-green-500/20 to-emerald-500/20 rounded-xl border-2 border-green-400/30 hover:border-green-400/50 hover:scale-105 transition-all duration-300 shadow-xl hover:shadow-2xl overflow-hidden"
+                  className="group relative block p-6 backdrop-blur-xl bg-gradient-to-br from-green-500/20 to-emerald-500/20 rounded-xl border-2 border-green-400/30 hover:border-green-400/50 hover:scale-105 transition-all duration-300 shadow-xl hover:shadow-2xl overflow-hidden"
                 >
-                  <div className="absolute inset-0 bg-linear-to-br from-green-500/10 to-emerald-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                  <div className="absolute inset-0 bg-gradient-to-br from-green-500/10 to-emerald-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                   <div className="relative z-10">
                     <h3 className="font-bold text-green-200 mb-2 text-lg">💚 System Health</h3>
                     <p className="text-green-100/90 text-sm">Real-time monitoring & quick actions</p>
@@ -95,9 +95,9 @@ export default function Home() {
 
                 <a
                   href="/ai-hub"
-                  className="group relative block p-6 backdrop-blur-xl bg-linear-to-br from-purple-500/20 to-blue-500/20 rounded-xl border-2 border-purple-400/30 hover:border-purple-400/50 hover:scale-105 transition-all duration-300 shadow-xl hover:shadow-2xl overflow-hidden"
+                  className="group relative block p-6 backdrop-blur-xl bg-gradient-to-br from-purple-500/20 to-blue-500/20 rounded-xl border-2 border-purple-400/30 hover:border-purple-400/50 hover:scale-105 transition-all duration-300 shadow-xl hover:shadow-2xl overflow-hidden"
                 >
-                  <div className="absolute inset-0 bg-linear-to-br from-purple-500/10 to-blue-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                  <div className="absolute inset-0 bg-gradient-to-br from-purple-500/10 to-blue-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                   <div className="relative z-10">
                     <h3 className="font-bold text-purple-200 mb-2 text-lg">🤖 AI Hub</h3>
                     <p className="text-purple-100/90 text-sm">Unified AI management & assistance</p>
@@ -106,9 +106,9 @@ export default function Home() {
 
                 <a
                   href="/sports-guide-admin"
-                  className="group relative block p-6 backdrop-blur-xl bg-linear-to-br from-orange-500/20 to-red-500/20 rounded-xl border-2 border-orange-400/30 hover:border-orange-400/50 hover:scale-105 transition-all duration-300 shadow-xl hover:shadow-2xl overflow-hidden"
+                  className="group relative block p-6 backdrop-blur-xl bg-gradient-to-br from-orange-500/20 to-red-500/20 rounded-xl border-2 border-orange-400/30 hover:border-orange-400/50 hover:scale-105 transition-all duration-300 shadow-xl hover:shadow-2xl overflow-hidden"
                 >
-                  <div className="absolute inset-0 bg-linear-to-br from-orange-500/10 to-red-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                  <div className="absolute inset-0 bg-gradient-to-br from-orange-500/10 to-red-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                   <div className="relative z-10">
                     <h3 className="font-bold text-orange-200 mb-2 text-lg">📺 Sports Guide</h3>
                     <p className="text-orange-100/90 text-sm">Schedule, channels, home teams &amp; more</p>
@@ -117,9 +117,9 @@ export default function Home() {
 
                 <a
                   href="/remote"
-                  className="group relative block p-6 backdrop-blur-xl bg-linear-to-br from-teal-500/20 to-green-500/20 rounded-xl border-2 border-teal-400/30 hover:border-teal-400/50 hover:scale-105 transition-all duration-300 shadow-xl hover:shadow-2xl overflow-hidden"
+                  className="group relative block p-6 backdrop-blur-xl bg-gradient-to-br from-teal-500/20 to-green-500/20 rounded-xl border-2 border-teal-400/30 hover:border-teal-400/50 hover:scale-105 transition-all duration-300 shadow-xl hover:shadow-2xl overflow-hidden"
                 >
-                  <div className="absolute inset-0 bg-linear-to-br from-teal-500/10 to-green-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                  <div className="absolute inset-0 bg-gradient-to-br from-teal-500/10 to-green-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                   <div className="relative z-10">
                     <h3 className="font-bold text-teal-200 mb-2 text-lg">📱 Remote Control</h3>
                     <p className="text-teal-100/90 text-sm">Control TVs and audio systems</p>
@@ -128,9 +128,9 @@ export default function Home() {
                 
                 <a
                   href="/system-admin"
-                  className="group relative block p-6 backdrop-blur-xl bg-linear-to-br from-blue-500/20 to-indigo-500/20 rounded-xl border-2 border-blue-400/30 hover:border-blue-400/50 hover:scale-105 transition-all duration-300 shadow-xl hover:shadow-2xl overflow-hidden"
+                  className="group relative block p-6 backdrop-blur-xl bg-gradient-to-br from-blue-500/20 to-indigo-500/20 rounded-xl border-2 border-blue-400/30 hover:border-blue-400/50 hover:scale-105 transition-all duration-300 shadow-xl hover:shadow-2xl overflow-hidden"
                 >
-                  <div className="absolute inset-0 bg-linear-to-br from-blue-500/10 to-indigo-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                  <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 to-indigo-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                   <div className="relative z-10">
                     <h3 className="font-bold text-blue-200 mb-2 text-lg">⚙️ System Admin</h3>
                     <p className="text-blue-100/90 text-sm">Logs, backups, sync & tests</p>
@@ -166,7 +166,7 @@ export default function Home() {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   <a 
                     href="/audio-control"
-                    className="block p-6 bg-linear-to-br from-teal-600/40 to-purple-600/40 rounded-xl border-2 border-teal-400/50 hover:border-teal-400/70 hover:from-teal-600/50 hover:to-purple-600/50 transition-all duration-200 shadow-lg col-span-1 md:col-span-2 lg:col-span-3"
+                    className="block p-6 bg-gradient-to-br from-teal-600/40 to-purple-600/40 rounded-xl border-2 border-teal-400/50 hover:border-teal-400/70 hover:from-teal-600/50 hover:to-purple-600/50 transition-all duration-200 shadow-lg col-span-1 md:col-span-2 lg:col-span-3"
                   >
                     <div className="flex items-center space-x-3 mb-2">
                       <Music className="w-6 h-6 text-teal-300" />
@@ -183,7 +183,7 @@ export default function Home() {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-4">
                   <a
                     href="/unified-tv-control"
-                    className="block p-4 bg-linear-to-br from-blue-600/40 to-purple-600/40 rounded-lg border-2 border-blue-400/50 hover:border-blue-400/70 hover:from-blue-600/50 hover:to-purple-600/50 transition-all duration-200 shadow-lg"
+                    className="block p-4 bg-gradient-to-br from-blue-600/40 to-purple-600/40 rounded-lg border-2 border-blue-400/50 hover:border-blue-400/70 hover:from-blue-600/50 hover:to-purple-600/50 transition-all duration-200 shadow-lg"
                   >
                     <h4 className="font-bold text-blue-200 mb-1">⚡ Unified TV Control</h4>
                     <p className="text-blue-100/90 text-sm">CEC + IR with smart fallback</p>
@@ -217,7 +217,7 @@ export default function Home() {
                   
                   <a 
                     href="/scheduler"
-                    className="block p-4 bg-linear-to-br from-emerald-600/40 to-blue-600/40 rounded-lg border-2 border-emerald-400/50 hover:border-emerald-400/70 hover:from-emerald-600/50 hover:to-blue-600/50 transition-all duration-200 shadow-lg"
+                    className="block p-4 bg-gradient-to-br from-emerald-600/40 to-blue-600/40 rounded-lg border-2 border-emerald-400/50 hover:border-emerald-400/70 hover:from-emerald-600/50 hover:to-blue-600/50 transition-all duration-200 shadow-lg"
                   >
                     <h4 className="font-bold text-emerald-200 mb-1">📅 Smart Scheduler</h4>
                     <p className="text-emerald-100/90 text-sm">Auto TV control & game finder</p>

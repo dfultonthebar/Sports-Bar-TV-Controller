@@ -12,6 +12,30 @@ Then 3-5 short bullets of justification. Do NOT bury the DECISION inside prose. 
 
 **Per CLAUDE.md §6 + §10, hardware device IPs/ports are stored in the DB tables (`AudioProcessor`, `FireTVDevice`, `DirecTVDevice`, etc.), not in `apps/web/src/lib/hardware-config.ts`.** Empty / generic values in that file are NORMAL on main (each location's DB has the real values). Do NOT STOP just because `hardware-config.ts` shows empty `processorIp` after a merge — it is intentionally a fallback, not the source of truth. Verify via `sqlite3 production.db "SELECT * FROM AudioProcessor"` if you want to confirm the location actually has the device configured.
 
+## COMMON FALSE POSITIVES — these LOOK like blockers but ARE NOT, do not STOP on them:
+
+| Symptom | Why it's NOT a blocker |
+|---|---|
+| `apps/web/src/lib/hardware-config.ts` has empty `processorIp`, `processorId`, `audioOutputSlots: []` | DB is source of truth (`AudioProcessor` table). TS file is a fallback for fresh installs only. |
+| `apps/web/data/directv-devices.json` is 15 bytes (`{"devices":[]}`) | Seed-only file. Real DirecTV devices are in `DirecTVDevice` DB table after first run. CLAUDE.md §6. |
+| `apps/web/data/firetv-devices.json` is 15 bytes (`{"devices":[]}`) | Same — seed-only. Real Fire TVs in `FireTVDevice` DB table. |
+| `apps/web/data/tv-layout.json` is empty/template (61 bytes) | Layout migrated to `BartenderLayout` DB table in v2.11.0. JSON is seed-only. |
+| `apps/web/data/channel-presets-cable.json` / `-directv.json` is `{"presets":[]}` | Seed-only on main. Each location's branch has its own populated copy; auto-update keeps location's via `LOCATION_PATHS_OURS`. |
+| `apps/web/data/atlas-configs/*.json` missing | Each location has its own. Gitignored on main. |
+| `ecosystem.config.js` has `process.env.SPORTS_GUIDE_API_KEY` (not literal value) | CORRECT — values come from `.env` per location. The hardcoded version was the security leak v2.32.38 fixed. |
+| `.env` has `SPORTS_GUIDE_API_KEY` set | This IS the source of truth. Don't STOP unless it's MISSING. |
+| New schema tables added to `packages/database/src/schema.ts` and `drizzle-kit push` already ran | Tables will exist. The `schema_push` step runs BEFORE this checkpoint. Don't double-check. |
+| `next.config.js` has new redirect rule | Additive; route consolidation is documented in CLAUDE.md §8a. |
+| Package version bump in `package.json` is "huge" (e.g. 14 versions) | Locations get bunched updates. Common after a multi-version session. Not a blocker. |
+
+## REAL STOP CONDITIONS — these ARE actual blockers, STOP on these:
+
+- Schema migration that drops a column or table the code still reads (`drizzle-kit push` would have warned but check the merge for breaking changes)
+- New required env var introduced in code that is NOT in this location's `.env` (and isn't covered by VERSION_SETUP_GUIDE auto-add step)
+- Hardcoded credentials/secrets ending up in shared files (the v2.32.38 issue)
+- Working tree has uncommitted changes that the merge would have overwritten (PRE_MERGE_RESET_PATHS in v2.32.26 should have caught these)
+- DB query that returned empty when CLAUDE.md says it must have rows (e.g. `Location` table empty → auth broken)
+
 You are doing post-merge review. The git merge from origin/main onto the
 location branch completed without conflicts, `npm ci` has finished
 installing dependencies, AND `drizzle-kit push` has run to apply any new
