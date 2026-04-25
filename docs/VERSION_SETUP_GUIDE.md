@@ -187,6 +187,721 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.35 — Resolver handles add/add + .claude/locations to OURS
+**Released:** 2026-04-25
+
+Stoneyard-Appleton's auto-update kept failing at merge step on
+`.claude/locations/stoneyard-appleton.md`. v2.32.23 added stub files
+to main for all 6 locations; some location branches had their own
+pre-existing versions → git "add/add" conflict (status `^AA`, not
+`^UU`) → resolver didn't catch it → exit 3.
+
+**Changes:**
+- `.claude/locations` added to `LOCATION_PATHS_OURS`. Each location
+  maintains its own hardware reference; main's stub is just a starting
+  point for new locations.
+- Conflict resolver now matches `^(UU|AA|DU|UD)` (modify/modify,
+  add/add, delete-by-them, delete-by-us) instead of just `^UU`. The
+  loops also iterate per-conflict-file so directory entries in the
+  path arrays resolve every nested conflict.
+
+**Required Manual Step:** None.
+
+**Verification:**
+```bash
+grep -E "CONFLICT_RE|.claude/locations" /home/ubuntu/Sports-Bar-TV-Controller/scripts/auto-update.sh
+# Expect: CONFLICT_RE='^(UU|AA|DU|UD)' and ".claude/locations" in OURS array
+```
+
+**Rollback:** `git revert` is clean.
+
+---
+
+### v2.32.34 — Tolerate markdown-bold DECISION lines from Haiku
+**Released:** 2026-04-25
+
+Haiku 4.5 wraps the DECISION line in markdown bold (`**DECISION: GO**`).
+The case-statement matcher in `run_checkpoint()` required the literal
+prefix `DECISION:` so it didn't match → UNDETERMINED → STOP. Appleton
+hit this on the first Haiku run; everything else worked but the rollup
+classified the success as failure.
+
+**Changes:**
+- `scripts/auto-update.sh run_checkpoint()` strips leading non-alpha
+  chars before the case match (`sed -E 's/^[^A-Z]*//'`). Now
+  `**DECISION: GO**`, `> DECISION: GO`, ` DECISION: GO`, etc. all
+  classify correctly.
+
+**Required Manual Step:** None.
+
+**Verification:**
+```bash
+echo '**DECISION: GO**' | sed -E 's/^[^A-Z]*//'
+# Expect: DECISION: GO
+```
+
+**Rollback:** `git revert` is clean.
+
+---
+
+### v2.32.33 — Risk-aware checkpoint-model picker via LOCATION_UPDATE_NOTES
+**Released:** 2026-04-25
+
+v2.32.32 made Haiku 4.5 the default checkpoint model. Cheap + fast +
+high rate limit, but might miss subtle cross-file implications on big
+refactors. v2.32.33 adds an opt-in escalation: tag a release entry in
+`docs/LOCATION_UPDATE_NOTES.md` with `**Checkpoint model:** sonnet`
+(or `opus`) and `auto-update.sh` will use that beefier model for the
+whole update run.
+
+**Changes:**
+- `scripts/auto-update.sh` greps `LOCATION_UPDATE_NOTES.md` for
+  `Checkpoint model: (haiku|sonnet|opus)` before checkpoint A. If
+  found, exports `CLAUDE_API_MODEL` to override the default. Operator's
+  pre-set `CLAUDE_API_MODEL` in `.env` still wins (env var takes
+  precedence — script only sets it when unset).
+- `docs/LOCATION_UPDATE_NOTES.md` format docs updated to document the
+  new optional flag.
+
+**Usage:** when shipping a risky release (schema migration, big
+refactor, cross-cutting change) add this line to the LOCATION_UPDATE_NOTES
+entry alongside Risk/What-changed:
+```
+**Checkpoint model:** sonnet
+```
+Each location's next auto-update will use Sonnet 4.6 instead of
+Haiku 4.5 for the deeper reasoning. Remove the flag from the entry
+once the risky update has crossed the fleet (Haiku is cheaper and
+faster for routine work).
+
+**Required Manual Step:** None.
+
+**Verification:**
+```bash
+grep -A2 "Risk-model override" /home/ubuntu/sports-bar-data/update-logs/$(ls -t /home/ubuntu/sports-bar-data/update-logs/ | head -1) | head
+# Expect a line if the active LOCATION_UPDATE_NOTES entry has a model flag.
+```
+
+**Rollback:** `git revert` is clean. The flag is optional; entries
+without it just use the default Haiku.
+
+---
+
+### v2.32.32 — Default checkpoint model: Haiku 4.5 (~5x rate-limit headroom)
+**Released:** 2026-04-25
+
+Sonnet 4.6 hits the same 30k input-tokens/min org cap as Opus 4.7 — the
+limit is per-org, not per-model. When 4 locations auto-update in
+parallel (4-host fleet bootstrap), Sonnet runs out of headroom even
+with the v2.32.31 4/5/3 tool-call budget. Greenville + Appleton both
+exhausted retries during a 4-way parallel run.
+
+**Changes:**
+- `scripts/checkpoint-runner.py` `MODEL` default switched from
+  `claude-sonnet-4-6` → `claude-haiku-4-5-20251001`. Haiku 4.5 has ~5x
+  higher per-org rate limit. Checkpoints are bounded verify-tasks
+  (run SQL/git, compare, decide GO/CAUTION/STOP) — no novel reasoning
+  needed; Haiku is plenty.
+- `scripts/auto-update.sh` log line updated to show the new default.
+- Override via `CLAUDE_API_MODEL` env in `.env` if a specific
+  checkpoint needs Sonnet/Opus.
+
+**Smoke-tested:** Haiku 4.5 returned correct DECISION in 2 turns on
+the same test prompt as v2.32.28/29.
+
+**Required Manual Step:** None.
+
+**Verification:**
+```bash
+grep "MODEL = " /home/ubuntu/Sports-Bar-TV-Controller/scripts/checkpoint-runner.py
+# Expect: MODEL = os.environ.get("CLAUDE_API_MODEL", "claude-haiku-4-5-20251001")
+```
+
+**Rollback:** `git revert` is clean. To revert just the model default,
+set `CLAUDE_API_MODEL=claude-sonnet-4-6` in `.env`.
+
+---
+
+### v2.32.31 — Hard tool budget on checkpoint prompts (4/5/3 calls max)
+**Released:** 2026-04-25
+
+Sonnet at Lucky's checkpoint A used 9 tool calls + 6 retries → 7 minutes;
+checkpoint B used 11 calls + 11 retries → didn't finish in 15min budget.
+Each call re-sends full message history → input-token rate limit → 429
+backoff → cumulative time blows the budget. Operator waited 15+ min for
+one location to update; doesn't scale.
+
+**Changes:**
+- `scripts/prompts/checkpoint-a.txt` prepended HARD BUDGET: max 4 tool
+  calls, batch bash one-liners, no per-file `git log -p`, decide CAUTION
+  if budget exhausted.
+- `scripts/prompts/checkpoint-b.txt` same with max 5 calls.
+- `scripts/prompts/checkpoint-c.txt` same with max 3 calls (verify-install
+  already ran, sanity check only).
+- `scripts/checkpoint-runner.py` `MAX_TURNS` 15 → 6 hard cap (matches
+  per-prompt budgets; can't loop forever).
+
+**Required Manual Step:** None.
+
+**Verification:**
+```bash
+grep -E "HARD BUDGET|MAX_TURNS" /home/ubuntu/Sports-Bar-TV-Controller/scripts/prompts/checkpoint-*.txt /home/ubuntu/Sports-Bar-TV-Controller/scripts/checkpoint-runner.py
+# Expect: HARD BUDGET line at top of each prompt; MAX_TURNS = 6
+```
+
+**Rollback:** `git revert` is clean.
+
+---
+
+### v2.32.30 — Bigger checkpoint timeouts + tighter tool-output cap
+**Released:** 2026-04-25
+
+v2.32.29 fixed the rate-limit error class but the 180s checkpoint A
+timeout was still too tight when Sonnet hit two 429s back-to-back
+(45s + 93s server retry-after). Lucky's checkpoint A failed mid-tool-loop.
+
+**Changes:**
+- `scripts/auto-update.sh` checkpoint timeouts:
+  - A: 180s → 600s
+  - B: 300s → 900s
+  - C: 300s → 600s
+- `scripts/checkpoint-runner.py` `TOOL_OUTPUT_CAP_BYTES`: 64 KB → 16 KB.
+  Smaller cap keeps the cumulative message history from re-sending
+  hundreds of KB on each subsequent turn, the actual driver of input-
+  token-rate-limit churn.
+- Log line in run_checkpoint() updated to show the correct default
+  model name (was still "claude-opus-4-7").
+
+**Required Manual Step:** None.
+
+**Verification:**
+```bash
+grep -E "Checkpoint .* timeout|TOOL_OUTPUT_CAP" /home/ubuntu/Sports-Bar-TV-Controller/scripts/auto-update.sh
+# Expect: timeouts of 600/900/600 in run_checkpoint calls.
+```
+
+**Rollback:** `git revert` is clean.
+
+---
+
+### v2.32.29 — Checkpoint runner: Sonnet 4.6 default + 429 retry
+**Released:** 2026-04-25
+
+v2.32.28's tool-use loop made 5+ turns of bash inspection per checkpoint.
+Each turn re-sends the full message history → cumulative input tokens hit
+Opus 4.7's 30k-tokens-per-minute rate limit → HTTP 429 → checkpoint failed.
+
+**Changes:**
+- `scripts/checkpoint-runner.py` default model switched from
+  `claude-opus-4-7` → `claude-sonnet-4-6`. Sonnet has ~4x the rate limit
+  and is fully capable for checkpoint verification (running git/sqlite
+  reads, not synthesizing novel code). Override via `CLAUDE_API_MODEL`
+  env var if a specific checkpoint needs Opus.
+- New retry loop on HTTP 429: honors `retry-after` header if present,
+  else exponential backoff (30s, 60s, 120s), 3 retries max.
+
+**Smoke-tested:** Sonnet 4.6 ran the same test prompt as v2.32.28,
+returned correct DECISION in 2 turns.
+
+**Required Manual Step:** None.
+
+**Verification:**
+```bash
+grep -E "model=|HTTP 429" /home/ubuntu/sports-bar-data/update-logs/$(ls -t /home/ubuntu/sports-bar-data/update-logs/ | head -1) | head
+# Expect: "model=claude-sonnet-4-6" lines, no 429s.
+```
+
+**Rollback:** `git revert` is clean. Setting `CLAUDE_API_MODEL=claude-opus-4-7`
+in `.env` reverts to the older default model only (still uses tool use loop).
+
+---
+
+### v2.32.28 — Checkpoint API path now supports tool use (bash + read_file)
+**Released:** 2026-04-25
+
+v2.32.20's API path was a plain text-completion call. Checkpoint A/B/C
+prompts expect the model to inspect git state, sqlite tables, .env, and
+log tails before deciding GO/CAUTION/STOP. With no tool access, the
+model correctly said "I cannot execute these commands" and returned
+DECISION: STOP. Lucky's + Leg Lamp both failed at checkpoint_b on this.
+
+**Changes:**
+- New `scripts/checkpoint-runner.py` — Anthropic SDK-style messages loop
+  with two tools: `bash` (cwd=repo root, 60s timeout, 64 KB output cap)
+  and `read_file` (64 KB cap). Loops `tool_use → tool_result` up to 15
+  turns until model emits text-only DECISION.
+- `scripts/auto-update.sh run_checkpoint()` now invokes the runner
+  instead of inline curl + python text-only call. CLI fallback path
+  (when `ANTHROPIC_API_KEY` unset) is unchanged.
+
+**Smoke-tested:** runner executed `sqlite3` against production.db and
+returned a correct DECISION in 2 turns.
+
+**Required Manual Step:** None. `python3` is already a hard dep of the
+auto-update preflight (added in v2.32.20).
+
+**Verification:**
+```bash
+# After next auto-update, look for the tool-use turns in the log
+grep "checkpoint-runner" /home/ubuntu/sports-bar-data/update-logs/$(ls -t /home/ubuntu/sports-bar-data/update-logs/ | head -1) | head -10
+# Expect lines like: turn=1 stop_reason=tool_use tool_uses=N
+```
+
+**Rollback:** `git revert` is clean. Old text-only API path is gone but
+CLI fallback still functional for hosts without an API key.
+
+---
+
+### v2.32.27 — Source nvm in auto-update.sh + rollback.sh
+**Released:** 2026-04-25
+
+Hosts that installed Node via nvm (Leg Lamp) had `npm` only on the
+interactive bash PATH, not on cron / setsid subshells. Auto-update.sh
+exited 127 ("npm: command not found") at npm_ci or build phase, then
+rollback.sh hit the same error trying to realign node_modules → exit
+99 (CRITICAL: rollback failed) even though the git rollback itself
+succeeded.
+
+**Changes:**
+- `scripts/auto-update.sh` sources `~/.nvm/nvm.sh` (if present) at
+  the top, runs `nvm use default` to activate the alias.
+- `scripts/rollback.sh` same source block at the top.
+- Hosts using apt's `/usr/bin/npm` (graystone, luckys, appleton,
+  greenville, holmgren) are unaffected — the nvm script is a no-op
+  when `~/.nvm/nvm.sh` doesn't exist.
+
+**Required Manual Step:** None. Hosts without nvm continue using
+their system npm. Hosts with nvm pick up the default-version automatically.
+
+**Verification (post-update at the affected location):**
+```bash
+which npm
+# Expect: /usr/bin/npm OR /home/ubuntu/.nvm/versions/node/v20.20.0/bin/npm
+bash -c '. ~/.nvm/nvm.sh --no-use && nvm use default >/dev/null && which npm'
+# Expect: a valid path to npm
+```
+
+**Rollback:** `git revert` is clean.
+
+---
+
+### v2.32.26 — auto-update.sh: pre-clean working tree + CLAUDE.md takes main
+**Released:** 2026-04-24
+
+Unblocks the fleet from 4+ days of stuck nightly auto-updates. Two distinct
+failure classes resolved:
+
+**Class 1 — CLAUDE.md merge conflict (graystone today, others imminent).**
+Main shipped v2.32.21/22 simplify pass (1122 → 672 lines, extracted to
+satellites). Location branches carried local commits like holmgren-way's
+`8610e1e2 docs(claude): add Fire TV Cube launcher-hosted Prime Video
+gotcha (v2.28.9)`. Auto-resolver did NOT have `CLAUDE.md` in any
+LOCATION_PATHS list → "merge conflict on non-whitelisted file" → exit 3.
+
+**Class 2 — auto-update.sh self-update conflict (every location after the
+bootstrap-fix dance).** Operator hot-patches a new `auto-update.sh` into
+the working tree without committing. Next merge step then aborts with
+"Your local changes would be overwritten by merge" → exit 4. Today's
+workaround was a manual commit; that's now obviated.
+
+**Changes:**
+- `scripts/auto-update.sh` LOCATION_PATHS_THEIRS gains `CLAUDE.md`. Any
+  conflict on `CLAUDE.md` automatically takes main's version.
+- New PRE_MERGE_RESET_PATHS loop in the preflight phase: for any path that
+  will take main's version anyway (auto-update.sh, rollback.sh,
+  CLAUDE.md, package.json, etc.), `git checkout HEAD -- <path>` discards
+  uncommitted edits before the fetch+merge step. The merge then proceeds
+  cleanly and the conflict resolver overlays main's version on top.
+- `CLAUDE.md` adds Standing Rule 9: "CLAUDE.md is main-only."
+
+**Required Manual Step:** None. The fix lands as part of the merge into
+each location. First post-fix update may still hit the bootstrap dance
+once if it's already in flight; subsequent runs are clean.
+
+**Verification:**
+```bash
+# After merge lands, on each location branch:
+grep -A1 'LOCATION_PATHS_THEIRS=' scripts/auto-update.sh | grep CLAUDE.md
+# Expect: "CLAUDE.md" inside the array (with the v2.32.26 comment block above it).
+
+# Confirm pre-clean loop exists:
+grep -n 'PRE_MERGE_RESET_PATHS' scripts/auto-update.sh
+# Expect: a line in the preflight section (~line 487) plus the array def.
+```
+
+**Rollback:** `git revert <sha>` is safe — script reverts to v2.32.25
+behavior. Only side effect: locations that had hot-patched
+`auto-update.sh` in their working trees would again need a manual
+commit before the next auto-update.
+
+**Doesn't fix (intentionally):**
+- Class 3 (Claude Code CLI not installed at graystone/appleton) is
+  already handled by v2.32.20's API path — preflight at
+  `scripts/auto-update.sh:466` skips the `claude --version` check when
+  `ANTHROPIC_API_KEY` is set in `.env`.
+- Class 4 (CLI cap exhaustion at Holmgren/leglamp) is the same — API
+  path bills per-token with no monthly cap.
+
+---
+
+### v2.32.25 — Shift brief surfaces fleet-stuck alerts to bartender
+**Released:** 2026-04-25
+
+When sister locations are stuck on auto-update, the bartender's pre-shift
+brief now flags it with a "TELL OWNER" line. Operator gets a heads-up
+without having to navigate to /fleet.
+
+**Why:** 4+ days of silent fleet-wide auto-update failures (graystone +
+appleton: CLI not installed; leglamp: CLI cap exhausted). Fleet dashboard
+showed `staleness: 'stuck'` but no notification path; operator had to
+remember to check.
+
+**Changes:**
+- `apps/web/src/app/api/ai/shift-brief/route.ts` `gatherShiftContext()`
+  fetches `/api/fleet/status` (8s timeout, soft-fail if unreachable) and
+  builds a `fleetAlerts` array of stuck/warning sister locations.
+- Prompt template adds a "Sister-location health" section + Format rule:
+  "If STUCK locations, add ONE line: TELL OWNER: <names> stuck on
+  auto-update."
+- Fallback brief (LLM unavailable) appends the same alerts.
+
+**Required Manual Step:** None. Pure additive change. Cache invalidates
+on the existing 10-minute TTL — bartender sees alerts within 10 minutes
+of fleet API turning red.
+
+**Verification:**
+```bash
+curl -s 'http://localhost:3001/api/ai/shift-brief?force=true' | python3 -c "import sys,json; print(json.load(sys.stdin).get('brief',''))"
+# If any sister location is stuck, expect a "TELL OWNER" line in the output.
+```
+
+**Rollback:** `git revert` is clean.
+
+---
+
+### v2.32.24 — bootstrap + auto-update WARN for missing ANTHROPIC_API_KEY
+**Released:** 2026-04-24
+
+All locations share the same `ANTHROPIC_API_KEY` (operator's
+single key). Without it in `.env`, auto-update.sh falls back to the
+Claude Code CLI subscription path — same path that hit "monthly usage
+limit" today and triggered v2.32.20.
+
+**Changes:**
+- `scripts/bootstrap-new-location.sh` accepts `--anthropic-api-key sk-ant-...`
+  and writes it to `.env` at first install. If neither flag nor existing
+  `.env` value, prints a WARN.
+- `scripts/auto-update.sh` preflight prints 3 WARN lines when the key is
+  missing, with the exact `echo ... >> .env` snippet.
+
+**Required Manual Step (CRITICAL — apply at every location):**
+
+The same API key from the operator goes in every location's `.env`. SSH
+into each host and run (idempotent — skips if already set):
+
+```bash
+KEY='sk-ant-...'  # paste the operator's shared key
+ENV=/home/ubuntu/Sports-Bar-TV-Controller/.env
+if ! grep -q '^ANTHROPIC_API_KEY=' "$ENV"; then
+  echo "ANTHROPIC_API_KEY=$KEY" >> "$ENV"
+  echo "[OK] added ANTHROPIC_API_KEY at $(hostname)"
+else
+  echo "[SKIP] $(hostname) already has ANTHROPIC_API_KEY"
+fi
+```
+
+Locations to apply (in order; all 6):
+
+1. holmgren-way (already done 2026-04-24)
+2. graystone
+3. lucky-s-1313
+4. leg-lamp
+5. stoneyard-appleton
+6. stoneyard-greenville
+
+**Verification:**
+
+```bash
+grep '^ANTHROPIC_API_KEY=' /home/ubuntu/Sports-Bar-TV-Controller/.env | sed 's/=.*/=<set>/'
+# Expect: ANTHROPIC_API_KEY=<set>
+```
+
+After the next auto-update at each location, look for this log line:
+```
+Claude path: Anthropic API (model=claude-opus-4-7)
+```
+NOT this:
+```
+Claude path: Claude Code CLI (...)
+WARN: ANTHROPIC_API_KEY missing from .env — using subscription CLI path.
+```
+
+**Rollback:** `git revert` is clean. The key in `.env` is harmless to leave in place.
+
+---
+
+### v2.32.23 — Hardware package READMEs + all location stubs (729 → 672 lines)
+**Released:** 2026-04-24
+
+Final cleanup pass. Cumulative CLAUDE.md size: 1122 → 672 (-40%). All
+remaining "satellite extraction" candidates done.
+
+**Per-package READMEs created (4 new):**
+- `packages/crestron/README.md` — DM/HD-MD/DMPS/NVX models, Telnet/CTP/CIP, output slot offset table.
+- `packages/bss-blu/README.md` — BSS Soundweb London BLU models, HiQnet TCP 1023.
+- `packages/dbx-zonepro/README.md` — ZonePRO TCP 3804, NO F0/64/00 prefix, failsafe Scene 1 workaround.
+- `packages/multiview/README.md` — 4K60 Quad-View hex frames, mode table, RS-232.
+
+CLAUDE.md §6 (Crestron) / §7 (Audio) / §8 (Multi-View) compressed to
+1-3 line refs pointing at the per-package READMEs.
+
+**Location stubs created (4 new):**
+- `.claude/locations/leg-lamp.md` (canary candidate; single-card matrix)
+- `.claude/locations/stoneyard-appleton.md` (multi-card)
+- `.claude/locations/stoneyard-greenville.md` (multi-card; v2.32.18 origin)
+- Renamed `.claude/locations/lucky-s.md` → `lucky-s-1313.md` (matches `location/lucky-s-1313` branch).
+
+`.claude/locations/README.md` updated with all 6 active locations + the
+matching hardware-ref filenames + the per-location-IPs-go-here rule.
+
+**Required Manual Step:** None at any location. Pure docs reorganization.
+
+**Verification:**
+
+```bash
+wc -l /home/ubuntu/Sports-Bar-TV-Controller/CLAUDE.md
+# Expect: 672
+
+ls /home/ubuntu/Sports-Bar-TV-Controller/.claude/locations/ | wc -l
+# Expect: 7 (README + 6 location files)
+
+ls /home/ubuntu/Sports-Bar-TV-Controller/packages/{crestron,bss-blu,dbx-zonepro,multiview}/README.md
+# Expect: all 4 files present
+```
+
+**At each location's next auto-update**, Claude at Checkpoint B should
+populate the location's `<branch>.md` device tables from the live DB
+if they're still TBD stubs (already documented in the stubs).
+
+**Rollback:** `git revert` is clean.
+
+---
+
+### v2.32.22 — CLAUDE.md deep simplify (961 → 729 lines)
+**Released:** 2026-04-24
+
+Second simplify pass. Cumulative 1122 → 729 (-35%). Extracted three
+sections to satellite docs/files; preserved all rules + behavior.
+
+**Extracted:**
+- §Key Package @sports-bar/config (28 lines) → `packages/config/README.md` (new)
+- §10 Holmgren Way Hardware (24 lines) → `.claude/locations/holmgren-way.md` (new). Per-location IPs were stale (192.168.4.x; actual is 10.11.3.x); new file pulls live IPs from DB.
+- UI Styling Guide (103 lines) → `docs/UI_STYLING.md` (new). Tagged "recommended pattern, not hard rule" to match reality.
+
+**Compressed in-place:**
+- V2 Monorepo Architecture: dropped the inline 26-line package tree (operators run `ls packages/` for the live list).
+- §8a Sports Guide Phase A/B/C/D narrative (15 lines → 1 paragraph). Consolidation is complete; phases are history.
+- §9 AI Scheduling: dropped "prior to vX.Y.Z" historical prose, kept current behavior (~30 lines saved).
+
+**New satellite files:**
+- `.claude/locations/holmgren-way.md` — DB-sourced hardware reference for Holmgren.
+- `packages/config/README.md` — full @sports-bar/config API + ConfigChangeTracker.
+- `docs/UI_STYLING.md` — dark theme styling guide.
+
+**Required Manual Step:** None. Pure docs reorganization.
+
+**Verification:**
+
+```bash
+wc -l /home/ubuntu/Sports-Bar-TV-Controller/CLAUDE.md
+# Expect: 729
+
+ls /home/ubuntu/Sports-Bar-TV-Controller/.claude/locations/holmgren-way.md \
+   /home/ubuntu/Sports-Bar-TV-Controller/packages/config/README.md \
+   /home/ubuntu/Sports-Bar-TV-Controller/docs/UI_STYLING.md
+# Expect: all 3 files present
+```
+
+**Rollback:** `git revert` is clean.
+
+---
+
+### v2.32.21 — CLAUDE.md simplify pass (1122 → 961 lines)
+**Released:** 2026-04-24
+
+Tightened CLAUDE.md by ~14% via the bundled `simplify` skill workflow.
+No semantic rule changes — just removed duplication, dead refs, and
+prose bloat. All Standing Rules preserved with same intent, just
+reformatted.
+
+**Changes:**
+- READ FIRST block trimmed to 2 numbered bullets (was 11 lines of prose).
+- §5 Cable Box: dropped legacy CEC file list (`cable-box-cec-service.ts`
+  etc — those files don't exist in repo anymore), kept the rule "no new
+  CEC".
+- §8 Wolf Pack Multi-View: was tagged "Future Implementation" but
+  `packages/multiview/` is built (commands.ts, multiview-service.ts,
+  serial-client.ts, types.ts). Reflected as implemented.
+- API Route Patterns: replaced 50-line code block with 1-line summary
+  + reference to canonical example route (50+ existing routes already
+  document the pattern).
+- Common Gotchas: collapsed #1 (body-stream) + #2 (GET no body) into
+  one entry; removed dead `/api/cec/cable-box/test` curl example;
+  renumbered #5a/#6/#7/#8/#9/#10 → #4/#5/#6/#7/#8/#9 (sequential).
+- Standing Rules 1-8: kept all 8, tightened wording. Each is now 1-3
+  sentences instead of paragraph-length. Defer-to-docs lines preserved
+  for rules 5/7/8.
+- Documentation References: removed broken link to non-existent
+  `CEC_DEPRECATION_NOTICE.md`; added OBSBOT_TAIL_2_PLAN.md.
+
+**Required Manual Step:** None. Pure docs change, no behavior impact.
+
+**Verification:**
+
+```bash
+wc -l /home/ubuntu/Sports-Bar-TV-Controller/CLAUDE.md
+# Expect: 961
+```
+
+**Rollback:** `git revert` is clean.
+
+---
+
+### v2.32.20 — auto-update.sh: Anthropic API path replaces CLI subscription
+**Released:** 2026-04-24
+
+`scripts/auto-update.sh` now invokes the Anthropic API directly for
+Checkpoint A/B/C decisions when `ANTHROPIC_API_KEY` is set in `.env`.
+Falls back to the Claude Code CLI subscription path when the env var
+is unset.
+
+**Why:** The CLI path uses the user's Claude Pro/Max subscription,
+which has a monthly token cap. Holmgren hit "You've hit your org's
+monthly usage limit" on Checkpoint B mid-day 2026-04-24 → checkpoint
+returned UNDETERMINED → automatic rollback. API path bills per-token
+and has no monthly cap, so unattended cron updates can't be silently
+defeated by quota exhaustion.
+
+**Changes:**
+- `run_checkpoint()` chooses path by `ANTHROPIC_API_KEY` presence.
+  API path uses `curl` + `python3` to POST to `/v1/messages`, default
+  model `claude-opus-4-7` (override via `CLAUDE_API_MODEL`).
+- Preflight check accepts EITHER API key OR CLI binary; fails only
+  when neither is available.
+- `.env` is now sourced at the start of preflight so checkpoint phases
+  see the API key. The original `.env` source at the build phase
+  (line ~966) is preserved for Turbo/Next.js.
+
+**Required Manual Step:** None per location IF `ANTHROPIC_API_KEY` is
+already in `.env`. Locations without the key keep using the CLI path
+automatically, no breakage.
+
+**To opt INTO the API path** at a location that doesn't have the key:
+
+```bash
+# Get the actual key from the operator (1Password / shared secrets)
+if ! grep -q '^ANTHROPIC_API_KEY=' /home/ubuntu/Sports-Bar-TV-Controller/.env; then
+  echo 'ANTHROPIC_API_KEY=sk-ant-...' >> /home/ubuntu/Sports-Bar-TV-Controller/.env
+fi
+```
+
+After this, the next auto-update.sh run will use the API path. No
+restart required (the script sources .env each invocation).
+
+**Verification:**
+
+```bash
+# Confirm API path is being chosen at this location:
+grep -E "Claude path:" /home/ubuntu/sports-bar-data/update-logs/$(ls -t /home/ubuntu/sports-bar-data/update-logs/ | head -1)
+# Expect: "Claude path: Anthropic API (model=claude-opus-4-7)"
+# CLI fallback shows: "Claude path: Claude Code CLI (...)"
+```
+
+**Rollback:** `git revert` is clean. The CLI path is preserved as the
+fallback so removing the API call code doesn't break anything as long
+as the CLI is still installed.
+
+---
+
+### v2.32.11 → v2.32.17 — Bartender remote: input tracking + logos + scheduler guards
+**Released:** 2026-04-24
+
+Seven small ships during a single Holmgren operator session. All
+software-only / additive — no schema changes, no env vars required, no
+seed data. Auto-update.sh handles the rebuild + PM2 restart.
+
+**v2.32.11** — `bartender-schedule` POST: tolerant lookup when client
+sends `awayTeam="Unknown"` or `""`. Fallback path matches `homeTeamName`
++ empty `awayTeamName` + ±1hr time window. Unblocks NFL Draft, UFC PPV,
+and other single-entity events from 404'ing.
+
+**v2.32.12** — Past-game guards (server + client). POST returns 400 if
+`endTime < now`. Channel-guide remote short-circuits with operator hint
+before POST when program endTime (or startTime + 3h fallback) is past.
+Stops auto-reverter churn from operators tapping yesterday's session
+of a multi-day event still visible in Rail Media (NFL Draft, Masters).
+
+**v2.32.13** — Fire TV current-app mirrored into `InputCurrentChannel`.
+Two write paths: (a) `firestick-scout` heartbeat upserts when scout
+reports `currentApp`; (b) `channel-presets/tune` route resolves Fire TV
+matrix input via `FireTVDevice.inputChannel` and runs the same upsert
+that cable/DirecTV use. Stored as `channelNumber="APP"`,
+`channelName=<friendly>`. UI render branches on `"APP"` to show app
+name instead of `Ch APP`.
+
+**v2.32.14** — 17 new streaming-app logo registers in `channel-logos.ts`
+(Netflix, Disney+, Hulu, Max, YouTube, fubo, Sling, DAZN, Tubi, Pluto,
+Vudu, DirecTV Stream, MLB.TV, NBA, NHL, NFL, NFHS, B1G+, NBC Sports,
+Fox Sports app, Atmosphere, Home).
+
+**v2.32.15** — `GET /api/matrix/current-channels` hydrates empty
+`channelName` from `ChannelPreset` table by `${deviceType}|${channelNumber}`
+lookup. Fixes missing logos on cable/DirecTV inputs (tune route only sets
+channelName when user clicks a labeled preset; manual tunes left it null,
+which suppressed logo render).
+
+**v2.32.16** — Server-side current-app poll. New `pollFiretvCurrentApp`
+tick in scheduler-service (60s interval, 45s initial delay) hits
+`/api/firetv-devices/[id]/current-app` for each online + non-disabled +
+inputChannel-mapped Fire TV. The endpoint also upserts InputCurrentChannel
+after the ADB probe. Workaround for older Sports Bar Scout APK builds at
+Holmgren that report empty `currentApp` in heartbeats.
+
+**v2.32.17** — Channel logo badge fallback. SimpleIcons removed many
+trademarked sports brand logos in 2025 (espn, nfl, hulu, peacock,
+primevideo, foxsports, sling, pluto, disneyplus all 404). New
+`apps/web/src/components/ui/channel-logo.tsx` `<ChannelLogo>` component
+swaps to text badge on `<img>` onError. 9 broken `SI()` calls null'd
+in channel-logos.ts (each already has colored badge defined). 14 new
+register entries (Spanish networks, Bally MW, NHL Center Ice, UEFA,
+Willow Cricket, Overtime, Fox Sports Prime, DTV PPV, FDNOR+, AMZNP).
+`normalizeForLogo()` strips parens + trailing `-SD`.
+
+**Required Manual Step:** None. All seven versions are software-only;
+build + PM2 restart (handled by auto-update.sh) is sufficient.
+
+**Verification (post-update, optional):**
+
+```bash
+# v2.32.13 + v2.32.16 — Fire TV input rows should appear within 60s of restart
+DB=/home/ubuntu/sports-bar-data/production.db
+sqlite3 "$DB" "SELECT inputNum, inputLabel, channelNumber, channelName FROM InputCurrentChannel WHERE deviceType='firetv';"
+# Expect: rows for each online Fire TV with channelNumber='APP' and friendly app name.
+
+# v2.32.15 — current-channels endpoint should return non-null channelName for cable/DirecTV with known channels
+curl -s http://localhost:3001/api/matrix/current-channels | python3 -c "import sys,json; d=json.load(sys.stdin); [print(k, v.get('inputLabel'), v.get('channelNumber'), v.get('channelName')) for k,v in sorted(d['channels'].items(), key=lambda x: int(x[0]))]"
+# Expect: cable boxes 1-4 show ESPN/ESPN2/ESPN U/ESPN News, DirecTV inputs show their network names.
+```
+
+**Rollback:** `git revert` is clean for any of these — pure software,
+no DB/data side effects. InputCurrentChannel rows added by v2.32.13/16
+are harmless if left after revert (UI just won't read them).
+
+<!-- verify-description: production.db reachable + Fire TV devices have inputChannel mapping (required by v2.32.13/16 mirror path) -->
+<!-- verify-sql: SELECT id FROM FireTVDevice WHERE inputChannel IS NOT NULL AND inputChannel > 0 LIMIT 1 -->
+
+---
+
 ### v2.32.4 → v2.32.7 — Auto-update robustness Phases 1-4
 **Released:** 2026-04-23
 
