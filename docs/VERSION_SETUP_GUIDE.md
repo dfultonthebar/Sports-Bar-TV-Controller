@@ -187,6 +187,37 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.30 — Bigger checkpoint timeouts + tighter tool-output cap
+**Released:** 2026-04-25
+
+v2.32.29 fixed the rate-limit error class but the 180s checkpoint A
+timeout was still too tight when Sonnet hit two 429s back-to-back
+(45s + 93s server retry-after). Lucky's checkpoint A failed mid-tool-loop.
+
+**Changes:**
+- `scripts/auto-update.sh` checkpoint timeouts:
+  - A: 180s → 600s
+  - B: 300s → 900s
+  - C: 300s → 600s
+- `scripts/checkpoint-runner.py` `TOOL_OUTPUT_CAP_BYTES`: 64 KB → 16 KB.
+  Smaller cap keeps the cumulative message history from re-sending
+  hundreds of KB on each subsequent turn, the actual driver of input-
+  token-rate-limit churn.
+- Log line in run_checkpoint() updated to show the correct default
+  model name (was still "claude-opus-4-7").
+
+**Required Manual Step:** None.
+
+**Verification:**
+```bash
+grep -E "Checkpoint .* timeout|TOOL_OUTPUT_CAP" /home/ubuntu/Sports-Bar-TV-Controller/scripts/auto-update.sh
+# Expect: timeouts of 600/900/600 in run_checkpoint calls.
+```
+
+**Rollback:** `git revert` is clean.
+
+---
+
 ### v2.32.29 — Checkpoint runner: Sonnet 4.6 default + 429 retry
 **Released:** 2026-04-25
 
