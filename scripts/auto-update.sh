@@ -338,7 +338,7 @@ run_checkpoint() {
     # said "I cannot execute commands" and emitted DECISION: STOP. The new
     # runner exposes `bash` and `read_file` tools and loops the
     # tool_use → tool_result cycle until the model returns a text-only DECISION.
-    log "Checkpoint $label: invoking Anthropic API w/ tool use (model=${CLAUDE_API_MODEL:-claude-sonnet-4-6}, timeout ${timeout_secs}s)"
+    log "Checkpoint $label: invoking Anthropic API w/ tool use (model=${CLAUDE_API_MODEL:-claude-haiku-4-5-20251001}, timeout ${timeout_secs}s)"
     if ! timeout "$timeout_secs" python3 "$REPO_ROOT/scripts/checkpoint-runner.py" "$label" "$prompt_file" \
          > "$out_file" 2>>"$LOG_FILE"; then
       log "Checkpoint $label: checkpoint-runner.py failed or timed out"
