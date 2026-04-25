@@ -25,6 +25,18 @@
 # =============================================================================
 
 set -uo pipefail
+
+# v2.32.27 — Source nvm if present so npm/node are on PATH for cron + setsid
+# subshells. Hosts that installed Node via nvm (Leg Lamp) didn't have npm on
+# the default PATH; the build phase exited 127 with "npm: command not found"
+# and the rollback phase couldn't run npm ci to realign node_modules.
+# Hosts using the apt npm at /usr/bin/npm are unaffected by this source.
+if [ -s "$HOME/.nvm/nvm.sh" ]; then
+  # shellcheck disable=SC1091
+  . "$HOME/.nvm/nvm.sh" --no-use 2>/dev/null
+  # Activate the default nvm alias if one is set; falls through silently if not.
+  nvm use default >/dev/null 2>&1 || true
+fi
 # NOTE: we intentionally do NOT use `set -e`. Each step checks its own exit
 # status and routes to the trap via `exit N`. `set -e` interacts poorly with
 # pipes and `|| return` patterns we need for state-updating sub-calls.
@@ -320,55 +332,20 @@ run_checkpoint() {
   # dance) only when ANTHROPIC_API_KEY is unset — useful for hosts that
   # haven't been provisioned with an API key yet.
   if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
-    log "Checkpoint $label: invoking Anthropic API (model=${CLAUDE_API_MODEL:-claude-opus-4-7}, timeout ${timeout_secs}s)"
-    local model="${CLAUDE_API_MODEL:-claude-opus-4-7}"
-    local request_file
-    request_file=$(mktemp)
-    # Build JSON safely via python — handles multi-KB prompts + special chars
-    # without shell escape headaches that caustic jq -Rs would still leave.
-    python3 -c "
-import json, sys
-with open('$prompt_file') as f:
-    prompt = f.read()
-sys.stdout.write(json.dumps({
-    'model': '$model',
-    'max_tokens': 4096,
-    'messages': [{'role': 'user', 'content': prompt}]
-}))
-" > "$request_file" || {
-      rm -f "$request_file"
-      fail "Checkpoint $label: failed to build API request JSON" 2
-    }
-    local http_status
-    http_status=$(timeout "$timeout_secs" curl -sS -o "$out_file.raw" -w '%{http_code}' \
-      -X POST https://api.anthropic.com/v1/messages \
-      -H "x-api-key: $ANTHROPIC_API_KEY" \
-      -H "anthropic-version: 2023-06-01" \
-      -H "content-type: application/json" \
-      --data @"$request_file" 2>>"$LOG_FILE") || {
-      rm -f "$request_file" "$out_file.raw"
-      fail "Checkpoint $label: API call timed out or curl errored" 2
-    }
-    rm -f "$request_file"
-    if [ "$http_status" != "200" ]; then
-      log "Checkpoint $label: API returned HTTP $http_status"
-      log "Checkpoint $label body: $(head -c 1000 "$out_file.raw" 2>/dev/null)"
-      rm -f "$out_file.raw"
-      fail "Checkpoint $label: API HTTP $http_status" 2
+    # v2.32.28 — API path now uses tool use via scripts/checkpoint-runner.py.
+    # The plain text-completion path failed Checkpoint B at Lucky's + Leg Lamp
+    # because the prompts expect bash/sqlite3 execution; the model correctly
+    # said "I cannot execute commands" and emitted DECISION: STOP. The new
+    # runner exposes `bash` and `read_file` tools and loops the
+    # tool_use → tool_result cycle until the model returns a text-only DECISION.
+    log "Checkpoint $label: invoking Anthropic API w/ tool use (model=${CLAUDE_API_MODEL:-claude-opus-4-7}, timeout ${timeout_secs}s)"
+    if ! timeout "$timeout_secs" python3 "$REPO_ROOT/scripts/checkpoint-runner.py" "$label" "$prompt_file" \
+         > "$out_file" 2>>"$LOG_FILE"; then
+      log "Checkpoint $label: checkpoint-runner.py failed or timed out"
+      log "Checkpoint $label output: $(head -c 1000 "$out_file" 2>/dev/null)"
+      rm -f "$out_file"
+      fail "Checkpoint $label: checkpoint-runner.py failure" 2
     fi
-    # Extract text from messages response: content[0].text
-    python3 -c "
-import json
-with open('$out_file.raw') as f:
-    d = json.load(f)
-print(d.get('content', [{}])[0].get('text', ''))
-" > "$out_file" 2>>"$LOG_FILE" || {
-      log "Checkpoint $label: failed to parse API response"
-      log "Checkpoint $label raw body: $(head -c 500 "$out_file.raw" 2>/dev/null)"
-      rm -f "$out_file.raw" "$out_file"
-      fail "Checkpoint $label: API response parse failure" 2
-    }
-    rm -f "$out_file.raw"
   else
     log "Checkpoint $label: ANTHROPIC_API_KEY unset — falling back to Claude Code CLI (timeout ${timeout_secs}s)"
     # Original CLI path. PTY wrap + --dangerously-skip-permissions, with
