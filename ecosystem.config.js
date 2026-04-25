@@ -29,9 +29,9 @@ module.exports = {
         NODE_ENV: 'production',
         PORT: 3001,
         ADB_VENDOR_KEYS: '/home/ubuntu/.android',
-        // Sports Guide API (The Rail Media)
-        SPORTS_GUIDE_API_KEY: '12548RK0000000d2bb701f55b82bfa192e680985919',
-        SPORTS_GUIDE_USER_ID: '258351',
+        // Sports Guide API (The Rail Media) — per-location values from .env
+        SPORTS_GUIDE_API_KEY: process.env.SPORTS_GUIDE_API_KEY,
+        SPORTS_GUIDE_USER_ID: process.env.SPORTS_GUIDE_USER_ID,
         SPORTS_GUIDE_API_URL: 'https://guide.thedailyrail.com/api/v1',
         // Auth system — bind to the location row in the DB. Without this,
         // validatePIN() falls back to AUTH_CONFIG.LOCATION_ID='default-location'
