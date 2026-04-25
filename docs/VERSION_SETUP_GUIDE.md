@@ -187,6 +187,37 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.31 — Hard tool budget on checkpoint prompts (4/5/3 calls max)
+**Released:** 2026-04-25
+
+Sonnet at Lucky's checkpoint A used 9 tool calls + 6 retries → 7 minutes;
+checkpoint B used 11 calls + 11 retries → didn't finish in 15min budget.
+Each call re-sends full message history → input-token rate limit → 429
+backoff → cumulative time blows the budget. Operator waited 15+ min for
+one location to update; doesn't scale.
+
+**Changes:**
+- `scripts/prompts/checkpoint-a.txt` prepended HARD BUDGET: max 4 tool
+  calls, batch bash one-liners, no per-file `git log -p`, decide CAUTION
+  if budget exhausted.
+- `scripts/prompts/checkpoint-b.txt` same with max 5 calls.
+- `scripts/prompts/checkpoint-c.txt` same with max 3 calls (verify-install
+  already ran, sanity check only).
+- `scripts/checkpoint-runner.py` `MAX_TURNS` 15 → 6 hard cap (matches
+  per-prompt budgets; can't loop forever).
+
+**Required Manual Step:** None.
+
+**Verification:**
+```bash
+grep -E "HARD BUDGET|MAX_TURNS" /home/ubuntu/Sports-Bar-TV-Controller/scripts/prompts/checkpoint-*.txt /home/ubuntu/Sports-Bar-TV-Controller/scripts/checkpoint-runner.py
+# Expect: HARD BUDGET line at top of each prompt; MAX_TURNS = 6
+```
+
+**Rollback:** `git revert` is clean.
+
+---
+
 ### v2.32.30 — Bigger checkpoint timeouts + tighter tool-output cap
 **Released:** 2026-04-25
 
