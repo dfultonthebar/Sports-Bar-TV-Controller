@@ -187,6 +187,39 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.27 — Source nvm in auto-update.sh + rollback.sh
+**Released:** 2026-04-25
+
+Hosts that installed Node via nvm (Leg Lamp) had `npm` only on the
+interactive bash PATH, not on cron / setsid subshells. Auto-update.sh
+exited 127 ("npm: command not found") at npm_ci or build phase, then
+rollback.sh hit the same error trying to realign node_modules → exit
+99 (CRITICAL: rollback failed) even though the git rollback itself
+succeeded.
+
+**Changes:**
+- `scripts/auto-update.sh` sources `~/.nvm/nvm.sh` (if present) at
+  the top, runs `nvm use default` to activate the alias.
+- `scripts/rollback.sh` same source block at the top.
+- Hosts using apt's `/usr/bin/npm` (graystone, luckys, appleton,
+  greenville, holmgren) are unaffected — the nvm script is a no-op
+  when `~/.nvm/nvm.sh` doesn't exist.
+
+**Required Manual Step:** None. Hosts without nvm continue using
+their system npm. Hosts with nvm pick up the default-version automatically.
+
+**Verification (post-update at the affected location):**
+```bash
+which npm
+# Expect: /usr/bin/npm OR /home/ubuntu/.nvm/versions/node/v20.20.0/bin/npm
+bash -c '. ~/.nvm/nvm.sh --no-use && nvm use default >/dev/null && which npm'
+# Expect: a valid path to npm
+```
+
+**Rollback:** `git revert` is clean.
+
+---
+
 ### v2.32.26 — auto-update.sh: pre-clean working tree + CLAUDE.md takes main
 **Released:** 2026-04-24
 
