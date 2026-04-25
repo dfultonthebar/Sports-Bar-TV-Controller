@@ -187,6 +187,42 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.28 — Checkpoint API path now supports tool use (bash + read_file)
+**Released:** 2026-04-25
+
+v2.32.20's API path was a plain text-completion call. Checkpoint A/B/C
+prompts expect the model to inspect git state, sqlite tables, .env, and
+log tails before deciding GO/CAUTION/STOP. With no tool access, the
+model correctly said "I cannot execute these commands" and returned
+DECISION: STOP. Lucky's + Leg Lamp both failed at checkpoint_b on this.
+
+**Changes:**
+- New `scripts/checkpoint-runner.py` — Anthropic SDK-style messages loop
+  with two tools: `bash` (cwd=repo root, 60s timeout, 64 KB output cap)
+  and `read_file` (64 KB cap). Loops `tool_use → tool_result` up to 15
+  turns until model emits text-only DECISION.
+- `scripts/auto-update.sh run_checkpoint()` now invokes the runner
+  instead of inline curl + python text-only call. CLI fallback path
+  (when `ANTHROPIC_API_KEY` unset) is unchanged.
+
+**Smoke-tested:** runner executed `sqlite3` against production.db and
+returned a correct DECISION in 2 turns.
+
+**Required Manual Step:** None. `python3` is already a hard dep of the
+auto-update preflight (added in v2.32.20).
+
+**Verification:**
+```bash
+# After next auto-update, look for the tool-use turns in the log
+grep "checkpoint-runner" /home/ubuntu/sports-bar-data/update-logs/$(ls -t /home/ubuntu/sports-bar-data/update-logs/ | head -1) | head -10
+# Expect lines like: turn=1 stop_reason=tool_use tool_uses=N
+```
+
+**Rollback:** `git revert` is clean. Old text-only API path is gone but
+CLI fallback still functional for hosts without an API key.
+
+---
+
 ### v2.32.27 — Source nvm in auto-update.sh + rollback.sh
 **Released:** 2026-04-25
 
