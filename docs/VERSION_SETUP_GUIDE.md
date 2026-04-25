@@ -187,6 +187,36 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.35 — Resolver handles add/add + .claude/locations to OURS
+**Released:** 2026-04-25
+
+Stoneyard-Appleton's auto-update kept failing at merge step on
+`.claude/locations/stoneyard-appleton.md`. v2.32.23 added stub files
+to main for all 6 locations; some location branches had their own
+pre-existing versions → git "add/add" conflict (status `^AA`, not
+`^UU`) → resolver didn't catch it → exit 3.
+
+**Changes:**
+- `.claude/locations` added to `LOCATION_PATHS_OURS`. Each location
+  maintains its own hardware reference; main's stub is just a starting
+  point for new locations.
+- Conflict resolver now matches `^(UU|AA|DU|UD)` (modify/modify,
+  add/add, delete-by-them, delete-by-us) instead of just `^UU`. The
+  loops also iterate per-conflict-file so directory entries in the
+  path arrays resolve every nested conflict.
+
+**Required Manual Step:** None.
+
+**Verification:**
+```bash
+grep -E "CONFLICT_RE|.claude/locations" /home/ubuntu/Sports-Bar-TV-Controller/scripts/auto-update.sh
+# Expect: CONFLICT_RE='^(UU|AA|DU|UD)' and ".claude/locations" in OURS array
+```
+
+**Rollback:** `git revert` is clean.
+
+---
+
 ### v2.32.34 — Tolerate markdown-bold DECISION lines from Haiku
 **Released:** 2026-04-25
 

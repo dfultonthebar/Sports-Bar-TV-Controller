@@ -678,6 +678,13 @@ LOCATION_PATHS_OURS=(
   "apps/web/data/channel-presets-cable.json"
   "apps/web/data/channel-presets-directv.json"
   "apps/web/data/everpass-devices.json"
+  # v2.32.35 — per-location hardware reference docs. v2.32.23 added stub
+  # files for all 6 locations to main; some location branches (Stoneyard
+  # Appleton, Greenville) had their own pre-existing versions → add/add
+  # conflict on merge → exit 3. Location's version wins because each
+  # location maintains its own hardware notes (DB is the source of truth
+  # for actual IPs; these files are quick-reference for operators).
+  ".claude/locations"
   # v2.32.4 — per-location OTA broadcast affiliates (introduced v2.23.0).
   # Holmgren has WBAY/WFRV/WLUK/WGBA station aliases; Stoneyard's set is
   # different; Lucky's smaller. Without this entry, any future merge that
@@ -763,28 +770,38 @@ set -e 2>/dev/null || true
 
 if [ "$MERGE_EXIT" -ne 0 ]; then
   log "Merge had conflicts — applying auto-resolve rules"
+  # v2.32.35 — also catch add/add (^AA) + delete-by-them/us (DU/UD) in
+  # addition to modify/modify (^UU). Stoneyard-Appleton hit add/add on
+  # .claude/locations/stoneyard-appleton.md when v2.32.23 added a stub on
+  # main and the location had its own pre-existing version.
+  CONFLICT_RE='^(UU|AA|DU|UD)'
   for path in "${LOCATION_PATHS_OURS[@]}"; do
-    if git status --porcelain "$path" 2>/dev/null | grep -q "^UU"; then
-      log "  keeping LOCATION version: $path"
-      git checkout --ours "$path" 2>&1 | tee -a "$LOG_FILE"
-      git add "$path"
-    fi
+    # If the path is a directory, the status query lists every conflicted
+    # file inside it; resolve each one individually.
+    while IFS= read -r line; do
+      [ -z "$line" ] && continue
+      conflict_path="${line:3}"
+      log "  keeping LOCATION version: $conflict_path"
+      git checkout --ours "$conflict_path" 2>&1 | tee -a "$LOG_FILE"
+      git add "$conflict_path"
+    done < <(git status --porcelain "$path" 2>/dev/null | grep -E "$CONFLICT_RE")
   done
   for path in "${LOCATION_PATHS_THEIRS[@]}"; do
-    if git status --porcelain "$path" 2>/dev/null | grep -q "^UU"; then
-      log "  taking MAIN version: $path"
-      git checkout --theirs "$path" 2>&1 | tee -a "$LOG_FILE"
-      git add "$path"
-    fi
+    while IFS= read -r line; do
+      [ -z "$line" ] && continue
+      conflict_path="${line:3}"
+      log "  taking MAIN version: $conflict_path"
+      git checkout --theirs "$conflict_path" 2>&1 | tee -a "$LOG_FILE"
+      git add "$conflict_path"
+    done < <(git status --porcelain "$path" 2>/dev/null | grep -E "$CONFLICT_RE")
   done
 
-  # Prefix-based shared-software fallback. Any remaining UU file whose
-  # path starts with a SHARED_SOFTWARE_PREFIXES entry takes MAIN. Files
-  # in LOCATION_PATHS_OURS were already resolved above so the fallback
-  # only fires on files that ARE shared code.
-  if git status --porcelain | grep -q "^UU"; then
+  # Prefix-based shared-software fallback. Any remaining conflicted file
+  # whose path starts with a SHARED_SOFTWARE_PREFIXES entry takes MAIN.
+  # Files in LOCATION_PATHS_OURS were already resolved above so the
+  # fallback only fires on files that ARE shared code.
+  if git status --porcelain | grep -qE "$CONFLICT_RE"; then
     while IFS= read -r conflict_line; do
-      # conflict_line looks like "UU apps/web/src/app/remote/page.tsx"
       conflict_path="${conflict_line:3}"
       for prefix in "${SHARED_SOFTWARE_PREFIXES[@]}"; do
         case "$conflict_path" in
@@ -796,13 +813,13 @@ if [ "$MERGE_EXIT" -ne 0 ]; then
             ;;
         esac
       done
-    done < <(git status --porcelain | grep "^UU")
+    done < <(git status --porcelain | grep -E "$CONFLICT_RE")
   fi
 
   # Any STILL-remaining conflict = unexpected file, human required
-  if git status --porcelain | grep -q "^UU"; then
+  if git status --porcelain | grep -qE "$CONFLICT_RE"; then
     log "Unexpected merge conflict on non-whitelisted files (not covered by OURS/THEIRS/prefix fallback):"
-    git status --porcelain | grep "^UU" | tee -a "$LOG_FILE"
+    git status --porcelain | grep -E "$CONFLICT_RE" | tee -a "$LOG_FILE"
     git merge --abort 2>/dev/null || true
     fail "merge conflict on non-whitelisted file" 3
   fi
