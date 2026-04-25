@@ -685,6 +685,15 @@ LOCATION_PATHS_OURS=(
   # location maintains its own hardware notes (DB is the source of truth
   # for actual IPs; these files are quick-reference for operators).
   ".claude/locations"
+  # v2.32.38 — ecosystem.config.js + hardware-config.ts MUST be per-location.
+  # Stoneyard committed their own version of both with hardcoded API key
+  # ("12548RK0...") + Atlas processor IP "10.40.10.102" to main; without
+  # OURS protection, every other location's auto-update would inherit
+  # Stoneyard's credentials. Lucky's checkpoint A correctly STOPPED on
+  # this. Main now ships these as generic env-driven / empty defaults;
+  # each location branch holds its own real values.
+  "ecosystem.config.js"
+  "apps/web/src/lib/hardware-config.ts"
   # v2.32.4 — per-location OTA broadcast affiliates (introduced v2.23.0).
   # Holmgren has WBAY/WFRV/WLUK/WGBA station aliases; Stoneyard's set is
   # different; Lucky's smaller. Without this entry, any future merge that

@@ -37,7 +37,7 @@ API_URL = "https://api.anthropic.com/v1/messages"
 # Override via CLAUDE_API_MODEL env if a specific checkpoint needs Sonnet/Opus.
 MODEL = os.environ.get("CLAUDE_API_MODEL", "claude-haiku-4-5-20251001")
 WORKING_DIR = "/home/ubuntu/Sports-Bar-TV-Controller"
-MAX_TURNS = 6  # v2.32.31 — was 15; hard cap matches the per-prompt tool budget so an over-eager Claude can't loop forever
+MAX_TURNS = 8  # v2.32.39 — was 6; Haiku sometimes uses every turn for tool calls and returns empty text. Extra slack + force-decide fallback below makes UNDETERMINED much rarer.
 TOOL_TIMEOUT_SEC = 60
 TOOL_OUTPUT_CAP_BYTES = 16384  # v2.32.30 — was 64 KB; smaller cap keeps the message history from blowing the rate limit on multi-turn loops
 RATE_LIMIT_RETRIES = 3
@@ -186,7 +186,42 @@ def main():
             # with what we have so DECISION parsing can still work.
             print("\n".join(final_text_blocks))
             return
-    sys.stderr.write(f"[checkpoint-runner:{label}] hit MAX_TURNS={MAX_TURNS}, returning last text\n")
+    # v2.32.39 — Hit MAX_TURNS without end_turn. Haiku may have used every
+    # turn for tool calls without ever emitting a text DECISION line. Send
+    # ONE final no-tool message instructing the model to commit to a
+    # DECISION using only what it has gathered. Otherwise we return empty
+    # text and the bash caller emits UNDETERMINED → STOP → rollback.
+    sys.stderr.write(f"[checkpoint-runner:{label}] hit MAX_TURNS={MAX_TURNS}, forcing final DECISION\n")
+    messages.append({
+        "role": "user",
+        "content": (
+            "Tool budget exhausted. Based ONLY on what you've gathered so far, "
+            "emit your DECISION line now as the FIRST line of your response. "
+            "Use DECISION: CAUTION if you'd want more data — UNDETERMINED is "
+            "worse than CAUTION because it triggers rollback. Do NOT call any "
+            "more tools."
+        ),
+    })
+    # Force-decide call — no tools, smaller max_tokens to keep it focused.
+    payload = {
+        "model": MODEL,
+        "max_tokens": 1024,
+        "messages": messages,
+    }
+    body_bytes = json.dumps(payload).encode("utf-8")
+    headers = {
+        "x-api-key": os.environ["ANTHROPIC_API_KEY"],
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+    }
+    try:
+        req = urllib.request.Request(API_URL, data=body_bytes, headers=headers)
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            data = json.loads(resp.read())
+            content = data.get("content", [])
+            final_text_blocks = [b.get("text", "") for b in content if b.get("type") == "text"]
+    except Exception as e:
+        sys.stderr.write(f"[checkpoint-runner:{label}] force-decide call failed: {e}\n")
     print("\n".join(final_text_blocks))
 
 
