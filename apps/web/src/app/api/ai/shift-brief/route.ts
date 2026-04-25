@@ -142,6 +142,30 @@ async function gatherShiftContext() {
     .limit(5)
     .all()
 
+  // v2.32.25 — fleet-stale alerts. Bartender at any location can see when
+  // sister locations are stuck so they can ping the operator. Soft-fail:
+  // if the fleet API is down, we just skip this section.
+  let fleetAlerts: string[] = []
+  try {
+    const port = process.env.PORT || 3001
+    const res = await fetch(`http://localhost:${port}/api/fleet/status`, {
+      signal: AbortSignal.timeout(8000),
+    })
+    if (res.ok) {
+      const data = await res.json()
+      const stuck = (data.locations || [])
+        .filter((l: any) => l.staleness === 'stuck')
+        .map((l: any) => `${l.displayName} (${l.versionsBehind ?? '?'} behind, last update ${l.lastAutoUpdateDate?.slice(0, 10) ?? 'never'})`)
+      const warning = (data.locations || [])
+        .filter((l: any) => l.staleness === 'warning')
+        .map((l: any) => `${l.displayName} (${l.versionsBehind ?? '?'} behind)`)
+      if (stuck.length > 0) fleetAlerts.push(`STUCK: ${stuck.join('; ')}`)
+      if (warning.length > 0) fleetAlerts.push(`Falling behind: ${warning.join('; ')}`)
+    }
+  } catch (e: any) {
+    logger.debug('[SHIFT-BRIEF] fleet status check skipped', { err: e.message })
+  }
+
   return {
     venueName: HARDWARE_CONFIG.venue.name,
     now: new Date().toLocaleString('en-US', { timeZone: HARDWARE_CONFIG.venue.timezone }),
@@ -171,6 +195,7 @@ async function gatherShiftContext() {
     })),
     recentFailures: recentFailureClusters.map(r => r.message),
     newRecommendations: newOverrideRecs.map(r => r.message),
+    fleetAlerts,
   }
 }
 
@@ -211,8 +236,11 @@ function buildPrompt(ctx: any): string {
   const recs = ctx.newRecommendations.length > 0
     ? ctx.newRecommendations.map((m: string) => `- ${m}`).join('\n')
     : '- (no new learning recommendations)'
+  const fleet = ctx.fleetAlerts && ctx.fleetAlerts.length > 0
+    ? ctx.fleetAlerts.map((m: string) => `- ${m}`).join('\n')
+    : '- (sister locations all healthy)'
 
-  return `You are the shift manager at ${ctx.venueName}, a sports bar. Write a VERY concise (under 120 words) pre-shift brief for the bartender coming on. Current time: ${ctx.now}.
+  return `You are the shift manager at ${ctx.venueName}, a sports bar. Write a VERY concise (under 130 words) pre-shift brief for the bartender coming on. Current time: ${ctx.now}.
 
 Upcoming games (next 12 hours):
 ${games}
@@ -226,10 +254,14 @@ ${failures}
 New learnings from bartender corrections:
 ${recs}
 
+Sister-location health (TELL THE OWNER if any are stuck):
+${fleet}
+
 Format:
 - Start with a one-line headline for the biggest game tonight.
 - Call out home-team games (Brewers, Bucks, Badgers) first.
 - Mention any recent failures the bartender should pre-test.
+- If sister-location health shows STUCK locations, add ONE line: "TELL OWNER: <names> stuck on auto-update".
 - Use plain text, bullets OK, no markdown headings. Be direct — no hedging phrases like "you might want to consider". The bartender is experienced.
 
 CRITICAL: Only reference game start times that are explicitly listed above. Never invent, estimate, or round times. If a game's time is not in the data, do not mention any time for it. If a game is marked "in_progress", use the "started at <time>" from the Currently-playing section verbatim and do not reframe it as an upcoming start time.
@@ -262,6 +294,11 @@ function fallbackBrief(ctx: any): string {
   if (ctx.recentFailures.length > 0) {
     lines.push(`Failures in last 24h:`)
     for (const m of ctx.recentFailures) lines.push(`  ${m}`)
+    lines.push('')
+  }
+  if (ctx.fleetAlerts && ctx.fleetAlerts.length > 0) {
+    lines.push(`TELL OWNER — sister locations stuck:`)
+    for (const m of ctx.fleetAlerts) lines.push(`  ${m}`)
   }
   return lines.join('\n')
 }

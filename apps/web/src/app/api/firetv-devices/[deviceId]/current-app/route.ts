@@ -10,6 +10,9 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { connectionManager } from '@/services/firetv-connection-manager'
 import { getFireTVDeviceById } from '@/lib/device-db'
 import { logger } from '@sports-bar/logger'
+import { db } from '@/db'
+import { schema } from '@/db'
+import { eq } from 'drizzle-orm'
 
 // Known streaming app package names with friendly names
 const APP_NAMES: Record<string, string> = {
@@ -88,6 +91,42 @@ export async function GET(
     const friendlyName = APP_NAMES[appInfo.packageName] || appInfo.packageName.split('.').pop() || 'Unknown'
 
     logger.info(`[FIRETV API] Current app for ${deviceId}: ${friendlyName} (${appInfo.packageName})`)
+
+    // Mirror into InputCurrentChannel so the bartender remote input list
+    // shows the running app even when the scout APK doesn't report it
+    // (older scout builds, scout-disabled boxes). Same write shape as the
+    // firestick-scout heartbeat path (channelNumber="APP", channelName=
+    // friendly name) — UI render branch keys on channelNumber==="APP".
+    if (device.inputChannel) {
+      try {
+        const now = new Date().toISOString()
+        const existingChannel = await db.select().from(schema.inputCurrentChannels)
+          .where(eq(schema.inputCurrentChannels.inputNum, device.inputChannel)).get()
+        const channelData = {
+          inputLabel: device.name || 'Fire TV',
+          deviceType: 'firetv',
+          deviceId,
+          channelNumber: 'APP',
+          channelName: friendlyName,
+          presetId: null,
+          lastTuned: now,
+          updatedAt: now,
+        }
+        if (existingChannel) {
+          await db.update(schema.inputCurrentChannels)
+            .set(channelData)
+            .where(eq(schema.inputCurrentChannels.id, existingChannel.id))
+        } else {
+          await db.insert(schema.inputCurrentChannels).values({
+            id: crypto.randomUUID(),
+            inputNum: device.inputChannel,
+            ...channelData,
+          })
+        }
+      } catch (mirrorErr: any) {
+        logger.warn(`[FIRETV API] Failed to mirror current app into InputCurrentChannel: ${mirrorErr.message}`)
+      }
+    }
 
     return NextResponse.json({
       success: true,

@@ -655,18 +655,16 @@ export async function POST(request: NextRequest) {
                 // Check if the Fire TV device has this service LOGGED IN (not just installed)
                 const hasLoggedIn = deviceLoggedInPackages.some(pkg => appInfo.packages.includes(pkg))
                 if (hasLoggedIn) {
-                  channelInfo = {
-                    id: `stream-${appInfo.app.replace(/\s+/g, '-').toLowerCase()}`,
-                    name: appInfo.app,
-                    number: station,
-                    type: 'streaming',
-                    cost: 'subscription',
-                    platforms: ['Fire TV', 'Streaming'],
+                  // v2.32.9 — use shared builder so Rail Media-sourced
+                  // streaming programs ALSO carry appId/packageName
+                  // (without these the bartender click silently does
+                  // nothing — same fix as v2.31.2 applied to this third
+                  // injection path).
+                  channelInfo = buildStreamingAppChannel({
+                    appName: appInfo.app,
                     channelNumber: station,
-                    deviceType: 'streaming',
-                    streamingApp: appInfo.app,
-                    packages: appInfo.packages
-                  }
+                    packagesOverride: appInfo.packages,
+                  })
                   logInfo(`Matched streaming station ${station} to app ${appInfo.app} on device ${deviceId}`)
                   break
                 }
@@ -959,18 +957,14 @@ export async function POST(request: NextRequest) {
               logInfo(`Found ${nfhsData.games.length} NFHS games to add`)
 
               // Add NFHS channel
-              const nfhsChannel = {
-                id: 'stream-nfhs-network',
-                name: 'NFHS Network',
-                number: 'NFHS',
-                type: 'streaming',
-                cost: 'subscription',
-                platforms: ['Fire TV', 'Streaming'],
+              // v2.32.9 — shared builder so NFHS programs carry appId+
+              // packageName (was previously omitted, breaking the
+              // bartender click for NFHS games per v2.31.2 root cause).
+              const nfhsChannel = buildStreamingAppChannel({
+                appName: 'NFHS Network',
                 channelNumber: 'NFHS',
-                deviceType: 'streaming',
-                streamingApp: 'NFHS Network',
-                packages: NFHS_PACKAGES
-              }
+                packagesOverride: NFHS_PACKAGES,
+              })
               channels.set(nfhsChannel.id, nfhsChannel)
 
               // Add NFHS games as programs

@@ -6,13 +6,19 @@ This project supports multiple sports bar locations. Each location runs its own
 installation of the Sports Bar TV Controller with location-specific data stored
 on dedicated git branches.
 
-## Location Branches
+## Location Branches + Hardware Reference Files
 
-| Branch | Location | Status |
-|--------|----------|--------|
-| `location/graystone` | Graystone (Green Bay, WI) | Active |
-| `location/lucky-s-1313` | Lucky's | Active |
-| `main` | Clean template (no location data) | Shared code |
+Per-location hardware IPs/ports/quirks live in `<branch>.md` next to this file. DB is the source of truth; the hardware files are quick references for operators + Claude. Do NOT put per-location IPs in `CLAUDE.md` (per CLAUDE.md §10).
+
+| Branch | Location | Hardware ref | Status |
+|--------|----------|---|--------|
+| `main` | Clean template (no location data) | — | Shared code |
+| `location/holmgren-way` | Holmgren Way (Green Bay, WI) | `holmgren-way.md` | Active |
+| `location/graystone` | Graystone (Green Bay, WI) | `graystone.md` | Active |
+| `location/lucky-s-1313` | Lucky's 1313 | `lucky-s-1313.md` | Active |
+| `location/leg-lamp` | Leg Lamp | `leg-lamp.md` | Active (canary candidate) |
+| `location/stoneyard-appleton` | Stoneyard Appleton | `stoneyard-appleton.md` | Active |
+| `location/stoneyard-greenville` | Stoneyard Greenville | `stoneyard-greenville.md` | Active |
 
 ## Which Files Are Location-Specific?
 

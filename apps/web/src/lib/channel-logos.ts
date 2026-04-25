@@ -40,10 +40,12 @@ export function normalizeForLogo(name: string): string {
   return (name || '')
     .toUpperCase()
     .replace(/\s+/g, '')
-    .replace(/[/\\]/g, '')   // strip slashes — preset names like "Peacock/NBC Sports"
+    .replace(/[/\\]/g, '')      // strip slashes — preset names like "Peacock/NBC Sports"
+    .replace(/\([^)]*\)/g, '')  // strip parenthesized qualifiers — "Bally Sports WI (SD)" → "BALLYSPORTSWI"
     .replace(/-TV$/i, '')
     .replace(/-/g, '')
     .replace(/HD$/i, '')
+    .replace(/SD$/i, '')
     .replace(/NETWORK$/i, '')
     .replace(/CHANNEL$/i, '')
 }
@@ -88,12 +90,12 @@ function register(keys: string[], logo: Omit<ChannelLogo, 'name'> & { name?: str
 // ------------------------------------------------------------------
 
 register(['ESPN', 'ESPN1'], {
-  src: SI('espn'),
+  src: null,
   badgeBg: '#CC0000', badgeFg: '#FFFFFF', badgeText: 'ESPN',
   name: 'ESPN',
 })
 register(['ESPN2'], {
-  src: SI('espn'),
+  src: null,
   badgeBg: '#B30000', badgeFg: '#FFFFFF', badgeText: 'ESPN2',
   name: 'ESPN 2',
 })
@@ -108,18 +110,18 @@ register(['ESPNEWS', 'ESPNNEWS', 'ESPNN'], {
   name: 'ESPN News',
 })
 register(['ESPN+', 'ESPND'], {
-  src: SI('espn'),
+  src: null,
   badgeBg: '#CC0000', badgeFg: '#FFFFFF', badgeText: 'ESPN+',
   name: 'ESPN+',
 })
 
 register(['FS1', 'FOXSPORTS1', 'FOXSPORT1'], {
-  src: SI('foxsports'),
+  src: null,
   badgeBg: '#003366', badgeFg: '#FFFFFF', badgeText: 'FS1',
   name: 'FOX Sports 1',
 })
 register(['FS2', 'FOXSPORTS2'], {
-  src: SI('foxsports'),
+  src: null,
   badgeBg: '#003366', badgeFg: '#FFFFFF', badgeText: 'FS2',
   name: 'FOX Sports 2',
 })
@@ -130,7 +132,7 @@ register(['CBSSN', 'CBSSPORTSNETWORK', 'CBSSPORTS'], {
 })
 
 register(['NFLN', 'NFLNETWORK', 'NFLNET', 'NFL'], {
-  src: SI('nfl'),
+  src: null,
   badgeBg: '#013369', badgeFg: '#FFFFFF', badgeText: 'NFL',
   name: 'NFL Network',
 })
@@ -326,7 +328,7 @@ register([
   'PEACOCKNBCSPORTS', 'PEACOCK/NBCSPORTS',
   'NBCSN', 'NBCSPORTS',  // some locations preset NBC Sports as "NBCSN"
 ], {
-  src: SI('peacock'),
+  src: null,
   badgeBg: '#000000', badgeFg: '#FFFFFF', badgeText: 'PEACOCK',
   name: 'Peacock / NBC Sports',
 })
@@ -342,8 +344,8 @@ register(['PARAMOUNT+', 'PARAMOUNT'], {
   badgeBg: '#0064FF', badgeFg: '#FFFFFF', badgeText: 'PARA+',
   name: 'Paramount+',
 })
-register(['PRIME', 'PRIMEVIDEO', 'AMAZONPRIME', 'AMZN'], {
-  src: SI('primevideo'),
+register(['PRIME', 'PRIMEVIDEO', 'AMAZONPRIME', 'AMAZONPRIMEVIDEO', 'AMZN', 'AMZNP'], {
+  src: null,
   badgeBg: '#00A8E1', badgeFg: '#FFFFFF', badgeText: 'PRIME',
   name: 'Prime Video',
 })
@@ -351,6 +353,206 @@ register(['APPLETV+', 'APPLETV'], {
   src: SI('appletv'),
   badgeBg: '#000000', badgeFg: '#FFFFFF', badgeText: 'TV+',
   name: 'Apple TV+',
+})
+
+// ------------------------------------------------------------------
+// Streaming apps (Fire TV / Roku — surface as input "channel" via
+// scout heartbeat, see firestick-scout/route.ts InputCurrentChannel
+// mirror). Names match both the streaming-apps-database `name` and the
+// fallback APP_NAMES map in firetv-devices/[deviceId]/current-app.
+// ------------------------------------------------------------------
+register(['NETFLIX'], {
+  src: SI('netflix'),
+  badgeBg: '#E50914', badgeFg: '#FFFFFF', badgeText: 'NFLX',
+  name: 'Netflix',
+})
+register(['DISNEY+', 'DISNEYPLUS', 'DISNEY'], {
+  src: null,
+  badgeBg: '#113CCF', badgeFg: '#FFFFFF', badgeText: 'D+',
+  name: 'Disney+',
+})
+register(['HULU'], {
+  src: null,
+  badgeBg: '#1CE783', badgeFg: '#000000', badgeText: 'HULU',
+  name: 'Hulu',
+})
+register(['MAX', 'HBOMAX', 'HBO'], {
+  src: SI('max'),
+  badgeBg: '#002BE7', badgeFg: '#FFFFFF', badgeText: 'MAX',
+  name: 'Max',
+})
+register(['YOUTUBE', 'YOUTUBETV', 'YT', 'YTTV'], {
+  src: SI('youtube'),
+  badgeBg: '#FF0000', badgeFg: '#FFFFFF', badgeText: 'YT',
+  name: 'YouTube',
+})
+register(['FUBOTV', 'FUBO'], {
+  src: SI('fubo'),
+  badgeBg: '#FA4616', badgeFg: '#FFFFFF', badgeText: 'FUBO',
+  name: 'fuboTV',
+})
+register(['SLING', 'SLINGTV'], {
+  src: null,
+  badgeBg: '#FF6600', badgeFg: '#FFFFFF', badgeText: 'SLING',
+  name: 'Sling TV',
+})
+register(['DAZN'], {
+  src: SI('dazn'),
+  badgeBg: '#F8FE00', badgeFg: '#000000', badgeText: 'DAZN',
+  name: 'DAZN',
+})
+register(['TUBI'], {
+  src: SI('tubi'),
+  badgeBg: '#FA382F', badgeFg: '#FFFFFF', badgeText: 'TUBI',
+  name: 'Tubi',
+})
+register(['PLUTOTV', 'PLUTO'], {
+  src: null,
+  badgeBg: '#FFE000', badgeFg: '#000000', badgeText: 'PLUTO',
+  name: 'Pluto TV',
+})
+register(['VUDU'], {
+  src: null,
+  badgeBg: '#5C00B3', badgeFg: '#FFFFFF', badgeText: 'VUDU',
+  name: 'Vudu',
+})
+register(['DIRECTVSTREAM', 'DIRECTV'], {
+  src: null,
+  badgeBg: '#003DA5', badgeFg: '#FFFFFF', badgeText: 'DTV',
+  name: 'DirecTV Stream',
+})
+register(['MLB.TV', 'MLBTV'], {
+  src: SI('mlb'),
+  badgeBg: '#041E42', badgeFg: '#FFFFFF', badgeText: 'MLB.TV',
+  name: 'MLB.TV',
+})
+register(['NBALEAGUEPASS', 'NBAAPP'], {
+  src: SI('nba'),
+  badgeBg: '#1D428A', badgeFg: '#C8102E', badgeText: 'NBA',
+  name: 'NBA League Pass',
+})
+register(['NHLONESPN+', 'NHLTV'], {
+  src: SI('nhl'),
+  badgeBg: '#000000', badgeFg: '#FFFFFF', badgeText: 'NHL',
+  name: 'NHL',
+})
+register(['NFL', 'NFLAPP'], {
+  src: null,
+  badgeBg: '#013369', badgeFg: '#FFFFFF', badgeText: 'NFL',
+  name: 'NFL',
+})
+register(['NFHSNETWORK', 'NFHS'], {
+  src: null,
+  badgeBg: '#003DA5', badgeFg: '#FFD100', badgeText: 'NFHS',
+  name: 'NFHS Network',
+})
+register(['BIGTEN+', 'BIGTENPLUS', 'BTN+'], {
+  src: null,
+  badgeBg: '#0088CE', badgeFg: '#FFFFFF', badgeText: 'B1G+',
+  name: 'Big Ten+',
+})
+register(['NBCSPORTS', 'NBCSN'], {
+  src: SI('nbc'),
+  badgeBg: '#000000', badgeFg: '#FFFFFF', badgeText: 'NBC',
+  name: 'NBC Sports',
+})
+register(['FOXSPORTS', 'FOXSPORTSAPP'], {
+  src: null,
+  badgeBg: '#0033A0', badgeFg: '#FFFFFF', badgeText: 'FOX',
+  name: 'Fox Sports',
+})
+register(['ATMOSPHERE', 'ATMOSPHERETV'], {
+  src: null,
+  badgeBg: '#1A1A1A', badgeFg: '#FFD700', badgeText: 'ATMO',
+  name: 'Atmosphere TV',
+})
+register(['HOME', 'LAUNCHER', 'FIRETVHOME'], {
+  src: null,
+  badgeBg: '#1F2937', badgeFg: '#9CA3AF', badgeText: 'HOME',
+  name: 'Home',
+})
+
+// Spanish-language sports networks
+register(['ESPNDEPORTES'], {
+  src: null,
+  badgeBg: '#D52121', badgeFg: '#FFFFFF', badgeText: 'ESPN-D',
+  name: 'ESPN Deportes',
+})
+register(['FOXDEPORTES'], {
+  src: null,
+  badgeBg: '#003478', badgeFg: '#FFFFFF', badgeText: 'FOX-D',
+  name: 'Fox Deportes',
+})
+register(['TUDN'], {
+  src: null,
+  badgeBg: '#DA291C', badgeFg: '#FFFFFF', badgeText: 'TUDN',
+  name: 'TUDN',
+})
+register(['TELEMUNDO'], {
+  src: null,
+  badgeBg: '#FFC600', badgeFg: '#000000', badgeText: 'TLMD',
+  name: 'Telemundo',
+})
+register(['UNIMAS', 'UMAS'], {
+  src: null,
+  badgeBg: '#0093D0', badgeFg: '#FFFFFF', badgeText: 'UMAS',
+  name: 'UniMás',
+})
+register(['UNI', 'UNIVISION'], {
+  src: null,
+  badgeBg: '#005DAA', badgeFg: '#FFFFFF', badgeText: 'UNIV',
+  name: 'Univision',
+})
+register(['NBCUNIVERSO', 'UNIVERSO'], {
+  src: null,
+  badgeBg: '#FB8208', badgeFg: '#000000', badgeText: 'UNVR',
+  name: 'NBC Universo',
+})
+register(['TYC', 'TYCSPORTS'], {
+  src: null,
+  badgeBg: '#1B449C', badgeFg: '#FFFFFF', badgeText: 'TyC',
+  name: 'TyC Sports',
+})
+// Premium / niche sports
+register(['BALLYSPORTSMIDWEST', 'BSMW'], {
+  src: null,
+  badgeBg: '#072B5F', badgeFg: '#FFFFFF', badgeText: 'BSMW',
+  name: 'Bally Sports Midwest',
+})
+register(['NHLCENTERICE', 'CENTERICE'], {
+  src: null,
+  badgeBg: '#000000', badgeFg: '#FFFFFF', badgeText: 'NHL-CI',
+  name: 'NHL Center Ice',
+})
+register(['UEFA', 'UEFATV'], {
+  src: null,
+  badgeBg: '#005DAA', badgeFg: '#FFFFFF', badgeText: 'UEFA',
+  name: 'UEFA',
+})
+register(['WILLOWCRICKET', 'WILLOW'], {
+  src: null,
+  badgeBg: '#1A8A3A', badgeFg: '#FFFFFF', badgeText: 'WLLW',
+  name: 'Willow Cricket',
+})
+register(['OVERTIME', 'OT'], {
+  src: null,
+  badgeBg: '#000000', badgeFg: '#FF6600', badgeText: 'OT',
+  name: 'Overtime',
+})
+register(['FOXSPORTSPRIME', 'FSPRIME'], {
+  src: null,
+  badgeBg: '#0033A0', badgeFg: '#FFFFFF', badgeText: 'FS-P',
+  name: 'Fox Sports Prime',
+})
+register(['DTVPPV', 'DIRECTVPPV', 'DTVPAYPERVIEW'], {
+  src: null,
+  badgeBg: '#003DA5', badgeFg: '#FFD700', badgeText: 'PPV',
+  name: 'DirecTV PPV',
+})
+register(['FDNOR+', 'FDNORPLUS', 'FANDUELNORTHPLUS'], {
+  src: null,
+  badgeBg: '#002D72', badgeFg: '#00A3E0', badgeText: 'FDN+',
+  name: 'FanDuel North+',
 })
 
 // ------------------------------------------------------------------
