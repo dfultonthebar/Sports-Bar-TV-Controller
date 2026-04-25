@@ -38,7 +38,7 @@ MODEL = os.environ.get("CLAUDE_API_MODEL", "claude-sonnet-4-6")
 WORKING_DIR = "/home/ubuntu/Sports-Bar-TV-Controller"
 MAX_TURNS = 15
 TOOL_TIMEOUT_SEC = 60
-TOOL_OUTPUT_CAP_BYTES = 65536
+TOOL_OUTPUT_CAP_BYTES = 16384  # v2.32.30 — was 64 KB; smaller cap keeps the message history from blowing the rate limit on multi-turn loops
 RATE_LIMIT_RETRIES = 3
 RATE_LIMIT_BACKOFF_SEC = 30
 

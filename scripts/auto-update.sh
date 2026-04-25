@@ -338,7 +338,7 @@ run_checkpoint() {
     # said "I cannot execute commands" and emitted DECISION: STOP. The new
     # runner exposes `bash` and `read_file` tools and loops the
     # tool_use → tool_result cycle until the model returns a text-only DECISION.
-    log "Checkpoint $label: invoking Anthropic API w/ tool use (model=${CLAUDE_API_MODEL:-claude-opus-4-7}, timeout ${timeout_secs}s)"
+    log "Checkpoint $label: invoking Anthropic API w/ tool use (model=${CLAUDE_API_MODEL:-claude-sonnet-4-6}, timeout ${timeout_secs}s)"
     if ! timeout "$timeout_secs" python3 "$REPO_ROOT/scripts/checkpoint-runner.py" "$label" "$prompt_file" \
          > "$out_file" 2>>"$LOG_FILE"; then
       log "Checkpoint $label: checkpoint-runner.py failed or timed out"
@@ -610,7 +610,7 @@ fi
 # CHECKPOINT A — Pre-update analysis
 # ===========================================================================
 step "checkpoint_a"
-run_checkpoint "A" "$PROMPTS_DIR/checkpoint-a.txt" 180
+run_checkpoint "A" "$PROMPTS_DIR/checkpoint-a.txt" 600
 
 # If dry-run, report what we WOULD do and stop here (before any state change).
 if [ "$DRY_RUN" -eq 1 ]; then
@@ -970,7 +970,7 @@ fi
 # CHECKPOINT B — Post-merge / pre-build review
 # ===========================================================================
 step "checkpoint_b"
-run_checkpoint "B" "$PROMPTS_DIR/checkpoint-b.txt" 300
+run_checkpoint "B" "$PROMPTS_DIR/checkpoint-b.txt" 900
 
 # ===========================================================================
 # PHASE: BUILD (with .next.bak caching for instant rollback)
@@ -1051,7 +1051,7 @@ fi
 # CHECKPOINT C — Post-restart holistic check
 # ===========================================================================
 step "checkpoint_c"
-run_checkpoint "C" "$PROMPTS_DIR/checkpoint-c.txt" 300
+run_checkpoint "C" "$PROMPTS_DIR/checkpoint-c.txt" 600
 
 # ===========================================================================
 # PHASE: FINALIZE
