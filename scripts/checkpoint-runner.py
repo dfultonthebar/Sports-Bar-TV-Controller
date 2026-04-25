@@ -23,15 +23,24 @@ import json
 import os
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.request
 
 API_URL = "https://api.anthropic.com/v1/messages"
-MODEL = os.environ.get("CLAUDE_API_MODEL", "claude-opus-4-7")
+# v2.32.29 — Default switched from claude-opus-4-7 → claude-sonnet-4-6.
+# Opus 4.7 has a 30k input-token-per-minute cap; in a tool-use loop with 5+
+# turns, each request re-sends the full message history → cumulative input
+# tokens hit the cap → HTTP 429. Sonnet 4.6 has ~4x the rate limit and is
+# fully capable for checkpoint verification (it's running git/sqlite reads,
+# not synthesizing novel code). Override via CLAUDE_API_MODEL env if needed.
+MODEL = os.environ.get("CLAUDE_API_MODEL", "claude-sonnet-4-6")
 WORKING_DIR = "/home/ubuntu/Sports-Bar-TV-Controller"
 MAX_TURNS = 15
 TOOL_TIMEOUT_SEC = 60
 TOOL_OUTPUT_CAP_BYTES = 65536
+RATE_LIMIT_RETRIES = 3
+RATE_LIMIT_BACKOFF_SEC = 30
 
 TOOLS = [
     {
@@ -95,25 +104,32 @@ def call_api(messages):
         "tools": TOOLS,
         "messages": messages,
     }
-    req = urllib.request.Request(
-        API_URL,
-        data=json.dumps(payload).encode("utf-8"),
-        headers={
-            "x-api-key": os.environ["ANTHROPIC_API_KEY"],
-            "anthropic-version": "2023-06-01",
-            "content-type": "application/json",
-        },
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=300) as resp:
-            return json.loads(resp.read())
-    except urllib.error.HTTPError as e:
-        body = e.read().decode("utf-8", errors="replace")
-        sys.stderr.write(f"HTTP {e.code}: {body[:1000]}\n")
-        sys.exit(2)
-    except Exception as e:
-        sys.stderr.write(f"API call failed: {e}\n")
-        sys.exit(2)
+    body_bytes = json.dumps(payload).encode("utf-8")
+    headers = {
+        "x-api-key": os.environ["ANTHROPIC_API_KEY"],
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+    }
+    for attempt in range(RATE_LIMIT_RETRIES + 1):
+        req = urllib.request.Request(API_URL, data=body_bytes, headers=headers)
+        try:
+            with urllib.request.urlopen(req, timeout=300) as resp:
+                return json.loads(resp.read())
+        except urllib.error.HTTPError as e:
+            err_body = e.read().decode("utf-8", errors="replace")
+            if e.code == 429 and attempt < RATE_LIMIT_RETRIES:
+                # Honor server's retry-after if present, else exponential
+                retry_after = int(e.headers.get("retry-after", RATE_LIMIT_BACKOFF_SEC * (2 ** attempt)))
+                sys.stderr.write(f"HTTP 429 (attempt {attempt + 1}/{RATE_LIMIT_RETRIES + 1}): sleeping {retry_after}s\n")
+                time.sleep(retry_after)
+                continue
+            sys.stderr.write(f"HTTP {e.code}: {err_body[:1000]}\n")
+            sys.exit(2)
+        except Exception as e:
+            sys.stderr.write(f"API call failed: {e}\n")
+            sys.exit(2)
+    sys.stderr.write(f"Hit RATE_LIMIT_RETRIES={RATE_LIMIT_RETRIES} on 429\n")
+    sys.exit(2)
 
 
 def execute_tool(name: str, inp: dict) -> str:
