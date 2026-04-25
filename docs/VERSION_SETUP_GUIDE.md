@@ -187,6 +187,36 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.42 — Homepage title: solid white instead of fragile gradient text
+**Released:** 2026-04-25
+
+Operator at Lucky's reported "Sports Bar AI Assistant can't be read."
+Root cause: homepage h1 + h2 used `bg-gradient + bg-clip-text +
+text-transparent` for branded gradient text. On certain browsers (older
+iPad Safari, some Chromium builds) bg-clip-text fails → text renders
+truly transparent → invisible on the dark backdrop.
+
+**Changes:**
+- `apps/web/src/app/page.tsx` h1 (header) and h2 (main card title)
+  switched from gradient text to solid `text-white`. Always readable,
+  no browser-support assumptions.
+- 21 other gradient-text instances across sub-pages (BartenderRemote*,
+  SportsGuide, etc.) left alone — they're polish, not visibility-
+  critical. Operator can flag if others have the same issue.
+
+**Required Manual Step:** None.
+
+**Verification:**
+```bash
+grep -A1 "Sports Bar AI Assistant" /home/ubuntu/Sports-Bar-TV-Controller/apps/web/src/app/page.tsx | grep className
+# Should show "text-white" not "text-transparent" for both h1 and h2.
+```
+
+**Rollback:** `git revert` is clean. Operators who liked the gradient
+can revert to it on any browser that supports bg-clip-text reliably.
+
+---
+
 ### v2.32.41 — Comprehensive false-positive guide for Haiku in checkpoint-b
 **Released:** 2026-04-25
 
