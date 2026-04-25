@@ -101,7 +101,11 @@ def read_file(path: str) -> str:
 def call_api(messages):
     payload = {
         "model": MODEL,
-        "max_tokens": 4096,
+        # v2.32.36 — bumped 4096 → 8192. Haiku produces verbose analysis prose
+        # before emitting DECISION; 4k tokens cut off mid-explanation at Leg
+        # Lamp checkpoint B. 8k gives enough room and is still well below
+        # rate-limit relevance.
+        "max_tokens": 8192,
         "tools": TOOLS,
         "messages": messages,
     }
