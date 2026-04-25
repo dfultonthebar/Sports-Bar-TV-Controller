@@ -23,6 +23,16 @@ FAILED_STEP="${2:-unknown}"
 REPO_ROOT="/home/ubuntu/Sports-Bar-TV-Controller"
 LOG_FILE="${LOG_FILE:-/home/ubuntu/sports-bar-data/update-logs/rollback-$(date +%Y-%m-%d-%H-%M).log}"
 
+# v2.32.27 — Source nvm if present so npm/node are on PATH. Without this,
+# rollback's npm-ci-realign step exits 127 ("npm: command not found") on
+# nvm-using hosts (Leg Lamp), aborting with CRITICAL even though the git
+# rollback itself succeeded.
+if [ -s "$HOME/.nvm/nvm.sh" ]; then
+  # shellcheck disable=SC1091
+  . "$HOME/.nvm/nvm.sh" --no-use 2>/dev/null
+  nvm use default >/dev/null 2>&1 || true
+fi
+
 mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null || true
 
 log() {

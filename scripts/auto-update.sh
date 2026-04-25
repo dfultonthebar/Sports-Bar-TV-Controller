@@ -25,6 +25,18 @@
 # =============================================================================
 
 set -uo pipefail
+
+# v2.32.27 — Source nvm if present so npm/node are on PATH for cron + setsid
+# subshells. Hosts that installed Node via nvm (Leg Lamp) didn't have npm on
+# the default PATH; the build phase exited 127 with "npm: command not found"
+# and the rollback phase couldn't run npm ci to realign node_modules.
+# Hosts using the apt npm at /usr/bin/npm are unaffected by this source.
+if [ -s "$HOME/.nvm/nvm.sh" ]; then
+  # shellcheck disable=SC1091
+  . "$HOME/.nvm/nvm.sh" --no-use 2>/dev/null
+  # Activate the default nvm alias if one is set; falls through silently if not.
+  nvm use default >/dev/null 2>&1 || true
+fi
 # NOTE: we intentionally do NOT use `set -e`. Each step checks its own exit
 # status and routes to the trap via `exit N`. `set -e` interacts poorly with
 # pipes and `|| return` patterns we need for state-updating sub-calls.
