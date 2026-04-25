@@ -187,6 +187,154 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.39 — Force-decide fallback when Haiku exhausts MAX_TURNS without text
+**Released:** 2026-04-25
+
+Greenville checkpoint B at v2.32.38 returned EMPTY text — Haiku used all
+6 turns for tool calls without ever emitting a DECISION line. UNDETERMINED
+→ STOP → rollback. Pure runner-side fix; no rollout-blocker behavior.
+
+**Changes:**
+- `scripts/checkpoint-runner.py`:
+  - `MAX_TURNS` 6 → 8 (Haiku gets a bit more room before the fallback fires)
+  - Force-decide fallback at MAX_TURNS: append a final `user` message
+    instructing "tool budget exhausted, emit DECISION line NOW based on
+    what you have, no more tools." Send a no-tools API call so the model
+    must respond with text. Empty text is now genuinely impossible.
+
+**Required Manual Step:** None.
+
+**Verification:**
+```bash
+grep "force-decide" /home/ubuntu/Sports-Bar-TV-Controller/scripts/checkpoint-runner.py
+# Expect a few matches in the new fallback block.
+```
+
+**Rollback:** `git revert` is clean.
+
+---
+
+### v2.32.38 — Remove Stoneyard secrets from main + ecosystem/hardware-config to OURS
+**Released:** 2026-04-25
+
+Lucky's checkpoint A flagged a real security issue: `ecosystem.config.js`
+on main had Stoneyard's `SPORTS_GUIDE_API_KEY='12548RK0...'` and
+`SPORTS_GUIDE_USER_ID='258351'` hardcoded. `hardware-config.ts` had
+`processorIp='10.40.10.102'` + `processorId='atlas-stoneyard'`. Both
+came in via Stoneyard's location-setup commits earlier in the month
+that landed on main when they shouldn't have.
+
+**OPERATOR ACTION REQUIRED — rotate the leaked Sports Guide API key:**
+The key `12548RK0000000d2bb701f55b82bfa192e680985919` was exposed in
+git history (commit cbd4eaeb and earlier). It's still readable on
+GitHub. Generate a new key from The Rail Media admin portal, update
+`.env` at every location, then revoke the old key. Until rotated,
+the old key is leaked.
+
+**Changes:**
+- `ecosystem.config.js`: `SPORTS_GUIDE_API_KEY` + `SPORTS_GUIDE_USER_ID`
+  reverted to `process.env.X` (read from .env per location).
+- `apps/web/src/lib/hardware-config.ts`: atlas + wolfpack values reset
+  to generic empty defaults; each location overrides on its own branch.
+- `scripts/auto-update.sh LOCATION_PATHS_OURS` adds
+  `ecosystem.config.js` + `apps/web/src/lib/hardware-config.ts` so
+  location's version always wins on conflict — prevents recurrence.
+
+**Required Manual Step at every location** (CRITICAL — do BEFORE
+auto-updating):
+
+```bash
+# 1. Verify .env has SPORTS_GUIDE_API_KEY + SPORTS_GUIDE_USER_ID
+ENV=/home/ubuntu/Sports-Bar-TV-Controller/.env
+grep -E '^SPORTS_GUIDE_(API_KEY|USER_ID)=' "$ENV"
+# If missing, add the location's values from your operator's password manager:
+#   echo 'SPORTS_GUIDE_API_KEY=...' >> "$ENV"
+#   echo 'SPORTS_GUIDE_USER_ID=...' >> "$ENV"
+
+# 2. Verify your location's hardware-config.ts has the right values
+grep -E "processorIp|processorId" /home/ubuntu/Sports-Bar-TV-Controller/apps/web/src/lib/hardware-config.ts
+# Should show YOUR location's atlas, not Stoneyard's.
+```
+
+**Rollback:** `git revert` is clean. The key was already leaked
+publicly; reverting only fixes future merges, not git history. Key
+rotation is the only real fix.
+
+---
+
+### v2.32.37 — bootstrap auto-quotes .env values containing whitespace
+**Released:** 2026-04-25
+
+Leg Lamp + Stoneyard Greenville both had `LOCATION_NAME=Leg Lamp`
+(unquoted, with space) in `.env`. Auto-update.sh's build-phase
+`set -a; source .env; set +a` parses that line as
+`LOCATION_NAME=Leg` followed by `Lamp` command → 127 → trap fires →
+build phase aborts → rollback. Tonight cost two extra retry rounds
+to diagnose + manually fix.
+
+**Changes:**
+- `scripts/bootstrap-new-location.sh upsert_env()` now single-quotes
+  any value containing whitespace or shell-special chars
+  (`[[:space:]\$\`"!#&|]`). Inner single-quotes are escaped via
+  `'\''` pattern.
+
+**Required Manual Step at existing locations** that have problematic
+`.env` values (only the 2 fixed during tonight's session were
+affected, but verify):
+
+```bash
+# At each location, look for unquoted spaces in .env:
+grep -nE "^[A-Z_]+=[^\"\x27].* " /home/ubuntu/Sports-Bar-TV-Controller/.env
+# If output appears, manually edit those lines to wrap the value in
+# single quotes, e.g.:
+#   LOCATION_NAME=Leg Lamp        →   LOCATION_NAME='Leg Lamp'
+```
+
+**Verification:**
+```bash
+# After bootstrap-new-location.sh adds an env var, the value with
+# whitespace should be single-quoted in .env:
+grep '^LOCATION_NAME=' /home/ubuntu/Sports-Bar-TV-Controller/.env
+# Expect single-quoted if value contains a space.
+```
+
+**Rollback:** `git revert` is clean. Existing quoted values stay quoted.
+
+---
+
+### v2.32.36 — Bigger max_tokens + DECISION-line-first + tolerant Fire TV marker
+**Released:** 2026-04-25
+
+Three small fixes for tonight's checkpoint reliability:
+
+1. **`max_tokens` 4096 → 8192** in `checkpoint-runner.py`. Haiku produces
+   verbose analysis prose; 4k cut off mid-explanation at Leg Lamp B → no
+   DECISION line emitted → UNDETERMINED → STOP.
+2. **All 3 prompts** now require `DECISION:` to be the FIRST line of the
+   response. Avoids the case where Claude analyzes thoroughly then runs
+   out of tokens before committing.
+3. **Fire TV verify-sql marker** in v2.32.13/16 entry was scoped wrong:
+   it required `inputChannel > 0` to exist — but Leg Lamp has zero Fire
+   TV devices (cable-box-only location). The marker now passes when
+   either the location has Fire TV devices with inputChannel set, OR
+   the location has no Fire TV devices at all (the mirror code is a
+   no-op in that case).
+4. **checkpoint-b prompt** now explicitly tells Claude: a marker that
+   fails because the feature isn't used at this location is NOT a real
+   blocker; emit CAUTION instead of STOP.
+
+**Required Manual Step:** None.
+
+**Verification:**
+```bash
+grep "max_tokens" /home/ubuntu/Sports-Bar-TV-Controller/scripts/checkpoint-runner.py
+grep "OUTPUT SHAPE" /home/ubuntu/Sports-Bar-TV-Controller/scripts/prompts/checkpoint-*.txt
+```
+
+**Rollback:** `git revert` is clean.
+
+---
+
 ### v2.32.35 — Resolver handles add/add + .claude/locations to OURS
 **Released:** 2026-04-25
 
@@ -897,8 +1045,8 @@ curl -s http://localhost:3001/api/matrix/current-channels | python3 -c "import s
 no DB/data side effects. InputCurrentChannel rows added by v2.32.13/16
 are harmless if left after revert (UI just won't read them).
 
-<!-- verify-description: production.db reachable + Fire TV devices have inputChannel mapping (required by v2.32.13/16 mirror path) -->
-<!-- verify-sql: SELECT id FROM FireTVDevice WHERE inputChannel IS NOT NULL AND inputChannel > 0 LIMIT 1 -->
+<!-- verify-description: production.db reachable + Fire TV devices have inputChannel mapping (required by v2.32.13/16 mirror path) — OR location has no Fire TVs configured (mirror code is a no-op there) -->
+<!-- verify-sql: SELECT 1 WHERE NOT EXISTS (SELECT 1 FROM FireTVDevice) UNION SELECT id FROM FireTVDevice WHERE inputChannel IS NOT NULL AND inputChannel > 0 LIMIT 1 -->
 
 ---
 
