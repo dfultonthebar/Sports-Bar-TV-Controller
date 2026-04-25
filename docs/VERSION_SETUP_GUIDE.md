@@ -187,6 +187,34 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.40 — Tell Haiku that empty hardware-config.ts is OK (DB is source of truth)
+**Released:** 2026-04-25
+
+Greenville checkpoint B at v2.32.39 STOPped because Haiku flagged
+"hardware-config.ts atlas processorIp wiped to empty" as a runtime
+breaker. False positive — atlas IPs live in the `AudioProcessor` DB
+table, not in `hardware-config.ts`. The TS file was a fallback /
+config-as-code remnant; runtime reads DB. Empty values there don't
+break anything.
+
+**Changes:**
+- `scripts/prompts/checkpoint-b.txt` — explicit note: device IPs are
+  in DB tables (`AudioProcessor`, `FireTVDevice`, `DirecTVDevice`),
+  not in `hardware-config.ts`. Empty values in that file are NORMAL.
+  Do not STOP on them. Verify via sqlite3 query if needed.
+
+**Required Manual Step:** None.
+
+**Verification:**
+```bash
+sqlite3 /home/ubuntu/sports-bar-data/production.db "SELECT name, ipAddress FROM AudioProcessor;"
+# Should show real device IP (e.g. Holmgren: Main Bar @ 10.11.3.246).
+```
+
+**Rollback:** `git revert` is clean.
+
+---
+
 ### v2.32.39 — Force-decide fallback when Haiku exhausts MAX_TURNS without text
 **Released:** 2026-04-25
 
