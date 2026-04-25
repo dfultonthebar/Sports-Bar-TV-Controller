@@ -187,6 +187,33 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.39 — Force-decide fallback when Haiku exhausts MAX_TURNS without text
+**Released:** 2026-04-25
+
+Greenville checkpoint B at v2.32.38 returned EMPTY text — Haiku used all
+6 turns for tool calls without ever emitting a DECISION line. UNDETERMINED
+→ STOP → rollback. Pure runner-side fix; no rollout-blocker behavior.
+
+**Changes:**
+- `scripts/checkpoint-runner.py`:
+  - `MAX_TURNS` 6 → 8 (Haiku gets a bit more room before the fallback fires)
+  - Force-decide fallback at MAX_TURNS: append a final `user` message
+    instructing "tool budget exhausted, emit DECISION line NOW based on
+    what you have, no more tools." Send a no-tools API call so the model
+    must respond with text. Empty text is now genuinely impossible.
+
+**Required Manual Step:** None.
+
+**Verification:**
+```bash
+grep "force-decide" /home/ubuntu/Sports-Bar-TV-Controller/scripts/checkpoint-runner.py
+# Expect a few matches in the new fallback block.
+```
+
+**Rollback:** `git revert` is clean.
+
+---
+
 ### v2.32.38 — Remove Stoneyard secrets from main + ecosystem/hardware-config to OURS
 **Released:** 2026-04-25
 
