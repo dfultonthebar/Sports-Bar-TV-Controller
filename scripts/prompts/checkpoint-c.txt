@@ -1,3 +1,5 @@
+**HARD BUDGET — read carefully:** Maximum **3 tool calls** total. verify-install.sh already ran deterministically — your job is a brief sanity check, not a deep audit. Batch bash one-liners (`&&`-chained), one combined `pm2 logs --lines 50 | grep -E "ERROR|WARN" | head` is enough for log inspection. After 3 calls, EMIT your DECISION. CAUTION is fine when budget exhausted; STOP only on a real blocker you saw.
+
 You are doing post-restart verification. The Sports Bar TV Controller
 application has been rebuilt and restarted via PM2. The deterministic
 `verify-install.sh` layers already ran before this prompt fired and
