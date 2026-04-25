@@ -5,16 +5,20 @@
  */
 
 export const HARDWARE_CONFIG = {
+  // Per-location atlas + wolfpack values are kept on the location branch.
+  // Main ships generic empty defaults so a new location's first deploy
+  // doesn't accidentally inherit Stoneyard's processor IP / Holmgren's
+  // wolfpack slot layout. Each location overrides on its own branch.
   atlas: {
-    processorIp: '10.40.10.102',
-    processorId: 'atlas-stoneyard',
+    processorIp: '',
+    processorId: '',
     tcpPort: 5321,
     httpPort: 80,
   },
   wolfpack: {
-    audioOutputStart: 33,
-    audioOutputCount: 4,
-    audioOutputSlots: [33, 34, 35, 36],
+    audioOutputStart: 0,
+    audioOutputCount: 0,
+    audioOutputSlots: [],
   },
   api: {
     port: parseInt(process.env.PORT || '3001', 10),
