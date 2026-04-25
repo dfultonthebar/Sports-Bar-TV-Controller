@@ -187,6 +187,39 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.36 — Bigger max_tokens + DECISION-line-first + tolerant Fire TV marker
+**Released:** 2026-04-25
+
+Three small fixes for tonight's checkpoint reliability:
+
+1. **`max_tokens` 4096 → 8192** in `checkpoint-runner.py`. Haiku produces
+   verbose analysis prose; 4k cut off mid-explanation at Leg Lamp B → no
+   DECISION line emitted → UNDETERMINED → STOP.
+2. **All 3 prompts** now require `DECISION:` to be the FIRST line of the
+   response. Avoids the case where Claude analyzes thoroughly then runs
+   out of tokens before committing.
+3. **Fire TV verify-sql marker** in v2.32.13/16 entry was scoped wrong:
+   it required `inputChannel > 0` to exist — but Leg Lamp has zero Fire
+   TV devices (cable-box-only location). The marker now passes when
+   either the location has Fire TV devices with inputChannel set, OR
+   the location has no Fire TV devices at all (the mirror code is a
+   no-op in that case).
+4. **checkpoint-b prompt** now explicitly tells Claude: a marker that
+   fails because the feature isn't used at this location is NOT a real
+   blocker; emit CAUTION instead of STOP.
+
+**Required Manual Step:** None.
+
+**Verification:**
+```bash
+grep "max_tokens" /home/ubuntu/Sports-Bar-TV-Controller/scripts/checkpoint-runner.py
+grep "OUTPUT SHAPE" /home/ubuntu/Sports-Bar-TV-Controller/scripts/prompts/checkpoint-*.txt
+```
+
+**Rollback:** `git revert` is clean.
+
+---
+
 ### v2.32.35 — Resolver handles add/add + .claude/locations to OURS
 **Released:** 2026-04-25
 
@@ -897,8 +930,8 @@ curl -s http://localhost:3001/api/matrix/current-channels | python3 -c "import s
 no DB/data side effects. InputCurrentChannel rows added by v2.32.13/16
 are harmless if left after revert (UI just won't read them).
 
-<!-- verify-description: production.db reachable + Fire TV devices have inputChannel mapping (required by v2.32.13/16 mirror path) -->
-<!-- verify-sql: SELECT id FROM FireTVDevice WHERE inputChannel IS NOT NULL AND inputChannel > 0 LIMIT 1 -->
+<!-- verify-description: production.db reachable + Fire TV devices have inputChannel mapping (required by v2.32.13/16 mirror path) — OR location has no Fire TVs configured (mirror code is a no-op there) -->
+<!-- verify-sql: SELECT 1 WHERE NOT EXISTS (SELECT 1 FROM FireTVDevice) UNION SELECT id FROM FireTVDevice WHERE inputChannel IS NOT NULL AND inputChannel > 0 LIMIT 1 -->
 
 ---
 
