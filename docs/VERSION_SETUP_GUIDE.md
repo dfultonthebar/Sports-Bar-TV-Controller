@@ -187,6 +187,169 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.31 — Hard tool budget on checkpoint prompts (4/5/3 calls max)
+**Released:** 2026-04-25
+
+Sonnet at Lucky's checkpoint A used 9 tool calls + 6 retries → 7 minutes;
+checkpoint B used 11 calls + 11 retries → didn't finish in 15min budget.
+Each call re-sends full message history → input-token rate limit → 429
+backoff → cumulative time blows the budget. Operator waited 15+ min for
+one location to update; doesn't scale.
+
+**Changes:**
+- `scripts/prompts/checkpoint-a.txt` prepended HARD BUDGET: max 4 tool
+  calls, batch bash one-liners, no per-file `git log -p`, decide CAUTION
+  if budget exhausted.
+- `scripts/prompts/checkpoint-b.txt` same with max 5 calls.
+- `scripts/prompts/checkpoint-c.txt` same with max 3 calls (verify-install
+  already ran, sanity check only).
+- `scripts/checkpoint-runner.py` `MAX_TURNS` 15 → 6 hard cap (matches
+  per-prompt budgets; can't loop forever).
+
+**Required Manual Step:** None.
+
+**Verification:**
+```bash
+grep -E "HARD BUDGET|MAX_TURNS" /home/ubuntu/Sports-Bar-TV-Controller/scripts/prompts/checkpoint-*.txt /home/ubuntu/Sports-Bar-TV-Controller/scripts/checkpoint-runner.py
+# Expect: HARD BUDGET line at top of each prompt; MAX_TURNS = 6
+```
+
+**Rollback:** `git revert` is clean.
+
+---
+
+### v2.32.30 — Bigger checkpoint timeouts + tighter tool-output cap
+**Released:** 2026-04-25
+
+v2.32.29 fixed the rate-limit error class but the 180s checkpoint A
+timeout was still too tight when Sonnet hit two 429s back-to-back
+(45s + 93s server retry-after). Lucky's checkpoint A failed mid-tool-loop.
+
+**Changes:**
+- `scripts/auto-update.sh` checkpoint timeouts:
+  - A: 180s → 600s
+  - B: 300s → 900s
+  - C: 300s → 600s
+- `scripts/checkpoint-runner.py` `TOOL_OUTPUT_CAP_BYTES`: 64 KB → 16 KB.
+  Smaller cap keeps the cumulative message history from re-sending
+  hundreds of KB on each subsequent turn, the actual driver of input-
+  token-rate-limit churn.
+- Log line in run_checkpoint() updated to show the correct default
+  model name (was still "claude-opus-4-7").
+
+**Required Manual Step:** None.
+
+**Verification:**
+```bash
+grep -E "Checkpoint .* timeout|TOOL_OUTPUT_CAP" /home/ubuntu/Sports-Bar-TV-Controller/scripts/auto-update.sh
+# Expect: timeouts of 600/900/600 in run_checkpoint calls.
+```
+
+**Rollback:** `git revert` is clean.
+
+---
+
+### v2.32.29 — Checkpoint runner: Sonnet 4.6 default + 429 retry
+**Released:** 2026-04-25
+
+v2.32.28's tool-use loop made 5+ turns of bash inspection per checkpoint.
+Each turn re-sends the full message history → cumulative input tokens hit
+Opus 4.7's 30k-tokens-per-minute rate limit → HTTP 429 → checkpoint failed.
+
+**Changes:**
+- `scripts/checkpoint-runner.py` default model switched from
+  `claude-opus-4-7` → `claude-sonnet-4-6`. Sonnet has ~4x the rate limit
+  and is fully capable for checkpoint verification (running git/sqlite
+  reads, not synthesizing novel code). Override via `CLAUDE_API_MODEL`
+  env var if a specific checkpoint needs Opus.
+- New retry loop on HTTP 429: honors `retry-after` header if present,
+  else exponential backoff (30s, 60s, 120s), 3 retries max.
+
+**Smoke-tested:** Sonnet 4.6 ran the same test prompt as v2.32.28,
+returned correct DECISION in 2 turns.
+
+**Required Manual Step:** None.
+
+**Verification:**
+```bash
+grep -E "model=|HTTP 429" /home/ubuntu/sports-bar-data/update-logs/$(ls -t /home/ubuntu/sports-bar-data/update-logs/ | head -1) | head
+# Expect: "model=claude-sonnet-4-6" lines, no 429s.
+```
+
+**Rollback:** `git revert` is clean. Setting `CLAUDE_API_MODEL=claude-opus-4-7`
+in `.env` reverts to the older default model only (still uses tool use loop).
+
+---
+
+### v2.32.28 — Checkpoint API path now supports tool use (bash + read_file)
+**Released:** 2026-04-25
+
+v2.32.20's API path was a plain text-completion call. Checkpoint A/B/C
+prompts expect the model to inspect git state, sqlite tables, .env, and
+log tails before deciding GO/CAUTION/STOP. With no tool access, the
+model correctly said "I cannot execute these commands" and returned
+DECISION: STOP. Lucky's + Leg Lamp both failed at checkpoint_b on this.
+
+**Changes:**
+- New `scripts/checkpoint-runner.py` — Anthropic SDK-style messages loop
+  with two tools: `bash` (cwd=repo root, 60s timeout, 64 KB output cap)
+  and `read_file` (64 KB cap). Loops `tool_use → tool_result` up to 15
+  turns until model emits text-only DECISION.
+- `scripts/auto-update.sh run_checkpoint()` now invokes the runner
+  instead of inline curl + python text-only call. CLI fallback path
+  (when `ANTHROPIC_API_KEY` unset) is unchanged.
+
+**Smoke-tested:** runner executed `sqlite3` against production.db and
+returned a correct DECISION in 2 turns.
+
+**Required Manual Step:** None. `python3` is already a hard dep of the
+auto-update preflight (added in v2.32.20).
+
+**Verification:**
+```bash
+# After next auto-update, look for the tool-use turns in the log
+grep "checkpoint-runner" /home/ubuntu/sports-bar-data/update-logs/$(ls -t /home/ubuntu/sports-bar-data/update-logs/ | head -1) | head -10
+# Expect lines like: turn=1 stop_reason=tool_use tool_uses=N
+```
+
+**Rollback:** `git revert` is clean. Old text-only API path is gone but
+CLI fallback still functional for hosts without an API key.
+
+---
+
+### v2.32.27 — Source nvm in auto-update.sh + rollback.sh
+**Released:** 2026-04-25
+
+Hosts that installed Node via nvm (Leg Lamp) had `npm` only on the
+interactive bash PATH, not on cron / setsid subshells. Auto-update.sh
+exited 127 ("npm: command not found") at npm_ci or build phase, then
+rollback.sh hit the same error trying to realign node_modules → exit
+99 (CRITICAL: rollback failed) even though the git rollback itself
+succeeded.
+
+**Changes:**
+- `scripts/auto-update.sh` sources `~/.nvm/nvm.sh` (if present) at
+  the top, runs `nvm use default` to activate the alias.
+- `scripts/rollback.sh` same source block at the top.
+- Hosts using apt's `/usr/bin/npm` (graystone, luckys, appleton,
+  greenville, holmgren) are unaffected — the nvm script is a no-op
+  when `~/.nvm/nvm.sh` doesn't exist.
+
+**Required Manual Step:** None. Hosts without nvm continue using
+their system npm. Hosts with nvm pick up the default-version automatically.
+
+**Verification (post-update at the affected location):**
+```bash
+which npm
+# Expect: /usr/bin/npm OR /home/ubuntu/.nvm/versions/node/v20.20.0/bin/npm
+bash -c '. ~/.nvm/nvm.sh --no-use && nvm use default >/dev/null && which npm'
+# Expect: a valid path to npm
+```
+
+**Rollback:** `git revert` is clean.
+
+---
+
 ### v2.32.26 — auto-update.sh: pre-clean working tree + CLAUDE.md takes main
 **Released:** 2026-04-24
 
