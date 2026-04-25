@@ -372,15 +372,18 @@ run_checkpoint() {
   local decision
   # Try line-start first, then fall back to anywhere in the response.
   # Claude sometimes writes a summary before the DECISION line.
+  # v2.32.34 — Haiku sometimes wraps the decision line in markdown bold
+  # (`**DECISION: GO**`). Strip leading non-alphanumeric chars before the
+  # case match so wildcard matching stays simple.
   decision=$(grep -m1 '^DECISION:' "$out_file" || grep -m1 'DECISION:' "$out_file" || true)
+  decision_normalized=$(echo "$decision" | sed -E 's/^[^A-Z]*//')
   log "Checkpoint $label: $decision"
-  # Also dump full response to log for forensics
   log "--- Checkpoint $label full response ---"
   cat "$out_file" >> "$LOG_FILE"
   log "--- end Checkpoint $label response ---"
   rm -f "$out_file"
 
-  case "$decision" in
+  case "$decision_normalized" in
     "DECISION: GO"*)
       return 0
       ;;
@@ -390,7 +393,7 @@ run_checkpoint() {
       return 0
       ;;
     "DECISION: STOP"*)
-      fail "Checkpoint $label: STOP — ${decision#DECISION: STOP}" 2
+      fail "Checkpoint $label: STOP — ${decision_normalized#DECISION: STOP}" 2
       ;;
     *)
       fail "Checkpoint $label: UNDETERMINED response from Claude Code" 2
