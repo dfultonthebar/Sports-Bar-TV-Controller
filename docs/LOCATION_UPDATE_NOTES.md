@@ -15,6 +15,13 @@ update run.
 - **Manual steps required** — anything the auto-updater CAN'T do automatically
 - **Rollback notes** — if this update proves bad, how to back out
 - **Affected files** — so Claude can correlate with the incoming diff
+- **`Checkpoint model: sonnet|opus`** — *optional, v2.32.33+*. Overrides the
+  default Haiku for ALL three checkpoints during this update. Use when
+  shipping a major refactor, schema migration, or cross-cutting change
+  that needs deeper reasoning than Haiku 4.5 reliably provides. The flag
+  applies until the next location auto-update lands; remove it once the
+  risky update is across the fleet. Operator's `CLAUDE_API_MODEL` in
+  `.env` overrides this flag.
 
 **How to add an entry:**
 
