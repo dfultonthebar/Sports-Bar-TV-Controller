@@ -1,5 +1,13 @@
 **HARD BUDGET — read carefully:** Maximum **4 tool calls** total. Each call re-sends the full message history → 429 rate limits → backoffs → operator waits. Plan tools BEFORE calling. Prefer batched bash one-liners (`&&`-chained, multiple checks per call) over many small calls. Do NOT request `git log -p` per file — use `git diff --stat HEAD..origin/main` once, then targeted reads only on the 1-2 most suspicious files. After 4 calls, EMIT your DECISION. CAUTION is fine when budget exhausted; STOP only on a real blocker you actually saw.
 
+**OUTPUT SHAPE (mandatory):** Your final text response MUST start with one of these three lines on its own line:
+```
+DECISION: GO
+DECISION: CAUTION - <one-line reason>
+DECISION: STOP - <one-line reason>
+```
+Then 3-5 short bullets of justification. Do NOT bury the DECISION inside prose. The auto-update script greps for the DECISION line and STOPs the update if it can't parse one.
+
 You are doing pre-update analysis for the Sports Bar TV Controller.
 
 Decide whether the pending git merge from origin/main onto the current
