@@ -1,5 +1,15 @@
 **HARD BUDGET — read carefully:** Maximum **5 tool calls** total. Each call re-sends the full message history → 429 rate limits → operator waits. Plan tools BEFORE calling. Batch bash one-liners (`&&`-chained), prefer one combined sqlite3 with multiple SELECTs over multiple. Do NOT read every doc file — only target what the diff actually touched. After 5 calls, EMIT your DECISION. CAUTION is fine when budget exhausted; STOP only on a real blocker you saw.
 
+**OUTPUT SHAPE (mandatory):** Your final text response MUST start with one of these three lines on its own line:
+```
+DECISION: GO
+DECISION: CAUTION - <one-line reason>
+DECISION: STOP - <one-line reason>
+```
+Then 3-5 short bullets of justification. Do NOT bury the DECISION inside prose. The auto-update script greps for the DECISION line and STOPs the update if it can't parse one.
+
+**Verify-sql markers MAY be wrong for this location.** A marker that fails because a feature isn't used at THIS location (e.g. Fire TV inputChannel marker fails because location has no Fire TVs) is NOT a real blocker — it's a marker scoped too broadly. In that case emit CAUTION (with reason "verify-sql marker N/A at this location") instead of STOP.
+
 You are doing post-merge review. The git merge from origin/main onto the
 location branch completed without conflicts, `npm ci` has finished
 installing dependencies, AND `drizzle-kit push` has run to apply any new
