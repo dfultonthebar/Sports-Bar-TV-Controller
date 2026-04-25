@@ -36,7 +36,7 @@ API_URL = "https://api.anthropic.com/v1/messages"
 # not synthesizing novel code). Override via CLAUDE_API_MODEL env if needed.
 MODEL = os.environ.get("CLAUDE_API_MODEL", "claude-sonnet-4-6")
 WORKING_DIR = "/home/ubuntu/Sports-Bar-TV-Controller"
-MAX_TURNS = 15
+MAX_TURNS = 6  # v2.32.31 — was 15; hard cap matches the per-prompt tool budget so an over-eager Claude can't loop forever
 TOOL_TIMEOUT_SEC = 60
 TOOL_OUTPUT_CAP_BYTES = 16384  # v2.32.30 — was 64 KB; smaller cap keeps the message history from blowing the rate limit on multi-turn loops
 RATE_LIMIT_RETRIES = 3
