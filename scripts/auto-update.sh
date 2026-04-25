@@ -484,6 +484,35 @@ fi
 bash -n "$ROLLBACK_SCRIPT" || fail "rollback.sh has syntax errors" 2
 
 # 4. Working tree must be clean (location data files get normalized during update)
+# v2.32.26 — Pre-clean uncommitted edits to LOCATION_PATHS_THEIRS files
+# (auto-update.sh, CLAUDE.md, etc.). These get rewritten by the merge
+# anyway (we always take main's version) but git refuses the merge with
+# "Your local changes would be overwritten" if they're modified in the
+# working tree. The bootstrap-fix dance (manually writing a hot-patched
+# auto-update.sh into the tree before re-running) was failing on exactly
+# this — operator wrote the new script but didn't commit it, then the next
+# merge phase aborted with exit 4. Reset these paths to HEAD so the merge
+# can proceed; their content will be replaced by main's version anyway.
+PRE_MERGE_RESET_PATHS=(
+  "scripts/auto-update.sh"
+  "scripts/rollback.sh"
+  "scripts/verify-install.sh"
+  "scripts/ensure-schema.sh"
+  "scripts/ensure-ollama-model.sh"
+  "scripts/prompts/checkpoint-a.txt"
+  "scripts/prompts/checkpoint-b.txt"
+  "scripts/prompts/checkpoint-c.txt"
+  "CLAUDE.md"
+  "package.json"
+  "package-lock.json"
+)
+for path in "${PRE_MERGE_RESET_PATHS[@]}"; do
+  if [ -e "$REPO_ROOT/$path" ] && ! git diff --quiet HEAD -- "$path" 2>/dev/null; then
+    log "Pre-clean: discarding working-tree edits to $path (will be replaced by main)"
+    git checkout HEAD -- "$path" 2>&1 | tee -a "$LOG_FILE" || true
+  fi
+done
+
 if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
   log "WARNING: working tree has modifications — will be lost if not committed"
   git status --short | head -20 | tee -a "$LOG_FILE"
@@ -695,6 +724,14 @@ LOCATION_PATHS_THEIRS=(
   "scripts/prompts/checkpoint-a.txt"
   "scripts/prompts/checkpoint-b.txt"
   "scripts/prompts/checkpoint-c.txt"
+  # v2.32.26 — CLAUDE.md is shared documentation. Location-branch commits
+  # to it (e.g. holmgren-way 8610e1e2 adding the Fire TV launcher gotcha)
+  # MUST be cherry-picked to main first; locations should never carry a
+  # divergent CLAUDE.md. Without this entry, the v2.32.21/22 simplify pass
+  # on main (1122→672 lines) collided with location-only edits and aborted
+  # auto-update across the fleet for 4+ days. CLAUDE.md Standing Rule 9
+  # codifies "CLAUDE.md is main-only" — this entry enforces it at merge time.
+  "CLAUDE.md"
 )
 
 # Prefix-based fallback: any remaining conflict under a shared-software
@@ -978,31 +1015,11 @@ fi
 # ecosystem.config.js. Any new file-format env (e.g. lines with quotes,
 # comments) should pass through cleanly because we use `set -a` + source.
 if [ -f "$REPO_ROOT/.env" ]; then
-  log "Loading .env so build sees LOCATION_NAME / LOCATION_ID / etc."
-  # Safe .env loader: `source` cannot be used because unquoted values
-  # with spaces (e.g. `LOCATION_NAME=Stoneyard Greenville`) or
-  # apostrophes (`Lucky's 1313`) make bash try to execute the value
-  # as a command — which crashes `source` with exit 127 "command not
-  # found". Next.js's dotenv parser handles these without quoting, so
-  # the .env is internally valid — it's only the bash source that
-  # chokes. This loop reads each line literally and exports it as an
-  # env var without ever passing it through the shell word-splitter.
-  while IFS= read -r line || [ -n "$line" ]; do
-    # Skip blank lines and comments
-    [ -z "$line" ] && continue
-    case "$line" in \#*) continue ;; esac
-    # Must contain an =
-    case "$line" in *=*) ;; *) continue ;; esac
-    # Split on the FIRST = only
-    local_key="${line%%=*}"
-    local_val="${line#*=}"
-    # Trim surrounding quotes if the value is fully quoted
-    case "$local_val" in
-      \"*\") local_val="${local_val#\"}"; local_val="${local_val%\"}" ;;
-      \'*\') local_val="${local_val#\'}"; local_val="${local_val%\'}" ;;
-    esac
-    export "$local_key=$local_val"
-  done < "$REPO_ROOT/.env"
+  log "Sourcing .env so build sees LOCATION_NAME / LOCATION_ID / etc."
+  set -a
+  # shellcheck disable=SC1091
+  source "$REPO_ROOT/.env"
+  set +a
 fi
 
 log "npm run build (--force to bypass Turbo cache for package changes)"
