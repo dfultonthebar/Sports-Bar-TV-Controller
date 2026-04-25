@@ -10,6 +10,8 @@ Then 3-5 short bullets of justification. Do NOT bury the DECISION inside prose. 
 
 **Verify-sql markers MAY be wrong for this location.** A marker that fails because a feature isn't used at THIS location (e.g. Fire TV inputChannel marker fails because location has no Fire TVs) is NOT a real blocker — it's a marker scoped too broadly. In that case emit CAUTION (with reason "verify-sql marker N/A at this location") instead of STOP.
 
+**Per CLAUDE.md §6 + §10, hardware device IPs/ports are stored in the DB tables (`AudioProcessor`, `FireTVDevice`, `DirecTVDevice`, etc.), not in `apps/web/src/lib/hardware-config.ts`.** Empty / generic values in that file are NORMAL on main (each location's DB has the real values). Do NOT STOP just because `hardware-config.ts` shows empty `processorIp` after a merge — it is intentionally a fallback, not the source of truth. Verify via `sqlite3 production.db "SELECT * FROM AudioProcessor"` if you want to confirm the location actually has the device configured.
+
 You are doing post-merge review. The git merge from origin/main onto the
 location branch completed without conflicts, `npm ci` has finished
 installing dependencies, AND `drizzle-kit push` has run to apply any new
