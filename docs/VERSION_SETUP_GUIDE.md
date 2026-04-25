@@ -187,6 +187,46 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.37 — bootstrap auto-quotes .env values containing whitespace
+**Released:** 2026-04-25
+
+Leg Lamp + Stoneyard Greenville both had `LOCATION_NAME=Leg Lamp`
+(unquoted, with space) in `.env`. Auto-update.sh's build-phase
+`set -a; source .env; set +a` parses that line as
+`LOCATION_NAME=Leg` followed by `Lamp` command → 127 → trap fires →
+build phase aborts → rollback. Tonight cost two extra retry rounds
+to diagnose + manually fix.
+
+**Changes:**
+- `scripts/bootstrap-new-location.sh upsert_env()` now single-quotes
+  any value containing whitespace or shell-special chars
+  (`[[:space:]\$\`"!#&|]`). Inner single-quotes are escaped via
+  `'\''` pattern.
+
+**Required Manual Step at existing locations** that have problematic
+`.env` values (only the 2 fixed during tonight's session were
+affected, but verify):
+
+```bash
+# At each location, look for unquoted spaces in .env:
+grep -nE "^[A-Z_]+=[^\"\x27].* " /home/ubuntu/Sports-Bar-TV-Controller/.env
+# If output appears, manually edit those lines to wrap the value in
+# single quotes, e.g.:
+#   LOCATION_NAME=Leg Lamp        →   LOCATION_NAME='Leg Lamp'
+```
+
+**Verification:**
+```bash
+# After bootstrap-new-location.sh adds an env var, the value with
+# whitespace should be single-quoted in .env:
+grep '^LOCATION_NAME=' /home/ubuntu/Sports-Bar-TV-Controller/.env
+# Expect single-quoted if value contains a space.
+```
+
+**Rollback:** `git revert` is clean. Existing quoted values stay quoted.
+
+---
+
 ### v2.32.36 — Bigger max_tokens + DECISION-line-first + tolerant Fire TV marker
 **Released:** 2026-04-25
 
