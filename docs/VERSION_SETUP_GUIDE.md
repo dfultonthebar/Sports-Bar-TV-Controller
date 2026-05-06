@@ -187,6 +187,37 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.48 — Admin gradient-text titles swapped to solid white (iPad Safari fix continued)
+**Released:** 2026-05-06
+
+Continuation of the v2.32.42 homepage fix. `bg-gradient-to-r ... bg-clip-text text-transparent` renders as fully transparent on certain iPad Safari builds, leaving titles invisible behind the dark background. v2.32.42 fixed the homepage h1+h2; this release fixes three remaining admin-side instances. Bartender-remote files (`BartenderRemote*`, `BartenderMusicControl`, `EnhancedChannelGuideBartenderRemote`, `InteractiveBartenderLayout`, `dmx/DMXLightingRemote`) intentionally NOT touched — operator-locked, listed in commit body for separate review.
+
+**Changes:**
+- `apps/web/src/components/SportsGuide.tsx` — "All Sports Programming" h2.
+- `apps/web/src/components/AIGamePlanModal.tsx` — "AI Game Plan" h2.
+- `apps/web/src/app/settings/keyboard/page.tsx` — "Keyboard Shortcuts" h1.
+
+Each change is the same trivial className swap: gradient pattern → `text-white`. No JSX restructuring, no new components, no dependencies.
+
+**Required Manual Step:** None — pure className swap.
+
+**Verification:**
+```bash
+# Should return zero matches in the three admin files:
+grep -E "bg-clip-text text-transparent" \
+  /home/ubuntu/Sports-Bar-TV-Controller/apps/web/src/components/SportsGuide.tsx \
+  /home/ubuntu/Sports-Bar-TV-Controller/apps/web/src/components/AIGamePlanModal.tsx \
+  /home/ubuntu/Sports-Bar-TV-Controller/apps/web/src/app/settings/keyboard/page.tsx
+# Bartender-remote instances remain (intentional):
+grep -rln "bg-clip-text text-transparent" /home/ubuntu/Sports-Bar-TV-Controller/apps/web/src --include="*.tsx" | wc -l
+# Should be 6 (BartenderRemoteSelector*, BartenderRemoteAudioPanel, BartenderMusicControl,
+# InteractiveBartenderLayout, EnhancedChannelGuideBartenderRemote, dmx/DMXLightingRemote).
+```
+
+**Rollback:** `git revert` restores gradients. Will re-break titles on iPad Safari but no functional impact.
+
+---
+
 ### v2.32.47 — Cron jitter to prevent fleet rate-limit cascade
 **Released:** 2026-05-06
 

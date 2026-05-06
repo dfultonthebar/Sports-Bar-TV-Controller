@@ -426,7 +426,7 @@ export default function AIGamePlanModal({ isOpen, onClose }: AIGamePlanModalProp
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-white/10">
           <div>
-            <h2 className="text-2xl font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent flex items-center">
+            <h2 className="text-2xl font-bold text-white flex items-center">
               <Trophy className="mr-3 w-7 h-7 text-blue-400" />
               AI Game Plan
             </h2>

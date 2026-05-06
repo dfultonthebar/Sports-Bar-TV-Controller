@@ -46,6 +46,16 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-06 — v2.32.48 — Admin gradient-text titles swapped to solid white (iPad Safari fix continued)
+
+**Risk:** GO — three className-only swaps in admin-side components. Continuation of the v2.32.42 homepage fix for iPad Safari rendering `bg-clip-text text-transparent` as fully transparent. Fixes "All Sports Programming" (Sports Guide admin), "AI Game Plan" (modal h2), and "Keyboard Shortcuts" (settings page h1). Bartender-remote files intentionally left alone for separate operator review.
+
+**Affected:** `apps/web/src/components/SportsGuide.tsx`, `apps/web/src/components/AIGamePlanModal.tsx`, `apps/web/src/app/settings/keyboard/page.tsx`, `package.json`, `docs/VERSION_SETUP_GUIDE.md`, `docs/LOCATION_UPDATE_NOTES.md`.
+
+**Rollback:** `git revert` restores gradients. No data risk.
+
+---
+
 ### 2026-05-06 — v2.32.47 — Cron jitter to prevent fleet rate-limit cascade
 
 **Risk:** GO — single-script change to `auto-update.sh` adding a randomized 0-1799s sleep before cron-triggered runs. Manual triggers unchanged. Observed-live problem on 2026-05-06: parallel cron fanout caused 3-of-5 rollbacks via the org-wide 30k tokens/min API limit. Side effect: logs from cron runs are timestamped at actual-work-start (post-jitter), not 02:30.
