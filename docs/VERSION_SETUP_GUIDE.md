@@ -187,6 +187,34 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.45 — Scheduler-pattern docs rewritten to STATUS=SHIPPED
+**Released:** 2026-05-06
+
+Companion cleanup to v2.32.44. Audit of `docs/scheduler-patterns/` found all three pattern docs (HOME_TEAMS_SCHEDULER_INTEGRATION, TEAM_NAME_MATCHING_SYSTEM, TEAM_PRIORITY_SYSTEM) were forward-looking design proposals for code that's already in production and has been since v2.18-v2.20. Each doc rewritten as a STATUS doc reflecting actual `HomeTeam` schema, `team-name-matcher.ts`, and `priority-calculator.ts` implementations.
+
+**Changes:**
+- `docs/scheduler-patterns/HOME_TEAMS_SCHEDULER_INTEGRATION.md` — 581 → ~50 lines.
+- `docs/scheduler-patterns/TEAM_NAME_MATCHING_SYSTEM.md` — 1002 → ~55 lines.
+- `docs/scheduler-patterns/TEAM_PRIORITY_SYSTEM.md` — 652 → ~60 lines.
+
+**Required Manual Step:** None — docs only.
+
+**Verification:**
+```bash
+sqlite3 /home/ubuntu/sports-bar-data/production.db "PRAGMA table_info(HomeTeam);" | wc -l
+# ≥ 26 (id + 25 columns)
+grep -c "EXACT match\|ALIAS match\|LEARNED match\|FUZZY match" \
+  /home/ubuntu/Sports-Bar-TV-Controller/packages/scheduler/src/team-name-matcher.ts
+# ≥ 4
+grep -E "bonuses\.\w+ = [0-9]+" \
+  /home/ubuntu/Sports-Bar-TV-Controller/packages/scheduler/src/priority-calculator.ts | wc -l
+# ≥ 5 (playoff, rivalry, primeTime, primaryTeam, dayOfWeek)
+```
+
+**Rollback:** `git revert` restores the long design docs. No runtime impact either way.
+
+---
+
 ### v2.32.44 — Channel Resolver Consolidation Plan doc rewritten to STATUS=COMPLETE
 **Released:** 2026-05-06
 

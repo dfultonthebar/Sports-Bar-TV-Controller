@@ -46,6 +46,16 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-06 — v2.32.45 — Scheduler-pattern docs rewritten to STATUS=SHIPPED
+
+**Risk:** GO — docs only. Three-file rewrite under `docs/scheduler-patterns/` to reflect that the team-matcher + priority-calculator + HomeTeam schema work shipped in v2.18-v2.20 but the design docs were never updated. Total ~2200 lines of stale forward-looking design replaced with ~165 lines of accurate STATUS. Zero runtime impact.
+
+**Affected:** `docs/scheduler-patterns/HOME_TEAMS_SCHEDULER_INTEGRATION.md`, `docs/scheduler-patterns/TEAM_NAME_MATCHING_SYSTEM.md`, `docs/scheduler-patterns/TEAM_PRIORITY_SYSTEM.md`, `package.json`, `docs/VERSION_SETUP_GUIDE.md`, `docs/LOCATION_UPDATE_NOTES.md`.
+
+**Rollback:** `git revert` restores the original long docs. No runtime regression either direction.
+
+---
+
 ### 2026-05-06 — v2.32.44 — Channel Resolver Consolidation Plan doc updated
 
 **Risk:** GO — docs only. Single-file rewrite of `docs/CHANNEL_RESOLVER_CONSOLIDATION_PLAN.md` to reflect that the plan has fully shipped (was misleadingly stuck at "No code changes yet"). Zero runtime impact.
