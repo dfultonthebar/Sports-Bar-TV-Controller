@@ -1,4 +1,6 @@
 
+> **⚠️ This doc is supplementary.** The canonical fresh-install runbook is **[docs/NEW_LOCATION_SETUP.md](NEW_LOCATION_SETUP.md)** — start there first. This README describes the public install.sh wrapper; for new bar locations follow NEW_LOCATION_SETUP end-to-end.
+
 # Sports Bar TV Controller - Installation Guide
 
 This guide provides comprehensive instructions for installing and managing the Sports Bar TV Controller application on Ubuntu/Debian systems.

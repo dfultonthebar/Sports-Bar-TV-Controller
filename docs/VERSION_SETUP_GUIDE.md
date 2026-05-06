@@ -187,6 +187,269 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.53 — install.sh + ollama-setup.sh simplify pass
+**Released:** 2026-05-06
+
+`/simplify` review of v2.32.50-52 surfaced 9 concrete cleanups in `install.sh` and a model-list drift in `scripts/ollama-setup.sh`. All applied.
+
+**Changes:**
+- `install.sh` 6 separate `apt-get install -y` calls collapsed into one (saves 2-3 min on slow apt mirror)
+- `install.sh` redundant `apt-get update -qq` for GitHub-CLI repo wrapped in `timeout 60` (prevents indefinite hang on flaky mirror)
+- `install.sh` redundant `sleep 5` in `verify_installation` removed (Phase 11 verify-install.sh has its own port-bind wait)
+- `install.sh` extracted `check_pm2_online()` helper for the 2 post-`pm2 start` status checks
+- `install.sh` stale ollama model-list comment updated to match `REQUIRED_MODELS` array (`llama3.1:8b`, `nomic-embed-text`)
+- `install.sh` `ANTHROPIC_API_KEY` warning now points operators at `bootstrap-new-location.sh --anthropic-api-key` (canonical .env writer) instead of `echo >> .env`
+- `install.sh` dead `QA_WORKER_NAME="qa-worker"` constant removed (qa-worker call was deleted in v2.32.50)
+- `install.sh` double blank line removed
+- `scripts/ollama-setup.sh` `MODELS` array synced to `llama3.1:8b` + `nomic-embed-text` (was still listing `llama3.2:3b` + `phi3:mini` — mismatch with install.sh and the app code)
+
+**Required Manual Step:** None. Existing locations already installed via the old paths; no re-run needed.
+
+**Verification:**
+```bash
+grep -c "apt-get install -y \\\\" /home/ubuntu/Sports-Bar-TV-Controller/install.sh   # 1 (was 6)
+grep -E "llama3\\.2:3b|phi3:mini" /home/ubuntu/Sports-Bar-TV-Controller/install.sh /home/ubuntu/Sports-Bar-TV-Controller/scripts/ollama-setup.sh   # empty
+grep -A 1 "^check_pm2_online" /home/ubuntu/Sports-Bar-TV-Controller/install.sh   # helper definition
+```
+
+**Rollback:** `git revert` is clean — pure cleanup, behavior is functionally identical.
+
+---
+
+### v2.32.52 — Install-doc reconciliation: NEW_LOCATION_SETUP.md is canonical
+**Released:** 2026-05-06
+
+Repo had 13 install/deploy docs in `docs/` (NEW_LOCATION_SETUP, INSTALLATION_GUIDE, NEW_SYSTEM_DEPLOYMENT_CHECKLIST, QUICK_DEPLOYMENT_GUIDE, NUC_DEPLOYMENT, PRODUCTION_DEPLOYMENT, MANUAL_DEPLOYMENT_STEPS, PULL_AND_INSTALL, README_INSTALLATION, AUTO_UPDATE_SETUP, INSTALLER_BUG_ANALYSIS, AI_BACKEND_SETUP, OLLAMA_SETUP_COMPLETE) — most overlapped, contradicted each other on which Ollama models to pull, and predated the auth-bootstrap step. An operator landing on any of them couldn't tell which was authoritative.
+
+**Changes:**
+- Pinned `docs/NEW_LOCATION_SETUP.md` as the canonical fresh-install runbook by adding a "TL;DR — the whole thing in 8 commands" section at the top showing every step from `git clone` to webapp running.
+- Updated NEW_LOCATION_SETUP's verify-install reference from "PASS 6/6" to "PASS 7/7" (the matrix_config check was added in v2.18.x, was never reflected in the docs).
+- Added a top-banner pointer to NEW_LOCATION_SETUP on 11 supplementary install docs: INSTALLATION_GUIDE, QUICK_DEPLOYMENT_GUIDE, NUC_DEPLOYMENT, MANUAL_DEPLOYMENT_STEPS, PULL_AND_INSTALL, PRODUCTION_DEPLOYMENT, README_INSTALLATION, NEW_SYSTEM_DEPLOYMENT_CHECKLIST, INSTALLER_BUG_ANALYSIS, AI_BACKEND_SETUP, OLLAMA_SETUP_COMPLETE.
+- AUTO_UPDATE_SETUP.md was left alone — it's canonical for its own thing (auto-update state + operator runbook).
+
+**Required Manual Step:** None — docs only.
+
+**Verification:**
+```bash
+grep -l "This doc is supplementary" /home/ubuntu/Sports-Bar-TV-Controller/docs/*.md | wc -l
+# Should return 11 (the 11 supplementary install docs).
+grep "TL;DR — the whole thing" /home/ubuntu/Sports-Bar-TV-Controller/docs/NEW_LOCATION_SETUP.md
+# Should match.
+```
+
+**Rollback:** `git revert` removes the banners and TL;DR. Docs revert to the pre-reconciliation state. Zero runtime impact.
+
+---
+
+### v2.32.51 — install.sh runs verify-install.sh as the install gate + clearer Next Steps
+**Released:** 2026-05-06
+
+`install.sh` finished with a generic "Installation Complete!" banner whether or not the install was actually working — operators had to know to also run `scripts/verify-install.sh` (the canonical 7-layer health check) and `scripts/bootstrap-new-location.sh` (the auth bootstrap that seeds the `Location` row + `AuthPin` rows + `LOCATION_ID` in `.env`). Without the bootstrap, every login attempt returns "Invalid PIN", and operators didn't know that until they tried. This release wires the gate in and points operators at the bootstrap as the explicit required-next-step.
+
+**Changes:**
+- New PHASE 11 in `install.sh` runs `scripts/verify-install.sh` after PM2 is up, sleeping 10s first to let routes warm. Reports PASS/FAIL but does NOT exit non-zero on FAIL — at install time the auth bootstrap hasn't run yet, so health/metrics layers may degrade. Failures are surfaced in the operator-facing summary so they know what to do.
+- `print_final_instructions()` now leads with "REQUIRED NEXT STEPS — auth bootstrap" and shows the exact `bootstrap-new-location.sh` invocation with all flags, plus the follow-up `pm2 restart --update-env` and re-run-verify-install commands.
+- Added an "Auto-update timer" section pointing at `scripts/install-auto-update-timer.sh` and `loginctl enable-linger`.
+- Reformatted the migration commands as "Optional — migrate from an existing location" so they don't read as the primary next step.
+
+**Required Manual Step:** None for existing locations. For fresh installs, the operator must run `scripts/bootstrap-new-location.sh` after `install.sh` exits — the bootstrap script needs a 4-digit admin PIN and 4-digit staff PIN that install.sh has no way to generate safely on its own.
+
+**Verification:**
+```bash
+grep -A 2 "PHASE 11: Install Verification" /home/ubuntu/Sports-Bar-TV-Controller/install.sh
+# Should show the run_install_verify function header.
+grep -A 1 "REQUIRED NEXT STEPS" /home/ubuntu/Sports-Bar-TV-Controller/install.sh
+# Should show the bootstrap-new-location.sh call-to-action.
+```
+
+**Rollback:** `git revert` is harmless — only affects the install-time output, not running locations.
+
+---
+
+### v2.32.50 — install.sh PM2 startup fix + correct Ollama models + pm2-logrotate
+**Released:** 2026-05-06
+
+`install.sh` had three install-path bugs that fresh installs would hit but no existing fleet location would (since none of them re-run `install.sh`). Bug 1: `pm2 start npm --name sports-bar-tv-controller -- start` started only the next-server, leaving `bartender-proxy` (port 3002) unbound — `verify-install.sh` layer 4 (`bartender_proxy`) would fail on every fresh install. Bug 2: `pm2 start "/src/workers/qa-worker.ts" ...` referenced an absolute path that doesn't exist (the worker file is at `apps/web/src/workers/qa-worker.ts`, and the worker is no longer part of the fleet runbook). Bug 3: Ollama models pulled were `llama3.2:3b` and `phi3:mini` — production code (`ai-suggest/route.ts`, RAG query engine) uses `llama3.1:8b`, so AI scheduling and RAG queries would 404 on first use.
+
+**Changes:**
+- `install.sh:setup_pm2()` now runs `pm2 start ecosystem.config.js` instead of two separate `pm2 start` calls. Ecosystem starts both `sports-bar-tv-controller` and `bartender-proxy` together (it's the single source of truth for the PM2 process layout).
+- Removed the broken `qa-worker` startup block (broken absolute path + the worker isn't in `ecosystem.config.js`).
+- Removed dead code that referenced `$pm2_processes` (an undefined variable from a partial refactor).
+- Added `pm2 install pm2-logrotate` + 10MB/7-day/compressed config inside `setup_pm2()` (was only in `new-location-setup.sh`, which the canonical install.sh path doesn't always reach).
+- `download_ollama_models()` now pulls `llama3.1:8b` + `nomic-embed-text` (matches CLAUDE.md §RAG and §AI Scheduling).
+- `verify_installation()` warns (non-fatal) if `ANTHROPIC_API_KEY` is missing from `.env`.
+
+**Required Manual Step:** None for existing locations — this only affects fresh `install.sh` runs. Fleet hosts have `bartender-proxy` running already (started manually or via prior fleet maintenance).
+
+**Verification:**
+```bash
+# Fresh-install dry verification (only meaningful on a brand-new host):
+grep -A 1 "Starting sports-bar-tv-controller" /home/ubuntu/Sports-Bar-TV-Controller/install.sh
+# Should show: pm2 start ecosystem.config.js
+grep -E "llama3.1:8b|nomic-embed-text" /home/ubuntu/Sports-Bar-TV-Controller/install.sh
+# Should match both.
+grep "qa-worker" /home/ubuntu/Sports-Bar-TV-Controller/install.sh
+# Should return nothing (the broken block was removed).
+```
+
+**Rollback:** `git revert` returns to the broken installer (only used at first install — no live state risk).
+
+---
+
+### v2.32.49 — Deterministic checkpoint fast path (bypass Haiku for the 80% case)
+**Released:** 2026-05-06
+
+Auto-update checkpoints A/B/C used to call `checkpoint-runner.py` (Anthropic API) on every run, costing ~$5/mo fleet-wide and producing variable false-positive STOPs (today: Haiku flagged the pre-existing leaked Sports Guide API key on a docs-only update; earlier: empty `hardware-config.ts` post-merge). The vast majority of those checks are bash-deterministic — verify-sql markers, file presence, narrow log patterns.
+
+**Changes:**
+- New `scripts/checkpoint-deterministic.sh` (~190 lines). Runs the deterministic checks for all three checkpoints. Emits `DECISION: GO|CAUTION|STOP|UNDETERMINED`. UNDETERMINED escalates to AI; never STOPs on its own when uncertain.
+- `scripts/auto-update.sh:run_checkpoint()` gains a fast-path block that tries the deterministic script first (30s timeout), falls through to the existing AI path on UNDETERMINED.
+
+**Per-checkpoint logic:**
+- **A (pre-merge):** empty `git log HEAD..origin/main` → instant GO. Else scan diff for leaked-secret regex, deletion of critical scripts, NOT NULL columns without default; scan `LOCATION_UPDATE_NOTES.md` for `Risk: STOP` on pending versions; CAUTION on major dep bumps.
+- **B (post-merge):** Location row count, ChannelPreset count, new schema tables exist in DB, sqlite3 verify-sql markers from VERSION_SETUP_GUIDE entries between PRE/POST version.
+- **C (post-restart):** `VERIFY_INSTALL_JSON` status, `/api/system/health` HTTP 200, narrow PM2 crash-pattern grep (`unhandledRejection|Cannot find module|EADDRINUSE|SyntaxError|FATAL` — explicitly NOT `ERROR` to avoid false-positives like the ESPN softball 400).
+
+**Required Manual Step:** None. `checkpoint-deterministic.sh` is auto-detected — if absent, behavior is unchanged.
+
+**Verification:**
+```bash
+test -x /home/ubuntu/Sports-Bar-TV-Controller/scripts/checkpoint-deterministic.sh && echo OK
+PRE_MERGE_VERSION=2.32.48 POST_MERGE_VERSION=2.32.49 \
+  bash /home/ubuntu/Sports-Bar-TV-Controller/scripts/checkpoint-deterministic.sh A 2>/dev/null
+# Expect: DECISION: GO - no commits pending merge   (or similar)
+grep -A 2 "Deterministic fast path" /home/ubuntu/Sports-Bar-TV-Controller/scripts/auto-update.sh | head -5
+# Expect: comment block in run_checkpoint()
+```
+
+**Rollback:** `git revert` removes the fast-path block + the new script. Behavior reverts to AI-on-every-checkpoint. No state risk.
+
+---
+
+### v2.32.48 — Admin gradient-text titles swapped to solid white (iPad Safari fix continued)
+**Released:** 2026-05-06
+
+Continuation of the v2.32.42 homepage fix. `bg-gradient-to-r ... bg-clip-text text-transparent` renders as fully transparent on certain iPad Safari builds, leaving titles invisible behind the dark background. v2.32.42 fixed the homepage h1+h2; this release fixes three remaining admin-side instances. Bartender-remote files (`BartenderRemote*`, `BartenderMusicControl`, `EnhancedChannelGuideBartenderRemote`, `InteractiveBartenderLayout`, `dmx/DMXLightingRemote`) intentionally NOT touched — operator-locked, listed in commit body for separate review.
+
+**Changes:**
+- `apps/web/src/components/SportsGuide.tsx` — "All Sports Programming" h2.
+- `apps/web/src/components/AIGamePlanModal.tsx` — "AI Game Plan" h2.
+- `apps/web/src/app/settings/keyboard/page.tsx` — "Keyboard Shortcuts" h1.
+
+Each change is the same trivial className swap: gradient pattern → `text-white`. No JSX restructuring, no new components, no dependencies.
+
+**Required Manual Step:** None — pure className swap.
+
+**Verification:**
+```bash
+# Should return zero matches in the three admin files:
+grep -E "bg-clip-text text-transparent" \
+  /home/ubuntu/Sports-Bar-TV-Controller/apps/web/src/components/SportsGuide.tsx \
+  /home/ubuntu/Sports-Bar-TV-Controller/apps/web/src/components/AIGamePlanModal.tsx \
+  /home/ubuntu/Sports-Bar-TV-Controller/apps/web/src/app/settings/keyboard/page.tsx
+# Bartender-remote instances remain (intentional):
+grep -rln "bg-clip-text text-transparent" /home/ubuntu/Sports-Bar-TV-Controller/apps/web/src --include="*.tsx" | wc -l
+# Should be 6 (BartenderRemoteSelector*, BartenderRemoteAudioPanel, BartenderMusicControl,
+# InteractiveBartenderLayout, EnhancedChannelGuideBartenderRemote, dmx/DMXLightingRemote).
+```
+
+**Rollback:** `git revert` restores gradients. Will re-break titles on iPad Safari but no functional impact.
+
+---
+
+### v2.32.47 — Cron jitter to prevent fleet rate-limit cascade
+**Released:** 2026-05-06
+
+All 6 locations have cron firing at 02:30/02:31 local time. When a release lands on main and every host wakes simultaneously, all 6 hit the Anthropic API at the same Checkpoint A/B/C boundaries and trip the org-wide 30k input-tokens-per-minute rate limit. Hosts that lose the race retry, exhaust their 4 attempts, and roll back even though the merge would have succeeded in isolation. Observed live during the 2026-05-06 v2.32.43 fanout — 3 of 5 locations rolled back from the rate-limit cascade.
+
+**Changes:**
+- `scripts/auto-update.sh` — when `--triggered-by=cron`, sleep 0-1799s before starting work. Manual triggers (`manual_api`, `manual_cli`) skip the jitter so the operator doesn't wait. Refreshes `RUN_TS`/`LOG_FILE`/`RUN_STARTED_AT` after the sleep so the log filename reflects when work actually started. Logs the slept duration in the preflight line.
+
+**Required Manual Step:** None — code-only.
+
+**Verification:**
+```bash
+grep -A 4 "Cron jitter (v2.32.47)" /home/ubuntu/Sports-Bar-TV-Controller/scripts/auto-update.sh
+# Should show the comment block.
+grep "Cron jitter:" /home/ubuntu/sports-bar-data/update-logs/auto-update-*.log | tail -3
+# After the next 02:31 cron, should show "Cron jitter: slept Ns" lines.
+```
+
+**Rollback:** `git revert` is safe — without jitter, fleet returns to the parallel-rate-limit cascade behavior.
+
+---
+
+### v2.32.46 — SPORTS_SCHEDULING_SYSTEM_DESIGN.md rewritten to STATUS=SHIPPED
+**Released:** 2026-05-06
+
+Final doc in the cleanup pass (after v2.32.44 channel-resolver and v2.32.45 scheduler-patterns). Audit confirmed Phases 1-3 of the original 3000-line design are in production: tables in DB, allocation engine + 10 API endpoints under `/api/scheduling/`, ESPN sync + auto-reallocator on cron, dashboard UI shipped. Phase 4 was Optional Enhancements — multi-bar achieved via the 6-location branch model; predictive allocation not on roadmap. Doc rewritten to reflect actual state with cross-references to the four sibling STATUS docs.
+
+**Changes:**
+- `docs/SPORTS_SCHEDULING_SYSTEM_DESIGN.md` — 3082 → ~75 lines.
+
+**Required Manual Step:** None — docs only.
+
+**Verification:**
+```bash
+sqlite3 /home/ubuntu/sports-bar-data/production.db ".tables" | tr ' ' '\n' | \
+  grep -E "game_schedules|input_source|tournament_brackets" | wc -l   # ≥ 4
+ls /home/ubuntu/Sports-Bar-TV-Controller/apps/web/src/app/api/scheduling/ | wc -l   # ≥ 10
+test -f /home/ubuntu/Sports-Bar-TV-Controller/packages/scheduler/src/espn-sync-service.ts && echo OK
+```
+
+**Rollback:** `git revert` restores the 3000-line design doc. No runtime impact either way.
+
+---
+
+### v2.32.45 — Scheduler-pattern docs rewritten to STATUS=SHIPPED
+**Released:** 2026-05-06
+
+Companion cleanup to v2.32.44. Audit of `docs/scheduler-patterns/` found all three pattern docs (HOME_TEAMS_SCHEDULER_INTEGRATION, TEAM_NAME_MATCHING_SYSTEM, TEAM_PRIORITY_SYSTEM) were forward-looking design proposals for code that's already in production and has been since v2.18-v2.20. Each doc rewritten as a STATUS doc reflecting actual `HomeTeam` schema, `team-name-matcher.ts`, and `priority-calculator.ts` implementations.
+
+**Changes:**
+- `docs/scheduler-patterns/HOME_TEAMS_SCHEDULER_INTEGRATION.md` — 581 → ~50 lines.
+- `docs/scheduler-patterns/TEAM_NAME_MATCHING_SYSTEM.md` — 1002 → ~55 lines.
+- `docs/scheduler-patterns/TEAM_PRIORITY_SYSTEM.md` — 652 → ~60 lines.
+
+**Required Manual Step:** None — docs only.
+
+**Verification:**
+```bash
+sqlite3 /home/ubuntu/sports-bar-data/production.db "PRAGMA table_info(HomeTeam);" | wc -l
+# ≥ 26 (id + 25 columns)
+grep -c "EXACT match\|ALIAS match\|LEARNED match\|FUZZY match" \
+  /home/ubuntu/Sports-Bar-TV-Controller/packages/scheduler/src/team-name-matcher.ts
+# ≥ 4
+grep -E "bonuses\.\w+ = [0-9]+" \
+  /home/ubuntu/Sports-Bar-TV-Controller/packages/scheduler/src/priority-calculator.ts | wc -l
+# ≥ 5 (playoff, rivalry, primeTime, primaryTeam, dayOfWeek)
+```
+
+**Rollback:** `git revert` restores the long design docs. No runtime impact either way.
+
+---
+
+### v2.32.44 — Channel Resolver Consolidation Plan doc rewritten to STATUS=COMPLETE
+**Released:** 2026-05-06
+
+Audit during post-vacation cleanup found that `docs/CHANNEL_RESOLVER_CONSOLIDATION_PLAN.md` still said "No code changes yet" while the plan had actually shipped progressively across v2.5.0 through v2.32.x. All 5 target routes use the shared `network-channel-resolver` helper; zero hardcoded `NETWORK_TO_CABLE`/`NETWORK_TO_DIRECTV`/`stationToPreset` dicts remain in any route file. Madison-numbers bug at Graystone/Holmgren is fixed.
+
+**Changes:**
+- `docs/CHANNEL_RESOLVER_CONSOLIDATION_PLAN.md` — replaced 389-line forward-looking plan with ~70-line STATUS doc reflecting actual state (per-route migration record, what intentionally remains, verification command).
+
+**Required Manual Step:** None — docs only.
+
+**Verification:**
+```bash
+grep -rnE '^const (NETWORK_TO_CABLE|NETWORK_TO_DIRECTV|stationToPreset)' \
+  /home/ubuntu/Sports-Bar-TV-Controller/apps/web/src/app/api/
+# Should return 0 lines.
+```
+
+**Rollback:** `git revert` restores the old plan doc text. No runtime impact either way.
+
+---
+
 ### v2.32.43 — ESPN college-softball sport slug fix
 **Released:** 2026-05-06
 
