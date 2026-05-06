@@ -46,6 +46,18 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-06 — v2.32.44 — Channel Resolver Consolidation Plan doc updated
+
+**Risk:** GO — docs only. Single-file rewrite of `docs/CHANNEL_RESOLVER_CONSOLIDATION_PLAN.md` to reflect that the plan has fully shipped (was misleadingly stuck at "No code changes yet"). Zero runtime impact.
+
+**What changed:** Replaced 389-line forward-looking plan with ~70-line STATUS doc. Per-route migration record + verification command + intentional carve-out note for `NETWORK_TO_STREAMING_APP`.
+
+**Affected:** `docs/CHANNEL_RESOLVER_CONSOLIDATION_PLAN.md`, `package.json`, `docs/VERSION_SETUP_GUIDE.md`, `docs/LOCATION_UPDATE_NOTES.md`.
+
+**Rollback:** `git revert` restores the old plan text. No runtime regression either direction.
+
+---
+
 ### 2026-05-06 — v2.32.43 — ESPN college-softball sport slug fix
 
 **Risk:** GO — one-line typo fix in a sport-sync URL builder. No DB changes, no env changes, no API surface change. Failure mode if regressed: same behavior as before the fix (a 400 every 10 minutes for the softball league only). Other ESPN league fetches are unaffected.

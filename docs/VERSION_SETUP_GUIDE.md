@@ -187,6 +187,27 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.44 — Channel Resolver Consolidation Plan doc rewritten to STATUS=COMPLETE
+**Released:** 2026-05-06
+
+Audit during post-vacation cleanup found that `docs/CHANNEL_RESOLVER_CONSOLIDATION_PLAN.md` still said "No code changes yet" while the plan had actually shipped progressively across v2.5.0 through v2.32.x. All 5 target routes use the shared `network-channel-resolver` helper; zero hardcoded `NETWORK_TO_CABLE`/`NETWORK_TO_DIRECTV`/`stationToPreset` dicts remain in any route file. Madison-numbers bug at Graystone/Holmgren is fixed.
+
+**Changes:**
+- `docs/CHANNEL_RESOLVER_CONSOLIDATION_PLAN.md` — replaced 389-line forward-looking plan with ~70-line STATUS doc reflecting actual state (per-route migration record, what intentionally remains, verification command).
+
+**Required Manual Step:** None — docs only.
+
+**Verification:**
+```bash
+grep -rnE '^const (NETWORK_TO_CABLE|NETWORK_TO_DIRECTV|stationToPreset)' \
+  /home/ubuntu/Sports-Bar-TV-Controller/apps/web/src/app/api/
+# Should return 0 lines.
+```
+
+**Rollback:** `git revert` restores the old plan doc text. No runtime impact either way.
+
+---
+
 ### v2.32.43 — ESPN college-softball sport slug fix
 **Released:** 2026-05-06
 
