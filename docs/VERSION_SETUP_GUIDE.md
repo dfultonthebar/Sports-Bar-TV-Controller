@@ -187,6 +187,36 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.43 — ESPN college-softball sport slug fix
+**Released:** 2026-05-06
+
+ESPN sync at every location was logging stack traces every 10 minutes:
+`ESPN API error: 400 Bad Request url=https://site.api.espn.com/apis/site/v2/sports/softball/college-softball/scoreboard`.
+
+Root cause: NCAA Softball is parented under `sport=baseball` in ESPN's
+URL hierarchy (alongside MLB and college-baseball), not `sport=softball`.
+The instrumentation entry had the wrong parent slug. Verified live —
+`sports/baseball/college-softball/scoreboard` returns 200 with
+`"name":"NCAA Softball"`; `sports/softball/college-softball` returns 400.
+
+**Changes:**
+- `apps/web/src/instrumentation.ts:141` — `sport: 'softball'` → `sport: 'baseball'`
+
+**Required Manual Step:** None — pure software fix, auto-merge safe.
+
+**Verification:**
+```bash
+grep -A 1 'college-softball' /home/ubuntu/Sports-Bar-TV-Controller/apps/web/src/instrumentation.ts | head -2
+# Should show: { sport: 'baseball', league: 'college-softball' },
+pm2 logs sports-bar-tv-controller --lines 200 --nostream 2>&1 | grep -c 'college-softball.*400' || true
+# Should be 0 after one full ESPN sync cycle (~10 min post-restart).
+```
+
+**Rollback:** `git revert` is trivial; the only side effect is the 400
+errors return.
+
+---
+
 ### v2.32.42 — Homepage title: solid white instead of fragile gradient text
 **Released:** 2026-04-25
 
