@@ -1,3 +1,5 @@
+> **⚠️ This doc is supplementary and outdated.** The canonical fresh-install runbook is **[docs/NEW_LOCATION_SETUP.md](NEW_LOCATION_SETUP.md)** — start there first. Use the auto-update flow (`scripts/auto-update.sh`) instead of the manual pull-and-rebuild this doc describes.
+
 # 🚀 Quick Start: Pull Changes and Fix Deployment
 
 This guide will help you pull the latest deployment fixes and get your application running.

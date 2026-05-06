@@ -246,7 +246,7 @@ export default function SportsGuide() {
       <div className="rounded-lg border border-slate-700 bg-slate-900/40 p-6">
         <div className="flex items-start justify-between mb-4">
           <div>
-            <h2 className="text-3xl font-bold bg-linear-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent mb-2">
+            <h2 className="text-3xl font-bold text-white mb-2">
               All Sports Programming
             </h2>
             <p className="text-slate-300 text-sm">
@@ -257,9 +257,9 @@ export default function SportsGuide() {
           <button
             onClick={loadSportsData}
             disabled={isLoading}
-            className="group relative bg-linear-to-br from-blue-500/20 to-purple-500/20 rounded-lg border border-blue-400/30 hover:border-blue-400/50 hover:scale-105 transition-all duration-300 px-4 py-2 flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+            className="group relative bg-gradient-to-br from-blue-500/20 to-purple-500/20 rounded-lg border border-blue-400/30 hover:border-blue-400/50 hover:scale-105 transition-all duration-300 px-4 py-2 flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
           >
-            <div className="absolute inset-0 bg-linear-to-br from-blue-500/10 to-purple-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-xl"></div>
+            <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 to-purple-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-xl"></div>
             <div className="relative z-10 flex items-center space-x-2 text-white font-medium">
               <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
               <span>{isLoading ? 'Loading...' : 'Refresh'}</span>
@@ -307,7 +307,7 @@ export default function SportsGuide() {
             placeholder="Search teams, sports, or games..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full px-4 py-3 bg-slate-800/50 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-hidden focus:border-blue-400/50 focus:bg-slate-700/50 transition-all duration-300"
+            className="w-full px-4 py-3 bg-slate-800/50 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-blue-400/50 focus:bg-slate-700/50 transition-all duration-300"
           />
         </div>
       </div>
@@ -325,15 +325,15 @@ export default function SportsGuide() {
       {!isLoading && error && (
         <div className="bg-red-950/30 border border-red-500/30 rounded-lg p-8">
           <div className="flex items-start space-x-4">
-            <AlertCircle className="w-8 h-8 text-red-500 shrink-0" />
+            <AlertCircle className="w-8 h-8 text-red-500 flex-shrink-0" />
             <div>
               <h3 className="text-xl font-bold text-red-400 mb-2">Failed to Load Sports Data</h3>
               <p className="text-slate-300 mb-4">{error}</p>
               <button
                 onClick={loadSportsData}
-                className="group relative bg-linear-to-br from-red-500/20 to-pink-500/20 rounded-lg border border-red-400/30 hover:border-red-400/50 hover:scale-105 transition-all duration-300 px-4 py-2 flex items-center space-x-2"
+                className="group relative bg-gradient-to-br from-red-500/20 to-pink-500/20 rounded-lg border border-red-400/30 hover:border-red-400/50 hover:scale-105 transition-all duration-300 px-4 py-2 flex items-center space-x-2"
               >
-                <div className="absolute inset-0 bg-linear-to-br from-red-500/10 to-pink-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-xl"></div>
+                <div className="absolute inset-0 bg-gradient-to-br from-red-500/10 to-pink-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-xl"></div>
                 <div className="relative z-10 flex items-center space-x-2 text-white font-medium">
                   <RefreshCw className="w-4 h-4" />
                   <span>Try Again</span>
@@ -361,7 +361,7 @@ export default function SportsGuide() {
                   {/* Group Header */}
                   <button
                     onClick={() => toggleGroup(group.group_title)}
-                    className={`w-full px-6 py-4 bg-linear-to-r ${colors.headerGradient} ${colors.headerHover} transition-all duration-300 text-left flex items-center justify-between`}
+                    className={`w-full px-6 py-4 bg-gradient-to-r ${colors.headerGradient} ${colors.headerHover} transition-all duration-300 text-left flex items-center justify-between`}
                   >
                     <div>
                       <h3 className="text-xl font-bold text-white mb-1">
@@ -382,8 +382,8 @@ export default function SportsGuide() {
                       {group.listings.map((listing, listingIdx) => {
                         const isLive = isLiveGame(listing)
                         return (
-                          <div key={listingIdx} className={`group relative bg-linear-to-br ${colors.gradient} rounded-lg border ${colors.border} ${colors.hoverBorder} hover:scale-[1.02] transition-all duration-300 m-4`}>
-                            <div className={`absolute inset-0 bg-linear-to-br ${colors.gradient} opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-xl`}></div>
+                          <div key={listingIdx} className={`group relative bg-gradient-to-br ${colors.gradient} rounded-lg border ${colors.border} ${colors.hoverBorder} hover:scale-[1.02] transition-all duration-300 m-4`}>
+                            <div className={`absolute inset-0 bg-gradient-to-br ${colors.gradient} opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-xl`}></div>
                             <div className="relative z-10 p-4">
                               <div className="flex items-start justify-between">
                                 <div className="flex-1">
@@ -454,9 +454,9 @@ export default function SportsGuide() {
           <p className="text-slate-400 mb-6">Click refresh to load sports programming</p>
           <button
             onClick={loadSportsData}
-            className="group relative bg-linear-to-br from-blue-500/20 to-purple-500/20 rounded-lg border border-blue-400/30 hover:border-blue-400/50 hover:scale-105 transition-all duration-300 px-4 py-2 mx-auto inline-flex items-center space-x-2"
+            className="group relative bg-gradient-to-br from-blue-500/20 to-purple-500/20 rounded-lg border border-blue-400/30 hover:border-blue-400/50 hover:scale-105 transition-all duration-300 px-4 py-2 mx-auto inline-flex items-center space-x-2"
           >
-            <div className="absolute inset-0 bg-linear-to-br from-blue-500/10 to-purple-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-xl"></div>
+            <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 to-purple-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-xl"></div>
             <div className="relative z-10 flex items-center space-x-2 text-white font-medium">
               <RefreshCw className="w-4 h-4" />
               <span>Load Sports Data</span>

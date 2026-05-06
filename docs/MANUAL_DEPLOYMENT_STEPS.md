@@ -1,3 +1,5 @@
+> **⚠️ This doc is supplementary.** The canonical fresh-install runbook is **[docs/NEW_LOCATION_SETUP.md](NEW_LOCATION_SETUP.md)** — start there first. This doc describes a one-off legacy SSH-based deploy and is kept for reference.
+
 # Manual Deployment Steps
 
 ## Prerequisites

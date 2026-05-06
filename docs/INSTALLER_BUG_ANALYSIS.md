@@ -1,3 +1,5 @@
+> **⚠️ This doc is a historical post-mortem, not a runbook.** The canonical fresh-install runbook is **[docs/NEW_LOCATION_SETUP.md](NEW_LOCATION_SETUP.md)**. This doc captures one specific installer bug investigation; do not follow it as install instructions.
+
 # Installer Bug Analysis - Root Cause & Fix
 
 ## Executive Summary

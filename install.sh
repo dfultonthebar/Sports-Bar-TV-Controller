@@ -55,7 +55,6 @@ REPO_URL="https://github.com/dfultonthebar/Sports-Bar-TV-Controller.git"
 REPO_BRANCH="${REPO_BRANCH:-main}"
 DATABASE_DIR="$HOME/sports-bar-data"
 PORT="3001"
-QA_WORKER_NAME="qa-worker"
 LOG_FILE="/tmp/sportsbar-install-$(date +%Y%m%d-%H%M%S).log"
 
 # Node.js version
@@ -115,6 +114,19 @@ check_command() {
         return 0
     else
         return 1
+    fi
+}
+
+# Reports whether a PM2-managed process is online. Used in 3 places after
+# pm2 start to verify a specific service came up; warns (non-fatal) on miss
+# so verify-install.sh in Phase 11 has the final say.
+check_pm2_online() {
+    local pm2_name=$1
+    local description=${2:-$pm2_name}
+    if pm2 list 2>/dev/null | grep -q "${pm2_name}.*online"; then
+        log_and_print "${description} started successfully"
+    else
+        print_warning "${description} may not have started — check: pm2 logs ${pm2_name}"
     fi
 }
 
@@ -264,51 +276,18 @@ install_system_dependencies() {
     
     log_and_print "Updating package lists..."
     sudo apt-get update >> "$LOG_FILE" 2>&1
-    
-    log_and_print "Installing core system packages..."
-    # Core utilities
-    sudo apt-get install -y \
-        curl \
-        wget \
-        git \
-        >> "$LOG_FILE" 2>&1
-    
-    log_and_print "Installing build tools and compilers..."
-    # Build tools required for compiling native Node.js modules
-    # - build-essential: gcc, g++, make, and other compilation tools
-    # - python3: Required by node-gyp for building native addons
-    # - python3-pip: Python package manager (may be needed by some npm packages)
-    sudo apt-get install -y \
-        build-essential \
-        python3 \
-        python3-pip \
-        >> "$LOG_FILE" 2>&1
-    
-    log_and_print "Installing SQLite database libraries..."
-    # SQLite packages required for Drizzle and database operations
-    # - sqlite3: SQLite command-line tool
-    # - libsqlite3-dev: Development headers for SQLite (required for native modules)
-    sudo apt-get install -y \
-        sqlite3 \
-        libsqlite3-dev \
-        >> "$LOG_FILE" 2>&1
-    
-    log_and_print "Installing additional system utilities..."
-    # Additional utilities that may be needed
-    # - ca-certificates: SSL/TLS certificates for secure connections
-    # - gnupg: For verifying package signatures
-    sudo apt-get install -y \
-        ca-certificates \
-        gnupg \
-        >> "$LOG_FILE" 2>&1
 
-    log_and_print "Installing hardware control dependencies..."
-    # Hardware control packages for TV/device management
-    # - adb: Android Debug Bridge for Fire TV/Fire Cube control
-    # - cec-utils: HDMI-CEC control for TVs and cable boxes
+    log_and_print "Installing all system packages (one apt-get pass)..."
+    # build-essential + python3: native node-gyp modules
+    # libsqlite3-dev: drizzle better-sqlite3 native binding
+    # adb: Fire TV / Fire Cube control
+    # cec-utils: HDMI-CEC control
     sudo apt-get install -y \
-        adb \
-        cec-utils \
+        curl wget git jq \
+        build-essential python3 python3-pip \
+        sqlite3 libsqlite3-dev \
+        ca-certificates gnupg \
+        adb cec-utils \
         >> "$LOG_FILE" 2>&1
 
     print_success "All system dependencies installed"
@@ -356,11 +335,9 @@ install_nodejs() {
 # that the application will depend on. Installing it early ensures the service
 # is ready before application configuration.
 #
-# Required AI Models:
-# - llama3.2:3b  : Primary model for enhanced chat, tool chat, and log analysis
-# - phi3:mini    : Lightweight model for general chat interface
-# - llama2       : Backup model for device diagnostics
-# - mistral      : Fast model for quick queries
+# Required AI Models (must match REQUIRED_MODELS array in download_ollama_models):
+# - llama3.1:8b       : AI scheduling, gameplan suggestions (apps/web/src/app/api/scheduling/ai-suggest)
+# - nomic-embed-text  : RAG vector embeddings (packages/rag-server)
 #############################################################################
 
 install_ollama() {
@@ -416,9 +393,12 @@ download_ollama_models() {
     
     # Define all required models with descriptions
     # Format: "model_name:tag|description"
+    # Models match what production code in apps/web/src/* and packages/* expect
+    # (see CLAUDE.md §RAG Documentation Server and §AI Scheduling Intelligence).
+    # llama3.1:8b is what `ai-suggest/route.ts` and the RAG query engine use;
+    # nomic-embed-text is the embedding model for the RAG vector store.
     local REQUIRED_MODELS=(
-        "llama3.2:3b|Primary model for enhanced chat, tool chat, and log analysis"
-        "phi3:mini|Lightweight model for sports guide and quick queries"
+        "llama3.1:8b|Primary model for AI scheduling, RAG queries, and log analysis"
         "nomic-embed-text|Embedding model for RAG documentation search"
     )
     
@@ -523,8 +503,7 @@ download_ollama_models() {
         print_success "All required AI models downloaded successfully!"
         echo ""
         print_info "AI Features Ready:"
-        echo "  - Enhanced Chat & Log Analysis (llama3.2:3b)"
-        echo "  - Sports Guide & Quick Queries (phi3:mini)"
+        echo "  - AI Scheduling Suggestions (llama3.1:8b)"
         echo "  - RAG Documentation Search (nomic-embed-text)"
         echo ""
     fi
@@ -630,7 +609,11 @@ install_github_cli() {
     log_and_print "Installing GitHub CLI (gh)..."
     curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg >> "$LOG_FILE" 2>&1 || true
     echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
-    sudo apt-get update -qq >> "$LOG_FILE" 2>&1
+    # Timeout 60s — flaky GitHub mirror could hang the install indefinitely
+    # otherwise. apt-get install -y inherits the same risk but at least the
+    # base apt-get update is bounded.
+    timeout 60 sudo apt-get update -qq >> "$LOG_FILE" 2>&1 || \
+        print_warning "apt-get update for GitHub CLI repo timed out (60s) — gh install may fail"
     sudo apt-get install -y gh >> "$LOG_FILE" 2>&1
 
     if check_command gh; then
@@ -872,49 +855,12 @@ setup_pm2() {
     fi
     log_and_print "PM2 version: $(pm2 --version)"
 
-    # Stop any existing processes
+    # Stop any existing PM2 processes (clean slate before starting via
+    # ecosystem.config.js below). `pm2 delete all` is idempotent — does
+    # nothing if PM2 has no processes registered.
     pm2 delete all 2>/dev/null || true
-    
-    # Look for processes with our service name or old variations
-    while IFS= read -r process_name; do
-        if [ -n "$process_name" ]; then
-            processes_to_delete+=("$process_name")
-            print_info "Found existing process: $process_name"
-        fi
-    done < <(echo "$pm2_processes" | jq -r '.[] | select(.name | test("sportsbar|sports-bar-tv")) | .name' 2>/dev/null || true)
-    
-    # Also check for processes using port 3001 by examining their environment/script
-    while IFS= read -r process_info; do
-        if [ -n "$process_info" ]; then
-            local proc_name=$(echo "$process_info" | jq -r '.name' 2>/dev/null || true)
-            local proc_script=$(echo "$process_info" | jq -r '.pm2_env.pm_exec_path // ""' 2>/dev/null || true)
-            
-            # Check if this process might be using port 3001 (Next.js default)
-            if [[ "$proc_script" == *"next"* ]] || [[ "$proc_script" == *"start"* ]]; then
-                if [[ ! " ${processes_to_delete[@]} " =~ " ${proc_name} " ]]; then
-                    print_warning "Found potential port 3001 process: $proc_name"
-                    processes_to_delete+=("$proc_name")
-                fi
-            fi
-        fi
-    done < <(echo "$pm2_processes" | jq -c '.[]' 2>/dev/null || true)
-    
-    # Delete all identified processes
-    if [ ${#processes_to_delete[@]} -gt 0 ]; then
-        print_warning "Cleaning up ${#processes_to_delete[@]} existing PM2 process(es)..."
-        for process_name in "${processes_to_delete[@]}"; do
-            print_info "Stopping and removing: $process_name"
-            pm2 stop "$process_name" >> "$LOG_FILE" 2>&1 || true
-            pm2 delete "$process_name" >> "$LOG_FILE" 2>&1 || true
-        done
-        print_success "Cleaned up existing PM2 processes"
-        
-        # Wait a moment for ports to be released
-        sleep 2
-    else
-        print_info "No existing PM2 processes found that conflict with port 3001"
-    fi
-    
+    sleep 2
+
     # Verify port 3001 is actually free before starting
     if netstat -tuln 2>/dev/null | grep -q ":3001 " || ss -tuln 2>/dev/null | grep -q ":3001 "; then
         print_error "Port 3001 is still in use after cleanup!"
@@ -923,46 +869,45 @@ setup_pm2() {
         echo "  sudo netstat -tulpn | grep :3001"
         exit 1
     fi
-    
-    # Start application with PM2
-    log_and_print "Starting application with PM2..."
-    pm2 start npm --name "$SERVICE_NAME" -- start >> "$LOG_FILE" 2>&1
 
-    # Start QA background worker
-    log_and_print "Starting QA background worker..."
-    pm2 start "/src/workers/qa-worker.ts" --name "qa-worker" --interpreter=node --node-args="--require=tsx" >> "$LOG_FILE" 2>&1
-    
-    # Wait for worker to start
-    sleep 2
-    
-    # Verify worker is running
-    if pm2 list 2>/dev/null | grep -q "qa-worker.*online"; then
-        log_and_print "QA worker started successfully"
+    # Install pm2-logrotate so PM2 logs don't grow unbounded.
+    # Idempotent: re-running just confirms the module is present.
+    if pm2 list 2>/dev/null | grep -q "pm2-logrotate"; then
+        log_and_print "pm2-logrotate already installed"
     else
-        print_warning "QA worker may not have started correctly"
+        log_and_print "Installing pm2-logrotate (10MB max, 7-day retention)..."
+        pm2 install pm2-logrotate >> "$LOG_FILE" 2>&1 || print_warning "pm2-logrotate install had warnings"
+        pm2 set pm2-logrotate:max_size 10M >> "$LOG_FILE" 2>&1 || true
+        pm2 set pm2-logrotate:retain 7 >> "$LOG_FILE" 2>&1 || true
+        pm2 set pm2-logrotate:compress true >> "$LOG_FILE" 2>&1 || true
     fi
-    
-    # Wait for app to start
-    sleep 3
-    
-    # Verify app is running
-    if pm2 list 2>/dev/null | grep -q "$SERVICE_NAME.*online"; then
-        log_and_print "Application started successfully"
-    else
-        print_warning "Application may not have started correctly"
-        print_warning "Check PM2 logs: pm2 logs $SERVICE_NAME"
-    fi
-    
-    # Save PM2 configuration
+
+    # Start application + bartender-proxy via ecosystem.config.js.
+    # ecosystem.config.js is the single source of truth for PM2 process layout
+    # (sports-bar-tv-controller on :3001 + bartender-proxy on :3002). Starting
+    # it via `pm2 start ecosystem.config.js` brings both up together —
+    # bartender-proxy is what serves the iPad-only UI on port 3002 and is
+    # checked by verify-install.sh layer 4. Starting the next-server alone
+    # leaves :3002 unbound and fails verify.
+    log_and_print "Starting sports-bar-tv-controller + bartender-proxy via ecosystem.config.js..."
+    pm2 start ecosystem.config.js >> "$LOG_FILE" 2>&1
+
+    # Wait for apps to start before checking PM2 status
+    sleep 5
+
+    check_pm2_online "$SERVICE_NAME" "Application"
+    check_pm2_online "bartender-proxy" "Bartender proxy (port 3002)"
+
+    # Save PM2 configuration so `pm2 resurrect` brings these back on reboot
     pm2 save >> "$LOG_FILE" 2>&1
-    
+
     # Setup PM2 startup script (requires sudo, but optional)
     log_and_print "Configuring PM2 startup..."
     if pm2 startup 2>&1 | tee -a "$LOG_FILE" | grep -q "sudo"; then
         print_warning "PM2 startup requires sudo to configure auto-start on boot"
         print_warning "Run the command shown above to enable auto-start"
     fi
-    
+
     print_success "PM2 configured and application started"
 }
 
@@ -993,23 +938,34 @@ set_permissions() {
 
 verify_installation() {
     print_header "PHASE 9: Verifying Installation"
-    
-    # Check if application is running
+
+    # Check if application is running. (Phase 11 invokes verify-install.sh
+    # which has its own port-bind wait, so we don't sleep here — the running
+    # check is just a fast smoke test before the gate.)
     if pm2 list | grep -q "$SERVICE_NAME"; then
         print_success "Application is running"
     else
         print_error "Application is not running"
         return 1
     fi
-    
-    # Check if port 3001 is listening
-    sleep 5
+
     if netstat -tuln 2>/dev/null | grep -q ":3001 " || ss -tuln 2>/dev/null | grep -q ":3001 "; then
         print_success "Application is listening on port 3001"
     else
         print_warning "Application may not be listening on port 3001 yet"
     fi
-    
+
+    # Warn (non-fatal) if ANTHROPIC_API_KEY is missing — auto-update Checkpoints
+    # A/B/C will fall back to Claude Code CLI subscription path which has a
+    # monthly cap. All 6 fleet locations share the same key (per CLAUDE.md
+    # §Standing Rule 8 + VERSION_SETUP_GUIDE v2.32.20).
+    if ! grep -q '^ANTHROPIC_API_KEY=' "$INSTALL_DIR/.env" 2>/dev/null; then
+        print_warning "ANTHROPIC_API_KEY not set in .env"
+        print_warning "  Auto-update will fall back to Claude Code CLI (monthly cap risk)."
+        print_warning "  Add it via the canonical .env writer:"
+        print_warning "    bash scripts/bootstrap-new-location.sh --anthropic-api-key sk-ant-..."
+    fi
+
     print_success "Installation verified"
 }
 
@@ -1066,9 +1022,34 @@ print_final_instructions() {
     echo -e "  • Or log out and log back in to refresh your PATH"
     echo ""
     
-    echo -e "${CYAN}Post-Install (if migrating from existing location):${NC}"
-    echo -e "  Migrate data: ${YELLOW}cd $INSTALL_DIR && ./scripts/new-location-setup.sh --migrate-from <source-ip>${NC}"
-    echo -e "  Device setup: ${YELLOW}./scripts/post-install-setup.sh${NC}"
+    echo -e "${CYAN}REQUIRED NEXT STEPS — auth bootstrap (PHASE 12):${NC}"
+    echo -e "  Without this, every login attempt returns 'Invalid PIN'."
+    echo -e "  Seeds the Location row, AuthPin rows, and LOCATION_ID/.env binding."
+    echo ""
+    echo -e "  ${YELLOW}cd $INSTALL_DIR${NC}"
+    echo -e "  ${YELLOW}bash scripts/bootstrap-new-location.sh \\${NC}"
+    echo -e "  ${YELLOW}    --name \"Your Bar Name\" \\${NC}"
+    echo -e "  ${YELLOW}    --admin-pin <4-digit-PIN> \\${NC}"
+    echo -e "  ${YELLOW}    --staff-pin <4-digit-PIN> \\${NC}"
+    echo -e "  ${YELLOW}    --anthropic-api-key sk-ant-... \\${NC}"
+    echo -e "  ${YELLOW}    --create-branch${NC}"
+    echo ""
+    echo -e "  Then restart PM2 to pick up the new env:"
+    echo -e "  ${YELLOW}pm2 restart sports-bar-tv-controller --update-env${NC}"
+    echo ""
+    echo -e "  Then re-run verify-install:"
+    echo -e "  ${YELLOW}bash scripts/verify-install.sh${NC}    # expect PASS 7/7"
+    echo ""
+
+    echo -e "${CYAN}Auto-update timer (after Sync tab is configured):${NC}"
+    echo -e "  Enable in UI: ${YELLOW}/system-admin?tab=sync${NC}, toggle Auto Update Enabled, Save"
+    echo -e "  Install timer: ${YELLOW}bash scripts/install-auto-update-timer.sh${NC}"
+    echo -e "  Reboot survives: ${YELLOW}sudo loginctl enable-linger ubuntu${NC}"
+    echo ""
+
+    echo -e "${CYAN}Optional — migrate from an existing location:${NC}"
+    echo -e "  ${YELLOW}./scripts/new-location-setup.sh --migrate-from <tailscale-ip>${NC}"
+    echo -e "  ${YELLOW}./scripts/post-install-setup.sh${NC}    # network device discovery"
     echo ""
 
     echo -e "${CYAN}Uninstall:${NC}"
@@ -1107,6 +1088,53 @@ run_post_install_setup() {
     else
         print_warning "Post-install script not found at $setup_script"
         print_info "Run manually after install: ./scripts/new-location-setup.sh"
+    fi
+}
+
+#############################################################################
+# PHASE 11: Run verify-install.sh as the install gate
+#############################################################################
+# verify-install.sh is the canonical post-install/post-update health check.
+# It's the same script auto-update.sh runs at Checkpoint C. Running it here
+# turns the install into a pass/fail gate: if any of the 7 layers fail
+# (PM2 online, /api/system/health, /api/system/metrics, bartender proxy,
+# critical DB tables, matrix config sanity, no recent crash patterns),
+# the operator sees a clear PASS/FAIL summary instead of a silent half-broken
+# install. We do NOT exit non-zero on FAIL — at this stage the auth bootstrap
+# has not been run yet (it requires interactive PIN entry), so layers like
+# health_http will warn rather than fail. The point is to surface what's
+# missing so the operator knows what to do next.
+#############################################################################
+
+run_install_verify() {
+    print_header "PHASE 11: Install Verification (verify-install.sh)"
+
+    local verify_script="$INSTALL_DIR/scripts/verify-install.sh"
+
+    if [ ! -f "$verify_script" ]; then
+        print_warning "verify-install.sh not found at $verify_script — skipping"
+        return 0
+    fi
+
+    chmod +x "$verify_script"
+
+    # Give PM2 + Next.js a moment to bind ports and warm up routes before
+    # we start hitting them. New-install boot is slower than auto-update
+    # restart because the JIT cache is empty.
+    log_and_print "Waiting 10s for app routes to warm up before verifying..."
+    sleep 10
+
+    log_and_print "Running verify-install.sh..."
+    if bash "$verify_script" 2>&1 | tee -a "$LOG_FILE"; then
+        print_success "Install verification PASSED"
+    else
+        # Non-fatal at install time — auth bootstrap (Phase 12, manual) hasn't
+        # run yet, and the operator may still need to populate location data.
+        # The operator-facing "Next steps" output below tells them what to do.
+        print_warning "Install verification reported failures (see above)."
+        print_warning "Most likely cause on a fresh install: auth bootstrap"
+        print_warning "(scripts/bootstrap-new-location.sh) hasn't been run yet."
+        print_warning "See PHASE 12 in the Next Steps below."
     fi
 }
 
@@ -1219,6 +1247,9 @@ main() {
     
     # PHASE 10: Post-install setup (PM2 logrotate, crontab, NEXTAUTH_URL)
     run_post_install_setup
+
+    # PHASE 11: Install verification (verify-install.sh — the install gate)
+    run_install_verify
 
     # Show completion message
     print_final_instructions

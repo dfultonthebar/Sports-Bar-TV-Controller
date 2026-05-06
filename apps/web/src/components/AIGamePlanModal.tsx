@@ -421,12 +421,12 @@ export default function AIGamePlanModal({ isOpen, onClose }: AIGamePlanModalProp
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs">
-      <div className="relative w-full max-w-6xl max-h-[90vh] m-4 backdrop-blur-xl bg-linear-to-br from-slate-900/95 to-slate-800/95 border border-white/10 rounded-2xl shadow-2xl overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+      <div className="relative w-full max-w-6xl max-h-[90vh] m-4 backdrop-blur-xl bg-gradient-to-br from-slate-900/95 to-slate-800/95 border border-white/10 rounded-2xl shadow-2xl overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-white/10">
           <div>
-            <h2 className="text-2xl font-bold bg-linear-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent flex items-center">
+            <h2 className="text-2xl font-bold text-white flex items-center">
               <Trophy className="mr-3 w-7 h-7 text-blue-400" />
               AI Game Plan
             </h2>
@@ -544,7 +544,7 @@ export default function AIGamePlanModal({ isOpen, onClose }: AIGamePlanModalProp
                           placeholder="Search TVs..."
                           value={outputSearch}
                           onChange={(e) => setOutputSearch(e.target.value)}
-                          className="w-full pl-9 pr-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white text-sm placeholder-gray-400 focus:outline-hidden focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+                          className="w-full pl-9 pr-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
                         />
                       </div>
                       <Button
@@ -585,7 +585,7 @@ export default function AIGamePlanModal({ isOpen, onClose }: AIGamePlanModalProp
                             <div className="flex items-center justify-between">
                               <span className="text-sm font-medium truncate">{output.label}</span>
                               {allowedOutputs.has(output.channelNumber) && (
-                                <Check className="w-4 h-4 text-cyan-400 shrink-0 ml-1" />
+                                <Check className="w-4 h-4 text-cyan-400 flex-shrink-0 ml-1" />
                               )}
                             </div>
                             <div className="text-xs opacity-60">Output {output.channelNumber}</div>
@@ -638,7 +638,7 @@ export default function AIGamePlanModal({ isOpen, onClose }: AIGamePlanModalProp
                           placeholder="Search inputs..."
                           value={inputSearch}
                           onChange={(e) => setInputSearch(e.target.value)}
-                          className="w-full pl-9 pr-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white text-sm placeholder-gray-400 focus:outline-hidden focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                          className="w-full pl-9 pr-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                         />
                       </div>
                       <Button
@@ -682,7 +682,7 @@ export default function AIGamePlanModal({ isOpen, onClose }: AIGamePlanModalProp
                                 <span className="text-sm font-medium truncate">{input.label}</span>
                               </div>
                               {allowedInputs.has(input.channelNumber) && (
-                                <Check className="w-4 h-4 text-purple-400 shrink-0 ml-1" />
+                                <Check className="w-4 h-4 text-purple-400 flex-shrink-0 ml-1" />
                               )}
                             </div>
                             <div className="text-xs opacity-60 capitalize">
@@ -732,7 +732,7 @@ export default function AIGamePlanModal({ isOpen, onClose }: AIGamePlanModalProp
                                   {game.homeTeam} vs {game.awayTeam}
                                 </span>
                                 {game.liveData?.isLive && (
-                                  <span className="px-1.5 py-0.5 text-xs font-bold bg-red-500 text-white rounded-sm uppercase animate-pulse">
+                                  <span className="px-1.5 py-0.5 text-xs font-bold bg-red-500 text-white rounded uppercase animate-pulse">
                                     LIVE
                                   </span>
                                 )}
@@ -785,7 +785,7 @@ export default function AIGamePlanModal({ isOpen, onClose }: AIGamePlanModalProp
                               </div>
                             </div>
                             {/* Schedule button */}
-                            <div className="shrink-0 ml-2">
+                            <div className="flex-shrink-0 ml-2">
                               <Button
                                 onClick={() => handleScheduleGame(game)}
                                 disabled={schedulingGameId === (game.id || `${game.homeTeam}-${game.awayTeam}`) || !game.channelNumber}
@@ -869,7 +869,7 @@ export default function AIGamePlanModal({ isOpen, onClose }: AIGamePlanModalProp
                                     {game.homeTeam} vs {game.awayTeam}
                                   </span>
                                   {game.liveData?.isLive && (
-                                    <span className="px-1.5 py-0.5 text-xs font-bold bg-red-500 text-white rounded-sm uppercase animate-pulse">
+                                    <span className="px-1.5 py-0.5 text-xs font-bold bg-red-500 text-white rounded uppercase animate-pulse">
                                       LIVE
                                     </span>
                                   )}
