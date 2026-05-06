@@ -416,9 +416,12 @@ download_ollama_models() {
     
     # Define all required models with descriptions
     # Format: "model_name:tag|description"
+    # Models match what production code in apps/web/src/* and packages/* expect
+    # (see CLAUDE.md §RAG Documentation Server and §AI Scheduling Intelligence).
+    # llama3.1:8b is what `ai-suggest/route.ts` and the RAG query engine use;
+    # nomic-embed-text is the embedding model for the RAG vector store.
     local REQUIRED_MODELS=(
-        "llama3.2:3b|Primary model for enhanced chat, tool chat, and log analysis"
-        "phi3:mini|Lightweight model for sports guide and quick queries"
+        "llama3.1:8b|Primary model for AI scheduling, RAG queries, and log analysis"
         "nomic-embed-text|Embedding model for RAG documentation search"
     )
     
@@ -523,8 +526,7 @@ download_ollama_models() {
         print_success "All required AI models downloaded successfully!"
         echo ""
         print_info "AI Features Ready:"
-        echo "  - Enhanced Chat & Log Analysis (llama3.2:3b)"
-        echo "  - Sports Guide & Quick Queries (phi3:mini)"
+        echo "  - AI Scheduling Suggestions (llama3.1:8b)"
         echo "  - RAG Documentation Search (nomic-embed-text)"
         echo ""
     fi
@@ -872,49 +874,13 @@ setup_pm2() {
     fi
     log_and_print "PM2 version: $(pm2 --version)"
 
-    # Stop any existing processes
+    # Stop any existing PM2 processes (clean slate before starting via
+    # ecosystem.config.js below). `pm2 delete all` is idempotent — does
+    # nothing if PM2 has no processes registered.
     pm2 delete all 2>/dev/null || true
-    
-    # Look for processes with our service name or old variations
-    while IFS= read -r process_name; do
-        if [ -n "$process_name" ]; then
-            processes_to_delete+=("$process_name")
-            print_info "Found existing process: $process_name"
-        fi
-    done < <(echo "$pm2_processes" | jq -r '.[] | select(.name | test("sportsbar|sports-bar-tv")) | .name' 2>/dev/null || true)
-    
-    # Also check for processes using port 3001 by examining their environment/script
-    while IFS= read -r process_info; do
-        if [ -n "$process_info" ]; then
-            local proc_name=$(echo "$process_info" | jq -r '.name' 2>/dev/null || true)
-            local proc_script=$(echo "$process_info" | jq -r '.pm2_env.pm_exec_path // ""' 2>/dev/null || true)
-            
-            # Check if this process might be using port 3001 (Next.js default)
-            if [[ "$proc_script" == *"next"* ]] || [[ "$proc_script" == *"start"* ]]; then
-                if [[ ! " ${processes_to_delete[@]} " =~ " ${proc_name} " ]]; then
-                    print_warning "Found potential port 3001 process: $proc_name"
-                    processes_to_delete+=("$proc_name")
-                fi
-            fi
-        fi
-    done < <(echo "$pm2_processes" | jq -c '.[]' 2>/dev/null || true)
-    
-    # Delete all identified processes
-    if [ ${#processes_to_delete[@]} -gt 0 ]; then
-        print_warning "Cleaning up ${#processes_to_delete[@]} existing PM2 process(es)..."
-        for process_name in "${processes_to_delete[@]}"; do
-            print_info "Stopping and removing: $process_name"
-            pm2 stop "$process_name" >> "$LOG_FILE" 2>&1 || true
-            pm2 delete "$process_name" >> "$LOG_FILE" 2>&1 || true
-        done
-        print_success "Cleaned up existing PM2 processes"
-        
-        # Wait a moment for ports to be released
-        sleep 2
-    else
-        print_info "No existing PM2 processes found that conflict with port 3001"
-    fi
-    
+    sleep 2
+
+
     # Verify port 3001 is actually free before starting
     if netstat -tuln 2>/dev/null | grep -q ":3001 " || ss -tuln 2>/dev/null | grep -q ":3001 "; then
         print_error "Port 3001 is still in use after cleanup!"
@@ -923,28 +889,32 @@ setup_pm2() {
         echo "  sudo netstat -tulpn | grep :3001"
         exit 1
     fi
-    
-    # Start application with PM2
-    log_and_print "Starting application with PM2..."
-    pm2 start npm --name "$SERVICE_NAME" -- start >> "$LOG_FILE" 2>&1
 
-    # Start QA background worker
-    log_and_print "Starting QA background worker..."
-    pm2 start "/src/workers/qa-worker.ts" --name "qa-worker" --interpreter=node --node-args="--require=tsx" >> "$LOG_FILE" 2>&1
-    
-    # Wait for worker to start
-    sleep 2
-    
-    # Verify worker is running
-    if pm2 list 2>/dev/null | grep -q "qa-worker.*online"; then
-        log_and_print "QA worker started successfully"
+    # Install pm2-logrotate so PM2 logs don't grow unbounded.
+    # Idempotent: re-running just confirms the module is present.
+    if pm2 list 2>/dev/null | grep -q "pm2-logrotate"; then
+        log_and_print "pm2-logrotate already installed"
     else
-        print_warning "QA worker may not have started correctly"
+        log_and_print "Installing pm2-logrotate (10MB max, 7-day retention)..."
+        pm2 install pm2-logrotate >> "$LOG_FILE" 2>&1 || print_warning "pm2-logrotate install had warnings"
+        pm2 set pm2-logrotate:max_size 10M >> "$LOG_FILE" 2>&1 || true
+        pm2 set pm2-logrotate:retain 7 >> "$LOG_FILE" 2>&1 || true
+        pm2 set pm2-logrotate:compress true >> "$LOG_FILE" 2>&1 || true
     fi
-    
+
+    # Start application + bartender-proxy via ecosystem.config.js.
+    # ecosystem.config.js is the single source of truth for PM2 process layout
+    # (sports-bar-tv-controller on :3001 + bartender-proxy on :3002). Starting
+    # it via `pm2 start ecosystem.config.js` brings both up together —
+    # bartender-proxy is what serves the iPad-only UI on port 3002 and is
+    # checked by verify-install.sh layer 4. Starting the next-server alone
+    # leaves :3002 unbound and fails verify.
+    log_and_print "Starting sports-bar-tv-controller + bartender-proxy via ecosystem.config.js..."
+    pm2 start ecosystem.config.js >> "$LOG_FILE" 2>&1
+
     # Wait for app to start
-    sleep 3
-    
+    sleep 5
+
     # Verify app is running
     if pm2 list 2>/dev/null | grep -q "$SERVICE_NAME.*online"; then
         log_and_print "Application started successfully"
@@ -952,17 +922,25 @@ setup_pm2() {
         print_warning "Application may not have started correctly"
         print_warning "Check PM2 logs: pm2 logs $SERVICE_NAME"
     fi
-    
-    # Save PM2 configuration
+
+    # Verify bartender-proxy is running (separate process, port 3002)
+    if pm2 list 2>/dev/null | grep -q "bartender-proxy.*online"; then
+        log_and_print "Bartender proxy started successfully (port 3002)"
+    else
+        print_warning "bartender-proxy may not have started — port 3002 will be unreachable"
+        print_warning "Check PM2 logs: pm2 logs bartender-proxy"
+    fi
+
+    # Save PM2 configuration so `pm2 resurrect` brings these back on reboot
     pm2 save >> "$LOG_FILE" 2>&1
-    
+
     # Setup PM2 startup script (requires sudo, but optional)
     log_and_print "Configuring PM2 startup..."
     if pm2 startup 2>&1 | tee -a "$LOG_FILE" | grep -q "sudo"; then
         print_warning "PM2 startup requires sudo to configure auto-start on boot"
         print_warning "Run the command shown above to enable auto-start"
     fi
-    
+
     print_success "PM2 configured and application started"
 }
 
@@ -993,7 +971,7 @@ set_permissions() {
 
 verify_installation() {
     print_header "PHASE 9: Verifying Installation"
-    
+
     # Check if application is running
     if pm2 list | grep -q "$SERVICE_NAME"; then
         print_success "Application is running"
@@ -1001,7 +979,7 @@ verify_installation() {
         print_error "Application is not running"
         return 1
     fi
-    
+
     # Check if port 3001 is listening
     sleep 5
     if netstat -tuln 2>/dev/null | grep -q ":3001 " || ss -tuln 2>/dev/null | grep -q ":3001 "; then
@@ -1009,7 +987,18 @@ verify_installation() {
     else
         print_warning "Application may not be listening on port 3001 yet"
     fi
-    
+
+    # Warn (non-fatal) if ANTHROPIC_API_KEY is missing — auto-update Checkpoints
+    # A/B/C will fall back to Claude Code CLI subscription path which has a
+    # monthly cap. All 6 fleet locations share the same key (per CLAUDE.md
+    # §Standing Rule 8 + VERSION_SETUP_GUIDE v2.32.20).
+    if ! grep -q '^ANTHROPIC_API_KEY=' "$INSTALL_DIR/.env" 2>/dev/null; then
+        print_warning "ANTHROPIC_API_KEY not set in .env"
+        print_warning "  Auto-update will fall back to Claude Code CLI (monthly cap risk)."
+        print_warning "  Add it before enabling auto-update:"
+        print_warning "    echo 'ANTHROPIC_API_KEY=sk-ant-...' >> $INSTALL_DIR/.env"
+    fi
+
     print_success "Installation verified"
 }
 

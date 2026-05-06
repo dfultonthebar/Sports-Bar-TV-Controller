@@ -187,6 +187,36 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.50 — install.sh PM2 startup fix + correct Ollama models + pm2-logrotate
+**Released:** 2026-05-06
+
+`install.sh` had three install-path bugs that fresh installs would hit but no existing fleet location would (since none of them re-run `install.sh`). Bug 1: `pm2 start npm --name sports-bar-tv-controller -- start` started only the next-server, leaving `bartender-proxy` (port 3002) unbound — `verify-install.sh` layer 4 (`bartender_proxy`) would fail on every fresh install. Bug 2: `pm2 start "/src/workers/qa-worker.ts" ...` referenced an absolute path that doesn't exist (the worker file is at `apps/web/src/workers/qa-worker.ts`, and the worker is no longer part of the fleet runbook). Bug 3: Ollama models pulled were `llama3.2:3b` and `phi3:mini` — production code (`ai-suggest/route.ts`, RAG query engine) uses `llama3.1:8b`, so AI scheduling and RAG queries would 404 on first use.
+
+**Changes:**
+- `install.sh:setup_pm2()` now runs `pm2 start ecosystem.config.js` instead of two separate `pm2 start` calls. Ecosystem starts both `sports-bar-tv-controller` and `bartender-proxy` together (it's the single source of truth for the PM2 process layout).
+- Removed the broken `qa-worker` startup block (broken absolute path + the worker isn't in `ecosystem.config.js`).
+- Removed dead code that referenced `$pm2_processes` (an undefined variable from a partial refactor).
+- Added `pm2 install pm2-logrotate` + 10MB/7-day/compressed config inside `setup_pm2()` (was only in `new-location-setup.sh`, which the canonical install.sh path doesn't always reach).
+- `download_ollama_models()` now pulls `llama3.1:8b` + `nomic-embed-text` (matches CLAUDE.md §RAG and §AI Scheduling).
+- `verify_installation()` warns (non-fatal) if `ANTHROPIC_API_KEY` is missing from `.env`.
+
+**Required Manual Step:** None for existing locations — this only affects fresh `install.sh` runs. Fleet hosts have `bartender-proxy` running already (started manually or via prior fleet maintenance).
+
+**Verification:**
+```bash
+# Fresh-install dry verification (only meaningful on a brand-new host):
+grep -A 1 "Starting sports-bar-tv-controller" /home/ubuntu/Sports-Bar-TV-Controller/install.sh
+# Should show: pm2 start ecosystem.config.js
+grep -E "llama3.1:8b|nomic-embed-text" /home/ubuntu/Sports-Bar-TV-Controller/install.sh
+# Should match both.
+grep "qa-worker" /home/ubuntu/Sports-Bar-TV-Controller/install.sh
+# Should return nothing (the broken block was removed).
+```
+
+**Rollback:** `git revert` returns to the broken installer (only used at first install — no live state risk).
+
+---
+
 ### v2.32.49 — Deterministic checkpoint fast path (bypass Haiku for the 80% case)
 **Released:** 2026-05-06
 

@@ -46,6 +46,20 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-06 — v2.32.50 — install.sh PM2 startup fix + correct Ollama models
+
+**Risk:** GO — install-path-only change; existing locations unaffected. None of the 6 fleet locations re-run `install.sh` on auto-update; this only affects future fresh installs on new NUC hardware. The auto-updater never invokes `install.sh`.
+
+**What changed:** `install.sh:setup_pm2()` now runs `pm2 start ecosystem.config.js` (which starts BOTH the next-server and the bartender-proxy together) instead of the previous broken two-call pattern (`pm2 start npm -- start` for the app + `pm2 start "/src/workers/qa-worker.ts" ...` for a worker that no longer exists at that path). Also corrects the Ollama model list from `llama3.2:3b`+`phi3:mini` to `llama3.1:8b`+`nomic-embed-text` to match what production code actually calls. Adds `pm2 install pm2-logrotate` and an `ANTHROPIC_API_KEY` warning.
+
+**Why now:** Audited the install path before bringing a new location online. Three independent bugs would have made the new location fail `verify-install.sh` layer 4 (bartender proxy), 404 on every AI-scheduling call, and accumulate unbounded PM2 logs.
+
+**Affected:** `install.sh`, `package.json`, `docs/VERSION_SETUP_GUIDE.md`, `docs/LOCATION_UPDATE_NOTES.md`.
+
+**Rollback:** `git revert` is harmless — no existing host runs install.sh.
+
+---
+
 ### 2026-05-06 — v2.32.49 — Deterministic checkpoint fast path
 
 **Risk:** GO — additive. New `scripts/checkpoint-deterministic.sh` runs as a 30s-timeout fast path before the existing AI checkpoint runner. Returns one of `GO|CAUTION|STOP|UNDETERMINED`; UNDETERMINED falls through to `checkpoint-runner.py` exactly as before. If the new script is missing, behavior is identical to pre-v2.32.49. Smoke-tested at Holmgren (A/B/C all returned GO).
