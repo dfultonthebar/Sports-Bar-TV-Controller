@@ -187,6 +187,35 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.53 — install.sh + ollama-setup.sh simplify pass
+**Released:** 2026-05-06
+
+`/simplify` review of v2.32.50-52 surfaced 9 concrete cleanups in `install.sh` and a model-list drift in `scripts/ollama-setup.sh`. All applied.
+
+**Changes:**
+- `install.sh` 6 separate `apt-get install -y` calls collapsed into one (saves 2-3 min on slow apt mirror)
+- `install.sh` redundant `apt-get update -qq` for GitHub-CLI repo wrapped in `timeout 60` (prevents indefinite hang on flaky mirror)
+- `install.sh` redundant `sleep 5` in `verify_installation` removed (Phase 11 verify-install.sh has its own port-bind wait)
+- `install.sh` extracted `check_pm2_online()` helper for the 2 post-`pm2 start` status checks
+- `install.sh` stale ollama model-list comment updated to match `REQUIRED_MODELS` array (`llama3.1:8b`, `nomic-embed-text`)
+- `install.sh` `ANTHROPIC_API_KEY` warning now points operators at `bootstrap-new-location.sh --anthropic-api-key` (canonical .env writer) instead of `echo >> .env`
+- `install.sh` dead `QA_WORKER_NAME="qa-worker"` constant removed (qa-worker call was deleted in v2.32.50)
+- `install.sh` double blank line removed
+- `scripts/ollama-setup.sh` `MODELS` array synced to `llama3.1:8b` + `nomic-embed-text` (was still listing `llama3.2:3b` + `phi3:mini` — mismatch with install.sh and the app code)
+
+**Required Manual Step:** None. Existing locations already installed via the old paths; no re-run needed.
+
+**Verification:**
+```bash
+grep -c "apt-get install -y \\\\" /home/ubuntu/Sports-Bar-TV-Controller/install.sh   # 1 (was 6)
+grep -E "llama3\\.2:3b|phi3:mini" /home/ubuntu/Sports-Bar-TV-Controller/install.sh /home/ubuntu/Sports-Bar-TV-Controller/scripts/ollama-setup.sh   # empty
+grep -A 1 "^check_pm2_online" /home/ubuntu/Sports-Bar-TV-Controller/install.sh   # helper definition
+```
+
+**Rollback:** `git revert` is clean — pure cleanup, behavior is functionally identical.
+
+---
+
 ### v2.32.52 — Install-doc reconciliation: NEW_LOCATION_SETUP.md is canonical
 **Released:** 2026-05-06
 

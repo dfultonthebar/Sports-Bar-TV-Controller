@@ -55,7 +55,6 @@ REPO_URL="https://github.com/dfultonthebar/Sports-Bar-TV-Controller.git"
 REPO_BRANCH="${REPO_BRANCH:-main}"
 DATABASE_DIR="$HOME/sports-bar-data"
 PORT="3001"
-QA_WORKER_NAME="qa-worker"
 LOG_FILE="/tmp/sportsbar-install-$(date +%Y%m%d-%H%M%S).log"
 
 # Node.js version
@@ -115,6 +114,19 @@ check_command() {
         return 0
     else
         return 1
+    fi
+}
+
+# Reports whether a PM2-managed process is online. Used in 3 places after
+# pm2 start to verify a specific service came up; warns (non-fatal) on miss
+# so verify-install.sh in Phase 11 has the final say.
+check_pm2_online() {
+    local pm2_name=$1
+    local description=${2:-$pm2_name}
+    if pm2 list 2>/dev/null | grep -q "${pm2_name}.*online"; then
+        log_and_print "${description} started successfully"
+    else
+        print_warning "${description} may not have started — check: pm2 logs ${pm2_name}"
     fi
 }
 
@@ -264,51 +276,18 @@ install_system_dependencies() {
     
     log_and_print "Updating package lists..."
     sudo apt-get update >> "$LOG_FILE" 2>&1
-    
-    log_and_print "Installing core system packages..."
-    # Core utilities
-    sudo apt-get install -y \
-        curl \
-        wget \
-        git \
-        >> "$LOG_FILE" 2>&1
-    
-    log_and_print "Installing build tools and compilers..."
-    # Build tools required for compiling native Node.js modules
-    # - build-essential: gcc, g++, make, and other compilation tools
-    # - python3: Required by node-gyp for building native addons
-    # - python3-pip: Python package manager (may be needed by some npm packages)
-    sudo apt-get install -y \
-        build-essential \
-        python3 \
-        python3-pip \
-        >> "$LOG_FILE" 2>&1
-    
-    log_and_print "Installing SQLite database libraries..."
-    # SQLite packages required for Drizzle and database operations
-    # - sqlite3: SQLite command-line tool
-    # - libsqlite3-dev: Development headers for SQLite (required for native modules)
-    sudo apt-get install -y \
-        sqlite3 \
-        libsqlite3-dev \
-        >> "$LOG_FILE" 2>&1
-    
-    log_and_print "Installing additional system utilities..."
-    # Additional utilities that may be needed
-    # - ca-certificates: SSL/TLS certificates for secure connections
-    # - gnupg: For verifying package signatures
-    sudo apt-get install -y \
-        ca-certificates \
-        gnupg \
-        >> "$LOG_FILE" 2>&1
 
-    log_and_print "Installing hardware control dependencies..."
-    # Hardware control packages for TV/device management
-    # - adb: Android Debug Bridge for Fire TV/Fire Cube control
-    # - cec-utils: HDMI-CEC control for TVs and cable boxes
+    log_and_print "Installing all system packages (one apt-get pass)..."
+    # build-essential + python3: native node-gyp modules
+    # libsqlite3-dev: drizzle better-sqlite3 native binding
+    # adb: Fire TV / Fire Cube control
+    # cec-utils: HDMI-CEC control
     sudo apt-get install -y \
-        adb \
-        cec-utils \
+        curl wget git jq \
+        build-essential python3 python3-pip \
+        sqlite3 libsqlite3-dev \
+        ca-certificates gnupg \
+        adb cec-utils \
         >> "$LOG_FILE" 2>&1
 
     print_success "All system dependencies installed"
@@ -356,11 +335,9 @@ install_nodejs() {
 # that the application will depend on. Installing it early ensures the service
 # is ready before application configuration.
 #
-# Required AI Models:
-# - llama3.2:3b  : Primary model for enhanced chat, tool chat, and log analysis
-# - phi3:mini    : Lightweight model for general chat interface
-# - llama2       : Backup model for device diagnostics
-# - mistral      : Fast model for quick queries
+# Required AI Models (must match REQUIRED_MODELS array in download_ollama_models):
+# - llama3.1:8b       : AI scheduling, gameplan suggestions (apps/web/src/app/api/scheduling/ai-suggest)
+# - nomic-embed-text  : RAG vector embeddings (packages/rag-server)
 #############################################################################
 
 install_ollama() {
@@ -632,7 +609,11 @@ install_github_cli() {
     log_and_print "Installing GitHub CLI (gh)..."
     curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg >> "$LOG_FILE" 2>&1 || true
     echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
-    sudo apt-get update -qq >> "$LOG_FILE" 2>&1
+    # Timeout 60s — flaky GitHub mirror could hang the install indefinitely
+    # otherwise. apt-get install -y inherits the same risk but at least the
+    # base apt-get update is bounded.
+    timeout 60 sudo apt-get update -qq >> "$LOG_FILE" 2>&1 || \
+        print_warning "apt-get update for GitHub CLI repo timed out (60s) — gh install may fail"
     sudo apt-get install -y gh >> "$LOG_FILE" 2>&1
 
     if check_command gh; then
@@ -880,7 +861,6 @@ setup_pm2() {
     pm2 delete all 2>/dev/null || true
     sleep 2
 
-
     # Verify port 3001 is actually free before starting
     if netstat -tuln 2>/dev/null | grep -q ":3001 " || ss -tuln 2>/dev/null | grep -q ":3001 "; then
         print_error "Port 3001 is still in use after cleanup!"
@@ -912,24 +892,11 @@ setup_pm2() {
     log_and_print "Starting sports-bar-tv-controller + bartender-proxy via ecosystem.config.js..."
     pm2 start ecosystem.config.js >> "$LOG_FILE" 2>&1
 
-    # Wait for app to start
+    # Wait for apps to start before checking PM2 status
     sleep 5
 
-    # Verify app is running
-    if pm2 list 2>/dev/null | grep -q "$SERVICE_NAME.*online"; then
-        log_and_print "Application started successfully"
-    else
-        print_warning "Application may not have started correctly"
-        print_warning "Check PM2 logs: pm2 logs $SERVICE_NAME"
-    fi
-
-    # Verify bartender-proxy is running (separate process, port 3002)
-    if pm2 list 2>/dev/null | grep -q "bartender-proxy.*online"; then
-        log_and_print "Bartender proxy started successfully (port 3002)"
-    else
-        print_warning "bartender-proxy may not have started — port 3002 will be unreachable"
-        print_warning "Check PM2 logs: pm2 logs bartender-proxy"
-    fi
+    check_pm2_online "$SERVICE_NAME" "Application"
+    check_pm2_online "bartender-proxy" "Bartender proxy (port 3002)"
 
     # Save PM2 configuration so `pm2 resurrect` brings these back on reboot
     pm2 save >> "$LOG_FILE" 2>&1
@@ -972,7 +939,9 @@ set_permissions() {
 verify_installation() {
     print_header "PHASE 9: Verifying Installation"
 
-    # Check if application is running
+    # Check if application is running. (Phase 11 invokes verify-install.sh
+    # which has its own port-bind wait, so we don't sleep here — the running
+    # check is just a fast smoke test before the gate.)
     if pm2 list | grep -q "$SERVICE_NAME"; then
         print_success "Application is running"
     else
@@ -980,8 +949,6 @@ verify_installation() {
         return 1
     fi
 
-    # Check if port 3001 is listening
-    sleep 5
     if netstat -tuln 2>/dev/null | grep -q ":3001 " || ss -tuln 2>/dev/null | grep -q ":3001 "; then
         print_success "Application is listening on port 3001"
     else
@@ -995,8 +962,8 @@ verify_installation() {
     if ! grep -q '^ANTHROPIC_API_KEY=' "$INSTALL_DIR/.env" 2>/dev/null; then
         print_warning "ANTHROPIC_API_KEY not set in .env"
         print_warning "  Auto-update will fall back to Claude Code CLI (monthly cap risk)."
-        print_warning "  Add it before enabling auto-update:"
-        print_warning "    echo 'ANTHROPIC_API_KEY=sk-ant-...' >> $INSTALL_DIR/.env"
+        print_warning "  Add it via the canonical .env writer:"
+        print_warning "    bash scripts/bootstrap-new-location.sh --anthropic-api-key sk-ant-..."
     fi
 
     print_success "Installation verified"

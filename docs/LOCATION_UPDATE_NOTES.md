@@ -46,6 +46,18 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-06 — v2.32.53 — install.sh + ollama-setup.sh simplify pass
+
+**Risk:** GO — install-path-only change; existing locations unaffected. `/simplify` 3-agent pass on v2.32.50-52 found 9 concrete cleanups in `install.sh` (apt-call coalescing, apt-update timeout, sleep removal, PM2-check helper extraction, dead constant, stale comments, canonical-writer hint) plus a model-list drift in `scripts/ollama-setup.sh` (was still pulling `llama3.2:3b` + `phi3:mini` for standalone runs after install.sh was updated). All applied.
+
+**What changed:** Net `+44 / -75` lines across `install.sh` and `scripts/ollama-setup.sh`. Behaviorally identical — same packages installed, same models pulled, same warnings emitted. Just shorter and more consistent.
+
+**Affected:** `install.sh`, `scripts/ollama-setup.sh`, `package.json`, `docs/VERSION_SETUP_GUIDE.md`, `docs/LOCATION_UPDATE_NOTES.md`.
+
+**Rollback:** `git revert` is safe; pure cleanup commit.
+
+---
+
 ### 2026-05-06 — v2.32.52 — Install-doc reconciliation: NEW_LOCATION_SETUP.md is canonical
 
 **Risk:** GO — install-path-only change; existing locations unaffected. Docs-only commit; pure markdown edits to install/deploy guides. Zero runtime impact.
