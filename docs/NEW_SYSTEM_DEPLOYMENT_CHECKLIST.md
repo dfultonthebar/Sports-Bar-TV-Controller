@@ -1,3 +1,5 @@
+> **⚠️ This doc is supplementary.** The canonical fresh-install runbook is **[docs/NEW_LOCATION_SETUP.md](NEW_LOCATION_SETUP.md)** — start there first. This checklist predates NEW_LOCATION_SETUP and overlaps significantly; only consult it for items not covered there.
+
 # New System Deployment Checklist
 
 Complete guide for deploying Sports Bar TV Controller to a new system.

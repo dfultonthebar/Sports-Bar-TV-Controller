@@ -1,13 +1,61 @@
 # New Location Setup Guide
 
-End-to-end runbook for deploying Sports Bar TV Controller to a fresh bar
-location. Assumes a clean Ubuntu 22.04+ host with at least 8 GB RAM and
-network access to the LAN devices (matrix, Fire TVs, DirecTV receivers,
-Atlas audio processor, etc.) the location uses.
+**This is the canonical fresh-install runbook.** End-to-end procedure for
+deploying Sports Bar TV Controller to a new bar location. Assumes a clean
+Ubuntu 22.04+ host (typically Intel NUC) with at least 8 GB RAM and LAN
+access to the venue's hardware (matrix, Fire TVs, DirecTV receivers,
+Atlas/BSS/dbx audio processor, IR blasters).
 
-This guide covers everything this morning's deployment work uncovered —
-auth bootstrap, `LOCATION_ID` binding, cookie flag on HTTP LANs, and the
-`AuthPin` seeding step that used to be invisible. See also:
+## TL;DR — the whole thing in 8 commands
+
+For an operator who's done this before. Each step has a section below
+with full explanation and troubleshooting.
+
+```bash
+# 1. Get the code (git clone preserves executable bits on scripts/*.sh)
+cd /home/ubuntu
+git clone https://github.com/dfultonthebar/Sports-Bar-TV-Controller.git
+cd Sports-Bar-TV-Controller
+
+# 2. Run the canonical installer (system deps + Node + Ollama + Tailscale +
+#    npm ci + drizzle-kit push + npm run build + PM2 + verify-install)
+./install.sh
+
+# 3. Bootstrap auth (Location row + AuthPin + .env LOCATION_ID binding +
+#    ANTHROPIC_API_KEY for the auto-update Checkpoints)
+bash scripts/bootstrap-new-location.sh \
+  --name "Your Bar Name" \
+  --admin-pin <4-digit-PIN> \
+  --staff-pin <4-digit-PIN> \
+  --anthropic-api-key sk-ant-... \
+  --create-branch
+
+# 4. Re-read .env so PM2 picks up LOCATION_ID + AUTH_COOKIE_SECURE
+pm2 restart sports-bar-tv-controller --update-env
+
+# 5. Confirm everything is green
+bash scripts/verify-install.sh    # expect: PASS 7/7
+
+# 6. Authenticate Tailscale (interactive — needs browser)
+sudo tailscale up --ssh
+
+# 7. Authorize ADB on every Fire TV at the location (interactive — needs
+#    a person walking around with each Fire TV's physical remote)
+#    See §8a below.
+
+# 8. Enable the auto-update timer (once Sync tab is configured)
+bash scripts/install-auto-update-timer.sh
+sudo loginctl enable-linger ubuntu
+```
+
+If all 8 succeed, the host is fully set up: webapp on :3001, bartender
+remote on :3002, daily auto-update at 02:30 local. Configure venue
+hardware via the UI (Device Config / Matrix / Audio / Layout) — not by
+hand-editing `apps/web/data/*.json`.
+
+This guide covers everything we've learned from real installs:
+auth bootstrap, `LOCATION_ID` binding, cookie flag on HTTP LANs, the
+`AuthPin` seeding step, and ADB key preservation. See also:
 
 - `docs/AUTO_UPDATE_SETUP.md` — auto-update system state location and operator runbook
 - `docs/HARDWARE_CONFIGURATION.md` — physical hardware setup (IRs, matrix, audio)
@@ -168,8 +216,11 @@ If step 3 returns `{"authenticated":false}` despite step 2 succeeding:
 bash scripts/verify-install.sh
 ```
 
-Should report **PASS (6/6 checks)**. If it fails on any layer, fix that
-before proceeding.
+Should report **PASS (7/7 checks)**. The 7 layers are: pm2_online,
+health_http, metrics_http, bartender_proxy, critical_tables,
+matrix_config, crash_logs. If any layer fails, fix it before
+proceeding — the same script is what auto-update.sh runs at
+Checkpoint C, so a green here means the auto-updater will be happy too.
 
 ## 8. Point a browser at the host
 
@@ -648,5 +699,5 @@ Investigate in this order, easiest first:
 - **Sync tab** → `/system-admin?tab=sync` (deep-links directly after login)
 - **Auto Update run** → Sync tab → "Run Update Now" → log modal auto-opens
 - **Current version** → `/api/system/health` → top-level `"version"` field
-- **Verify deploy** → `bash scripts/verify-install.sh` → expect PASS 6/6
+- **Verify deploy** → `bash scripts/verify-install.sh` → expect PASS 7/7
 - **Main archive backup** → `git push origin main-archive-20260414:main --force-with-lease` rolls main back to pre-reconcile state

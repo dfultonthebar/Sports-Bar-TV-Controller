@@ -27,7 +27,7 @@ export default function KeyboardShortcutsPage() {
               <Keyboard className="w-8 h-8 text-white" />
             </div>
             <div>
-              <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
+              <h1 className="text-4xl font-bold text-white">
                 Keyboard Shortcuts
               </h1>
               <p className="text-slate-300 text-lg">Navigate faster with keyboard commands</p>

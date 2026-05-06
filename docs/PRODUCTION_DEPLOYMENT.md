@@ -1,4 +1,6 @@
 
+> **⚠️ This doc is supplementary.** The canonical fresh-install runbook is **[docs/NEW_LOCATION_SETUP.md](NEW_LOCATION_SETUP.md)** — start there first. This doc covers Intel-NUC-specific tuning that NEW_LOCATION_SETUP doesn't repeat.
+
 # Production Deployment Guide - Sports Bar TV Controller
 ## Intel NUC13ANHi5 (i5-1340P) Deployment
 
