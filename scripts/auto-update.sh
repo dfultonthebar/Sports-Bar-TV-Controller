@@ -129,6 +129,33 @@ case "$TRIGGERED_BY" in
 esac
 
 # ---------------------------------------------------------------------------
+# Cron jitter (v2.32.47)
+# ---------------------------------------------------------------------------
+# All 6 locations have cron firing at 02:30/02:31 local time. When a release
+# lands on main and every host wakes simultaneously, all 6 hit the Anthropic
+# API at the same Checkpoint A/B/C boundaries and trip the org-wide 30k
+# input-tokens-per-minute rate limit. Hosts that lose the race retry, exhaust
+# their 4 attempts, and roll back even though the merge would have succeeded
+# in isolation — exactly what happened on 2026-05-06 with the v2.32.43 fanout.
+#
+# Spread the herd: cron-triggered runs sleep a random 0-1799s before doing
+# any work. Manual triggers (manual_api / manual_cli) skip the jitter so the
+# operator doesn't wait on a 30-min sleep when they hit "Run Update Now."
+if [ "$TRIGGERED_BY" = "cron" ]; then
+  JITTER=$((RANDOM % 1800))
+  sleep "$JITTER"
+  # Refresh RUN_TS / LOG_FILE so the log is named for when work actually
+  # starts rather than when the script was invoked. Otherwise hosts that
+  # slept 25 minutes would all share a log filename close to 02:30 even
+  # though their work happened at 02:55.
+  RUN_TS="$(date +%Y-%m-%d-%H-%M)"
+  LOG_FILE="$LOG_DIR/auto-update-$RUN_TS.log"
+  RUN_STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  RUN_STARTED_EPOCH="$(date +%s)"
+  CRON_JITTER_SECS="$JITTER"
+fi
+
+# ---------------------------------------------------------------------------
 # Setup
 # ---------------------------------------------------------------------------
 mkdir -p "$LOG_DIR" "$BACKUP_DIR"
@@ -415,6 +442,7 @@ else
 # ===========================================================================
 step "preflight"
 log "Triggered by: $TRIGGERED_BY (dry-run=$DRY_RUN)"
+[ -n "${CRON_JITTER_SECS:-}" ] && log "Cron jitter: slept ${CRON_JITTER_SECS}s before starting"
 
 # 0a. Source .env so checkpoint phases see ANTHROPIC_API_KEY (v2.32.20).
 # The build phase sources .env again at line ~966 — that source is for

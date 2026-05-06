@@ -46,6 +46,20 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-06 — v2.32.47 — Cron jitter to prevent fleet rate-limit cascade
+
+**Risk:** GO — single-script change to `auto-update.sh` adding a randomized 0-1799s sleep before cron-triggered runs. Manual triggers unchanged. Observed-live problem on 2026-05-06: parallel cron fanout caused 3-of-5 rollbacks via the org-wide 30k tokens/min API limit. Side effect: logs from cron runs are timestamped at actual-work-start (post-jitter), not 02:30.
+
+**What changed:** `scripts/auto-update.sh` jitter block + `RUN_TS`/`LOG_FILE`/`RUN_STARTED_AT` refresh after the sleep so log filenames reflect work-start time. Preflight log line now reports the slept duration.
+
+**Why:** Org rate limit applies across all models (Sonnet/Haiku/Opus combined) — doesn't help to switch model. Spreading the herd is the fix.
+
+**Affected:** `scripts/auto-update.sh`, `package.json`, `docs/VERSION_SETUP_GUIDE.md`, `docs/LOCATION_UPDATE_NOTES.md`.
+
+**Rollback:** `git revert` returns to the cascade behavior. No data risk.
+
+---
+
 ### 2026-05-06 — v2.32.46 — SPORTS_SCHEDULING_SYSTEM_DESIGN.md rewritten to STATUS=SHIPPED
 
 **Risk:** GO — docs only. Final doc in the audit/cleanup pass. The original 3000-line design from 2025-11-14 was forward-looking; Phases 1-3 have been in production since v2.18-v2.20 (DB tables, allocation engine, ESPN sync, auto-reallocator, dashboard UI). 3082 lines reduced to ~75. Zero runtime impact.

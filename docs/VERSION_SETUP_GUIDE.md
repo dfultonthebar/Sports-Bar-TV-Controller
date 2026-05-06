@@ -187,6 +187,28 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.47 — Cron jitter to prevent fleet rate-limit cascade
+**Released:** 2026-05-06
+
+All 6 locations have cron firing at 02:30/02:31 local time. When a release lands on main and every host wakes simultaneously, all 6 hit the Anthropic API at the same Checkpoint A/B/C boundaries and trip the org-wide 30k input-tokens-per-minute rate limit. Hosts that lose the race retry, exhaust their 4 attempts, and roll back even though the merge would have succeeded in isolation. Observed live during the 2026-05-06 v2.32.43 fanout — 3 of 5 locations rolled back from the rate-limit cascade.
+
+**Changes:**
+- `scripts/auto-update.sh` — when `--triggered-by=cron`, sleep 0-1799s before starting work. Manual triggers (`manual_api`, `manual_cli`) skip the jitter so the operator doesn't wait. Refreshes `RUN_TS`/`LOG_FILE`/`RUN_STARTED_AT` after the sleep so the log filename reflects when work actually started. Logs the slept duration in the preflight line.
+
+**Required Manual Step:** None — code-only.
+
+**Verification:**
+```bash
+grep -A 4 "Cron jitter (v2.32.47)" /home/ubuntu/Sports-Bar-TV-Controller/scripts/auto-update.sh
+# Should show the comment block.
+grep "Cron jitter:" /home/ubuntu/sports-bar-data/update-logs/auto-update-*.log | tail -3
+# After the next 02:31 cron, should show "Cron jitter: slept Ns" lines.
+```
+
+**Rollback:** `git revert` is safe — without jitter, fleet returns to the parallel-rate-limit cascade behavior.
+
+---
+
 ### v2.32.46 — SPORTS_SCHEDULING_SYSTEM_DESIGN.md rewritten to STATUS=SHIPPED
 **Released:** 2026-05-06
 
