@@ -46,6 +46,130 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-06 — v2.32.53 — install.sh + ollama-setup.sh simplify pass
+
+**Risk:** GO — install-path-only change; existing locations unaffected. `/simplify` 3-agent pass on v2.32.50-52 found 9 concrete cleanups in `install.sh` (apt-call coalescing, apt-update timeout, sleep removal, PM2-check helper extraction, dead constant, stale comments, canonical-writer hint) plus a model-list drift in `scripts/ollama-setup.sh` (was still pulling `llama3.2:3b` + `phi3:mini` for standalone runs after install.sh was updated). All applied.
+
+**What changed:** Net `+44 / -75` lines across `install.sh` and `scripts/ollama-setup.sh`. Behaviorally identical — same packages installed, same models pulled, same warnings emitted. Just shorter and more consistent.
+
+**Affected:** `install.sh`, `scripts/ollama-setup.sh`, `package.json`, `docs/VERSION_SETUP_GUIDE.md`, `docs/LOCATION_UPDATE_NOTES.md`.
+
+**Rollback:** `git revert` is safe; pure cleanup commit.
+
+---
+
+### 2026-05-06 — v2.32.52 — Install-doc reconciliation: NEW_LOCATION_SETUP.md is canonical
+
+**Risk:** GO — install-path-only change; existing locations unaffected. Docs-only commit; pure markdown edits to install/deploy guides. Zero runtime impact.
+
+**What changed:** 13 install/deploy docs lived in `docs/`, mostly overlapping and contradicting on which Ollama models to pull. NEW_LOCATION_SETUP.md got a TL;DR-in-8-commands header and a "PASS 7/7" correction (was 6/6, predated v2.18 matrix_config layer). 11 supplementary docs got a top-banner pointer to NEW_LOCATION_SETUP. AUTO_UPDATE_SETUP.md left as-is (canonical for its own thing).
+
+**Why:** Operator bringing a new location online needs ONE authoritative runbook, not 13.
+
+**Affected:** `docs/NEW_LOCATION_SETUP.md`, `docs/INSTALLATION_GUIDE.md`, `docs/QUICK_DEPLOYMENT_GUIDE.md`, `docs/NUC_DEPLOYMENT.md`, `docs/MANUAL_DEPLOYMENT_STEPS.md`, `docs/PULL_AND_INSTALL.md`, `docs/PRODUCTION_DEPLOYMENT.md`, `docs/README_INSTALLATION.md`, `docs/NEW_SYSTEM_DEPLOYMENT_CHECKLIST.md`, `docs/INSTALLER_BUG_ANALYSIS.md`, `docs/AI_BACKEND_SETUP.md`, `docs/OLLAMA_SETUP_COMPLETE.md`, `package.json`, `docs/VERSION_SETUP_GUIDE.md`, `docs/LOCATION_UPDATE_NOTES.md`.
+
+**Rollback:** `git revert` is harmless.
+
+---
+
+### 2026-05-06 — v2.32.51 — install.sh runs verify-install.sh + clearer Next Steps
+
+**Risk:** GO — install-path-only change; existing locations unaffected. Only changes what `install.sh` does at the end of a fresh-install run; the auto-updater never invokes `install.sh`.
+
+**What changed:** Added PHASE 11 that runs `scripts/verify-install.sh` as the install gate after PM2 is up — same script auto-update.sh uses at Checkpoint C, so the 7-layer pass/fail summary is now visible at install time. Reformatted `print_final_instructions()` to lead with the auth bootstrap as the REQUIRED next step (`scripts/bootstrap-new-location.sh`) instead of burying it under "migrate from existing location" guidance.
+
+**Why now:** Without the auth bootstrap, every login attempt at a fresh install returns "Invalid PIN" and the operator has no obvious signal that bootstrap is the missing piece. Verify-install runs as a non-fatal probe — it surfaces what's missing without blocking the install.
+
+**Affected:** `install.sh`, `package.json`, `docs/VERSION_SETUP_GUIDE.md`, `docs/LOCATION_UPDATE_NOTES.md`.
+
+**Rollback:** `git revert` is harmless — install-time output only.
+
+---
+
+### 2026-05-06 — v2.32.50 — install.sh PM2 startup fix + correct Ollama models
+
+**Risk:** GO — install-path-only change; existing locations unaffected. None of the 6 fleet locations re-run `install.sh` on auto-update; this only affects future fresh installs on new NUC hardware. The auto-updater never invokes `install.sh`.
+
+**What changed:** `install.sh:setup_pm2()` now runs `pm2 start ecosystem.config.js` (which starts BOTH the next-server and the bartender-proxy together) instead of the previous broken two-call pattern (`pm2 start npm -- start` for the app + `pm2 start "/src/workers/qa-worker.ts" ...` for a worker that no longer exists at that path). Also corrects the Ollama model list from `llama3.2:3b`+`phi3:mini` to `llama3.1:8b`+`nomic-embed-text` to match what production code actually calls. Adds `pm2 install pm2-logrotate` and an `ANTHROPIC_API_KEY` warning.
+
+**Why now:** Audited the install path before bringing a new location online. Three independent bugs would have made the new location fail `verify-install.sh` layer 4 (bartender proxy), 404 on every AI-scheduling call, and accumulate unbounded PM2 logs.
+
+**Affected:** `install.sh`, `package.json`, `docs/VERSION_SETUP_GUIDE.md`, `docs/LOCATION_UPDATE_NOTES.md`.
+
+**Rollback:** `git revert` is harmless — no existing host runs install.sh.
+
+---
+
+### 2026-05-06 — v2.32.49 — Deterministic checkpoint fast path
+
+**Risk:** GO — additive. New `scripts/checkpoint-deterministic.sh` runs as a 30s-timeout fast path before the existing AI checkpoint runner. Returns one of `GO|CAUTION|STOP|UNDETERMINED`; UNDETERMINED falls through to `checkpoint-runner.py` exactly as before. If the new script is missing, behavior is identical to pre-v2.32.49. Smoke-tested at Holmgren (A/B/C all returned GO).
+
+**What changed:** `scripts/checkpoint-deterministic.sh` (new), `scripts/auto-update.sh:run_checkpoint()` (15-line fast-path block added, existing AI path unchanged).
+
+**Why:** Today's Haiku false-STOP on leaked-key concern (docs-only update) + 4-of-5 fleet rate-limit cascade earlier today made the case for moving the deterministic 80% off the API. Cost target: <$0.50/mo fleet-wide (was ~$5/mo). Speed target: <30s per checkpoint.
+
+**Affected:** `scripts/checkpoint-deterministic.sh` (new), `scripts/auto-update.sh`, `package.json`, `docs/VERSION_SETUP_GUIDE.md`, `docs/LOCATION_UPDATE_NOTES.md`.
+
+**Rollback:** `git revert` removes the new script and the integration block. AI runs every checkpoint as before. No data risk.
+
+---
+
+### 2026-05-06 — v2.32.48 — Admin gradient-text titles swapped to solid white (iPad Safari fix continued)
+
+**Risk:** GO — three className-only swaps in admin-side components. Continuation of the v2.32.42 homepage fix for iPad Safari rendering `bg-clip-text text-transparent` as fully transparent. Fixes "All Sports Programming" (Sports Guide admin), "AI Game Plan" (modal h2), and "Keyboard Shortcuts" (settings page h1). Bartender-remote files intentionally left alone for separate operator review.
+
+**Affected:** `apps/web/src/components/SportsGuide.tsx`, `apps/web/src/components/AIGamePlanModal.tsx`, `apps/web/src/app/settings/keyboard/page.tsx`, `package.json`, `docs/VERSION_SETUP_GUIDE.md`, `docs/LOCATION_UPDATE_NOTES.md`.
+
+**Rollback:** `git revert` restores gradients. No data risk.
+
+---
+
+### 2026-05-06 — v2.32.47 — Cron jitter to prevent fleet rate-limit cascade
+
+**Risk:** GO — single-script change to `auto-update.sh` adding a randomized 0-1799s sleep before cron-triggered runs. Manual triggers unchanged. Observed-live problem on 2026-05-06: parallel cron fanout caused 3-of-5 rollbacks via the org-wide 30k tokens/min API limit. Side effect: logs from cron runs are timestamped at actual-work-start (post-jitter), not 02:30.
+
+**What changed:** `scripts/auto-update.sh` jitter block + `RUN_TS`/`LOG_FILE`/`RUN_STARTED_AT` refresh after the sleep so log filenames reflect work-start time. Preflight log line now reports the slept duration.
+
+**Why:** Org rate limit applies across all models (Sonnet/Haiku/Opus combined) — doesn't help to switch model. Spreading the herd is the fix.
+
+**Affected:** `scripts/auto-update.sh`, `package.json`, `docs/VERSION_SETUP_GUIDE.md`, `docs/LOCATION_UPDATE_NOTES.md`.
+
+**Rollback:** `git revert` returns to the cascade behavior. No data risk.
+
+---
+
+### 2026-05-06 — v2.32.46 — SPORTS_SCHEDULING_SYSTEM_DESIGN.md rewritten to STATUS=SHIPPED
+
+**Risk:** GO — docs only. Final doc in the audit/cleanup pass. The original 3000-line design from 2025-11-14 was forward-looking; Phases 1-3 have been in production since v2.18-v2.20 (DB tables, allocation engine, ESPN sync, auto-reallocator, dashboard UI). 3082 lines reduced to ~75. Zero runtime impact.
+
+**Affected:** `docs/SPORTS_SCHEDULING_SYSTEM_DESIGN.md`, `package.json`, `docs/VERSION_SETUP_GUIDE.md`, `docs/LOCATION_UPDATE_NOTES.md`.
+
+**Rollback:** `git revert` restores the original design doc. No runtime regression either direction.
+
+---
+
+### 2026-05-06 — v2.32.45 — Scheduler-pattern docs rewritten to STATUS=SHIPPED
+
+**Risk:** GO — docs only. Three-file rewrite under `docs/scheduler-patterns/` to reflect that the team-matcher + priority-calculator + HomeTeam schema work shipped in v2.18-v2.20 but the design docs were never updated. Total ~2200 lines of stale forward-looking design replaced with ~165 lines of accurate STATUS. Zero runtime impact.
+
+**Affected:** `docs/scheduler-patterns/HOME_TEAMS_SCHEDULER_INTEGRATION.md`, `docs/scheduler-patterns/TEAM_NAME_MATCHING_SYSTEM.md`, `docs/scheduler-patterns/TEAM_PRIORITY_SYSTEM.md`, `package.json`, `docs/VERSION_SETUP_GUIDE.md`, `docs/LOCATION_UPDATE_NOTES.md`.
+
+**Rollback:** `git revert` restores the original long docs. No runtime regression either direction.
+
+---
+
+### 2026-05-06 — v2.32.44 — Channel Resolver Consolidation Plan doc updated
+
+**Risk:** GO — docs only. Single-file rewrite of `docs/CHANNEL_RESOLVER_CONSOLIDATION_PLAN.md` to reflect that the plan has fully shipped (was misleadingly stuck at "No code changes yet"). Zero runtime impact.
+
+**What changed:** Replaced 389-line forward-looking plan with ~70-line STATUS doc. Per-route migration record + verification command + intentional carve-out note for `NETWORK_TO_STREAMING_APP`.
+
+**Affected:** `docs/CHANNEL_RESOLVER_CONSOLIDATION_PLAN.md`, `package.json`, `docs/VERSION_SETUP_GUIDE.md`, `docs/LOCATION_UPDATE_NOTES.md`.
+
+**Rollback:** `git revert` restores the old plan text. No runtime regression either direction.
+
+---
+
 ### 2026-05-06 — v2.32.43 — ESPN college-softball sport slug fix
 
 **Risk:** GO — one-line typo fix in a sport-sync URL builder. No DB changes, no env changes, no API surface change. Failure mode if regressed: same behavior as before the fix (a 400 every 10 minutes for the softball league only). Other ESPN league fetches are unaffected.

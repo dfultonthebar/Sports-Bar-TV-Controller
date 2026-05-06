@@ -174,10 +174,12 @@ EOF
 pull_models() {
     print_status "Pulling required AI models..."
 
-    # Required models for the Sports Bar TV Controller
+    # Required models for the Sports Bar TV Controller. MUST stay in sync
+    # with REQUIRED_MODELS in install.sh:download_ollama_models — the app
+    # at apps/web/src/app/api/scheduling/ai-suggest hardcodes llama3.1:8b
+    # (90s timeout); RAG embeddings use nomic-embed-text.
     local MODELS=(
-        "llama3.2:3b|Primary model for chat, log analysis, and AI features"
-        "phi3:mini|Lightweight model for sports guide and quick queries"
+        "llama3.1:8b|AI scheduling, gameplan suggestions, log analysis"
         "nomic-embed-text|Embedding model for RAG documentation search"
     )
 
