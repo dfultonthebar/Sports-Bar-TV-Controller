@@ -349,6 +349,52 @@ run_checkpoint() {
   local prompt
   prompt=$(cat "$prompt_file")
 
+  # v2.32.49 — Deterministic fast path. The vast majority of checkpoint
+  # decisions are bash-classifiable (verify-sql markers, file presence, log
+  # patterns). Try the deterministic script first. If it returns
+  # GO/CAUTION/STOP we honor it. If UNDETERMINED, fall through to the AI path.
+  # This cuts API spend ~10x and eliminates Haiku false-positive STOPs in
+  # the common case (today's leaked-key false-STOP would have been a clean
+  # GO under deterministic-A).
+  if [ -x "$REPO_ROOT/scripts/checkpoint-deterministic.sh" ]; then
+    local det_out="$out_file.det"
+    if timeout 30 bash "$REPO_ROOT/scripts/checkpoint-deterministic.sh" "$label" "$prompt_file" \
+         > "$det_out" 2>>"$LOG_FILE"; then
+      local det_decision
+      det_decision=$(grep -m1 '^DECISION:' "$det_out" || true)
+      case "$det_decision" in
+        "DECISION: UNDETERMINED"*)
+          log "Checkpoint $label: deterministic → UNDETERMINED, escalating to AI"
+          rm -f "$det_out"
+          ;;
+        "DECISION: "*)
+          log "Checkpoint $label: $det_decision (deterministic, no AI)"
+          decision="$det_decision"
+          decision_normalized=$(echo "$decision" | sed -E 's/^[^A-Z]*//')
+          rm -f "$det_out" "$out_file"
+          # Jump to the case statement at end of function via a goto-style
+          # variable. (Bash has no goto; we just inline the case here.)
+          case "$decision_normalized" in
+            "DECISION: GO"*) return 0 ;;
+            "DECISION: CAUTION"*)
+              CAUTION_MODE=1
+              log "Checkpoint $label: CAUTION — proceeding with extra monitoring"
+              return 0 ;;
+            "DECISION: STOP"*)
+              fail "Checkpoint $label: STOP — ${decision_normalized#DECISION: STOP}" 2 ;;
+          esac
+          ;;
+        *)
+          log "Checkpoint $label: deterministic emitted unparseable line, escalating to AI"
+          rm -f "$det_out"
+          ;;
+      esac
+    else
+      log "Checkpoint $label: deterministic script errored ($?), escalating to AI"
+      rm -f "$det_out"
+    fi
+  fi
+
   # v2.32.20 — Default path is direct Anthropic API (pay-per-token, no
   # subscription cap). The Claude Code CLI subscription path was hitting
   # "You've hit your org's monthly usage limit" mid-month, failing

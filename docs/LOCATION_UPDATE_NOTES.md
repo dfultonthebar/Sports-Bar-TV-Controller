@@ -46,6 +46,20 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-06 — v2.32.49 — Deterministic checkpoint fast path
+
+**Risk:** GO — additive. New `scripts/checkpoint-deterministic.sh` runs as a 30s-timeout fast path before the existing AI checkpoint runner. Returns one of `GO|CAUTION|STOP|UNDETERMINED`; UNDETERMINED falls through to `checkpoint-runner.py` exactly as before. If the new script is missing, behavior is identical to pre-v2.32.49. Smoke-tested at Holmgren (A/B/C all returned GO).
+
+**What changed:** `scripts/checkpoint-deterministic.sh` (new), `scripts/auto-update.sh:run_checkpoint()` (15-line fast-path block added, existing AI path unchanged).
+
+**Why:** Today's Haiku false-STOP on leaked-key concern (docs-only update) + 4-of-5 fleet rate-limit cascade earlier today made the case for moving the deterministic 80% off the API. Cost target: <$0.50/mo fleet-wide (was ~$5/mo). Speed target: <30s per checkpoint.
+
+**Affected:** `scripts/checkpoint-deterministic.sh` (new), `scripts/auto-update.sh`, `package.json`, `docs/VERSION_SETUP_GUIDE.md`, `docs/LOCATION_UPDATE_NOTES.md`.
+
+**Rollback:** `git revert` removes the new script and the integration block. AI runs every checkpoint as before. No data risk.
+
+---
+
 ### 2026-05-06 — v2.32.48 — Admin gradient-text titles swapped to solid white (iPad Safari fix continued)
 
 **Risk:** GO — three className-only swaps in admin-side components. Continuation of the v2.32.42 homepage fix for iPad Safari rendering `bg-clip-text text-transparent` as fully transparent. Fixes "All Sports Programming" (Sports Guide admin), "AI Game Plan" (modal h2), and "Keyboard Shortcuts" (settings page h1). Bartender-remote files intentionally left alone for separate operator review.

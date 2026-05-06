@@ -187,6 +187,36 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.49 — Deterministic checkpoint fast path (bypass Haiku for the 80% case)
+**Released:** 2026-05-06
+
+Auto-update checkpoints A/B/C used to call `checkpoint-runner.py` (Anthropic API) on every run, costing ~$5/mo fleet-wide and producing variable false-positive STOPs (today: Haiku flagged the pre-existing leaked Sports Guide API key on a docs-only update; earlier: empty `hardware-config.ts` post-merge). The vast majority of those checks are bash-deterministic — verify-sql markers, file presence, narrow log patterns.
+
+**Changes:**
+- New `scripts/checkpoint-deterministic.sh` (~190 lines). Runs the deterministic checks for all three checkpoints. Emits `DECISION: GO|CAUTION|STOP|UNDETERMINED`. UNDETERMINED escalates to AI; never STOPs on its own when uncertain.
+- `scripts/auto-update.sh:run_checkpoint()` gains a fast-path block that tries the deterministic script first (30s timeout), falls through to the existing AI path on UNDETERMINED.
+
+**Per-checkpoint logic:**
+- **A (pre-merge):** empty `git log HEAD..origin/main` → instant GO. Else scan diff for leaked-secret regex, deletion of critical scripts, NOT NULL columns without default; scan `LOCATION_UPDATE_NOTES.md` for `Risk: STOP` on pending versions; CAUTION on major dep bumps.
+- **B (post-merge):** Location row count, ChannelPreset count, new schema tables exist in DB, sqlite3 verify-sql markers from VERSION_SETUP_GUIDE entries between PRE/POST version.
+- **C (post-restart):** `VERIFY_INSTALL_JSON` status, `/api/system/health` HTTP 200, narrow PM2 crash-pattern grep (`unhandledRejection|Cannot find module|EADDRINUSE|SyntaxError|FATAL` — explicitly NOT `ERROR` to avoid false-positives like the ESPN softball 400).
+
+**Required Manual Step:** None. `checkpoint-deterministic.sh` is auto-detected — if absent, behavior is unchanged.
+
+**Verification:**
+```bash
+test -x /home/ubuntu/Sports-Bar-TV-Controller/scripts/checkpoint-deterministic.sh && echo OK
+PRE_MERGE_VERSION=2.32.48 POST_MERGE_VERSION=2.32.49 \
+  bash /home/ubuntu/Sports-Bar-TV-Controller/scripts/checkpoint-deterministic.sh A 2>/dev/null
+# Expect: DECISION: GO - no commits pending merge   (or similar)
+grep -A 2 "Deterministic fast path" /home/ubuntu/Sports-Bar-TV-Controller/scripts/auto-update.sh | head -5
+# Expect: comment block in run_checkpoint()
+```
+
+**Rollback:** `git revert` removes the fast-path block + the new script. Behavior reverts to AI-on-every-checkpoint. No state risk.
+
+---
+
 ### v2.32.48 — Admin gradient-text titles swapped to solid white (iPad Safari fix continued)
 **Released:** 2026-05-06
 
