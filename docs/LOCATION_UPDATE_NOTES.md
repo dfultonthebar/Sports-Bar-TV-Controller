@@ -46,6 +46,16 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-06 — v2.32.46 — SPORTS_SCHEDULING_SYSTEM_DESIGN.md rewritten to STATUS=SHIPPED
+
+**Risk:** GO — docs only. Final doc in the audit/cleanup pass. The original 3000-line design from 2025-11-14 was forward-looking; Phases 1-3 have been in production since v2.18-v2.20 (DB tables, allocation engine, ESPN sync, auto-reallocator, dashboard UI). 3082 lines reduced to ~75. Zero runtime impact.
+
+**Affected:** `docs/SPORTS_SCHEDULING_SYSTEM_DESIGN.md`, `package.json`, `docs/VERSION_SETUP_GUIDE.md`, `docs/LOCATION_UPDATE_NOTES.md`.
+
+**Rollback:** `git revert` restores the original design doc. No runtime regression either direction.
+
+---
+
 ### 2026-05-06 — v2.32.45 — Scheduler-pattern docs rewritten to STATUS=SHIPPED
 
 **Risk:** GO — docs only. Three-file rewrite under `docs/scheduler-patterns/` to reflect that the team-matcher + priority-calculator + HomeTeam schema work shipped in v2.18-v2.20 but the design docs were never updated. Total ~2200 lines of stale forward-looking design replaced with ~165 lines of accurate STATUS. Zero runtime impact.

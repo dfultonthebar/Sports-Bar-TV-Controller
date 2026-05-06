@@ -187,6 +187,28 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.46 — SPORTS_SCHEDULING_SYSTEM_DESIGN.md rewritten to STATUS=SHIPPED
+**Released:** 2026-05-06
+
+Final doc in the cleanup pass (after v2.32.44 channel-resolver and v2.32.45 scheduler-patterns). Audit confirmed Phases 1-3 of the original 3000-line design are in production: tables in DB, allocation engine + 10 API endpoints under `/api/scheduling/`, ESPN sync + auto-reallocator on cron, dashboard UI shipped. Phase 4 was Optional Enhancements — multi-bar achieved via the 6-location branch model; predictive allocation not on roadmap. Doc rewritten to reflect actual state with cross-references to the four sibling STATUS docs.
+
+**Changes:**
+- `docs/SPORTS_SCHEDULING_SYSTEM_DESIGN.md` — 3082 → ~75 lines.
+
+**Required Manual Step:** None — docs only.
+
+**Verification:**
+```bash
+sqlite3 /home/ubuntu/sports-bar-data/production.db ".tables" | tr ' ' '\n' | \
+  grep -E "game_schedules|input_source|tournament_brackets" | wc -l   # ≥ 4
+ls /home/ubuntu/Sports-Bar-TV-Controller/apps/web/src/app/api/scheduling/ | wc -l   # ≥ 10
+test -f /home/ubuntu/Sports-Bar-TV-Controller/packages/scheduler/src/espn-sync-service.ts && echo OK
+```
+
+**Rollback:** `git revert` restores the 3000-line design doc. No runtime impact either way.
+
+---
+
 ### v2.32.45 — Scheduler-pattern docs rewritten to STATUS=SHIPPED
 **Released:** 2026-05-06
 
