@@ -46,6 +46,20 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-06 — v2.32.43 — ESPN college-softball sport slug fix
+
+**Risk:** GO — one-line typo fix in a sport-sync URL builder. No DB changes, no env changes, no API surface change. Failure mode if regressed: same behavior as before the fix (a 400 every 10 minutes for the softball league only). Other ESPN league fetches are unaffected.
+
+**What changed:** `apps/web/src/instrumentation.ts:141` swaps `sport: 'softball'` → `sport: 'baseball'` to match ESPN's URL structure (NCAA Softball lives under `/sports/baseball/college-softball/`).
+
+**Why:** Holmgren post-vacation log inspection found this firing every sync cycle since the lineup was added. Verified live: `sports/baseball/college-softball` returns 200; `sports/softball/college-softball` returns 400.
+
+**Affected:** `apps/web/src/instrumentation.ts`, `package.json`, `docs/VERSION_SETUP_GUIDE.md`, `docs/LOCATION_UPDATE_NOTES.md`.
+
+**Rollback:** `git revert` — single-file revert. Log spam returns; no functional regression.
+
+---
+
 ### 2026-04-18 — v2.23.5 — Extract memory + versioning guides out of CLAUDE.md
 
 **Risk:** GO — doc reorg only. No code changes. No runtime impact. Each location's next Claude Code session will see the new `docs/CLAUDE_MEMORY_GUIDE.md` and `docs/CLAUDE_VERSIONING_GUIDE.md` referenced in CLAUDE.md's new READ FIRST banner.
