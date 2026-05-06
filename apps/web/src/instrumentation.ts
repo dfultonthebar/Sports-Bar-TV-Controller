@@ -138,7 +138,7 @@ export async function register() {
         // Baseball / Softball
         { sport: 'baseball', league: 'mlb' },
         { sport: 'baseball', league: 'college-baseball' },
-        { sport: 'softball', league: 'college-softball' },
+        { sport: 'baseball', league: 'college-softball' },
         // Basketball
         { sport: 'basketball', league: 'nba' },
         { sport: 'basketball', league: 'wnba' },
