@@ -187,6 +187,31 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.52 — Install-doc reconciliation: NEW_LOCATION_SETUP.md is canonical
+**Released:** 2026-05-06
+
+Repo had 13 install/deploy docs in `docs/` (NEW_LOCATION_SETUP, INSTALLATION_GUIDE, NEW_SYSTEM_DEPLOYMENT_CHECKLIST, QUICK_DEPLOYMENT_GUIDE, NUC_DEPLOYMENT, PRODUCTION_DEPLOYMENT, MANUAL_DEPLOYMENT_STEPS, PULL_AND_INSTALL, README_INSTALLATION, AUTO_UPDATE_SETUP, INSTALLER_BUG_ANALYSIS, AI_BACKEND_SETUP, OLLAMA_SETUP_COMPLETE) — most overlapped, contradicted each other on which Ollama models to pull, and predated the auth-bootstrap step. An operator landing on any of them couldn't tell which was authoritative.
+
+**Changes:**
+- Pinned `docs/NEW_LOCATION_SETUP.md` as the canonical fresh-install runbook by adding a "TL;DR — the whole thing in 8 commands" section at the top showing every step from `git clone` to webapp running.
+- Updated NEW_LOCATION_SETUP's verify-install reference from "PASS 6/6" to "PASS 7/7" (the matrix_config check was added in v2.18.x, was never reflected in the docs).
+- Added a top-banner pointer to NEW_LOCATION_SETUP on 11 supplementary install docs: INSTALLATION_GUIDE, QUICK_DEPLOYMENT_GUIDE, NUC_DEPLOYMENT, MANUAL_DEPLOYMENT_STEPS, PULL_AND_INSTALL, PRODUCTION_DEPLOYMENT, README_INSTALLATION, NEW_SYSTEM_DEPLOYMENT_CHECKLIST, INSTALLER_BUG_ANALYSIS, AI_BACKEND_SETUP, OLLAMA_SETUP_COMPLETE.
+- AUTO_UPDATE_SETUP.md was left alone — it's canonical for its own thing (auto-update state + operator runbook).
+
+**Required Manual Step:** None — docs only.
+
+**Verification:**
+```bash
+grep -l "This doc is supplementary" /home/ubuntu/Sports-Bar-TV-Controller/docs/*.md | wc -l
+# Should return 11 (the 11 supplementary install docs).
+grep "TL;DR — the whole thing" /home/ubuntu/Sports-Bar-TV-Controller/docs/NEW_LOCATION_SETUP.md
+# Should match.
+```
+
+**Rollback:** `git revert` removes the banners and TL;DR. Docs revert to the pre-reconciliation state. Zero runtime impact.
+
+---
+
 ### v2.32.51 — install.sh runs verify-install.sh as the install gate + clearer Next Steps
 **Released:** 2026-05-06
 

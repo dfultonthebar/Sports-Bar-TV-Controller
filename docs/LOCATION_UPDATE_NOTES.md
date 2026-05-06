@@ -46,6 +46,20 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-06 — v2.32.52 — Install-doc reconciliation: NEW_LOCATION_SETUP.md is canonical
+
+**Risk:** GO — install-path-only change; existing locations unaffected. Docs-only commit; pure markdown edits to install/deploy guides. Zero runtime impact.
+
+**What changed:** 13 install/deploy docs lived in `docs/`, mostly overlapping and contradicting on which Ollama models to pull. NEW_LOCATION_SETUP.md got a TL;DR-in-8-commands header and a "PASS 7/7" correction (was 6/6, predated v2.18 matrix_config layer). 11 supplementary docs got a top-banner pointer to NEW_LOCATION_SETUP. AUTO_UPDATE_SETUP.md left as-is (canonical for its own thing).
+
+**Why:** Operator bringing a new location online needs ONE authoritative runbook, not 13.
+
+**Affected:** `docs/NEW_LOCATION_SETUP.md`, `docs/INSTALLATION_GUIDE.md`, `docs/QUICK_DEPLOYMENT_GUIDE.md`, `docs/NUC_DEPLOYMENT.md`, `docs/MANUAL_DEPLOYMENT_STEPS.md`, `docs/PULL_AND_INSTALL.md`, `docs/PRODUCTION_DEPLOYMENT.md`, `docs/README_INSTALLATION.md`, `docs/NEW_SYSTEM_DEPLOYMENT_CHECKLIST.md`, `docs/INSTALLER_BUG_ANALYSIS.md`, `docs/AI_BACKEND_SETUP.md`, `docs/OLLAMA_SETUP_COMPLETE.md`, `package.json`, `docs/VERSION_SETUP_GUIDE.md`, `docs/LOCATION_UPDATE_NOTES.md`.
+
+**Rollback:** `git revert` is harmless.
+
+---
+
 ### 2026-05-06 — v2.32.51 — install.sh runs verify-install.sh + clearer Next Steps
 
 **Risk:** GO — install-path-only change; existing locations unaffected. Only changes what `install.sh` does at the end of a fresh-install run; the auto-updater never invokes `install.sh`.
