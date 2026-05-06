@@ -1055,9 +1055,34 @@ print_final_instructions() {
     echo -e "  • Or log out and log back in to refresh your PATH"
     echo ""
     
-    echo -e "${CYAN}Post-Install (if migrating from existing location):${NC}"
-    echo -e "  Migrate data: ${YELLOW}cd $INSTALL_DIR && ./scripts/new-location-setup.sh --migrate-from <source-ip>${NC}"
-    echo -e "  Device setup: ${YELLOW}./scripts/post-install-setup.sh${NC}"
+    echo -e "${CYAN}REQUIRED NEXT STEPS — auth bootstrap (PHASE 12):${NC}"
+    echo -e "  Without this, every login attempt returns 'Invalid PIN'."
+    echo -e "  Seeds the Location row, AuthPin rows, and LOCATION_ID/.env binding."
+    echo ""
+    echo -e "  ${YELLOW}cd $INSTALL_DIR${NC}"
+    echo -e "  ${YELLOW}bash scripts/bootstrap-new-location.sh \\${NC}"
+    echo -e "  ${YELLOW}    --name \"Your Bar Name\" \\${NC}"
+    echo -e "  ${YELLOW}    --admin-pin <4-digit-PIN> \\${NC}"
+    echo -e "  ${YELLOW}    --staff-pin <4-digit-PIN> \\${NC}"
+    echo -e "  ${YELLOW}    --anthropic-api-key sk-ant-... \\${NC}"
+    echo -e "  ${YELLOW}    --create-branch${NC}"
+    echo ""
+    echo -e "  Then restart PM2 to pick up the new env:"
+    echo -e "  ${YELLOW}pm2 restart sports-bar-tv-controller --update-env${NC}"
+    echo ""
+    echo -e "  Then re-run verify-install:"
+    echo -e "  ${YELLOW}bash scripts/verify-install.sh${NC}    # expect PASS 7/7"
+    echo ""
+
+    echo -e "${CYAN}Auto-update timer (after Sync tab is configured):${NC}"
+    echo -e "  Enable in UI: ${YELLOW}/system-admin?tab=sync${NC}, toggle Auto Update Enabled, Save"
+    echo -e "  Install timer: ${YELLOW}bash scripts/install-auto-update-timer.sh${NC}"
+    echo -e "  Reboot survives: ${YELLOW}sudo loginctl enable-linger ubuntu${NC}"
+    echo ""
+
+    echo -e "${CYAN}Optional — migrate from an existing location:${NC}"
+    echo -e "  ${YELLOW}./scripts/new-location-setup.sh --migrate-from <tailscale-ip>${NC}"
+    echo -e "  ${YELLOW}./scripts/post-install-setup.sh${NC}    # network device discovery"
     echo ""
 
     echo -e "${CYAN}Uninstall:${NC}"
@@ -1096,6 +1121,53 @@ run_post_install_setup() {
     else
         print_warning "Post-install script not found at $setup_script"
         print_info "Run manually after install: ./scripts/new-location-setup.sh"
+    fi
+}
+
+#############################################################################
+# PHASE 11: Run verify-install.sh as the install gate
+#############################################################################
+# verify-install.sh is the canonical post-install/post-update health check.
+# It's the same script auto-update.sh runs at Checkpoint C. Running it here
+# turns the install into a pass/fail gate: if any of the 7 layers fail
+# (PM2 online, /api/system/health, /api/system/metrics, bartender proxy,
+# critical DB tables, matrix config sanity, no recent crash patterns),
+# the operator sees a clear PASS/FAIL summary instead of a silent half-broken
+# install. We do NOT exit non-zero on FAIL — at this stage the auth bootstrap
+# has not been run yet (it requires interactive PIN entry), so layers like
+# health_http will warn rather than fail. The point is to surface what's
+# missing so the operator knows what to do next.
+#############################################################################
+
+run_install_verify() {
+    print_header "PHASE 11: Install Verification (verify-install.sh)"
+
+    local verify_script="$INSTALL_DIR/scripts/verify-install.sh"
+
+    if [ ! -f "$verify_script" ]; then
+        print_warning "verify-install.sh not found at $verify_script — skipping"
+        return 0
+    fi
+
+    chmod +x "$verify_script"
+
+    # Give PM2 + Next.js a moment to bind ports and warm up routes before
+    # we start hitting them. New-install boot is slower than auto-update
+    # restart because the JIT cache is empty.
+    log_and_print "Waiting 10s for app routes to warm up before verifying..."
+    sleep 10
+
+    log_and_print "Running verify-install.sh..."
+    if bash "$verify_script" 2>&1 | tee -a "$LOG_FILE"; then
+        print_success "Install verification PASSED"
+    else
+        # Non-fatal at install time — auth bootstrap (Phase 12, manual) hasn't
+        # run yet, and the operator may still need to populate location data.
+        # The operator-facing "Next steps" output below tells them what to do.
+        print_warning "Install verification reported failures (see above)."
+        print_warning "Most likely cause on a fresh install: auth bootstrap"
+        print_warning "(scripts/bootstrap-new-location.sh) hasn't been run yet."
+        print_warning "See PHASE 12 in the Next Steps below."
     fi
 }
 
@@ -1208,6 +1280,9 @@ main() {
     
     # PHASE 10: Post-install setup (PM2 logrotate, crontab, NEXTAUTH_URL)
     run_post_install_setup
+
+    # PHASE 11: Install verification (verify-install.sh — the install gate)
+    run_install_verify
 
     # Show completion message
     print_final_instructions

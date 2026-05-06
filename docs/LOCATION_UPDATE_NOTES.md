@@ -46,6 +46,20 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-06 — v2.32.51 — install.sh runs verify-install.sh + clearer Next Steps
+
+**Risk:** GO — install-path-only change; existing locations unaffected. Only changes what `install.sh` does at the end of a fresh-install run; the auto-updater never invokes `install.sh`.
+
+**What changed:** Added PHASE 11 that runs `scripts/verify-install.sh` as the install gate after PM2 is up — same script auto-update.sh uses at Checkpoint C, so the 7-layer pass/fail summary is now visible at install time. Reformatted `print_final_instructions()` to lead with the auth bootstrap as the REQUIRED next step (`scripts/bootstrap-new-location.sh`) instead of burying it under "migrate from existing location" guidance.
+
+**Why now:** Without the auth bootstrap, every login attempt at a fresh install returns "Invalid PIN" and the operator has no obvious signal that bootstrap is the missing piece. Verify-install runs as a non-fatal probe — it surfaces what's missing without blocking the install.
+
+**Affected:** `install.sh`, `package.json`, `docs/VERSION_SETUP_GUIDE.md`, `docs/LOCATION_UPDATE_NOTES.md`.
+
+**Rollback:** `git revert` is harmless — install-time output only.
+
+---
+
 ### 2026-05-06 — v2.32.50 — install.sh PM2 startup fix + correct Ollama models
 
 **Risk:** GO — install-path-only change; existing locations unaffected. None of the 6 fleet locations re-run `install.sh` on auto-update; this only affects future fresh installs on new NUC hardware. The auto-updater never invokes `install.sh`.

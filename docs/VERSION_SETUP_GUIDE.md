@@ -187,6 +187,31 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.51 — install.sh runs verify-install.sh as the install gate + clearer Next Steps
+**Released:** 2026-05-06
+
+`install.sh` finished with a generic "Installation Complete!" banner whether or not the install was actually working — operators had to know to also run `scripts/verify-install.sh` (the canonical 7-layer health check) and `scripts/bootstrap-new-location.sh` (the auth bootstrap that seeds the `Location` row + `AuthPin` rows + `LOCATION_ID` in `.env`). Without the bootstrap, every login attempt returns "Invalid PIN", and operators didn't know that until they tried. This release wires the gate in and points operators at the bootstrap as the explicit required-next-step.
+
+**Changes:**
+- New PHASE 11 in `install.sh` runs `scripts/verify-install.sh` after PM2 is up, sleeping 10s first to let routes warm. Reports PASS/FAIL but does NOT exit non-zero on FAIL — at install time the auth bootstrap hasn't run yet, so health/metrics layers may degrade. Failures are surfaced in the operator-facing summary so they know what to do.
+- `print_final_instructions()` now leads with "REQUIRED NEXT STEPS — auth bootstrap" and shows the exact `bootstrap-new-location.sh` invocation with all flags, plus the follow-up `pm2 restart --update-env` and re-run-verify-install commands.
+- Added an "Auto-update timer" section pointing at `scripts/install-auto-update-timer.sh` and `loginctl enable-linger`.
+- Reformatted the migration commands as "Optional — migrate from an existing location" so they don't read as the primary next step.
+
+**Required Manual Step:** None for existing locations. For fresh installs, the operator must run `scripts/bootstrap-new-location.sh` after `install.sh` exits — the bootstrap script needs a 4-digit admin PIN and 4-digit staff PIN that install.sh has no way to generate safely on its own.
+
+**Verification:**
+```bash
+grep -A 2 "PHASE 11: Install Verification" /home/ubuntu/Sports-Bar-TV-Controller/install.sh
+# Should show the run_install_verify function header.
+grep -A 1 "REQUIRED NEXT STEPS" /home/ubuntu/Sports-Bar-TV-Controller/install.sh
+# Should show the bootstrap-new-location.sh call-to-action.
+```
+
+**Rollback:** `git revert` is harmless — only affects the install-time output, not running locations.
+
+---
+
 ### v2.32.50 — install.sh PM2 startup fix + correct Ollama models + pm2-logrotate
 **Released:** 2026-05-06
 
