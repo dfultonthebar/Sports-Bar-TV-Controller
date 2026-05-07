@@ -46,6 +46,20 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-07 — v2.32.58 — Bartender remote fix bundle (stale guide / deep-link wiring / Shift Brief / WI RSN preset)
+
+**Risk:** GO — four small bartender-remote fixes batched. The auto-update merges files only; no schema, no data, no migration. Two changes need a one-time per-location action AFTER auto-update lands (re-run setup-bartender-nginx.sh; rename WI RSN preset if applicable). See VERSION_SETUP_GUIDE.md v2.32.58 entry for the full per-location table + commands.
+
+**What changed:** `EnhancedChannelGuideBartenderRemote.tsx` (auto-refresh + deepLink wiring), `scripts/setup-bartender-nginx.sh` (/api/ai/ allow-list), `CLAUDE.md` (WI RSN preset-naming clarification), `package.json`, doc entries.
+
+**What could break:** Nothing on auto-update. The Nginx config update doesn't propagate until the operator re-runs `setup-bartender-nginx.sh` — Shift Brief stays 403'd at locations that haven't migrated to Nginx yet (it was 403'd before too, this just keeps things consistent until they migrate). The deep-link Fire TV wiring is a no-op until the catalog walker is upgraded to extract per-event URLs (separate deferred work).
+
+**Affected:** `apps/web/src/components/EnhancedChannelGuideBartenderRemote.tsx`, `scripts/setup-bartender-nginx.sh`, `CLAUDE.md`, `package.json`, `docs/VERSION_SETUP_GUIDE.md`, `docs/LOCATION_UPDATE_NOTES.md`.
+
+**Rollback:** `git revert` is clean.
+
+---
+
 ### 2026-05-07 — v2.32.57 — Fleet-standardize bartender proxy (Nginx) + Ollama iGPU acceleration
 
 **Risk:** GO — no app code or schema changes. Two new shell scripts under `scripts/` (`setup-bartender-nginx.sh`, `setup-iris-ollama.sh`) capture the standardized setup that Holmgren has been running on. CLAUDE.md updated to reference them. **The scripts do NOT auto-execute.** Auto-update merges the files; operator decides when to run them.

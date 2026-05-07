@@ -138,6 +138,17 @@ server {
         proxy_send_timeout 300s;
     }
 
+    # AI bartender features (shift-brief, distribution-plan, conflict-suggestion,
+    # weekly-summary) — added in v2.21.0, served from /api/ai/*. Same Ollama
+    # latency profile as /api/scheduling/, so same 300s timeout.
+    location /api/ai/ {
+        proxy_pass http://127.0.0.1:3001;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+    }
+
     # Block everything else (admin pages, etc.)
     location / {
         default_type application/json;

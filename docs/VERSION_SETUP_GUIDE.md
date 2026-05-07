@@ -187,6 +187,52 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.58 — Bartender-remote bug-fix bundle: stale guide auto-refresh, Fire TV deep-link wiring, /api/ai/ in Nginx, WI RSN preset naming
+**Released:** 2026-05-07
+
+Four small fixes batched into one commit. None require manual operator steps unless they're upgrading from a custom-named Channel 308 preset.
+
+**1. Channel guide auto-refresh** (`EnhancedChannelGuideBartenderRemote.tsx`)
+The 30-second poll now also refreshes the guide listing itself, not just current-channel/live-game/scheduled-allocation data. Previously the guide stayed frozen at whatever was loaded when the input was last selected — operators saw "old data" because games added by the 10-min ESPN sync didn't appear until they manually closed and reopened the guide tab. Past-game pruning is unchanged (server-side `twoHoursAgo` filter).
+
+**2. Fire TV Watch button deep-link wiring** (same component)
+Added `deepLink?: string` to `ChannelInfo`, threaded through `handleGameClick` → `launchStreamingAppByCatalog` → POST `/api/streaming/launch`. The route already accepted `deepLink` and `streamingManager.launchApp()` already calls `launchAppWithDeepLink()` when one is present — only the component wasn't passing it. **Behavior is unchanged for now** because `firetv-catalog-walker` doesn't yet extract per-event URLs (only tile titles) — this commit makes the wiring ready so when the walker is upgraded to capture deep links per app (deferred work item: ESPN's `espn://x-callback-url/showEvent?eventId=…` etc), the bartender Watch button automatically benefits without further UI changes.
+
+**3. Shift Brief unblocked** (`scripts/setup-bartender-nginx.sh`)
+Added a `location /api/ai/ { ... }` block to the standardized Nginx site config — without it the catch-all returned 403 for the bartender remote's Shift Brief feature (`/api/ai/shift-brief`, plus the other v2.21.0 AI endpoints: `distribution-plan`, `conflict-suggestion`, `weekly-summary`). Same 300s `proxy_read_timeout` as `/api/scheduling/` since they share Ollama. **Operators who already ran v2.32.57's setup-bartender-nginx.sh need to re-run it to pick up the new block.**
+
+**4. CLAUDE.md WI RSN preset-naming clarification** (CLAUDE.md AI Scheduling section)
+Documented the resolver's preset-name → alias-bundle binding requirement that bit Holmgren this release. The Channel 308 preset MUST be named with the `+` suffix (canonical `"Bally Sports Wisconsin+"`) for the resolver to connect Brewers.TV → BallyWIPlus → preset → channel 308. Without it, Brewers games silently fall through Rail Media's gap and the channel-guide DB fallback can't pick them up either. Holmgren's DB row was renamed in this release. Other locations: confirm with `SELECT name FROM ChannelPreset WHERE channelNumber='308'`.
+
+**Required Manual Step (per location):**
+
+| Location | Action | Command |
+|---|---|---|
+| Holmgren | Re-run nginx setup so /api/ai/ block lands | `bash scripts/setup-bartender-nginx.sh` |
+| Graystone | Same (after running v2.32.57 setup originally — TBD) | same |
+| Greenville/Leg Lamp/Lucky's/Appleton | Same once they migrate to Nginx (v2.32.57 setup script) | same |
+| Any WI location with Channel 308 | Verify preset name ends with `+`; rename if not | `sqlite3 .../production.db "UPDATE ChannelPreset SET name='Bally Sports Wisconsin+' WHERE channelNumber='308' AND name='Bally Sports Wisconsin'; SELECT changes();"` |
+
+**Verification:**
+```bash
+# Shift Brief unblocked through bartender proxy:
+curl -s -o /dev/null -w '%{http_code}\n' -m 5 http://127.0.0.1:3002/api/ai/shift-brief
+# Was 403, now 401/200/000 (passes through to backend)
+
+# Channel guide auto-refresh: open the bartender remote → Sports Guide tab
+# → leave it open for 30+ seconds → check PM2 logs for repeated
+# /api/channel-guide POSTs:
+pm2 logs sports-bar-tv-controller --nostream --lines 200 | grep "POST /api/channel-guide" | tail -5
+
+# Brewers Channel 308 fix: PM2 log of any channel-guide call should show
+# "+N injected" with N>0 when Brewers games are in the next 7 days:
+pm2 logs sports-bar-tv-controller --nostream --lines 500 | grep "game_schedules fallback"
+```
+
+**Rollback:** `git revert` is clean — no schema, no data, no migration.
+
+---
+
 ### v2.32.57 — Fleet-standardize on Nginx bartender proxy + Iris Xe iGPU Ollama
 **Released:** 2026-05-07
 
