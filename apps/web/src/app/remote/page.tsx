@@ -1255,17 +1255,19 @@ export default function BartenderRemotePage() {
           </button>
 
           {/* Ambient tier — 44×52px, text-xs, text-slate-500 inactive */}
-          <button
-            onClick={() => setActiveTab('audio')}
-            className={`min-h-[44px] min-w-[52px] flex flex-col items-center justify-center gap-1 px-2 py-2 rounded-xl transition-all ${
-              activeTab === 'audio'
-                ? 'ring-1 ring-sky-400/50 bg-sky-500/20 text-sky-300 scale-[1.03]'
-                : 'text-slate-500 hover:text-slate-300'
-            }`}
-          >
-            <Volume2 className="h-4 w-4" />
-            <span className="text-xs font-medium">Audio</span>
-          </button>
+          {audioProcessorIp && (
+            <button
+              onClick={() => setActiveTab('audio')}
+              className={`min-h-[44px] min-w-[52px] flex flex-col items-center justify-center gap-1 px-2 py-2 rounded-xl transition-all ${
+                activeTab === 'audio'
+                  ? 'ring-1 ring-sky-400/50 bg-sky-500/20 text-sky-300 scale-[1.03]'
+                  : 'text-slate-500 hover:text-slate-300'
+              }`}
+            >
+              <Volume2 className="h-4 w-4" />
+              <span className="text-xs font-medium">Audio</span>
+            </button>
+          )}
 
           <button
             onClick={() => setActiveTab('music')}
