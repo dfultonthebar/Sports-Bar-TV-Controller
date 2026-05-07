@@ -402,17 +402,16 @@ export async function POST(request: NextRequest) {
         const windowStartSec = Math.floor(new Date(startTime).getTime() / 1000)
         const windowEndSec = Math.floor(new Date(endTime).getTime() / 1000)
 
-        // v2.28.2 — overlap filter PLUS in_progress catch-all. Previously
-        // we filtered on scheduledStart only (`gte(start, windowStart) && lte(start, windowEnd)`)
-        // which excluded any game that started BEFORE windowStart even if it
-        // was still airing. The overlap check fixes upcoming + recently-started.
-        // The OR(status='in_progress') catches games that ran past their
-        // estimated_end (OT, weather delay, etc.) — ESPN still has them as
-        // in_progress so we trust that label even when our duration estimate
-        // is stale. Manager case: Wolves @ Nuggets ran into OT past midnight,
-        // estimated_end was 90min in the past, but ESPN status was still
-        // 'in_progress' and the game was actively playing on DirecTV 6.
-        const { or, eq } = await import('drizzle-orm')
+        // v2.28.2 — overlap filter PLUS in_progress catch-all (for OT/delays).
+        // v2.32.62 — tightened the in_progress carve-out: ESPN sync doesn't
+        // reliably mark old games 'completed', so 72+ zombie games stuck in
+        // 'in_progress' for days were getting injected (NFL Draft from 11
+        // days ago surfacing in AI Suggest at Holmgren). Only trust the
+        // in_progress label when estimated_end is also still in the future
+        // (small 6h grace allows real OT past the original estimate).
+        const nowSecForFilter = Math.floor(Date.now() / 1000)
+        const sixHoursAgo = nowSecForFilter - 6 * 60 * 60
+        const { or, eq, and: andOp } = await import('drizzle-orm')
         const localGames = await db
           .select()
           .from(schema.gameSchedules)
@@ -422,7 +421,10 @@ export async function POST(request: NextRequest) {
                 lte(schema.gameSchedules.scheduledStart, windowEndSec),
                 gte(schema.gameSchedules.estimatedEnd, windowStartSec)
               ),
-              eq(schema.gameSchedules.status, 'in_progress')
+              andOp(
+                eq(schema.gameSchedules.status, 'in_progress'),
+                gte(schema.gameSchedules.estimatedEnd, sixHoursAgo)
+              )
             )
           )
           .all()
