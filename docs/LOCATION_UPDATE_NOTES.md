@@ -46,6 +46,32 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-07 — v2.32.63 — Walker extracts game start times from Fire TV tiles
+
+**Risk:** GO — additive walker change + new nullable schema column. Drizzle-kit push handles it. Existing rows have `startTime=NULL` and behavior is unchanged for them. Any new tile capture (next walker tick, 15 min) populates the column where the regex matches.
+
+**What changed:** `firetv_streaming_catalog.startTime` (nullable INTEGER). Walker extracts time from ESPN bullet tail + Prime Video time suffix. Catalog ingest endpoint accepts the new field. Channel-guide injection prefers walker-extracted time over capturedAt for `gameTime` display.
+
+**What could break:** The Prime Video strip-loop regex was widened to also drop time-suffix tokens; if any historical Prime tile titles contained legitimate trailing time-shaped text in the title (e.g. a show literally named "The 11:11 PM Hour"), it'd be over-stripped. Vanishingly rare; all real sports content is matchup-titled.
+
+**Affected:** `packages/scheduler/src/firetv-catalog-walker.ts`, `packages/database/src/schema.ts`, `apps/web/src/app/api/firestick-scout/catalog/route.ts`, `apps/web/src/app/api/channel-guide/route.ts`.
+
+**Rollback:** `git revert` is clean.
+
+---
+
+### 2026-05-07 — v2.32.62 — Stale in-progress games filtered out
+
+**Risk:** GO — tightened filter logic in two existing query builders. No schema, no data, no migration. Same behavior for in-window upcoming games + actively-airing past-start games (estimated_end still in future); zombie past-end stuck-in-progress rows now correctly excluded.
+
+**What changed:** AI Suggest and channel-guide filters now require `estimated_end > now` (channel-guide allows 6h grace) when including past-start in_progress games.
+
+**Affected:** `apps/web/src/app/api/scheduling/ai-suggest/route.ts`, `apps/web/src/app/api/channel-guide/route.ts`, `package.json`.
+
+**Rollback:** `git revert` is clean.
+
+---
+
 ### 2026-05-07 — v2.32.59 — Intel iGPU GPU meter wired via intel_gpu_top
 
 **Risk:** GO — pure additive change to `apps/web/src/app/api/system/metrics/route.ts`. The NVIDIA path is unchanged; Intel is a fallback that activates only when `nvidia-smi` is absent AND `intel_gpu_top` is installed + has `cap_perfmon`. On a location without either, behavior is identical to v2.32.58. `setup-iris-ollama.sh` updated to install + setcap on re-run.

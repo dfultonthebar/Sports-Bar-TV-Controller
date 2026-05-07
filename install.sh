@@ -398,7 +398,8 @@ download_ollama_models() {
     # llama3.1:8b is what `ai-suggest/route.ts` and the RAG query engine use;
     # nomic-embed-text is the embedding model for the RAG vector store.
     local REQUIRED_MODELS=(
-        "llama3.1:8b|Primary model for AI scheduling, RAG queries, and log analysis"
+        "qwen2.5:14b|Primary model for AI Suggest scheduling (better reasoning than 8b at ~2x latency)"
+        "llama3.1:8b|Fallback model + log analysis (kept for compatibility)"
         "nomic-embed-text|Embedding model for RAG documentation search"
     )
     

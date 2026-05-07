@@ -26,8 +26,16 @@ export const HARDWARE_CONFIG = {
   },
   ollama: {
     baseUrl: 'http://localhost:11434',
-    model: 'llama3.1:8b',
-    timeout: 180000,
+    // v2.32.64 — bumped from llama3.1:8b → qwen2.5:14b for better
+    // structured-reasoning quality on AI Suggest. ~2x latency on the
+    // Iris Xe iGPU stack (~14 tok/s → ~7 tok/s) — AI Suggest goes from
+    // ~100s to ~200s end-to-end, still inside the 300s Nginx
+    // proxy_read_timeout. Bartenders trade some wait for noticeably
+    // better game-allocation suggestions. Switch back to llama3.1:8b
+    // here if a location's iGPU can't keep up. install.sh + ollama-setup.sh
+    // pull both models so the swap is always possible.
+    model: 'qwen2.5:14b',
+    timeout: 300000,
   },
   venue: {
     timezone: 'America/Chicago',

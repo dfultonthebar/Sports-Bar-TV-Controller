@@ -1972,6 +1972,16 @@ export const firetvStreamingCatalog = sqliteTable('firetv_streaming_catalog', {
   // couldn't classify.
   sportTag: text('sportTag'),
 
+  // Game start time when the walker successfully extracted it from the
+  // tile's accessibility text (ESPN: bullet-separated "Title • Sport •
+  // 7:30 PM ET" tail; Prime Video: "Title, UPCOMING, Today 7:30 PM"
+  // suffix before strip). Unix seconds. Null when not extractable —
+  // most non-sports tiles, on-demand content, and apps where the time
+  // doesn't appear in the dump (Peacock, Apple TV+, fuboTV are WebView
+  // and walked as []). Channel-guide injection prefers this over
+  // capturedAt for `gameTime` display.
+  startTime: integer('startTime'),
+
   // When this row was captured by scout, and when it expires (default
   // captured + 36h). Cleanup sweep deletes rows past expiresAt.
   capturedAt: integer('capturedAt').notNull(),
