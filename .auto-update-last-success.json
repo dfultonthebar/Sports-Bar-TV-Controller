@@ -1,11 +1,11 @@
 {
-  "version": "2.32.55",
+  "version": "2.32.56",
   "branch": "location/holmgren-way",
-  "commitSha": "8f65c25c933f13cbaa79bcc2760ba3e76f274d76",
-  "successAt": "2026-05-07T17:29:47Z",
-  "successAtUnix": 1778174987,
-  "runId": "auto-update-2026-05-07-12-27",
-  "verifyInstall": {"status":"PASS","passed":7,"total":7,"durationSecs":2,"failed":[],"layers":[{"name":"pm2_online","passed":true,"detail":"status=online restart_time=39"},{"name":"health_http","passed":true,"detail":"status=healthy"},{"name":"metrics_http","passed":true,"detail":"cores=20"},{"name":"bartender_proxy","passed":true,"detail":"http=302"},{"name":"critical_tables","passed":true,"detail":"presets=120 aliases=69 directv=6 firetv=5"},{"name":"matrix_config","passed":true,"detail":"multi-card WP-36X36 offset=0"},{"name":"crash_logs","passed":true,"detail":"clean"}]},
+  "commitSha": "9182fb0bb7fbbf47a509ea9840c27a2d26168126",
+  "successAt": "2026-05-07T17:51:05Z",
+  "successAtUnix": 1778176265,
+  "runId": "auto-update-2026-05-07-12-49",
+  "verifyInstall": {"status":"PASS","passed":7,"total":7,"durationSecs":1,"failed":[],"layers":[{"name":"pm2_online","passed":true,"detail":"status=online restart_time=40"},{"name":"health_http","passed":true,"detail":"status=healthy"},{"name":"metrics_http","passed":true,"detail":"cores=20"},{"name":"bartender_proxy","passed":true,"detail":"http=302"},{"name":"critical_tables","passed":true,"detail":"presets=120 aliases=69 directv=6 firetv=5"},{"name":"matrix_config","passed":true,"detail":"multi-card WP-36X36 offset=0"},{"name":"crash_logs","passed":true,"detail":"clean"}]},
   "configChecksums": {
     ".env": "caa790856c6265f6",
     "apps/web/data/tv-layout.json": "3f3683186c2ab562",
