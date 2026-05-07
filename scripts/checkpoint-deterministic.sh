@@ -230,12 +230,18 @@ run_c() {
   fi
 
   # 3. PM2 crash-pattern scan — narrow allowlist, NOT generic ERROR.
-  # Patterns chosen to match real crashes only (the ESPN softball 400 logged
-  # as ERROR but doesn't match any of these and is correctly ignored).
+  # Patterns chosen to match real crashes only.
+  #
+  # Two false-positives we explicitly suppress:
+  # - "non-fatal" — case-insensitive FATAL hit hits this benign substring
+  #   (seen at v2.32.59 via `[AI-SUGGEST:UNIFIED-DIFF] builder failed (non-fatal):`)
+  # - ESPN softball 400 logged at level ERROR — doesn't match the allowlist
+  #   and is correctly ignored.
   if command -v pm2 >/dev/null 2>&1; then
     local crashes
     crashes=$(pm2 logs sports-bar-tv-controller --lines 80 --nostream 2>/dev/null \
       | grep -iE '(unhandledRejection|Cannot find module|EADDRINUSE|SyntaxError|FATAL)' \
+      | grep -ivE 'non-fatal' \
       | head -3)
     if [ -n "$crashes" ]; then
       diag "PM2 crash pattern hit: $crashes"

@@ -46,6 +46,50 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-07 — v2.32.59 — Intel iGPU GPU meter wired via intel_gpu_top
+
+**Risk:** GO — pure additive change to `apps/web/src/app/api/system/metrics/route.ts`. The NVIDIA path is unchanged; Intel is a fallback that activates only when `nvidia-smi` is absent AND `intel_gpu_top` is installed + has `cap_perfmon`. On a location without either, behavior is identical to v2.32.58. `setup-iris-ollama.sh` updated to install + setcap on re-run.
+
+**What changed:** `getGPUMetrics()` extended for Intel; setup script installs `intel-gpu-tools` + grants capability.
+
+**What could break:** Nothing on auto-update — the new code path only fires after the operator runs `setup-iris-ollama.sh` (which installs `intel_gpu_top`). Until then the function throws "GPU metrics not available" and the widget says "No GPU" same as before.
+
+**Affected:** `apps/web/src/app/api/system/metrics/route.ts`, `scripts/setup-iris-ollama.sh`, `package.json`, `docs/VERSION_SETUP_GUIDE.md`, `docs/LOCATION_UPDATE_NOTES.md`.
+
+**Rollback:** `git revert` is clean.
+
+---
+
+### 2026-05-07 — v2.32.58 — Bartender remote fix bundle (stale guide / deep-link wiring / Shift Brief / WI RSN preset)
+
+**Risk:** GO — four small bartender-remote fixes batched. The auto-update merges files only; no schema, no data, no migration. Two changes need a one-time per-location action AFTER auto-update lands (re-run setup-bartender-nginx.sh; rename WI RSN preset if applicable). See VERSION_SETUP_GUIDE.md v2.32.58 entry for the full per-location table + commands.
+
+**What changed:** `EnhancedChannelGuideBartenderRemote.tsx` (auto-refresh + deepLink wiring), `scripts/setup-bartender-nginx.sh` (/api/ai/ allow-list), `CLAUDE.md` (WI RSN preset-naming clarification), `package.json`, doc entries.
+
+**What could break:** Nothing on auto-update. The Nginx config update doesn't propagate until the operator re-runs `setup-bartender-nginx.sh` — Shift Brief stays 403'd at locations that haven't migrated to Nginx yet (it was 403'd before too, this just keeps things consistent until they migrate). The deep-link Fire TV wiring is a no-op until the catalog walker is upgraded to extract per-event URLs (separate deferred work).
+
+**Affected:** `apps/web/src/components/EnhancedChannelGuideBartenderRemote.tsx`, `scripts/setup-bartender-nginx.sh`, `CLAUDE.md`, `package.json`, `docs/VERSION_SETUP_GUIDE.md`, `docs/LOCATION_UPDATE_NOTES.md`.
+
+**Rollback:** `git revert` is clean.
+
+---
+
+### 2026-05-07 — v2.32.57 — Fleet-standardize bartender proxy (Nginx) + Ollama iGPU acceleration
+
+**Risk:** GO — no app code or schema changes. Two new shell scripts under `scripts/` (`setup-bartender-nginx.sh`, `setup-iris-ollama.sh`) capture the standardized setup that Holmgren has been running on. CLAUDE.md updated to reference them. **The scripts do NOT auto-execute.** Auto-update merges the files; operator decides when to run them.
+
+**What changed:** New scripts. CLAUDE.md updated. `package.json` bump. Doc entries.
+
+**What could break:** Nothing on auto-update — the files just land in `scripts/`. Locations are unaffected until an operator opts in. Holmgren already ran the equivalent manual setup; the scripts are idempotent there and re-running them just verifies.
+
+**Per-location follow-up (operator action, no rush):** Migrate each remaining location at their own pace. Recommended order: lucky-s-1313 → leg-lamp → graystone → greenville → appleton (smallest risk first). Each migration is ~10 min downtime on the bartender proxy + Ollama service. Run during slow hours.
+
+**Affected:** `scripts/setup-bartender-nginx.sh` (new), `scripts/setup-iris-ollama.sh` (new), `CLAUDE.md`, `package.json`, `docs/VERSION_SETUP_GUIDE.md`, `docs/LOCATION_UPDATE_NOTES.md`.
+
+**Rollback:** Scripts unaffect locations until run. If a script fails mid-run, see VERSION_SETUP_GUIDE.md rollback section for the relevant subsystem.
+
+---
+
 ### 2026-05-07 — v2.32.56 — Wolf Pack route-state retry backoff (residual TV 1 flicker)
 
 **Risk:** GO — pure retry-tuning in `queryWolfpackRouteState` at `packages/wolfpack/src/wolfpack-matrix-service.ts`. v2.32.55 fixed the toggle-off path; v2.32.56 addresses the residual UI flicker the Holmgren bartender reported afterwards.
