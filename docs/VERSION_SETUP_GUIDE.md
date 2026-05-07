@@ -187,6 +187,33 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.56 — Wolf Pack route-state retry backoff (eliminates TV 1 flicker on Video tab)
+**Released:** 2026-05-07
+
+After v2.32.55 the bartender at Holmgren reported TV 1 still occasionally goes gray on Video-tab open. Logs (`grep WOLFPACK-HTTP /var/log/pm2/sports-bar-tv-controller-out.log`) confirmed the Wolf Pack firmware genuinely gets stuck on the 0xFFFF sentinel for output 1 longer than 600ms — `queryWolfpackRouteState` was retrying once and giving up, forcing the DB-fallback path in `/api/matrix/routes` which is correct in theory but loses on the (small) timing window where the bartender's just-issued route hasn't landed in `MatrixRoute` yet.
+
+**Changes:**
+- `packages/wolfpack/src/wolfpack-matrix-service.ts` — `queryWolfpackRouteState` retry escalated from 1 attempt at 600ms to up to 3 attempts at 600ms / 1.2s / 2.4s (cumulative ~4.2s worst case). Loop exits early as soon as the array is sentinel-free. After the last retry, any remaining sentinel still falls through to the existing 65535→-1 normalization + DB fallback — this just reduces how often the fallback path is needed.
+
+**Required Manual Step:** None. Pure retry-tuning in the wolfpack package.
+
+**Verification:**
+```bash
+# Watch a Video-tab open and confirm sentinels clear within the retry window:
+pm2 logs sports-bar-tv-controller --lines 0 | grep -E "WOLFPACK-HTTP.*(sentinel|cleared|persist)"
+#   Expected on a stuck-firmware case:
+#     "Initial query has 0xFFFF sentinel(s) at output(s) 1 — re-querying with backoff (up to 4200ms)"
+#     "Sentinels cleared after attempt 2 (1200ms)"   ← OR attempt 3
+#   Rare worst case:
+#     "1 sentinel(s) persist after 3 retries — falling through to DB fallback"
+```
+
+**Trade-off:** A genuine stuck firmware now takes up to 4.2s to return route state instead of 1s. This only fires when the firmware actually returns the sentinel; non-sentinel paths are unchanged. The bartender remote's 30s server-side cache absorbs this — a single slow query per cache-cold open, every other request hits cache.
+
+**Rollback:** `git revert` clean.
+
+---
+
 ### v2.32.55 — Wolf Pack pre-check ignores 0xFFFF session-init sentinel (TV 1 toggle-off fix)
 **Released:** 2026-05-07
 
