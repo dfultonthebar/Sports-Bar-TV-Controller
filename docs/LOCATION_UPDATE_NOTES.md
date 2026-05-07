@@ -46,6 +46,104 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-07 — v2.32.63 — Walker extracts game start times from Fire TV tiles
+
+**Risk:** GO — additive walker change + new nullable schema column. Drizzle-kit push handles it. Existing rows have `startTime=NULL` and behavior is unchanged for them. Any new tile capture (next walker tick, 15 min) populates the column where the regex matches.
+
+**What changed:** `firetv_streaming_catalog.startTime` (nullable INTEGER). Walker extracts time from ESPN bullet tail + Prime Video time suffix. Catalog ingest endpoint accepts the new field. Channel-guide injection prefers walker-extracted time over capturedAt for `gameTime` display.
+
+**What could break:** The Prime Video strip-loop regex was widened to also drop time-suffix tokens; if any historical Prime tile titles contained legitimate trailing time-shaped text in the title (e.g. a show literally named "The 11:11 PM Hour"), it'd be over-stripped. Vanishingly rare; all real sports content is matchup-titled.
+
+**Affected:** `packages/scheduler/src/firetv-catalog-walker.ts`, `packages/database/src/schema.ts`, `apps/web/src/app/api/firestick-scout/catalog/route.ts`, `apps/web/src/app/api/channel-guide/route.ts`.
+
+**Rollback:** `git revert` is clean.
+
+---
+
+### 2026-05-07 — v2.32.62 — Stale in-progress games filtered out
+
+**Risk:** GO — tightened filter logic in two existing query builders. No schema, no data, no migration. Same behavior for in-window upcoming games + actively-airing past-start games (estimated_end still in future); zombie past-end stuck-in-progress rows now correctly excluded.
+
+**What changed:** AI Suggest and channel-guide filters now require `estimated_end > now` (channel-guide allows 6h grace) when including past-start in_progress games.
+
+**Affected:** `apps/web/src/app/api/scheduling/ai-suggest/route.ts`, `apps/web/src/app/api/channel-guide/route.ts`, `package.json`.
+
+**Rollback:** `git revert` is clean.
+
+---
+
+### 2026-05-07 — v2.32.59 — Intel iGPU GPU meter wired via intel_gpu_top
+
+**Risk:** GO — pure additive change to `apps/web/src/app/api/system/metrics/route.ts`. The NVIDIA path is unchanged; Intel is a fallback that activates only when `nvidia-smi` is absent AND `intel_gpu_top` is installed + has `cap_perfmon`. On a location without either, behavior is identical to v2.32.58. `setup-iris-ollama.sh` updated to install + setcap on re-run.
+
+**What changed:** `getGPUMetrics()` extended for Intel; setup script installs `intel-gpu-tools` + grants capability.
+
+**What could break:** Nothing on auto-update — the new code path only fires after the operator runs `setup-iris-ollama.sh` (which installs `intel_gpu_top`). Until then the function throws "GPU metrics not available" and the widget says "No GPU" same as before.
+
+**Affected:** `apps/web/src/app/api/system/metrics/route.ts`, `scripts/setup-iris-ollama.sh`, `package.json`, `docs/VERSION_SETUP_GUIDE.md`, `docs/LOCATION_UPDATE_NOTES.md`.
+
+**Rollback:** `git revert` is clean.
+
+---
+
+### 2026-05-07 — v2.32.58 — Bartender remote fix bundle (stale guide / deep-link wiring / Shift Brief / WI RSN preset)
+
+**Risk:** GO — four small bartender-remote fixes batched. The auto-update merges files only; no schema, no data, no migration. Two changes need a one-time per-location action AFTER auto-update lands (re-run setup-bartender-nginx.sh; rename WI RSN preset if applicable). See VERSION_SETUP_GUIDE.md v2.32.58 entry for the full per-location table + commands.
+
+**What changed:** `EnhancedChannelGuideBartenderRemote.tsx` (auto-refresh + deepLink wiring), `scripts/setup-bartender-nginx.sh` (/api/ai/ allow-list), `CLAUDE.md` (WI RSN preset-naming clarification), `package.json`, doc entries.
+
+**What could break:** Nothing on auto-update. The Nginx config update doesn't propagate until the operator re-runs `setup-bartender-nginx.sh` — Shift Brief stays 403'd at locations that haven't migrated to Nginx yet (it was 403'd before too, this just keeps things consistent until they migrate). The deep-link Fire TV wiring is a no-op until the catalog walker is upgraded to extract per-event URLs (separate deferred work).
+
+**Affected:** `apps/web/src/components/EnhancedChannelGuideBartenderRemote.tsx`, `scripts/setup-bartender-nginx.sh`, `CLAUDE.md`, `package.json`, `docs/VERSION_SETUP_GUIDE.md`, `docs/LOCATION_UPDATE_NOTES.md`.
+
+**Rollback:** `git revert` is clean.
+
+---
+
+### 2026-05-07 — v2.32.57 — Fleet-standardize bartender proxy (Nginx) + Ollama iGPU acceleration
+
+**Risk:** GO — no app code or schema changes. Two new shell scripts under `scripts/` (`setup-bartender-nginx.sh`, `setup-iris-ollama.sh`) capture the standardized setup that Holmgren has been running on. CLAUDE.md updated to reference them. **The scripts do NOT auto-execute.** Auto-update merges the files; operator decides when to run them.
+
+**What changed:** New scripts. CLAUDE.md updated. `package.json` bump. Doc entries.
+
+**What could break:** Nothing on auto-update — the files just land in `scripts/`. Locations are unaffected until an operator opts in. Holmgren already ran the equivalent manual setup; the scripts are idempotent there and re-running them just verifies.
+
+**Per-location follow-up (operator action, no rush):** Migrate each remaining location at their own pace. Recommended order: lucky-s-1313 → leg-lamp → graystone → greenville → appleton (smallest risk first). Each migration is ~10 min downtime on the bartender proxy + Ollama service. Run during slow hours.
+
+**Affected:** `scripts/setup-bartender-nginx.sh` (new), `scripts/setup-iris-ollama.sh` (new), `CLAUDE.md`, `package.json`, `docs/VERSION_SETUP_GUIDE.md`, `docs/LOCATION_UPDATE_NOTES.md`.
+
+**Rollback:** Scripts unaffect locations until run. If a script fails mid-run, see VERSION_SETUP_GUIDE.md rollback section for the relevant subsystem.
+
+---
+
+### 2026-05-07 — v2.32.56 — Wolf Pack route-state retry backoff (residual TV 1 flicker)
+
+**Risk:** GO — pure retry-tuning in `queryWolfpackRouteState` at `packages/wolfpack/src/wolfpack-matrix-service.ts`. v2.32.55 fixed the toggle-off path; v2.32.56 addresses the residual UI flicker the Holmgren bartender reported afterwards.
+
+**What changed:** Sentinel re-query escalated from a single 600ms attempt to up to 3 attempts at 600ms / 1.2s / 2.4s (cumulative ~4.2s worst case). Loop exits early as soon as the array is sentinel-free. After the last attempt, any remaining sentinel still falls through to the existing 65535→-1 normalization + `MatrixRoute` DB fallback in `/api/matrix/routes`. Non-sentinel paths are unchanged.
+
+**What could break:** A cache-cold `/api/matrix/routes` query against a stuck-firmware Wolf Pack now waits up to 4.2s instead of ~1s. The 30s server-side cache absorbs the cost — only the first query per cache window sees the latency; bartender polls thereafter hit cache. The v2.32.55 `sendHTTPCommand` pre-check uses an independent inline 600ms re-query (not this loop) and is unaffected.
+
+**Affected:** `packages/wolfpack/src/wolfpack-matrix-service.ts`, `package.json`, `docs/VERSION_SETUP_GUIDE.md`, `docs/LOCATION_UPDATE_NOTES.md`.
+
+**Rollback:** `git revert` is clean.
+
+---
+
+### 2026-05-07 — v2.32.55 — Wolf Pack pre-check 0xFFFF sentinel fix (TV 1 toggle-off bug)
+
+**Risk:** GO — bug fix in `packages/wolfpack/src/wolfpack-matrix-service.ts`. Holmgren-reported symptom: every Video-tab open at the bartender remote silently knocked TV 1 off its route. Diagnosed as the firmware's session-init sentinel (0xFFFF) leaking past the toggle-prevention pre-check in `sendHTTPCommand`. Fix mirrors the settle+requery pattern already in `queryWolfpackRouteState`. No schema, no data, no env, no UI change.
+
+**What changed:** When the pre-check reads `currentRoutes[output0Based] === 65535`, it now waits 600ms and re-queries; if the sentinel persists it refuses to send the toggle command (returns failure for the scheduler to retry next tick) rather than flipping a possibly-correct route OFF. Non-sentinel paths are byte-identical to v2.32.54.
+
+**What could break:** Negligible. Turborepo picks up the package change automatically; PM2 restart on auto-update.
+
+**Affected:** `packages/wolfpack/src/wolfpack-matrix-service.ts`, `package.json`, `docs/VERSION_SETUP_GUIDE.md`, `docs/LOCATION_UPDATE_NOTES.md`.
+
+**Rollback:** `git revert` is clean.
+
+---
+
 ### 2026-05-06 — v2.32.53 — install.sh + ollama-setup.sh simplify pass
 
 **Risk:** GO — install-path-only change; existing locations unaffected. `/simplify` 3-agent pass on v2.32.50-52 found 9 concrete cleanups in `install.sh` (apt-call coalescing, apt-update timeout, sleep removal, PM2-check helper extraction, dead constant, stale comments, canonical-writer hint) plus a model-list drift in `scripts/ollama-setup.sh` (was still pulling `llama3.2:3b` + `phi3:mini` for standalone runs after install.sh was updated). All applied.

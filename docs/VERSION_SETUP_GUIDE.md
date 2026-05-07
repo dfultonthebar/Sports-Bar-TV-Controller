@@ -187,6 +187,245 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.63 — Walker extracts game start times from Fire TV streaming app tiles
+**Released:** 2026-05-07
+
+The Fire TV catalog walker now captures game start times from ESPN and Prime Video tile text. When ESPN renders an upcoming game as `"Brewers vs Cubs ESPN • MLB • 7:30 PM ET"` or Prime Video shows `"Knicks vs Hawks, UPCOMING, Today 7:30 PM"`, the walker now parses the time portion into a unix timestamp and stores it alongside the catalog row. The bartender remote's channel guide previously showed every Amazon-box-sourced game as "LIVE" or "On demand"; now they show the actual start time (formatted in the operator's locale).
+
+Operator's request: *"when pulling games from the amazon boxes it should get the times too"*.
+
+**Schema change:** new nullable column `firetv_streaming_catalog.startTime` (integer, unix seconds). Drizzle-kit push handles new nullable columns cleanly — no manual ALTER needed.
+
+**Apps that benefit:**
+| App | Status |
+|---|---|
+| ESPN (com.espn.gtv) | ✅ extracts time from "• 7:30 PM ET" bullet tail |
+| Prime Video / firebat | ✅ extracts time from "Today 7:30 PM" suffix when embedded |
+| Peacock, Apple TV+, fuboTV | – walked as `[]` (WebView, accessibility-blind) |
+
+**Deferred:** per-event deep-link URLs (the v2.32.58 wiring is still no-op). ESPN's eventId isn't exposed in uiautomator dumps; deep-linking would need a follow-up integration with ESPN's public scoreboard API to resolve eventId from title text.
+
+**Required Manual Step:** None. After auto-update merges, the walker's next run (every 15 min via the `firetv-catalog-walker` SchedulerLog component) populates the new column for any new tiles. Existing rows have `startTime=NULL` and continue to display as before until they expire (36h TTL).
+
+**Verification:**
+```bash
+# After ~15 min:
+sqlite3 /home/ubuntu/sports-bar-data/production.db "
+  SELECT app, contentTitle, datetime(startTime,'unixepoch','localtime') AS time, isLive
+  FROM firetv_streaming_catalog
+  WHERE startTime IS NOT NULL
+  ORDER BY startTime DESC
+  LIMIT 10;"
+```
+
+**Rollback:** `git revert` is clean — schema column is nullable, no data loss.
+
+---
+
+### v2.32.62 — Stale in-progress games filtered out of AI Suggest + channel-guide
+**Released:** 2026-05-07
+
+72 zombie games stuck in `status='in_progress'` past their `estimated_end` were surfacing as AI Suggest candidates and channel-guide entries — including the NFL Draft from April 24 (11 days past) at Holmgren. Root cause: ESPN sync doesn't reliably transition old games to `'completed'`. The previous AI Suggest + channel-guide filter had a permissive `OR status='in_progress'` carve-out (originally meant for OT/delays of currently-airing games).
+
+**Tightened both filters:** in_progress games are now only included when `estimated_end > now` (AI Suggest, strict) or `estimated_end > now - 6h` (channel-guide, with a small grace for legitimate OT past the original estimate).
+
+**Required Manual Step:** None. Fix is in-route logic, no schema or seed change.
+
+**Rollback:** `git revert` is clean.
+
+---
+
+### v2.32.59 — System Admin GPU meter wired to Intel Iris Xe via intel_gpu_top
+**Released:** 2026-05-07
+
+The "GPU Usage" gauge on the System Admin → Power tab now surfaces real Intel iGPU load + Ollama model footprint at locations running the IPEX-LLM Ollama stack. Previously the gauge said "No GPU" because `/api/system/metrics`'s `getGPUMetrics()` only knew about NVIDIA (`nvidia-smi`). The route now tries NVIDIA first, falls back to `intel_gpu_top -J` for Intel, and reports loaded Ollama model size as iGPU memory in use (via `/api/ps`).
+
+**Changes:**
+- `apps/web/src/app/api/system/metrics/route.ts` — extended `getGPUMetrics()` with the Intel iGPU path. Fetches one JSON snapshot from `intel_gpu_top -J -s 500` (timeout 1500ms), parses `engines["Render/3D"].busy` for usage, fetches Ollama `/api/ps` for loaded model size. No new endpoint, no new component — the existing System Resource Monitor widget renders the data automatically.
+- `scripts/setup-iris-ollama.sh` — now also installs `intel-gpu-tools` and grants `cap_perfmon=ep` to `/usr/bin/intel_gpu_top` so it runs as the Next.js (ubuntu) user without sudo.
+
+**Required Manual Step:** Re-run `bash scripts/setup-iris-ollama.sh` at any location that ran the v2.32.57 version of the script. Idempotent — only installs/setcaps if missing.
+
+**Verification:**
+```bash
+# 1. Confirm intel_gpu_top runs as ubuntu (no sudo) — should print JSON
+timeout 2 intel_gpu_top -J -s 500 | head -3
+
+# 2. Hit the metrics endpoint — gpu.usage should be 0-100, gpu.memory.used > 0
+#    when an Ollama model is loaded
+curl -s http://localhost:3001/api/system/metrics | jq '.metrics.gpu'
+
+# 3. Open System Admin → Power tab in the browser. The fourth gauge
+#    ("GPU Usage") should show a number instead of "No GPU".
+```
+
+**Rollback:** `git revert` is clean — pure additive change (NVIDIA path unchanged, Intel is a fallback).
+
+**Hardware compat:** Ignores AMD/Nvidia-only boxes (NVIDIA path catches first). On boxes without `intel_gpu_top`, the function throws and the widget shows "No GPU" — same as before.
+
+---
+
+### v2.32.58 — Bartender-remote bug-fix bundle: stale guide auto-refresh, Fire TV deep-link wiring, /api/ai/ in Nginx, WI RSN preset naming
+**Released:** 2026-05-07
+
+Four small fixes batched into one commit. None require manual operator steps unless they're upgrading from a custom-named Channel 308 preset.
+
+**1. Channel guide auto-refresh** (`EnhancedChannelGuideBartenderRemote.tsx`)
+The 30-second poll now also refreshes the guide listing itself, not just current-channel/live-game/scheduled-allocation data. Previously the guide stayed frozen at whatever was loaded when the input was last selected — operators saw "old data" because games added by the 10-min ESPN sync didn't appear until they manually closed and reopened the guide tab. Past-game pruning is unchanged (server-side `twoHoursAgo` filter).
+
+**2. Fire TV Watch button deep-link wiring** (same component)
+Added `deepLink?: string` to `ChannelInfo`, threaded through `handleGameClick` → `launchStreamingAppByCatalog` → POST `/api/streaming/launch`. The route already accepted `deepLink` and `streamingManager.launchApp()` already calls `launchAppWithDeepLink()` when one is present — only the component wasn't passing it. **Behavior is unchanged for now** because `firetv-catalog-walker` doesn't yet extract per-event URLs (only tile titles) — this commit makes the wiring ready so when the walker is upgraded to capture deep links per app (deferred work item: ESPN's `espn://x-callback-url/showEvent?eventId=…` etc), the bartender Watch button automatically benefits without further UI changes.
+
+**3. Shift Brief unblocked** (`scripts/setup-bartender-nginx.sh`)
+Added a `location /api/ai/ { ... }` block to the standardized Nginx site config — without it the catch-all returned 403 for the bartender remote's Shift Brief feature (`/api/ai/shift-brief`, plus the other v2.21.0 AI endpoints: `distribution-plan`, `conflict-suggestion`, `weekly-summary`). Same 300s `proxy_read_timeout` as `/api/scheduling/` since they share Ollama. **Operators who already ran v2.32.57's setup-bartender-nginx.sh need to re-run it to pick up the new block.**
+
+**4. CLAUDE.md WI RSN preset-naming clarification** (CLAUDE.md AI Scheduling section)
+Documented the resolver's preset-name → alias-bundle binding requirement that bit Holmgren this release. The Channel 308 preset MUST be named with the `+` suffix (canonical `"Bally Sports Wisconsin+"`) for the resolver to connect Brewers.TV → BallyWIPlus → preset → channel 308. Without it, Brewers games silently fall through Rail Media's gap and the channel-guide DB fallback can't pick them up either. Holmgren's DB row was renamed in this release. Other locations: confirm with `SELECT name FROM ChannelPreset WHERE channelNumber='308'`.
+
+**Required Manual Step (per location):**
+
+| Location | Action | Command |
+|---|---|---|
+| Holmgren | Re-run nginx setup so /api/ai/ block lands | `bash scripts/setup-bartender-nginx.sh` |
+| Graystone | Same (after running v2.32.57 setup originally — TBD) | same |
+| Greenville/Leg Lamp/Lucky's/Appleton | Same once they migrate to Nginx (v2.32.57 setup script) | same |
+| Any WI location with Channel 308 | Verify preset name ends with `+`; rename if not | `sqlite3 .../production.db "UPDATE ChannelPreset SET name='Bally Sports Wisconsin+' WHERE channelNumber='308' AND name='Bally Sports Wisconsin'; SELECT changes();"` |
+
+**Verification:**
+```bash
+# Shift Brief unblocked through bartender proxy:
+curl -s -o /dev/null -w '%{http_code}\n' -m 5 http://127.0.0.1:3002/api/ai/shift-brief
+# Was 403, now 401/200/000 (passes through to backend)
+
+# Channel guide auto-refresh: open the bartender remote → Sports Guide tab
+# → leave it open for 30+ seconds → check PM2 logs for repeated
+# /api/channel-guide POSTs:
+pm2 logs sports-bar-tv-controller --nostream --lines 200 | grep "POST /api/channel-guide" | tail -5
+
+# Brewers Channel 308 fix: PM2 log of any channel-guide call should show
+# "+N injected" with N>0 when Brewers games are in the next 7 days:
+pm2 logs sports-bar-tv-controller --nostream --lines 500 | grep "game_schedules fallback"
+```
+
+**Rollback:** `git revert` is clean — no schema, no data, no migration.
+
+---
+
+### v2.32.57 — Fleet-standardize on Nginx bartender proxy + Iris Xe iGPU Ollama
+**Released:** 2026-05-07
+
+Two new one-time setup scripts ship with this release. Each location operator should run them in order on the production box. Auto-update will NOT execute them (system-level changes — too high blast radius for cron).
+
+**Script 1 — `scripts/setup-bartender-nginx.sh`:**
+Installs Nginx as the bartender-remote reverse proxy on port 3002, with the canonical allow-list (admin pages return 403) and a 300s `proxy_read_timeout` for `/api/scheduling/` so AI Suggest's Ollama call doesn't 504. Replaces the legacy Node `apps/web/bartender-proxy.js` PM2 app (script does `pm2 delete bartender-proxy && pm2 save`). Holmgren has been on Nginx since deployment; the other 5 locations migrate via this script.
+
+**Script 2 — `scripts/setup-iris-ollama.sh`:**
+Installs IPEX-LLM's Ollama portable build (Intel Iris Xe iGPU SYCL backend) as `ollama-ipex.service`, disables the upstream CPU-only `ollama` systemd unit. ~14 tok/s on llama3.1:8b vs ~3 tok/s CPU. Reuses existing models at `/usr/share/ollama/.ollama/models/` — no re-pull. Verifies via journal grep for "using Intel GPU".
+
+**Per-location run order:**
+
+| Branch | Notes |
+|---|---|
+| `location/holmgren-way` | Already migrated 2026-05-07 by hand. Re-running scripts is idempotent and will verify. |
+| `location/graystone` | Both scripts to run. Confirm intel iGPU first: `clinfo -l` |
+| `location/stoneyard-greenville` | Both scripts to run. |
+| `location/leg-lamp` | Both scripts to run. Already on `nvm`-managed PM2 — `pm2 delete bartender-proxy` may need `bash -lc` wrapper. |
+| `location/lucky-s-1313` | Both scripts to run. |
+| `location/stoneyard-appleton` | Both scripts to run. |
+
+**Required Manual Step:** Yes (per-location operator).
+```bash
+cd /home/ubuntu/Sports-Bar-TV-Controller
+git pull   # or wait for auto-update
+bash scripts/setup-bartender-nginx.sh
+bash scripts/setup-iris-ollama.sh
+```
+
+**Verification (after running both):**
+```bash
+# Bartender proxy on Nginx:
+systemctl is-active nginx                          # active
+curl -s -o /dev/null -w '%{http_code}\n' \
+    http://127.0.0.1:3002/                         # 302
+pm2 list | grep bartender-proxy || echo "removed"  # removed
+
+# IPEX-LLM Ollama on Intel iGPU:
+systemctl is-active ollama-ipex                    # active
+systemctl is-enabled ollama 2>&1 | grep -q disabled || echo "old ollama still enabled"
+sudo journalctl -u ollama-ipex --since=5m | grep "using Intel GPU"   # one match
+
+# AI Suggest end-to-end (should return 200 in 90-120s):
+curl -s -o /dev/null -w '%{http_code} time=%{time_total}s\n' \
+    -m 240 http://127.0.0.1:3002/api/scheduling/ai-suggest
+```
+
+**Rollback:**
+- Bartender proxy: `sudo systemctl stop nginx; sudo systemctl disable nginx; pm2 start ecosystem.config.js --only bartender-proxy; pm2 save`
+- Ollama: `sudo systemctl stop ollama-ipex; sudo systemctl disable ollama-ipex; sudo systemctl enable --now ollama`
+
+Both rollbacks restore the previous behavior with no data loss (models stay at `/usr/share/ollama/.ollama/models`, Nginx config is idempotent).
+
+**Hardware compat note:** `setup-iris-ollama.sh` checks `clinfo` for an Intel platform and refuses to run on AMD or Nvidia hardware. If a future location has different hardware, that location stays on upstream Ollama until a different acceleration path is added.
+
+---
+
+### v2.32.56 — Wolf Pack route-state retry backoff (eliminates TV 1 flicker on Video tab)
+**Released:** 2026-05-07
+
+After v2.32.55 the bartender at Holmgren reported TV 1 still occasionally goes gray on Video-tab open. Logs (`grep WOLFPACK-HTTP /var/log/pm2/sports-bar-tv-controller-out.log`) confirmed the Wolf Pack firmware genuinely gets stuck on the 0xFFFF sentinel for output 1 longer than 600ms — `queryWolfpackRouteState` was retrying once and giving up, forcing the DB-fallback path in `/api/matrix/routes` which is correct in theory but loses on the (small) timing window where the bartender's just-issued route hasn't landed in `MatrixRoute` yet.
+
+**Changes:**
+- `packages/wolfpack/src/wolfpack-matrix-service.ts` — `queryWolfpackRouteState` retry escalated from 1 attempt at 600ms to up to 3 attempts at 600ms / 1.2s / 2.4s (cumulative ~4.2s worst case). Loop exits early as soon as the array is sentinel-free. After the last retry, any remaining sentinel still falls through to the existing 65535→-1 normalization + DB fallback — this just reduces how often the fallback path is needed.
+
+**Required Manual Step:** None. Pure retry-tuning in the wolfpack package.
+
+**Verification:**
+```bash
+# Watch a Video-tab open and confirm sentinels clear within the retry window:
+pm2 logs sports-bar-tv-controller --lines 0 | grep -E "WOLFPACK-HTTP.*(sentinel|cleared|persist)"
+#   Expected on a stuck-firmware case:
+#     "Initial query has 0xFFFF sentinel(s) at output(s) 1 — re-querying with backoff (up to 4200ms)"
+#     "Sentinels cleared after attempt 2 (1200ms)"   ← OR attempt 3
+#   Rare worst case:
+#     "1 sentinel(s) persist after 3 retries — falling through to DB fallback"
+```
+
+**Trade-off:** A genuine stuck firmware now takes up to 4.2s to return route state instead of 1s. This only fires when the firmware actually returns the sentinel; non-sentinel paths are unchanged. The bartender remote's 30s server-side cache absorbs this — a single slow query per cache-cold open, every other request hits cache.
+
+**Rollback:** `git revert` clean.
+
+---
+
+### v2.32.55 — Wolf Pack pre-check ignores 0xFFFF session-init sentinel (TV 1 toggle-off fix)
+**Released:** 2026-05-07
+
+Holmgren reported that opening the bartender remote's **Video tab** consistently lost the matrix route to **TV 1**. Root cause was a 65535 (0xFFFF) sentinel returned by Wolf Pack firmware on the first `o2ox` query after a fresh PHP session login — the same quirk `queryWolfpackRouteState()` already handles with a 600ms settle + re-query. The pre-check inside `sendHTTPCommand()` did NOT handle the sentinel: it saw `currentRoutes[output0] === 65535`, decided the route was "different from intended," and fired the toggle-style `prm` command. If the real route was already correct, the toggle flipped output 0 OFF → TV 1 went black. The Video-tab open is what creates the second concurrent session that puts the firmware into the settling window where this fires.
+
+**Changes:**
+- `packages/wolfpack/src/wolfpack-matrix-service.ts` — pre-check at `sendHTTPCommand` now mirrors the settle+requery pattern from `queryWolfpackRouteState`: if `currentRoutes[output0Based] === 65535`, wait 600ms and re-query before deciding whether to skip. If the sentinel persists after re-query, refuse to send the toggle command (returns failure; scheduler/auto-reallocator will retry on its next tick) rather than risk flipping a good route off.
+
+**Required Manual Step:** None. Pure firmware-quirk handler in the wolfpack package — no schema, no data, no env. Build picks up the package change via Turborepo.
+
+**Verification:**
+```bash
+# 1. Watch PM2 logs while opening the bartender Video tab a few times:
+pm2 logs sports-bar-tv-controller --lines 0 | grep -E "WOLFPACK-HTTP.*(sentinel|0xFFFF|skipping)"
+#    Expected: see "Pre-check got 0xFFFF sentinel ... settling 600ms" log lines
+#    when the Video tab opens, followed by "already routed ... skipping" — NOT
+#    a route command being sent.
+
+# 2. Confirm TV 1 routing survives Video tab opens:
+#    Open bartender remote → switch to a non-Video tab → switch back to Video.
+#    TV 1 should retain its source. Repeat 3-4 times.
+
+# 3. Confirm scheduler still routes correctly when state is genuinely different:
+#    Approve a scheduled tune. TV 1 should land on the new source first try.
+```
+
+**Rollback:** `git revert` is clean — single function-local change.
+
+---
+
 ### v2.32.54 — Bartender remote: hide Audio tab when no audio processor configured
 **Released:** 2026-05-07
 

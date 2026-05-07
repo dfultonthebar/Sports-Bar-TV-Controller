@@ -6,7 +6,7 @@ Ubuntu 22.04+ host (typically Intel NUC) with at least 8 GB RAM and LAN
 access to the venue's hardware (matrix, Fire TVs, DirecTV receivers,
 Atlas/BSS/dbx audio processor, IR blasters).
 
-## TL;DR — the whole thing in 8 commands
+## TL;DR — the whole thing in 9 commands
 
 For an operator who's done this before. Each step has a section below
 with full explanation and troubleshooting.
@@ -36,6 +36,11 @@ pm2 restart sports-bar-tv-controller --update-env
 # 5. Confirm everything is green
 bash scripts/verify-install.sh    # expect: PASS 7/7
 
+# 5a. Standardized bartender proxy (Nginx) + iGPU Ollama
+#     (fleet-standard at v2.32.57+ — see §7a)
+bash scripts/setup-bartender-nginx.sh
+bash scripts/setup-iris-ollama.sh
+
 # 6. Authenticate Tailscale (interactive — needs browser)
 sudo tailscale up --ssh
 
@@ -48,7 +53,7 @@ bash scripts/install-auto-update-timer.sh
 sudo loginctl enable-linger ubuntu
 ```
 
-If all 8 succeed, the host is fully set up: webapp on :3001, bartender
+If all 9 succeed, the host is fully set up: webapp on :3001, bartender
 remote on :3002, daily auto-update at 02:30 local. Configure venue
 hardware via the UI (Device Config / Matrix / Audio / Layout) — not by
 hand-editing `apps/web/data/*.json`.
@@ -74,8 +79,8 @@ node --version    # ≥ 18.17
 The target host needs:
 - Internet access for `git pull` and `npm ci`
 - LAN access to the venue hardware (matrix, TVs, Fire TVs, audio processor)
-- Inbound TCP 3001 open for bartender access (plus 3002 if using the
-  nginx/node bartender proxy)
+- Inbound TCP 3001 (admin) and 3002 (bartender, served by Nginx — see
+  `scripts/setup-bartender-nginx.sh`)
 - ~20 GB free disk for logs and future builds
 
 ## 1. Clone and initial build
@@ -221,6 +226,35 @@ health_http, metrics_http, bartender_proxy, critical_tables,
 matrix_config, crash_logs. If any layer fails, fix it before
 proceeding — the same script is what auto-update.sh runs at
 Checkpoint C, so a green here means the auto-updater will be happy too.
+
+## 7a. Install standardized bartender proxy + iGPU Ollama (fleet default)
+
+Two one-time setup scripts — fleet-standardized at v2.32.57+. Both are
+idempotent. Run in this order:
+
+```bash
+bash scripts/setup-bartender-nginx.sh   # Nginx on :3002, allow-list, 300s scheduling timeout
+bash scripts/setup-iris-ollama.sh       # IPEX-LLM Ollama on Intel Iris Xe iGPU
+```
+
+The Nginx script replaces the legacy Node `apps/web/bartender-proxy.js`
+(deletes it from PM2 and saves). The Ollama script disables the upstream
+CPU-only `ollama` systemd unit and enables `ollama-ipex.service` instead
+— same port 11434, ~14 tok/s on `llama3.1:8b` Q4 vs ~3 tok/s CPU. Models
+stay at `/usr/share/ollama/.ollama/models/`.
+
+Verify after running both:
+
+```bash
+systemctl is-active nginx ollama-ipex                              # active active
+sudo journalctl -u ollama-ipex --since=5m | grep "using Intel GPU"  # one match
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3002/    # 302
+```
+
+If `setup-iris-ollama.sh` reports "No Intel iGPU detected", this box has
+non-Intel hardware (AMD/Nvidia) — the fleet-standard path doesn't apply
+and the location stays on upstream Ollama. Document the hardware in the
+location-specific notes under `.claude/locations/<branch>.md`.
 
 ## 8. Point a browser at the host
 
@@ -577,7 +611,10 @@ deployment. As soon as the venue is live:
   auto-resolve. If you see this on older code, pull main.
 
 ### Bartender remote won't load on port 3002
-→ Start the nginx or node proxy. See `apps/web/bartender-proxy.js`.
+→ Run `bash scripts/setup-bartender-nginx.sh` (the standardized Nginx
+  setup, fleet default at v2.32.57+). The legacy Node
+  `apps/web/bartender-proxy.js` is being phased out. See VERSION_SETUP_GUIDE
+  v2.32.57 entry for the per-location migration table.
 
 ### Bartender remote returns Connection refused after a reboot
 → The PM2 systemd auto-start unit was never installed. On the target
