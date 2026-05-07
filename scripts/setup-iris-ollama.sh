@@ -30,6 +30,28 @@ EXTRACTED="$PORTABLE_DIR/$PORTABLE_VER"
 log() { echo "[setup-iris-ollama] $*"; }
 fail() { echo "[setup-iris-ollama] ❌ $*" >&2; exit 1; }
 
+# --- 0. Add ubuntu user to render+video groups EARLY (v2.32.69).
+# clinfo needs to open /dev/dri/renderD128 (group=render) to enumerate
+# Intel platforms. If we run clinfo before adding the user to the
+# render group, clinfo silently returns 0 platforms even when the
+# userspace stack is fully installed — the failure mode that hit all
+# 5 fleet locations on the v2.32.67/.68 rollout. usermod -aG is
+# idempotent; SupplementaryGroups in the systemd unit gives the
+# service the access regardless.
+for grp in render video; do
+    if ! id -nG ubuntu | tr ' ' '\n' | grep -qx "$grp"; then
+        log "Adding 'ubuntu' to '$grp' group (required for /dev/dri access)"
+        sudo usermod -a -G "$grp" ubuntu
+    fi
+done
+# Apply the new group membership to THIS shell so the clinfo check
+# below runs with the proper /dev/dri access. Without sg, the script
+# still has the old group set even after usermod.
+if ! id -G | tr ' ' '\n' | grep -qx "$(getent group render | cut -d: -f3)"; then
+    log "Re-execing under the render group so clinfo can open /dev/dri"
+    exec sg render -c "exec sg video -c 'bash $0 $*'"
+fi
+
 # --- 1. Verify Intel iGPU is present ---
 if ! command -v clinfo >/dev/null 2>&1; then
     log "Installing clinfo"
@@ -60,9 +82,26 @@ if ! clinfo -l 2>/dev/null | grep -qiE "intel.*(graphics|iris|arc|xe)"; then
                 | sudo tee /etc/apt/sources.list.d/intel-gpu.list >/dev/null
             sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
         fi
-        log "Installing intel-level-zero-gpu, intel-opencl-icd, libze1, libigc1"
+        # v2.32.69 — additional packages found on the working Holmgren box
+        # but missing on the fleet:
+        # - intel-igc-cm: Intel Graphics Compiler Common Module (runtime
+        #   dep for the opencl ICD; without it the .so loads but reports
+        #   0 platforms)
+        # - libdrm-intel1: DRM userspace; needed for /dev/dri/ open
+        # - libigdfcl1, libigdgmm12: Intel graphics media + memory mgmt
+        log "Installing Intel runtime stack (level-zero, opencl, drm, gmm, igc)"
         sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            intel-level-zero-gpu intel-opencl-icd libze1 libigc1
+            intel-level-zero-gpu intel-opencl-icd intel-igc-cm \
+            libze1 libigc1 libigdfcl1 libigdgmm12 libdrm-intel1
+        # If the OpenCL ICD shared object is missing despite the package
+        # being installed (seen on fleet locations: intel-opencl-icd
+        # installed but /usr/lib/x86_64-linux-gnu/intel-opencl/ empty),
+        # force a reinstall to re-extract the .so.
+        if [ ! -f /usr/lib/x86_64-linux-gnu/intel-opencl/libigdrcl.so ]; then
+            log "libigdrcl.so missing — forcing intel-opencl-icd reinstall"
+            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --reinstall \
+                intel-opencl-icd
+        fi
         # If /dev/dri/ is empty (kernel module not bound), try to load i915.
         # Without /dev/dri/renderD128 the userspace can't see the device
         # regardless of how many libraries are installed.
@@ -112,14 +151,7 @@ if [ -x /usr/bin/intel_gpu_top ] && ! getcap /usr/bin/intel_gpu_top 2>/dev/null 
     sudo setcap cap_perfmon=ep /usr/bin/intel_gpu_top
 fi
 
-# --- 2. Ensure ubuntu user is in render+video groups ---
-for grp in render video; do
-    if ! id -nG ubuntu | tr ' ' '\n' | grep -qx "$grp"; then
-        log "Adding 'ubuntu' to '$grp' group (required for /dev/dri access)"
-        sudo usermod -a -G "$grp" ubuntu
-        log "⚠ Group change requires re-login to take effect for shells; the systemd unit will pick it up via SupplementaryGroups"
-    fi
-done
+# --- 2. (group add moved to section 0 in v2.32.69 so clinfo can open /dev/dri) ---
 
 # --- 3. Download portable zip if missing ---
 mkdir -p "$PORTABLE_DIR"
