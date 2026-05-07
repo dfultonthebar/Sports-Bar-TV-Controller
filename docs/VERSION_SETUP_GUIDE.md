@@ -187,6 +187,36 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.55 — Wolf Pack pre-check ignores 0xFFFF session-init sentinel (TV 1 toggle-off fix)
+**Released:** 2026-05-07
+
+Holmgren reported that opening the bartender remote's **Video tab** consistently lost the matrix route to **TV 1**. Root cause was a 65535 (0xFFFF) sentinel returned by Wolf Pack firmware on the first `o2ox` query after a fresh PHP session login — the same quirk `queryWolfpackRouteState()` already handles with a 600ms settle + re-query. The pre-check inside `sendHTTPCommand()` did NOT handle the sentinel: it saw `currentRoutes[output0] === 65535`, decided the route was "different from intended," and fired the toggle-style `prm` command. If the real route was already correct, the toggle flipped output 0 OFF → TV 1 went black. The Video-tab open is what creates the second concurrent session that puts the firmware into the settling window where this fires.
+
+**Changes:**
+- `packages/wolfpack/src/wolfpack-matrix-service.ts` — pre-check at `sendHTTPCommand` now mirrors the settle+requery pattern from `queryWolfpackRouteState`: if `currentRoutes[output0Based] === 65535`, wait 600ms and re-query before deciding whether to skip. If the sentinel persists after re-query, refuse to send the toggle command (returns failure; scheduler/auto-reallocator will retry on its next tick) rather than risk flipping a good route off.
+
+**Required Manual Step:** None. Pure firmware-quirk handler in the wolfpack package — no schema, no data, no env. Build picks up the package change via Turborepo.
+
+**Verification:**
+```bash
+# 1. Watch PM2 logs while opening the bartender Video tab a few times:
+pm2 logs sports-bar-tv-controller --lines 0 | grep -E "WOLFPACK-HTTP.*(sentinel|0xFFFF|skipping)"
+#    Expected: see "Pre-check got 0xFFFF sentinel ... settling 600ms" log lines
+#    when the Video tab opens, followed by "already routed ... skipping" — NOT
+#    a route command being sent.
+
+# 2. Confirm TV 1 routing survives Video tab opens:
+#    Open bartender remote → switch to a non-Video tab → switch back to Video.
+#    TV 1 should retain its source. Repeat 3-4 times.
+
+# 3. Confirm scheduler still routes correctly when state is genuinely different:
+#    Approve a scheduled tune. TV 1 should land on the new source first try.
+```
+
+**Rollback:** `git revert` is clean — single function-local change.
+
+---
+
 ### v2.32.54 — Bartender remote: hide Audio tab when no audio processor configured
 **Released:** 2026-05-07
 

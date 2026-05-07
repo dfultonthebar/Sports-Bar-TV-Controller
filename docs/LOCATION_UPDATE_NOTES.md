@@ -46,6 +46,20 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-07 — v2.32.55 — Wolf Pack pre-check 0xFFFF sentinel fix (TV 1 toggle-off bug)
+
+**Risk:** GO — bug fix in `packages/wolfpack/src/wolfpack-matrix-service.ts`. Holmgren-reported symptom: every Video-tab open at the bartender remote silently knocked TV 1 off its route. Diagnosed as the firmware's session-init sentinel (0xFFFF) leaking past the toggle-prevention pre-check in `sendHTTPCommand`. Fix mirrors the settle+requery pattern already in `queryWolfpackRouteState`. No schema, no data, no env, no UI change.
+
+**What changed:** When the pre-check reads `currentRoutes[output0Based] === 65535`, it now waits 600ms and re-queries; if the sentinel persists it refuses to send the toggle command (returns failure for the scheduler to retry next tick) rather than flipping a possibly-correct route OFF. Non-sentinel paths are byte-identical to v2.32.54.
+
+**What could break:** Negligible. Turborepo picks up the package change automatically; PM2 restart on auto-update.
+
+**Affected:** `packages/wolfpack/src/wolfpack-matrix-service.ts`, `package.json`, `docs/VERSION_SETUP_GUIDE.md`, `docs/LOCATION_UPDATE_NOTES.md`.
+
+**Rollback:** `git revert` is clean.
+
+---
+
 ### 2026-05-06 — v2.32.53 — install.sh + ollama-setup.sh simplify pass
 
 **Risk:** GO — install-path-only change; existing locations unaffected. `/simplify` 3-agent pass on v2.32.50-52 found 9 concrete cleanups in `install.sh` (apt-call coalescing, apt-update timeout, sleep removal, PM2-check helper extraction, dead constant, stale comments, canonical-writer hint) plus a model-list drift in `scripts/ollama-setup.sh` (was still pulling `llama3.2:3b` + `phi3:mini` for standalone runs after install.sh was updated). All applied.
