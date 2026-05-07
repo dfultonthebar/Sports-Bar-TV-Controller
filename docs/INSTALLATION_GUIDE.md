@@ -1,4 +1,6 @@
 
+> **⚠️ This doc is supplementary.** The canonical fresh-install runbook is **[docs/NEW_LOCATION_SETUP.md](NEW_LOCATION_SETUP.md)** — start there first. Use this doc only for AI-Assistant-specific configuration that NEW_LOCATION_SETUP doesn't cover.
+
 # 🏈 Sports Bar AI Assistant - Complete Installation Guide
 
 ## Overview

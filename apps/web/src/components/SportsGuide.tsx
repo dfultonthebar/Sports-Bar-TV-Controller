@@ -246,7 +246,7 @@ export default function SportsGuide() {
       <div className="rounded-lg border border-slate-700 bg-slate-900/40 p-6">
         <div className="flex items-start justify-between mb-4">
           <div>
-            <h2 className="text-3xl font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent mb-2">
+            <h2 className="text-3xl font-bold text-white mb-2">
               All Sports Programming
             </h2>
             <p className="text-slate-300 text-sm">

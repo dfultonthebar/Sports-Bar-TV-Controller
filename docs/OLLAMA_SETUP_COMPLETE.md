@@ -1,3 +1,5 @@
+> **⚠️ This doc is a one-time historical note.** Ollama install + the right models (`llama3.1:8b` + `nomic-embed-text`) are handled automatically by `install.sh`. Canonical fresh-install runbook: **[docs/NEW_LOCATION_SETUP.md](NEW_LOCATION_SETUP.md)**.
+
 # Ollama Installation and AI Style Analysis - Complete
 
 ## ✅ What Was Done

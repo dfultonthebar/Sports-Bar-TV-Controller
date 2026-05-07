@@ -133,13 +133,45 @@ export async function sendHTTPCommand(
       headers: { 'Cookie': sessionCookie },
     })
     try {
-      const currentRoutes: number[] = JSON.parse(queryResponse.body)
+      let currentRoutes: number[] = JSON.parse(queryResponse.body)
+      // Wolf Pack firmware quirk: the first o2ox query after a fresh login can
+      // return 65535 (0xFFFF) for one or more outputs — especially output 1 —
+      // as a session-init sentinel, NOT the real route. If we trust it and
+      // proceed, the toggle-style prm command flips an already-correct route
+      // OFF (TV 1 goes black). Mirrors the settle+requery in
+      // queryWolfpackRouteState(). Triggers when the bartender Video tab opens
+      // a new route-state query while the scheduler concurrently routes.
+      if (currentRoutes[output0Based] === 65535) {
+        logger.info(`[WOLFPACK-HTTP] Pre-check got 0xFFFF sentinel at output ${output0Based}, settling 600ms and re-querying`)
+        await new Promise(resolve => setTimeout(resolve, 600))
+        const retryResponse = await httpRequest({
+          hostname: ipAddress,
+          path: queryPath,
+          method: 'GET',
+          headers: { 'Cookie': sessionCookie },
+        })
+        const retry = JSON.parse(retryResponse.body)
+        if (Array.isArray(retry) && retry.every((v: unknown) => typeof v === 'number')) {
+          currentRoutes = retry as number[]
+        }
+      }
       if (currentRoutes[output0Based] === input0Based) {
         logger.info(`[WOLFPACK-HTTP] Output ${output0Based} already routed to input ${input0Based} — skipping to avoid toggle-off`)
         return {
           success: true,
           command: `HTTP o2ox: ${input0Based},${output0Based} (already set, skipped)`,
           response: queryResponse.body,
+        }
+      }
+      if (currentRoutes[output0Based] === 65535) {
+        // Re-query still returned the sentinel — firmware state is unknown.
+        // Refuse to send the toggle command rather than risk flipping a good
+        // route off. Caller (scheduler/auto-reallocator) will retry on its
+        // next tick when the session has finished settling.
+        logger.warn(`[WOLFPACK-HTTP] Sentinel persisted for output ${output0Based}, refusing to send toggle command`)
+        return {
+          success: false,
+          error: `Wolf Pack firmware sentinel persisted at output ${output0Based} — route state unknown, retry next cycle`,
         }
       }
     } catch {
