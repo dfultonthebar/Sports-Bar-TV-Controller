@@ -26,8 +26,21 @@ export const HARDWARE_CONFIG = {
   },
   ollama: {
     baseUrl: 'http://localhost:11434',
-    model: 'llama3.1:8b',
-    timeout: 180000,
+    // v2.32.65 — model is now env-overridable. Default is llama3.1:8b.
+    //
+    // History: v2.32.64 attempted qwen2.5:14b as the default for better
+    // reasoning, but the IPEX-LLM Ollama 0.16.2 SYCL backend at Holmgren
+    // didn't accelerate the qwen2 family (model loaded but render engine
+    // stayed at 0%; AI Suggest ran on CPU at ~300s). qwen2 SYCL kernels
+    // weren't backported to the IPEX-LLM fork. Locations on CPU-only
+    // boxes (graystone) also can't run 14b at usable speeds.
+    //
+    // Locations that have a working qwen-on-SYCL path (or accept slower
+    // CPU inference) can override via .env: OLLAMA_MODEL=qwen2.5:14b.
+    // Operators on the Iris Xe path should keep llama3.1:8b until the
+    // IPEX-LLM stack supports newer model families.
+    model: process.env.OLLAMA_MODEL || 'llama3.1:8b',
+    timeout: 300000,
   },
   venue: {
     timezone: 'America/Chicago',
