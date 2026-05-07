@@ -22,15 +22,20 @@ export const HARDWARE_CONFIG = {
   },
   ollama: {
     baseUrl: 'http://localhost:11434',
-    // v2.32.64 — bumped from llama3.1:8b → qwen2.5:14b for better
-    // structured-reasoning quality on AI Suggest. ~2x latency on the
-    // Iris Xe iGPU stack (~14 tok/s → ~7 tok/s) — AI Suggest goes from
-    // ~100s to ~200s end-to-end, still inside the 300s Nginx
-    // proxy_read_timeout. Bartenders trade some wait for noticeably
-    // better game-allocation suggestions. Switch back to llama3.1:8b
-    // here if a location's iGPU can't keep up. install.sh + ollama-setup.sh
-    // pull both models so the swap is always possible.
-    model: 'qwen2.5:14b',
+    // v2.32.65 — model is now env-overridable. Default is llama3.1:8b.
+    //
+    // History: v2.32.64 attempted qwen2.5:14b as the default for better
+    // reasoning, but the IPEX-LLM Ollama 0.16.2 SYCL backend at Holmgren
+    // didn't accelerate the qwen2 family (model loaded but render engine
+    // stayed at 0%; AI Suggest ran on CPU at ~300s). qwen2 SYCL kernels
+    // weren't backported to the IPEX-LLM fork. Locations on CPU-only
+    // boxes (graystone) also can't run 14b at usable speeds.
+    //
+    // Locations that have a working qwen-on-SYCL path (or accept slower
+    // CPU inference) can override via .env: OLLAMA_MODEL=qwen2.5:14b.
+    // Operators on the Iris Xe path should keep llama3.1:8b until the
+    // IPEX-LLM stack supports newer model families.
+    model: process.env.OLLAMA_MODEL || 'llama3.1:8b',
     timeout: 300000,
   },
   venue: {
