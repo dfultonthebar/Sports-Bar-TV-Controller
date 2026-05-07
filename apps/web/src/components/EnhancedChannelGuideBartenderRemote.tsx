@@ -128,6 +128,13 @@ interface ChannelInfo {
   appId?: string
   streamingApp?: string
   packages?: string[]
+  // v2.32.58 — per-event deep link URL captured by the firetv-catalog walker
+  // (e.g. espn://x-callback-url/showEvent?eventId=...). When present, the
+  // Watch button passes it through /api/streaming/launch which calls
+  // launchAppWithDeepLink so the Fire TV opens directly to the event
+  // instead of just the app's home screen. Falls back to home-screen
+  // launch when the walker hasn't extracted a per-event URL for this row.
+  deepLink?: string
   deviceType?: 'cable' | 'satellite' | 'streaming' | 'gaming'
   _presetMapped?: boolean  // Flag to indicate this was mapped from a preset
 }
@@ -253,11 +260,20 @@ export default function EnhancedChannelGuideBartenderRemote() {
     loadLiveGameData()
     loadScheduledAllocations()
 
-    // Auto-refresh channel data and live game data every 30 seconds
+    // Auto-refresh channel data, live game data, and the channel guide
+    // listing itself every 30 seconds so games added by the ESPN sync
+    // (which runs every 10 min) become visible without the bartender
+    // having to close + reopen the guide tab. Without this, the guide
+    // shows whatever data was loaded when the input was last selected
+    // and stays frozen until manual re-tap. Past games filter out
+    // server-side (twoHoursAgo gate in /api/channel-guide).
     const interval = setInterval(() => {
       loadCurrentChannels()
       loadLiveGameData()
       loadScheduledAllocations()
+      if (selectedInput && showChannelGuide) {
+        loadChannelGuideForInput()
+      }
     }, 30000)
 
     // Check for midnight crossing every minute to refresh guide
@@ -1096,7 +1112,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
           // is the host. Falls back to the legacy direct-launch path when
           // no appId is set (e.g. Rail Media programs that pre-date this).
           if (game.channel.appId) {
-            await launchStreamingAppByCatalog(game.channel.appId, game.channel.name)
+            await launchStreamingAppByCatalog(game.channel.appId, game.channel.name, game.channel.deepLink)
           } else if (game.channel.packageName) {
             await launchStreamingApp(game.channel.packageName, game.channel.name)
           }
@@ -1150,7 +1166,13 @@ export default function EnhancedChannelGuideBartenderRemote() {
   // v2.31.2 — preferred launcher: routes through streamingManager which knows
   // about Cube launcher-hosted Prime Video (firebat alias) and correctly
   // resolves the LEANBACK_LAUNCHER activity instead of just hitting MAIN.
-  const launchStreamingAppByCatalog = async (appId: string, appName: string) => {
+  // v2.32.58 — accepts an optional per-event deepLink. When provided,
+  // /api/streaming/launch routes through launchAppWithDeepLink so the
+  // Fire TV opens directly to the specific event rather than the app's
+  // home screen. The deepLink is populated by the firetv-catalog walker
+  // (currently a stub for most apps; see CatalogTile.deepLink in
+  // packages/scheduler/src/firetv-catalog-walker.ts).
+  const launchStreamingAppByCatalog = async (appId: string, appName: string, deepLink?: string) => {
     const fireTVDevice = selectedDevice as FireTVDevice
     const response = await fetch('/api/streaming/launch', {
       method: 'POST',
@@ -1160,13 +1182,14 @@ export default function EnhancedChannelGuideBartenderRemote() {
         ipAddress: fireTVDevice.ipAddress,
         port: fireTVDevice.port,
         appId,
+        ...(deepLink ? { deepLink } : {}),
       }),
     })
     const data = await response.json()
     if (!response.ok || !data?.success) {
       throw new Error(`Failed to launch ${appName}: ${data?.error || data?.message || response.statusText}`)
     }
-    setCommandStatus(`Launched ${appName}`)
+    setCommandStatus(`Launched ${appName}${deepLink ? ' (deep link)' : ''}`)
   }
 
   const launchStreamingApp = async (packageName: string, appName: string) => {

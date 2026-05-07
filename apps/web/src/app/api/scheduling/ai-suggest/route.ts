@@ -82,17 +82,17 @@ async function fetchUpcomingGames(): Promise<GameListing[]> {
     const nowUnix = Math.floor(Date.now() / 1000)
     const twelveHoursLater = nowUnix + 12 * 60 * 60
 
-    // v2.32.0 — Same fix as channel-guide v2.28.2: an in-progress game whose
-    // scheduled_start is in the past should still surface in AI Suggest's
-    // window. Without this catch-all, a long broadcast (NFL Draft Day 1 runs
-    // 7-11pm CT — 4 hours; tonight's Brewers game starts 7pm and runs to 10)
-    // disappears from suggestions the moment "now" passes scheduled_start
-    // even though the game is still airing for hours. Use the same overlap
-    // semantics: include any game whose start is in the future-12h window
-    // OR whose status='in_progress' (set by ESPN sync when the game is live).
+    // v2.32.0 — include in-progress games whose start is in the past so
+    // long broadcasts (NFL Draft Day 1, Sunday Night Football's 4-hour
+    // window, etc) stay visible after kickoff. v2.32.62 — tightened: only
+    // include past-start in-progress games when estimated_end is still in
+    // the future. ESPN sync doesn't reliably mark old games 'completed' —
+    // 72 zombies stuck in_progress past their end at Holmgren today,
+    // including the NFL Draft from 11 days ago, surfaced as AI Suggest
+    // candidates. Now they don't.
     const rows = await db.select().from(schema.gameSchedules).where(
       and(
-        sql`(${schema.gameSchedules.scheduledStart} >= ${nowUnix} OR ${schema.gameSchedules.status} = 'in_progress')`,
+        sql`(${schema.gameSchedules.scheduledStart} >= ${nowUnix} OR (${schema.gameSchedules.status} = 'in_progress' AND ${schema.gameSchedules.estimatedEnd} > ${nowUnix}))`,
         sql`${schema.gameSchedules.scheduledStart} <= ${twelveHoursLater}`,
         sql`${schema.gameSchedules.status} != 'completed'`,
       )

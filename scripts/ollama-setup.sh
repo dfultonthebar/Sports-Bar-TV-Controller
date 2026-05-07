@@ -179,7 +179,8 @@ pull_models() {
     # at apps/web/src/app/api/scheduling/ai-suggest hardcodes llama3.1:8b
     # (90s timeout); RAG embeddings use nomic-embed-text.
     local MODELS=(
-        "llama3.1:8b|AI scheduling, gameplan suggestions, log analysis"
+        "qwen2.5:14b|AI scheduling — primary model at v2.32.64+ (better reasoning than 8b)"
+        "llama3.1:8b|Fallback model + log analysis (kept for compatibility)"
         "nomic-embed-text|Embedding model for RAG documentation search"
     )
 

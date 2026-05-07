@@ -175,31 +175,106 @@ async function getDiskMetrics(): Promise<SystemMetrics['disk']> {
 }
 
 /**
- * Get GPU metrics (NVIDIA only via nvidia-smi)
+ * Get GPU metrics. Tries NVIDIA first (nvidia-smi), falls back to Intel iGPU
+ * (intel_gpu_top, JSON snapshot). At v2.32.59+ the fleet runs Intel Iris Xe
+ * for Ollama acceleration; the System Resources widget then surfaces real
+ * iGPU load.
+ *
+ * intel_gpu_top requires CAP_PERFMON to run as a non-root user — granted by
+ * scripts/setup-iris-ollama.sh via `setcap cap_perfmon=ep`. If the binary
+ * lacks the capability we fall through and the widget shows "No GPU".
+ *
+ * Memory accounting on Intel: the iGPU shares system RAM. "used" comes from
+ * the loaded Ollama model footprint via /api/ps (the only iGPU consumer at
+ * a sports-bar deployment). "total" defaults to 16 GB when nothing's loaded
+ * — the widget's percentage reads sensibly without misleading the operator.
  */
 async function getGPUMetrics(): Promise<SystemMetrics['gpu']> {
+  // 1. NVIDIA path (cheap to attempt; throws fast if missing)
   try {
     const { stdout } = await execFileAsync('nvidia-smi', [
       '--query-gpu=utilization.gpu,memory.total,memory.used,temperature.gpu',
-      '--format=csv,noheader,nounits'
-    ]);
-
-    const parts = stdout.trim().split(',').map(s => s.trim());
-    const usage = parseInt(parts[0]);
-    const memoryTotal = parseInt(parts[1]) * 1024 * 1024; // MB to bytes
-    const memoryUsed = parseInt(parts[2]) * 1024 * 1024;
-    const temperature = parseInt(parts[3]);
-
+      '--format=csv,noheader,nounits',
+    ])
+    const parts = stdout.trim().split(',').map(s => s.trim())
+    const usage = parseInt(parts[0])
+    const memoryTotal = parseInt(parts[1]) * 1024 * 1024
+    const memoryUsed = parseInt(parts[2]) * 1024 * 1024
+    const temperature = parseInt(parts[3])
     return {
       usage,
-      memory: {
-        total: memoryTotal,
-        used: memoryUsed,
-        usage: Math.floor((memoryUsed / memoryTotal) * 100),
-      },
+      memory: { total: memoryTotal, used: memoryUsed, usage: Math.floor((memoryUsed / memoryTotal) * 100) },
       temperature,
-    };
-  } catch (error) {
-    throw new Error('GPU metrics not available');
+    }
+  } catch {
+    // not nvidia — fall through to Intel iGPU
+  }
+
+  // 2. Intel iGPU path. intel_gpu_top emits a streaming JSON array; we run
+  // with a 500ms sample interval and a 1500ms timeout, then parse the first
+  // complete object from whatever was emitted before the kill.
+  let stdout = ''
+  try {
+    const result = await execFileAsync('intel_gpu_top', ['-J', '-s', '500'], { timeout: 1500 })
+    stdout = result.stdout
+  } catch (err) {
+    // execFile times out as designed — its stdout buffer is still populated.
+    if (err && typeof err === 'object' && 'stdout' in err) {
+      stdout = String((err as { stdout?: string }).stdout || '')
+    }
+  }
+
+  const match = stdout.match(/\{[\s\S]*?\n\}/)
+  if (!match) {
+    throw new Error('GPU metrics not available')
+  }
+
+  let snap: { engines?: Record<string, { busy?: number }> }
+  try {
+    snap = JSON.parse(match[0])
+  } catch {
+    throw new Error('GPU metrics not available')
+  }
+
+  const renderBusy = snap.engines?.['Render/3D']?.busy ?? 0
+  const usage = Math.max(0, Math.min(100, Math.round(renderBusy)))
+
+  // Ollama footprint via /api/ps (loaded model size). 800ms timeout — if
+  // Ollama is unreachable, used=0 and the widget shows the iGPU as idle.
+  let memoryUsed = 0
+  try {
+    const r = await fetch('http://localhost:11434/api/ps', {
+      signal: AbortSignal.timeout(800),
+    })
+    if (r.ok) {
+      const ps = await r.json() as { models?: Array<{ size?: number; size_vram?: number }> }
+      // size_vram is what proper-VRAM GPUs report; IPEX-LLM SYCL Ollama
+      // returns 0 for size_vram even when the model is running on the
+      // iGPU (the fork is on Ollama 0.16.2 which predates correct SYCL
+      // VRAM reporting). Prefer size_vram only when it's > 0; otherwise
+      // use total size, which is the model footprint regardless of
+      // CPU/GPU split. Either way the widget shows "X GB loaded".
+      memoryUsed = (ps.models ?? []).reduce(
+        (sum, m) => sum + ((m.size_vram && m.size_vram > 0) ? m.size_vram : (m.size ?? 0)),
+        0,
+      )
+    }
+  } catch {
+    // Ollama unreachable; leave used=0
+  }
+
+  // For "total" use a fixed 16 GB ceiling — Intel iGPU shared memory caps
+  // are highly variable and reading the real value requires elevated perms.
+  // The widget's percentage stays sensible (4 GB model = 25% used).
+  const memoryTotal = 16 * 1024 * 1024 * 1024
+
+  return {
+    usage,
+    memory: {
+      total: memoryTotal,
+      used: memoryUsed,
+      usage: Math.floor((memoryUsed / memoryTotal) * 100),
+    },
+    // No reliable °C for Intel iGPU package without sudo — leave undefined
   }
 }
