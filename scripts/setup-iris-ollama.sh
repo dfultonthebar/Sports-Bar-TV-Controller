@@ -30,6 +30,28 @@ EXTRACTED="$PORTABLE_DIR/$PORTABLE_VER"
 log() { echo "[setup-iris-ollama] $*"; }
 fail() { echo "[setup-iris-ollama] ❌ $*" >&2; exit 1; }
 
+# --- 0. Add ubuntu user to render+video groups EARLY (v2.32.69).
+# clinfo needs to open /dev/dri/renderD128 (group=render) to enumerate
+# Intel platforms. If we run clinfo before adding the user to the
+# render group, clinfo silently returns 0 platforms even when the
+# userspace stack is fully installed — the failure mode that hit all
+# 5 fleet locations on the v2.32.67/.68 rollout. usermod -aG is
+# idempotent; SupplementaryGroups in the systemd unit gives the
+# service the access regardless.
+for grp in render video; do
+    if ! id -nG ubuntu | tr ' ' '\n' | grep -qx "$grp"; then
+        log "Adding 'ubuntu' to '$grp' group (required for /dev/dri access)"
+        sudo usermod -a -G "$grp" ubuntu
+    fi
+done
+# Apply the new group membership to THIS shell so the clinfo check
+# below runs with the proper /dev/dri access. Without sg, the script
+# still has the old group set even after usermod.
+if ! id -G | tr ' ' '\n' | grep -qx "$(getent group render | cut -d: -f3)"; then
+    log "Re-execing under the render group so clinfo can open /dev/dri"
+    exec sg render -c "exec sg video -c 'bash $0 $*'"
+fi
+
 # --- 1. Verify Intel iGPU is present ---
 if ! command -v clinfo >/dev/null 2>&1; then
     log "Installing clinfo"
@@ -50,19 +72,51 @@ if ! clinfo -l 2>/dev/null | grep -qiE "intel.*(graphics|iris|arc|xe)"; then
     # a7a0" line.
     if lspci 2>/dev/null | grep -iE 'vga|3d|display' | grep -qi 'intel corporation'; then
         log "Intel iGPU chip present per lspci. Installing Intel level-zero userspace stack."
-        # Install Intel GPU apt repo if not already configured
-        if [ ! -f /etc/apt/sources.list.d/intel-gpu.list ]; then
-            log "Adding Intel GPU apt repo"
+        # v2.32.70 — Intel GPU apt repo line is per-Ubuntu-codename. Earlier
+        # versions hardcoded `noble` which made the install fail on jammy
+        # (22.04) boxes — packages depend on libc6 ≥ 2.38, jammy has 2.35.
+        # Detect the running codename and use the matching Intel repo. Intel
+        # publishes both `jammy/client` and `noble/client` from the same URL.
+        UBU_CODENAME=$(lsb_release -cs 2>/dev/null || echo noble)
+        case "$UBU_CODENAME" in
+            jammy|noble) : ;;  # supported
+            *)
+                log "⚠ Unsupported Ubuntu codename '$UBU_CODENAME' — Intel apt repo line may not work. Defaulting to noble."
+                UBU_CODENAME=noble
+                ;;
+        esac
+        # If repo already configured but for a DIFFERENT codename (e.g. an
+        # earlier run wrote the wrong line), rewrite it. apt-get update
+        # below picks up the correction.
+        EXPECTED_REPO_LINE="deb [arch=amd64 signed-by=/usr/share/keyrings/intel-graphics.gpg] https://repositories.intel.com/gpu/ubuntu $UBU_CODENAME client"
+        if [ ! -f /etc/apt/sources.list.d/intel-gpu.list ] || ! grep -qF "$UBU_CODENAME client" /etc/apt/sources.list.d/intel-gpu.list; then
+            log "Adding/updating Intel GPU apt repo for $UBU_CODENAME"
             sudo install -d /usr/share/keyrings
             wget -qO- https://repositories.intel.com/gpu/intel-graphics.key \
                 | sudo gpg --yes --dearmor --output /usr/share/keyrings/intel-graphics.gpg
-            echo 'deb [arch=amd64 signed-by=/usr/share/keyrings/intel-graphics.gpg] https://repositories.intel.com/gpu/ubuntu noble client' \
-                | sudo tee /etc/apt/sources.list.d/intel-gpu.list >/dev/null
+            echo "$EXPECTED_REPO_LINE" | sudo tee /etc/apt/sources.list.d/intel-gpu.list >/dev/null
             sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
         fi
-        log "Installing intel-level-zero-gpu, intel-opencl-icd, libze1, libigc1"
+        # v2.32.69 — additional packages found on the working Holmgren box
+        # but missing on the fleet:
+        # - intel-igc-cm: Intel Graphics Compiler Common Module (runtime
+        #   dep for the opencl ICD; without it the .so loads but reports
+        #   0 platforms)
+        # - libdrm-intel1: DRM userspace; needed for /dev/dri/ open
+        # - libigdfcl1, libigdgmm12: Intel graphics media + memory mgmt
+        log "Installing Intel runtime stack (level-zero, opencl, drm, gmm, igc)"
         sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            intel-level-zero-gpu intel-opencl-icd libze1 libigc1
+            intel-level-zero-gpu intel-opencl-icd intel-igc-cm \
+            libze1 libigc1 libigdfcl1 libigdgmm12 libdrm-intel1
+        # If the OpenCL ICD shared object is missing despite the package
+        # being installed (seen on fleet locations: intel-opencl-icd
+        # installed but /usr/lib/x86_64-linux-gnu/intel-opencl/ empty),
+        # force a reinstall to re-extract the .so.
+        if [ ! -f /usr/lib/x86_64-linux-gnu/intel-opencl/libigdrcl.so ]; then
+            log "libigdrcl.so missing — forcing intel-opencl-icd reinstall"
+            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --reinstall \
+                intel-opencl-icd
+        fi
         # If /dev/dri/ is empty (kernel module not bound), try to load i915.
         # Without /dev/dri/renderD128 the userspace can't see the device
         # regardless of how many libraries are installed.
@@ -112,14 +166,7 @@ if [ -x /usr/bin/intel_gpu_top ] && ! getcap /usr/bin/intel_gpu_top 2>/dev/null 
     sudo setcap cap_perfmon=ep /usr/bin/intel_gpu_top
 fi
 
-# --- 2. Ensure ubuntu user is in render+video groups ---
-for grp in render video; do
-    if ! id -nG ubuntu | tr ' ' '\n' | grep -qx "$grp"; then
-        log "Adding 'ubuntu' to '$grp' group (required for /dev/dri access)"
-        sudo usermod -a -G "$grp" ubuntu
-        log "⚠ Group change requires re-login to take effect for shells; the systemd unit will pick it up via SupplementaryGroups"
-    fi
-done
+# --- 2. (group add moved to section 0 in v2.32.69 so clinfo can open /dev/dri) ---
 
 # --- 3. Download portable zip if missing ---
 mkdir -p "$PORTABLE_DIR"

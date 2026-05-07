@@ -187,6 +187,60 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.65–v2.32.70 — iGPU enablement saga (catch-up entry)
+**Released:** 2026-05-07 (rapid-fire)
+
+Six versions in two hours fighting through the Intel iGPU acceleration setup across the fleet. Documented as one entry because they're a single problem-solve.
+
+**v2.32.65** — Reverted AI Suggest model from `qwen2.5:14b` back to `llama3.1:8b`. Reason: IPEX-LLM Ollama 0.16.2's SYCL backend doesn't accelerate the qwen2 family — at Holmgren the model loaded into iGPU memory but render engine stayed at 0% during inference, falling back to CPU. Made the choice env-overridable via `OLLAMA_MODEL` so operators can experiment per location.
+
+**v2.32.66** — GPU meter falls back to frequency-based usage on Iris Xe. Engine busy% counters (Render/3D, Blitter, Video, VideoEnhance) all return 0 on Iris Xe Raptor Lake-P even with `cap_sys_admin` — kernel doesn't expose CCS engine to userspace via the legacy i915 perf interface. Frequency, however, is reliable: idle ~150 MHz, working ~1495 MHz. Widget now uses `(actual_mhz / 1500) * 100` when all engine fields are <1%. Holmgren bartender confirmed: 86% during AI Suggest, 0% at idle.
+
+**v2.32.67** — `setup-iris-ollama.sh` installs Intel level-zero userspace drivers when chip is in `lspci` but stack is missing (the fleet locations have the chip but no `intel-level-zero-gpu`). Adds Intel apt repo, installs the userspace, falls back to `modprobe i915 / xe` if `/dev/dri/` is empty.
+
+**v2.32.68** — Broadened Intel chip detection to match `Intel Corporation Device a7a0` (Raptor Lake-P shows up as the unnamed PCI ID on older `pciutils` databases). Was bailing on greenville/appleton even though they have the chip.
+
+**v2.32.69** — Two compounding install issues found via leglamp:
+1. ubuntu user wasn't added to render+video groups *before* the clinfo gate. Without /dev/dri/ access, clinfo silently returns 0 platforms even with userspace installed. Now done at section 0, with `sg render` re-exec so the new group applies in this shell.
+2. Holmgren's working install has `intel-igc-cm`, `libdrm-intel1`, `libigdfcl1`, `libigdgmm12` packages that the fleet didn't. Without `intel-igc-cm` the OpenCL ICD shows 0 platforms even though `libigdrcl.so` is loaded. Added all four to the install list, plus a defensive `apt-get install --reinstall intel-opencl-icd` if the .so file is still missing post-install (observed at leglamp).
+
+**v2.32.70** — Per-codename Intel apt repo line. The fleet has a mix:
+| Location | Ubuntu | Action |
+|---|---|---|
+| Holmgren | noble (24.04) | works since v2.32.66 |
+| graystone | jammy (22.04) | needs v2.32.70 + manual `modprobe i915` (kernel module not bound) |
+| greenville | jammy (22.04) | needs v2.32.70 |
+| leglamp | noble (24.04) | works since v2.32.69 ✓ |
+| luckys | noble (24.04) | works since v2.32.69 (assumed) |
+| appleton | jammy (22.04) | needs v2.32.70 |
+
+Earlier versions hardcoded `noble client` in the Intel apt source line, which broke installs on jammy boxes (libc6 dep mismatch). v2.32.70 reads `lsb_release -cs` and writes the matching repo line; rewrites a stale line if a prior run wrote the wrong codename.
+
+**Required Manual Step:** None on auto-update. To enable iGPU at a fleet location, the operator runs `bash scripts/setup-iris-ollama.sh` once. Idempotent — re-running on already-configured boxes verifies state.
+
+**Verification (per location):**
+```bash
+systemctl is-active ollama-ipex                                                # active
+sudo journalctl -u ollama-ipex --since=2m | grep "using Intel GPU"             # one match
+clinfo -l                                                                       # Intel platform listed
+ls /dev/dri/                                                                    # card0/1 + renderD128 present
+```
+
+**Rollback:** `git revert` clean for all version code. To revert iGPU stack at a location:
+```bash
+sudo systemctl stop ollama-ipex && sudo systemctl disable ollama-ipex
+sudo systemctl enable --now ollama
+```
+Models stay at `/usr/share/ollama/.ollama/models/` — no data loss.
+
+---
+
+### v2.32.64 — AI Suggest model bumped to qwen2.5:14b (reverted in v2.32.65)
+**Released:** 2026-05-07
+Empirical revert. See v2.32.65 entry for context.
+
+---
+
 ### v2.32.63 — Walker extracts game start times from Fire TV streaming app tiles
 **Released:** 2026-05-07
 
