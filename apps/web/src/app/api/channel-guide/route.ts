@@ -912,13 +912,24 @@ export async function POST(request: NextRequest) {
           // any client that wants to consume them (the bartender remote
           // ignores them today). The `programs` array is loosely typed so
           // no cast is needed — TypeScript infers a union of pushed shapes.
+          // v2.32.63 — prefer the walker-extracted startTime over capturedAt
+          // for `gameTime` display (e.g. "7:30 PM"). Falls back to the
+          // capturedAt-derived "On demand"/"LIVE" labels when the walker
+          // didn't extract a time (most non-sports tiles).
+          const start = row.startTime ?? row.capturedAt
+          const startMs = start * 1000
+          const gameTimeLabel = row.isLive
+            ? 'LIVE'
+            : (row.startTime
+                ? new Date(startMs).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' })
+                : 'On demand')
           programs.push({
             id: `cat-${row.id}`,
             league: row.sportTag || 'Sports',
             homeTeam: row.contentTitle,
             awayTeam: '',
-            gameTime: row.isLive ? 'LIVE' : 'On demand',
-            startTime: new Date(row.capturedAt * 1000).toISOString(),
+            gameTime: gameTimeLabel,
+            startTime: new Date(startMs).toISOString(),
             endTime: new Date(row.expiresAt * 1000).toISOString(),
             channel: appChannel,
             description: `${row.contentTitle} (${row.app}${row.deepLink ? ' · deep-linkable' : ''})`,

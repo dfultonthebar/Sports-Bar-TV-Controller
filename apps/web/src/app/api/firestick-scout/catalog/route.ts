@@ -49,6 +49,9 @@ const catalogItemSchema = z.object({
   deepLink: z.string().max(500).optional(),
   isLive: z.boolean().optional(),
   sportTag: z.string().max(40).optional(),
+  // v2.32.63 — game start time when the walker extracted it (ESPN bullet
+  // tail, Prime Video time suffix). Unix seconds.
+  startTime: z.number().int().positive().optional(),
 })
 
 const catalogIngestSchema = z.object({
@@ -108,6 +111,7 @@ export async function POST(request: NextRequest) {
         deepLink: item.deepLink ?? null,
         isLive: item.isLive ?? false,
         sportTag: item.sportTag ?? null,
+        startTime: item.startTime ?? null,
         capturedAt,
         expiresAt,
       }))

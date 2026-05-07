@@ -187,6 +187,54 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.63 — Walker extracts game start times from Fire TV streaming app tiles
+**Released:** 2026-05-07
+
+The Fire TV catalog walker now captures game start times from ESPN and Prime Video tile text. When ESPN renders an upcoming game as `"Brewers vs Cubs ESPN • MLB • 7:30 PM ET"` or Prime Video shows `"Knicks vs Hawks, UPCOMING, Today 7:30 PM"`, the walker now parses the time portion into a unix timestamp and stores it alongside the catalog row. The bartender remote's channel guide previously showed every Amazon-box-sourced game as "LIVE" or "On demand"; now they show the actual start time (formatted in the operator's locale).
+
+Operator's request: *"when pulling games from the amazon boxes it should get the times too"*.
+
+**Schema change:** new nullable column `firetv_streaming_catalog.startTime` (integer, unix seconds). Drizzle-kit push handles new nullable columns cleanly — no manual ALTER needed.
+
+**Apps that benefit:**
+| App | Status |
+|---|---|
+| ESPN (com.espn.gtv) | ✅ extracts time from "• 7:30 PM ET" bullet tail |
+| Prime Video / firebat | ✅ extracts time from "Today 7:30 PM" suffix when embedded |
+| Peacock, Apple TV+, fuboTV | – walked as `[]` (WebView, accessibility-blind) |
+
+**Deferred:** per-event deep-link URLs (the v2.32.58 wiring is still no-op). ESPN's eventId isn't exposed in uiautomator dumps; deep-linking would need a follow-up integration with ESPN's public scoreboard API to resolve eventId from title text.
+
+**Required Manual Step:** None. After auto-update merges, the walker's next run (every 15 min via the `firetv-catalog-walker` SchedulerLog component) populates the new column for any new tiles. Existing rows have `startTime=NULL` and continue to display as before until they expire (36h TTL).
+
+**Verification:**
+```bash
+# After ~15 min:
+sqlite3 /home/ubuntu/sports-bar-data/production.db "
+  SELECT app, contentTitle, datetime(startTime,'unixepoch','localtime') AS time, isLive
+  FROM firetv_streaming_catalog
+  WHERE startTime IS NOT NULL
+  ORDER BY startTime DESC
+  LIMIT 10;"
+```
+
+**Rollback:** `git revert` is clean — schema column is nullable, no data loss.
+
+---
+
+### v2.32.62 — Stale in-progress games filtered out of AI Suggest + channel-guide
+**Released:** 2026-05-07
+
+72 zombie games stuck in `status='in_progress'` past their `estimated_end` were surfacing as AI Suggest candidates and channel-guide entries — including the NFL Draft from April 24 (11 days past) at Holmgren. Root cause: ESPN sync doesn't reliably transition old games to `'completed'`. The previous AI Suggest + channel-guide filter had a permissive `OR status='in_progress'` carve-out (originally meant for OT/delays of currently-airing games).
+
+**Tightened both filters:** in_progress games are now only included when `estimated_end > now` (AI Suggest, strict) or `estimated_end > now - 6h` (channel-guide, with a small grace for legitimate OT past the original estimate).
+
+**Required Manual Step:** None. Fix is in-route logic, no schema or seed change.
+
+**Rollback:** `git revert` is clean.
+
+---
+
 ### v2.32.59 — System Admin GPU meter wired to Intel Iris Xe via intel_gpu_top
 **Released:** 2026-05-07
 

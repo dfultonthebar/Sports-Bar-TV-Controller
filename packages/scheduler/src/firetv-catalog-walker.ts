@@ -96,6 +96,36 @@ export interface CatalogTile {
   isLive?: boolean
   sportTag?: string
   deepLink?: string
+  // v2.32.63 — game start time when the walker can extract it from the
+  // tile's text. Unix seconds. Null when not parseable (most tiles).
+  startTime?: number
+}
+
+// Parse a "7:30 PM" or "7:30 PM ET" or "Today 7:30 PM" string into a unix
+// timestamp anchored to today's date in the local timezone. Returns null
+// on no match. Used by both ESPN and Prime Video extractors so the time
+// regex stays in one place.
+function parseTileTime(text: string): number | undefined {
+  // Capture optional "Today/Tomorrow/<weekday>" prefix + HH:MM AM/PM
+  const m = text.match(/(Today|Tomorrow|Sun|Mon|Tue|Wed|Thu|Fri|Sat)?\s*(\d{1,2}):(\d{2})\s*(AM|PM)/i)
+  if (!m) return undefined
+  const dayHint = (m[1] || '').toLowerCase()
+  const h12 = parseInt(m[2], 10)
+  const min = parseInt(m[3], 10)
+  const ampm = m[4].toUpperCase()
+  if (h12 < 1 || h12 > 12 || min < 0 || min > 59) return undefined
+  let hour24 = ampm === 'PM' && h12 !== 12 ? h12 + 12 : (ampm === 'AM' && h12 === 12 ? 0 : h12)
+  const now = new Date()
+  const d = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour24, min, 0, 0)
+  if (dayHint === 'tomorrow') d.setDate(d.getDate() + 1)
+  // If the parsed time is more than 6h in the past and there's no day
+  // hint, assume tomorrow (a "7:30 PM" tile shown after midnight refers
+  // to tonight already passed; the next showing is tomorrow). Walker
+  // tiles for today's games show before midnight, so this is rare.
+  else if (!dayHint && d.getTime() < now.getTime() - 6 * 60 * 60 * 1000) {
+    d.setDate(d.getDate() + 1)
+  }
+  return Math.floor(d.getTime() / 1000)
 }
 
 // Helper: pull all text= and content-desc= attributes from a uiautomator
@@ -277,16 +307,21 @@ function extractPrimeVideoTiles(xmlDump: string): CatalogTile[] {
       continue
     }
 
+    // v2.32.63 — capture embedded time BEFORE the strip loop runs.
+    // Prime Video upcoming tiles include "Today 7:30 PM" or just "7:30 PM"
+    // as a comma segment that the strip loop would otherwise consume.
+    const startTime = parseTileTime(t)
+
     // v2.31.6 — Strip trailing decoration suffixes from the title.
     // Prime Video tiles often have multi-segment trailers like
     //   "Foo Bar, LIVE, Free trial"
     //   "Foo Bar, LIVE, Subscribe"
-    //   "Foo Bar, UPCOMING"
+    //   "Foo Bar, UPCOMING, Today 7:30 PM"
     // Run the strip in a loop so multiple suffix segments come off cleanly.
     let cleanTitle = t
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 6; i++) {
       const stripped = cleanTitle.replace(
-        /,?\s*(LIVE|LIVE NOW|UPCOMING|Free trial|Subscribe|Watch now)\s*$/i,
+        /,?\s*(LIVE|LIVE NOW|UPCOMING|Free trial|Subscribe|Watch now|Today|Tomorrow|\d{1,2}:\d{2}\s*(?:AM|PM)(?:\s*ET|\s*PT|\s*CT)?)\s*$/i,
         ''
       ).trim()
       if (stripped === cleanTitle) break
@@ -302,6 +337,7 @@ function extractPrimeVideoTiles(xmlDump: string): CatalogTile[] {
       contentTitle: cleanTitle,
       isLive: liveTag,
       sportTag: inferSportTag(cleanTitle, lastSportRow),
+      startTime,
     })
   }
 
@@ -345,10 +381,11 @@ function extractEspnTiles(xmlDump: string): CatalogTile[] {
       sportTag = inferSportTag(commaParts[commaParts.length - 2], commaParts[commaParts.length - 2])
       isLive = true
     }
-    // Pattern B: bullet-separated text — "Title NETWORK • Sport Live"
+    // Pattern B: bullet-separated text — "Title NETWORK • Sport • 7:30 PM"
     else if (/ • /.test(t)) {
-      const beforeBullet = t.split(' • ')[0]
-      const afterBullet = t.split(' • ')[1]
+      const parts = t.split(' • ')
+      const beforeBullet = parts[0]
+      const afterBullet = parts[1]
       // Strip trailing network token from title (last word: ESPN, ESPN2, ESPN+, etc.)
       title = beforeBullet.replace(/\s+(ESPN\+?|ESPN2|ABC|SEC Network|ACC Network|Big Ten Network|FS1|FS2)\s*$/, '').trim()
       sportTag = inferSportTag(afterBullet || '', afterBullet || '')
@@ -361,7 +398,12 @@ function extractEspnTiles(xmlDump: string): CatalogTile[] {
     const key = title.toLowerCase()
     if (seen.has(key)) continue
     seen.add(key)
-    tiles.push({ contentTitle: title, isLive, sportTag })
+    // v2.32.63 — capture game start time when the tile text contains a
+    // "H:MM AM/PM" token (ESPN renders upcoming games with the time in
+    // the third bullet segment). The full raw line is searched so the
+    // regex picks up the time wherever ESPN puts it.
+    const startTime = parseTileTime(t)
+    tiles.push({ contentTitle: title, isLive, sportTag, startTime })
   }
   return tiles
 }
@@ -590,6 +632,7 @@ async function walkOneApp(
           isLive: !!t.isLive,
           sportTag: t.sportTag ?? undefined,
           deepLink: t.deepLink ?? undefined,
+          startTime: t.startTime ?? undefined,
         })),
       }),
     })
