@@ -229,15 +229,41 @@ async function getGPUMetrics(): Promise<SystemMetrics['gpu']> {
     throw new Error('GPU metrics not available')
   }
 
-  let snap: { engines?: Record<string, { busy?: number }> }
+  let snap: {
+    engines?: Record<string, { busy?: number }>
+    frequency?: { actual?: number; requested?: number }
+  }
   try {
     snap = JSON.parse(match[0])
   } catch {
     throw new Error('GPU metrics not available')
   }
 
-  const renderBusy = snap.engines?.['Render/3D']?.busy ?? 0
-  const usage = Math.max(0, Math.min(100, Math.round(renderBusy)))
+  // v2.32.66 — engine busy% is unreliable on Iris Xe Raptor Lake-P:
+  // intel_gpu_top's 'Render/3D'/'Blitter'/'Video'/'VideoEnhance' fields
+  // all return 0% even during heavy SYCL compute (verified at Holmgren
+  // running llama3.1:8b at 11.5 tok/s — engines all 0, freq pinned at
+  // 1495 MHz). The kernel doesn't expose the Compute Command Streamer
+  // (CCS) engine via the legacy i915 perf interface that intel_gpu_top
+  // uses on Ubuntu 24.04, even with cap_sys_admin. Frequency, however,
+  // is reliable: idle ~150 MHz, working ~1500 MHz on this part.
+  //
+  // Fall back to frequency-based usage heuristic when engine busy% is
+  // 0 but frequency suggests work: percent of (actual / boost_max).
+  // The Iris Xe Raptor Lake-P boost ceiling is ~1500 MHz; we use 1500
+  // as the divisor so freq at boost reads as 100%. Engines field still
+  // wins when present and non-zero (covers future kernels/hardware
+  // that DO expose CCS busy%).
+  const engineMax = Math.max(
+    snap.engines?.['Render/3D']?.busy ?? 0,
+    snap.engines?.['Blitter']?.busy ?? 0,
+    snap.engines?.['Video']?.busy ?? 0,
+    snap.engines?.['VideoEnhance']?.busy ?? 0,
+  )
+  const freqActual = snap.frequency?.actual ?? 0
+  const IGPU_BOOST_MHZ = 1500 // Iris Xe Raptor Lake-P max
+  const freqUsage = Math.max(0, Math.min(100, Math.round((freqActual / IGPU_BOOST_MHZ) * 100)))
+  const usage = engineMax > 1 ? Math.max(0, Math.min(100, Math.round(engineMax))) : freqUsage
 
   // Ollama footprint via /api/ps (loaded model size). 800ms timeout — if
   // Ollama is unreachable, used=0 and the widget shows the iGPU as idle.
