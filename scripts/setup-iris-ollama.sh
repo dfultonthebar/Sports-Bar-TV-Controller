@@ -36,10 +36,41 @@ if ! command -v clinfo >/dev/null 2>&1; then
     sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends clinfo
 fi
 
+# v2.32.67 — if clinfo doesn't see an Intel platform, the Intel level-zero
+# userspace drivers may just be missing (fleet locations have the chip but
+# not the userspace stack). Detect via lspci first; if Intel hardware is
+# present, install the Intel apt repo + drivers BEFORE failing on clinfo.
 if ! clinfo -l 2>/dev/null | grep -qiE "intel.*(graphics|iris|arc|xe)"; then
-    fail "No Intel iGPU detected via clinfo. This script targets Intel Iris Xe / Arc iGPUs.
-       Verify with: clinfo -l
-       If this is an AMD or Nvidia box, do not run this script."
+    log "clinfo doesn't see Intel — checking lspci for the chip"
+    if lspci 2>/dev/null | grep -qiE "intel.*(graphics|iris|raptor|xe)"; then
+        log "Intel iGPU chip present per lspci. Installing Intel level-zero userspace stack."
+        # Install Intel GPU apt repo if not already configured
+        if [ ! -f /etc/apt/sources.list.d/intel-gpu.list ]; then
+            log "Adding Intel GPU apt repo"
+            sudo install -d /usr/share/keyrings
+            wget -qO- https://repositories.intel.com/gpu/intel-graphics.key \
+                | sudo gpg --yes --dearmor --output /usr/share/keyrings/intel-graphics.gpg
+            echo 'deb [arch=amd64 signed-by=/usr/share/keyrings/intel-graphics.gpg] https://repositories.intel.com/gpu/ubuntu noble client' \
+                | sudo tee /etc/apt/sources.list.d/intel-gpu.list >/dev/null
+            sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
+        fi
+        log "Installing intel-level-zero-gpu, intel-opencl-icd, libze1, libigc1"
+        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            intel-level-zero-gpu intel-opencl-icd libze1 libigc1
+        # Re-test clinfo
+        if ! clinfo -l 2>/dev/null | grep -qiE "intel.*(graphics|iris|arc|xe)"; then
+            fail "Intel userspace installed but clinfo still doesn't see iGPU.
+       /dev/dri/ contents:
+$(ls /dev/dri/ 2>/dev/null)
+       Common cause: kernel module not bound. Try: sudo modprobe i915
+       If that fails, this box may need a kernel update or BIOS check.
+       For now, this location stays on CPU-only Ollama (no harm done)."
+        fi
+    else
+        fail "No Intel iGPU detected via clinfo or lspci. This script targets
+       Intel Iris Xe / Arc iGPUs. If this is an AMD or Nvidia box, do not
+       run this script. Verify with: lspci | grep -iE 'vga|3d|display'"
+    fi
 fi
 log "Intel iGPU detected"
 
