@@ -43,6 +43,20 @@ if ! clinfo -l 2>/dev/null | grep -qiE "intel.*(graphics|iris|arc|xe)"; then
 fi
 log "Intel iGPU detected"
 
+# --- 1b. Install intel-gpu-tools + grant cap_perfmon. Powers the GPU meter
+# in the System Admin Hub at v2.32.59+ (read by /api/system/metrics).
+# Harmless if already installed.
+if ! command -v intel_gpu_top >/dev/null 2>&1; then
+    log "Installing intel-gpu-tools (provides intel_gpu_top for the GPU meter)"
+    sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends intel-gpu-tools
+fi
+# CAP_PERFMON lets the Next.js (ubuntu) user run intel_gpu_top without sudo.
+# Requires Linux 5.8+; sports-bar boxes are on 6.8 so this is fine.
+if [ -x /usr/bin/intel_gpu_top ] && ! getcap /usr/bin/intel_gpu_top 2>/dev/null | grep -q cap_perfmon; then
+    log "Granting cap_perfmon to /usr/bin/intel_gpu_top (lets the API run it as ubuntu)"
+    sudo setcap cap_perfmon=ep /usr/bin/intel_gpu_top
+fi
+
 # --- 2. Ensure ubuntu user is in render+video groups ---
 for grp in render video; do
     if ! id -nG ubuntu | tr ' ' '\n' | grep -qx "$grp"; then

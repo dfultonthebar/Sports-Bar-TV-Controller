@@ -187,6 +187,36 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.59 — System Admin GPU meter wired to Intel Iris Xe via intel_gpu_top
+**Released:** 2026-05-07
+
+The "GPU Usage" gauge on the System Admin → Power tab now surfaces real Intel iGPU load + Ollama model footprint at locations running the IPEX-LLM Ollama stack. Previously the gauge said "No GPU" because `/api/system/metrics`'s `getGPUMetrics()` only knew about NVIDIA (`nvidia-smi`). The route now tries NVIDIA first, falls back to `intel_gpu_top -J` for Intel, and reports loaded Ollama model size as iGPU memory in use (via `/api/ps`).
+
+**Changes:**
+- `apps/web/src/app/api/system/metrics/route.ts` — extended `getGPUMetrics()` with the Intel iGPU path. Fetches one JSON snapshot from `intel_gpu_top -J -s 500` (timeout 1500ms), parses `engines["Render/3D"].busy` for usage, fetches Ollama `/api/ps` for loaded model size. No new endpoint, no new component — the existing System Resource Monitor widget renders the data automatically.
+- `scripts/setup-iris-ollama.sh` — now also installs `intel-gpu-tools` and grants `cap_perfmon=ep` to `/usr/bin/intel_gpu_top` so it runs as the Next.js (ubuntu) user without sudo.
+
+**Required Manual Step:** Re-run `bash scripts/setup-iris-ollama.sh` at any location that ran the v2.32.57 version of the script. Idempotent — only installs/setcaps if missing.
+
+**Verification:**
+```bash
+# 1. Confirm intel_gpu_top runs as ubuntu (no sudo) — should print JSON
+timeout 2 intel_gpu_top -J -s 500 | head -3
+
+# 2. Hit the metrics endpoint — gpu.usage should be 0-100, gpu.memory.used > 0
+#    when an Ollama model is loaded
+curl -s http://localhost:3001/api/system/metrics | jq '.metrics.gpu'
+
+# 3. Open System Admin → Power tab in the browser. The fourth gauge
+#    ("GPU Usage") should show a number instead of "No GPU".
+```
+
+**Rollback:** `git revert` is clean — pure additive change (NVIDIA path unchanged, Intel is a fallback).
+
+**Hardware compat:** Ignores AMD/Nvidia-only boxes (NVIDIA path catches first). On boxes without `intel_gpu_top`, the function throws and the widget shows "No GPU" — same as before.
+
+---
+
 ### v2.32.58 — Bartender-remote bug-fix bundle: stale guide auto-refresh, Fire TV deep-link wiring, /api/ai/ in Nginx, WI RSN preset naming
 **Released:** 2026-05-07
 

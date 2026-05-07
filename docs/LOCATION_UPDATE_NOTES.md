@@ -46,6 +46,20 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-07 — v2.32.59 — Intel iGPU GPU meter wired via intel_gpu_top
+
+**Risk:** GO — pure additive change to `apps/web/src/app/api/system/metrics/route.ts`. The NVIDIA path is unchanged; Intel is a fallback that activates only when `nvidia-smi` is absent AND `intel_gpu_top` is installed + has `cap_perfmon`. On a location without either, behavior is identical to v2.32.58. `setup-iris-ollama.sh` updated to install + setcap on re-run.
+
+**What changed:** `getGPUMetrics()` extended for Intel; setup script installs `intel-gpu-tools` + grants capability.
+
+**What could break:** Nothing on auto-update — the new code path only fires after the operator runs `setup-iris-ollama.sh` (which installs `intel_gpu_top`). Until then the function throws "GPU metrics not available" and the widget says "No GPU" same as before.
+
+**Affected:** `apps/web/src/app/api/system/metrics/route.ts`, `scripts/setup-iris-ollama.sh`, `package.json`, `docs/VERSION_SETUP_GUIDE.md`, `docs/LOCATION_UPDATE_NOTES.md`.
+
+**Rollback:** `git revert` is clean.
+
+---
+
 ### 2026-05-07 — v2.32.58 — Bartender remote fix bundle (stale guide / deep-link wiring / Shift Brief / WI RSN preset)
 
 **Risk:** GO — four small bartender-remote fixes batched. The auto-update merges files only; no schema, no data, no migration. Two changes need a one-time per-location action AFTER auto-update lands (re-run setup-bartender-nginx.sh; rename WI RSN preset if applicable). See VERSION_SETUP_GUIDE.md v2.32.58 entry for the full per-location table + commands.
