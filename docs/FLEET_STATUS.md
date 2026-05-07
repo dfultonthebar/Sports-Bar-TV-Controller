@@ -11,11 +11,13 @@ A snapshot of where each location stands. Update this file after every fleet-wid
 | Location | Branch | OS | Software ver | Bartender proxy | AI Suggest backend | iGPU acceleration | Notes |
 |---|---|---|---|---|---|---|---|
 | holmgren-way | `location/holmgren-way` | noble (24.04) | v2.32.69 | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | Reference deployment |
-| graystone | `location/graystone` | jammy (22.04) | v2.32.69 | Nginx | upstream Ollama (CPU) | ❌ skipped | `/dev/dri/` empty — kernel module not bound. OS upgrade should fix. |
-| greenville | `location/stoneyard-greenville` | jammy (22.04) | v2.32.69 | Nginx | upstream Ollama (CPU) | ❌ apt blocked | Intel apt repo dep mismatch on jammy. v2.32.70 fixes via per-codename repo line. |
+| graystone | `location/graystone` | jammy (22.04) | v2.32.69 | Nginx | upstream Ollama (CPU) | ⏳ awaiting OS upgrade | `/dev/dri/` empty + jammy apt issues. Plan: jammy → noble per `OS_UPGRADE_RUNBOOK.md`. |
+| greenville | `location/stoneyard-greenville` | jammy (22.04) | v2.32.69 | Nginx | upstream Ollama (CPU) | ⏳ awaiting OS upgrade | Same plan — OS upgrade clears the Intel apt dep mismatch. |
 | leglamp | `location/leg-lamp` | noble (24.04) | v2.32.69 | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | First fleet iGPU success today |
 | lucky-s-1313 | `location/lucky-s-1313` | noble (24.04) | v2.32.69 | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | |
-| stoneyard-appleton | `location/stoneyard-appleton` | jammy (22.04) | v2.32.69 | Nginx | upstream Ollama (CPU) | ⏳ pending v2.32.70 | Should activate after re-running setup-iris-ollama.sh post-v2.32.70 merge |
+| stoneyard-appleton | `location/stoneyard-appleton` | jammy (22.04) | v2.32.69 | Nginx | upstream Ollama (CPU) | ⏳ awaiting OS upgrade | Same plan — OS upgrade. |
+
+**Decision (2026-05-07):** rather than work around the jammy Intel apt repo limitations and the kernel-module-not-bound case at graystone, the three jammy locations will be brought up to noble via `docs/OS_UPGRADE_RUNBOOK.md`. Cleaner long-term — the noble path is the only one that's actually been proven stable across the fleet (Holmgren / leglamp / luckys all working on noble), and the OS upgrade also extends LTS support from April 2027 to April 2029. Until each location is upgraded, AI Suggest runs on CPU there (slower, ~200-300s per call, but Nginx 300s timeout accommodates it; bartender experience is functional, not great).
 
 **Aggregate health (5 of 6 venues working as designed; 1 needs OS upgrade for full iGPU):**
 - 6/6: bartender remote on Nginx ✓
@@ -75,11 +77,7 @@ Audio processor and matrix details live in each location's `.claude/locations/<b
 
 ## Outstanding work
 
-1. **graystone iGPU enablement** — `/dev/dri/` empty even after Intel userspace install. Needs operator-side `sudo modprobe i915` + `dmesg | grep i915` investigation. May need BIOS check (integrated graphics enabled?) or kernel update. The OS upgrade in `docs/OS_UPGRADE_RUNBOOK.md` should fix this since the noble kernel binds i915 properly out of the box.
-
-2. **greenville + appleton iGPU enablement** — Once v2.32.70's per-codename Intel apt repo lands at these jammy locations (auto-update on next cron, or manual run), re-running `bash scripts/setup-iris-ollama.sh` should bring iGPU online without an OS upgrade. They are 22.04 boxes that the new script line targets correctly.
-
-3. **OS upgrade plan for the 3 jammy locations** — `docs/OS_UPGRADE_RUNBOOK.md` is the runbook. Recommended order: graystone → appleton → greenville. Schedule one location per week during slow hours.
+1. **OS upgrade for the 3 jammy locations (graystone, greenville, appleton)** — Single coherent path forward per the 2026-05-07 decision. Runbook: `docs/OS_UPGRADE_RUNBOOK.md`. Recommended order: graystone → appleton → greenville (lowest traffic first; greenville is the busiest of the three). Schedule one location per week during slow hours. Each location: ~45-60 min hands-on + reboot. Post-upgrade: re-run `bash scripts/setup-iris-ollama.sh` (now jammy-aware in v2.32.70 but the noble path is the proven one). Status tracker is at the bottom of `OS_UPGRADE_RUNBOOK.md` — fill in dates as each one completes.
 
 4. **Per-event Fire TV deep links** — v2.32.58 wired the `deepLink` field through to the Watch button, but the walker (v2.32.63) only captures titles + times, not per-event URLs. ESPN's eventId isn't in uiautomator dumps; would need an integration with ESPN's public scoreboard API to construct deep links from titles. Deferred — separate work item.
 
