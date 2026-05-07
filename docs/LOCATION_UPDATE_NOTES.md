@@ -46,6 +46,38 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-07 — v2.32.70 — Per-codename Intel apt repo (jammy + noble support)
+
+**Risk:** GO — script-only change to `setup-iris-ollama.sh`. Auto-update merges the file; iGPU enablement isn't auto-triggered. Operators re-run the script when they want iGPU at their location. Docs catch-up included covering v2.32.65–v2.32.70 in VERSION_SETUP_GUIDE.md.
+
+**What changed:** `scripts/setup-iris-ollama.sh` reads `lsb_release -cs` and writes the matching Intel apt repo line (jammy or noble). Earlier hardcoded `noble` broke installs at the 3 jammy fleet boxes (graystone/greenville/appleton — libc6 dep mismatch).
+
+**What could break:** Nothing on auto-update — it's a script file. Locations on unsupported codenames (older than jammy, future ones not yet supported) get a warning and fall back to noble.
+
+**Affected:** `scripts/setup-iris-ollama.sh`, `package.json`, `docs/VERSION_SETUP_GUIDE.md`, `docs/LOCATION_UPDATE_NOTES.md`.
+
+**Rollback:** `git revert` clean.
+
+---
+
+### 2026-05-07 — v2.32.65 through v2.32.69 — iGPU rapid-fire fixes (catch-up)
+
+Six versions, two hours, all targeting the iGPU enablement story. Each one fixed a specific failure mode found during the fleet rollout. All shipped with code changes; doc entries added retroactively in v2.32.70's commit.
+
+| Ver | Fix |
+|---|---|
+| v2.32.65 | Revert qwen2.5:14b → llama3.1:8b (qwen2 not SYCL-supported); env-overridable |
+| v2.32.66 | GPU meter freq fallback (engine busy% always 0 on Iris Xe via i915 perf) |
+| v2.32.67 | setup-iris-ollama installs Intel level-zero userspace when missing; modprobe i915/xe if /dev/dri empty |
+| v2.32.68 | Broadened Intel chip detection regex (matches `Device a7a0` unnamed PCI entries) |
+| v2.32.69 | Group-add before clinfo gate + extended Intel package list (intel-igc-cm/libdrm-intel1/libigdfcl1/libigdgmm12) + reinstall intel-opencl-icd if .so missing |
+
+See VERSION_SETUP_GUIDE.md → v2.32.65–v2.32.70 entry for full per-version detail.
+
+**Rollback:** Each is `git revert`-clean independently.
+
+---
+
 ### 2026-05-07 — v2.32.63 — Walker extracts game start times from Fire TV tiles
 
 **Risk:** GO — additive walker change + new nullable schema column. Drizzle-kit push handles it. Existing rows have `startTime=NULL` and behavior is unchanged for them. Any new tile capture (next walker tick, 15 min) populates the column where the regex matches.
