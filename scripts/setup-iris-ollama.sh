@@ -42,7 +42,13 @@ fi
 # present, install the Intel apt repo + drivers BEFORE failing on clinfo.
 if ! clinfo -l 2>/dev/null | grep -qiE "intel.*(graphics|iris|arc|xe)"; then
     log "clinfo doesn't see Intel — checking lspci for the chip"
-    if lspci 2>/dev/null | grep -qiE "intel.*(graphics|iris|raptor|xe)"; then
+    # v2.32.68 — match ANY Intel VGA/3D/Display controller. Newer Raptor
+    # Lake-P chips (PCI device id a7a0) show up as "Intel Corporation
+    # Device a7a0" when the PCI ID database is older than the chip; the
+    # generic "intel corporation" match in a VGA/3D/Display line covers
+    # both the named "Iris Xe Graphics" line and the unnamed "Device
+    # a7a0" line.
+    if lspci 2>/dev/null | grep -iE 'vga|3d|display' | grep -qi 'intel corporation'; then
         log "Intel iGPU chip present per lspci. Installing Intel level-zero userspace stack."
         # Install Intel GPU apt repo if not already configured
         if [ ! -f /etc/apt/sources.list.d/intel-gpu.list ]; then
@@ -57,14 +63,32 @@ if ! clinfo -l 2>/dev/null | grep -qiE "intel.*(graphics|iris|arc|xe)"; then
         log "Installing intel-level-zero-gpu, intel-opencl-icd, libze1, libigc1"
         sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             intel-level-zero-gpu intel-opencl-icd libze1 libigc1
+        # If /dev/dri/ is empty (kernel module not bound), try to load i915.
+        # Without /dev/dri/renderD128 the userspace can't see the device
+        # regardless of how many libraries are installed.
+        if [ -z "$(ls -A /dev/dri/ 2>/dev/null)" ]; then
+            log "/dev/dri/ is empty — trying modprobe i915"
+            sudo modprobe i915 2>&1 | head -3 || true
+            sleep 2
+            if [ -z "$(ls -A /dev/dri/ 2>/dev/null)" ]; then
+                # Last resort: try the newer xe driver
+                log "i915 didn't populate /dev/dri/ — trying xe driver"
+                sudo modprobe xe 2>&1 | head -3 || true
+                sleep 2
+            fi
+        fi
         # Re-test clinfo
         if ! clinfo -l 2>/dev/null | grep -qiE "intel.*(graphics|iris|arc|xe)"; then
             fail "Intel userspace installed but clinfo still doesn't see iGPU.
        /dev/dri/ contents:
-$(ls /dev/dri/ 2>/dev/null)
-       Common cause: kernel module not bound. Try: sudo modprobe i915
-       If that fails, this box may need a kernel update or BIOS check.
-       For now, this location stays on CPU-only Ollama (no harm done)."
+$(ls /dev/dri/ 2>/dev/null || echo '<empty>')
+       Common causes: i915/xe kernel module not loaded, or BIOS has integrated
+       graphics disabled. Try:
+         sudo modprobe i915      # or 'xe' on newer kernels
+         dmesg | tail -50        # look for i915/xe errors
+         sudo update-grub        # if module load fails
+       Then reboot. Once /dev/dri/renderD128 exists, re-run this script.
+       Until then, this location stays on CPU-only Ollama (harmless)."
         fi
     else
         fail "No Intel iGPU detected via clinfo or lspci. This script targets
