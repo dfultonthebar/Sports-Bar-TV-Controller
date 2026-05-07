@@ -248,8 +248,14 @@ async function getGPUMetrics(): Promise<SystemMetrics['gpu']> {
     })
     if (r.ok) {
       const ps = await r.json() as { models?: Array<{ size?: number; size_vram?: number }> }
+      // size_vram is what proper-VRAM GPUs report; IPEX-LLM SYCL Ollama
+      // returns 0 for size_vram even when the model is running on the
+      // iGPU (the fork is on Ollama 0.16.2 which predates correct SYCL
+      // VRAM reporting). Prefer size_vram only when it's > 0; otherwise
+      // use total size, which is the model footprint regardless of
+      // CPU/GPU split. Either way the widget shows "X GB loaded".
       memoryUsed = (ps.models ?? []).reduce(
-        (sum, m) => sum + (m.size_vram ?? m.size ?? 0),
+        (sum, m) => sum + ((m.size_vram && m.size_vram > 0) ? m.size_vram : (m.size ?? 0)),
         0,
       )
     }
