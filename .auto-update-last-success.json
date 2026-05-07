@@ -1,23 +1,23 @@
 {
-  "version": "2.32.53",
+  "version": "2.32.65",
   "branch": "location/stoneyard-appleton",
-  "commitSha": "12e25ff02f4f777946f0f1d288920d03696c9b4e",
-  "successAt": "2026-05-06T20:40:30Z",
-  "successAtUnix": 1778100030,
-  "runId": "auto-update-2026-05-06-20-38",
-  "verifyInstall": {"status":"PASS","passed":7,"total":7,"durationSecs":2,"failed":[],"layers":[{"name":"pm2_online","passed":true,"detail":"status=online restart_time=63"},{"name":"health_http","passed":true,"detail":"status=healthy"},{"name":"metrics_http","passed":true,"detail":"cores=20"},{"name":"bartender_proxy","passed":true,"detail":"http=302"},{"name":"critical_tables","passed":true,"detail":"presets=120 aliases=45 directv=0 firetv=3"},{"name":"matrix_config","passed":true,"detail":"multi-card WP-36X36 offset=0"},{"name":"crash_logs","passed":true,"detail":"clean"}]},
+  "commitSha": "4f325e9837c24bab44b4932754b09024490a06bc",
+  "successAt": "2026-05-07T20:01:33Z",
+  "successAtUnix": 1778184093,
+  "runId": "auto-update-2026-05-07-19-59",
+  "verifyInstall": {"status":"PASS","passed":7,"total":7,"durationSecs":2,"failed":[],"layers":[{"name":"pm2_online","passed":true,"detail":"status=online restart_time=64"},{"name":"health_http","passed":true,"detail":"status=healthy"},{"name":"metrics_http","passed":true,"detail":"cores=20"},{"name":"bartender_proxy","passed":true,"detail":"http=302"},{"name":"critical_tables","passed":true,"detail":"presets=122 aliases=45 directv=0 firetv=3"},{"name":"matrix_config","passed":true,"detail":"multi-card WP-36X36 offset=0"},{"name":"crash_logs","passed":true,"detail":"clean"}]},
   "configChecksums": {
     ".env": "063b4fcbd0a8dddd",
     "apps/web/data/tv-layout.json": "e6dcf0b487c0c16b",
     "apps/web/data/station-aliases-local.json": "995e7908f42e8164",
-    "apps/web/src/lib/hardware-config.ts": "4ee23bba7b75895b"
+    "apps/web/src/lib/hardware-config.ts": "acbada4028b8ef88"
   },
   "dbRowCounts": {
     "Location": 1,
     "AuthPin": 2,
     "MatrixConfiguration": 1,
     "HomeTeam": 0,
-    "ChannelPreset": 120,
+    "ChannelPreset": 122,
     "station_aliases": 45
   },
   "heartbeatSchemaVersion": 2
