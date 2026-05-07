@@ -620,15 +620,25 @@ export async function queryWolfpackRouteState(
   // Wolf Pack firmware quirk: the first o2ox query after login + index.php
   // often returns 65535 (0xFFFF) for one or more outputs — especially output 1.
   // This is NOT from a route change; it's the firmware's "session init" settling.
-  // Re-query after a brief delay to get the real state.
-  const hasSentinels = rawArray.some(v => v === 65535)
-  if (hasSentinels) {
-    const sentinelOutputs = rawArray
-      .map((v, i) => (v === 65535 ? i + 1 : -1))
-      .filter(i => i > 0)
-    logger.info(`[WOLFPACK-HTTP] Initial query has 0xFFFF sentinel(s) at output(s) ${sentinelOutputs.join(',')} — re-querying after 600ms settle`)
+  // Retry with backoff: a single 600ms re-query covers the common settling
+  // window, but Holmgren has reproduced cases where the firmware stays stuck
+  // 2-3s. Up to 3 retries (600ms, 1.2s, 2.4s, total ~4.2s worst case)
+  // catches all observed cases without forcing the DB-fallback path. After
+  // the last retry, any remaining sentinel falls through to the existing
+  // 65535→-1 normalization and DB fallback in /api/matrix/routes.
+  const RETRY_DELAYS_MS = [600, 1200, 2400]
+  for (let attempt = 0; attempt < RETRY_DELAYS_MS.length; attempt++) {
+    if (!rawArray.some(v => v === 65535)) break
 
-    await new Promise(resolve => setTimeout(resolve, 600))
+    const delay = RETRY_DELAYS_MS[attempt]
+    if (attempt === 0) {
+      const sentinelOutputs = rawArray
+        .map((v, i) => (v === 65535 ? i + 1 : -1))
+        .filter(i => i > 0)
+      logger.info(`[WOLFPACK-HTTP] Initial query has 0xFFFF sentinel(s) at output(s) ${sentinelOutputs.join(',')} — re-querying with backoff (up to ${RETRY_DELAYS_MS.reduce((a, b) => a + b, 0)}ms)`)
+    }
+
+    await new Promise(resolve => setTimeout(resolve, delay))
 
     const retryResponse = await httpRequest({
       hostname: config.ipAddress,
@@ -642,14 +652,16 @@ export async function queryWolfpackRouteState(
       if (Array.isArray(retryArray) && retryArray.every(v => typeof v === 'number')) {
         rawArray = retryArray
         const stillSentinel = rawArray.filter(v => v === 65535).length
-        if (stillSentinel > 0) {
-          logger.warn(`[WOLFPACK-HTTP] Re-query still has ${stillSentinel} sentinel(s) — firmware may be hung`)
-        } else {
-          logger.info(`[WOLFPACK-HTTP] Re-query cleared all sentinels`)
+        if (stillSentinel === 0) {
+          logger.info(`[WOLFPACK-HTTP] Sentinels cleared after attempt ${attempt + 1} (${delay}ms)`)
+          break
+        }
+        if (attempt === RETRY_DELAYS_MS.length - 1) {
+          logger.warn(`[WOLFPACK-HTTP] ${stillSentinel} sentinel(s) persist after ${RETRY_DELAYS_MS.length} retries — falling through to DB fallback`)
         }
       }
     } catch {
-      logger.warn(`[WOLFPACK-HTTP] Re-query returned non-JSON, using initial result`)
+      logger.warn(`[WOLFPACK-HTTP] Retry ${attempt + 1} returned non-JSON, continuing`)
     }
   }
 

@@ -46,6 +46,20 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-07 — v2.32.56 — Wolf Pack route-state retry backoff (residual TV 1 flicker)
+
+**Risk:** GO — pure retry-tuning in `queryWolfpackRouteState` at `packages/wolfpack/src/wolfpack-matrix-service.ts`. v2.32.55 fixed the toggle-off path; v2.32.56 addresses the residual UI flicker the Holmgren bartender reported afterwards.
+
+**What changed:** Sentinel re-query escalated from a single 600ms attempt to up to 3 attempts at 600ms / 1.2s / 2.4s (cumulative ~4.2s worst case). Loop exits early as soon as the array is sentinel-free. After the last attempt, any remaining sentinel still falls through to the existing 65535→-1 normalization + `MatrixRoute` DB fallback in `/api/matrix/routes`. Non-sentinel paths are unchanged.
+
+**What could break:** A cache-cold `/api/matrix/routes` query against a stuck-firmware Wolf Pack now waits up to 4.2s instead of ~1s. The 30s server-side cache absorbs the cost — only the first query per cache window sees the latency; bartender polls thereafter hit cache. The v2.32.55 `sendHTTPCommand` pre-check uses an independent inline 600ms re-query (not this loop) and is unaffected.
+
+**Affected:** `packages/wolfpack/src/wolfpack-matrix-service.ts`, `package.json`, `docs/VERSION_SETUP_GUIDE.md`, `docs/LOCATION_UPDATE_NOTES.md`.
+
+**Rollback:** `git revert` is clean.
+
+---
+
 ### 2026-05-07 — v2.32.55 — Wolf Pack pre-check 0xFFFF sentinel fix (TV 1 toggle-off bug)
 
 **Risk:** GO — bug fix in `packages/wolfpack/src/wolfpack-matrix-service.ts`. Holmgren-reported symptom: every Video-tab open at the bartender remote silently knocked TV 1 off its route. Diagnosed as the firmware's session-init sentinel (0xFFFF) leaking past the toggle-prevention pre-check in `sendHTTPCommand`. Fix mirrors the settle+requery pattern already in `queryWolfpackRouteState`. No schema, no data, no env, no UI change.
