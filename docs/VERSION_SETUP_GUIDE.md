@@ -187,6 +187,30 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.54 — Bartender remote: hide Audio tab when no audio processor configured
+**Released:** 2026-05-07
+
+Leg Lamp is the only fleet location without DSP — `AudioProcessor` table is empty there. The bartender remote was still rendering the Audio tab in the bottom tab bar, leading to a dead button that opened an empty panel.
+
+**Changes:**
+- `apps/web/src/app/remote/page.tsx` — Audio tab button now wrapped in `{audioProcessorIp && (...)}` conditional, matching the existing pattern used for the Audio panel itself. Component already loads `audioProcessorIp` from `/api/audio-processor` and sets to `''` when no processor exists, so the gate is free.
+
+**Required Manual Step:** None. Pure UI conditional — locations with an `AudioProcessor` row are unaffected; locations without one stop seeing the dead tab.
+
+**Verification:**
+```bash
+# At a location WITHOUT a DSP (Leg Lamp):
+sqlite3 /home/ubuntu/sports-bar-data/production.db "SELECT COUNT(*) FROM AudioProcessor;"   # 0
+curl -s http://localhost:3001/remote | grep -c '>Audio<'   # 0 (was 1)
+
+# At a location WITH a DSP (Stoneyards / Holmgren / Lucky's):
+curl -s http://localhost:3001/remote | grep -c '>Audio<'   # 1 (unchanged)
+```
+
+**Rollback:** `git revert` is clean — single conditional change, no schema, no data.
+
+---
+
 ### v2.32.53 — install.sh + ollama-setup.sh simplify pass
 **Released:** 2026-05-06
 
