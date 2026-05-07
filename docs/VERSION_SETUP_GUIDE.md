@@ -187,6 +187,64 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.57 — Fleet-standardize on Nginx bartender proxy + Iris Xe iGPU Ollama
+**Released:** 2026-05-07
+
+Two new one-time setup scripts ship with this release. Each location operator should run them in order on the production box. Auto-update will NOT execute them (system-level changes — too high blast radius for cron).
+
+**Script 1 — `scripts/setup-bartender-nginx.sh`:**
+Installs Nginx as the bartender-remote reverse proxy on port 3002, with the canonical allow-list (admin pages return 403) and a 300s `proxy_read_timeout` for `/api/scheduling/` so AI Suggest's Ollama call doesn't 504. Replaces the legacy Node `apps/web/bartender-proxy.js` PM2 app (script does `pm2 delete bartender-proxy && pm2 save`). Holmgren has been on Nginx since deployment; the other 5 locations migrate via this script.
+
+**Script 2 — `scripts/setup-iris-ollama.sh`:**
+Installs IPEX-LLM's Ollama portable build (Intel Iris Xe iGPU SYCL backend) as `ollama-ipex.service`, disables the upstream CPU-only `ollama` systemd unit. ~14 tok/s on llama3.1:8b vs ~3 tok/s CPU. Reuses existing models at `/usr/share/ollama/.ollama/models/` — no re-pull. Verifies via journal grep for "using Intel GPU".
+
+**Per-location run order:**
+
+| Branch | Notes |
+|---|---|
+| `location/holmgren-way` | Already migrated 2026-05-07 by hand. Re-running scripts is idempotent and will verify. |
+| `location/graystone` | Both scripts to run. Confirm intel iGPU first: `clinfo -l` |
+| `location/stoneyard-greenville` | Both scripts to run. |
+| `location/leg-lamp` | Both scripts to run. Already on `nvm`-managed PM2 — `pm2 delete bartender-proxy` may need `bash -lc` wrapper. |
+| `location/lucky-s-1313` | Both scripts to run. |
+| `location/stoneyard-appleton` | Both scripts to run. |
+
+**Required Manual Step:** Yes (per-location operator).
+```bash
+cd /home/ubuntu/Sports-Bar-TV-Controller
+git pull   # or wait for auto-update
+bash scripts/setup-bartender-nginx.sh
+bash scripts/setup-iris-ollama.sh
+```
+
+**Verification (after running both):**
+```bash
+# Bartender proxy on Nginx:
+systemctl is-active nginx                          # active
+curl -s -o /dev/null -w '%{http_code}\n' \
+    http://127.0.0.1:3002/                         # 302
+pm2 list | grep bartender-proxy || echo "removed"  # removed
+
+# IPEX-LLM Ollama on Intel iGPU:
+systemctl is-active ollama-ipex                    # active
+systemctl is-enabled ollama 2>&1 | grep -q disabled || echo "old ollama still enabled"
+sudo journalctl -u ollama-ipex --since=5m | grep "using Intel GPU"   # one match
+
+# AI Suggest end-to-end (should return 200 in 90-120s):
+curl -s -o /dev/null -w '%{http_code} time=%{time_total}s\n' \
+    -m 240 http://127.0.0.1:3002/api/scheduling/ai-suggest
+```
+
+**Rollback:**
+- Bartender proxy: `sudo systemctl stop nginx; sudo systemctl disable nginx; pm2 start ecosystem.config.js --only bartender-proxy; pm2 save`
+- Ollama: `sudo systemctl stop ollama-ipex; sudo systemctl disable ollama-ipex; sudo systemctl enable --now ollama`
+
+Both rollbacks restore the previous behavior with no data loss (models stay at `/usr/share/ollama/.ollama/models`, Nginx config is idempotent).
+
+**Hardware compat note:** `setup-iris-ollama.sh` checks `clinfo` for an Intel platform and refuses to run on AMD or Nvidia hardware. If a future location has different hardware, that location stays on upstream Ollama until a different acceleration path is added.
+
+---
+
 ### v2.32.56 — Wolf Pack route-state retry backoff (eliminates TV 1 flicker on Video tab)
 **Released:** 2026-05-07
 

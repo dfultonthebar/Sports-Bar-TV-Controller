@@ -531,8 +531,10 @@ const result = await queryDocs({
 Consolidation complete (v2.4.0–v2.4.4). All admin UI lives at `/sports-guide-admin` with 8 tabs. Old URLs (`/sports-guide`, `/sports-guide-config`, `/ai-gameplan`, `/scheduling`) redirect via `next.config.js`. Bartender remote `/remote` is unaffected. **Do not reintroduce** the deleted API routes (full list in `docs/SPORTS_GUIDE_ADMIN_CONSOLIDATION.md`). Two routes look orphaned but ARE called by internal cron in `packages/scheduler/src/scheduler-service.ts` — keep: `/api/sports-guide/cleanup-old` and `/api/scheduling/live-status`.
 
 #### 9. AI Scheduling Intelligence
-**Components:** `pattern-analyzer.ts` (historical viewing → optimal channel assignment), `ai-suggest/route.ts` (Ollama llama3.1:8b, 90s timeout), per-location scheduling preferences, default source config, DJ mode (locks TVs during special events).
+**Components:** `pattern-analyzer.ts` (historical viewing → optimal channel assignment), `ai-suggest/route.ts` (Ollama llama3.1:8b, 300s timeout), per-location scheduling preferences, default source config, DJ mode (locks TVs during special events).
 **API:** `GET/POST /api/scheduling/preferences`, `GET /api/scheduling/suggestions`, `POST /api/scheduling/apply`.
+
+**Ollama runtime (fleet-standard at v2.32.57+):** Intel Iris Xe iGPU acceleration via the IPEX-LLM Ollama portable build (replaces the upstream CPU-only Ollama systemd service). Yields ~14 tok/s on `llama3.1:8b` Q4 (vs ~3 tok/s CPU on the same i9-13900HK class hardware) — AI Suggest goes from 3+ min to ~100s. Models live unchanged at `/usr/share/ollama/.ollama/models/` (the IPEX unit reads them via `OLLAMA_MODELS=/usr/share/ollama/.ollama/models` and group permissions). Standardized via `scripts/setup-iris-ollama.sh` — run once per location. Verify with `journalctl -u ollama-ipex | grep "using Intel GPU"`. Not all hardware qualifies — the script checks `clinfo` for an Intel platform and refuses on AMD/Nvidia boxes.
 
 **ESPN sync** runs from `apps/web/src/instrumentation.ts` on startup (30s delay) + every 60min. Covers MLB/NBA/NHL/NFL/CFB/MCBB/WCBB → `game_schedules` table (lowercase league labels). AI Game Monitor's `Schedule` row auto-creates on first use; populate `HomeTeam` table for home-team prioritization (Packers/Bucks/Brewers/Badgers).
 
@@ -668,7 +670,6 @@ See `.claude/locations/` for per-location details (device IPs, input maps, chann
 - **Buttons:** Generous padding, never icon-only without adequate tap area
 - **Text size:** `text-sm` minimum for interactive elements (not `text-xs`)
 - **Spacing:** `gap-2` minimum between tappable elements to prevent accidental taps
-- **Port 3002 (Nginx proxy):** Nginx reverse proxy on port 3002 forwards to the Next.js app on port 3001, but restricts access to bartender-facing routes only (e.g., `/remote`, `/api/` endpoints needed by the remote). Admin pages like `/device-config`, `/matrix`, `/system` are blocked at the proxy level so bartenders cannot access them.
-- **Bartender Proxy:** `apps/web/bartender-proxy.js` is a Node.js proxy alternative to Nginx for bartender route isolation
+- **Port 3002 (Nginx proxy — fleet-standard at v2.32.57+):** Nginx reverse proxy on port 3002 forwards to the Next.js app on port 3001 with a route allow-list (admin pages return 403). The `/api/scheduling/` block has `proxy_read_timeout 300s` so AI Suggest's Ollama call (90-200s on iGPU) doesn't 504. Standardized via `scripts/setup-bartender-nginx.sh` — run once per location. Replaced the previous Node `apps/web/bartender-proxy.js` PM2 app (still in `ecosystem.config.js` for backwards-compat at locations that haven't migrated yet; the setup script does `pm2 delete bartender-proxy && pm2 save` to remove it).
 - **Test viewport:** ~768px-1024px width for tablet layouts
 - **Music Tab:** Shows all playlists with artwork tiles, Now Playing displays album art

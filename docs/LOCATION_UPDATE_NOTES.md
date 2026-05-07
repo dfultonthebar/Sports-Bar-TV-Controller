@@ -46,6 +46,22 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-07 — v2.32.57 — Fleet-standardize bartender proxy (Nginx) + Ollama iGPU acceleration
+
+**Risk:** GO — no app code or schema changes. Two new shell scripts under `scripts/` (`setup-bartender-nginx.sh`, `setup-iris-ollama.sh`) capture the standardized setup that Holmgren has been running on. CLAUDE.md updated to reference them. **The scripts do NOT auto-execute.** Auto-update merges the files; operator decides when to run them.
+
+**What changed:** New scripts. CLAUDE.md updated. `package.json` bump. Doc entries.
+
+**What could break:** Nothing on auto-update — the files just land in `scripts/`. Locations are unaffected until an operator opts in. Holmgren already ran the equivalent manual setup; the scripts are idempotent there and re-running them just verifies.
+
+**Per-location follow-up (operator action, no rush):** Migrate each remaining location at their own pace. Recommended order: lucky-s-1313 → leg-lamp → graystone → greenville → appleton (smallest risk first). Each migration is ~10 min downtime on the bartender proxy + Ollama service. Run during slow hours.
+
+**Affected:** `scripts/setup-bartender-nginx.sh` (new), `scripts/setup-iris-ollama.sh` (new), `CLAUDE.md`, `package.json`, `docs/VERSION_SETUP_GUIDE.md`, `docs/LOCATION_UPDATE_NOTES.md`.
+
+**Rollback:** Scripts unaffect locations until run. If a script fails mid-run, see VERSION_SETUP_GUIDE.md rollback section for the relevant subsystem.
+
+---
+
 ### 2026-05-07 — v2.32.56 — Wolf Pack route-state retry backoff (residual TV 1 flicker)
 
 **Risk:** GO — pure retry-tuning in `queryWolfpackRouteState` at `packages/wolfpack/src/wolfpack-matrix-service.ts`. v2.32.55 fixed the toggle-off path; v2.32.56 addresses the residual UI flicker the Holmgren bartender reported afterwards.
