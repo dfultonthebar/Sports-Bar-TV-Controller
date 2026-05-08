@@ -187,6 +187,43 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.95 — Per-game deepLinks for ALL ESPN/Prime Video injection paths (Watch button bug from v2.32.94 verification gap)
+**Released:** 2026-05-08
+
+**No setup required.** Code-only fix.
+
+**What it fixes:** Live operator report from the bar — Watch button on Amazon 3 (Cube 3) put up the same PGA quad-view for every game clicked from the channel guide. The v2.32.94 ship verified the walker-injected path (1 path) but missed that the channel-guide route has TWO OTHER injection paths that build streaming-app channels without a per-game deepLink:
+
+1. **broadcast_networks fallback** (line ~842): pulls from `game_schedules`, walks broadcast_networks looking for a logged-in streaming app. Used a shared `appChannel` reference per app — every college-baseball/college-football ESPN+ game pointed at the SAME un-deeplinked channel.
+
+2. **Rail Media streaming injection** (line ~697): when Rail Media data ships a station name that maps to a streaming app, builds a `channelInfo` and uses it for the program. Same shared-reference bug.
+
+Result: 39 of 45 ESPN programs in the bartender's channel guide had no per-game deepLink. Watch button → /api/streaming/launch with no `?q=` param → streaming-service-manager fell through to launchEspnToLiveContent's featured-tile path (DPAD_DOWN+CENTER) → ESPN's home tab → first featured tile = the PGA quad-view → operator saw same golf for every game.
+
+**Fix:** Both injection paths now build a per-program `programChannel` shallow-copy with a per-game deepLink. The deepLink format mirrors v2.32.94's walker output:
+- ESPN: `sportscenter://x-callback-url/showHomeTab?q=<query>`
+- Prime Video: `https://watch.amazon.com/search?phrase=<query>`
+
+Search query priority (Rail Media path):
+1. `<awayTeam> <homeTeam>` (most distinctive)
+2. `listing.data['event']` / `['tour']` (golf, tennis, motorsports)
+3. `group.group_title` (final fallback — at least lands on the right sport)
+
+The team-string cleaner strips noisy Rail Media prefixes like `NCAA: (22)Southern Miss` → `Southern Miss`.
+
+Also fixed a related miss in the broadcast_networks path: it checked `matchedAppInfo.app === 'ESPN'` but `matchedAppInfo.app` for ESPN+ broadcasts is `'ESPN+'` (not `'ESPN'`). Switched to checking `appChannel.appId === 'espn-plus'` for unambiguous catalog-ID matching.
+
+**Verified live on Cube 3:**
+- Pre-fix bartender guide for Cube 3: 6 of 45 ESPN programs had per-game deepLinks (only walker-captured tiles).
+- Post-fix: **46 of 46 ESPN programs + 8 of 8 Prime Video programs** have per-game deepLinks.
+- End-to-end Watch test on a previously-broken NCAA Baseball game ("NCAA: (22)Southern Miss @ James Madison") — pre-fix landed on PageControllerActivity → golf quad-view; post-fix lands on `com.espn.gtv/com.espn.video.dmp.PlayerActivity`, MediaSession `state=8 BUFFERING`.
+
+**Why I missed this in v2.32.94:** my verification was a single Watch click on a walker-captured tile (`McIlroy Featured Group`), which travels through path #1 (walker injection). Paths #2 (broadcast_networks fallback) and #3 (Rail Media streaming) are responsible for the majority of ESPN programs in the channel guide and were untouched by v2.32.94. End-to-end verification should have included a click on a non-walker game from the actual bartender guide — I'll do that on every Watch-button-related ship going forward.
+
+**Affected:** 1 file. `apps/web/src/app/api/channel-guide/route.ts` (Rail Media streaming injection at line ~697 + broadcast_networks fallback at line ~842).
+
+---
+
 ### v2.32.94 — ESPN search-by-title autoplay (per-event Watch button reaches specific games)
 **Released:** 2026-05-08
 
