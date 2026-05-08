@@ -87,7 +87,19 @@ interface FiretvAppSyncStats {
  * Returns true on confirmed presence, false on confirmed absence, null on
  * any error (treat null as "don't change current state").
  */
+// v2.32.78 — cache firebat probe results per device. Package install state
+// doesn't change at runtime (Cubes don't install/uninstall apps mid-flight)
+// so once we've gotten a definitive answer we can hold it for an hour and
+// skip the ~50ms ADB round-trip on every sweep. Null results (probe failed)
+// are not cached — we want to retry on next sweep.
+const firebatProbeCache = new Map<string, { result: boolean; ts: number }>()
+const FIREBAT_PROBE_TTL_MS = 60 * 60 * 1000 // 1h
+
 async function probeFirebatPresent(deviceId: string): Promise<boolean | null> {
+  const cached = firebatProbeCache.get(deviceId)
+  if (cached && Date.now() - cached.ts < FIREBAT_PROBE_TTL_MS) {
+    return cached.result
+  }
   try {
     const resp = await fetch(`http://127.0.0.1:${API_PORT}/api/firetv-devices/send-command`, {
       method: 'POST',
@@ -103,10 +115,13 @@ async function probeFirebatPresent(deviceId: string): Promise<boolean | null> {
       // pm path returns non-zero when package missing — that surfaces as
       // success=false. Treat as "absent" rather than "unknown" since the
       // negative answer is actually meaningful.
+      firebatProbeCache.set(deviceId, { result: false, ts: Date.now() })
       return false
     }
     const result = String(json?.data?.result ?? '').trim()
-    return result.startsWith('package:')
+    const present = result.startsWith('package:')
+    firebatProbeCache.set(deviceId, { result: present, ts: Date.now() })
+    return present
   } catch (err: any) {
     logger.warn(`[FIRETV-APP-SYNC] firebat probe failed for ${deviceId}: ${err.message}`)
     return null

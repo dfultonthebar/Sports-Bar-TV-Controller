@@ -706,54 +706,62 @@ export async function runFiretvCatalogWalk(): Promise<CatalogWalkStats> {
       { metadata: { inputCount: firetvInputs.length } }
     )
 
-    for (const input of firetvInputs) {
-      if (!input.deviceId) continue
-      const ipAddress = ipByDeviceId.get(input.deviceId)
-      if (!ipAddress) {
-        logger.warn(`[FIRETV-CATALOG] No IP for ${input.name} (${input.deviceId}) — skipping`)
-        continue
-      }
-
-      let availableNetworks: string[] = []
-      try {
-        availableNetworks = JSON.parse(input.availableNetworks || '[]')
-      } catch { /* skip */ }
-
-      const appsToWalk = availableNetworks.filter((n) => APP_WALK_RULES[n])
-      if (appsToWalk.length === 0) {
-        logger.info(`[FIRETV-CATALOG] ${input.name}: no walkable apps in available_networks`)
-        continue
-      }
-
-      logger.info(`[FIRETV-CATALOG] ${input.name}: walking ${appsToWalk.length} app(s) — ${appsToWalk.join(', ')}`)
-      stats.inputsWalked++
-
-      for (const appName of appsToWalk) {
-        const rule = APP_WALK_RULES[appName]
-        stats.appWalksAttempted++
-        const result = await walkOneApp(input, ipAddress, rule, correlationId)
-        if (result.uploaded) {
-          stats.appWalksSucceeded++
-          stats.totalTilesUploaded += result.tilesFound
-          logger.info(`[FIRETV-CATALOG] ✅ ${input.name} / ${appName}: ${result.tilesFound} tiles`)
-          await schedulerLogger.info(
-            'firetv-catalog-walker',
-            'walk',
-            `${input.name} / ${appName}: ${result.tilesFound} tiles uploaded`,
-            correlationId,
-            {
-              inputSourceId: input.id,
-              deviceId: input.deviceId,
-              metadata: { app: appName, tiles: result.tilesFound },
-            }
-          )
-        } else {
-          const msg = `${input.name} / ${appName}: ${result.error || 'unknown failure'}`
-          stats.errors.push(msg)
-          logger.warn(`[FIRETV-CATALOG] ⚠️ ${msg}`)
+    // v2.32.78 — fan out across inputs in parallel. Each Fire TV is a
+    // physically distinct device with its own ADB session; the per-app loop
+    // within a single device must stay serial (only one screen), but the
+    // outer per-device loop is fully parallelizable. At Holmgren with 2
+    // Fire TVs × 2 walkable apps this ~halves wall-clock walk time
+    // (~56s → ~28s).
+    await Promise.all(
+      firetvInputs.map(async (input) => {
+        if (!input.deviceId) return
+        const ipAddress = ipByDeviceId.get(input.deviceId)
+        if (!ipAddress) {
+          logger.warn(`[FIRETV-CATALOG] No IP for ${input.name} (${input.deviceId}) — skipping`)
+          return
         }
-      }
-    }
+
+        let availableNetworks: string[] = []
+        try {
+          availableNetworks = JSON.parse(input.availableNetworks || '[]')
+        } catch { /* skip */ }
+
+        const appsToWalk = availableNetworks.filter((n) => APP_WALK_RULES[n])
+        if (appsToWalk.length === 0) {
+          logger.info(`[FIRETV-CATALOG] ${input.name}: no walkable apps in available_networks`)
+          return
+        }
+
+        logger.info(`[FIRETV-CATALOG] ${input.name}: walking ${appsToWalk.length} app(s) — ${appsToWalk.join(', ')}`)
+        stats.inputsWalked++
+
+        for (const appName of appsToWalk) {
+          const rule = APP_WALK_RULES[appName]
+          stats.appWalksAttempted++
+          const result = await walkOneApp(input, ipAddress, rule, correlationId)
+          if (result.uploaded) {
+            stats.appWalksSucceeded++
+            stats.totalTilesUploaded += result.tilesFound
+            logger.info(`[FIRETV-CATALOG] ✅ ${input.name} / ${appName}: ${result.tilesFound} tiles`)
+            await schedulerLogger.info(
+              'firetv-catalog-walker',
+              'walk',
+              `${input.name} / ${appName}: ${result.tilesFound} tiles uploaded`,
+              correlationId,
+              {
+                inputSourceId: input.id,
+                deviceId: input.deviceId,
+                metadata: { app: appName, tiles: result.tilesFound },
+              }
+            )
+          } else {
+            const msg = `${input.name} / ${appName}: ${result.error || 'unknown failure'}`
+            stats.errors.push(msg)
+            logger.warn(`[FIRETV-CATALOG] ⚠️ ${msg}`)
+          }
+        }
+      })
+    )
 
     await schedulerLogger.info(
       'firetv-catalog-walker',

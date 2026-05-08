@@ -16,6 +16,7 @@ import AIGamePlanModal from './AIGamePlanModal'
 import LiveSportsDashboard from './LiveSportsDashboard'
 import ScheduledGameTVPicker from './ScheduledGameTVPicker'
 import { logger } from '@sports-bar/logger'
+import { findStreamingAppByPackageName } from '@sports-bar/streaming'
 import {
   Power,
   Volume2,
@@ -364,7 +365,30 @@ export default function EnhancedChannelGuideBartenderRemote() {
             // Key by team names for matching with guide programs
             gameMap.set(`${game.awayTeam}-${game.homeTeam}`, entry)
           }
-          setLiveGameData(gameMap)
+          // v2.32.78 — only update state when something actually changed.
+          // The 30s poll fires loadLiveGameData() unconditionally; before
+          // this guard React saw a new Map identity every tick and
+          // re-ran filterPrograms() over the full program list (full
+          // .filter + .sort) even when no scores moved. Compare key set
+          // size + per-game score signature; on identical content keep
+          // the previous Map reference so the dependency array short-
+          // circuits.
+          setLiveGameData(prev => {
+            if (prev.size !== gameMap.size) return gameMap
+            for (const [key, next] of gameMap) {
+              const old = prev.get(key)
+              if (!old) return gameMap
+              if (old.homeScore !== next.homeScore ||
+                  old.awayScore !== next.awayScore ||
+                  old.timeRemaining !== next.timeRemaining ||
+                  old.quarter !== next.quarter ||
+                  old.isLive !== next.isLive ||
+                  old.status !== next.status) {
+                return gameMap
+              }
+            }
+            return prev
+          })
           logger.debug(`[LIVE-GAME-DATA] Loaded live data for ${gameMap.size} games from ESPN`)
         }
       }
@@ -1193,8 +1217,19 @@ export default function EnhancedChannelGuideBartenderRemote() {
   }
 
   const launchStreamingApp = async (packageName: string, appName: string) => {
-    const fireTVDevice = selectedDevice as FireTVDevice
+    // If the package is in the streaming catalog, route through the
+    // catalog-aware /api/streaming/launch path. That path resolves
+    // packageAliases (e.g. com.amazon.avod → com.amazon.firebat for AFTR
+    // Cubes per CLAUDE.md gotcha #9) and uses LEANBACK_LAUNCHER intents
+    // instead of `monkey -p`. The Quick Access tile in the streaming guide
+    // historically ran `monkey -p com.amazon.avod` direct, which silently
+    // failed on Cubes where Prime Video lives in firebat.
+    const catalogApp = findStreamingAppByPackageName(packageName)
+    if (catalogApp) {
+      return launchStreamingAppByCatalog(catalogApp.id, appName)
+    }
 
+    const fireTVDevice = selectedDevice as FireTVDevice
     const response = await fetch('/api/firetv-devices/send-command', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
