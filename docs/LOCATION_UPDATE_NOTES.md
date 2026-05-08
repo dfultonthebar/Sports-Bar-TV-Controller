@@ -46,6 +46,23 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-08 — v2.32.94 — ESPN search-by-title autoplay (specific games reach playback)
+
+**Risk:** GO. Adds a new autoplay path for ESPN that types the game title into ESPN's in-app search. Backwards-compatible with old catalog rows (no `?q=` → falls back to v2.32.85 featured-tile path).
+
+**What changed:**
+- Walker now writes `sportscenter://x-callback-url/showHomeTab?q=<title>` per ESPN tile (was a generic home-tab URL).
+- streaming-service-manager extracts `q` and passes to launchEspnToLiveContent.
+- adb-client.launchEspnToLiveContent: when contentTitle is provided, runs DPAD_LEFT → DPAD_UP → DPAD_CENTER → `input text` → DPAD_DOWN → DPAD_CENTER. Lands on PlayerActivity for the specific game (verified live: McIlroy Featured Group → PlayerActivity, state=8 BUFFERING).
+
+**What could break:** Nothing structural — the search path is gated on a non-empty contentTitle; old catalog rows without `?q=` use the existing featured-tile path. The next walker run after this update writes the new format for all ESPN tiles automatically.
+
+**Manual steps required:** None.
+
+**Rollback:** `git revert` clean.
+
+---
+
 ### 2026-05-08 — v2.32.93 — Audit follow-ups (Max catalog, firebat in polling, longer adb-connect)
 
 **Risk:** GO. Three small follow-ups to v2.32.92 from the code-reviewer audit. All bounded; all preserve prior defaults.

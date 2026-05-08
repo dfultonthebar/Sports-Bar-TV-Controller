@@ -460,13 +460,16 @@ export class ADBClient {
    *      landing is the most prominent currently-airing game/feed)
    *   4. DPAD_CENTER — opens the focused tile directly into PlayerActivity
    *
-   * Limitation: this picks ESPN's curated "first live tile", not a
-   * specific event matching `contentTitle`. Bartender remote shows live
-   * ESPN games and ESPN curates the same set to the top of its UI, so
-   * the most-prominent tile is usually what the operator wanted. Truly
-   * event-specific deep links would require an ESPN event-ID resolver
-   * (call ESPN scoreboard API at click time using contentTitle + start
-   * time) — TODO for a future version.
+   * v2.32.94 — when `contentTitle` is provided, switches to a
+   * search-by-title path that types the title into ESPN's in-app
+   * search (left-rail Search button, navigated via DPAD_LEFT then
+   * DPAD_UP from the launcher position) and clicks the first result.
+   * This reliably reaches the SPECIFIC game the bartender clicked
+   * (verified live on Cube 3, MediaSession state=3 PLAYING). When
+   * `contentTitle` is empty/missing, falls back to the v2.32.85
+   * featured-tile path (DPAD_DOWN + CENTER from launcher). Niche
+   * games (college softball, regional sports) that ESPN doesn't
+   * feature on its home tab now reach playback.
    */
   async launchEspnToLiveContent(
     contentTitle?: string,
@@ -474,7 +477,7 @@ export class ADBClient {
   ): Promise<string> {
     try {
       logger.info(
-        `[ADB CLIENT] Launching ESPN to live content${contentTitle ? ` (target: "${contentTitle}")` : ''} on ${this.deviceAddress}`,
+        `[ADB CLIENT] Launching ESPN${contentTitle ? ` for search-by-title "${contentTitle}"` : ` (featured-tile fallback)`} on ${this.deviceAddress}`,
       )
 
       // v2.32.85 — IMPORTANT: launch via the standard LEANBACK_LAUNCHER
@@ -493,10 +496,62 @@ export class ADBClient {
       logger.info(`[ADB CLIENT] Waiting 8s for ESPN content rows to render`)
       await new Promise((r) => setTimeout(r, 8000))
 
+      const trimmedTitle = (contentTitle || '').trim()
+      if (trimmedTitle) {
+        // v2.32.94 — Search-by-title autoplay. Verified end-to-end on
+        // Cube 3 (AFTR / com.espn.gtv) — final foreground:
+        // com.espn.gtv/com.espn.video.dmp.PlayerActivity, MediaSession
+        // state=3 PLAYING.
+        //
+        // Sequence:
+        //   1. DPAD_LEFT — focus moves from first content tile (where
+        //      ESPN's home tab leaves it after launch) to the left
+        //      navigation rail. Lands on "Home" (rail bounds y=436-484).
+        //   2. DPAD_UP — moves up the rail to "Search" (rail bounds
+        //      y=356-404, immediately above Home).
+        //   3. DPAD_CENTER — opens the search activity (focuses an
+        //      EditText).
+        //   4. `input text` — Android types the query into the focused
+        //      EditText. Spaces must be `%s`-escaped because `adb shell`
+        //      tokenizes on whitespace; backslash-escape any single
+        //      quotes to safely wrap the whole arg in single quotes.
+        //   5. Wait 4s for ESPN's search results to populate.
+        //   6. DPAD_DOWN — moves focus from the search EditText down
+        //      into the first result tile.
+        //   7. DPAD_CENTER — opens the result, lands on PlayerActivity.
+        //
+        // Per-step `timeoutMs: 8000` matches the v2.32.91 sendKey
+        // pattern (framework pins during search-results render).
+        logger.info(`[ADB CLIENT] DPAD_LEFT → focus left navigation rail`)
+        await this.sendKey(21, 8000) // KEYCODE_DPAD_LEFT
+        await new Promise((r) => setTimeout(r, 400))
+        logger.info(`[ADB CLIENT] DPAD_UP → focus Search rail item`)
+        await this.sendKey(19, 8000) // KEYCODE_DPAD_UP
+        await new Promise((r) => setTimeout(r, 400))
+        logger.info(`[ADB CLIENT] DPAD_CENTER → open Search activity`)
+        await this.sendKey(23, 8000) // KEYCODE_DPAD_CENTER
+        await new Promise((r) => setTimeout(r, 3000))
+        // `input text` arg: spaces → %s, single-quote → '\''.
+        const escaped = trimmedTitle
+          .replace(/'/g, "'\\''")
+          .replace(/ /g, '%s')
+        logger.info(`[ADB CLIENT] input text "${trimmedTitle}" (escaped: ${escaped})`)
+        await this.executeShellCommand(`input text '${escaped}'`, 8000)
+        logger.info(`[ADB CLIENT] Waiting 4s for ESPN search results to render`)
+        await new Promise((r) => setTimeout(r, 4000))
+        logger.info(`[ADB CLIENT] DPAD_DOWN → focus first search result`)
+        await this.sendKey(20, 8000) // KEYCODE_DPAD_DOWN
+        await new Promise((r) => setTimeout(r, 400))
+        logger.info(`[ADB CLIENT] DPAD_CENTER → play (PlayerActivity)`)
+        await this.sendKey(23, 8000) // KEYCODE_DPAD_CENTER
+        logger.info(`[ADB CLIENT] ESPN search-by-title autoplay dispatched`)
+        return `ESPN search-by-title autoplay dispatched for "${trimmedTitle}"`
+      }
+
       // v2.32.91 — same 8s sendKey timeout as Prime Video (see comment in
       // launchPrimeVideoToContent). ESPN's home tab also pins the framework
       // momentarily during content-row hydration.
-      logger.info(`[ADB CLIENT] DPAD_DOWN → focus first content tile`)
+      logger.info(`[ADB CLIENT] DPAD_DOWN → focus first content tile (featured-tile fallback)`)
       await this.sendKey(20, 8000) // KEYCODE_DPAD_DOWN
 
       // Brief pause for the focus animation, matching the Prime Video flow.
@@ -505,8 +560,8 @@ export class ADBClient {
       logger.info(`[ADB CLIENT] DPAD_CENTER → open tile (PlayerActivity)`)
       await this.sendKey(23, 8000) // KEYCODE_DPAD_CENTER
 
-      logger.info(`[ADB CLIENT] ESPN autoplay sequence dispatched`)
-      return 'ESPN autoplay sequence dispatched'
+      logger.info(`[ADB CLIENT] ESPN featured-tile autoplay dispatched`)
+      return 'ESPN featured-tile autoplay dispatched'
     } catch (error) {
       logger.error(`[ADB CLIENT] ESPN autoplay error:`, error)
       throw error
