@@ -187,6 +187,35 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.78 — Pass 1 Tier 2: performance wins from simplify-skill audit
+**Released:** 2026-05-08
+
+Pass 1 Tier 2 of the code-cleanup campaign. The efficiency reviewer flagged 10 items; this commit ships the 4 with concrete savings and low behavioral risk. (One flagged item — "double Rail Media fetch on streaming requests" — was a false alarm; the cable/satellite and streaming branches are mutually exclusive `if` blocks so only one fetch fires per request.)
+
+**Perf 1 — Parallel Fire TV walks** (`packages/scheduler/src/firetv-catalog-walker.ts`)
+
+`runFiretvCatalogWalk()` iterated over `firetvInputs` with a sequential `for…of` loop. Each Fire TV is a physically distinct device with its own ADB session, so the outer per-device loop is fully parallelizable (the per-app inner loop must stay serial — only one screen). Switched to `Promise.all(firetvInputs.map(...))`. At Holmgren with 2 Fire TVs × 2 walkable apps each, this halves wall-clock walk time (~56s → ~28s). Stats aggregation is unchanged because `stats.appWalksAttempted` etc. are mutated under the same Promise.all rather than racing.
+
+**Perf 2 — Live game data change detection** (`apps/web/src/components/EnhancedChannelGuideBartenderRemote.tsx`)
+
+`loadLiveGameData()` ran every 30s and unconditionally called `setLiveGameData(gameMap)` with a fresh Map identity. React's reference comparison saw a change every tick and re-ran the `useEffect` at line 306 → `filterPrograms()` → full `.filter()` + `.sort()` over potentially 100+ programs. Added a `setLiveGameData(prev => …)` updater that compares Map size + per-game (homeScore, awayScore, timeRemaining, quarter, isLive, status) and returns the previous Map identity when nothing material changed. iPad render loop no longer re-filters when scores haven't moved.
+
+**Perf 3 — Throttle catalog DELETE on GET** (`apps/web/src/app/api/firestick-scout/catalog/route.ts`)
+
+The expired-row DELETE ran on every GET. With multiple bartender remotes hitting `/api/channel-guide` simultaneously (which queries the catalog table), the DELETE write-lock could contend with concurrent reads. Added a module-level `lastCatalogCleanupSec` timestamp; cleanup now runs at most once per 60s. The 36h TTL makes sub-minute precision irrelevant.
+
+**Perf 4 — Cache firebat probe per device** (`packages/scheduler/src/firetv-app-sync.ts`)
+
+The launcher-hosted Prime Video back-fill probes Cubes for `com.amazon.firebat` via `pm path` (~50ms ADB round-trip per device per sweep). Package install state doesn't change at runtime, so once we have a definitive answer (true/false) it can be cached for 1 hour. Null results (probe failed, network blip) are not cached — we want to retry. Cache is module-level `Map<deviceId, {result: boolean, ts: number}>`. Eliminates ~2 round-trips per Fire TV per 5-min sweep at Holmgren.
+
+**Required Manual Step:** None — pure performance/runtime improvements. Auto-update merge picks them up.
+
+**Verification:** `npm run build` clean (34/34 turbo tasks). PM2 restart, `/api/system/health` returns `healthy` (55/57 devices online). Bartender :3002 returns 200.
+
+Tier 3 (helpers + cleanup — extract `parseListingDate`/`deriveIsLive`/`parseJsonArray`, remove dead `launchStreamingApp` legacy path, replace `logInfo`/`logError` wrappers, etc.) ships as v2.32.79.
+
+---
+
 ### v2.32.77 — three latent bugs found by simplify-skill audit
 **Released:** 2026-05-08
 
