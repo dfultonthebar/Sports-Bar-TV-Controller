@@ -1,6 +1,6 @@
 # Fleet Status
 
-**Last updated:** 2026-05-08 (drift-recovery v2.32.81 + sidecar v2.32.82 shipped; full fleet at v2.32.82; auto-update is now self-healing against branch drift)
+**Last updated:** 2026-05-08 (NFHS bartender title fix v2.32.88 — Varsity vs JV games of the same matchup are now visually distinguishable; Holmgren at v2.32.88, other 5 boxes will pick up via 2:30 AM CST cron)
 
 A snapshot of where each location stands. Update this file after every fleet-wide change so future operators (and Claude) have a single place to see the truth.
 
@@ -10,17 +10,17 @@ A snapshot of where each location stands. Update this file after every fleet-wid
 
 | Location | Branch | OS | Software ver | Bartender proxy | AI Suggest backend | iGPU acceleration | Notes |
 |---|---|---|---|---|---|---|---|
-| holmgren-way | `location/holmgren-way` | noble (24.04) | **v2.32.82** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | Reference deployment; first to receive drift-recovery fix |
-| graystone | `location/graystone` | noble (24.04) | **v2.32.82** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | |
-| greenville | `location/stoneyard-greenville` | noble (24.04) | **v2.32.82** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | OS upgraded 2026-05-08; AI Suggest 119s on iGPU. |
-| leglamp | `location/leg-lamp` | noble (24.04) | **v2.32.82** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | |
-| lucky-s-1313 | `location/lucky-s-1313` | noble (24.04) | **v2.32.82** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | |
-| stoneyard-appleton | `location/stoneyard-appleton` | noble (24.04) | **v2.32.82** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | AI Suggest 67.3s on iGPU (fleet best) |
+| holmgren-way | `location/holmgren-way` | noble (24.04) | **v2.32.88** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | Reference deployment; first to receive drift-recovery fix |
+| graystone | `location/graystone` | noble (24.04) | v2.32.87 → .88 (cron) | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | |
+| greenville | `location/stoneyard-greenville` | noble (24.04) | v2.32.87 → .88 (cron) | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | OS upgraded 2026-05-08; AI Suggest 119s on iGPU. |
+| leglamp | `location/leg-lamp` | noble (24.04) | v2.32.87 → .88 (cron) | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | |
+| lucky-s-1313 | `location/lucky-s-1313` | noble (24.04) | v2.32.87 → .88 (cron) | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | |
+| stoneyard-appleton | `location/stoneyard-appleton` | noble (24.04) | v2.32.87 → .88 (cron) | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | AI Suggest 67.3s on iGPU (fleet best) |
 
-**Aggregate health (2026-05-08 19:00 UTC):**
+**Aggregate health (2026-05-08 18:00 UTC):**
 - 6/6: bartender remote on Nginx ✓
 - 6/6: noble (24.04) + 6.8.0-111 kernel ✓
-- 6/6: latest software (v2.32.82) ✓
+- 1/6: latest software (v2.32.88 on Holmgren); 5/6 still on v2.32.87, will roll forward via 2:30 AM CST cron
 - 6/6: iGPU acceleration active ✓
 - 6/6: drift-recovery sidecar bootstrapped at `/home/ubuntu/sports-bar-data/.auto-update-last-success.json` ✓
 
@@ -46,6 +46,16 @@ Audio processor and matrix details live in each location's `.claude/locations/<b
 ---
 
 ## What shipped 2026-05-08
+
+**v2.32.84** — Prime Video Watch button → autoplay PlayerActivity (5-DPAD search→DOWN→CENTER→CENTER sequence). Verified live on Cube 3 (state=3 PLAYING).
+
+**v2.32.85** — ESPN autoplay (LEANBACK_LAUNCHER + DPAD_DOWN→CENTER) + Schedule deep-link pipe end-to-end (new `deep_link` column on `input_source_allocations`; bartender-schedule POST captures, scheduler-service forwards, channel-presets/tune executes). Verified live on Cube 3.
+
+**v2.32.86** — NFHS catalog cleanup. Cleared the broken `nfhs://event/` deepLinkFormat (the `com.playon.nfhslive` package registers no external scheme) and set `deepLinkSupport: false`. NFHS Watch still opens the app — falls through to launcher-only path. Per-Cube one-time operator action: sign in via TV remote.
+
+**v2.32.87** — Watch button input-label instant update. `/api/streaming/launch` mirrors the launched app's friendly name into `inputCurrentChannels` immediately after launch (was previously waiting for the 5-min `/api/firetv-devices/[id]/current-app` poll). Verified live: <1s vs the previous 5min.
+
+**v2.32.88** — NFHS bartender title shows sport label. Pulaski vs West De Pere had two real games (Varsity Girls Soccer + JV Girls Soccer, 2h apart) that rendered with identical titles in the bartender remote. Channel-guide route was already populating `sport` on NFHS programs; the GameListing TS interface in `EnhancedChannelGuideBartenderRemote.tsx` simply didn't declare the field. Fix: add `sport?: string` and append ` — ${game.sport}` to the title when present. Verified live via the channel-guide POST endpoint: two distinct rows now carry `sport='Junior Varsity Girls Soccer'` / `sport='varsity Girls Soccer'`.
 
 **v2.32.81** — auto-update branch-drift recovery — detects when a box is on `main` instead of its `location/*` branch and switches back via the heartbeat file. Single defensive guard, normal-path code unchanged.
 
@@ -98,7 +108,7 @@ Verified live on Holmgren: drift simulated → switched to `location/holmgren-wa
 
 4. ~~`scripts/auto-update.sh` heartbeat refresh on no-op runs~~ — **Done v2.32.80**. New `refresh_heartbeat_os_only()` helper called on the no-op exit path; only patches the `os.*` block (leaves verifyInstall / configChecksums / dbRowCounts intact since those weren't re-checked). Idempotent — commits + pushes only when the OS values actually changed.
 
-5. **Fleet dashboard manual-refresh button** — `/api/fleet/status` has a 5-min in-memory cache; `?refresh=1` busts it but the UI doesn't expose this, so an operator looking at `/fleet` can stare at stale data for up to 5 minutes after a fleet-wide change. Add a "Refresh" button that calls `/api/fleet/status?refresh=1` and re-renders. Trivial frontend change.
+5. ~~Fleet dashboard manual-refresh button~~ — **Already done** (verified 2026-05-08 during the v2.32.88 sweep). The Refresh button has been live at `apps/web/src/app/fleet/page.tsx:132-139` since v2.32.72 (`feat(fleet-dashboard): show OS codename + kernel per location`); it calls `load(true)` which fetches `/api/fleet/status?refresh=1` and shows a spinner while refreshing. The outstanding-item entry was stale.
 
 6. **Why was Holmgren's kernel on 6.8.0-100 while peers self-updated?** — Pre-fix today, holmgren-way was running `6.8.0-100-generic` while leglamp + lucky-s were on `-110` and the freshly-upgraded jammy boxes on `-111`. Suggests `unattended-upgrades` either isn't running or isn't pulling the kernel metapackage on Holmgren. Worth a check before we drift again — `systemctl status unattended-upgrades`, `/var/log/unattended-upgrades/`, and `dpkg --get-selections | grep linux-generic` to see which kernel meta is installed. If the metapackage is `linux-image-6.8.0-100` literal vs `linux-generic`, Apt won't pull newer kernels via security updates.
 
