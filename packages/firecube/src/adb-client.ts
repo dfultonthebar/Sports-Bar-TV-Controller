@@ -227,11 +227,11 @@ export class ADBClient {
     }
   }
 
-  async executeShellCommand(command: string): Promise<string> {
+  async executeShellCommand(command: string, timeoutMs: number = 3000): Promise<string> {
     try {
       // Use -T flag (no TTY allocation) for faster execution - 2x speed improvement
       const adbCommand = `adb -s ${this.deviceAddress} shell -T "${command}"`
-      const { stdout } = await execAsync(adbCommand, { timeout: 3000 })
+      const { stdout } = await execAsync(adbCommand, { timeout: timeoutMs })
       return stdout.trim()
     } catch (error: any) {
       const errorMsg = error.message || 'Unknown error'
