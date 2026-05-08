@@ -1,6 +1,6 @@
 # Fleet Status
 
-**Last updated:** 2026-05-08 (Walker rules cleanup v2.32.90 — Hulu / YouTube TV / Fox Sports documented as non-walkable after fleet probe; closes Outstanding #2 (Comrade-gated) + downsizes #3 to its productive remainder. Full fleet at v2.32.90.)
+**Last updated:** 2026-05-08 (Watch-button-broken-on-Amazon fix shipped v2.32.91 — walker silently skipped Prime Video for ~6 weeks because available_networks "Amazon Prime Video" never matched the rule keyed "Prime Video"; sendKey 3s timeout aborted autoplay sequences. Both fixed. Full fleet at v2.32.91.)
 
 A snapshot of where each location stands. Update this file after every fleet-wide change so future operators (and Claude) have a single place to see the truth.
 
@@ -10,12 +10,12 @@ A snapshot of where each location stands. Update this file after every fleet-wid
 
 | Location | Branch | OS | Software ver | Bartender proxy | AI Suggest backend | iGPU acceleration | Notes |
 |---|---|---|---|---|---|---|---|
-| holmgren-way | `location/holmgren-way` | noble (24.04) | **v2.32.90** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | Reference deployment; first to receive drift-recovery fix |
-| graystone | `location/graystone` | noble (24.04) | **v2.32.90** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | |
-| greenville | `location/stoneyard-greenville` | noble (24.04) | **v2.32.90** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | OS upgraded 2026-05-08; AI Suggest 119s on iGPU. |
-| leglamp | `location/leg-lamp` | noble (24.04) | **v2.32.90** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | |
-| lucky-s-1313 | `location/lucky-s-1313` | noble (24.04) | **v2.32.90** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | |
-| stoneyard-appleton | `location/stoneyard-appleton` | noble (24.04) | **v2.32.90** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | AI Suggest 67.3s on iGPU (fleet best) |
+| holmgren-way | `location/holmgren-way` | noble (24.04) | **v2.32.91** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | Reference deployment; first to receive drift-recovery fix |
+| graystone | `location/graystone` | noble (24.04) | **v2.32.91** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | |
+| greenville | `location/stoneyard-greenville` | noble (24.04) | **v2.32.91** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | OS upgraded 2026-05-08; AI Suggest 119s on iGPU. |
+| leglamp | `location/leg-lamp` | noble (24.04) | **v2.32.91** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | |
+| lucky-s-1313 | `location/lucky-s-1313` | noble (24.04) | **v2.32.91** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | |
+| stoneyard-appleton | `location/stoneyard-appleton` | noble (24.04) | **v2.32.91** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | AI Suggest 67.3s on iGPU (fleet best) |
 
 **Aggregate health (2026-05-08 18:00 UTC):**
 - 6/6: bartender remote on Nginx ✓
@@ -60,6 +60,12 @@ Audio processor and matrix details live in each location's `.claude/locations/<b
 **v2.32.89** — Walker `uiautomator dump` no longer hits the 3s ADB-shell timeout. Root cause: `packages/firecube/src/adb-client.ts:executeShellCommand` had a hardcoded 3000ms timeout. UIautomator dumping the Fire TV launcher home screen (with its full rail-tile + carousel tree) reliably exceeds 3s on a busy device — the timeout fires, `adb shell -T` exits with no stdout, the walker reads xml.length=0 and surfaces "empty dump". Fix: thread an optional `timeoutMs` (500-30000ms) through `executeShellCommand` → `/api/firetv-devices/send-command` POST schema → walker; walker passes 10000ms on `uiautomator dump` only. All other call sites keep the snappy 3s default. Verified live on Holmgren Cube 3: pre-fix walks produced 0 catalog rows; post-fix walk produced 12 ESPN rows with 0 errors.
 
 **v2.32.90** — Walker rules: document Hulu / YouTube TV / Fox Sports as non-walkable. Fleet probe via SSH surveyed sports-relevant streaming apps installed across all 6 boxes; the 3 highest-value candidates not yet walked were probed for accessibility. Result: none walkable (Hulu paywall on logged-out Cubes; YouTube TV Cobalt runtime accessibility-blind; Fox Sports videogo stub redirect). Three explicit `APP_WALK_RULES` entries added with `usesWebView: true` so future probes don't repeat the dead-end work. Each carries the empirical probe result inline.
+
+**v2.32.91** — Watch button works for Amazon Fire TV games again (operator-reported). TWO interlocking bugs together prevented the bartender remote's Watch button from doing anything for any Prime Video game:
+
+1. **Walker silently skipped Prime Video for ~6 weeks.** `APP_WALK_RULES` was keyed `'Prime Video'` but `input_sources.available_networks` at most locations stores `'Amazon Prime Video'`. Pre-fix used exact-string match (`availableNetworks.filter((n) => APP_WALK_RULES[n])`); never matched. Walker silently skipped every Prime Video walk on every Cube → zero Prime Video tiles in `firetv_streaming_catalog` → zero Prime Video games in the bartender's per-input channel guide → zero Watch buttons for Prime Video content. Fix: alias-aware resolution via `findStreamingAppByDisplayName(network) → catalogId → APP_WALK_RULES[ruleKey where rule.catalogId matches]`. Direct key match still wins as fast path. Verified live at Holmgren: walks attempted jumped 4 → 10, totalTilesUploaded 14 → 30, channel-guide for Cube 3 went from 0 Prime Video games to 8.
+
+2. **3s sendKey timeout aborted autoplay sequences.** Same root cause class as v2.32.89's `uiautomator dump` fix but on the `sendKey` path. DPAD events during Prime Video's `SearchResultsActivity` rendering and ESPN's content-row hydration timed out at exactly 3000ms because `adb shell -T` was waiting for system_server ack while the framework was pinned. Autoplay aborted, `/api/streaming/launch` returned `success:false`, bartender saw "Failed to launch". Fix: optional `timeoutMs` on `sendKey`; both `launchPrimeVideoToContent` and `launchEspnToLiveContent` pass 8000ms on every DPAD event. Verified live: pre-fix 500 → post-fix 200 in ~11s with Cube advancing into Prime Video.
 
 **v2.32.81** — auto-update branch-drift recovery — detects when a box is on `main` instead of its `location/*` branch and switches back via the heartbeat file. Single defensive guard, normal-path code unchanged.
 
