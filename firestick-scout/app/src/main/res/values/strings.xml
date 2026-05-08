@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">FireStick Scout</string>
+    <string name="playback_automation_description">Drives ESPN/NFHS playback to specific games when the bartender remote sends a Play command. Reads on-screen tile titles to find the requested game and clicks it.</string>
 </resources>
+

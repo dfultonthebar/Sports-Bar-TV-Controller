@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    PlaybackAutomationService configuration (Scout v1.5.0+).
+
+    This AccessibilityService is what gives Scout per-event playback
+    automation + verification on Fire TV. It is scoped narrowly:
+
+    - packageNames: only ESPN (com.espn.gtv) and NFHS (com.playon.nfhslive)
+      are inspected. We DO NOT receive events from other apps; this is both
+      a privacy-correctness boundary and a battery-life one.
+
+    - canRetrieveWindowContent="true": needed to read the on-screen tile
+      tree to find a tile whose accessibility content matches the
+      bartender's intended title.
+
+    - canPerformGestures="true": needed to dispatch synthetic taps via
+      GestureDescription. AccessibilityNodeInfo.performAction(ACTION_CLICK)
+      handles most cases but falls back to gesture taps for nodes whose
+      isClickable() is false (some Compose nodes).
+
+    - notificationTimeout="100": low value so we react quickly to ESPN's
+      window-state changes after the bartender clicks Watch.
+
+    - accessibilityFeedbackType="feedbackGeneric": we don't speak/braille
+      anything; this is automation, not assistive.
+-->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged|typeViewFocused"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagDefault|flagRetrieveInteractiveWindows"
+    android:canRetrieveWindowContent="true"
+    android:canPerformGestures="true"
+    android:notificationTimeout="100"
+    android:packageNames="com.espn.gtv,com.playon.nfhslive,com.amazon.firebat"
+    android:description="@string/playback_automation_description" />

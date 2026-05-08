@@ -187,6 +187,56 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.98 — Scout AccessibilityService for in-app ESPN/NFHS playback automation
+**Released:** 2026-05-08
+
+**Per-location manual step required for Cubes that should use the new path:**
+
+```bash
+# Build APK locally (one time)
+cd firestick-scout
+./gradlew assembleDebug
+
+# Install + enable on each Cube (per-Cube)
+adb connect <CUBE_IP>:5555
+adb -s <CUBE_IP>:5555 install -r app/build/outputs/apk/debug/app-debug.apk
+adb -s <CUBE_IP>:5555 shell settings put secure enabled_accessibility_services com.sportsbar.scout/com.sportsbar.scout.PlaybackAutomationService
+adb -s <CUBE_IP>:5555 shell settings put secure accessibility_enabled 1
+```
+
+The `settings put secure` enables the AccessibilityService programmatically — verified to work on AFTR Fire OS 7.7 (Android 9 / API 28) without root. Setting persists across reboots.
+
+**Cubes WITHOUT Scout v1.5.0 + accessibility enabled** silently ignore the new PLAY_GAME broadcast (the receiver class doesn't exist) and fall through to v2.32.97's text-targeted-tap autoplay. No regression. Holmgren Cube 3 (10.11.3.51) was the test bed — v1.5.0 deployed, AS enabled, end-to-end verified.
+
+**What it adds:** a new on-device path for ESPN/NFHS playback automation. The Sports Bar Scout APK gains an `AccessibilityService` (`PlaybackAutomationService`) that observes ESPN/NFHS/firebat window events. When the bartender clicks Watch on a streaming game, the host fires an ADB broadcast `com.sportsbar.scout.PLAY_GAME` with the intended tokens. Scout's service:
+
+1. Receives the broadcast, queues the command in SharedPreferences mailbox
+2. On the next ESPN/NFHS window event (typically ~1-2s after launch), walks the AccessibilityNodeInfo tree
+3. Token-scores every visible tile against the intended title
+4. Performs `AccessibilityNodeInfo.performAction(ACTION_CLICK)` on the highest-scoring tile (walks up to find a clickable ancestor)
+5. Writes the matched tile's full accessibility text to the mailbox as authoritative confirmation of WHAT WAS CLICKED
+
+**Why this matters for "verify what's playing":** the matched text shows EXACTLY which tile was clicked — operator-visible signal that's been missing from every prior approach (uiautomator dumps DRM-blocked during playback; MediaSession metadata empty for ESPN; PlayerActivity Intent extras private). With Scout AccessibilityService, we know with certainty which tile the click landed on.
+
+**Why this works where deep links + DPAD-via-ADB failed:** AccessibilityService runs in-app on-device. It can `findAccessibilityNodeInfosByText` and `performAction(ACTION_CLICK)` directly — no `not exported` Activity issue (we're not launching anything; we're clicking an existing UI element), no Comrade gating (we read what's on screen, no resolver needed), no uiautomator "could not get idle state" race during playback.
+
+**Belt-and-suspenders:** the host fires BOTH the Scout PLAY_GAME broadcast AND the existing `launchEspnToLiveContent` text-targeted-tap path. Whichever completes the click first wins. Cubes without Scout AS get the old path; Cubes with Scout AS typically get the click 1-2s before the autoplay fires its DPAD sequence (autoplay's later actions become harmless no-ops on PageController/PlayerActivity). Backwards-compatible.
+
+**Affected:** 6 source files. `firestick-scout/app/src/main/java/com/sportsbar/scout/PlayCommandReceiver.kt` (new), `firestick-scout/app/src/main/java/com/sportsbar/scout/PlaybackAutomationService.kt` (new), `firestick-scout/app/src/main/res/xml/playback_automation_service_config.xml` (new), `firestick-scout/app/src/main/AndroidManifest.xml` (receiver + service registration), `firestick-scout/app/build.gradle` (versionCode 215, versionName 2.1.5-accessibility-automation), `firestick-scout/app/src/main/res/values/strings.xml` (service description). Host-side: `packages/firecube/src/adb-client.ts` (new `sendScoutPlayGameBroadcast` method), `apps/web/src/services/streaming-service-manager.ts` (calls broadcast before launching ESPN).
+
+**End-to-end verified live on Cube 3:**
+- Bartender API: `POST /api/streaming/launch` with `appId=espn-plus, deepLink=sportscenter://...?q=Mariners%20White%20Sox`
+- Host log: `[ADB CLIENT] Scout PLAY_GAME → com.espn.gtv tokens=mariners,white,sox`
+- Scout log: `PlayCommandReceiver: Queued PLAY_GAME ... tokens=mariners,white,sox`
+- ESPN opens → window event fires →
+- Scout log: `PlaybackAutomation: Click ok: matched='mariners vs. white sox espn unlimited • mlb live' (score=3/3)`
+- Mailbox: `last_result=clicked, last_matched_text='mariners vs. white sox espn unlimited • mlb live', status=settled`
+- API returned success:true
+
+The Scout side worked in ~17s end-to-end (broadcast at 18:24:48, click at 18:25:06).
+
+---
+
 ### v2.32.97 — Text-targeted tap (replaces blind DPAD + verify) + MEDIA_STOP cleanup
 **Released:** 2026-05-08
 
