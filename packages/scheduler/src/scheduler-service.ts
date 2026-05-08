@@ -917,6 +917,13 @@ class SchedulerService {
               cableBoxId: allocation.inputSourceType === 'cable' ? inputSource.deviceId : undefined,
               directTVId: allocation.inputSourceType === 'directv' ? inputSource.deviceId : undefined,
               fireTVId: allocation.inputSourceType === 'firetv' ? inputSource.deviceId : undefined,
+              // v2.32.85 — forward per-event deep link captured at schedule
+              // time so streaming tunes can autoplay the specific game
+              // instead of landing on the app's home screen. Only set for
+              // firetv allocations; null otherwise.
+              ...(allocation.inputSourceType === 'firetv' && allocation.deepLink
+                ? { deepLink: allocation.deepLink }
+                : {}),
             })
           });
 
