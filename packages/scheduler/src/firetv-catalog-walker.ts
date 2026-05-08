@@ -527,17 +527,73 @@ const APP_WALK_RULES: Record<string, AppWalkRule> = {
     usesWebView: true,
     extractTiles: () => [],
   },
-  // Future entries (when adding):
-  //   'Hulu': likely usesWebView (verify when an FT has it logged in)
-  //   'MLB.TV': likely usesWebView (verify)
-  //   'NFHS Network': native + extractable, but ONLY when logged in.
-  //     Probed on FT2 2026-04-23: walker landed on IntroActivity (Subscribe
-  //     / Log In / Skip For Now) — operator login required before adding
-  //     a rule. Once logged in, NFHS likely has a native catalog grid
-  //     similar to ESPN.
-  //   'Netflix': launch failed during 2026-04-23 probe despite package
-  //     match (com.netflix.ninja in scout report + same in catalog).
-  //     Needs debug — likely a LEANBACK_LAUNCHER intent issue. Defer.
+  // v2.32.90 — Fleet-wide probe results: most sports-relevant streaming apps
+  // are non-walkable. Three patterns observed:
+  //   1. Cobalt-runtime apps (YouTube TV, likely YouTube proper) — render
+  //      via dev.cobalt.app.MainActivity using OpenGL surfaces with no
+  //      accessibility tree. Dump size 5KB, 0 text nodes. Same effective
+  //      behavior as Apple TV+'s accessibility-blind native pattern.
+  //   2. Paywall-gated apps when a Cube isn't subscribed/logged in —
+  //      walker captures only "App Not Owned"/"See Details"/"Quit" text
+  //      until an operator signs in via the TV remote.
+  //   3. Cross-app redirects — e.g. Fox Sports's MainActivity at graystone
+  //      shows a single "OPEN FOX ONE" button; the actual catalog lives
+  //      in com.fox.foxone (which is itself paywalled).
+  // For each below, the entry is intentional documentation: future Claude
+  // sessions / operators will see the per-app reason without repeating the
+  // probe. Remove `usesWebView: true` ONLY after a fresh probe confirms
+  // accessibility text IS readable on a logged-in Cube.
+
+  // Hulu: probed at greenville-stoneyard 2026-05-08 on a logged-out Cube.
+  // Dump = 5.5KB, 4 text nodes all "App Not Owned" paywall variants.
+  // No catalog content visible. Operator action required to log in
+  // before walking will produce real tiles.
+  'Hulu': {
+    catalogId: 'hulu',
+    displayName: 'Hulu',
+    postLaunchDelayMs: 0,
+    usesWebView: true,
+    extractTiles: () => [],
+  },
+  // YouTube TV: probed at graystone-tvcontroller 2026-05-08.
+  // dev.cobalt.app.MainActivity is YouTube's Cobalt runtime — renders via
+  // OpenGL surfaces. Dump = 5.4KB, 0 readable text nodes (same pattern
+  // as Apple TV+). uiautomator cannot extract tile titles regardless of
+  // login state. Future work: HTTP catalog fetch from YouTube TV's
+  // public lineup endpoint, or screen-capture + OCR.
+  'YouTube TV': {
+    catalogId: 'youtube-tv',
+    displayName: 'YouTube TV',
+    postLaunchDelayMs: 0,
+    usesWebView: true,
+    extractTiles: () => [],
+  },
+  // Fox Sports (com.foxsports.videogo): probed at graystone 2026-05-08.
+  // MainActivity shows only "OPEN FOX ONE" — the foxsports.videogo APK is
+  // a stub redirecting to com.fox.foxone for actual content. Walking the
+  // stub captures nothing useful. com.fox.foxone (also installed at
+  // graystone) was not separately probed; if a future operator confirms
+  // its content surfaces in uiautomator, replace this entry.
+  'Fox Sports': {
+    catalogId: 'fox-sports',
+    displayName: 'Fox Sports',
+    postLaunchDelayMs: 0,
+    usesWebView: true,
+    extractTiles: () => [],
+  },
+  // Future entries (deferred for the same reasons documented above):
+  //   'NFHS Network': native + extractable IF logged in. Probed on FT2
+  //     2026-04-23: walker landed on IntroActivity (Subscribe / Log In /
+  //     Skip For Now) — operator login required. Once logged in, NFHS
+  //     likely has a native catalog grid similar to ESPN. Tracked
+  //     separately because NFHS games already flow through the
+  //     /api/nfhs sync path (global, not per-Cube).
+  //   'Netflix': no live sports — walker would never produce useful tiles
+  //     even if walkable. Skipped permanently for sports-bar use case.
+  //   'MLB.TV', 'NBA App', 'NFL App': not yet probed. Likely Cobalt-style
+  //     (similar to YouTube TV) given they're cross-platform native apps,
+  //     but verify before assuming. Probe on a logged-in Cube before
+  //     deciding usesWebView vs extractor.
 }
 
 // Helper: send a shell command via the existing send-command endpoint.
