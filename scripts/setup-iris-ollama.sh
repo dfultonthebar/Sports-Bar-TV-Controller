@@ -72,14 +72,29 @@ if ! clinfo -l 2>/dev/null | grep -qiE "intel.*(graphics|iris|arc|xe)"; then
     # a7a0" line.
     if lspci 2>/dev/null | grep -iE 'vga|3d|display' | grep -qi 'intel corporation'; then
         log "Intel iGPU chip present per lspci. Installing Intel level-zero userspace stack."
-        # Install Intel GPU apt repo if not already configured
-        if [ ! -f /etc/apt/sources.list.d/intel-gpu.list ]; then
-            log "Adding Intel GPU apt repo"
+        # v2.32.70 — Intel GPU apt repo line is per-Ubuntu-codename. Earlier
+        # versions hardcoded `noble` which made the install fail on jammy
+        # (22.04) boxes — packages depend on libc6 ≥ 2.38, jammy has 2.35.
+        # Detect the running codename and use the matching Intel repo. Intel
+        # publishes both `jammy/client` and `noble/client` from the same URL.
+        UBU_CODENAME=$(lsb_release -cs 2>/dev/null || echo noble)
+        case "$UBU_CODENAME" in
+            jammy|noble) : ;;  # supported
+            *)
+                log "⚠ Unsupported Ubuntu codename '$UBU_CODENAME' — Intel apt repo line may not work. Defaulting to noble."
+                UBU_CODENAME=noble
+                ;;
+        esac
+        # If repo already configured but for a DIFFERENT codename (e.g. an
+        # earlier run wrote the wrong line), rewrite it. apt-get update
+        # below picks up the correction.
+        EXPECTED_REPO_LINE="deb [arch=amd64 signed-by=/usr/share/keyrings/intel-graphics.gpg] https://repositories.intel.com/gpu/ubuntu $UBU_CODENAME client"
+        if [ ! -f /etc/apt/sources.list.d/intel-gpu.list ] || ! grep -qF "$UBU_CODENAME client" /etc/apt/sources.list.d/intel-gpu.list; then
+            log "Adding/updating Intel GPU apt repo for $UBU_CODENAME"
             sudo install -d /usr/share/keyrings
             wget -qO- https://repositories.intel.com/gpu/intel-graphics.key \
                 | sudo gpg --yes --dearmor --output /usr/share/keyrings/intel-graphics.gpg
-            echo 'deb [arch=amd64 signed-by=/usr/share/keyrings/intel-graphics.gpg] https://repositories.intel.com/gpu/ubuntu noble client' \
-                | sudo tee /etc/apt/sources.list.d/intel-gpu.list >/dev/null
+            echo "$EXPECTED_REPO_LINE" | sudo tee /etc/apt/sources.list.d/intel-gpu.list >/dev/null
             sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
         fi
         # v2.32.69 — additional packages found on the working Holmgren box
