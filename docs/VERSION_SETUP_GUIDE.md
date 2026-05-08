@@ -187,6 +187,39 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.88 — NFHS bartender title shows sport (V vs JV distinguishable)
+**Released:** 2026-05-08
+
+**No setup required.** Pure UI change.
+
+**What it fixes:** When NFHS lists Varsity AND JV games of the same matchup (e.g. "Pulaski vs West De Pere") on the same day, the bartender remote rendered both with the identical title "Pulaski @ West De Pere" — operators couldn't tell which one to schedule. The channel-guide route was already sending `sport: "Varsity Girls Soccer"` / `"Junior Varsity Girls Soccer"` on each game; the GameListing TS interface in `EnhancedChannelGuideBartenderRemote.tsx` simply didn't declare the field, and the title rendering ignored it. Fix: add `sport?: string` to the interface, append ` — ${game.sport}` to the title when present (NFHS-only — no other code path sets `sport` on programs in `apps/web/src/app/api/channel-guide/route.ts`).
+
+**Affected:** `apps/web/src/components/EnhancedChannelGuideBartenderRemote.tsx` (interface + one render line). Backwards-compatible — non-NFHS games unaffected (their programs don't carry a `sport` field).
+
+---
+
+### v2.32.87 — Watch button updates input label instantly
+**Released:** 2026-05-08
+
+**No setup required.**
+
+**What it fixes:** Bartender hits Watch → app launches on Fire TV → but the input label in the UI keeps showing the previous state ("Home • streaming") until scheduler-service polls `/api/firetv-devices/[id]/current-app` on its 5-min cycle. Now `/api/streaming/launch` mirrors the launched app's friendly name into `inputCurrentChannels` immediately after a successful launch (same write shape as the polling endpoint: `channelNumber="APP"`, `channelName=<catalog name>`). Verified live on Cube 3 — under 1s of latency vs the previous 5min.
+
+**Affected:** `apps/web/src/app/api/streaming/launch/route.ts`.
+
+---
+
+### v2.32.86 — NFHS catalog cleanup (deepLinkSupport=false)
+**Released:** 2026-05-08
+
+**No setup required.**
+
+**What it fixes:** NFHS catalog entry had `deepLinkFormat: 'nfhs://event/{eventId}'` but `pm dump com.playon.nfhslive | grep Scheme` shows the package registers no external scheme — the deep link was non-functional. Cleared the format and set `deepLinkSupport: false` so the streaming-service-manager skips the deep-link path and falls back to a launcher-only launch. NFHS Watch still opens the app (lands on SubscribeActivity until the operator signs in once on the device — one-time per-Cube).
+
+**Affected:** `packages/streaming/src/streaming-apps-database.ts` (nfhs-network entry).
+
+---
+
 ### v2.32.85 — ESPN autoplay + Schedule button deep-link pipe end-to-end
 **Released:** 2026-05-08
 

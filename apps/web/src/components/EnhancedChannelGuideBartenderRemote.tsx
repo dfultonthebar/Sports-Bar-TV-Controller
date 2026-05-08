@@ -154,6 +154,9 @@ interface GameListing {
   status?: string
   isSports: boolean
   isLive?: boolean
+  // NFHS-only — full sport label including level/gender (e.g. "Varsity Girls
+  // Soccer"). Distinguishes V vs JV games in the same matchup.
+  sport?: string
   // Live game data
   homeScore?: number | null
   awayScore?: number | null
@@ -1797,7 +1800,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
                             <div className="flex items-center justify-between mb-1">
                               <h4 className="font-medium text-white group-hover:text-purple-200 transition-colors duration-300 flex-1">
                                 {game.awayTeam && game.homeTeam ?
-                                  `${game.awayTeam} @ ${game.homeTeam}` :
+                                  `${game.awayTeam} @ ${game.homeTeam}${game.sport ? ` — ${game.sport}` : ''}` :
                                   game.description
                                 }
                               </h4>
