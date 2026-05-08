@@ -480,6 +480,16 @@ export class ADBClient {
         `[ADB CLIENT] Launching ESPN${contentTitle ? ` for search-by-title "${contentTitle}"` : ` (featured-tile fallback)`} on ${this.deviceAddress}`,
       )
 
+      // v2.32.97 — Pre-tune cleanup: stop any active media playback
+      // before navigating. KEYCODE_MEDIA_STOP (86) signals any
+      // foregrounded MediaSession to stop; force-stop ESPN clears
+      // any leftover navigation state from a previous Watch click.
+      // Both are safe no-ops if nothing's playing or ESPN isn't open.
+      logger.info(`[ADB CLIENT] Pre-tune cleanup — MEDIA_STOP + force-stop`)
+      await this.sendKey(86, 5000).catch(() => {}) // KEYCODE_MEDIA_STOP
+      await this.executeShellCommand(`am force-stop ${packageName}`, 5000).catch(() => {})
+      await new Promise((r) => setTimeout(r, 500))
+
       // v2.32.85 — IMPORTANT: launch via the standard LEANBACK_LAUNCHER
       // entry point, NOT via the `sportscenter://x-callback-url/showHomeTab`
       // deep link. Verified live on Cube 3 on 2026-05-08: deeplink-launch
@@ -539,58 +549,41 @@ export class ADBClient {
         await this.executeShellCommand(`input text '${escaped}'`, 8000)
         logger.info(`[ADB CLIENT] Waiting 4s for ESPN search results to render`)
         await new Promise((r) => setTimeout(r, 4000))
-        logger.info(`[ADB CLIENT] DPAD_DOWN → focus first search result`)
-        await this.sendKey(20, 8000) // KEYCODE_DPAD_DOWN
-        await new Promise((r) => setTimeout(r, 400))
 
-        // v2.32.96 — VERIFICATION GATE before pressing CENTER.
+        // v2.32.97 — TEXT-TARGETED TAP replaces blind DPAD_DOWN + verify.
         //
-        // Operator-flagged 2026-05-08: clicking Watch on a specific game
-        // sometimes plays the wrong content (e.g. "Texans" → golf quad
-        // view) because the autoplay's DPAD navigation is fragile —
-        // sometimes lands on Search results, sometimes on ESPN's
-        // Featured tab depending on UI state at launch. Without a
-        // verification step, every run plays whatever tile happens to
-        // be focused after DPAD_DOWN, with no signal to the bartender
-        // about what was actually launched.
+        // Pre-fix v2.32.94/.96 used DPAD_DOWN to "focus first result"
+        // and pressed CENTER. v2.32.96 added a verification gate that
+        // rejected mismatches but couldn't fix them — when ESPN's UI
+        // ended up on the Featured tab instead of Search results, the
+        // autoplay aborted entirely.
         //
-        // Mechanism: uiautomator dump of the focused tile, parse its
-        // accessibility content, fuzzy-match against the bartender's
-        // intended title. The focused container itself usually has
-        // empty content-desc, but a sibling node at the same bounds
-        // carries the full content-desc (e.g.
-        // "ESPN+ • NCAA Baseball Live Southern Miss 2 James Madison 1
-        // Top 4th"). Match if ANY non-trivial token from the intended
-        // title appears in the focused tile's accessibility content
-        // (case-insensitive, after stripping noise like "@", "vs.",
-        // "the", numeric ranks like "(22)").
+        // New approach: dump the UI right after the search query
+        // typed, scan ALL on-screen tiles for one whose accessibility
+        // content matches the intended title, then `input tap <x> <y>`
+        // at that tile's bounds center. Targeting by content rather
+        // than position handles both the Search-results case AND the
+        // Featured-tab case — if ESPN displays a tile matching the
+        // query ANYWHERE on screen, we tap it directly.
         //
-        // On match: fire CENTER, log "verified".
-        // On mismatch: log the actual focused content + DON'T fire
-        // CENTER (avoids playing the wrong game). Operator manually
-        // navigates from there if needed; better than the old behavior
-        // of silently playing whatever was featured.
-        const verificationResult = await this._verifyFocusedTileMatchesTitle(trimmedTitle)
-        if (verificationResult.matched) {
+        // If no matching tile is visible, throw with diagnostic. Only
+        // way that can happen now: ESPN search returned no results
+        // for the query (truly unfindable game), or ESPN's UI is in a
+        // state with no visible content tiles at all.
+        const tapTarget = await this._findVisibleTileMatchingTitle(trimmedTitle)
+        if (tapTarget) {
           logger.info(
-            `[ADB CLIENT] ESPN focused-tile verified — matched "${trimmedTitle}" against tile "${verificationResult.actualText}"`,
+            `[ADB CLIENT] ESPN tile match — tapping "${tapTarget.text}" at (${tapTarget.cx}, ${tapTarget.cy})`,
           )
-          logger.info(`[ADB CLIENT] DPAD_CENTER → play (PlayerActivity)`)
-          await this.sendKey(23, 8000) // KEYCODE_DPAD_CENTER
-          logger.info(`[ADB CLIENT] ESPN search-by-title autoplay dispatched`)
-          return `ESPN search-by-title autoplay dispatched for "${trimmedTitle}" (verified: ${verificationResult.actualText})`
+          await this.executeShellCommand(`input tap ${tapTarget.cx} ${tapTarget.cy}`, 8000)
+          logger.info(`[ADB CLIENT] ESPN text-targeted tap dispatched`)
+          return `ESPN text-targeted tap dispatched for "${trimmedTitle}" (matched: ${tapTarget.text})`
         }
-        // v2.32.96 — Throw on verification failure so the API surfaces the
-        // mismatch as an error (success:false) instead of silently
-        // succeeding while ESPN sits on the wrong screen. Bartender remote
-        // will display the error message; operator sees "couldn't find this
-        // game" rather than "Successfully launched app espn-plus" while the
-        // TV plays the Florida-Alabama softball game they didn't ask for.
         logger.warn(
-          `[ADB CLIENT] ESPN focused-tile verification FAILED — wanted "${trimmedTitle}" but focused tile is "${verificationResult.actualText || '<empty>'}". NOT pressing CENTER.`,
+          `[ADB CLIENT] ESPN no visible tile matched "${trimmedTitle}". NOT tapping.`,
         )
         throw new Error(
-          `ESPN couldn't find "${trimmedTitle}" — focused tile would have played "${verificationResult.actualText || '<empty>'}". App is open at home screen for manual navigation.`,
+          `ESPN couldn't find "${trimmedTitle}" on the search-results screen. App is open at home for manual navigation.`,
         )
       }
 
@@ -611,6 +604,130 @@ export class ADBClient {
     } catch (error) {
       logger.error(`[ADB CLIENT] ESPN autoplay error:`, error)
       throw error
+    }
+  }
+
+  /**
+   * v2.32.97 — Find an on-screen tile whose accessibility content
+   * matches the intended title, return its bounds center for tapping.
+   *
+   * Replaces the v2.32.96 verify-focused-tile approach with a more
+   * permissive scan: dump the UI, walk every <node> with non-empty
+   * text/content-desc, group siblings by bounds (ESPN's tile pattern
+   * has a focusable parent + sibling at same bounds with the
+   * description), and find the first whose concatenated content
+   * tokens overlap with the intended title's tokens.
+   *
+   * Returns `{ text, cx, cy }` for the matched tile, or null if
+   * nothing matches. Caller does `input tap cx cy` to click it.
+   */
+  private async _findVisibleTileMatchingTitle(
+    intendedTitle: string,
+  ): Promise<{ text: string; cx: number; cy: number } | null> {
+    try {
+      const dumpPath = `/sdcard/espn_tap_${Date.now()}.xml`
+      await this.executeShellCommand(`uiautomator dump ${dumpPath}`, 8000)
+      const xml = await this.executeShellCommand(`cat ${dumpPath}`, 8000)
+      this.executeShellCommand(`rm -f ${dumpPath}`, 3000).catch(() => {})
+
+      if (!xml || xml.length < 200) {
+        logger.warn(`[ADB CLIENT] findVisibleTile: empty dump (size=${xml?.length ?? 0})`)
+        return null
+      }
+
+      // Build a map: bounds-key → accumulated content + center coords.
+      // Many ESPN tiles have multiple sibling nodes at exactly the same
+      // bounds (focusable container + accessibility wrapper); we
+      // concatenate their text/content-desc together so the match can
+      // see all tile content at once.
+      type TileInfo = { text: string[]; cx: number; cy: number; w: number; h: number }
+      const tilesByBounds = new Map<string, TileInfo>()
+
+      const nodeTags = xml.match(/<node[^>]*\/?>/g) || []
+      for (const tag of nodeTags) {
+        const bm = tag.match(/bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/)
+        if (!bm) continue
+        const [x1, y1, x2, y2] = bm.slice(1, 5).map(Number)
+        const w = x2 - x1
+        const h = y2 - y1
+        // Filter out obviously-non-tile nodes: the full screen, the
+        // navigation rail (narrow column), zero-area, or very wide
+        // banner regions. Actual ESPN tiles are roughly 200-400px
+        // wide and 200-300px tall.
+        if (w < 100 || h < 80 || w > 1500 || h > 800) continue
+        const tm = tag.match(/ text="([^"]+)"/)
+        const cdm = tag.match(/ content-desc="([^"]+)"/)
+        if (!tm && !cdm) continue
+        const key = `${x1},${y1},${x2},${y2}`
+        let info = tilesByBounds.get(key)
+        if (!info) {
+          info = {
+            text: [],
+            cx: Math.round((x1 + x2) / 2),
+            cy: Math.round((y1 + y2) / 2),
+            w,
+            h,
+          }
+          tilesByBounds.set(key, info)
+        }
+        if (tm) info.text.push(tm[1])
+        if (cdm) info.text.push(cdm[1])
+      }
+
+      // Score each tile by how many intended-title tokens appear in
+      // its concatenated text. Highest score wins.
+      const stripNoise = (s: string) =>
+        s
+          .toLowerCase()
+          .replace(/\(\d+\)/g, ' ')
+          .replace(/[^a-z0-9\s]/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim()
+      const stop = new Set([
+        'the', 'at', 'vs', 'a', 'an', 'of', 'and', 'on', 'in', '&',
+        'live', 'ncaa', 'espn', 'plus',
+      ])
+      const intendedTokens = stripNoise(intendedTitle)
+        .split(' ')
+        .filter((t) => t.length >= 3 && !stop.has(t))
+      if (intendedTokens.length === 0) {
+        logger.warn(`[ADB CLIENT] findVisibleTile: no usable tokens from "${intendedTitle}"`)
+        return null
+      }
+
+      let best: { score: number; text: string; cx: number; cy: number } | null = null
+      for (const tile of tilesByBounds.values()) {
+        const combined = stripNoise(tile.text.join(' '))
+        if (!combined) continue
+        const score = intendedTokens.filter((t) => combined.includes(t)).length
+        if (score > 0 && (!best || score > best.score)) {
+          best = {
+            score,
+            text: tile.text.join(' | ').slice(0, 200),
+            cx: tile.cx,
+            cy: tile.cy,
+          }
+        }
+      }
+      if (!best) {
+        // Diagnostic: log a sample of visible tile text so the operator
+        // can see what ESPN actually surfaced.
+        const sample = Array.from(tilesByBounds.values())
+          .slice(0, 5)
+          .map((t) => t.text.join(' | ').slice(0, 80))
+          .join(' / ')
+        logger.warn(
+          `[ADB CLIENT] findVisibleTile: no tile matched "${intendedTitle}" (tokens: ${intendedTokens.join(',')}). Visible sample: ${sample}`,
+        )
+        return null
+      }
+      logger.info(
+        `[ADB CLIENT] findVisibleTile: best match score=${best.score}/${intendedTokens.length} text="${best.text}"`,
+      )
+      return { text: best.text, cx: best.cx, cy: best.cy }
+    } catch (err: any) {
+      logger.warn(`[ADB CLIENT] findVisibleTile error: ${err.message}`)
+      return null
     }
   }
 
