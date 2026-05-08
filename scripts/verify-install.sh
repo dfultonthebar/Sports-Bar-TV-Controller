@@ -45,7 +45,6 @@ readonly BARTENDER_URL="http://localhost:${BARTENDER_PORT}/"
 readonly HTTP_RETRIES=3
 readonly HTTP_RETRY_SLEEP=5
 readonly CRASH_LOG_LINES=100
-readonly CRASH_LOG_WINDOW_SECS=60
 
 # Color codes
 readonly RED='\033[0;31m'
@@ -155,8 +154,7 @@ check_pm2() {
             const status = proc.pm2_env && proc.pm2_env.status;
             const restartTime = proc.pm2_env && proc.pm2_env.restart_time || 0;
             const unstableRestarts = proc.pm2_env && proc.pm2_env.unstable_restarts || 0;
-            const pmUptime = proc.pm2_env && proc.pm2_env.pm_uptime || 0;
-            console.log(status + '|' + restartTime + '|' + unstableRestarts + '|' + pmUptime);
+            console.log(status + '|' + restartTime + '|' + unstableRestarts);
         } catch (e) { console.log('PARSEERR'); }
     " "$jlist" "$PM2_PROCESS_NAME" 2>/dev/null || echo "PARSEERR")
 
@@ -171,8 +169,8 @@ check_pm2() {
         return 10
     fi
 
-    local status restart_time unstable_restarts pm_uptime
-    IFS='|' read -r status restart_time unstable_restarts pm_uptime <<< "$parsed"
+    local status restart_time unstable_restarts
+    IFS='|' read -r status restart_time unstable_restarts <<< "$parsed"
 
     if [ "$status" != "online" ]; then
         log_fail "PM2 status is '${status}', expected 'online'"
@@ -200,7 +198,7 @@ check_pm2() {
 check_health_http() {
     log_info "Checking ${HEALTH_URL}..."
     local attempt body http_code overall_status
-    for attempt in $(seq 1 $HTTP_RETRIES); do
+    for attempt in $(seq 1 "$HTTP_RETRIES"); do
         # -s silent, -S show errors, -w write http code, -o write body
         body=$(curl -sS -o /tmp/verify-health-body.$$ -w '%{http_code}' \
             --max-time 10 "$HEALTH_URL" 2>/dev/null || echo "000")
@@ -246,7 +244,7 @@ check_health_http() {
 check_metrics_http() {
     log_info "Checking ${METRICS_URL}..."
     local attempt body http_code success cpu_cores
-    for attempt in $(seq 1 $HTTP_RETRIES); do
+    for attempt in $(seq 1 "$HTTP_RETRIES"); do
         body=$(curl -sS -o /tmp/verify-metrics-body.$$ -w '%{http_code}' \
             --max-time 10 "$METRICS_URL" 2>/dev/null || echo "000")
         http_code="$body"
@@ -277,7 +275,7 @@ check_metrics_http() {
 check_bartender_proxy() {
     log_info "Checking ${BARTENDER_URL}..."
     local attempt http_code
-    for attempt in $(seq 1 $HTTP_RETRIES); do
+    for attempt in $(seq 1 "$HTTP_RETRIES"); do
         http_code=$(curl -sS -o /dev/null -w '%{http_code}' \
             --max-time 10 "$BARTENDER_URL" 2>/dev/null || echo "000")
         if [ "$http_code" = "200" ] || [ "$http_code" = "302" ] || [ "$http_code" = "307" ]; then
@@ -349,11 +347,9 @@ check_critical_tables() {
 # ---------------------------------------------------------------------------
 # Looks at last CRASH_LOG_LINES of PM2 error stream and grepps for crash
 # patterns at the start of lines OR after a leading timestamp/level token.
-# Only flagged lines whose mtime/log line falls within CRASH_LOG_WINDOW_SECS
-# of "now" matter, but pm2 logs --nostream gives us tail content without
-# timestamps in a portable way, so we conservatively flag any match in the
-# tail window. This is intentional: post-restart, the tail is by definition
-# very recent.
+# pm2 logs --nostream gives us tail content without timestamps in a
+# portable way, so we flag any match in the tail window. Intentional:
+# post-restart, the tail is by definition very recent.
 check_crash_logs() {
     log_info "Checking last ${CRASH_LOG_LINES} lines of PM2 error logs for crash patterns..."
     local logs
