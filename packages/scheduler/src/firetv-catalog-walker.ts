@@ -245,15 +245,44 @@ function extractPrimeVideoTiles(xmlDump: string): CatalogTile[] {
   // Sport-row headers commonly seen: "NBA Playoffs on Prime", "Sports for you",
   // "Live now", "Live on Prime". Track the most recent so we can attribute
   // tiles to the sport correctly.
+  // v2.32.84 — extended to cover MLB/NHL/MLS/UFC/college variants. Without
+  // these, a row like "MLB on Prime" wouldn't match and tiles beneath would
+  // inherit the previous section's `lastSportRow` (e.g. NBA), so MLB games
+  // would be tagged as basketball. Code-reviewer caught this on 2026-05-08.
   const sportRowPatterns = [
     /^NBA Playoffs/i,
+    /^NBA on Prime/i,
     /^NFL on Prime/i,
+    /^Thursday Night Football/i,
+    /^MLB on Prime/i,
+    /^NHL on Prime/i,
+    /^MLS on Prime/i,
+    /^UFC on Prime/i,
+    /^WNBA/i,
     /^Premier League/i,
     /^Champions League/i,
-    /^WNBA/i,
+    /^College (Football|Basketball|Baseball|Hockey|Sports)/i,
     /^Sports for you/i,
     /^Live (now|on)/i,
     /^Sports$/i,
+  ]
+
+  // v2.32.84 — promotional copy that the non-matchup fallback branch was
+  // accepting as tiles. The audit on 2026-05-08 caught Amazon promo strings
+  // like "Included with Prime", "Watch trailer", "Go ad free with Ultra"
+  // surviving into the channel guide. None of these are content the bartender
+  // can route to.
+  const promoBlocklist = [
+    /^Included with Prime$/i,
+    /^Start your \d+-day trial$/i,
+    /^Free trial available$/i,
+    /^Watch trailer$/i,
+    /^Go ad free/i,
+    /^New episodes? available$/i,
+    /^Coming soon$/i,
+    /^Watchlist$/i,
+    /^Like$/i,
+    /^Not for me$/i,
   ]
 
   for (const t of all) {
@@ -294,6 +323,8 @@ function extractPrimeVideoTiles(xmlDump: string): CatalogTile[] {
         if (/^(Tomorrow|Today|Yesterday|Mon|Tue|Wed|Thu|Fri|Sat|Sun)/i.test(t)) continue
         if (/^\d{1,2}:\d{2}\s*(AM|PM)/i.test(t)) continue
         if (/^Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec/i.test(t)) continue
+        // v2.32.84 — reject Amazon promotional copy
+        if (promoBlocklist.some((p) => p.test(t))) continue
 
         const key = t.toLowerCase()
         if (seen.has(key)) continue
@@ -302,6 +333,10 @@ function extractPrimeVideoTiles(xmlDump: string): CatalogTile[] {
           contentTitle: t,
           isLive: false,
           sportTag: inferSportTag(t, lastSportRow),
+          // v2.32.84 — search-by-title deep link works for any Prime Video
+          // discoverable content. Bartender's launchPrimeVideoToContent
+          // path then runs the autoplay nav sequence to start playback.
+          deepLink: `https://watch.amazon.com/search?phrase=${encodeURIComponent(t)}`,
         })
       }
       continue
@@ -338,6 +373,8 @@ function extractPrimeVideoTiles(xmlDump: string): CatalogTile[] {
       isLive: liveTag,
       sportTag: inferSportTag(cleanTitle, lastSportRow),
       startTime,
+      // v2.32.84 — see comment in the non-matchup branch above.
+      deepLink: `https://watch.amazon.com/search?phrase=${encodeURIComponent(cleanTitle)}`,
     })
   }
 
