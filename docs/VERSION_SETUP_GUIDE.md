@@ -187,6 +187,29 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.79 — Pass 1 Tier 3: extract two duplicated helpers in channel-guide
+**Released:** 2026-05-08
+
+Pass 1 Tier 3 of the code-cleanup campaign. Kept narrow on this commit to avoid bundling many independent refactors that complicate review.
+
+**Cleanup 1 — `parseListingDate(date, time)` helper** (`apps/web/src/app/api/channel-guide/route.ts`)
+
+Three blocks parsed Rail Media listing `(date, time)` into a `Date` with the year-rollover heuristic. Two were verbatim duplicates (cable/satellite path + streaming path). The third (local-channel-override path) had different control flow — `continue` on NaN instead of rolling over to `currentYear + 1` — so it kept its own variant. Extracted the shared form to a module-level helper used in both verbatim sites.
+
+**Cleanup 2 — `deriveIsLive(game, nowSec)` helper** (same file)
+
+Two copy-pasted four-term boolean expressions for deriving `isLive` from a `game_schedules` row (one in cable/satellite injection, one in streaming injection). Both included the v2.28.2 carve-out for ESPN's lag in marking OT games `completed`. Extracted to a module-level helper so a future change to the status-string set (e.g. ESPN renames `completed` → `final` or adds `forfeited`) updates one site instead of two.
+
+**Held items:** A 7-site `parseJsonArray` helper extraction (covers `broadcastNetworks`/`availableNetworks`/`installedApps` JSON parses with inconsistent error handling) and a 44-site `logInfo`/`logError` wrapper replacement (current wrappers double-format timestamps and double-log) were flagged by the audit. Both are mechanical but high-touch — deferred to a separate cleanup pass to keep the v2.32.79 diff reviewable. Same goes for the dynamic-import hoist in channel-guide (Quality #7) — many sites with name shadowing, modest payoff (Node module cache makes them effectively no-ops after first load).
+
+**Required Manual Step:** None — pure extractive refactor with no behavioral change. Auto-update merge picks them up.
+
+**Verification:** `npm run build` clean (34/34 turbo tasks). PM2 restart, `/api/system/health` returns `healthy` (55/57 devices online — 2 known-failing Holmgren Cubes per memory). Bartender :3002 returns 200.
+
+This closes Pass 1 (recent streaming feature). Pass 2 (ops tooling — `auto-update.sh`, `setup-iris-ollama.sh`, `verify-install.sh`) and Pass 3 (broad packages/* audit) follow as separate sessions.
+
+---
+
 ### v2.32.78 — Pass 1 Tier 2: performance wins from simplify-skill audit
 **Released:** 2026-05-08
 
