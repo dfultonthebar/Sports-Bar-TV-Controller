@@ -46,6 +46,26 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-08 — v2.32.96 — ESPN focused-tile verification gate
+
+**Risk:** GO. Adds a pre-CENTER verification step that refuses to play the wrong game. Worst case for the operator: the API now returns success:false with a clear message instead of silently playing whatever tile was focused.
+
+**What changed:**
+- `adb-client.ts` `launchEspnToLiveContent` now does a uiautomator dump after DPAD_DOWN, finds the focused tile's bounds, and reads the accessibility content of any node within those bounds (the focused container is usually empty but a sibling at the same bounds carries the description). Fuzzy-matches tokens against the bartender's intended title.
+- Match → fire CENTER (existing behavior).
+- Mismatch → throw with explicit message ("wanted X, focused tile would have played Y").
+- `streaming-service-manager.ts launchApp` re-throws on error so the API's outer try/catch can surface the message.
+
+**What could break:** When the autoplay's DPAD navigation lands on the wrong screen (sometimes Featured instead of Search), Watch will now report failure instead of silently playing wrong content. That's the desired outcome — operator knows + can navigate manually.
+
+**Manual steps required:** None.
+
+**Rollback:** `git revert` clean.
+
+**Why we can't bypass the DPAD on ESPN:** PlayerActivity is not-exported. Every `sportscenter://` deep link goes through StartupActivity → ESPN's Comrade resolver → home (partner-only). Verified empirically with showEvent/showWatch/showGame/showWatchStream variants. The DPAD-and-verify path IS the public surface.
+
+---
+
 ### 2026-05-08 — v2.32.95 — All ESPN/Prime Video programs get per-game deepLinks (v2.32.94 verification gap)
 
 **Risk:** GO. Operator-flagged bug. v2.32.94 fix only covered the walker-injected path; the broadcast_networks fallback and Rail Media streaming paths were missed → 39 of 45 ESPN programs in the bartender guide still had no per-game deepLink → Watch button fell through to ESPN's featured-tile autoplay (PGA quad-view today) for every NCAA / college-baseball / soccer / lacrosse game.

@@ -187,6 +187,23 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.96 — ESPN focused-tile verification gate + error propagation
+**Released:** 2026-05-08
+
+**No setup required.** Code-only fix.
+
+**What it adds:** A pre-CENTER verification step in the ESPN search-by-title autoplay. After DPAD_DOWN focuses the first search result, the autoplay dumps the UI hierarchy, parses the focused tile's accessibility content (text + content-desc from any node within the focused tile's bounds — the focused container itself usually has empty content-desc but a sibling at the same bounds carries the full description), and fuzzy-matches against the bartender's intended title. If the tokens match → fire CENTER and play. If not → log the actual focused-tile content + DON'T fire CENTER + throw an error that surfaces back to the bartender remote with the actual visible-tile description.
+
+**Why:** Operator-flagged at the bar — clicking Watch on a specific game put up the wrong content (PGA quad-view) for every NCAA game. Root cause: ESPN's UI sometimes leaves the post-search-DPAD focus on the wrong screen (Featured tab tile vs. search-results tile) depending on UI state at launch. Without verification, every run plays whatever tile is focused, no signal to the operator. Live test caught the failure case: wanted "Southern Miss James Madison", focused tile would have been "Florida 1 #3 Alabama 6" → verification refused to play wrong content.
+
+**Bonus fix:** `streaming-service-manager.launchApp` now re-throws the underlying error instead of swallowing it. Pre-fix the API responded with a generic "Failed to launch app" string. Post-fix the bartender remote sees the actual error message ("ESPN couldn't find 'Southern Miss James Madison' — focused tile would have played 'Florida 1 #3 Alabama 6'. App is open at home screen for manual navigation.").
+
+**Why we can't bypass DPAD entirely on ESPN:** PlayerActivity is `not exported` (Android security gate). Every `sportscenter://` deep-link variant tested today (`showEvent`, `showWatch`, `showGame`, `showWatchStream`, with and without UUID-format playIDs) collapses to StartupActivity → ESPN's Comrade resolver → home. Comrade is partner-only. Third-party `am start -n com.espn.gtv/.../PlayerActivity` returns `Permission Denial: not exported from uid 10195`. Community projects (ADBTuner / Channels DVR) that ship `showWatchStream` working target the older `com.espn.score_center` Phone/Tablet APK, not Fire TV's `com.espn.gtv` — different intent-filter handler. Verified empirically; documented for future reference.
+
+**Affected:** 2 files. `packages/firecube/src/adb-client.ts` (verification gate + helper), `apps/web/src/services/streaming-service-manager.ts` (re-throw on launch error).
+
+---
+
 ### v2.32.95 — Per-game deepLinks for ALL ESPN/Prime Video injection paths (Watch button bug from v2.32.94 verification gap)
 **Released:** 2026-05-08
 
