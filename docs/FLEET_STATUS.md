@@ -1,6 +1,6 @@
 # Fleet Status
 
-**Last updated:** 2026-05-08 (NFHS bartender title fix v2.32.88 — Varsity vs JV games of the same matchup are now visually distinguishable; Holmgren at v2.32.88, other 5 boxes will pick up via 2:30 AM CST cron)
+**Last updated:** 2026-05-08 (NFHS bartender title fix v2.32.88 — Varsity vs JV games of the same matchup are now visually distinguishable; full fleet at v2.32.88, all 6 boxes verified PASS 7/7)
 
 A snapshot of where each location stands. Update this file after every fleet-wide change so future operators (and Claude) have a single place to see the truth.
 
@@ -11,16 +11,16 @@ A snapshot of where each location stands. Update this file after every fleet-wid
 | Location | Branch | OS | Software ver | Bartender proxy | AI Suggest backend | iGPU acceleration | Notes |
 |---|---|---|---|---|---|---|---|
 | holmgren-way | `location/holmgren-way` | noble (24.04) | **v2.32.88** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | Reference deployment; first to receive drift-recovery fix |
-| graystone | `location/graystone` | noble (24.04) | v2.32.87 → .88 (cron) | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | |
-| greenville | `location/stoneyard-greenville` | noble (24.04) | v2.32.87 → .88 (cron) | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | OS upgraded 2026-05-08; AI Suggest 119s on iGPU. |
-| leglamp | `location/leg-lamp` | noble (24.04) | v2.32.87 → .88 (cron) | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | |
-| lucky-s-1313 | `location/lucky-s-1313` | noble (24.04) | v2.32.87 → .88 (cron) | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | |
-| stoneyard-appleton | `location/stoneyard-appleton` | noble (24.04) | v2.32.87 → .88 (cron) | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | AI Suggest 67.3s on iGPU (fleet best) |
+| graystone | `location/graystone` | noble (24.04) | **v2.32.88** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | |
+| greenville | `location/stoneyard-greenville` | noble (24.04) | **v2.32.88** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | OS upgraded 2026-05-08; AI Suggest 119s on iGPU. |
+| leglamp | `location/leg-lamp` | noble (24.04) | **v2.32.88** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | |
+| lucky-s-1313 | `location/lucky-s-1313` | noble (24.04) | **v2.32.88** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | |
+| stoneyard-appleton | `location/stoneyard-appleton` | noble (24.04) | **v2.32.88** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | AI Suggest 67.3s on iGPU (fleet best) |
 
 **Aggregate health (2026-05-08 18:00 UTC):**
 - 6/6: bartender remote on Nginx ✓
 - 6/6: noble (24.04) + 6.8.0-111 kernel ✓
-- 1/6: latest software (v2.32.88 on Holmgren); 5/6 still on v2.32.87, will roll forward via 2:30 AM CST cron
+- 6/6: latest software (v2.32.88) ✓
 - 6/6: iGPU acceleration active ✓
 - 6/6: drift-recovery sidecar bootstrapped at `/home/ubuntu/sports-bar-data/.auto-update-last-success.json` ✓
 
