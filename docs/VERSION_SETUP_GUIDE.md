@@ -187,6 +187,39 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.85 — ESPN autoplay + Schedule button deep-link pipe end-to-end
+**Released:** 2026-05-08
+
+**Required manual step (one-time per location):**
+```
+sqlite3 /home/ubuntu/sports-bar-data/production.db "ALTER TABLE input_source_allocations ADD COLUMN deep_link TEXT;"
+```
+Verify with:
+```
+sqlite3 /home/ubuntu/sports-bar-data/production.db "PRAGMA table_info(input_source_allocations);" | grep deep_link
+```
+
+**Two distinct features in one release:**
+
+**1. ESPN Watch button now lands on PlayerActivity** (mirrors v2.32.84 Prime Video work). The ESPN catalog entry's `deepLinkFormat` was wrong (`espn://x-callback-url/...` — this scheme is not registered with `com.espn.gtv`); replaced with `sportscenter://x-callback-url/showHomeTab` (verified live on Cube 3 via `pm dump com.espn.gtv | grep Scheme`). New `launchEspnToLiveContent` in adb-client launches ESPN via the LEANBACK_LAUNCHER (NOT via the deeplink — testing showed deeplink-launch leaves focus in a different state where DPAD_DOWN+CENTER doesn't reach PlayerActivity). Sequence: launch → wait 8s → DPAD_DOWN → DPAD_CENTER → `com.espn.video.dmp.PlayerActivity`. Verified live: state=3 PLAYING. Walker now writes `deepLink: 'sportscenter://...'` for every ESPN tile (was previously empty).
+
+**2. Schedule button now plumbs deep links through to game-time tune.** Pre-fix: bartender clicks "Schedule" on a Prime Video / ESPN game, scheduler-service polls and at game-start fires `/api/channel-presets/tune` with `channelNumber + deviceType + fireTVId` BUT no deepLink — `streamingManager.launchApp(...,{},...)` empty options → app home screen. Fix: new `deep_link` column on `input_source_allocations`; bartender-schedule POST captures `game.channel.deepLink`; scheduler-service forwards it; tune endpoint passes it to `streamingManager.launchApp({deepLink}, ...)`; routes to autoplay path. Verified end-to-end on Cube 3: `POST /api/channel-presets/tune` with `deepLink: "https://watch.amazon.com/search?phrase=Citadel"` → PlayerActivity, state=3 PLAYING.
+
+**Affected:**
+- `packages/streaming/src/streaming-apps-database.ts` (espn-plus deepLinkFormat)
+- `packages/firecube/src/adb-client.ts` (launchEspnToLiveContent + monkey-launch fallback)
+- `apps/web/src/services/streaming-service-manager.ts` (espn-plus autoplay branch)
+- `packages/scheduler/src/firetv-catalog-walker.ts` (ESPN extractor populates deepLink)
+- `packages/database/src/schema.ts` (input_source_allocations.deepLink column)
+- `apps/web/src/app/api/schedules/bartender-schedule/route.ts` (accept + store deepLink)
+- `apps/web/src/components/EnhancedChannelGuideBartenderRemote.tsx` (forward deepLink to schedule POST)
+- `packages/scheduler/src/scheduler-service.ts` (read allocation.deepLink, pass to tune endpoint)
+- `apps/web/src/app/api/channel-presets/tune/route.ts` (accept deepLink, forward to streamingManager options)
+
+**Risk:** GO with the ALTER TABLE step. Otherwise additive: non-amazon-prime/espn-plus apps unchanged. Cable/DirecTV scheduling unchanged (deepLink only meaningful for firetv).
+
+---
+
 ### v2.32.84 — Prime Video Watch button now plays the game (autoplay end-to-end)
 **Released:** 2026-05-08
 

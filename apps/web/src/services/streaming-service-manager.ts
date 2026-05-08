@@ -199,6 +199,16 @@ class StreamingServiceManager {
           logger.info(`[STREAMING MANAGER] Prime Video deep link (no phrase): ${options.deepLink}`)
           await client.launchAppWithDeepLink(options.deepLink, installedPackage)
         }
+      } else if (options?.deepLink && app.deepLinkSupport && app.id === 'espn-plus') {
+        // v2.32.85 — ESPN runs the same autoplay-via-DPAD pattern. The
+        // deepLink the bartender sends is `sportscenter://x-callback-url/showHomeTab`
+        // (the canonical landing-page URL since v2.32.85 catalog fix), but
+        // a DPAD_DOWN + DPAD_CENTER carries us into PlayerActivity. The
+        // helper accepts the (currently unused) contentTitle for future
+        // event-ID resolution; we pass through whatever the channel-guide
+        // captured for trace logging.
+        logger.info(`[STREAMING MANAGER] ESPN autoplay sequence`)
+        await client.launchEspnToLiveContent(undefined, installedPackage)
       } else if (options?.deepLink && app.deepLinkSupport) {
         logger.info(`[STREAMING MANAGER] Launching ${app.name} with deep link: ${options.deepLink}`)
         // v2.32.84 — pass the resolved package name so adb-client can include
