@@ -46,6 +46,22 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-08 — v2.32.81 — Auto-update branch-drift recovery
+
+**Risk:** GO — defensive guard added to `scripts/auto-update.sh` that fires only when `BRANCH=main`. Normal-path code is unchanged.
+
+**What changed:** New drift-recovery block at lines 559-597 runs immediately after `BRANCH` is detected. When the box is sitting on `main` (an interactive Claude or operator session can leave it there), reads `.auto-update-last-success.json` to find the canonical branch and switches back. Without this guard the cron silently no-ops every night — pre-merge check at the FETCH phase sees "origin/main already merged into HEAD" because origin/main IS HEAD on a main checkout, and the script exits "no update available" — write a pass history row and skip the merge that should have happened.
+
+**What could break at a location:** Effectively nothing for boxes on their location branch (the new code path is bypassed entirely). For boxes that ARE on main, the change moves silent no-op → loud recovery (best case) or loud failure (if recovery itself can't proceed, e.g. local working-tree has unrelated edits). Both are improvements over the prior silent miss.
+
+**Manual steps required:** None. Auto-merges into every location.
+
+**Affected:** `scripts/auto-update.sh`, `package.json`, `docs/VERSION_SETUP_GUIDE.md`, `docs/LOCATION_UPDATE_NOTES.md`.
+
+**Rollback:** `git revert` clean — single-file patch.
+
+---
+
 ### 2026-05-07 — v2.32.70 — Per-codename Intel apt repo (jammy + noble support)
 
 **Risk:** GO — script-only change to `setup-iris-ollama.sh`. Auto-update merges the file; iGPU enablement isn't auto-triggered. Operators re-run the script when they want iGPU at their location. Docs catch-up included covering v2.32.65–v2.32.70 in VERSION_SETUP_GUIDE.md.
