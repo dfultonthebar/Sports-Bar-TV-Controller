@@ -46,6 +46,20 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-08 — v2.32.90 — Walker rules: 3 sports apps documented as non-walkable
+
+**Risk:** GO. Doc-only — adds three `APP_WALK_RULES` entries (Hulu, YouTube TV, Fox Sports) all with `usesWebView: true` flag → walker skips with an info log instead of attempting. Same pattern as fuboTV / Apple TV+ / Peacock. Behavior unchanged.
+
+**What changed:** Three new entries in `packages/scheduler/src/firetv-catalog-walker.ts` between the fuboTV entry and the future-entries comment. Each carries a comment with the empirical probe result that determined `usesWebView: true`.
+
+**What could break:** Nothing. Walker behavior is identical (these apps were already not being walked); only the log line shifts from silent skip to "info: <app> is webview-based, skipping" which is easier to see in `pm2 logs`.
+
+**Manual steps required:** None.
+
+**Rollback:** `git revert` clean.
+
+---
+
 ### 2026-05-08 — v2.32.89 — Walker uiautomator dump 10s timeout
 
 **Risk:** GO. Threads an optional `timeoutMs` parameter through the adb-shell stack. Default 3000ms preserved on every existing call site; the walker's `uiautomator dump` is the only one that overrides (10000ms). Capped at 30s so a runaway command can't pin a connection.
