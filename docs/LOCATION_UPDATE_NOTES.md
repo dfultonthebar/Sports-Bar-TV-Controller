@@ -46,6 +46,48 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-08 — v2.32.88 — NFHS title V vs JV distinguishable
+
+**Risk:** GO. Pure UI change in one component. Non-NFHS games unaffected (no other code path sets `sport` on programs in the channel-guide route).
+
+**What changed:** `GameListing` TS interface in `EnhancedChannelGuideBartenderRemote.tsx` gains an optional `sport?: string` field. The title renderer appends ` — ${game.sport}` when present so "Pulaski @ West De Pere — Varsity Girls Soccer" and "Pulaski @ West De Pere — Junior Varsity Girls Soccer" stop colliding visually.
+
+**What could break:** Nothing functional. Title strings get longer for NFHS games; line clamps already exist in the cards.
+
+**Manual steps required:** None.
+
+**Rollback:** `git revert` clean.
+
+---
+
+### 2026-05-08 — v2.32.87 — Watch button input-label instant update
+
+**Risk:** GO. Pure additive code in `/api/streaming/launch` POST path. The mirror write is wrapped in try/catch and logged as a warning if it fails — won't block the launch response.
+
+**What changed:** After a successful Fire TV app launch, the route now upserts a row in `inputCurrentChannels` with the launched app's friendly name. Previously this only happened on the 5-min `/api/firetv-devices/[id]/current-app` poll, so the bartender remote's input label stayed stale up to 5 min after each Watch click.
+
+**What could break:** Nothing — same write shape as the existing polling endpoint.
+
+**Manual steps required:** None.
+
+**Rollback:** `git revert` clean.
+
+---
+
+### 2026-05-08 — v2.32.86 — NFHS catalog deepLinkSupport=false
+
+**Risk:** GO. One catalog entry change.
+
+**What changed:** Cleared the broken `nfhs://event/{eventId}` deepLinkFormat (the `com.playon.nfhslive` package registers no external scheme) and set `deepLinkSupport: false` so the launcher-only path is used. NFHS Watch still opens the app; lands on SubscribeActivity until the operator signs in once per Cube.
+
+**What could break:** Nothing — the deeplink wasn't working in the first place.
+
+**Manual steps required:** None at the code level. **Operator action one-time per Cube:** sign into NFHS Network through the TV remote so playback works. No code can bypass NFHS auth.
+
+**Rollback:** `git revert` clean.
+
+---
+
 ### 2026-05-08 — v2.32.85 — ESPN autoplay + Schedule deep-link pipe
 
 **Risk:** GO with one ALTER TABLE step (see VERSION_SETUP_GUIDE.md). Same pattern as v2.32.84 (Prime Video) extended to ESPN + scheduled tunes. Verified live on Cube 3.
