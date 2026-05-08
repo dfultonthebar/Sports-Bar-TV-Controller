@@ -298,6 +298,6 @@ This is why we test on the lowest-traffic location (graystone) first.
 
 | Location | Scheduled date | Operator | Pre-upgrade verify | Post-upgrade verify | iGPU enabled | Notes |
 |---|---|---|---|---|---|---|
-| graystone | _TBD_ | _TBD_ | _TBD_ | _TBD_ | _TBD_ | Empty `/dev/dri/` is the test — new kernel should bind i915 |
+| graystone | 2026-05-07 | sgtfulton | ✅ | ✅ | ✅ | Kernel-binding fix held — `/dev/dri/` populated with `card1`+`renderD128` post-reboot. verify-install.sh 7/7 PASS, all 40 devices online, hardware reality check + bartender remote operator-confirmed at the bar. setup-iris-ollama.sh clean install on noble (intel-opencl-icd 24.39, intel-level-zero-gpu 1.3.29735, IPEX-LLM 2.3.0b20250725). `ollama-ipex` active; journal: `using Intel GPU`. AI Suggest cold run = 170s on iGPU (vs 200-300s CPU baseline). Note: `clinfo -l` reports 0 platforms — IPEX uses Level Zero so OpenCL ICD detection isn't required, but worth investigating later. |
 | appleton | _TBD_ | _TBD_ | _TBD_ | _TBD_ | _TBD_ | |
 | greenville | _TBD_ | _TBD_ | _TBD_ | _TBD_ | _TBD_ | Highest traffic of the three |

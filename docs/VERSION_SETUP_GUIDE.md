@@ -187,6 +187,25 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.71–v2.32.73 — OS upgrade jammy → noble docs + first location complete
+**Released:** 2026-05-07
+
+Three docs-only versions wrapping the fleet OS upgrade. No software changes — purely operational documentation, fleet status, and the result of the first location to complete.
+
+**v2.32.71** — `docs(fleet)`: committed to the OS-upgrade path for the three jammy boxes (graystone, greenville, appleton). FLEET_STATUS.md introduced as a per-location snapshot single-source-of-truth. Decision rationale: an in-place `do-release-upgrade` is cheaper than re-imaging on jammy boxes that already have working location data.
+
+**v2.32.72** — `feat(fleet-dashboard)`: fleet dashboard now surfaces OS codename + kernel per location, so an operator can see at a glance which boxes are still on jammy.
+
+**v2.32.73** — Status-tracker update for `docs/OS_UPGRADE_RUNBOOK.md`: graystone is the first fleet box to complete the jammy → noble upgrade. Result: kernel-binding fix held (`/dev/dri/card1+renderD128` populated post-reboot), verify-install 7/7 PASS, all 40 devices online, bartender remote operator-confirmed at the bar, `setup-iris-ollama.sh` clean install on noble (intel-opencl-icd 24.39 + intel-level-zero-gpu 1.3.29735 + IPEX-LLM 2.3.0b20250725), `ollama-ipex` active with `using Intel GPU` in journal, AI Suggest cold-cache run = 170s on iGPU. Caveat noted: `clinfo -l` reports 0 platforms — IPEX uses Level Zero so OpenCL ICD detection isn't required, but follow-up worth doing.
+
+**Required Manual Step:** None for the auto-update itself (this entry is purely documentation). To run the OS upgrade at the remaining two locations (appleton, greenville), follow `docs/OS_UPGRADE_RUNBOOK.md` step-by-step. Recommended order per the runbook: appleton next, greenville last.
+
+**Verification:** None at the auto-update layer. After a location completes its upgrade, the runbook's Status tracker row is updated in the same commit that bumps the version that records the result.
+
+**Rollback:** N/A — docs-only.
+
+---
+
 ### v2.32.65–v2.32.70 — iGPU enablement saga (catch-up entry)
 **Released:** 2026-05-07 (rapid-fire)
 
