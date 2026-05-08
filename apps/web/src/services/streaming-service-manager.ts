@@ -236,8 +236,16 @@ class StreamingServiceManager {
       logger.info(`[STREAMING MANAGER] Successfully launched ${app.name}`)
       return true
     } catch (error) {
+      // v2.32.96 — Re-throw so the caller (typically the
+      // /api/streaming/launch route) can surface the error message
+      // to the bartender remote. Pre-fix this catch swallowed the
+      // exception and returned false, leaving the API to respond
+      // with a generic "Failed to launch app" string with no detail.
+      // The verification-gate ESPN failure ("ESPN couldn't find
+      // 'Southern Miss James Madison'…") was logged but never
+      // shown to the operator.
       logger.error(`[STREAMING MANAGER] Error launching app:`, error)
-      return false
+      throw error
     }
   }
 
