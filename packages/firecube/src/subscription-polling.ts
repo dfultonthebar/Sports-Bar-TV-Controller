@@ -42,11 +42,17 @@ export async function pollRealFireTVSubscriptions(
   const deviceSerial = `${device.ipAddress}:5555`
 
   try {
-    // Connect to Fire TV via ADB
-    await execAsync(`adb connect ${deviceSerial}`)
+    // v2.32.92 — Explicit timeouts on both ADB calls. Pre-fix neither
+    // had a timeout: an unresponsive Cube would hang the calling request
+    // for ~60-120s (Linux TCP retransmit window) with no signal to the
+    // caller. The device-config UI's subscription-detect feature is the
+    // primary caller; a hung Cube would freeze that page indefinitely.
+    await execAsync(`adb connect ${deviceSerial}`, { timeout: 8000 })
 
-    // Get list of installed packages - IMPORTANT: Use -s flag to target specific device
-    const { stdout } = await execAsync(`adb -s ${deviceSerial} shell pm list packages`)
+    // pm list packages enumerates 250+ packages and can take 5-10s on a
+    // busy device — 15s gives generous headroom without permitting
+    // genuine hangs.
+    const { stdout } = await execAsync(`adb -s ${deviceSerial} shell pm list packages`, { timeout: 15000 })
     const packages = stdout.split('\n').filter(line => line.startsWith('package:'))
 
     // Known streaming app package names

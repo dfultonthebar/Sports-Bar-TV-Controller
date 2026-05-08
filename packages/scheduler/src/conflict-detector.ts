@@ -6,6 +6,7 @@
 
 import { db, schema, eq, and, gte, lte } from '@sports-bar/database'
 import { logger } from '@sports-bar/logger'
+import { availableNetworksMatch } from './network-map'
 
 export interface SchedulingConflict {
   id: string;
@@ -211,8 +212,15 @@ class ConflictDetector {
   ): number {
     return inputSources.filter(input => {
       const availableNetworks = JSON.parse(input.availableNetworks || '[]');
+      // v2.32.92 — Normalize each broadcast network to its catalog `name`
+      // before matching. Pre-fix used raw `.includes(network)` which
+      // missed "ESPN+" → "ESPN" and similar pairs, undercounting capable
+      // inputs and producing spurious conflict warnings (or missed
+      // conflict detections) for any ESPN+ / NBC / CBS / FOX game. Same
+      // root-cause class as v2.32.91 walker bug. See
+      // `network-map.ts` for the mapping.
       return requiredNetworks.some(network =>
-        availableNetworks.includes(network)
+        availableNetworksMatch(availableNetworks, network)
       );
     }).length;
   }
