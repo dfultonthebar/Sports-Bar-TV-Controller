@@ -187,6 +187,34 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.82 — Drift recovery sidecar (fix for v2.32.81)
+**Released:** 2026-05-08
+
+**No setup required.** Bug-fix to v2.32.81. Drift-recovery worked end-to-end on Holmgren when verified live (drifted to main → switched to location/holmgren-way → merged main → built → restarted PM2 → verified 7/7 → pushed → SUCCESS in 105s), but only after manual sidecar bootstrap.
+
+**Why:** v2.32.81's drift-recovery block reads `.auto-update-last-success.json` from the repo root. That file is tracked on each `location/*` branch but NOT on `main` — when an interactive session switches to main, the heartbeat file vanishes from the working tree exactly when drift-recovery needs it. v2.32.81's first real test (drift simulated on Holmgren, fresh from main checkout) hit this and logged `WARNING: on 'main' with no heartbeat file — cannot determine canonical branch; continuing as main` — silently no-op'd, same outcome as the original bug.
+
+**Fix:** Sidecar copy at `/home/ubuntu/sports-bar-data/.auto-update-last-success.json`. The data dir is gitignored, persists across branch switches. Three changes to `scripts/auto-update.sh`:
+1. Drift-recovery block reads `SIDECAR_HEARTBEAT` first, falls back to `HEARTBEAT_FILE` (covers boxes that haven't run v2.32.82 yet AND happen to be on the right branch when drift-recovery runs — degenerate case, but free).
+2. Heartbeat-write block also writes a copy to the sidecar location after each successful run.
+3. `refresh_heartbeat_os_only()` (the no-op-with-os-changes path) also keeps sidecar in sync.
+
+**Bootstrap on existing fleet:** First time v2.32.82 runs from a `location/*` branch, the sidecar gets created. Subsequent drift-to-main events are recoverable. For boxes that are CURRENTLY drifted to main, sidecar must be seeded once manually before v2.32.82 can recover them — operator one-liner: `git show origin/<location-branch>:.auto-update-last-success.json > /home/ubuntu/sports-bar-data/.auto-update-last-success.json`. This was done on Holmgren as part of the live verification.
+
+**Verified live on Holmgren 2026-05-08 08:51-08:53 CDT** — drift-recovery log captured at `/home/ubuntu/sports-bar-data/update-logs/auto-update-2026-05-08-08-51.log`:
+```
+[08:51:25] Current branch: main
+[08:51:25] DRIFT: on 'main' but heartbeat says canonical branch is 'location/holmgren-way' — switching back
+[08:51:25] Switched to location/holmgren-way; continuing update flow
+[08:53:11] SUCCESS: updated location/holmgren-way from 7f187821 to 7e8bd480 in 105s
+```
+
+**Affected:** `scripts/auto-update.sh`, `package.json`, `docs/VERSION_SETUP_GUIDE.md`, `docs/LOCATION_UPDATE_NOTES.md`.
+
+**Risk:** GO — additive paths, no behavior change for non-drift case.
+
+---
+
 ### v2.32.81 — Auto-update branch-drift recovery
 **Released:** 2026-05-08
 

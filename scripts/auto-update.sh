@@ -324,6 +324,10 @@ PY
     return 0  # python returned 1: no change needed
   fi
 
+  # v2.32.82 — keep sidecar copy in sync (see drift-recovery block).
+  if [ -d "/home/ubuntu/sports-bar-data" ]; then
+    cp -f "$hb" "/home/ubuntu/sports-bar-data/.auto-update-last-success.json" 2>/dev/null || true
+  fi
   git -C "$REPO_ROOT" add -f ".auto-update-last-success.json" 2>/dev/null || true
   if ! git -C "$REPO_ROOT" diff --cached --quiet -- ".auto-update-last-success.json" 2>/dev/null; then
     git -C "$REPO_ROOT" commit -q \
@@ -574,7 +578,7 @@ PRE_MERGE_RESET_PATHS=(
   "package-lock.json"
 )
 
-# v2.32.81 — branch drift recovery.
+# v2.32.81 — branch drift recovery (sidecar fix in v2.32.82).
 # A box can be left on `main` by an interactive Claude/operator session.
 # When that happens, every cron run no-ops because the pre-merge check at
 # the FETCH phase sees "origin/main already merged into HEAD" — origin/main
@@ -583,14 +587,19 @@ PRE_MERGE_RESET_PATHS=(
 # manual fleet-status check.
 #
 # Recovery uses the heartbeat file (.auto-update-last-success.json), which
-# records the canonical branch from the last successful run. If on main
-# and heartbeat says otherwise, switch back. If no heartbeat exists,
-# treat as legitimate (fresh checkout) and proceed.
+# records the canonical branch from the last successful run. The repo-root
+# copy is per-branch (tracked on location/* branches, missing on main), so
+# it disappears from the working tree exactly when we need it most. v2.32.82
+# adds a sidecar copy in /home/ubuntu/sports-bar-data/ (gitignored, survives
+# branch switches) and reads from there first. Falls back to repo-local
+# (covers boxes that haven't run v2.32.82 yet, when on the right branch).
 if [ "$BRANCH" = "main" ]; then
   HEARTBEAT_FILE="$REPO_ROOT/.auto-update-last-success.json"
+  SIDECAR_HEARTBEAT="/home/ubuntu/sports-bar-data/.auto-update-last-success.json"
   EXPECTED_BRANCH=""
-  if [ -f "$HEARTBEAT_FILE" ]; then
-    EXPECTED_BRANCH=$(python3 - "$HEARTBEAT_FILE" 2>/dev/null <<'PY' || echo ""
+  for hb in "$SIDECAR_HEARTBEAT" "$HEARTBEAT_FILE"; do
+    if [ -f "$hb" ]; then
+      EXPECTED_BRANCH=$(python3 - "$hb" 2>/dev/null <<'PY' || echo ""
 import json, sys
 try:
     print(json.load(open(sys.argv[1])).get("branch", ""))
@@ -598,7 +607,9 @@ except Exception:
     pass
 PY
 )
-  fi
+      [ -n "$EXPECTED_BRANCH" ] && break
+    fi
+  done
   if [ -n "$EXPECTED_BRANCH" ] && [ "$EXPECTED_BRANCH" != "main" ]; then
     log "DRIFT: on 'main' but heartbeat says canonical branch is '$EXPECTED_BRANCH' — switching back"
     # Pre-clean uncommitted edits to LOCATION_PATHS_THEIRS files. Without
@@ -616,7 +627,7 @@ PY
       fail "could not switch from main to '$EXPECTED_BRANCH' — operator intervention needed (check 'git status' on the box)" 2
     fi
   elif [ -z "$EXPECTED_BRANCH" ]; then
-    log "WARNING: on 'main' with no heartbeat file — cannot determine canonical branch; continuing as main"
+    log "WARNING: on 'main' with no heartbeat at $SIDECAR_HEARTBEAT or $HEARTBEAT_FILE — cannot determine canonical branch; continuing as main"
   fi
 fi
 
@@ -1359,6 +1370,13 @@ if [ -n "${VERIFY_INSTALL_JSON:-}" ]; then
     printf '  "heartbeatSchemaVersion": 3\n'
     printf '}\n'
   } > "$REPO_ROOT/.auto-update-last-success.json"
+  # v2.32.82 — sidecar copy in gitignored data dir so the drift-recovery
+  # block at line ~580 has a persistent source for the canonical branch
+  # name when the box is sitting on main (where the in-repo copy is gone
+  # from the working tree).
+  if [ -d "/home/ubuntu/sports-bar-data" ]; then
+    cp -f "$REPO_ROOT/.auto-update-last-success.json" "/home/ubuntu/sports-bar-data/.auto-update-last-success.json" 2>/dev/null || true
+  fi
   git -C "$REPO_ROOT" add -f ".auto-update-last-success.json" 2>/dev/null || true
   if ! git -C "$REPO_ROOT" diff --cached --quiet -- ".auto-update-last-success.json" 2>/dev/null; then
     git -C "$REPO_ROOT" commit -q -m "chore(heartbeat): update .auto-update-last-success.json ($(date +%Y-%m-%d-%H-%M))" 2>/dev/null || true
