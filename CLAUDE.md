@@ -652,6 +652,8 @@ See `.claude/locations/` for per-location details (device IPs, input maps, chann
 
 ## Documentation References
 
+- **Fleet Status (single source of truth):** `/docs/FLEET_STATUS.md` — per-location OS / version / iGPU / outstanding work.
+- **OS Upgrade Runbook:** `/docs/OS_UPGRADE_RUNBOOK.md` — step-by-step jammy → noble for the 3 fleet boxes still on 22.04.
 - API Reference: `/docs/API_REFERENCE.md`
 - Hardware Setup: `/docs/HARDWARE_CONFIGURATION.md`
 - IR Learning Demo: `/docs/IR_LEARNING_DEMO_SCRIPT.md`
