@@ -356,6 +356,25 @@ export const STREAMING_APPS_DATABASE: StreamingApp[] = [
     sports: ['baseball', 'soccer'],
     requiresSubscription: true,
     notes: 'MLS Season Pass and MLB Friday games. No public API'
+  },
+
+  // Max (Warner Bros Discovery) — TNT/TBS sports stream here. v2.32.93
+  // surfaces this in the catalog so available_networks ('Max') resolves
+  // to a real entry and allocator/conflict-detector matching works for
+  // TNT/TBS games (NBA playoffs, MLB playoffs, March Madness, college FB).
+  {
+    id: 'max',
+    name: 'Max',
+    displayNameAliases: ['HBO Max', 'WBD Max', 'max'],
+    packageName: 'com.wbd.stream',
+    packageAliases: ['com.hbo.hbonow'],  // legacy HBO Now/Go on older Cubes
+    category: 'general',
+    hasPublicApi: false,
+    deepLinkSupport: false,
+    description: 'Max (formerly HBO Max) — TNT/TBS/truTV live sports passthrough',
+    sports: ['basketball', 'baseball', 'football'],
+    requiresSubscription: true,
+    notes: 'TNT NBA playoffs, MLB postseason, March Madness, NCAAF games via TNT/TBS. Subscription gated.'
   }
 ]
 
