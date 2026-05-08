@@ -54,9 +54,16 @@ export const STREAMING_APPS_DATABASE: StreamingApp[] = [
     packageName: 'com.playon.nfhslive',  // Updated for Fire TV
     category: 'sports',
     hasPublicApi: false,
-    deepLinkSupport: true,
-    deepLinkFormat: 'nfhs://event/{eventId}',
-    description: 'High school sports streaming',
+    // v2.32.85 — NFHS does NOT register external deep-link schemes (verified
+    // live on Cube 3: `pm dump com.playon.nfhslive | grep Scheme` returns
+    // empty). The previous `nfhs://event/{eventId}` was speculative and
+    // silently fails at runtime. Watch button on NFHS programs falls
+    // through to plain launchApp (LEANBACK_LAUNCHER), which opens the app
+    // home. NFHS also requires sign-in: at Holmgren the Cube 3 launches
+    // into SubscribeActivity until an operator logs in once via the TV
+    // remote — that's one-time per-Cube setup, not a code-fixable bug.
+    deepLinkSupport: false,
+    description: 'High school sports streaming. Requires operator sign-in.',
     sports: ['football', 'basketball', 'volleyball', 'soccer', 'baseball', 'softball', 'wrestling', 'track', 'swimming'],
     requiresSubscription: true,
     notes: 'No public API available. Fire TV package: com.playon.nfhslive'
