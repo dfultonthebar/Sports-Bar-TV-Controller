@@ -187,6 +187,23 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.93 — Audit follow-ups: Max catalog entry + TNT/TBS network-map; firebat in subscription-polling; longer adb-connect timeout
+**Released:** 2026-05-08
+
+**No setup required.** Three follow-up fixes from the v2.32.92 code-reviewer audit:
+
+1. **Max in streaming catalog + TNT/TBS/truTV in network-map.** Pre-fix the catalog had no current Max entry (only legacy `'Max (legacy HBO)'` with `com.hbo.hbonow`). `network-map.ts` had no TNT/TBS entries. Effect: any game with `primaryNetwork = 'TNT'` / `'TBS'` (NBA playoffs, MLB postseason, March Madness, college FB) silently excluded every Cube with Max installed from being a candidate — same root-cause class as v2.32.91/.92. **Fix:** new catalog entry (`id: 'max'`, `name: 'Max'`, `packageName: 'com.wbd.stream'`, alias `com.hbo.hbonow`); `network-map.ts` adds TNT/TBS/truTV/'TNT Sports' → `'Max'`.
+
+2. **`subscription-polling.ts` was missing `com.amazon.firebat`** in its packageName→displayName map. On AFTR Cubes (Fire TV Cube 2nd gen) Prime Video is launcher-hosted via firebat — `com.amazon.avod` doesn't exist. Pre-fix the device-config UI's subscription-detect endpoint reported "Prime Video not installed" on every AFTR Cube. **Fix:** added `'com.amazon.firebat' → 'Amazon Prime Video'`.
+
+3. **`adb connect` timeout 8s → 12s** in `subscription-polling.ts`. Audit feedback: AFTR Cubes in deep sleep can take 10-14s to wake their network stack; 8s produced false-negative "device dead" reports on healthy-but-sleeping devices. 12s covers wake while still catching genuine hangs.
+
+**Verification:** 10/10 sanity tests pass on `availableNetworksMatch` (TNT/TBS/truTV → Max, plus regression tests preserving ESPN+/NBC mappings from v2.32.92), plus catalog lookups via display-name alias and packageName alias.
+
+**Affected:** 4 files. `packages/streaming/src/streaming-apps-database.ts` (new Max entry), `packages/scheduler/src/network-map.ts` (TNT/TBS/truTV/'TNT Sports' mappings), `packages/firecube/src/subscription-polling.ts` (firebat entry + 12s timeout).
+
+---
+
 ### v2.32.92 — Bug hunt batch: ESPN+ allocator/conflict matching, Paramount+ sendKey timeout, plus 3 quieter ones
 **Released:** 2026-05-08
 
