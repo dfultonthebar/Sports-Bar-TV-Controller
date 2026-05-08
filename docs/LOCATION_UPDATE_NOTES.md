@@ -46,6 +46,26 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-08 — v2.32.84 — Prime Video Watch button plays the game
+
+**Risk:** GO with one ALTER TABLE step at install (see VERSION_SETUP_GUIDE.md). The fix is additive — non-Prime-Video paths unchanged. Verified live on Cube 3 reaching PlaybackActivity, MediaSession state=3 PLAYING.
+
+**What changed:** Walker captures `deepLink` for every Prime Video tile. Streaming service manager runs a 5-DPAD autoplay sequence for amazon-prime (search → DOWN → CENTER → CENTER) so the bartender lands directly on the game's playback. `getCurrentApp` switched to alias-aware lookup. ADB shell quoting hardened (single-quote escaping for URLs with `&` or `'`).
+
+**What could break at a location:** Bartender Watch button on a Prime Video game now triggers the autoplay nav sequence on the Fire TV Cube. If the operator was relying on the old "opens app, navigate manually" behavior, the new flow will move them past the home screen automatically. Backwards-compatible for non-amazon-prime apps.
+
+**Manual steps required:** One-time per location:
+```
+sqlite3 /home/ubuntu/sports-bar-data/production.db "ALTER TABLE firetv_streaming_catalog ADD COLUMN startTime INTEGER;"
+```
+Without this the catalog walker silently fails ingest for any app and the channel guide shows zero streaming games. This is a v2.32.63 schema migration that `drizzle-kit push` skipped on installs that already had the catalog indexes (CLAUDE.md gotcha #6).
+
+**Affected:** `packages/streaming/src/streaming-apps-database.ts`, `packages/scheduler/src/firetv-catalog-walker.ts`, `packages/firecube/src/adb-client.ts`, `apps/web/src/services/streaming-service-manager.ts`, `apps/web/src/app/api/channel-guide/route.ts`, `package.json`, `docs/VERSION_SETUP_GUIDE.md`, `docs/LOCATION_UPDATE_NOTES.md`.
+
+**Rollback:** `git revert` clean. The `startTime` column ALTER TABLE is non-destructive (additive column, default NULL) and doesn't need to be undone if the code reverts.
+
+---
+
 ### 2026-05-08 — v2.32.82 — Drift recovery sidecar (completes v2.32.81)
 
 **Risk:** GO — additive paths only. v2.32.81's drift-recovery code path was never triggered on the normal cron flow (where boxes are on their location branch). v2.32.82 makes drift-recovery actually work when triggered, by adding a heartbeat sidecar at `/home/ubuntu/sports-bar-data/.auto-update-last-success.json` that survives branch switches.
