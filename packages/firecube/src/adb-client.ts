@@ -216,10 +216,10 @@ export class ADBClient {
     }
   }
 
-  async getDeviceProperty(property: string): Promise<string | null> {
+  async getDeviceProperty(property: string, timeoutMs: number = 3000): Promise<string | null> {
     try {
       const command = `adb -s ${this.deviceAddress} shell getprop ${property}`
-      const { stdout } = await execAsync(command, { timeout: 3000 })
+      const { stdout } = await execAsync(command, { timeout: timeoutMs })
       return stdout.trim() || null
     } catch (error) {
       logger.error(`[ADB CLIENT] Get property error:`, error)
@@ -541,8 +541,12 @@ export class ADBClient {
       await new Promise(resolve => setTimeout(resolve, 5000))
 
       // Step 3: Send DPAD_CENTER to select the first profile
+      // v2.32.92 — 8s sendKey timeout matches Prime Video / ESPN autoplay
+      // (v2.32.91). Paramount+ SplashMediatorActivity can pin system_server
+      // momentarily while loading the profile list; the default 3s timeout
+      // would abort here under load. Same root-cause class as v2.32.91.
       logger.info(`[ADB CLIENT] Sending DPAD_CENTER to select profile on ${this.deviceAddress}`)
-      await this.sendKey(23) // KEYCODE_DPAD_CENTER
+      await this.sendKey(23, 8000) // KEYCODE_DPAD_CENTER
 
       logger.info(`[ADB CLIENT] Paramount+ Live TV launch sequence completed on ${this.deviceAddress}`)
       return 'Paramount+ Live TV launch sequence completed'
