@@ -187,6 +187,51 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.84 — Prime Video Watch button now plays the game (autoplay end-to-end)
+**Released:** 2026-05-08
+
+**Required manual step (one-time per location):** if the location's `firetv_streaming_catalog` table is missing the `startTime` column (added in v2.32.63 schema, but `drizzle-kit push` silently skipped it on installs that already had the `firetv_catalog_*` indexes — see CLAUDE.md gotcha #6), run once:
+```
+sqlite3 /home/ubuntu/sports-bar-data/production.db "ALTER TABLE firetv_streaming_catalog ADD COLUMN startTime INTEGER;"
+```
+Verify with:
+```
+sqlite3 /home/ubuntu/sports-bar-data/production.db "PRAGMA table_info(firetv_streaming_catalog);" | grep startTime
+```
+Without this column the catalog walker silently fails ingest with `table firetv_streaming_catalog has no column named startTime` — no Prime Video tiles get persisted, channel guide returns no streaming games. Affected locations are any that installed before v2.32.63 (most of the fleet). Holmgren applied 2026-05-08.
+
+**Why it shipped:** Outstanding work item #2 — bartender's Watch button on a Prime Video game opened the app's home screen, not the game. v2.32.58 wired the `deepLink` field through the bartender remote but no extractor populated it for Prime Video, AND the catalog injection put `deepLink` on the program object while bartender's consumer read `game.channel.deepLink` — structural mismatch confirmed by code-reviewer agent on 2026-05-08.
+
+**What changed:**
+1. **`amazon-prime` catalog entry** (`packages/streaming/src/streaming-apps-database.ts`) — `packageName` promoted from `com.amazon.avod` to `com.amazon.firebat` (saves three wasted ADB `pm list packages` round-trips per launch on AFTR Cubes; non-AFTR Cubes still resolve via the alias chain). `deepLinkFormat` changed from broken `aiv://aiv/view?gti={contentId}` (scheme not registered on AFTR — verified live) to `https://watch.amazon.com/search?phrase={contentTitle}` (registered with `com.amazon.firebat` for the `watch.amazon.com/search` path).
+2. **Walker** (`packages/scheduler/src/firetv-catalog-walker.ts`) — `extractPrimeVideoTiles` now populates `CatalogTile.deepLink` for every captured tile using the search-by-title format. Added MLB/NHL/MLS/UFC/college sport-row patterns. Added Amazon promotional-copy blocklist (Watch trailer, Watchlist, Like, Not for me, Included with Prime, Start your N-day trial, etc.) so they don't survive into the channel guide.
+3. **Channel-guide route** (`apps/web/src/app/api/channel-guide/route.ts`) — catalog injection now puts `deepLink` on a per-program shallow copy of the cached `appChannel` (the cached channel itself stays generic so multiple games for the same app still share it). `StreamingAppChannel` interface gained `deepLink?: string`.
+4. **ADB client** (`packages/firecube/src/adb-client.ts`) — `launchAppWithDeepLink(deepLink, packageName?)` accepts optional package name → `am start -p <pkg> -a VIEW -d '<url>'`. Single-quoted URL with `'` → `'\''` escape so URLs with `&` (query separators) and `'` (apostrophes in titles) survive the outer shell. New `launchPrimeVideoToContent(contentTitle, packageName?)` runs the autoplay sequence: search-deeplink → wait 5s → DPAD_DOWN → wait 400ms → DPAD_CENTER → wait 3s → DPAD_CENTER. Empty contentTitle is rejected with a clear error.
+5. **Streaming service manager** (`apps/web/src/services/streaming-service-manager.ts`) — routes `amazon-prime` through `launchPrimeVideoToContent` (extracts phrase from URL); passes resolved package name to `launchAppWithDeepLink` (forces ResolverActivity bypass via `-p` flag); warns when `deepLink` provided but `app.deepLinkSupport=false` (silent footgun); `getCurrentApp` switched to `findStreamingAppByPackageName` so non-AFTR Cubes playing Prime Video resolve correctly via the alias chain.
+
+**Verified live on Cube 3** (Holmgren, AFTR, Fire OS 9, PVFTV-215.5374N) on 2026-05-08:
+- POST /api/streaming/launch with `appId=amazon-prime` and `deepLink=https://watch.amazon.com/search?phrase=Citadel`
+- 13s later: foreground = `com.amazon.firebatcore.playback.inappplayback.PlaybackActivity`, MediaSession state=3 (PLAYING)
+- URLs with `&` and empty-phrase fallback both tested OK
+- Reviewed by `feature-dev:code-reviewer` agent (caught 3 issues: shell quoting, empty-title guard, alias-aware getCurrentApp — all fixed before commit)
+
+**Affected:** `packages/streaming/src/streaming-apps-database.ts`, `packages/scheduler/src/firetv-catalog-walker.ts`, `packages/firecube/src/adb-client.ts`, `apps/web/src/services/streaming-service-manager.ts`, `apps/web/src/app/api/channel-guide/route.ts`, `package.json`, `docs/VERSION_SETUP_GUIDE.md`, `docs/LOCATION_UPDATE_NOTES.md`.
+
+**Risk:** GO with one operator step (the ALTER TABLE one-liner above). Otherwise additive — non-Prime-Video apps unchanged.
+
+---
+
+### v2.32.83 — Docs catch-up: fleet status reflects v2.32.82 fleet-wide deploy
+**Released:** 2026-05-08
+
+**No setup required.** Docs-only — `docs/FLEET_STATUS.md` updated to reflect the live fleet state after triggering all 5 remote boxes from Holmgren this morning. Per-location table now shows all 6 venues at v2.32.82 with sidecars bootstrapped. "What shipped today" entries split between 2026-05-07 (the earlier batch) and 2026-05-08 (drift-recovery work). Outstanding work item 1a moved to ~~done~~.
+
+**Affected:** `docs/FLEET_STATUS.md`, `package.json`, `docs/VERSION_SETUP_GUIDE.md`.
+
+**Risk:** GO — docs only.
+
+---
+
 ### v2.32.82 — Drift recovery sidecar (fix for v2.32.81)
 **Released:** 2026-05-08
 

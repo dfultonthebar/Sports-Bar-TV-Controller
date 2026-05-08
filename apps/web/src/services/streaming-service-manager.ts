@@ -6,7 +6,7 @@
  */
 
 import { connectionManager } from './firetv-connection-manager'
-import { STREAMING_APPS_DATABASE, StreamingApp, getStreamingAppById } from '@/lib/streaming/streaming-apps-database'
+import { STREAMING_APPS_DATABASE, StreamingApp, getStreamingAppById, findStreamingAppByPackageName } from '@/lib/streaming/streaming-apps-database'
 
 import { logger } from '@sports-bar/logger'
 export interface InstalledStreamingApp {
@@ -170,9 +170,41 @@ class StreamingServiceManager {
       logger.info(`[STREAMING MANAGER] Using package ${installedPackage} for ${app.name}`)
 
       // Launch app with appropriate method
-      if (options?.deepLink && app.deepLinkSupport) {
+      if (options?.deepLink && !app.deepLinkSupport) {
+        // v2.32.84 — surface a silent-discard footgun: if a caller passes a
+        // deepLink for an app whose catalog entry forgot to set
+        // deepLinkSupport: true, we'd otherwise fall through to home-screen
+        // launch with no explanation and the operator would never know.
+        logger.warn(
+          `[STREAMING MANAGER] deepLink provided for ${app.name} but deepLinkSupport=false in catalog — falling through to home-screen launch`,
+        )
+      }
+
+      if (options?.deepLink && app.deepLinkSupport && app.id === 'amazon-prime') {
+        // v2.32.84 — Prime Video on AFTR Cubes (com.amazon.firebat) registers
+        // for `https://watch.amazon.com/search?phrase=...` but not the older
+        // `aiv://` schemes. Instead of just landing on the search page, the
+        // 5-DPAD sequence in launchPrimeVideoToContent autoplays the first
+        // matching tile (verified to reach PlaybackActivity, MediaSession
+        // state=3 PLAYING). The deepLink we receive is the SAME URL but it
+        // only carries us to the search page — we extract the query and run
+        // the autoplay sequence.
+        const phraseMatch = options.deepLink.match(/[?&]phrase=([^&]+)/)
+        const phrase = phraseMatch ? decodeURIComponent(phraseMatch[1]) : ''
+        if (phrase) {
+          logger.info(`[STREAMING MANAGER] Prime Video autoplay sequence for "${phrase}"`)
+          await client.launchPrimeVideoToContent(phrase, installedPackage)
+        } else {
+          // Fallback: land on the search page with no autoplay nav.
+          logger.info(`[STREAMING MANAGER] Prime Video deep link (no phrase): ${options.deepLink}`)
+          await client.launchAppWithDeepLink(options.deepLink, installedPackage)
+        }
+      } else if (options?.deepLink && app.deepLinkSupport) {
         logger.info(`[STREAMING MANAGER] Launching ${app.name} with deep link: ${options.deepLink}`)
-        await client.launchAppWithDeepLink(options.deepLink)
+        // v2.32.84 — pass the resolved package name so adb-client can include
+        // `-p <pkg>` and bypass Android's ResolverActivity when multiple apps
+        // claim the same URL scheme.
+        await client.launchAppWithDeepLink(options.deepLink, installedPackage)
       } else if (options?.activityName) {
         logger.info(`[STREAMING MANAGER] Launching ${app.name} with activity: ${options.activityName}`)
         await client.launchAppWithIntent(installedPackage, options.activityName)
@@ -225,12 +257,13 @@ class StreamingServiceManager {
         return null
       }
 
-      // Find matching streaming app
-      const streamingApp = STREAMING_APPS_DATABASE.find(
-        app => app.packageName === currentApp.packageName
-      )
-
-      return streamingApp || null
+      // v2.32.84 — alias-aware lookup. After moving com.amazon.firebat to
+      // primary `packageName` for amazon-prime (and com.amazon.avod to
+      // packageAliases), a raw `app.packageName === currentApp.packageName`
+      // would silently miss non-AFTR Cubes whose foreground package is
+      // com.amazon.avod. The shared helper checks packageName + every
+      // packageAliases entry.
+      return findStreamingAppByPackageName(currentApp.packageName) || null
     } catch (error) {
       logger.error(`[STREAMING MANAGER] Error getting current app:`, error)
       return null

@@ -51,6 +51,10 @@ interface StreamingAppChannel {
   appId?: string
   packageName?: string
   packages: string[]
+  // v2.32.84 — per-event deep link copied onto a shallow copy of the cached
+  // channel for catalog-injected programs (the cached channel itself stays
+  // generic so multiple games for the same app can still share it).
+  deepLink?: string
 }
 function buildStreamingAppChannel(opts: {
   appName: string
@@ -929,10 +933,6 @@ export async function POST(request: NextRequest) {
             channels.set(appChannelId, appChannel)
           }
 
-          // v2.31.7 — extra `deepLink` + `sportTag` fields ride along for
-          // any client that wants to consume them (the bartender remote
-          // ignores them today). The `programs` array is loosely typed so
-          // no cast is needed — TypeScript infers a union of pushed shapes.
           // v2.32.63 — prefer the walker-extracted startTime over capturedAt
           // for `gameTime` display (e.g. "7:30 PM"). Falls back to the
           // capturedAt-derived "On demand"/"LIVE" labels when the walker
@@ -944,6 +944,18 @@ export async function POST(request: NextRequest) {
             : (row.startTime
                 ? new Date(startMs).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' })
                 : 'On demand')
+
+          // v2.32.84 — bartender consumer reads `game.channel.deepLink`
+          // (apps/web/src/components/EnhancedChannelGuideBartenderRemote.tsx
+          // line ~1139), but the channels Map caches one channel per app id
+          // so we can't mutate the shared object. Build a per-program shallow
+          // copy that carries this game's specific deepLink. Pre-fix: deepLink
+          // was put on the program (game.deepLink) which the bartender ignored
+          // → every Prime Video Watch click silently fell through to home
+          // screen. Confirmed by code-reviewer agent on 2026-05-08.
+          const programChannel = row.deepLink
+            ? { ...appChannel, deepLink: row.deepLink }
+            : appChannel
           programs.push({
             id: `cat-${row.id}`,
             league: row.sportTag || 'Sports',
@@ -952,13 +964,12 @@ export async function POST(request: NextRequest) {
             gameTime: gameTimeLabel,
             startTime: new Date(startMs).toISOString(),
             endTime: new Date(row.expiresAt * 1000).toISOString(),
-            channel: appChannel,
+            channel: programChannel,
             description: `${row.contentTitle} (${row.app}${row.deepLink ? ' · deep-linkable' : ''})`,
             isSports: true,
             isLive: !!row.isLive,
             venue: '',
             station: row.app,
-            deepLink: row.deepLink || undefined,
             sportTag: row.sportTag || undefined,
           })
           catInjected++
