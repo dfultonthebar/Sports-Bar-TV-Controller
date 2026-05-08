@@ -187,6 +187,114 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.75 — greenville jammy → noble upgrade complete (full fleet on noble + iGPU)
+**Released:** 2026-05-08
+
+Status-tracker update for `docs/OS_UPGRADE_RUNBOOK.md` + `docs/FLEET_STATUS.md`: greenville is the third (and final) jammy fleet box to complete the upgrade campaign. With this, **all 6 fleet locations are on noble (24.04) with IPEX-LLM Ollama acceleration on Intel Iris Xe** — full parity for the first time since iGPU enablement work began.
+
+**Notes vs graystone + appleton:**
+- One pre-flight reparation specific to this box: pre-existing `/etc/apt/sources.list.d/intel-gpu.list` (from a prior failed iGPU-on-jammy attempt before today's campaign) pointed at `noble client` packages. libdrm2 wanted `libc6 ≥ 2.38` (noble), but jammy's libc was 2.35 — `apt-get update` / dep-resolution blocked, which in turn blocked `do-release-upgrade -c`. Fix: `sudo mv /etc/apt/sources.list.d/intel-gpu.list /etc/apt/sources.list.d/intel-gpu.list.disabled-pre-upgrade` and continue. After noble is up, `setup-iris-ollama.sh` rewrites the file with the matching `noble client` line which then resolves correctly (libc 2.39 in noble). Lesson — added as Common pitfalls #5-explicit in `OS_UPGRADE_RUNBOOK.md`.
+- Otherwise standard run via `release-upgrade-claude.service` (transient `systemd-run --unit=release-upgrade-claude --collect` so SSH disconnects don't kill it), deactivated cleanly with 3min 18s CPU.
+- Manual `shutdown -r +1` for Phase E reboot (DistUpgradeViewNonInteractive's `confirmRestart()` defaults False without `[NonInteractive] RealReboot=True` in upgrade.cfg — that's the desired Phase D pause behavior, lets us verify pre-reboot before kernel swap).
+- Post-reboot: kernel 6.8.0-111-generic, `/dev/dri/card0+renderD128`, `using Intel GPU` confirmed in `journalctl -u ollama-ipex`, AI Suggest cold = **119s** on iGPU, bartender remote HTTP 200. All customizations preserved (sshd / sudoers / nginx-bartender / ollama-override bit-identical to pre-upgrade).
+- HTTP/PM2 stayed up on :3001 + :3002 throughout the dist-upgrade — bar service unaffected.
+
+**Fleet AI Suggest cold-run timings on iGPU (llama3.1:8b post-campaign):** appleton 67s (fleet best) · greenville 119s · graystone 170s · holmgren ~100s · leglamp ~100s · lucky-s ~100s.
+
+**Required Manual Step:** None — pure documentation entry. The next auto-update merge into each location branch carries the doc updates with no behavioral change. Operators viewing the fleet dashboard (introduced in v2.32.72) will see all 6 locations report `noble` + recent kernel after each location's auto-update tick.
+
+**Verification:** `docs/OS_UPGRADE_RUNBOOK.md` Status tracker now shows all three completed rows (graystone/appleton/greenville). `docs/FLEET_STATUS.md` per-location table reads `noble (24.04)` + `IPEX-LLM Ollama (Iris Xe)` + `✅ active` for every row. Aggregate health: 6/6 noble, 6/6 iGPU.
+
+---
+
+### v2.32.74 — appleton jammy → noble upgrade complete
+**Released:** 2026-05-08
+
+Status-tracker update for `docs/OS_UPGRADE_RUNBOOK.md` + `docs/FLEET_STATUS.md`: appleton (Stoneyard Appleton, i9-13900HK / Iris Xe) is the second fleet box to complete the jammy → noble upgrade. Result: noble + 6.8.0-111-generic, `/dev/dri/` populated with `card0`+`renderD128` (note: `card0` here, not `card1` like graystone — different DRI enumeration on this box; `renderD128` is what compute uses), verify-install 7/7 PASS, 35/35 devices online. Hardware reality check via API only (matrix/audio/firetv/directv routes all live); the operator confirmed the bartender remote functional at the bar pre-flight, so the in-person walk-test was skipped. setup-iris-ollama.sh clean install on noble (intel-gpu-tools added since IPEX-LLM portable bundle includes the rest of the runtime). `ollama-ipex` active; journal: `using Intel GPU`. `clinfo -l` reports `Intel(R) Iris(R) Xe Graphics` — unlike graystone where it returned 0 platforms, so the Level-Zero-vs-OpenCL caveat noted in v2.32.73 doesn't reproduce here. AI Suggest cold-cache run = **67.3s** on iGPU (best in fleet so far — vs 170s graystone, 200-300s CPU baseline).
+
+Fleet status after this version: 5 of 6 locations on noble + iGPU active. Greenville is the last jammy box; recommended scheduling per the runbook is to do it during the lowest-traffic window since it's the busiest of the three.
+
+**Required Manual Step:** None for the auto-update itself (this entry is purely documentation). To run the OS upgrade at greenville (the only remaining jammy location), follow `docs/OS_UPGRADE_RUNBOOK.md` step-by-step.
+
+**Verification:** None at the auto-update layer.
+
+**Rollback:** N/A — docs-only.
+
+---
+
+### v2.32.71–v2.32.73 — OS upgrade jammy → noble docs + first location complete
+**Released:** 2026-05-07
+
+Three docs-only versions wrapping the fleet OS upgrade. No software changes — purely operational documentation, fleet status, and the result of the first location to complete.
+
+**v2.32.71** — `docs(fleet)`: committed to the OS-upgrade path for the three jammy boxes (graystone, greenville, appleton). FLEET_STATUS.md introduced as a per-location snapshot single-source-of-truth. Decision rationale: an in-place `do-release-upgrade` is cheaper than re-imaging on jammy boxes that already have working location data.
+
+**v2.32.72** — `feat(fleet-dashboard)`: fleet dashboard now surfaces OS codename + kernel per location, so an operator can see at a glance which boxes are still on jammy.
+
+**v2.32.73** — Status-tracker update for `docs/OS_UPGRADE_RUNBOOK.md`: graystone is the first fleet box to complete the jammy → noble upgrade. Result: kernel-binding fix held (`/dev/dri/card1+renderD128` populated post-reboot), verify-install 7/7 PASS, all 40 devices online, bartender remote operator-confirmed at the bar, `setup-iris-ollama.sh` clean install on noble (intel-opencl-icd 24.39 + intel-level-zero-gpu 1.3.29735 + IPEX-LLM 2.3.0b20250725), `ollama-ipex` active with `using Intel GPU` in journal, AI Suggest cold-cache run = 170s on iGPU. Caveat noted: `clinfo -l` reports 0 platforms — IPEX uses Level Zero so OpenCL ICD detection isn't required, but follow-up worth doing.
+
+**Required Manual Step:** None for the auto-update itself (this entry is purely documentation). To run the OS upgrade at the remaining two locations (appleton, greenville), follow `docs/OS_UPGRADE_RUNBOOK.md` step-by-step. Recommended order per the runbook: appleton next, greenville last.
+
+**Verification:** None at the auto-update layer. After a location completes its upgrade, the runbook's Status tracker row is updated in the same commit that bumps the version that records the result.
+
+**Rollback:** N/A — docs-only.
+
+---
+
+### v2.32.65–v2.32.70 — iGPU enablement saga (catch-up entry)
+**Released:** 2026-05-07 (rapid-fire)
+
+Six versions in two hours fighting through the Intel iGPU acceleration setup across the fleet. Documented as one entry because they're a single problem-solve.
+
+**v2.32.65** — Reverted AI Suggest model from `qwen2.5:14b` back to `llama3.1:8b`. Reason: IPEX-LLM Ollama 0.16.2's SYCL backend doesn't accelerate the qwen2 family — at Holmgren the model loaded into iGPU memory but render engine stayed at 0% during inference, falling back to CPU. Made the choice env-overridable via `OLLAMA_MODEL` so operators can experiment per location.
+
+**v2.32.66** — GPU meter falls back to frequency-based usage on Iris Xe. Engine busy% counters (Render/3D, Blitter, Video, VideoEnhance) all return 0 on Iris Xe Raptor Lake-P even with `cap_sys_admin` — kernel doesn't expose CCS engine to userspace via the legacy i915 perf interface. Frequency, however, is reliable: idle ~150 MHz, working ~1495 MHz. Widget now uses `(actual_mhz / 1500) * 100` when all engine fields are <1%. Holmgren bartender confirmed: 86% during AI Suggest, 0% at idle.
+
+**v2.32.67** — `setup-iris-ollama.sh` installs Intel level-zero userspace drivers when chip is in `lspci` but stack is missing (the fleet locations have the chip but no `intel-level-zero-gpu`). Adds Intel apt repo, installs the userspace, falls back to `modprobe i915 / xe` if `/dev/dri/` is empty.
+
+**v2.32.68** — Broadened Intel chip detection to match `Intel Corporation Device a7a0` (Raptor Lake-P shows up as the unnamed PCI ID on older `pciutils` databases). Was bailing on greenville/appleton even though they have the chip.
+
+**v2.32.69** — Two compounding install issues found via leglamp:
+1. ubuntu user wasn't added to render+video groups *before* the clinfo gate. Without /dev/dri/ access, clinfo silently returns 0 platforms even with userspace installed. Now done at section 0, with `sg render` re-exec so the new group applies in this shell.
+2. Holmgren's working install has `intel-igc-cm`, `libdrm-intel1`, `libigdfcl1`, `libigdgmm12` packages that the fleet didn't. Without `intel-igc-cm` the OpenCL ICD shows 0 platforms even though `libigdrcl.so` is loaded. Added all four to the install list, plus a defensive `apt-get install --reinstall intel-opencl-icd` if the .so file is still missing post-install (observed at leglamp).
+
+**v2.32.70** — Per-codename Intel apt repo line. The fleet has a mix:
+| Location | Ubuntu | Action |
+|---|---|---|
+| Holmgren | noble (24.04) | works since v2.32.66 |
+| graystone | jammy (22.04) | needs v2.32.70 + manual `modprobe i915` (kernel module not bound) |
+| greenville | jammy (22.04) | needs v2.32.70 |
+| leglamp | noble (24.04) | works since v2.32.69 ✓ |
+| luckys | noble (24.04) | works since v2.32.69 (assumed) |
+| appleton | jammy (22.04) | needs v2.32.70 |
+
+Earlier versions hardcoded `noble client` in the Intel apt source line, which broke installs on jammy boxes (libc6 dep mismatch). v2.32.70 reads `lsb_release -cs` and writes the matching repo line; rewrites a stale line if a prior run wrote the wrong codename.
+
+**Required Manual Step:** None on auto-update. To enable iGPU at a fleet location, the operator runs `bash scripts/setup-iris-ollama.sh` once. Idempotent — re-running on already-configured boxes verifies state.
+
+**Verification (per location):**
+```bash
+systemctl is-active ollama-ipex                                                # active
+sudo journalctl -u ollama-ipex --since=2m | grep "using Intel GPU"             # one match
+clinfo -l                                                                       # Intel platform listed
+ls /dev/dri/                                                                    # card0/1 + renderD128 present
+```
+
+**Rollback:** `git revert` clean for all version code. To revert iGPU stack at a location:
+```bash
+sudo systemctl stop ollama-ipex && sudo systemctl disable ollama-ipex
+sudo systemctl enable --now ollama
+```
+Models stay at `/usr/share/ollama/.ollama/models/` — no data loss.
+
+---
+
+### v2.32.64 — AI Suggest model bumped to qwen2.5:14b (reverted in v2.32.65)
+**Released:** 2026-05-07
+Empirical revert. See v2.32.65 entry for context.
+
+---
+
 ### v2.32.63 — Walker extracts game start times from Fire TV streaming app tiles
 **Released:** 2026-05-07
 
