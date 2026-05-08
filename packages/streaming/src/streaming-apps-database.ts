@@ -72,7 +72,19 @@ export const STREAMING_APPS_DATABASE: StreamingApp[] = [
     hasPublicApi: true,
     apiDocUrl: 'https://www.espn.com/apis/devcenter/docs/',
     deepLinkSupport: true,
-    deepLinkFormat: 'espn://x-callback-url/showEvent?eventId={eventId}',
+    // v2.32.85 — verified live on Cube 3 (com.espn.gtv): the only registered
+    // deep-link scheme is `sportscenter://x-callback-url/*` (NOT `espn://` —
+    // `pm dump com.espn.gtv | grep Scheme` returns only "sportscenter").
+    // Firing the old `espn://` URL produced "Activity not started, unable
+    // to resolve Intent". Path patterns aren't restricted (no Path: clause
+    // in the intent filter), so any path under the authority is accepted —
+    // `showHomeTab` reliably loads the live-sports landing screen, from
+    // which the autoplay sequence in launchEspnToLiveContent (DPAD_DOWN +
+    // DPAD_CENTER) opens the first/most-prominent live tile in
+    // PlayerActivity. eventId-targeted deep links (`showEvent?eventId=...`)
+    // are also honored when an ID is supplied — see TODO in walker re
+    // capturing real ESPN event IDs.
+    deepLinkFormat: 'sportscenter://x-callback-url/showHomeTab',
     description: 'ESPN streaming with live sports, ESPN+, and original content',
     sports: ['football', 'basketball', 'baseball', 'hockey', 'soccer', 'ufc', 'boxing', 'tennis', 'cricket'],
     requiresSubscription: true,
