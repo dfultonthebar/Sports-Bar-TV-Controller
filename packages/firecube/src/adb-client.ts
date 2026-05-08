@@ -242,10 +242,10 @@ export class ADBClient {
     }
   }
 
-  async sendKey(keyCode: number): Promise<string> {
+  async sendKey(keyCode: number, timeoutMs?: number): Promise<string> {
     try {
       logger.info(`[ADB CLIENT] Sending key ${keyCode} to ${this.deviceAddress}`)
-      return await this.executeShellCommand(`input keyevent ${keyCode}`)
+      return await this.executeShellCommand(`input keyevent ${keyCode}`, timeoutMs)
     } catch (error) {
       logger.error(`[ADB CLIENT] Send key error:`, error)
       throw error
@@ -410,20 +410,30 @@ export class ADBClient {
       logger.info(`[ADB CLIENT] Waiting 5s for Prime Video search results to render`)
       await new Promise((r) => setTimeout(r, 5000))
 
+      // v2.32.91 — pass timeoutMs=8000 to each keyevent in the autoplay
+      // sequence. The default 3s timeout in executeShellCommand can fire
+      // mid-sequence when the Cube is still loading SearchResultsActivity
+      // or DetailActivity (both can pin the framework momentarily); the
+      // input keyevent itself is fast but the wrapped `adb shell -T` may
+      // wait for system_server to acknowledge. 3s timeout reproduced live
+      // on Cube 3 today: DPAD_DOWN to SearchResultsActivity timed out at
+      // 3000ms, autoplay aborted, /api/streaming/launch returned
+      // success:false, bartender saw "Failed to launch". 8s gives generous
+      // headroom without delaying real failures.
       logger.info(`[ADB CLIENT] DPAD_DOWN → focus first result`)
-      await this.sendKey(20) // KEYCODE_DPAD_DOWN
+      await this.sendKey(20, 8000) // KEYCODE_DPAD_DOWN
 
       // Tiny pause so the focus animation completes before CENTER is honored.
       await new Promise((r) => setTimeout(r, 400))
 
       logger.info(`[ADB CLIENT] DPAD_CENTER → open detail page`)
-      await this.sendKey(23) // KEYCODE_DPAD_CENTER
+      await this.sendKey(23, 8000) // KEYCODE_DPAD_CENTER
 
       logger.info(`[ADB CLIENT] Waiting 3s for detail page`)
       await new Promise((r) => setTimeout(r, 3000))
 
       logger.info(`[ADB CLIENT] DPAD_CENTER → trigger Watch now`)
-      await this.sendKey(23) // KEYCODE_DPAD_CENTER
+      await this.sendKey(23, 8000) // KEYCODE_DPAD_CENTER
 
       logger.info(`[ADB CLIENT] Prime Video autoplay sequence dispatched`)
       return 'Prime Video autoplay sequence dispatched'
@@ -483,14 +493,17 @@ export class ADBClient {
       logger.info(`[ADB CLIENT] Waiting 8s for ESPN content rows to render`)
       await new Promise((r) => setTimeout(r, 8000))
 
+      // v2.32.91 — same 8s sendKey timeout as Prime Video (see comment in
+      // launchPrimeVideoToContent). ESPN's home tab also pins the framework
+      // momentarily during content-row hydration.
       logger.info(`[ADB CLIENT] DPAD_DOWN → focus first content tile`)
-      await this.sendKey(20) // KEYCODE_DPAD_DOWN
+      await this.sendKey(20, 8000) // KEYCODE_DPAD_DOWN
 
       // Brief pause for the focus animation, matching the Prime Video flow.
       await new Promise((r) => setTimeout(r, 400))
 
       logger.info(`[ADB CLIENT] DPAD_CENTER → open tile (PlayerActivity)`)
-      await this.sendKey(23) // KEYCODE_DPAD_CENTER
+      await this.sendKey(23, 8000) // KEYCODE_DPAD_CENTER
 
       logger.info(`[ADB CLIENT] ESPN autoplay sequence dispatched`)
       return 'ESPN autoplay sequence dispatched'

@@ -50,6 +50,7 @@
 
 import { db, schema, eq, and } from '@sports-bar/database'
 import { logger } from '@sports-bar/logger'
+import { findStreamingAppByDisplayName } from '@sports-bar/streaming'
 import { schedulerLogger } from './scheduler-logger'
 
 const API_PORT = process.env.PORT || 3001
@@ -835,17 +836,46 @@ export async function runFiretvCatalogWalk(): Promise<CatalogWalkStats> {
           availableNetworks = JSON.parse(input.availableNetworks || '[]')
         } catch { /* skip */ }
 
-        const appsToWalk = availableNetworks.filter((n) => APP_WALK_RULES[n])
+        // v2.32.91 — Resolve `available_networks` entries to walker rules via
+        // the streaming catalog's alias map. Pre-fix used exact key match
+        // (`APP_WALK_RULES[name]`) which silently failed whenever a location
+        // wrote a different naming variant ("Amazon Prime Video" vs "Prime
+        // Video", "Apple TV" vs "Apple TV+", etc.). Holmgren stored
+        // "Amazon Prime Video" → never matched the 'Prime Video'-keyed rule
+        // → walker never walked Prime Video → bartender saw zero Prime Video
+        // games on the Fire TV channel guide → operator reported the Watch
+        // button "broken on Amazon devices". The bartender was right; there
+        // was nothing to click.
+        //
+        // Resolution: each network name → findStreamingAppByDisplayName
+        // (case-insensitive across name + displayNameAliases) → catalog
+        // entry .id → look up rule whose catalogId matches. Direct key
+        // match still wins as a fast path.
+        const rulesByCatalogId: Record<string, { ruleKey: string; rule: AppWalkRule }> = {}
+        for (const [k, r] of Object.entries(APP_WALK_RULES)) {
+          rulesByCatalogId[r.catalogId] = { ruleKey: k, rule: r }
+        }
+        const appsToWalk: Array<{ network: string; ruleKey: string; rule: AppWalkRule }> = []
+        for (const network of availableNetworks) {
+          if (APP_WALK_RULES[network]) {
+            appsToWalk.push({ network, ruleKey: network, rule: APP_WALK_RULES[network] })
+            continue
+          }
+          const catalogApp = findStreamingAppByDisplayName(network)
+          if (catalogApp && rulesByCatalogId[catalogApp.id]) {
+            const entry = rulesByCatalogId[catalogApp.id]
+            appsToWalk.push({ network, ruleKey: entry.ruleKey, rule: entry.rule })
+          }
+        }
         if (appsToWalk.length === 0) {
           logger.info(`[FIRETV-CATALOG] ${input.name}: no walkable apps in available_networks`)
           return
         }
 
-        logger.info(`[FIRETV-CATALOG] ${input.name}: walking ${appsToWalk.length} app(s) — ${appsToWalk.join(', ')}`)
+        logger.info(`[FIRETV-CATALOG] ${input.name}: walking ${appsToWalk.length} app(s) — ${appsToWalk.map((a) => a.ruleKey).join(', ')}`)
         stats.inputsWalked++
 
-        for (const appName of appsToWalk) {
-          const rule = APP_WALK_RULES[appName]
+        for (const { ruleKey: appName, rule } of appsToWalk) {
           stats.appWalksAttempted++
           const result = await walkOneApp(input, ipAddress, rule, correlationId)
           if (result.uploaded) {
