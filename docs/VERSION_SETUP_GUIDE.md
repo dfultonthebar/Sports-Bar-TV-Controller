@@ -187,6 +187,28 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.97 — Text-targeted tap (replaces blind DPAD + verify) + MEDIA_STOP cleanup
+**Released:** 2026-05-08
+
+**No setup required.** Code-only fix.
+
+**What it adds:** ESPN search-by-title autoplay no longer uses `DPAD_DOWN` to "focus first result and hope" — it dumps the UI after typing the query, scans every visible tile for one whose accessibility content matches the intended title (token overlap, scored), and fires `input tap <cx> <cy>` directly at the matched tile's center. Targets by content rather than position; works whether ESPN navigated to the Search tab or the Featured tab, as long as a matching tile is on-screen anywhere.
+
+**Bonus:** `KEYCODE_MEDIA_STOP` + `am force-stop` at the start of the autoplay sequence. If ESPN was already playing something or in a leftover navigation state from a previous Watch click, this clears it. Both are safe no-ops if nothing's playing.
+
+**Verified live on Cube 3:**
+- "Mariners White Sox" (visible on ESPN's home tab right now): `findVisibleTile: best match score=3/3 text="Mariners vs. White Sox ESPN Unlimited • MLB Live"`. Tap fired at the matched tile's bounds center. API returned success:true.
+- "Southern Miss James Madison" (not on ESPN's UI right now): `findVisibleTile: no tile matched`. API returned success:false with diagnostic listing the visible tiles (Backlash WWE / Florida-Alabama softball / Mariners-White Sox MLB / SportsCenter / Jacksonville-Colorado lacrosse) so the operator can see what's actually on the screen and decide whether to manually navigate or schedule for later.
+
+**Why we didn't pursue the other AI's suggestions:**
+- *"Try deep link first, fall back to guided nav"* — every `sportscenter://` deep-link variant tested (showEvent, showWatch, showGame, showWatchStream with and without UUID playIDs) collapses to StartupActivity → home. No deep link to retry.
+- *"State-aware: skip launch if app already open"* — possible micro-optimization, not a reliability win. Force-stop + relaunch gives deterministic starting state.
+- *"Sideload `com.espn.score_center`"* — older ESPN APK supports `showWatchStream` but isn't on Amazon's app store, requires per-device manual install, breaks across OTA updates. Won't scale to a 6-location fleet.
+
+**Affected:** 1 file. `packages/firecube/src/adb-client.ts` (new `_findVisibleTileMatchingTitle` helper + sequence rewrite + MEDIA_STOP).
+
+---
+
 ### v2.32.96 — ESPN focused-tile verification gate + error propagation
 **Released:** 2026-05-08
 
