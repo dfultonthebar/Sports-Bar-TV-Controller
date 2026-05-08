@@ -35,6 +35,16 @@ const BROADCAST_TO_APP_NAME: Record<string, string> = {
   FS2: 'Fox Sports',
   'FOX Sports 1': 'Fox Sports',
   'FOX Sports 2': 'Fox Sports',
+  // Warner Bros Discovery family — TNT/TBS sports stream via Max.
+  // v2.32.93 added after the v2.32.92 audit flagged the gap. Affects
+  // NBA playoffs (TNT), MLB postseason (TBS), March Madness (TNT/TBS/truTV),
+  // some college football (TNT/TBS). Without these entries, allocator
+  // silently excludes any Cube with Max installed from being a candidate
+  // for TNT/TBS games — same root-cause class as the v2.32.92 ESPN+ bug.
+  TNT: 'Max',
+  TBS: 'Max',
+  truTV: 'Max',
+  'TNT Sports': 'Max',
 }
 
 /**
