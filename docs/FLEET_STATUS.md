@@ -20,7 +20,7 @@ A snapshot of where each location stands. Update this file after every fleet-wid
 **Aggregate health (2026-05-08 18:00 UTC):**
 - 6/6: bartender remote on Nginx ✓
 - 6/6: noble (24.04) + 6.8.0-111 kernel ✓
-- 6/6: latest software (v2.32.89) ✓ — verified PASS 7/7 across all heartbeats
+- 6/6: latest software (v2.32.90) ✓ — verified PASS 7/7 across all heartbeats
 - 6/6: iGPU acceleration active ✓
 - 6/6: drift-recovery sidecar bootstrapped at `/home/ubuntu/sports-bar-data/.auto-update-last-success.json` ✓
 
@@ -57,7 +57,9 @@ Audio processor and matrix details live in each location's `.claude/locations/<b
 
 **v2.32.88** — NFHS bartender title shows sport label. Pulaski vs West De Pere had two real games (Varsity Girls Soccer + JV Girls Soccer, 2h apart) that rendered with identical titles in the bartender remote. Channel-guide route was already populating `sport` on NFHS programs; the GameListing TS interface in `EnhancedChannelGuideBartenderRemote.tsx` simply didn't declare the field. Fix: add `sport?: string` and append ` — ${game.sport}` to the title when present. Verified live via the channel-guide POST endpoint: two distinct rows now carry `sport='Junior Varsity Girls Soccer'` / `sport='varsity Girls Soccer'`.
 
-**v2.32.90** — Walker `uiautomator dump` no longer hits the 3s ADB-shell timeout. Root cause: `packages/firecube/src/adb-client.ts:executeShellCommand` had a hardcoded 3000ms timeout. UIautomator dumping the Fire TV launcher home screen (with its full rail-tile + carousel tree) reliably exceeds 3s on a busy device — the timeout fires, `adb shell -T` exits with no stdout, the walker reads xml.length=0 and surfaces "empty dump". Fix: thread an optional `timeoutMs` (500-30000ms) through `executeShellCommand` → `/api/firetv-devices/send-command` POST schema → walker; walker passes 10000ms on `uiautomator dump` only. All other call sites keep the snappy 3s default. Verified live on Holmgren Cube 3: pre-fix walks produced 0 catalog rows; post-fix walk produced 12 ESPN rows with 0 errors.
+**v2.32.89** — Walker `uiautomator dump` no longer hits the 3s ADB-shell timeout. Root cause: `packages/firecube/src/adb-client.ts:executeShellCommand` had a hardcoded 3000ms timeout. UIautomator dumping the Fire TV launcher home screen (with its full rail-tile + carousel tree) reliably exceeds 3s on a busy device — the timeout fires, `adb shell -T` exits with no stdout, the walker reads xml.length=0 and surfaces "empty dump". Fix: thread an optional `timeoutMs` (500-30000ms) through `executeShellCommand` → `/api/firetv-devices/send-command` POST schema → walker; walker passes 10000ms on `uiautomator dump` only. All other call sites keep the snappy 3s default. Verified live on Holmgren Cube 3: pre-fix walks produced 0 catalog rows; post-fix walk produced 12 ESPN rows with 0 errors.
+
+**v2.32.90** — Walker rules: document Hulu / YouTube TV / Fox Sports as non-walkable. Fleet probe via SSH surveyed sports-relevant streaming apps installed across all 6 boxes; the 3 highest-value candidates not yet walked were probed for accessibility. Result: none walkable (Hulu paywall on logged-out Cubes; YouTube TV Cobalt runtime accessibility-blind; Fox Sports videogo stub redirect). Three explicit `APP_WALK_RULES` entries added with `usesWebView: true` so future probes don't repeat the dead-end work. Each carries the empirical probe result inline.
 
 **v2.32.81** — auto-update branch-drift recovery — detects when a box is on `main` instead of its `location/*` branch and switches back via the heartbeat file. Single defensive guard, normal-path code unchanged.
 
