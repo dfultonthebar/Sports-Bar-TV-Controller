@@ -47,7 +47,12 @@ export async function pollRealFireTVSubscriptions(
     // for ~60-120s (Linux TCP retransmit window) with no signal to the
     // caller. The device-config UI's subscription-detect feature is the
     // primary caller; a hung Cube would freeze that page indefinitely.
-    await execAsync(`adb connect ${deviceSerial}`, { timeout: 8000 })
+    // v2.32.93 — Bumped from 8s to 12s after audit feedback. AFTR Cubes
+    // in deep sleep can take 10-14s to wake their network stack; 8s
+    // produced false-negative "device dead" reports on healthy-but-
+    // sleeping devices. 12s is high enough to cover wake while still
+    // catching genuine hangs.
+    await execAsync(`adb connect ${deviceSerial}`, { timeout: 12000 })
 
     // pm list packages enumerates 250+ packages and can take 5-10s on a
     // busy device — 15s gives generous headroom without permitting
@@ -76,6 +81,12 @@ export async function pollRealFireTVSubscriptions(
       // --- Big streaming ---
       'com.amazon.avod':                         { name: 'Amazon Prime Video', type: 'streaming', provider: 'Amazon' },
       'com.amazon.avod.thirdpartyclient':        { name: 'Amazon Prime Video', type: 'streaming', provider: 'Amazon' },
+      // v2.32.93 — On AFTR Cubes (Fire TV Cube 2nd gen) Prime Video is
+      // hosted by the launcher itself (com.amazon.firebat); the avod
+      // package isn't installed at all. Without this entry the device-
+      // config UI's subscription-detect endpoint reported "Prime Video
+      // not installed" on every AFTR Cube. See CLAUDE.md gotcha #9.
+      'com.amazon.firebat':                      { name: 'Amazon Prime Video', type: 'streaming', provider: 'Amazon' },
       'com.netflix.ninja':                       { name: 'Netflix',            type: 'streaming', provider: 'Netflix' },
       'com.hulu.plus':                           { name: 'Hulu',               type: 'streaming', provider: 'Hulu' },
       'com.disney.disneyplus':                   { name: 'Disney+',            type: 'streaming', provider: 'Disney' },

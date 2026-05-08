@@ -46,6 +46,24 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-08 — v2.32.93 — Audit follow-ups (Max catalog, firebat in polling, longer adb-connect)
+
+**Risk:** GO. Three small follow-ups to v2.32.92 from the code-reviewer audit. All bounded; all preserve prior defaults.
+
+**What changed:**
+- Streaming catalog: new `Max` entry (`id: 'max'`, `packageName: 'com.wbd.stream'`, alias `com.hbo.hbonow`).
+- `network-map.ts`: TNT/TBS/truTV/'TNT Sports' → `'Max'` so allocator + conflict-detector match Cubes with Max installed for those broadcast networks.
+- `subscription-polling.ts`: `com.amazon.firebat` → `'Amazon Prime Video'` in the device-config UI's subscription-detect map (was silently invisible on AFTR Cubes).
+- `subscription-polling.ts`: `adb connect` timeout 8s → 12s to cover sleeping-Cube wake.
+
+**What could break:** Nothing. Catalog gets a new entry (additive); network-map gets new mappings (additive — no existing key changed); subscription-polling map gets a new key (additive); the timeout went up, not down (still bounded, no genuine-hang risk). 10/10 sanity tests confirm regression-free.
+
+**Manual steps required:** None.
+
+**Rollback:** `git revert` clean.
+
+---
+
 ### 2026-05-08 — v2.32.92 — Bug hunt batch (ESPN+ allocator, Paramount+, subscription-polling timeouts)
 
 **Risk:** GO. Seven bug fixes from a multi-agent code audit, all in the same root-cause classes as today's earlier ships. Each is small and additive; together they close several latent silent-failure paths.
