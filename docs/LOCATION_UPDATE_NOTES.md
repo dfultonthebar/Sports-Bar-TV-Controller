@@ -46,6 +46,31 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-08 — v2.32.82 — Drift recovery sidecar (completes v2.32.81)
+
+**Risk:** GO — additive paths only. v2.32.81's drift-recovery code path was never triggered on the normal cron flow (where boxes are on their location branch). v2.32.82 makes drift-recovery actually work when triggered, by adding a heartbeat sidecar at `/home/ubuntu/sports-bar-data/.auto-update-last-success.json` that survives branch switches.
+
+**What changed:** `scripts/auto-update.sh`:
+- Drift block at lines 575-621 reads sidecar first, falls back to repo-root copy
+- Heartbeat-write code (line ~1361) now copies to sidecar after every successful run
+- `refresh_heartbeat_os_only()` (line ~299) keeps sidecar synced on no-op runs
+
+**What could break at a location:** Effectively nothing — sidecar copy is a `cp -f ... 2>/dev/null || true` non-fatal line, and the drift-recovery block remains a no-op except when `BRANCH=main`.
+
+**Manual steps required:** None on the normal path. For boxes currently sitting on main (drift), the sidecar must be seeded once before this fix can recover them. Operator one-liner:
+```
+git show origin/<your-location-branch>:.auto-update-last-success.json > /home/ubuntu/sports-bar-data/.auto-update-last-success.json
+```
+Once seeded, the next auto-update run (manual or cron) will detect drift and recover. After that, the sidecar self-maintains.
+
+**Verified live on Holmgren** — drift simulated, recovery completed in 105s, full verify-install 7/7 PASS.
+
+**Affected:** `scripts/auto-update.sh`, `package.json`, `docs/VERSION_SETUP_GUIDE.md`, `docs/LOCATION_UPDATE_NOTES.md`.
+
+**Rollback:** `git revert` clean — single-file patch on top of v2.32.81.
+
+---
+
 ### 2026-05-08 — v2.32.81 — Auto-update branch-drift recovery
 
 **Risk:** GO — defensive guard added to `scripts/auto-update.sh` that fires only when `BRANCH=main`. Normal-path code is unchanged.
