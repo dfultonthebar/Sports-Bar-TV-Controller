@@ -1616,6 +1616,15 @@ export const inputSourceAllocations = sqliteTable('input_source_allocations', {
   channelNumber: text('channel_number'), // for cable/directv
   appName: text('app_name'), // for streaming devices
   streamUrl: text('stream_url'), // for web streams
+  // v2.32.85 — per-event deep link captured by the firetv-catalog walker.
+  // When set, the scheduler-service passes this through to the tune
+  // executor so the Fire TV opens directly to the specific game (autoplay
+  // path in adb-client.launchPrimeVideoToContent / launchEspnToLiveContent)
+  // instead of just the app's home screen. Mirrors the Watch button's
+  // game.channel.deepLink — bartender Schedule button captures it from the
+  // same field on the channel-guide program. Pre-fix, scheduled tunes for
+  // streaming games landed on the app's home screen at game-time.
+  deepLink: text('deep_link'),
 
   // TV Outputs Allocated
   tvOutputIds: text('tv_output_ids').notNull(), // JSON array of matrix output IDs

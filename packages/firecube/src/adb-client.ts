@@ -434,6 +434,73 @@ export class ADBClient {
   }
 
   /**
+   * ESPN direct-to-playback sequence (v2.32.85).
+   *
+   * Verified live on Cube 3 (AFTR, com.espn.gtv) on 2026-05-08: lands on
+   * `com.espn.video.dmp.PlayerActivity` after just two key events.
+   *
+   * Sequence:
+   *   1. Deep-link to ESPN's home tab (`sportscenter://x-callback-url/showHomeTab`)
+   *      — verified scheme; the older catalog format `espn://...` is not
+   *      registered with this APK and would silently fail.
+   *   2. Wait 8s (ESPN's content cards finish rendering ~7s after launch
+   *      per APP_WALK_RULES['ESPN'].postLaunchDelayMs)
+   *   3. DPAD_DOWN — focus moves from the hero "Explore" banner to the
+   *      first tile in the first content row (which on the live-sports
+   *      landing is the most prominent currently-airing game/feed)
+   *   4. DPAD_CENTER — opens the focused tile directly into PlayerActivity
+   *
+   * Limitation: this picks ESPN's curated "first live tile", not a
+   * specific event matching `contentTitle`. Bartender remote shows live
+   * ESPN games and ESPN curates the same set to the top of its UI, so
+   * the most-prominent tile is usually what the operator wanted. Truly
+   * event-specific deep links would require an ESPN event-ID resolver
+   * (call ESPN scoreboard API at click time using contentTitle + start
+   * time) — TODO for a future version.
+   */
+  async launchEspnToLiveContent(
+    contentTitle?: string,
+    packageName: string = 'com.espn.gtv',
+  ): Promise<string> {
+    try {
+      logger.info(
+        `[ADB CLIENT] Launching ESPN to live content${contentTitle ? ` (target: "${contentTitle}")` : ''} on ${this.deviceAddress}`,
+      )
+
+      // v2.32.85 — IMPORTANT: launch via the standard LEANBACK_LAUNCHER
+      // entry point, NOT via the `sportscenter://x-callback-url/showHomeTab`
+      // deep link. Verified live on Cube 3 on 2026-05-08: deeplink-launch
+      // takes ESPN to a different focus state than launcher-launch — DOWN
+      // from the launcher path lands on the first live content tile (e.g.
+      // "Main Feed • BetCast • PGA TOUR Live"), but DOWN from the deeplink
+      // path lands on a tile-carousel slot whose CENTER doesn't reliably
+      // navigate to PlayerActivity. The deepLink in the catalog serves as
+      // the "yes this app supports deep linking" flag for the streaming-
+      // service-manager routing decision; the actual ADB launch goes
+      // through `launchApp` here.
+      await this.launchApp(packageName)
+
+      logger.info(`[ADB CLIENT] Waiting 8s for ESPN content rows to render`)
+      await new Promise((r) => setTimeout(r, 8000))
+
+      logger.info(`[ADB CLIENT] DPAD_DOWN → focus first content tile`)
+      await this.sendKey(20) // KEYCODE_DPAD_DOWN
+
+      // Brief pause for the focus animation, matching the Prime Video flow.
+      await new Promise((r) => setTimeout(r, 400))
+
+      logger.info(`[ADB CLIENT] DPAD_CENTER → open tile (PlayerActivity)`)
+      await this.sendKey(23) // KEYCODE_DPAD_CENTER
+
+      logger.info(`[ADB CLIENT] ESPN autoplay sequence dispatched`)
+      return 'ESPN autoplay sequence dispatched'
+    } catch (error) {
+      logger.error(`[ADB CLIENT] ESPN autoplay error:`, error)
+      throw error
+    }
+  }
+
+  /**
    * Launch Paramount+ Live TV with automated profile selection.
    *
    * Sequence:
