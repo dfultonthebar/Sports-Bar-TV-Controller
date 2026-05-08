@@ -341,12 +341,94 @@ export class ADBClient {
     }
   }
 
-  async launchAppWithDeepLink(deepLink: string): Promise<string> {
+  async launchAppWithDeepLink(deepLink: string, packageName?: string): Promise<string> {
     try {
-      logger.info(`[ADB CLIENT] Launching app with deep link: ${deepLink} on ${this.deviceAddress}`)
-      return await this.executeShellCommand(`am start -a android.intent.action.VIEW -d "${deepLink}"`)
+      logger.info(`[ADB CLIENT] Launching app with deep link: ${deepLink}${packageName ? ` (pkg=${packageName})` : ''} on ${this.deviceAddress}`)
+      // v2.32.84 — single-quote the URL to protect characters like `&` (query
+      // separators) from the outer shell wrapper that `executeShellCommand`
+      // applies. With double quotes inside double quotes, a URL like
+      // `https://x?a=1&b=2` would have the outer shell terminate at the `&`
+      // and produce a partial command.
+      // The optional `-p ${packageName}` flag forces intent resolution to the
+      // given package, bypassing Android's ResolverActivity when multiple
+      // apps register for the same scheme (Prime Video + Silk Browser both
+      // own https://watch.amazon.com/* — without -p, the resolver dialog
+      // pops on the TV instead of opening Prime Video directly).
+      // Escape any literal `'` in the URL using the standard `'\''` pattern
+      // — without this a deep-link containing a single quote (e.g.
+      // `phrase=O%27Brien` decoded callers, or older app schemes that allow
+      // raw apostrophes) would terminate the single-quoted span early and
+      // break the shell command.
+      const pkgFlag = packageName ? `-p ${packageName} ` : ''
+      const escaped = deepLink.replace(/'/g, "'\\''")
+      return await this.executeShellCommand(`am start ${pkgFlag}-a android.intent.action.VIEW -d '${escaped}'`)
     } catch (error) {
       logger.error(`[ADB CLIENT] Launch app with deep link error:`, error)
+      throw error
+    }
+  }
+
+  /**
+   * Prime Video direct-to-playback sequence (v2.32.84).
+   *
+   * Verified live on Cube 3 (AFTR, Fire OS 9, PVFTV-215.5374N) on 2026-05-08:
+   * lands on `com.amazon.firebatcore.playback.inappplayback.PlaybackActivity`
+   * with MediaSession state=3 (PLAYING).
+   *
+   * Sequence:
+   *   1. Search deep-link  →  SearchResultsActivity (≈3s to render)
+   *   2. Wait 5s for results
+   *   3. DPAD_DOWN — focus moves from search bar to first result tile
+   *   4. DPAD_CENTER — opens detail page (≈3s)
+   *   5. Wait 3s for detail page
+   *   6. DPAD_CENTER on the auto-focused "Watch now" / "Watch live" button
+   *      → PlaybackActivity
+   *
+   * Pattern mirrors `launchParamountLiveTV` (deep link + nav-event sequence).
+   * Caller should allow ~5 additional seconds after this returns for actual
+   * playback to begin and the stream to buffer.
+   */
+  async launchPrimeVideoToContent(
+    contentTitle: string,
+    packageName: string = 'com.amazon.firebat',
+  ): Promise<string> {
+    try {
+      // Without an actual title, the search URL becomes `phrase=` which
+      // Prime Video treats as "show me everything" — the autoplay sequence
+      // would then click whatever arbitrary tile happens to be first
+      // (catch-up shows, promotional content). Refuse rather than launch
+      // something unrelated to the bartender's intent.
+      if (!contentTitle.trim()) {
+        throw new Error('contentTitle is required for Prime Video autoplay sequence')
+      }
+
+      logger.info(`[ADB CLIENT] Launching Prime Video to "${contentTitle}" on ${this.deviceAddress}`)
+
+      const searchUrl = `https://watch.amazon.com/search?phrase=${encodeURIComponent(contentTitle)}`
+      await this.launchAppWithDeepLink(searchUrl, packageName)
+
+      logger.info(`[ADB CLIENT] Waiting 5s for Prime Video search results to render`)
+      await new Promise((r) => setTimeout(r, 5000))
+
+      logger.info(`[ADB CLIENT] DPAD_DOWN → focus first result`)
+      await this.sendKey(20) // KEYCODE_DPAD_DOWN
+
+      // Tiny pause so the focus animation completes before CENTER is honored.
+      await new Promise((r) => setTimeout(r, 400))
+
+      logger.info(`[ADB CLIENT] DPAD_CENTER → open detail page`)
+      await this.sendKey(23) // KEYCODE_DPAD_CENTER
+
+      logger.info(`[ADB CLIENT] Waiting 3s for detail page`)
+      await new Promise((r) => setTimeout(r, 3000))
+
+      logger.info(`[ADB CLIENT] DPAD_CENTER → trigger Watch now`)
+      await this.sendKey(23) // KEYCODE_DPAD_CENTER
+
+      logger.info(`[ADB CLIENT] Prime Video autoplay sequence dispatched`)
+      return 'Prime Video autoplay sequence dispatched'
+    } catch (error) {
+      logger.error(`[ADB CLIENT] Prime Video autoplay error:`, error)
       throw error
     }
   }
