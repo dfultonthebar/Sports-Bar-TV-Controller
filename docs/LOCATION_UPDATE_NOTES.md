@@ -46,6 +46,20 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-08 — v2.32.89 — Walker uiautomator dump 10s timeout
+
+**Risk:** GO. Threads an optional `timeoutMs` parameter through the adb-shell stack. Default 3000ms preserved on every existing call site; the walker's `uiautomator dump` is the only one that overrides (10000ms). Capped at 30s so a runaway command can't pin a connection.
+
+**What changed:** `packages/firecube/src/adb-client.ts` `executeShellCommand` accepts a second arg. Send-command POST schema accepts an optional `timeoutMs` (500-30000ms). Walker passes 10s on the dump call only.
+
+**What could break:** Nothing. Default value preserved, optional override.
+
+**Manual steps required:** None.
+
+**Rollback:** `git revert` clean — defaults are back to 3000ms.
+
+---
+
 ### 2026-05-08 — v2.32.88 — NFHS title V vs JV distinguishable
 
 **Risk:** GO. Pure UI change in one component. Non-NFHS games unaffected (no other code path sets `sport` on programs in the channel-guide route).
