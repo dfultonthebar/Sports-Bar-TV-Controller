@@ -293,20 +293,29 @@ export const STREAMING_APPS_DATABASE: StreamingApp[] = [
     id: 'amazon-prime',
     name: 'Amazon Prime Video',
     displayNameAliases: ['Prime Video', 'Amazon Prime', 'amazon-prime'],
-    packageName: 'com.amazon.avod',
-    // v2.28.8 — On Fire TV Cube 2nd gen (AFTR) and other Fire OS Cubes that
-    // ship Prime Video baked into the launcher (com.amazon.firebat / PVFTV
-    // build), there is no separate com.amazon.avod APK on disk. The launcher
-    // hosts Prime Video as its default LEANBACK_LAUNCHER activity
-    // (DeepLinkRoutingActivity → livingroom.landing.LandingActivity), so
-    // adding firebat as an alias lets streaming-service-manager find a
-    // launchable package on these Cubes. adb-client.launchApp() will resolve
-    // the LEANBACK_LAUNCHER activity automatically.
-    packageAliases: ['com.amazon.avod.thirdpartyclient', 'com.amazon.firebat'],
+    // v2.32.84 — `com.amazon.firebat` promoted to primary on the assumption
+    // that all production fleet Cubes are AFTR (PVFTV build) where firebat
+    // hosts Prime Video. Avoids three wasted ADB `pm list packages`
+    // round-trips per launch (~4.5s) probing com.amazon.avod (which doesn't
+    // exist on AFTR) before falling through to firebat. Older Cubes that
+    // still ship com.amazon.avod will resolve via the alias chain — the
+    // streaming-service-manager probes primary first, then aliases.
+    packageName: 'com.amazon.firebat',
+    packageAliases: ['com.amazon.avod', 'com.amazon.avod.thirdpartyclient'],
     category: 'general',
     hasPublicApi: false,
     deepLinkSupport: true,
-    deepLinkFormat: 'aiv://aiv/view?gti={contentId}',
+    // v2.32.84 — verified live on Cube 3 (AFTR, Fire OS 9, PVFTV-215.5374N).
+    // The previous `aiv://aiv/view?gti={contentId}` scheme is unregistered on
+    // AFTR; firing it returns "Activity not started, unable to resolve Intent"
+    // and Watch silently falls through to home-screen launch. The HTTPS
+    // form below targets the `watch.amazon.com/search` intent filter that IS
+    // registered (verified via `pm dump com.amazon.firebat | grep search`).
+    // Combined with the autoplay nav sequence in adb-client.launchPrimeVideoToContent,
+    // this lands the bartender directly on PlaybackActivity (MediaSession state=3 PLAYING).
+    // {contentTitle} is the matchup string captured by the catalog walker
+    // (e.g. "Knicks vs. Pacers", "Thursday Night Football").
+    deepLinkFormat: 'https://watch.amazon.com/search?phrase={contentTitle}',
     description: 'Amazon Prime Video with Thursday Night Football',
     sports: ['football'],
     requiresSubscription: true,
