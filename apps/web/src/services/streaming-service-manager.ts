@@ -218,6 +218,21 @@ class StreamingServiceManager {
         } else {
           logger.info(`[STREAMING MANAGER] ESPN autoplay (no title — featured-tile fallback)`)
         }
+        // v2.32.98 — BEFORE launching ESPN, fire a Scout PLAY_GAME
+        // broadcast. Scout's PlaybackAutomationService (v1.5.0+ APK)
+        // sees ESPN's window-state events as soon as it opens and
+        // clicks the matching tile in-app via AccessibilityService —
+        // far more reliable than the DPAD-and-tap autoplay below for
+        // Cubes that have Scout's AS enabled. Cubes without Scout AS
+        // ignore the broadcast and the existing autoplay path takes
+        // over. Belt-and-suspenders.
+        if (espnQuery) {
+          await client.sendScoutPlayGameBroadcast(
+            installedPackage,
+            espnQuery,
+            espnQuery, // tokens = title (split + filtered Scout-side)
+          )
+        }
         await client.launchEspnToLiveContent(espnQuery, installedPackage)
       } else if (options?.deepLink && app.deepLinkSupport) {
         logger.info(`[STREAMING MANAGER] Launching ${app.name} with deep link: ${options.deepLink}`)
