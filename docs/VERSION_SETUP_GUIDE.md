@@ -187,6 +187,26 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.75 — greenville jammy → noble upgrade complete (full fleet on noble + iGPU)
+**Released:** 2026-05-08
+
+Status-tracker update for `docs/OS_UPGRADE_RUNBOOK.md` + `docs/FLEET_STATUS.md`: greenville is the third (and final) jammy fleet box to complete the upgrade campaign. With this, **all 6 fleet locations are on noble (24.04) with IPEX-LLM Ollama acceleration on Intel Iris Xe** — full parity for the first time since iGPU enablement work began.
+
+**Notes vs graystone + appleton:**
+- One pre-flight reparation specific to this box: pre-existing `/etc/apt/sources.list.d/intel-gpu.list` (from a prior failed iGPU-on-jammy attempt before today's campaign) pointed at `noble client` packages. libdrm2 wanted `libc6 ≥ 2.38` (noble), but jammy's libc was 2.35 — `apt-get update` / dep-resolution blocked, which in turn blocked `do-release-upgrade -c`. Fix: `sudo mv /etc/apt/sources.list.d/intel-gpu.list /etc/apt/sources.list.d/intel-gpu.list.disabled-pre-upgrade` and continue. After noble is up, `setup-iris-ollama.sh` rewrites the file with the matching `noble client` line which then resolves correctly (libc 2.39 in noble). Lesson — added as Common pitfalls #5-explicit in `OS_UPGRADE_RUNBOOK.md`.
+- Otherwise standard run via `release-upgrade-claude.service` (transient `systemd-run --unit=release-upgrade-claude --collect` so SSH disconnects don't kill it), deactivated cleanly with 3min 18s CPU.
+- Manual `shutdown -r +1` for Phase E reboot (DistUpgradeViewNonInteractive's `confirmRestart()` defaults False without `[NonInteractive] RealReboot=True` in upgrade.cfg — that's the desired Phase D pause behavior, lets us verify pre-reboot before kernel swap).
+- Post-reboot: kernel 6.8.0-111-generic, `/dev/dri/card0+renderD128`, `using Intel GPU` confirmed in `journalctl -u ollama-ipex`, AI Suggest cold = **119s** on iGPU, bartender remote HTTP 200. All customizations preserved (sshd / sudoers / nginx-bartender / ollama-override bit-identical to pre-upgrade).
+- HTTP/PM2 stayed up on :3001 + :3002 throughout the dist-upgrade — bar service unaffected.
+
+**Fleet AI Suggest cold-run timings on iGPU (llama3.1:8b post-campaign):** appleton 67s (fleet best) · greenville 119s · graystone 170s · holmgren ~100s · leglamp ~100s · lucky-s ~100s.
+
+**Required Manual Step:** None — pure documentation entry. The next auto-update merge into each location branch carries the doc updates with no behavioral change. Operators viewing the fleet dashboard (introduced in v2.32.72) will see all 6 locations report `noble` + recent kernel after each location's auto-update tick.
+
+**Verification:** `docs/OS_UPGRADE_RUNBOOK.md` Status tracker now shows all three completed rows (graystone/appleton/greenville). `docs/FLEET_STATUS.md` per-location table reads `noble (24.04)` + `IPEX-LLM Ollama (Iris Xe)` + `✅ active` for every row. Aggregate health: 6/6 noble, 6/6 iGPU.
+
+---
+
 ### v2.32.74 — appleton jammy → noble upgrade complete
 **Released:** 2026-05-08
 
