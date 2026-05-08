@@ -1225,6 +1225,13 @@ if [ -n "${VERIFY_INSTALL_JSON:-}" ]; then
       fi
     } | sed '$ s/,$//'
   )
+  # v2.32.72 — capture OS codename + kernel for the fleet dashboard so
+  # operators can see at a glance which boxes are still on jammy vs noble
+  # (matters during the 22.04 → 24.04 upgrade campaign per
+  # docs/OS_UPGRADE_RUNBOOK.md).
+  HB_OS_CODENAME=$(lsb_release -cs 2>/dev/null || echo "unknown")
+  HB_OS_VERSION=$(lsb_release -rs 2>/dev/null || echo "unknown")
+  HB_OS_KERNEL=$(uname -r 2>/dev/null || echo "unknown")
   {
     printf '{\n'
     printf '  "version": "%s",\n' "${POST_MERGE_VERSION:-unknown}"
@@ -1234,6 +1241,8 @@ if [ -n "${VERIFY_INSTALL_JSON:-}" ]; then
     printf '  "successAtUnix": %d,\n' "$(date +%s)"
     printf '  "runId": "%s",\n' "$(basename "$LOG_FILE" .log)"
     printf '  "verifyInstall": %s,\n' "$VERIFY_INSTALL_JSON"
+    printf '  "os": { "codename": "%s", "version": "%s", "kernel": "%s" },\n' \
+      "$HB_OS_CODENAME" "$HB_OS_VERSION" "$HB_OS_KERNEL"
     if [ -n "$HB_FILE_CHECKSUMS" ]; then
       printf '  "configChecksums": {\n%s\n  },\n' "$HB_FILE_CHECKSUMS"
     fi
@@ -1241,7 +1250,7 @@ if [ -n "${VERIFY_INSTALL_JSON:-}" ]; then
       printf '  "dbRowCounts": {\n%s\n  },\n' "$HB_ROW_COUNTS"
     fi
     # Schema version of this heartbeat record so dashboard knows which fields are present
-    printf '  "heartbeatSchemaVersion": 2\n'
+    printf '  "heartbeatSchemaVersion": 3\n'
     printf '}\n'
   } > "$REPO_ROOT/.auto-update-last-success.json"
   git -C "$REPO_ROOT" add -f ".auto-update-last-success.json" 2>/dev/null || true
