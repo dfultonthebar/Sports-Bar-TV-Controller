@@ -187,6 +187,33 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.81 — Auto-update branch-drift recovery
+**Released:** 2026-05-08
+
+**No setup required.** Pure bug-fix to `scripts/auto-update.sh`.
+
+**Why:** A box can be left on `main` instead of its `location/*` branch by an interactive Claude or operator session. When that happens every cron run silently no-ops because the pre-merge check at the FETCH phase (`git merge-base --is-ancestor origin/main HEAD`) succeeds — origin/main IS HEAD when local is on main. The script writes a "pass" history row each time but no merge actually happens. Holmgren hit this on 2026-05-08, sat on main for ~10h, and missed v2.32.76 through v2.32.80 until a manual fleet-status check caught it.
+
+**Fix:** New drift-recovery block runs immediately after `BRANCH` is detected (lines 559-597). Only fires when `BRANCH=main`. Reads `.auto-update-last-success.json` (the heartbeat written by every successful run, which records the canonical branch) via `python3 - "$HEARTBEAT_FILE" <<'PY'` (sys.argv form, immune to shell-quoting issues in the path). If heartbeat says canonical branch is something other than main:
+1. Pre-cleans uncommitted edits to `LOCATION_PATHS_THEIRS` files (the same set the regular merge phase resets — array `PRE_MERGE_RESET_PATHS` is now declared once near the top so both consumers share it).
+2. `git checkout EXPECTED_BRANCH` and updates `$BRANCH`.
+3. Continues the update flow normally.
+
+If no heartbeat exists (legitimate fresh checkout) → log warning, continue as main.
+If heartbeat exists but `git checkout` fails (branch was deleted, or working-tree has edits to files outside `PRE_MERGE_RESET_PATHS`) → `fail` with "operator intervention needed (check 'git status' on the box)". Loud failure beats silent no-op.
+
+**Verify:** On any box, run `bash scripts/auto-update.sh --triggered-by=manual_cli` while on `main`. Expect log lines:
+- `DRIFT: on 'main' but heartbeat says canonical branch is 'location/<X>' — switching back`
+- `Switched to location/<X>; continuing update flow`
+
+Then the normal merge/build/verify cycle proceeds, and the box ends up on its location branch with the latest main merged in.
+
+**Affected:** `scripts/auto-update.sh` (66 insertions, 13 deletions — added drift block, moved `PRE_MERGE_RESET_PATHS` array up so it's defined before either consumer), `package.json`, `docs/VERSION_SETUP_GUIDE.md`, `docs/LOCATION_UPDATE_NOTES.md`.
+
+**Risk:** GO — defensive guard only. Non-drift code paths are untouched.
+
+---
+
 ### v2.32.80 — Pass 2 (ops tooling): heartbeat refresh on no-op + verify-install lint
 **Released:** 2026-05-08
 

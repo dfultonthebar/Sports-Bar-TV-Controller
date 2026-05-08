@@ -556,6 +556,70 @@ BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
 [ -z "$BRANCH" ] && fail "not in a git repo or detached HEAD" 2
 log "Current branch: $BRANCH"
 
+# Files maintained on main (LOCATION_PATHS_THEIRS) — get rewritten by every
+# merge, so any uncommitted local edits to them are pre-cleaned before either
+# the regular merge phase OR the drift-recovery branch switch below. Defined
+# once here so both consumers share a single source of truth.
+PRE_MERGE_RESET_PATHS=(
+  "scripts/auto-update.sh"
+  "scripts/rollback.sh"
+  "scripts/verify-install.sh"
+  "scripts/ensure-schema.sh"
+  "scripts/ensure-ollama-model.sh"
+  "scripts/prompts/checkpoint-a.txt"
+  "scripts/prompts/checkpoint-b.txt"
+  "scripts/prompts/checkpoint-c.txt"
+  "CLAUDE.md"
+  "package.json"
+  "package-lock.json"
+)
+
+# v2.32.81 — branch drift recovery.
+# A box can be left on `main` by an interactive Claude/operator session.
+# When that happens, every cron run no-ops because the pre-merge check at
+# the FETCH phase sees "origin/main already merged into HEAD" — origin/main
+# IS HEAD when local is on main. Holmgren sat on main for ~10h on
+# 2026-05-08 and missed v2.32.76-.80 because of this; only caught by a
+# manual fleet-status check.
+#
+# Recovery uses the heartbeat file (.auto-update-last-success.json), which
+# records the canonical branch from the last successful run. If on main
+# and heartbeat says otherwise, switch back. If no heartbeat exists,
+# treat as legitimate (fresh checkout) and proceed.
+if [ "$BRANCH" = "main" ]; then
+  HEARTBEAT_FILE="$REPO_ROOT/.auto-update-last-success.json"
+  EXPECTED_BRANCH=""
+  if [ -f "$HEARTBEAT_FILE" ]; then
+    EXPECTED_BRANCH=$(python3 - "$HEARTBEAT_FILE" 2>/dev/null <<'PY' || echo ""
+import json, sys
+try:
+    print(json.load(open(sys.argv[1])).get("branch", ""))
+except Exception:
+    pass
+PY
+)
+  fi
+  if [ -n "$EXPECTED_BRANCH" ] && [ "$EXPECTED_BRANCH" != "main" ]; then
+    log "DRIFT: on 'main' but heartbeat says canonical branch is '$EXPECTED_BRANCH' — switching back"
+    # Pre-clean uncommitted edits to LOCATION_PATHS_THEIRS files. Without
+    # this, `git checkout EXPECTED_BRANCH` fails with "your local changes
+    # would be overwritten". Same files the regular merge phase resets.
+    for path in "${PRE_MERGE_RESET_PATHS[@]}"; do
+      if [ -e "$REPO_ROOT/$path" ] && ! git diff --quiet HEAD -- "$path" 2>/dev/null; then
+        git checkout HEAD -- "$path" 2>/dev/null || true
+      fi
+    done
+    if git checkout "$EXPECTED_BRANCH" 2>&1 | tee -a "$LOG_FILE"; then
+      BRANCH="$EXPECTED_BRANCH"
+      log "Switched to $BRANCH; continuing update flow"
+    else
+      fail "could not switch from main to '$EXPECTED_BRANCH' — operator intervention needed (check 'git status' on the box)" 2
+    fi
+  elif [ -z "$EXPECTED_BRANCH" ]; then
+    log "WARNING: on 'main' with no heartbeat file — cannot determine canonical branch; continuing as main"
+  fi
+fi
+
 # 1. Check auto_update_state.enabled (unless manually triggered)
 if [ "$TRIGGERED_BY" = "cron" ]; then
   ENABLED=$(sql "SELECT enabled FROM auto_update_state WHERE id=1;" 2>/dev/null || echo "0")
@@ -596,19 +660,8 @@ bash -n "$ROLLBACK_SCRIPT" || fail "rollback.sh has syntax errors" 2
 # this — operator wrote the new script but didn't commit it, then the next
 # merge phase aborted with exit 4. Reset these paths to HEAD so the merge
 # can proceed; their content will be replaced by main's version anyway.
-PRE_MERGE_RESET_PATHS=(
-  "scripts/auto-update.sh"
-  "scripts/rollback.sh"
-  "scripts/verify-install.sh"
-  "scripts/ensure-schema.sh"
-  "scripts/ensure-ollama-model.sh"
-  "scripts/prompts/checkpoint-a.txt"
-  "scripts/prompts/checkpoint-b.txt"
-  "scripts/prompts/checkpoint-c.txt"
-  "CLAUDE.md"
-  "package.json"
-  "package-lock.json"
-)
+# Array PRE_MERGE_RESET_PATHS is defined once near the top of the script
+# so both this loop and the drift-recovery block can share it (v2.32.81).
 for path in "${PRE_MERGE_RESET_PATHS[@]}"; do
   if [ -e "$REPO_ROOT/$path" ] && ! git diff --quiet HEAD -- "$path" 2>/dev/null; then
     log "Pre-clean: discarding working-tree edits to $path (will be replaced by main)"
