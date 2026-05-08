@@ -187,6 +187,17 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.83 — Docs catch-up: fleet status reflects v2.32.82 fleet-wide deploy
+**Released:** 2026-05-08
+
+**No setup required.** Docs-only — `docs/FLEET_STATUS.md` updated to reflect the live fleet state after triggering all 5 remote boxes from Holmgren this morning. Per-location table now shows all 6 venues at v2.32.82 with sidecars bootstrapped. "What shipped today" entries split between 2026-05-07 (the earlier batch) and 2026-05-08 (drift-recovery work). Outstanding work item 1a moved to ~~done~~.
+
+**Affected:** `docs/FLEET_STATUS.md`, `package.json`, `docs/VERSION_SETUP_GUIDE.md`.
+
+**Risk:** GO — docs only.
+
+---
+
 ### v2.32.82 — Drift recovery sidecar (fix for v2.32.81)
 **Released:** 2026-05-08
 

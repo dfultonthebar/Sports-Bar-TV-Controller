@@ -1,6 +1,6 @@
 # Fleet Status
 
-**Last updated:** 2026-05-08 (greenville OS upgrade complete — full fleet now on noble + iGPU; 6/6 parity)
+**Last updated:** 2026-05-08 (drift-recovery v2.32.81 + sidecar v2.32.82 shipped; full fleet at v2.32.82; auto-update is now self-healing against branch drift)
 
 A snapshot of where each location stands. Update this file after every fleet-wide change so future operators (and Claude) have a single place to see the truth.
 
@@ -10,23 +10,23 @@ A snapshot of where each location stands. Update this file after every fleet-wid
 
 | Location | Branch | OS | Software ver | Bartender proxy | AI Suggest backend | iGPU acceleration | Notes |
 |---|---|---|---|---|---|---|---|
-| holmgren-way | `location/holmgren-way` | noble (24.04) | v2.32.69 | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | Reference deployment |
-| graystone | `location/graystone` | jammy (22.04) | v2.32.69 | Nginx | upstream Ollama (CPU) | ⏳ awaiting OS upgrade | `/dev/dri/` empty + jammy apt issues. Plan: jammy → noble per `OS_UPGRADE_RUNBOOK.md`. |
-| greenville | `location/stoneyard-greenville` | noble (24.04) | v2.32.75 | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | OS upgraded 2026-05-08; AI Suggest 119s on iGPU. |
-| leglamp | `location/leg-lamp` | noble (24.04) | v2.32.69 | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | First fleet iGPU success today |
-| lucky-s-1313 | `location/lucky-s-1313` | noble (24.04) | v2.32.69 | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | |
-| stoneyard-appleton | `location/stoneyard-appleton` | noble (24.04) | v2.32.69 | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | OS upgraded 2026-05-08; AI Suggest 67.3s on iGPU (fastest in fleet so far) |
+| holmgren-way | `location/holmgren-way` | noble (24.04) | **v2.32.82** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | Reference deployment; first to receive drift-recovery fix |
+| graystone | `location/graystone` | noble (24.04) | **v2.32.82** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | |
+| greenville | `location/stoneyard-greenville` | noble (24.04) | **v2.32.82** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | OS upgraded 2026-05-08; AI Suggest 119s on iGPU. |
+| leglamp | `location/leg-lamp` | noble (24.04) | **v2.32.82** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | |
+| lucky-s-1313 | `location/lucky-s-1313` | noble (24.04) | **v2.32.82** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | |
+| stoneyard-appleton | `location/stoneyard-appleton` | noble (24.04) | **v2.32.82** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | AI Suggest 67.3s on iGPU (fleet best) |
 
-**Decision (2026-05-07):** rather than work around the jammy Intel apt repo limitations and the kernel-module-not-bound case at graystone, the three jammy locations will be brought up to noble via `docs/OS_UPGRADE_RUNBOOK.md`. Cleaner long-term — the noble path is the only one that's actually been proven stable across the fleet (Holmgren / leglamp / luckys all working on noble), and the OS upgrade also extends LTS support from April 2027 to April 2029. Until each location is upgraded, AI Suggest runs on CPU there (slower, ~200-300s per call, but Nginx 300s timeout accommodates it; bartender experience is functional, not great).
-
-**Aggregate health (after greenville upgrade 2026-05-08 — full fleet parity):**
+**Aggregate health (2026-05-08 19:00 UTC):**
 - 6/6: bartender remote on Nginx ✓
-- 6/6: noble (24.04) + 6.8 kernel ✓
-- 6/6: latest software (v2.32.69+) ✓
-- 6/6: iGPU acceleration active (`using Intel GPU` in `journalctl -u ollama-ipex` everywhere) ✓
-- 6/6: AI Suggest, channel guide, walker, GPU widget all functional ✓
+- 6/6: noble (24.04) + 6.8.0-111 kernel ✓
+- 6/6: latest software (v2.32.82) ✓
+- 6/6: iGPU acceleration active ✓
+- 6/6: drift-recovery sidecar bootstrapped at `/home/ubuntu/sports-bar-data/.auto-update-last-success.json` ✓
 
 **AI Suggest cold-run timings on iGPU (llama3.1:8b):** appleton 67s (fleet best) · greenville 119s · graystone 170s · holmgren ~100s · leglamp ~100s · lucky-s ~100s. Variance correlates with thermals + concurrent load, not procedure.
+
+**Drift-recovery (v2.32.81 + v2.32.82):** auto-update.sh now detects when a box has been left on `main` (rather than its `location/*` branch) by an interactive Claude or operator session, and switches back automatically using the canonical branch name from a sidecar heartbeat at `/home/ubuntu/sports-bar-data/.auto-update-last-success.json`. The sidecar is self-maintaining — every successful run refreshes it. Pre-fix, a drifted box's cron silently no-op'd every night ("origin/main already merged into HEAD" because origin/main IS HEAD on a main checkout) and the location went stale. Holmgren hit this on 2026-05-07/08 and missed v2.32.76-.80 for ~10h before a manual fleet-status check caught it. See `docs/VERSION_SETUP_GUIDE.md` for the full v2.32.81/.82 entries.
 
 ---
 
@@ -45,7 +45,17 @@ Audio processor and matrix details live in each location's `.claude/locations/<b
 
 ---
 
-## What shipped today (2026-05-07)
+## What shipped 2026-05-08
+
+**v2.32.81** — auto-update branch-drift recovery — detects when a box is on `main` instead of its `location/*` branch and switches back via the heartbeat file. Single defensive guard, normal-path code unchanged.
+
+**v2.32.82** — drift-recovery sidecar — first live test of v2.32.81 revealed the heartbeat file is per-branch (tracked on `location/*`, missing on `main`), so it disappears exactly when drift-recovery needs it. Fix: also write the heartbeat to a sidecar at `/home/ubuntu/sports-bar-data/.auto-update-last-success.json` (gitignored, persists across branch switches). Drift-recovery reads sidecar first, falls back to repo-local. Self-maintaining — every successful run refreshes the sidecar.
+
+Verified live on Holmgren: drift simulated → switched to `location/holmgren-way` → merged main → built → restarted PM2 → verify-install 7/7 PASS → pushed → SUCCESS in 105s. Then triggered the other 5 boxes via parallel SSH; all 5 landed at v2.32.82 with sidecars populated, no Anthropic API rate-limit collisions (single-host coordinated trigger, not cron herd).
+
+---
+
+## What shipped 2026-05-07
 
 15 versions in roughly 6 hours. All on `main`, all merged into every location branch.
 
@@ -79,6 +89,8 @@ Audio processor and matrix details live in each location's `.claude/locations/<b
 ## Outstanding work
 
 1. ~~OS upgrade for the 3 jammy locations~~ — **Done 2026-05-07/08**. Full fleet now on noble + iGPU + kernel 6.8.0-111. Status tracker at the bottom of `docs/OS_UPGRADE_RUNBOOK.md` has all three completed rows.
+
+1a. ~~Auto-update silent-no-op when a box drifts to `main`~~ — **Done 2026-05-08**. Holmgren sat on `main` for ~10h before a manual fleet-status check caught it (missed v2.32.76-.80). Root cause: cron sees "origin/main already merged into HEAD" and silently exits. Fix shipped in v2.32.81 (drift-recovery block in `scripts/auto-update.sh`) + v2.32.82 (sidecar at `/home/ubuntu/sports-bar-data/.auto-update-last-success.json` so the canonical-branch signal survives branch switches). Verified live; full fleet at v2.32.82.
 
 2. **Per-event Fire TV deep links** *(next priority — operator-flagged 2026-05-07)* — v2.32.58 wired the `deepLink` field through to the Watch button, but the walker (v2.32.63) only captures titles + times, not per-event URLs. Result: hitting "Watch" on an Amazon Prime Video game opens the app but not the specific game. Investigation paths to consider: (a) ESPN's public scoreboard API to construct deep links from `homeTeam + awayTeam + start_time`; (b) capture the focused-tile URL via `dumpsys activity` while the walker is on a game card (Prime Video may already expose an `aiv-com://com.amazon.avod/?titleId=…` scheme); (c) extend the per-app rules + extractor pattern in `packages/scheduler/src/firetv-catalog-walker.ts` to grab a per-tile URL field. Pairs with #3.
 
