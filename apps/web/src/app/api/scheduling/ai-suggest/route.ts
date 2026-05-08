@@ -685,19 +685,15 @@ function parseOllamaResponse(
     const digitsOf = (s: string) => (s || '').match(/\d+/)?.[0] || ''
     const cableSources = inputSources.filter((src: any) => src.type === 'cable')
 
-    // v2.31.7 — Parse availableNetworks JSON ONCE per input source up front
-    // and cache as a lowercase Set per input id. The previous version's
-    // inputHasApp() did JSON.parse + .some() inside a per-suggestion closure
-    // that the .filter() also called per-input, making the work O(M × N)
-    // for M suggestions and N inputs.
+    // Cache lowercase app names per input id for the per-box app gate below.
+    // Note: loadInputSources() already JSON.parsed src.availableNetworks into
+    // an array — re-parsing it here (as we did pre-v2.32.77) silently threw
+    // and left every Set empty, which made the v2.29.1 gate reject every
+    // firetv suggestion. Operate on the array directly.
     const appsByInputId = new Map<string, Set<string>>()
     for (const src of inputSources) {
-      try {
-        const apps = JSON.parse(src.availableNetworks || '[]') as string[]
-        appsByInputId.set(src.id, new Set(apps.map((a) => a.toLowerCase().trim())))
-      } catch {
-        appsByInputId.set(src.id, new Set())
-      }
+      const apps = Array.isArray(src.availableNetworks) ? src.availableNetworks : []
+      appsByInputId.set(src.id, new Set(apps.map((a: string) => a.toLowerCase().trim())))
     }
     const inputHasApp = (src: any, appLower: string): boolean =>
       !!src && (appsByInputId.get(src.id)?.has(appLower) ?? false)

@@ -285,6 +285,59 @@ JSON
 }
 
 # ---------------------------------------------------------------------------
+# v2.32.80 — Refresh just the os.* fields of an existing heartbeat. Called
+# on the "no update available" exit path so the Fleet Dashboard still gets
+# fresh OS info after operator-driven changes outside auto-update (e.g.
+# apt dist-upgrade + kernel reboot — see FLEET_STATUS Outstanding #4).
+#
+# Conservative on purpose: only patches the `os` block, leaves
+# verifyInstall / configChecksums / dbRowCounts intact (those reflect the
+# last full verify run and weren't re-checked here). Commits + pushes only
+# if the os fields actually changed (uses python's atomic write + git's
+# no-op-on-no-diff behavior).
+# ---------------------------------------------------------------------------
+refresh_heartbeat_os_only() {
+  local hb="$REPO_ROOT/.auto-update-last-success.json"
+  [ -f "$hb" ] || return 0  # no existing heartbeat → nothing to patch
+
+  local codename version kernel
+  codename=$(lsb_release -cs 2>/dev/null || echo "unknown")
+  version=$(lsb_release -rs 2>/dev/null || echo "unknown")
+  kernel=$(uname -r 2>/dev/null || echo "unknown")
+
+  # Use python for in-place JSON patching — pure shell sed/grep would
+  # break the rest of the heartbeat structure on edge cases.
+  if ! python3 - "$hb" "$codename" "$version" "$kernel" <<'PY' 2>/dev/null
+import json, sys
+path, codename, version, kernel = sys.argv[1:5]
+with open(path) as f:
+    d = json.load(f)
+new_os = {"codename": codename, "version": version, "kernel": kernel}
+if d.get("os") == new_os:
+    sys.exit(1)  # nothing to do — caller treats as no-op
+d["os"] = new_os
+with open(path, "w") as f:
+    json.dump(d, f, indent=2)
+    f.write("\n")
+PY
+  then
+    return 0  # python returned 1: no change needed
+  fi
+
+  # v2.32.82 — keep sidecar copy in sync (see drift-recovery block).
+  if [ -d "/home/ubuntu/sports-bar-data" ]; then
+    cp -f "$hb" "/home/ubuntu/sports-bar-data/.auto-update-last-success.json" 2>/dev/null || true
+  fi
+  git -C "$REPO_ROOT" add -f ".auto-update-last-success.json" 2>/dev/null || true
+  if ! git -C "$REPO_ROOT" diff --cached --quiet -- ".auto-update-last-success.json" 2>/dev/null; then
+    git -C "$REPO_ROOT" commit -q \
+      -m "chore(heartbeat): refresh os fields on no-op auto-update ($(date +%Y-%m-%d-%H-%M))" 2>/dev/null || true
+    git -C "$REPO_ROOT" push -q origin "$BRANCH" 2>/dev/null || true
+    log "Heartbeat os.* refreshed (kernel=$kernel)"
+  fi
+}
+
+# ---------------------------------------------------------------------------
 # Cleanup trap — runs on every exit, success or fail
 # ---------------------------------------------------------------------------
 cleanup_on_error() {
@@ -507,6 +560,77 @@ BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
 [ -z "$BRANCH" ] && fail "not in a git repo or detached HEAD" 2
 log "Current branch: $BRANCH"
 
+# Files maintained on main (LOCATION_PATHS_THEIRS) — get rewritten by every
+# merge, so any uncommitted local edits to them are pre-cleaned before either
+# the regular merge phase OR the drift-recovery branch switch below. Defined
+# once here so both consumers share a single source of truth.
+PRE_MERGE_RESET_PATHS=(
+  "scripts/auto-update.sh"
+  "scripts/rollback.sh"
+  "scripts/verify-install.sh"
+  "scripts/ensure-schema.sh"
+  "scripts/ensure-ollama-model.sh"
+  "scripts/prompts/checkpoint-a.txt"
+  "scripts/prompts/checkpoint-b.txt"
+  "scripts/prompts/checkpoint-c.txt"
+  "CLAUDE.md"
+  "package.json"
+  "package-lock.json"
+)
+
+# v2.32.81 — branch drift recovery (sidecar fix in v2.32.82).
+# A box can be left on `main` by an interactive Claude/operator session.
+# When that happens, every cron run no-ops because the pre-merge check at
+# the FETCH phase sees "origin/main already merged into HEAD" — origin/main
+# IS HEAD when local is on main. Holmgren sat on main for ~10h on
+# 2026-05-08 and missed v2.32.76-.80 because of this; only caught by a
+# manual fleet-status check.
+#
+# Recovery uses the heartbeat file (.auto-update-last-success.json), which
+# records the canonical branch from the last successful run. The repo-root
+# copy is per-branch (tracked on location/* branches, missing on main), so
+# it disappears from the working tree exactly when we need it most. v2.32.82
+# adds a sidecar copy in /home/ubuntu/sports-bar-data/ (gitignored, survives
+# branch switches) and reads from there first. Falls back to repo-local
+# (covers boxes that haven't run v2.32.82 yet, when on the right branch).
+if [ "$BRANCH" = "main" ]; then
+  HEARTBEAT_FILE="$REPO_ROOT/.auto-update-last-success.json"
+  SIDECAR_HEARTBEAT="/home/ubuntu/sports-bar-data/.auto-update-last-success.json"
+  EXPECTED_BRANCH=""
+  for hb in "$SIDECAR_HEARTBEAT" "$HEARTBEAT_FILE"; do
+    if [ -f "$hb" ]; then
+      EXPECTED_BRANCH=$(python3 - "$hb" 2>/dev/null <<'PY' || echo ""
+import json, sys
+try:
+    print(json.load(open(sys.argv[1])).get("branch", ""))
+except Exception:
+    pass
+PY
+)
+      [ -n "$EXPECTED_BRANCH" ] && break
+    fi
+  done
+  if [ -n "$EXPECTED_BRANCH" ] && [ "$EXPECTED_BRANCH" != "main" ]; then
+    log "DRIFT: on 'main' but heartbeat says canonical branch is '$EXPECTED_BRANCH' — switching back"
+    # Pre-clean uncommitted edits to LOCATION_PATHS_THEIRS files. Without
+    # this, `git checkout EXPECTED_BRANCH` fails with "your local changes
+    # would be overwritten". Same files the regular merge phase resets.
+    for path in "${PRE_MERGE_RESET_PATHS[@]}"; do
+      if [ -e "$REPO_ROOT/$path" ] && ! git diff --quiet HEAD -- "$path" 2>/dev/null; then
+        git checkout HEAD -- "$path" 2>/dev/null || true
+      fi
+    done
+    if git checkout "$EXPECTED_BRANCH" 2>&1 | tee -a "$LOG_FILE"; then
+      BRANCH="$EXPECTED_BRANCH"
+      log "Switched to $BRANCH; continuing update flow"
+    else
+      fail "could not switch from main to '$EXPECTED_BRANCH' — operator intervention needed (check 'git status' on the box)" 2
+    fi
+  elif [ -z "$EXPECTED_BRANCH" ]; then
+    log "WARNING: on 'main' with no heartbeat at $SIDECAR_HEARTBEAT or $HEARTBEAT_FILE — cannot determine canonical branch; continuing as main"
+  fi
+fi
+
 # 1. Check auto_update_state.enabled (unless manually triggered)
 if [ "$TRIGGERED_BY" = "cron" ]; then
   ENABLED=$(sql "SELECT enabled FROM auto_update_state WHERE id=1;" 2>/dev/null || echo "0")
@@ -547,19 +671,8 @@ bash -n "$ROLLBACK_SCRIPT" || fail "rollback.sh has syntax errors" 2
 # this — operator wrote the new script but didn't commit it, then the next
 # merge phase aborted with exit 4. Reset these paths to HEAD so the merge
 # can proceed; their content will be replaced by main's version anyway.
-PRE_MERGE_RESET_PATHS=(
-  "scripts/auto-update.sh"
-  "scripts/rollback.sh"
-  "scripts/verify-install.sh"
-  "scripts/ensure-schema.sh"
-  "scripts/ensure-ollama-model.sh"
-  "scripts/prompts/checkpoint-a.txt"
-  "scripts/prompts/checkpoint-b.txt"
-  "scripts/prompts/checkpoint-c.txt"
-  "CLAUDE.md"
-  "package.json"
-  "package-lock.json"
-)
+# Array PRE_MERGE_RESET_PATHS is defined once near the top of the script
+# so both this loop and the drift-recovery block can share it (v2.32.81).
 for path in "${PRE_MERGE_RESET_PATHS[@]}"; do
   if [ -e "$REPO_ROOT/$path" ] && ! git diff --quiet HEAD -- "$path" 2>/dev/null; then
     log "Pre-clean: discarding working-tree edits to $path (will be replaced by main)"
@@ -588,6 +701,10 @@ log "origin/main: $TARGET_SHA"
 if git merge-base --is-ancestor "$TARGET_SHA" HEAD 2>/dev/null; then
   log "origin/main is already merged into $BRANCH — no update available"
   POST_MERGE_SHA=$PRE_MERGE_SHA
+  # v2.32.80 — refresh os.* fields in the heartbeat even on no-op runs so
+  # the Fleet Dashboard reflects kernel/OS changes that happened outside
+  # auto-update (apt dist-upgrade + reboot). No-op if values unchanged.
+  refresh_heartbeat_os_only
   # Write a "no-op pass" history row so the Sync tab UI shows the run occurred
   history_insert_start
   history_update_result "pass" "no update available"
@@ -1253,6 +1370,13 @@ if [ -n "${VERIFY_INSTALL_JSON:-}" ]; then
     printf '  "heartbeatSchemaVersion": 3\n'
     printf '}\n'
   } > "$REPO_ROOT/.auto-update-last-success.json"
+  # v2.32.82 — sidecar copy in gitignored data dir so the drift-recovery
+  # block at line ~580 has a persistent source for the canonical branch
+  # name when the box is sitting on main (where the in-repo copy is gone
+  # from the working tree).
+  if [ -d "/home/ubuntu/sports-bar-data" ]; then
+    cp -f "$REPO_ROOT/.auto-update-last-success.json" "/home/ubuntu/sports-bar-data/.auto-update-last-success.json" 2>/dev/null || true
+  fi
   git -C "$REPO_ROOT" add -f ".auto-update-last-success.json" 2>/dev/null || true
   if ! git -C "$REPO_ROOT" diff --cached --quiet -- ".auto-update-last-success.json" 2>/dev/null; then
     git -C "$REPO_ROOT" commit -q -m "chore(heartbeat): update .auto-update-last-success.json ($(date +%Y-%m-%d-%H-%M))" 2>/dev/null || true

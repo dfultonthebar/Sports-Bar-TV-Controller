@@ -64,6 +64,10 @@ const catalogIngestSchema = z.object({
 
 const DEFAULT_TTL_SECONDS = 36 * 3600 // 36h — same as planned cleanup grace
 
+// v2.32.78 — throttle the expired-row DELETE in GET to once per 60s so
+// concurrent bartender-remote reads don't contend on the write lock.
+let lastCatalogCleanupSec = 0
+
 export async function POST(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.DEFAULT)
   if (!rateLimit.allowed) return rateLimit.response
@@ -165,12 +169,20 @@ export async function GET(request: NextRequest) {
     // v2.31.7 — Real cleanup of expired rows. The previous version used
     // eq(expiresAt, nowSec) which only matches rows whose expiry equals
     // the current second exactly — a no-op. lt() is what we actually want.
-    try {
-      await db
-        .delete(schema.firetvStreamingCatalog)
-        .where(lt(schema.firetvStreamingCatalog.expiresAt, nowSec))
-        .run()
-    } catch { /* non-fatal — daily cron is the authoritative cleanup */ }
+    // v2.32.78 — throttle to once per minute. The 36h TTL makes sub-minute
+    // cleanup precision irrelevant, and we don't want the DELETE write-lock
+    // contending with concurrent reads if multiple bartender remotes hit
+    // /api/channel-guide simultaneously (which themselves go to the catalog
+    // table).
+    if (nowSec - lastCatalogCleanupSec >= 60) {
+      lastCatalogCleanupSec = nowSec
+      try {
+        await db
+          .delete(schema.firetvStreamingCatalog)
+          .where(lt(schema.firetvStreamingCatalog.expiresAt, nowSec))
+          .run()
+      } catch { /* non-fatal — daily cron is the authoritative cleanup */ }
+    }
 
     // v2.31.7 — Push filters into the SQL query instead of selecting the
     // whole table and filtering in JS. Cheap today, but compounds once

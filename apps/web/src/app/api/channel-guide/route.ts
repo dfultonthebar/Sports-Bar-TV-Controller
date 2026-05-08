@@ -126,6 +126,52 @@ function logError(message: string, error?: any) {
   }
 }
 
+/**
+ * v2.32.79 — Derive isLive from a game_schedules row + current unix time.
+ * ESPN sometimes lags marking a game 'completed' (especially OT games);
+ * trust the time window AND the explicit in_progress status when either
+ * is true. Replaces two copy-pasted inline expressions in this file
+ * (cable/satellite injection at ~line 521 + streaming injection at ~line
+ * 841 — easy to drift when ESPN's status string set changes).
+ */
+function deriveIsLive(
+  game: { status: string | null; scheduledStart: number; estimatedEnd: number },
+  nowSec: number
+): boolean {
+  return (
+    game.status === 'in_progress' ||
+    (nowSec >= game.scheduledStart &&
+      nowSec <= game.estimatedEnd &&
+      game.status !== 'completed' &&
+      game.status !== 'final')
+  )
+}
+
+/**
+ * v2.32.79 — Parse a Rail Media listing's (date, time) pair into a Date.
+ * Year-rollover heuristic: try the current year; if the result is NaN or
+ * more than 24h in the past, retry with year+1 (Rail returns date strings
+ * like "Wed Dec 31" that need a year context, and December games viewed in
+ * January need to land in the upcoming year). When `date` is missing,
+ * fall back to today's date with the given time.
+ *
+ * Replaces three copy-pasted blocks in this file (the local-channel-override
+ * path keeps its own variant — different control flow: `continue` on NaN
+ * instead of rollover).
+ */
+function parseListingDate(date: string | undefined, time: string): Date {
+  if (date) {
+    const currentYear = new Date().getFullYear()
+    const dateWithYear = `${date} ${currentYear} ${time}`
+    let eventDate = new Date(dateWithYear)
+    if (isNaN(eventDate.getTime()) || eventDate.getTime() < Date.now() - 24 * 60 * 60 * 1000) {
+      eventDate = new Date(`${date} ${currentYear + 1} ${time}`)
+    }
+    return eventDate
+  }
+  return new Date(`${new Date().toDateString()} ${time}`)
+}
+
 export async function POST(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.SPORTS_DATA)
   if (!rateLimit.allowed) {
@@ -263,19 +309,7 @@ export async function POST(request: NextRequest) {
             }
             channels.set(channelInfo.id, channelInfo)
 
-            // Parse the date properly
-            let eventDate: Date
-            if (listing.date) {
-              const currentYear = new Date().getFullYear()
-              const dateWithYear = `${listing.date} ${currentYear} ${listing.time}`
-              eventDate = new Date(dateWithYear)
-
-              if (isNaN(eventDate.getTime()) || eventDate.getTime() < Date.now() - 24 * 60 * 60 * 1000) {
-                eventDate = new Date(`${listing.date} ${currentYear + 1} ${listing.time}`)
-              }
-            } else {
-              eventDate = new Date(`${new Date().toDateString()} ${listing.time}`)
-            }
+            const eventDate = parseListingDate(listing.date, listing.time)
 
             // Calculate end time (3 hours after start for most games)
             const endTime = new Date(eventDate.getTime() + 3 * 60 * 60 * 1000)
@@ -501,13 +535,7 @@ export async function POST(request: NextRequest) {
             channels.set(channelInfo.id, channelInfo)
           }
 
-          // v2.28.2 — derive isLive from current time + game status. ESPN
-          // sometimes lags marking a game 'completed' (especially OT games);
-          // trust the time window AND the explicit in_progress status when
-          // either is true.
-          const isLive =
-            game.status === 'in_progress' ||
-            (nowSec >= game.scheduledStart && nowSec <= game.estimatedEnd && game.status !== 'completed' && game.status !== 'final')
+          const isLive = deriveIsLive(game, nowSec)
 
           programs.push({
             id: `gs-${game.id}`,
@@ -685,19 +713,7 @@ export async function POST(request: NextRequest) {
           // Create program entry with proper date parsing
           const programId = `${group.group_title}-${listing.time}-${Math.random().toString(36).substring(7)}`
 
-          // Parse the date properly
-          let eventDate: Date
-          if (listing.date) {
-            const currentYear = new Date().getFullYear()
-            const dateWithYear = `${listing.date} ${currentYear} ${listing.time}`
-            eventDate = new Date(dateWithYear)
-
-            if (isNaN(eventDate.getTime()) || eventDate.getTime() < Date.now() - 24 * 60 * 60 * 1000) {
-              eventDate = new Date(`${listing.date} ${currentYear + 1} ${listing.time}`)
-            }
-          } else {
-            eventDate = new Date(`${new Date().toDateString()} ${listing.time}`)
-          }
+          const eventDate = parseListingDate(listing.date, listing.time)
 
           // Calculate end time (3 hours after start)
           const endTime = new Date(eventDate.getTime() + 3 * 60 * 60 * 1000)
@@ -739,7 +755,12 @@ export async function POST(request: NextRequest) {
         const windowEndSec = Math.floor(new Date(endTime).getTime() / 1000)
 
         // v2.28.2 — overlap filter + in_progress catch-all (see cable/directv path)
-        const { or, eq } = await import('drizzle-orm')
+        // v2.32.77 — apply the v2.32.62 in_progress tightening to this path too:
+        // require estimatedEnd >= sixHoursAgo so zombie rows (NFL Draft from
+        // 11 days ago, etc) don't leak through the streaming injection path.
+        const nowSecForFilter = Math.floor(Date.now() / 1000)
+        const sixHoursAgo = nowSecForFilter - 6 * 60 * 60
+        const { or, eq, and: andOp } = await import('drizzle-orm')
         const localGames = await db
           .select()
           .from(schema.gameSchedules)
@@ -749,7 +770,10 @@ export async function POST(request: NextRequest) {
                 lte(schema.gameSchedules.scheduledStart, windowEndSec),
                 gte(schema.gameSchedules.estimatedEnd, windowStartSec)
               ),
-              eq(schema.gameSchedules.status, 'in_progress')
+              andOp(
+                eq(schema.gameSchedules.status, 'in_progress'),
+                gte(schema.gameSchedules.estimatedEnd, sixHoursAgo)
+              )
             )
           )
           .all()
@@ -828,10 +852,7 @@ export async function POST(request: NextRequest) {
             hour12: true,
           }).toLowerCase()
 
-          // v2.28.2 — derive isLive (see cable/directv path)
-          const isLive =
-            game.status === 'in_progress' ||
-            (nowSec >= game.scheduledStart && nowSec <= game.estimatedEnd && game.status !== 'completed' && game.status !== 'final')
+          const isLive = deriveIsLive(game, nowSec)
 
           programs.push({
             id: `gs-stream-${game.id}`,
