@@ -187,6 +187,29 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.77 — three latent bugs found by simplify-skill audit
+**Released:** 2026-05-08
+
+Pass 1 of the simplify-skill code-cleanup campaign (3 parallel agents: reuse / quality / efficiency reviews against the recent streaming feature). The reuse and efficiency agents independently found the same per-box-app gate bug; the quality agent found the Quick Access tile launching the wrong package on AFTR Cubes. All three are bug fixes — no behavioral change for users beyond the bugs being fixed.
+
+**Bug 1 — `parseOllamaResponse` double-parses already-parsed `availableNetworks`** (`apps/web/src/app/api/scheduling/ai-suggest/route.ts`)
+
+The v2.31.7 optimization that hoisted `JSON.parse` of `availableNetworks` into a per-input cache (`appsByInputId`) called `JSON.parse` on a value that `loadInputSources()` had already JSON-parsed into a JS array. `JSON.parse` coerces the array to a string and throws — the catch silently set every Set to empty. Result: the v2.29.1 per-box app gate (`if (!inputHasApp(input, appLower))` at line 789) was bypassed, the reroute branch found zero candidates because `inputHasApp` returned false for everything, and every Fire TV suggestion was rejected with `wrong_firetv_app`. Fix: operate on the array directly with a defensive `Array.isArray()` guard.
+
+**Bug 2 — Quick Access Prime Video tile launches `com.amazon.avod` directly via `monkey -p`** (`apps/web/src/components/EnhancedChannelGuideBartenderRemote.tsx`)
+
+The Quick Access apps grid in the streaming guide hard-coded `com.amazon.avod` as the package name and called `launchStreamingApp()` which sent `monkey -p com.amazon.avod 1` directly via ADB. On AFTR/PVFTV Cubes (Holmgren has these per CLAUDE.md gotcha #9), `com.amazon.avod` is not installed — Prime Video lives in `com.amazon.firebat`. The streaming-apps-database catalog has the alias chain (`packageAliases: ['com.amazon.avod.thirdpartyclient', 'com.amazon.firebat']`) and `/api/streaming/launch` resolves through `LEANBACK_LAUNCHER` intents that handle the fallback — but the Quick Access tile bypassed all of that. Fix: `launchStreamingApp()` now first calls `findStreamingAppByPackageName()` (already exported from `@sports-bar/streaming` since v2.32.9) and routes through `launchStreamingAppByCatalog()` if the package is in the catalog. Falls back to the original `monkey -p` command for off-catalog packages.
+
+**Bug 3 — Streaming `game_schedules` injection lacks the v2.32.62 in_progress estimatedEnd tightening** (`apps/web/src/app/api/channel-guide/route.ts`)
+
+The cable/satellite `game_schedules` fallback was tightened in v2.32.62 to require `estimatedEnd >= sixHoursAgo` for the `in_progress` catch-all clause — fixed the 72-zombie-game leak (NFL Draft from 11 days ago surfacing). The mirror block on the streaming path (~line 750) still had the loose original filter (`eq(status, 'in_progress')` only). Result: stale `in_progress` rows leaked through the streaming-injection path while the cable path correctly filtered them. Fix: parity update — same `andOp(eq, gte)` shape as cable.
+
+**Required Manual Step:** None — all three are pure bug fixes with no schema/config impact. Auto-update merge will pick them up.
+
+**Verification:** `npm run build` clean (34/34 turbo tasks). PM2 restart, `/api/system/health` returns `healthy`. Bartender remote :3002 returns 200. Held items in scope (Tier 2 perf wins + Tier 3 reuse cleanup) ship in subsequent passes (v2.32.78+).
+
+---
+
 ### v2.32.76 — fleet outstanding-work list refresh + post-campaign captures
 **Released:** 2026-05-08
 

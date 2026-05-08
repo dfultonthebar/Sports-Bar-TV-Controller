@@ -739,7 +739,12 @@ export async function POST(request: NextRequest) {
         const windowEndSec = Math.floor(new Date(endTime).getTime() / 1000)
 
         // v2.28.2 — overlap filter + in_progress catch-all (see cable/directv path)
-        const { or, eq } = await import('drizzle-orm')
+        // v2.32.77 — apply the v2.32.62 in_progress tightening to this path too:
+        // require estimatedEnd >= sixHoursAgo so zombie rows (NFL Draft from
+        // 11 days ago, etc) don't leak through the streaming injection path.
+        const nowSecForFilter = Math.floor(Date.now() / 1000)
+        const sixHoursAgo = nowSecForFilter - 6 * 60 * 60
+        const { or, eq, and: andOp } = await import('drizzle-orm')
         const localGames = await db
           .select()
           .from(schema.gameSchedules)
@@ -749,7 +754,10 @@ export async function POST(request: NextRequest) {
                 lte(schema.gameSchedules.scheduledStart, windowEndSec),
                 gte(schema.gameSchedules.estimatedEnd, windowStartSec)
               ),
-              eq(schema.gameSchedules.status, 'in_progress')
+              andOp(
+                eq(schema.gameSchedules.status, 'in_progress'),
+                gte(schema.gameSchedules.estimatedEnd, sixHoursAgo)
+              )
             )
           )
           .all()
