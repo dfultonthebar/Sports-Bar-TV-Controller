@@ -187,6 +187,21 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.74 — appleton jammy → noble upgrade complete
+**Released:** 2026-05-08
+
+Status-tracker update for `docs/OS_UPGRADE_RUNBOOK.md` + `docs/FLEET_STATUS.md`: appleton (Stoneyard Appleton, i9-13900HK / Iris Xe) is the second fleet box to complete the jammy → noble upgrade. Result: noble + 6.8.0-111-generic, `/dev/dri/` populated with `card0`+`renderD128` (note: `card0` here, not `card1` like graystone — different DRI enumeration on this box; `renderD128` is what compute uses), verify-install 7/7 PASS, 35/35 devices online. Hardware reality check via API only (matrix/audio/firetv/directv routes all live); the operator confirmed the bartender remote functional at the bar pre-flight, so the in-person walk-test was skipped. setup-iris-ollama.sh clean install on noble (intel-gpu-tools added since IPEX-LLM portable bundle includes the rest of the runtime). `ollama-ipex` active; journal: `using Intel GPU`. `clinfo -l` reports `Intel(R) Iris(R) Xe Graphics` — unlike graystone where it returned 0 platforms, so the Level-Zero-vs-OpenCL caveat noted in v2.32.73 doesn't reproduce here. AI Suggest cold-cache run = **67.3s** on iGPU (best in fleet so far — vs 170s graystone, 200-300s CPU baseline).
+
+Fleet status after this version: 5 of 6 locations on noble + iGPU active. Greenville is the last jammy box; recommended scheduling per the runbook is to do it during the lowest-traffic window since it's the busiest of the three.
+
+**Required Manual Step:** None for the auto-update itself (this entry is purely documentation). To run the OS upgrade at greenville (the only remaining jammy location), follow `docs/OS_UPGRADE_RUNBOOK.md` step-by-step.
+
+**Verification:** None at the auto-update layer.
+
+**Rollback:** N/A — docs-only.
+
+---
+
 ### v2.32.71–v2.32.73 — OS upgrade jammy → noble docs + first location complete
 **Released:** 2026-05-07
 
