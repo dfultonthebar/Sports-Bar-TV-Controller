@@ -187,6 +187,23 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.90 — Walker rules: document Hulu / YouTube TV / Fox Sports as non-walkable
+**Released:** 2026-05-08
+
+**No setup required.** Documentation-only commit (no functional changes).
+
+**What it adds:** Three new `APP_WALK_RULES` entries in `firetv-catalog-walker.ts`, all with `usesWebView: true` (effectively skip-flagged). Each carries a comment explaining the actual probe result so future sessions don't re-investigate. Reasons:
+
+- **Hulu:** Probed at greenville on a logged-out Cube — dump shows only paywall text ("App Not Owned" / "See Details" / "Quit"). Cube needs an operator-driven sign-in before walking yields real content.
+- **YouTube TV:** Probed at graystone — `dev.cobalt.app.MainActivity` is YouTube's Cobalt runtime, renders via OpenGL surfaces with no accessibility tree. 0 readable text nodes, same pattern as Apple TV+.
+- **Fox Sports (com.foxsports.videogo):** Probed at graystone — MainActivity displays a single "OPEN FOX ONE" button; the APK is a stub redirecting to com.fox.foxone for actual content. The stub itself captures nothing useful.
+
+**Why this matters:** Without these explicit entries, future probes will keep landing on the same dead ends. Walker logs an info line for each `usesWebView` skip rather than attempting and silently failing.
+
+**Affected:** `packages/scheduler/src/firetv-catalog-walker.ts` (new entries between fuboTV and the closing brace).
+
+---
+
 ### v2.32.89 — Walker `uiautomator dump` no longer hits the 3s adb timeout
 **Released:** 2026-05-08
 
