@@ -1,6 +1,6 @@
 # Fleet Status
 
-**Last updated:** 2026-05-08 (Walker `uiautomator dump` 10s-timeout fix v2.32.89 — Cube 3 ESPN catalog walks were silently failing on the 3s default; now succeed end-to-end. Full fleet at v2.32.89.)
+**Last updated:** 2026-05-08 (Walker rules cleanup v2.32.90 — Hulu / YouTube TV / Fox Sports documented as non-walkable after fleet probe; closes Outstanding #2 (Comrade-gated) + downsizes #3 to its productive remainder. Full fleet at v2.32.90.)
 
 A snapshot of where each location stands. Update this file after every fleet-wide change so future operators (and Claude) have a single place to see the truth.
 
@@ -10,17 +10,17 @@ A snapshot of where each location stands. Update this file after every fleet-wid
 
 | Location | Branch | OS | Software ver | Bartender proxy | AI Suggest backend | iGPU acceleration | Notes |
 |---|---|---|---|---|---|---|---|
-| holmgren-way | `location/holmgren-way` | noble (24.04) | **v2.32.89** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | Reference deployment; first to receive drift-recovery fix |
-| graystone | `location/graystone` | noble (24.04) | **v2.32.89** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | |
-| greenville | `location/stoneyard-greenville` | noble (24.04) | **v2.32.89** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | OS upgraded 2026-05-08; AI Suggest 119s on iGPU. |
-| leglamp | `location/leg-lamp` | noble (24.04) | **v2.32.89** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | |
-| lucky-s-1313 | `location/lucky-s-1313` | noble (24.04) | **v2.32.89** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | |
-| stoneyard-appleton | `location/stoneyard-appleton` | noble (24.04) | **v2.32.89** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | AI Suggest 67.3s on iGPU (fleet best) |
+| holmgren-way | `location/holmgren-way` | noble (24.04) | **v2.32.90** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | Reference deployment; first to receive drift-recovery fix |
+| graystone | `location/graystone` | noble (24.04) | **v2.32.90** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | |
+| greenville | `location/stoneyard-greenville` | noble (24.04) | **v2.32.90** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | OS upgraded 2026-05-08; AI Suggest 119s on iGPU. |
+| leglamp | `location/leg-lamp` | noble (24.04) | **v2.32.90** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | |
+| lucky-s-1313 | `location/lucky-s-1313` | noble (24.04) | **v2.32.90** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | |
+| stoneyard-appleton | `location/stoneyard-appleton` | noble (24.04) | **v2.32.90** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | AI Suggest 67.3s on iGPU (fleet best) |
 
 **Aggregate health (2026-05-08 18:00 UTC):**
 - 6/6: bartender remote on Nginx ✓
 - 6/6: noble (24.04) + 6.8.0-111 kernel ✓
-- 6/6: latest software (v2.32.89) ✓ — verified PASS 7/7 across all heartbeats
+- 6/6: latest software (v2.32.90) ✓ — verified PASS 7/7 across all heartbeats
 - 6/6: iGPU acceleration active ✓
 - 6/6: drift-recovery sidecar bootstrapped at `/home/ubuntu/sports-bar-data/.auto-update-last-success.json` ✓
 
@@ -58,6 +58,8 @@ Audio processor and matrix details live in each location's `.claude/locations/<b
 **v2.32.88** — NFHS bartender title shows sport label. Pulaski vs West De Pere had two real games (Varsity Girls Soccer + JV Girls Soccer, 2h apart) that rendered with identical titles in the bartender remote. Channel-guide route was already populating `sport` on NFHS programs; the GameListing TS interface in `EnhancedChannelGuideBartenderRemote.tsx` simply didn't declare the field. Fix: add `sport?: string` and append ` — ${game.sport}` to the title when present. Verified live via the channel-guide POST endpoint: two distinct rows now carry `sport='Junior Varsity Girls Soccer'` / `sport='varsity Girls Soccer'`.
 
 **v2.32.89** — Walker `uiautomator dump` no longer hits the 3s ADB-shell timeout. Root cause: `packages/firecube/src/adb-client.ts:executeShellCommand` had a hardcoded 3000ms timeout. UIautomator dumping the Fire TV launcher home screen (with its full rail-tile + carousel tree) reliably exceeds 3s on a busy device — the timeout fires, `adb shell -T` exits with no stdout, the walker reads xml.length=0 and surfaces "empty dump". Fix: thread an optional `timeoutMs` (500-30000ms) through `executeShellCommand` → `/api/firetv-devices/send-command` POST schema → walker; walker passes 10000ms on `uiautomator dump` only. All other call sites keep the snappy 3s default. Verified live on Holmgren Cube 3: pre-fix walks produced 0 catalog rows; post-fix walk produced 12 ESPN rows with 0 errors.
+
+**v2.32.90** — Walker rules: document Hulu / YouTube TV / Fox Sports as non-walkable. Fleet probe via SSH surveyed sports-relevant streaming apps installed across all 6 boxes; the 3 highest-value candidates not yet walked were probed for accessibility. Result: none walkable (Hulu paywall on logged-out Cubes; YouTube TV Cobalt runtime accessibility-blind; Fox Sports videogo stub redirect). Three explicit `APP_WALK_RULES` entries added with `usesWebView: true` so future probes don't repeat the dead-end work. Each carries the empirical probe result inline.
 
 **v2.32.81** — auto-update branch-drift recovery — detects when a box is on `main` instead of its `location/*` branch and switches back via the heartbeat file. Single defensive guard, normal-path code unchanged.
 
@@ -104,9 +106,9 @@ Verified live on Holmgren: drift simulated → switched to `location/holmgren-wa
 
 1a. ~~Auto-update silent-no-op when a box drifts to `main`~~ — **Done 2026-05-08**. Holmgren sat on `main` for ~10h before a manual fleet-status check caught it (missed v2.32.76-.80). Root cause: cron sees "origin/main already merged into HEAD" and silently exits. Fix shipped in v2.32.81 (drift-recovery block in `scripts/auto-update.sh`) + v2.32.82 (sidecar at `/home/ubuntu/sports-bar-data/.auto-update-last-success.json` so the canonical-branch signal survives branch switches). Verified live; full fleet at v2.32.82.
 
-2. **Per-event Fire TV deep links** *(next priority — operator-flagged 2026-05-07)* — v2.32.58 wired the `deepLink` field through to the Watch button, but the walker (v2.32.63) only captures titles + times, not per-event URLs. Result: hitting "Watch" on an Amazon Prime Video game opens the app but not the specific game. Investigation paths to consider: (a) ESPN's public scoreboard API to construct deep links from `homeTeam + awayTeam + start_time`; (b) capture the focused-tile URL via `dumpsys activity` while the walker is on a game card (Prime Video may already expose an `aiv-com://com.amazon.avod/?titleId=…` scheme); (c) extend the per-app rules + extractor pattern in `packages/scheduler/src/firetv-catalog-walker.ts` to grab a per-tile URL field. Pairs with #3.
+2. ~~Per-event Fire TV deep links~~ — **Investigated 2026-05-08; user-facing pain solved another way.** Operator pain ("Watch button opens the app but not the specific game") was solved by today's autoplay (v2.32.84/.85): Watch now performs a search-and-DPAD-navigate sequence that lands on PlayerActivity. What we *cannot* additionally do is replace the search bounce with a `?eventId=` URL — that path is gated behind Amazon Comrade (Fire TV's universal-search framework). Live probe on Cube 2: `pm dump com.espn.gtv` shows the `sportscenter://x-callback-url/<anything>` scheme is a catch-all that always lands at `StartupActivity`; `logcat` reveals `ComradeActionHandler: Capabilities{...PLAY=Capabilities{mIntentClassName='com.espn.startup.presentation.StartupActivity', mIntentDataExtraName='null'...}}` — ESPN's per-event routing on Fire TV is mediated by Amazon's catalog (registered content IDs only Amazon assigns to partners), not by URL parameters third parties can construct. Same architectural gate exists for Prime Video (titleId→ASIN lookup is HTML-scrape territory, not API). The walker uiautomator XML mining path is also dead — XML exposes only `text=` / `content-desc=`, never URLs/titleIds. Three of the three originally-listed paths are non-viable; current autoplay is the public-surface ceiling. Closing.
 
-3. **More streaming-app walker rules** — Walker (`packages/scheduler/src/firetv-catalog-walker.ts`) only has Prime Video extractor rules today. Netflix, ESPN+, Hulu, Disney+, Max, Peacock, YouTube TV all need their own per-app rules to surface live games on the channel guide. Each app has its own UIautomator layout — same scaffolding, app-specific selectors. Order of operations: pair with #2 above (once a per-tile URL field is harvested for Prime Video, the same path multiplies across apps).
+3. **More streaming-app walker rules** *(scoped down 2026-05-08 — most originally-listed apps are non-walkable)* — Probed across the fleet: Hulu (paywall-gated when logged out), YouTube TV (Cobalt runtime — accessibility-blind), Fox Sports videogo (stub redirect to FOX One), Apple TV+ (accessibility-blind native), fuboTV / Peacock (WebView), Netflix (no live sports anyway). All documented in `firetv-catalog-walker.ts` with `usesWebView: true` flag + reason comments. **Productive remainder:** (a) probe Hulu on a logged-in Cube once an operator signs in — it MAY become walkable; (b) probe `com.fox.foxone` (the actual content APK behind the Fox Sports stub) at locations that have it installed; (c) probe NFL App, NBA App, MLB.TV, NBC Sports if a sports-bar operator subscribes. Each is a one-Cube probe; build extractors only for the ones that prove walkable. **Don't speculatively add walker rules without a probe.**
 
 4. ~~`scripts/auto-update.sh` heartbeat refresh on no-op runs~~ — **Done v2.32.80**. New `refresh_heartbeat_os_only()` helper called on the no-op exit path; only patches the `os.*` block (leaves verifyInstall / configChecksums / dbRowCounts intact since those weren't re-checked). Idempotent — commits + pushes only when the OS values actually changed.
 
