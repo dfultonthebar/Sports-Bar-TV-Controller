@@ -46,6 +46,39 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-08 — v2.32.98 — Scout AccessibilityService for in-app playback automation
+
+**Risk:** GO. Backwards-compatible. Host now sends an extra ADB broadcast (`com.sportsbar.scout.PLAY_GAME`) before each ESPN autoplay; Cubes without the new Scout APK ignore it harmlessly.
+
+**What changed (host-side):**
+- New `sendScoutPlayGameBroadcast` helper in `packages/firecube/src/adb-client.ts`
+- `streaming-service-manager.ts` calls it right before `launchEspnToLiveContent` for any Watch click that has a search query
+
+**What changed (Scout APK):** Scout v1.5.0 (versionCode 215, versionName 2.1.5-accessibility-automation) gains a new AccessibilityService and a new mailbox receiver. Source committed; APK NOT auto-deployed to Cubes via the auto-update pipeline (APK install is a separate per-Cube manual step).
+
+**To activate the new path on a Cube** (per-Cube one-time, ~30 seconds):
+```bash
+cd firestick-scout && ./gradlew assembleDebug
+adb connect <CUBE_IP>:5555
+adb -s <CUBE_IP>:5555 install -r app/build/outputs/apk/debug/app-debug.apk
+adb -s <CUBE_IP>:5555 shell settings put secure enabled_accessibility_services com.sportsbar.scout/com.sportsbar.scout.PlaybackAutomationService
+adb -s <CUBE_IP>:5555 shell settings put secure accessibility_enabled 1
+```
+
+The `settings put secure` enables the AS programmatically (no manual operator action) — verified on AFTR Fire OS 7.7. Persists across reboots.
+
+**Currently provisioned:** Holmgren Cube 3 (10.11.3.51). Verified live: API → broadcast → in-app click → authoritative confirmation of the matched tile text in mailbox. End-to-end ~17s.
+
+**Other 5 locations:** host code shipped, APK not yet deployed. Bartender Watch button still uses the v2.32.97 text-targeted-tap fallback. Roll out APK to other Cubes when convenient (no urgency — fallback is functional).
+
+**What could break:** Nothing. The PLAY_GAME broadcast is fire-and-forget; if the receiver class doesn't exist (no Scout v1.5.0+ on the Cube), `am broadcast` succeeds with a 0-result and the existing autoplay path runs unchanged. Multiple click-paths could race on a Cube WITH Scout AS, but the second-arriving click is on a non-tile area (PageControllerActivity / PlayerActivity) and is harmless.
+
+**Manual steps required:** None for host. APK install is per-Cube (above) and only unlocks the new path; old path remains the fallback.
+
+**Rollback:** `git revert` on the host commit cleanly removes the broadcast send. Scout APK rollback: `adb install -r firestick-scout-1.4.0.apk` if a known-good older APK exists, or just disable the AS via `settings put secure enabled_accessibility_services ''`.
+
+---
+
 ### 2026-05-08 — v2.32.97 — Text-targeted tap + MEDIA_STOP
 
 **Risk:** GO. Better-than-DPAD approach: scan all visible tiles for a content match, tap the matched tile by coordinates. Falls back to clear failure with diagnostic listing visible tiles when no match found.
