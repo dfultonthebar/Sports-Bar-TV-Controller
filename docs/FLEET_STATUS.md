@@ -1,6 +1,6 @@
 # Fleet Status
 
-**Last updated:** 2026-05-08 (NFHS bartender title fix v2.32.88 — Varsity vs JV games of the same matchup are now visually distinguishable; full fleet at v2.32.88, all 6 boxes verified PASS 7/7)
+**Last updated:** 2026-05-08 (Walker `uiautomator dump` 10s-timeout fix v2.32.89 — Cube 3 ESPN catalog walks were silently failing on the 3s default; now succeed end-to-end. Full fleet at v2.32.89.)
 
 A snapshot of where each location stands. Update this file after every fleet-wide change so future operators (and Claude) have a single place to see the truth.
 
@@ -10,17 +10,17 @@ A snapshot of where each location stands. Update this file after every fleet-wid
 
 | Location | Branch | OS | Software ver | Bartender proxy | AI Suggest backend | iGPU acceleration | Notes |
 |---|---|---|---|---|---|---|---|
-| holmgren-way | `location/holmgren-way` | noble (24.04) | **v2.32.88** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | Reference deployment; first to receive drift-recovery fix |
-| graystone | `location/graystone` | noble (24.04) | **v2.32.88** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | |
-| greenville | `location/stoneyard-greenville` | noble (24.04) | **v2.32.88** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | OS upgraded 2026-05-08; AI Suggest 119s on iGPU. |
-| leglamp | `location/leg-lamp` | noble (24.04) | **v2.32.88** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | |
-| lucky-s-1313 | `location/lucky-s-1313` | noble (24.04) | **v2.32.88** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | |
-| stoneyard-appleton | `location/stoneyard-appleton` | noble (24.04) | **v2.32.88** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | AI Suggest 67.3s on iGPU (fleet best) |
+| holmgren-way | `location/holmgren-way` | noble (24.04) | **v2.32.89** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | Reference deployment; first to receive drift-recovery fix |
+| graystone | `location/graystone` | noble (24.04) | **v2.32.89** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | |
+| greenville | `location/stoneyard-greenville` | noble (24.04) | **v2.32.89** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | OS upgraded 2026-05-08; AI Suggest 119s on iGPU. |
+| leglamp | `location/leg-lamp` | noble (24.04) | **v2.32.89** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | |
+| lucky-s-1313 | `location/lucky-s-1313` | noble (24.04) | **v2.32.89** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | |
+| stoneyard-appleton | `location/stoneyard-appleton` | noble (24.04) | **v2.32.89** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | AI Suggest 67.3s on iGPU (fleet best) |
 
 **Aggregate health (2026-05-08 18:00 UTC):**
 - 6/6: bartender remote on Nginx ✓
 - 6/6: noble (24.04) + 6.8.0-111 kernel ✓
-- 6/6: latest software (v2.32.88) ✓
+- 6/6: latest software (v2.32.89) ✓ — verified PASS 7/7 across all heartbeats
 - 6/6: iGPU acceleration active ✓
 - 6/6: drift-recovery sidecar bootstrapped at `/home/ubuntu/sports-bar-data/.auto-update-last-success.json` ✓
 
@@ -56,6 +56,8 @@ Audio processor and matrix details live in each location's `.claude/locations/<b
 **v2.32.87** — Watch button input-label instant update. `/api/streaming/launch` mirrors the launched app's friendly name into `inputCurrentChannels` immediately after launch (was previously waiting for the 5-min `/api/firetv-devices/[id]/current-app` poll). Verified live: <1s vs the previous 5min.
 
 **v2.32.88** — NFHS bartender title shows sport label. Pulaski vs West De Pere had two real games (Varsity Girls Soccer + JV Girls Soccer, 2h apart) that rendered with identical titles in the bartender remote. Channel-guide route was already populating `sport` on NFHS programs; the GameListing TS interface in `EnhancedChannelGuideBartenderRemote.tsx` simply didn't declare the field. Fix: add `sport?: string` and append ` — ${game.sport}` to the title when present. Verified live via the channel-guide POST endpoint: two distinct rows now carry `sport='Junior Varsity Girls Soccer'` / `sport='varsity Girls Soccer'`.
+
+**v2.32.89** — Walker `uiautomator dump` no longer hits the 3s ADB-shell timeout. Root cause: `packages/firecube/src/adb-client.ts:executeShellCommand` had a hardcoded 3000ms timeout. UIautomator dumping the Fire TV launcher home screen (with its full rail-tile + carousel tree) reliably exceeds 3s on a busy device — the timeout fires, `adb shell -T` exits with no stdout, the walker reads xml.length=0 and surfaces "empty dump". Fix: thread an optional `timeoutMs` (500-30000ms) through `executeShellCommand` → `/api/firetv-devices/send-command` POST schema → walker; walker passes 10000ms on `uiautomator dump` only. All other call sites keep the snappy 3s default. Verified live on Holmgren Cube 3: pre-fix walks produced 0 catalog rows; post-fix walk produced 12 ESPN rows with 0 errors.
 
 **v2.32.81** — auto-update branch-drift recovery — detects when a box is on `main` instead of its `location/*` branch and switches back via the heartbeat file. Single defensive guard, normal-path code unchanged.
 
@@ -110,7 +112,7 @@ Verified live on Holmgren: drift simulated → switched to `location/holmgren-wa
 
 5. ~~Fleet dashboard manual-refresh button~~ — **Already done** (verified 2026-05-08 during the v2.32.88 sweep). The Refresh button has been live at `apps/web/src/app/fleet/page.tsx:132-139` since v2.32.72 (`feat(fleet-dashboard): show OS codename + kernel per location`); it calls `load(true)` which fetches `/api/fleet/status?refresh=1` and shows a spinner while refreshing. The outstanding-item entry was stale.
 
-6. **Why was Holmgren's kernel on 6.8.0-100 while peers self-updated?** — Pre-fix today, holmgren-way was running `6.8.0-100-generic` while leglamp + lucky-s were on `-110` and the freshly-upgraded jammy boxes on `-111`. Suggests `unattended-upgrades` either isn't running or isn't pulling the kernel metapackage on Holmgren. Worth a check before we drift again — `systemctl status unattended-upgrades`, `/var/log/unattended-upgrades/`, and `dpkg --get-selections | grep linux-generic` to see which kernel meta is installed. If the metapackage is `linux-image-6.8.0-100` literal vs `linux-generic`, Apt won't pull newer kernels via security updates.
+6. ~~Why was Holmgren's kernel on 6.8.0-100 while peers self-updated?~~ — **Diagnosed 2026-05-08.** Holmgren is now running `6.8.0-111-generic` (matches fleet); the legacy `linux-image-6.8.0-100-generic` package is still installed-marked-automatic and would be cleaned by `sudo apt autoremove` (cosmetic, not blocking anything). Mechanism: `/etc/apt/apt.conf.d/50unattended-upgrades` allows ONLY `noble` + `noble-security` (and ESM); the `${distro_id}:${distro_codename}-updates` line is commented out (Ubuntu's standard server posture). Most kernel security CVEs are published to BOTH `-updates` and `-security` within hours, but during the gap window an updated kernel can be in `-updates` only — Holmgren stayed on -100 through that window. Service was healthy throughout (`systemctl status unattended-upgrades` shows daily security pulls, e.g. libwebkit2gtk on 2026-05-07). No action required; config change to enable `-updates` is optional and not recommended given drift-recovery (v2.32.81/.82) now self-heals the auto-update side, and apt drift on a single kernel point release is acceptable on server-class hardware.
 
 7. **qwen2.5:14b on iGPU** — IPEX-LLM Ollama 0.16.2's SYCL backend doesn't accelerate the qwen2 family. Holmgren tested empirically; falls back to CPU. Bigger reasoning models on iGPU need either a newer IPEX-LLM build or a different family with SYCL coverage (`phi4:14b`, `gemma2:27b`). Speculative — try only when there's spare time to test.
 
