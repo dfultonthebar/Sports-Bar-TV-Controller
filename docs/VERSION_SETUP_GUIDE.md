@@ -187,6 +187,23 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.91 — Walker actually walks Prime Video now (alias-resolution fix); sendKey timeout pass-through
+**Released:** 2026-05-08
+
+**No setup required.** Code-only fix.
+
+**What it fixes:** Two interlocking bugs that together prevented the Watch button from working for any Prime Video game on the bartender remote.
+
+**Bug 1 — walker silently skipped Prime Video for ~6 weeks.** `APP_WALK_RULES` was keyed by `displayName: 'Prime Video'`, but `input_sources.available_networks` at most locations stores `'Amazon Prime Video'` (some store `'Prime Video'`). The pre-fix filter `availableNetworks.filter((n) => APP_WALK_RULES[n])` is exact-string match — `'Amazon Prime Video'` never matched `'Prime Video'` so Prime Video walks NEVER ran. Result: zero Prime Video tiles in `firetv_streaming_catalog`, zero Prime Video games in the bartender's per-input channel guide, zero Watch buttons for Prime Video content. The bartender wasn't broken; the catalog was just empty for Prime Video. Confirmed live at Holmgren on 2026-05-08: walks attempted = 4 (only ESPN + Peacock skip on both Cubes); after fix walks attempted = 10 (adds Prime Video on both Cubes), totalTilesUploaded jumped 14 → 30. **Fix:** alias-aware resolution via `findStreamingAppByDisplayName(network) → catalogId → APP_WALK_RULES[ruleKey where rule.catalogId matches]`. Direct key match still wins as fast path.
+
+**Bug 2 — 3s sendKey timeout aborted autoplay sequences.** Same root cause as v2.32.89's `uiautomator dump` fix but on a different ADB command path. `sendKey` calls `executeShellCommand` with the default 3000ms timeout. During Prime Video's `SearchResultsActivity` rendering and ESPN's content-row hydration the Cube's framework can pin transiently — the keyevent itself is fast but `adb shell -T` waits for system_server ack. Reproduced live: DPAD_DOWN to SearchResultsActivity timed out at exactly 3000ms, autoplay aborted, `/api/streaming/launch` returned `success:false`, bartender showed "Failed to launch". **Fix:** added optional `timeoutMs` param to `sendKey` (mirrors `executeShellCommand`'s); both `launchPrimeVideoToContent` and `launchEspnToLiveContent` now pass `8000` on each DPAD event. Default 3s preserved on every other call site.
+
+**Verified at Holmgren:** pre-fix `/api/streaming/launch` for any Prime Video game returned 500. Post-fix returns 200 in ~11s and Cube 3 advances past launcher to Prime Video. Whether the autoplay reaches PlayerActivity vs SearchResultsActivity depends on whether the title search returns a playable first result — pre-existing limitation of the search-bounce pattern, not a regression.
+
+**Affected:** `packages/scheduler/src/firetv-catalog-walker.ts` (alias resolution), `packages/firecube/src/adb-client.ts` (sendKey timeoutMs + autoplay sequences).
+
+---
+
 ### v2.32.90 — Walker rules: document Hulu / YouTube TV / Fox Sports as non-walkable
 **Released:** 2026-05-08
 

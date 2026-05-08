@@ -46,6 +46,22 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-08 — v2.32.91 — Walker walks Prime Video now + sendKey timeout fix
+
+**Risk:** GO. Real operator-visible fix. Two interlocking bugs together meant the Watch button on the bartender remote did nothing for any Prime Video game (because no Prime Video games surfaced in the channel guide in the first place). After fix: walker captures Prime Video tiles end-to-end, /api/streaming/launch returns 200 with autoplay reaching at least Prime Video's search/landing.
+
+**What changed:**
+1. `firetv-catalog-walker.ts` — alias-aware matching of `available_networks` entries against `APP_WALK_RULES`. Pre-fix used exact string match; "Amazon Prime Video" never matched the rule keyed "Prime Video". Now resolves via `findStreamingAppByDisplayName` → catalogId → rule. Direct key match still wins.
+2. `adb-client.ts` — `sendKey` accepts optional `timeoutMs`; `launchPrimeVideoToContent` + `launchEspnToLiveContent` pass 8000ms on every DPAD event. Pre-fix the 3s default fired mid-sequence while the Cube was rendering SearchResultsActivity / content rows; autoplay aborted; API returned 500.
+
+**What could break:** Nothing. Both changes are additive — old code paths preserved as defaults, new behavior only triggers via opt-in path. Backwards-compatible at every call site.
+
+**Manual steps required:** None. After auto-update merges, the next catalog walk run (cron-driven or manual via `POST /api/firestick-scout/catalog/walk`) will populate Prime Video rows for any Cube that has Prime Video listed in `available_networks`.
+
+**Rollback:** `git revert` clean.
+
+---
+
 ### 2026-05-08 — v2.32.90 — Walker rules: 3 sports apps documented as non-walkable
 
 **Risk:** GO. Doc-only — adds three `APP_WALK_RULES` entries (Hulu, YouTube TV, Fox Sports) all with `usesWebView: true` flag → walker skips with an info log instead of attempting. Same pattern as fuboTV / Apple TV+ / Peacock. Behavior unchanged.
