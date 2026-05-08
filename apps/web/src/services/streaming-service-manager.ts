@@ -200,15 +200,25 @@ class StreamingServiceManager {
           await client.launchAppWithDeepLink(options.deepLink, installedPackage)
         }
       } else if (options?.deepLink && app.deepLinkSupport && app.id === 'espn-plus') {
-        // v2.32.85 — ESPN runs the same autoplay-via-DPAD pattern. The
-        // deepLink the bartender sends is `sportscenter://x-callback-url/showHomeTab`
-        // (the canonical landing-page URL since v2.32.85 catalog fix), but
-        // a DPAD_DOWN + DPAD_CENTER carries us into PlayerActivity. The
-        // helper accepts the (currently unused) contentTitle for future
-        // event-ID resolution; we pass through whatever the channel-guide
-        // captured for trace logging.
-        logger.info(`[STREAMING MANAGER] ESPN autoplay sequence`)
-        await client.launchEspnToLiveContent(undefined, installedPackage)
+        // v2.32.94 — Per-tile ESPN search-by-title autoplay. The walker
+        // now writes `sportscenter://x-callback-url/showHomeTab?q=<title>`
+        // for every captured tile (v2.32.94 walker change). We extract `q`
+        // and pass it to launchEspnToLiveContent's search path, which
+        // navigates ESPN's in-app search rail and types the title to find
+        // the SPECIFIC game the bartender clicked. Pre-fix the autoplay
+        // landed on whatever ESPN featured first (e.g. PGA, MLB) — niche
+        // games like college softball never reached PlayerActivity.
+        // When `q` is missing (older catalog rows from before v2.32.94),
+        // fall back to the v2.32.85 blind-DPAD path that picks ESPN's
+        // featured tile.
+        const espnQMatch = options.deepLink.match(/[?&]q=([^&]+)/)
+        const espnQuery = espnQMatch ? decodeURIComponent(espnQMatch[1]) : undefined
+        if (espnQuery) {
+          logger.info(`[STREAMING MANAGER] ESPN search-by-title autoplay for "${espnQuery}"`)
+        } else {
+          logger.info(`[STREAMING MANAGER] ESPN autoplay (no title — featured-tile fallback)`)
+        }
+        await client.launchEspnToLiveContent(espnQuery, installedPackage)
       } else if (options?.deepLink && app.deepLinkSupport) {
         logger.info(`[STREAMING MANAGER] Launching ${app.name} with deep link: ${options.deepLink}`)
         // v2.32.84 — pass the resolved package name so adb-client can include
