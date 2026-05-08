@@ -54,5 +54,35 @@
             </intent-filter>
         </receiver>
 
+        <!-- v1.5.0 — PLAY_GAME mailbox receiver. Host broadcasts via ADB
+             when the bartender clicks Watch on a streaming game. -->
+        <receiver
+            android:name=".PlayCommandReceiver"
+            android:exported="true"
+            android:enabled="true">
+            <intent-filter>
+                <action android:name="com.sportsbar.scout.PLAY_GAME" />
+            </intent-filter>
+        </receiver>
+
+        <!-- v1.5.0 — In-app navigator. Operates ONLY on com.espn.gtv,
+             com.playon.nfhslive, and com.amazon.firebat per the
+             packageNames filter in res/xml/playback_automation_service
+             _config.xml. Must be enabled per-device after install via:
+               adb shell settings put secure enabled_accessibility_services \
+                 com.sportsbar.scout/com.sportsbar.scout.PlaybackAutomationService
+               adb shell settings put secure accessibility_enabled 1 -->
+        <service
+            android:name=".PlaybackAutomationService"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/playback_automation_service_config" />
+        </service>
+
     </application>
 </manifest>

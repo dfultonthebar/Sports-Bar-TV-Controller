@@ -242,6 +242,61 @@ export class ADBClient {
     }
   }
 
+  /**
+   * v2.32.98 — Send a PLAY_GAME broadcast to the on-device Scout APK
+   * (com.sportsbar.scout v1.5.0+). When Scout's PlaybackAutomationService
+   * is enabled, it observes the AccessibilityService event stream, finds
+   * a tile whose accessibility content matches the supplied tokens, and
+   * performs an in-app click via AccessibilityNodeInfo.performAction.
+   * This bypasses the DPAD navigation entirely and is more reliable when
+   * Scout is provisioned on the Cube.
+   *
+   * Fire-and-forget: returns immediately. If Scout isn't installed or its
+   * AccessibilityService isn't enabled, the broadcast is consumed but
+   * does nothing. The caller should always also fire its existing
+   * autoplay path as a fallback for un-provisioned Cubes.
+   *
+   * @param targetPackage e.g. "com.espn.gtv" or "com.playon.nfhslive"
+   * @param contentTitle  Human-readable title for logging (Scout-side)
+   * @param matchTokens   Whitespace-separated tokens to match against
+   *                      tile accessibility content. Will be lowercased
+   *                      and joined with commas before sending.
+   * @param maxAttempts   How many onAccessibilityEvent ticks Scout should
+   *                      try before giving up. Default 60.
+   */
+  async sendScoutPlayGameBroadcast(
+    targetPackage: string,
+    contentTitle: string,
+    matchTokens: string,
+    maxAttempts: number = 60,
+  ): Promise<void> {
+    try {
+      const escTitle = contentTitle.replace(/'/g, "'\\''").replace(/ /g, '%s')
+      const escTokens = matchTokens
+        .toLowerCase()
+        .split(/\s+/)
+        .filter((t) => t.length >= 2)
+        .join(',')
+      const cmd = [
+        'am broadcast',
+        '-a com.sportsbar.scout.PLAY_GAME',
+        `--es target_package ${targetPackage}`,
+        `--es game_title '${escTitle}'`,
+        `--es match_tokens '${escTokens}'`,
+        `--ei max_attempts ${maxAttempts}`,
+        '-n com.sportsbar.scout/.PlayCommandReceiver',
+      ].join(' ')
+      logger.info(`[ADB CLIENT] Scout PLAY_GAME → ${targetPackage} tokens=${escTokens}`)
+      await this.executeShellCommand(cmd, 5000)
+    } catch (err: any) {
+      // Non-fatal — if Scout isn't on the device, the broadcast still
+      // returns successfully (the receiver class doesn't exist, but `am
+      // broadcast` doesn't fail loudly). Any actual error is logged but
+      // doesn't propagate.
+      logger.warn(`[ADB CLIENT] Scout PLAY_GAME broadcast failed (non-fatal): ${err.message}`)
+    }
+  }
+
   async sendKey(keyCode: number, timeoutMs?: number): Promise<string> {
     try {
       logger.info(`[ADB CLIENT] Sending key ${keyCode} to ${this.deviceAddress}`)
