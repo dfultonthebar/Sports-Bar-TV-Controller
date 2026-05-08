@@ -544,12 +544,12 @@ const APP_WALK_RULES: Record<string, AppWalkRule> = {
 // Returns the raw stdout string (or empty on error). The endpoint reports
 // false `success` on non-zero exit code, but the actual stdout often comes
 // through anyway — we read it regardless.
-async function adbShell(deviceId: string, command: string): Promise<string> {
+async function adbShell(deviceId: string, command: string, timeoutMs?: number): Promise<string> {
   try {
     const resp = await fetch(`${API_BASE}/api/firetv-devices/send-command`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ deviceId, command }),
+      body: JSON.stringify({ deviceId, command, ...(timeoutMs ? { timeoutMs } : {}) }),
     })
     if (!resp.ok) {
       logger.warn(`[FIRETV-CATALOG] send-command HTTP ${resp.status} for ${deviceId} (cmd: ${command.substring(0, 60)})`)
@@ -650,7 +650,12 @@ async function walkOneApp(
     //     empty and we surface "empty dump".
     const dumpPath = '/sdcard/scout_walker_dump.xml'
     await adbShell(deviceId, `rm -f ${dumpPath}`)
-    await adbShell(deviceId, `uiautomator dump ${dumpPath}`)
+    // 10s timeout on `uiautomator dump` — the default 3s in adb-client.ts
+    // truncates dumps of complex UIs (e.g. Fire TV launcher home screen with
+    // ~20+ tiles in row groups). Verified live on Cube 3: 3s aborts, 10s
+    // succeeds with a 33KB dump. Walker is the only call site that needs the
+    // override.
+    await adbShell(deviceId, `uiautomator dump ${dumpPath}`, 10000)
     // small grace for the file write to flush
     await sleep(500)
     const xml = await adbShell(deviceId, `cat ${dumpPath}`)

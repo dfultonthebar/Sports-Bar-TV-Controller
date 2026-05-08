@@ -187,6 +187,23 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.89 — Walker `uiautomator dump` no longer hits the 3s adb timeout
+**Released:** 2026-05-08
+
+**No setup required.** Pure code fix.
+
+**What it fixes:** Cube 3 ESPN walks were failing with "empty dump" / HTTP 500 on `/api/firetv-devices/send-command` for `uiautomator dump`. Root cause: `adb-client.ts:executeShellCommand()` had a hardcoded 3000ms timeout. UIautomator dumping the Fire TV launcher home-screen tile tree (~20+ tiles in row groups) takes >3s on a busy device — the timeout fires before the dump file flushes, the wrapped `adb shell -T` command exits with no stdout, and the walker sees `xml.length=0` → "empty dump".
+
+Direct ADB (no timeout) succeeds immediately on the same device with a 33KB dump.
+
+**Fix:** added optional `timeoutMs` param to `executeShellCommand` (default still 3000ms, capped at 30s); added optional `timeoutMs` to the send-command POST schema; walker passes `10000` for `uiautomator dump` only. All other commands keep the snappy 3s default. Only the walker is affected by the change.
+
+**Verification at Holmgren:** Pre-fix `curl POST /api/firetv-devices/send-command` with `command="uiautomator dump ..."` against Cube 3 → 500 with empty error. Post-fix with `timeoutMs: 10000` → 200, "UI hierchary dumped to: …", 33KB file present.
+
+**Affected:** `packages/firecube/src/adb-client.ts`, `apps/web/src/app/api/firetv-devices/send-command/route.ts`, `packages/scheduler/src/firetv-catalog-walker.ts`.
+
+---
+
 ### v2.32.88 — NFHS bartender title shows sport (V vs JV distinguishable)
 **Released:** 2026-05-08
 
