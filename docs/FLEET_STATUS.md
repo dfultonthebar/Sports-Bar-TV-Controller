@@ -1,6 +1,6 @@
 # Fleet Status
 
-**Last updated:** 2026-05-08 (Watch-button-broken-on-Amazon fix shipped v2.32.91 — walker silently skipped Prime Video for ~6 weeks because available_networks "Amazon Prime Video" never matched the rule keyed "Prime Video"; sendKey 3s timeout aborted autoplay sequences. Both fixed. Full fleet at v2.32.91.)
+**Last updated:** 2026-05-08 (Bug-hunt batch shipped v2.32.92 + audit follow-ups v2.32.93. ESPN+/TNT/TBS allocator matching, Paramount+ sendKey timeout, subscription-polling timeouts, hasPrimeAlready string, Max catalog entry, firebat in subscription-polling, longer adb-connect. 10 fixes total across 8 files. Full fleet at v2.32.93.)
 
 A snapshot of where each location stands. Update this file after every fleet-wide change so future operators (and Claude) have a single place to see the truth.
 
@@ -10,12 +10,12 @@ A snapshot of where each location stands. Update this file after every fleet-wid
 
 | Location | Branch | OS | Software ver | Bartender proxy | AI Suggest backend | iGPU acceleration | Notes |
 |---|---|---|---|---|---|---|---|
-| holmgren-way | `location/holmgren-way` | noble (24.04) | **v2.32.91** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | Reference deployment; first to receive drift-recovery fix |
-| graystone | `location/graystone` | noble (24.04) | **v2.32.91** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | |
-| greenville | `location/stoneyard-greenville` | noble (24.04) | **v2.32.91** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | OS upgraded 2026-05-08; AI Suggest 119s on iGPU. |
-| leglamp | `location/leg-lamp` | noble (24.04) | **v2.32.91** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | |
-| lucky-s-1313 | `location/lucky-s-1313` | noble (24.04) | **v2.32.91** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | |
-| stoneyard-appleton | `location/stoneyard-appleton` | noble (24.04) | **v2.32.91** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | AI Suggest 67.3s on iGPU (fleet best) |
+| holmgren-way | `location/holmgren-way` | noble (24.04) | **v2.32.93** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | Reference deployment; first to receive drift-recovery fix |
+| graystone | `location/graystone` | noble (24.04) | **v2.32.93** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | |
+| greenville | `location/stoneyard-greenville` | noble (24.04) | **v2.32.93** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | OS upgraded 2026-05-08; AI Suggest 119s on iGPU. |
+| leglamp | `location/leg-lamp` | noble (24.04) | **v2.32.93** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | |
+| lucky-s-1313 | `location/lucky-s-1313` | noble (24.04) | **v2.32.93** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | |
+| stoneyard-appleton | `location/stoneyard-appleton` | noble (24.04) | **v2.32.93** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | AI Suggest 67.3s on iGPU (fleet best) |
 
 **Aggregate health (2026-05-08 18:00 UTC):**
 - 6/6: bartender remote on Nginx ✓
@@ -66,6 +66,22 @@ Audio processor and matrix details live in each location's `.claude/locations/<b
 1. **Walker silently skipped Prime Video for ~6 weeks.** `APP_WALK_RULES` was keyed `'Prime Video'` but `input_sources.available_networks` at most locations stores `'Amazon Prime Video'`. Pre-fix used exact-string match (`availableNetworks.filter((n) => APP_WALK_RULES[n])`); never matched. Walker silently skipped every Prime Video walk on every Cube → zero Prime Video tiles in `firetv_streaming_catalog` → zero Prime Video games in the bartender's per-input channel guide → zero Watch buttons for Prime Video content. Fix: alias-aware resolution via `findStreamingAppByDisplayName(network) → catalogId → APP_WALK_RULES[ruleKey where rule.catalogId matches]`. Direct key match still wins as fast path. Verified live at Holmgren: walks attempted jumped 4 → 10, totalTilesUploaded 14 → 30, channel-guide for Cube 3 went from 0 Prime Video games to 8.
 
 2. **3s sendKey timeout aborted autoplay sequences.** Same root cause class as v2.32.89's `uiautomator dump` fix but on the `sendKey` path. DPAD events during Prime Video's `SearchResultsActivity` rendering and ESPN's content-row hydration timed out at exactly 3000ms because `adb shell -T` was waiting for system_server ack while the framework was pinned. Autoplay aborted, `/api/streaming/launch` returned `success:false`, bartender saw "Failed to launch". Fix: optional `timeoutMs` on `sendKey`; both `launchPrimeVideoToContent` and `launchEspnToLiveContent` pass 8000ms on every DPAD event. Verified live: pre-fix 500 → post-fix 200 in ~11s with Cube advancing into Prime Video.
+
+**v2.32.92** — Bug-hunt batch (multi-agent code audit). Seven latent bugs in same root-cause classes as v2.32.91:
+
+1. `smart-input-allocator.ts` — `availableNetworks.includes(targetNetwork)` raw match silently excluded every Fire TV from allocation when the broadcast network was ESPN+/ESPN2/ESPNU/NBC/CBS/FS1/FOX. New shared `packages/scheduler/src/network-map.ts` with `availableNetworksMatch` normalizes broadcast → catalog name before compare.
+2. `conflict-detector.ts` — same root cause, same fix path.
+3. `subscription-polling.ts` — `adb connect` and `pm list packages` had no timeout; unresponsive Cubes hung 60-120s. Explicit timeouts added.
+4. `adb-client.ts launchParamountLiveTV` — DPAD_CENTER passed 3s default, would abort under load. Now passes 8000ms.
+5. `firetv-app-sync.ts hasPrimeAlready` — string mismatch ('Prime Video' vs catalog name 'Amazon Prime Video') caused wasted ADB probe each sync.
+6. `adb-client.ts getDeviceProperty` — added optional `timeoutMs` param.
+7. `scheduler-service.ts` tick loop — bare `catch {}` on tvOutputIds parse silently dropped malformed rows; could allow double-tunes. Added `logger.warn` on parse failure.
+
+**v2.32.93** — Audit follow-ups to v2.32.92:
+
+1. New `Max` catalog entry (`com.wbd.stream`, alias `com.hbo.hbonow`) + TNT/TBS/truTV/'TNT Sports' → 'Max' in network-map. Pre-fix any TNT/TBS game (NBA playoffs, MLB postseason, March Madness) silently excluded Cubes with Max installed.
+2. `subscription-polling.ts` was missing `'com.amazon.firebat'` in its packageName→displayName map. AFTR Cubes (Fire TV Cube 2nd gen) host Prime Video via firebat (CLAUDE.md gotcha #9), so the device-config UI's subscription-detect endpoint reported "Prime Video not installed" on every AFTR Cube. Added entry.
+3. `subscription-polling.ts` `adb connect` timeout 8s → 12s to cover sleeping-Cube wake (10-14s in practice on AFTR).
 
 **v2.32.81** — auto-update branch-drift recovery — detects when a box is on `main` instead of its `location/*` branch and switches back via the heartbeat file. Single defensive guard, normal-path code unchanged.
 

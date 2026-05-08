@@ -446,12 +446,17 @@ function extractEspnTiles(xmlDump: string): CatalogTile[] {
       isLive,
       sportTag,
       startTime,
-      // v2.32.85 — generic ESPN home-tab deeplink (the autoplay sequence
-      // in adb-client.launchEspnToLiveContent then walks DPAD_DOWN +
-      // DPAD_CENTER to land on PlayerActivity). This isn't event-specific
-      // — see TODO comment in launchEspnToLiveContent re ESPN scoreboard
-      // API resolution for true per-event linking.
-      deepLink: 'sportscenter://x-callback-url/showHomeTab',
+      // v2.32.94 — Per-tile ESPN deep link with the tile title encoded as
+      // `?q=<title>`. ESPN's app ignores the query (the `sportscenter://`
+      // scheme is a Comrade-gated catch-all that always lands on home),
+      // but our streaming-service-manager extracts the `q` value at
+      // bartender-Watch time and feeds it to launchEspnToLiveContent's
+      // search-by-title autoplay path. Pre-fix the deepLink was a generic
+      // home-tab URL and ESPN autoplay just navigated to whatever ESPN
+      // featured first — niche tiles (e.g. college softball) never reached
+      // PlayerActivity. Per-tile title preserves the bartender's intent
+      // through to ESPN's in-app search.
+      deepLink: `sportscenter://x-callback-url/showHomeTab?q=${encodeURIComponent(title)}`,
     })
   }
   return tiles

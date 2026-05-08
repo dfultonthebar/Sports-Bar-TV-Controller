@@ -187,6 +187,34 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.94 — ESPN search-by-title autoplay (per-event Watch button reaches specific games)
+**Released:** 2026-05-08
+
+**No setup required.** Code-only fix.
+
+**What it fixes:** Pre-fix the bartender's Watch button on ESPN games landed on whatever ESPN featured as its first content tile (typically PGA, MLB, headline NFL — whatever ESPN was promoting at the moment). For niche games — college softball, regional sports, mid-tier matchups — the autoplay reached `PageControllerActivity` (ESPN home) but never `PlayerActivity` because the operator's intended game wasn't ESPN's "featured tile". Operator pain reported live today against a Tarleton State Texans softball game.
+
+**Fix:** ESPN walker now writes per-tile deep links of the form `sportscenter://x-callback-url/showHomeTab?q=<title>` (one per tile, title URL-encoded). The streaming-service-manager extracts the `q` param at Watch time and passes the title to a new search-by-title autoplay path in `launchEspnToLiveContent`. The autoplay sequence:
+
+1. Launch ESPN via LEANBACK_LAUNCHER (unchanged)
+2. Wait 8s for home tab to render
+3. `DPAD_LEFT` → focus moves to the left navigation rail at "Home"
+4. `DPAD_UP` → focus moves up to "Search"
+5. `DPAD_CENTER` → opens ESPN's search activity with focused EditText
+6. `input text "<title>"` (spaces escaped as `%s`) — Android types into the EditText
+7. Wait 4s for search results
+8. `DPAD_DOWN` + `DPAD_CENTER` → focus and play the first result
+
+When the catalog row predates v2.32.94 (no `q` param in the deepLink), the code falls through to the v2.32.85 featured-tile path — backwards-compatible, no walks need to be re-run before the fix takes effect.
+
+**Verified end-to-end on Cube 3:** pre-fix Watch on McIlroy Featured Group landed on `PageControllerActivity` with `state=0 NONE`. Post-fix: API takes 21s, lands on `PlayerActivity`, MediaSession `state=8 BUFFERING` (rolling to PLAYING in seconds). Same architectural pattern works for any ESPN tile with a `?q=` parameter.
+
+**Why ESPN-specific is necessary:** Earlier today's #2 closure documented that ESPN's deep-link surface is Comrade-gated — `sportscenter://*` paths all collapse to home. Public deep-link variants (showEvent, showWatch, showGame, https://espn.com/watch) all proven non-functional. The in-app DPAD-to-Search-rail + `input text` approach is the only third-party path to a specific ESPN+ event.
+
+**Affected:** 3 files. `packages/scheduler/src/firetv-catalog-walker.ts` (extractEspnTiles deepLink format), `apps/web/src/services/streaming-service-manager.ts` (espn-plus branch extracts `q`), `packages/firecube/src/adb-client.ts` (launchEspnToLiveContent search-by-title path).
+
+---
+
 ### v2.32.93 — Audit follow-ups: Max catalog entry + TNT/TBS network-map; firebat in subscription-polling; longer adb-connect timeout
 **Released:** 2026-05-08
 
