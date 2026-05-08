@@ -46,7 +46,12 @@ const firetvSendCommandSchema = z.object({
   command: z.string().min(1).max(200, 'Command must be less than 200 characters'),
   appPackage: ValidationSchemas.appId.optional(),
   ipAddress: ValidationSchemas.ipAddress.optional(),
-  port: ValidationSchemas.port.optional()
+  port: ValidationSchemas.port.optional(),
+  // Override the default 3s ADB-shell timeout. Used by the catalog walker for
+  // `uiautomator dump` against the Fire TV launcher, where dumping the full
+  // home-screen tile tree can exceed 3s and silently fails as "empty dump".
+  // Capped at 30s so a runaway command can't pin a connection.
+  timeoutMs: z.number().int().min(500).max(30000).optional()
 })
 
 export async function POST(request: NextRequest) {
@@ -62,7 +67,7 @@ export async function POST(request: NextRequest) {
 
     const { data } = validation
 
-    const { deviceId, command, appPackage } = data
+    const { deviceId, command, appPackage, timeoutMs } = data
     let ipAddress = data.ipAddress
     let port = data.port
 
@@ -150,8 +155,8 @@ export async function POST(request: NextRequest) {
       
     } else {
       // Generic shell command
-      logger.info(`[FIRE CUBE] Executing shell command: ${command}`)
-      result = await adbClient.executeShellCommand(command)
+      logger.info(`[FIRE CUBE] Executing shell command: ${command}${timeoutMs ? ` (timeout=${timeoutMs}ms)` : ''}`)
+      result = await adbClient.executeShellCommand(command, timeoutMs)
       commandType = 'Shell Command'
     }
     
