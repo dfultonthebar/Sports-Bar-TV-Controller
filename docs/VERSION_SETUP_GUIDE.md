@@ -187,6 +187,23 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.76 — fleet outstanding-work list refresh + post-campaign captures
+**Released:** 2026-05-08
+
+Pure-docs update: refreshed `docs/FLEET_STATUS.md` Outstanding work section after the OS-upgrade campaign closed and dist-upgrade-and-kernel-reboot pass put all 6 fleet boxes on identical `noble + 6.8.0-111-generic + v2.32.75`. Renumbered to consecutive (1-8 vs the old 1, 4, 5, 6 with gaps) and added 4 new items captured from today's work:
+
+- **#2 Per-event Fire TV deep links** — promoted to next-session priority after operator flagged that the Watch button on Prime Video opens the app but not the game. Includes investigation paths (ESPN scoreboard API, dumpsys URL harvest, walker per-tile URL extraction).
+- **#3 More streaming-app walker rules** — extends the catalog walker beyond Prime Video to cover Netflix / ESPN+ / Hulu / Disney+ / Max / Peacock / YouTube TV. Pairs with #2.
+- **#4 `auto-update.sh` heartbeat refresh on no-op runs** — the script exits at "no update available" before the heartbeat-write block, so kernel changes done outside auto-update (apt dist-upgrade + reboot) leave the dashboard showing stale OS info. Small low-risk fix to write at least the OS delta on no-op runs.
+- **#5 Fleet dashboard manual-refresh button** — `/api/fleet/status?refresh=1` works but isn't exposed in the UI; operators can stare at stale data for the 5-min cache TTL after a fleet-wide change.
+- **#6 Why Holmgren's kernel drifted to 6.8.0-100** — investigation item; suggests `unattended-upgrades` either isn't running or isn't pulling `linux-generic` metapackage at Holmgren. Worth a check so it doesn't drift again.
+
+**Required Manual Step:** None — pure docs entry. The next auto-update merge into each location branch carries the doc updates with no behavioral change.
+
+**Verification:** `docs/FLEET_STATUS.md` Outstanding work section now reads 1-8 in order, with #2 explicitly marked as the next-session priority.
+
+---
+
 ### v2.32.75 — greenville jammy → noble upgrade complete (full fleet on noble + iGPU)
 **Released:** 2026-05-08
 

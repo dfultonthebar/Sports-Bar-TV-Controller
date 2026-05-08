@@ -78,13 +78,21 @@ Audio processor and matrix details live in each location's `.claude/locations/<b
 
 ## Outstanding work
 
-1. ~~OS upgrade for greenville~~ — **Done 2026-05-08**. Full fleet now on noble + iGPU. Status tracker at the bottom of `docs/OS_UPGRADE_RUNBOOK.md` has all three completed rows.
+1. ~~OS upgrade for the 3 jammy locations~~ — **Done 2026-05-07/08**. Full fleet now on noble + iGPU + kernel 6.8.0-111. Status tracker at the bottom of `docs/OS_UPGRADE_RUNBOOK.md` has all three completed rows.
 
-4. **Per-event Fire TV deep links** — v2.32.58 wired the `deepLink` field through to the Watch button, but the walker (v2.32.63) only captures titles + times, not per-event URLs. ESPN's eventId isn't in uiautomator dumps; would need an integration with ESPN's public scoreboard API to construct deep links from titles. Deferred — separate work item.
+2. **Per-event Fire TV deep links** *(next priority — operator-flagged 2026-05-07)* — v2.32.58 wired the `deepLink` field through to the Watch button, but the walker (v2.32.63) only captures titles + times, not per-event URLs. Result: hitting "Watch" on an Amazon Prime Video game opens the app but not the specific game. Investigation paths to consider: (a) ESPN's public scoreboard API to construct deep links from `homeTeam + awayTeam + start_time`; (b) capture the focused-tile URL via `dumpsys activity` while the walker is on a game card (Prime Video may already expose an `aiv-com://com.amazon.avod/?titleId=…` scheme); (c) extend the per-app rules + extractor pattern in `packages/scheduler/src/firetv-catalog-walker.ts` to grab a per-tile URL field. Pairs with #3.
 
-5. **qwen2.5:14b on iGPU** — IPEX-LLM Ollama 0.16.2's SYCL backend doesn't accelerate the qwen2 family. Holmgren tested empirically; falls back to CPU. Bigger reasoning models on iGPU need either a newer IPEX-LLM build or a different family with SYCL coverage (`phi4:14b`, `gemma2:27b`). Speculative — try only when there's spare time to test.
+3. **More streaming-app walker rules** — Walker (`packages/scheduler/src/firetv-catalog-walker.ts`) only has Prime Video extractor rules today. Netflix, ESPN+, Hulu, Disney+, Max, Peacock, YouTube TV all need their own per-app rules to surface live games on the channel guide. Each app has its own UIautomator layout — same scaffolding, app-specific selectors. Order of operations: pair with #2 above (once a per-tile URL field is harvested for Prime Video, the same path multiplies across apps).
 
-6. **Holmgren Fire TV swap** — Cubes at 10.11.3.48 + .49 are throwing ADB errors and are on the operator's hardware-replacement list. Don't debug as code; ignore those errors in PM2 logs (per `project_holmgren_firecube_replacement.md` memory).
+4. **`scripts/auto-update.sh` should refresh heartbeat on no-op runs** — Today's apt dist-upgrade + reboot left the dashboard showing stale OS info (kernel field) until I manually wrote a `/tmp/refresh-heartbeat.sh` helper to push fresh `os.kernel` per box (post-reboot 2026-05-08). The auto-update script currently exits at "no update available" before the heartbeat-write block (~line 596 vs heartbeat write ~line 1255). Fix: move the OS-block heartbeat refresh (just `os.codename / os.version / os.kernel`) BEFORE the no-op exit, or unconditionally write a minimal `os`-only delta if the rest of the heartbeat would be unchanged. Small, low-risk patch.
+
+5. **Fleet dashboard manual-refresh button** — `/api/fleet/status` has a 5-min in-memory cache; `?refresh=1` busts it but the UI doesn't expose this, so an operator looking at `/fleet` can stare at stale data for up to 5 minutes after a fleet-wide change. Add a "Refresh" button that calls `/api/fleet/status?refresh=1` and re-renders. Trivial frontend change.
+
+6. **Why was Holmgren's kernel on 6.8.0-100 while peers self-updated?** — Pre-fix today, holmgren-way was running `6.8.0-100-generic` while leglamp + lucky-s were on `-110` and the freshly-upgraded jammy boxes on `-111`. Suggests `unattended-upgrades` either isn't running or isn't pulling the kernel metapackage on Holmgren. Worth a check before we drift again — `systemctl status unattended-upgrades`, `/var/log/unattended-upgrades/`, and `dpkg --get-selections | grep linux-generic` to see which kernel meta is installed. If the metapackage is `linux-image-6.8.0-100` literal vs `linux-generic`, Apt won't pull newer kernels via security updates.
+
+7. **qwen2.5:14b on iGPU** — IPEX-LLM Ollama 0.16.2's SYCL backend doesn't accelerate the qwen2 family. Holmgren tested empirically; falls back to CPU. Bigger reasoning models on iGPU need either a newer IPEX-LLM build or a different family with SYCL coverage (`phi4:14b`, `gemma2:27b`). Speculative — try only when there's spare time to test.
+
+8. **Holmgren Fire TV swap** — Cubes at 10.11.3.48 + .49 are throwing ADB errors and are on the operator's hardware-replacement list. Don't debug as code; ignore those errors in PM2 logs (per `project_holmgren_firecube_replacement.md` memory).
 
 ---
 
