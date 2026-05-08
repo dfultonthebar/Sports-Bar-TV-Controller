@@ -54,9 +54,16 @@ export const STREAMING_APPS_DATABASE: StreamingApp[] = [
     packageName: 'com.playon.nfhslive',  // Updated for Fire TV
     category: 'sports',
     hasPublicApi: false,
-    deepLinkSupport: true,
-    deepLinkFormat: 'nfhs://event/{eventId}',
-    description: 'High school sports streaming',
+    // v2.32.85 — NFHS does NOT register external deep-link schemes (verified
+    // live on Cube 3: `pm dump com.playon.nfhslive | grep Scheme` returns
+    // empty). The previous `nfhs://event/{eventId}` was speculative and
+    // silently fails at runtime. Watch button on NFHS programs falls
+    // through to plain launchApp (LEANBACK_LAUNCHER), which opens the app
+    // home. NFHS also requires sign-in: at Holmgren the Cube 3 launches
+    // into SubscribeActivity until an operator logs in once via the TV
+    // remote — that's one-time per-Cube setup, not a code-fixable bug.
+    deepLinkSupport: false,
+    description: 'High school sports streaming. Requires operator sign-in.',
     sports: ['football', 'basketball', 'volleyball', 'soccer', 'baseball', 'softball', 'wrestling', 'track', 'swimming'],
     requiresSubscription: true,
     notes: 'No public API available. Fire TV package: com.playon.nfhslive'
@@ -72,7 +79,19 @@ export const STREAMING_APPS_DATABASE: StreamingApp[] = [
     hasPublicApi: true,
     apiDocUrl: 'https://www.espn.com/apis/devcenter/docs/',
     deepLinkSupport: true,
-    deepLinkFormat: 'espn://x-callback-url/showEvent?eventId={eventId}',
+    // v2.32.85 — verified live on Cube 3 (com.espn.gtv): the only registered
+    // deep-link scheme is `sportscenter://x-callback-url/*` (NOT `espn://` —
+    // `pm dump com.espn.gtv | grep Scheme` returns only "sportscenter").
+    // Firing the old `espn://` URL produced "Activity not started, unable
+    // to resolve Intent". Path patterns aren't restricted (no Path: clause
+    // in the intent filter), so any path under the authority is accepted —
+    // `showHomeTab` reliably loads the live-sports landing screen, from
+    // which the autoplay sequence in launchEspnToLiveContent (DPAD_DOWN +
+    // DPAD_CENTER) opens the first/most-prominent live tile in
+    // PlayerActivity. eventId-targeted deep links (`showEvent?eventId=...`)
+    // are also honored when an ID is supplied — see TODO in walker re
+    // capturing real ESPN event IDs.
+    deepLinkFormat: 'sportscenter://x-callback-url/showHomeTab',
     description: 'ESPN streaming with live sports, ESPN+, and original content',
     sports: ['football', 'basketball', 'baseball', 'hockey', 'soccer', 'ufc', 'boxing', 'tennis', 'cricket'],
     requiresSubscription: true,

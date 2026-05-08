@@ -20,6 +20,12 @@ const bartenderScheduleSchema = z.object({
   // Channel info
   channelNumber: z.string(),
   channelName: z.string().optional(),
+  // v2.32.85 — per-event deep link captured by the channel-guide catalog
+  // injection (game.channel.deepLink in the bartender remote). When the
+  // device is a Fire TV, the scheduler-service forwards this to the tune
+  // executor at game-time so the Cube opens directly into the specific
+  // game's playback instead of the app's home screen.
+  deepLink: z.string().max(500).optional(),
 
   // Game info (to find or create game schedule)
   gameInfo: z.object({
@@ -53,7 +59,7 @@ export async function POST(request: NextRequest) {
   const bodyValidation = await validateRequestBody(request, bartenderScheduleSchema)
   if (isValidationError(bodyValidation)) return bodyValidation.error
 
-  const { deviceId, deviceType, deviceName, channelNumber, channelName, gameInfo, tuneAt, inputSourceId, tvOutputIds } = bodyValidation.data
+  const { deviceId, deviceType, deviceName, channelNumber, channelName, gameInfo, tuneAt, inputSourceId, tvOutputIds, deepLink } = bodyValidation.data
 
   try {
     // 1. Find or get an input source
@@ -277,6 +283,10 @@ export async function POST(request: NextRequest) {
       expectedFreeAt: endTimeUnix,
       status: 'pending',
       scheduledBy: 'bartender',
+      // v2.32.85 — store per-event deep link so scheduler-service can pass
+      // it to the tune executor at game-time. Only meaningful for firetv;
+      // null for cable/directv.
+      deepLink: deepLink ?? null,
     }
 
     await db.insert(schema.inputSourceAllocations).values(allocation)

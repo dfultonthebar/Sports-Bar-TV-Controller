@@ -440,7 +440,18 @@ function extractEspnTiles(xmlDump: string): CatalogTile[] {
     // the third bullet segment). The full raw line is searched so the
     // regex picks up the time wherever ESPN puts it.
     const startTime = parseTileTime(t)
-    tiles.push({ contentTitle: title, isLive, sportTag, startTime })
+    tiles.push({
+      contentTitle: title,
+      isLive,
+      sportTag,
+      startTime,
+      // v2.32.85 — generic ESPN home-tab deeplink (the autoplay sequence
+      // in adb-client.launchEspnToLiveContent then walks DPAD_DOWN +
+      // DPAD_CENTER to land on PlayerActivity). This isn't event-specific
+      // — see TODO comment in launchEspnToLiveContent re ESPN scoreboard
+      // API resolution for true per-event linking.
+      deepLink: 'sportscenter://x-callback-url/showHomeTab',
+    })
   }
   return tiles
 }
