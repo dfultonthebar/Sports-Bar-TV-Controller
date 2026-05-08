@@ -187,6 +187,33 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.92 — Bug hunt batch: ESPN+ allocator/conflict matching, Paramount+ sendKey timeout, plus 3 quieter ones
+**Released:** 2026-05-08
+
+**No setup required.** Code-only fixes. Multi-agent bug hunt found 7 latent bugs in the same root-cause classes as today's earlier ships (string-match misalignment, hardcoded ADB timeouts, swallowed errors).
+
+**Tier-1 fixes (would silently bite real operator scenarios):**
+
+1. **`smart-input-allocator.ts:findCapableInputs`** — pre-fix `availableNetworks.includes(targetNetwork)` raw-matched ESPN broadcast names against catalog names. Result: any game with `primaryNetwork = "ESPN+"` / `"ESPN2"` / `"ESPNU"` / `"NBC"` / `"CBS"` / `"FS1"` / `"FOX"` silently excluded every Fire TV input from allocation candidates despite Fire TVs being able to play those networks via the ESPN/Peacock/Paramount+/Fox apps. Same pattern as v2.32.91 walker bug. **Fix:** new `packages/scheduler/src/network-map.ts` with `availableNetworksMatch(availableNetworks, network)` that normalizes broadcast → catalog name before compare. Allocator now imports it.
+
+2. **`conflict-detector.ts:countCapableInputs`** — same root cause as #1, same fix path (imports `availableNetworksMatch`). Pre-fix undercounted Fire TV capability for ESPN+ games and produced spurious conflict warnings.
+
+3. **`subscription-polling.ts`** — `adb connect` and `pm list packages` had no timeout. An unresponsive Cube would hang the request handler 60-120s (Linux TCP retransmit window). **Fix:** explicit `{ timeout: 8000 }` and `{ timeout: 15000 }`.
+
+4. **`adb-client.ts:launchParamountLiveTV`** — DPAD_CENTER used 3s default timeout (same bug class as v2.32.91's Prime Video / ESPN sequences). **Fix:** pass `8000` like the others.
+
+**Tier-2 fixes (perf + observability):**
+
+5. **`firetv-app-sync.ts:hasPrimeAlready`** — string compared to `'Prime Video'` but `getDisplayNameForPackage` returns the catalog `name` value `'Amazon Prime Video'`. Check NEVER matched, wasting one ADB probe per Fire TV per sync (~50ms). **Fix:** compare to `'Amazon Prime Video'`.
+
+6. **`adb-client.ts:getDeviceProperty`** — added optional `timeoutMs` (default 3000ms preserved). Lets `testConnection` cold-wake probes pass `8000` if needed.
+
+7. **`scheduler-service.ts` tick loop** — bare `catch {}` on `tvOutputIds` JSON.parse silently dropped malformed allocation rows. **Fix:** `logger.warn` with the bad value so corrupted rows surface in operator logs (and System Admin → Logs).
+
+**Affected:** 6 files. `packages/scheduler/src/network-map.ts` (new), `smart-input-allocator.ts`, `conflict-detector.ts`, `firetv-app-sync.ts`, `scheduler-service.ts`, `packages/firecube/src/subscription-polling.ts`, `packages/firecube/src/adb-client.ts`.
+
+---
+
 ### v2.32.91 — Walker actually walks Prime Video now (alias-resolution fix); sendKey timeout pass-through
 **Released:** 2026-05-08
 

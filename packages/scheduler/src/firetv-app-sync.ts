@@ -199,7 +199,15 @@ export async function runFiretvAppSyncSweep(): Promise<FiretvAppSyncStats> {
         // Only probe if Prime Video isn't already in scout's list — the
         // direct ADB call costs ~50ms so we avoid it when not needed.
         // v2.32.9 — uses shared catalog lookup instead of inline map.
-        const hasPrimeAlready = scoutPackages.some((p) => getDisplayNameForPackage(p) === 'Prime Video')
+        // v2.32.92 — Compare to 'Amazon Prime Video' (the catalog `name`)
+        // instead of 'Prime Video'. Pre-fix this check NEVER matched
+        // because getDisplayNameForPackage returns the catalog `name`
+        // value, which for amazon-prime is 'Amazon Prime Video' (with
+        // 'Prime Video' as a displayNameAlias). Result: a wasted ADB
+        // probe every sync cycle on every Fire TV device. Functional
+        // correctness preserved by the downstream `!includes` guard but
+        // the performance cost was ~50ms × N-cubes × N-syncs.
+        const hasPrimeAlready = scoutPackages.some((p) => getDisplayNameForPackage(p) === 'Amazon Prime Video')
         if (!hasPrimeAlready) {
           const firebatPresent = await probeFirebatPresent(input.deviceId)
           if (firebatPresent === true && !scoutPackages.includes('com.amazon.firebat')) {
