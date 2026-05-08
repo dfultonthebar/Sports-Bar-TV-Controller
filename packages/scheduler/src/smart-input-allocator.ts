@@ -7,6 +7,7 @@
 import { db, schema, eq, and, gte, lte, isNull } from '@sports-bar/database'
 import { logger } from '@sports-bar/logger'
 import { checkAllocationConflict } from './allocation-conflicts'
+import { availableNetworksMatch } from './network-map'
 
 export interface InputSource {
   id: string;
@@ -179,19 +180,15 @@ class SmartInputAllocator {
     return inputSources.filter(i => {
       if (!i.isActive) return false;
 
-      // v2.28.7 — Trust availableNetworks (display-name list) for the match.
-      // The previous Fire-TV-specific override was broken in two ways:
-      //   1. Hardcoded whitelist [ESPN, Peacock, Paramount+, Apple TV] omitted
-      //      Prime Video, Hulu, Netflix, Max, YouTube TV, MLB.TV, NBA League
-      //      Pass, ESPN+ — every Prime Video TNF / MNF allocation silently
-      //      filtered out every Fire TV.
-      //   2. installedApps contains Android package names (com.amazon.avod,
-      //      com.peacocktv.peacock, etc.), so installedApps.includes('ESPN')
-      //      always returned false even for the four whitelisted apps.
-      // ai-suggest, bartender-remote, and conflict-detector all use
-      // availableNetworks directly — the override here was the only divergent
-      // gate, and it was always-false-for-firetv-streaming. Drop it.
-      return i.availableNetworks.includes(targetNetwork);
+      // v2.32.92 — Use shared broadcast-network normalizer. Pre-fix this
+      // line was a raw `i.availableNetworks.includes(targetNetwork)`,
+      // which silently failed to match "ESPN+" / "ESPN2" / "ESPNU" /
+      // "NBC" / "CBS" / "FS1" / etc. against the catalog `name` values
+      // stored in available_networks ("ESPN", "Peacock", "Paramount+",
+      // "Fox Sports"). Every ESPN+ game silently excluded every Fire TV
+      // from allocation despite ESPN+ being playable through the ESPN
+      // app. Same root-cause class as v2.32.91's walker alias bug.
+      return availableNetworksMatch(i.availableNetworks, targetNetwork);
     });
   }
 

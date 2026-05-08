@@ -810,7 +810,19 @@ class SchedulerService {
         try {
           const ids: number[] = JSON.parse(a.tvOutputIds);
           ids.forEach((o) => tickClaimedOutputs.add(o));
-        } catch {}
+        } catch (parseErr: any) {
+          // v2.32.92 — Surface parse failures instead of silently dropping.
+          // Pre-fix bare `catch {}` masked malformed tvOutputIds rows: a
+          // partially-written JSON value (e.g. from a crashed write) would
+          // silently exclude that allocation's outputs from
+          // tickClaimedOutputs, allowing a separate tune to claim the same
+          // physical TV in the same tick — two sources routed to one TV
+          // with no operator-visible signal. Logging here makes the bad
+          // row visible in PM2 / System Admin logs.
+          logger.warn(
+            `[SCHEDULER] Skipping allocation ${a.id} — malformed tvOutputIds: ${a.tvOutputIds} (${parseErr.message})`,
+          );
+        }
       }
 
       // v2.31.8 — One ESPN live-status fetch per tick instead of per
