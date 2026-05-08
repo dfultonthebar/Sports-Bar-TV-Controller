@@ -23,6 +23,9 @@ interface FleetLocation {
     verifyInstallStatus: string | null
     verifyInstallPassed: number | null
     verifyInstallTotal: number | null
+    osCodename: string | null
+    osVersion: string | null
+    osKernel: string | null
   } | null
 }
 
@@ -272,7 +275,23 @@ export default function FleetDashboardPage() {
                             </span>
                           </span>
                         )}
+                        {loc.heartbeat.osCodename && (
+                          <span>
+                            · OS:
+                            <span className={`ml-1 font-medium ${loc.heartbeat.osCodename === 'noble' ? 'text-emerald-300' : loc.heartbeat.osCodename === 'jammy' ? 'text-amber-300' : 'text-slate-300'}`}>
+                              {loc.heartbeat.osCodename}{loc.heartbeat.osVersion ? ` ${loc.heartbeat.osVersion}` : ''}
+                            </span>
+                            {loc.heartbeat.osKernel && (
+                              <span className="text-slate-500 ml-1">({loc.heartbeat.osKernel})</span>
+                            )}
+                          </span>
+                        )}
                       </p>
+                      {loc.heartbeat.osCodename === 'jammy' && (
+                        <p className="text-[11px] text-amber-200/80 mt-1.5">
+                          ⚠ Still on Ubuntu 22.04 (jammy). See <code className="text-amber-100">docs/OS_UPGRADE_RUNBOOK.md</code> for the upgrade plan.
+                        </p>
+                      )}
                     </div>
                   )}
                 </div>

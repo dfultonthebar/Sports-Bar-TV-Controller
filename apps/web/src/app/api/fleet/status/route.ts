@@ -53,6 +53,13 @@ interface FleetLocation {
     verifyInstallStatus: string | null
     verifyInstallPassed: number | null
     verifyInstallTotal: number | null
+    // v2.32.72 — OS info added to heartbeat schema v3 so the fleet
+    // dashboard can show jammy vs noble at a glance during the
+    // OS upgrade campaign. Null on locations whose most recent
+    // heartbeat predates schema v3.
+    osCodename: string | null
+    osVersion: string | null
+    osKernel: string | null
   } | null
 }
 
@@ -206,12 +213,16 @@ async function buildLocationEntry(branch: string, mainVersion: string | null): P
     try {
       const hb = JSON.parse(heartbeatRaw)
       const vi = hb.verifyInstall ?? {}
+      const os = hb.os ?? {}
       heartbeat = {
         successAtUnix: typeof hb.successAtUnix === 'number' ? hb.successAtUnix : 0,
         runId: typeof hb.runId === 'string' ? hb.runId : '',
         verifyInstallStatus: typeof vi.status === 'string' ? vi.status : null,
         verifyInstallPassed: typeof vi.passed === 'number' ? vi.passed : null,
         verifyInstallTotal: typeof vi.total === 'number' ? vi.total : null,
+        osCodename: typeof os.codename === 'string' && os.codename !== 'unknown' ? os.codename : null,
+        osVersion: typeof os.version === 'string' && os.version !== 'unknown' ? os.version : null,
+        osKernel: typeof os.kernel === 'string' && os.kernel !== 'unknown' ? os.kernel : null,
       }
     } catch { /* ignore malformed */ }
   }
