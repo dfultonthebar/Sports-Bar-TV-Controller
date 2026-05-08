@@ -542,10 +542,56 @@ export class ADBClient {
         logger.info(`[ADB CLIENT] DPAD_DOWN → focus first search result`)
         await this.sendKey(20, 8000) // KEYCODE_DPAD_DOWN
         await new Promise((r) => setTimeout(r, 400))
-        logger.info(`[ADB CLIENT] DPAD_CENTER → play (PlayerActivity)`)
-        await this.sendKey(23, 8000) // KEYCODE_DPAD_CENTER
-        logger.info(`[ADB CLIENT] ESPN search-by-title autoplay dispatched`)
-        return `ESPN search-by-title autoplay dispatched for "${trimmedTitle}"`
+
+        // v2.32.96 — VERIFICATION GATE before pressing CENTER.
+        //
+        // Operator-flagged 2026-05-08: clicking Watch on a specific game
+        // sometimes plays the wrong content (e.g. "Texans" → golf quad
+        // view) because the autoplay's DPAD navigation is fragile —
+        // sometimes lands on Search results, sometimes on ESPN's
+        // Featured tab depending on UI state at launch. Without a
+        // verification step, every run plays whatever tile happens to
+        // be focused after DPAD_DOWN, with no signal to the bartender
+        // about what was actually launched.
+        //
+        // Mechanism: uiautomator dump of the focused tile, parse its
+        // accessibility content, fuzzy-match against the bartender's
+        // intended title. The focused container itself usually has
+        // empty content-desc, but a sibling node at the same bounds
+        // carries the full content-desc (e.g.
+        // "ESPN+ • NCAA Baseball Live Southern Miss 2 James Madison 1
+        // Top 4th"). Match if ANY non-trivial token from the intended
+        // title appears in the focused tile's accessibility content
+        // (case-insensitive, after stripping noise like "@", "vs.",
+        // "the", numeric ranks like "(22)").
+        //
+        // On match: fire CENTER, log "verified".
+        // On mismatch: log the actual focused content + DON'T fire
+        // CENTER (avoids playing the wrong game). Operator manually
+        // navigates from there if needed; better than the old behavior
+        // of silently playing whatever was featured.
+        const verificationResult = await this._verifyFocusedTileMatchesTitle(trimmedTitle)
+        if (verificationResult.matched) {
+          logger.info(
+            `[ADB CLIENT] ESPN focused-tile verified — matched "${trimmedTitle}" against tile "${verificationResult.actualText}"`,
+          )
+          logger.info(`[ADB CLIENT] DPAD_CENTER → play (PlayerActivity)`)
+          await this.sendKey(23, 8000) // KEYCODE_DPAD_CENTER
+          logger.info(`[ADB CLIENT] ESPN search-by-title autoplay dispatched`)
+          return `ESPN search-by-title autoplay dispatched for "${trimmedTitle}" (verified: ${verificationResult.actualText})`
+        }
+        // v2.32.96 — Throw on verification failure so the API surfaces the
+        // mismatch as an error (success:false) instead of silently
+        // succeeding while ESPN sits on the wrong screen. Bartender remote
+        // will display the error message; operator sees "couldn't find this
+        // game" rather than "Successfully launched app espn-plus" while the
+        // TV plays the Florida-Alabama softball game they didn't ask for.
+        logger.warn(
+          `[ADB CLIENT] ESPN focused-tile verification FAILED — wanted "${trimmedTitle}" but focused tile is "${verificationResult.actualText || '<empty>'}". NOT pressing CENTER.`,
+        )
+        throw new Error(
+          `ESPN couldn't find "${trimmedTitle}" — focused tile would have played "${verificationResult.actualText || '<empty>'}". App is open at home screen for manual navigation.`,
+        )
       }
 
       // v2.32.91 — same 8s sendKey timeout as Prime Video (see comment in
@@ -565,6 +611,102 @@ export class ADBClient {
     } catch (error) {
       logger.error(`[ADB CLIENT] ESPN autoplay error:`, error)
       throw error
+    }
+  }
+
+  /**
+   * v2.32.96 — Verify the currently-focused ESPN tile matches the
+   * bartender's intended title before pressing CENTER.
+   *
+   * The focused container itself usually has empty content-desc, so we
+   * scan all nodes whose bounds are CONTAINED IN the focused node's
+   * bounds and concatenate any non-empty text/content-desc values.
+   * This captures the sibling/child node that actually carries the
+   * accessibility text (typical pattern: ESPN's RecyclerView tile is a
+   * focusable container with a textless wrapper, and a sibling
+   * `View.AccessibilityWrapper` at the same bounds carries the full
+   * description like "ESPN+ • NCAA Baseball Live Southern Miss 2
+   * James Madison 1 Top 4th").
+   *
+   * Match policy: token-overlap. Strip noise from the intended title
+   * (rankings like "(22)", separators like "@" / "vs."), tokenize on
+   * whitespace, lowercase, drop short stopwords. Match if at least
+   * ONE meaningful token is present in the actual focused content.
+   * Conservative-by-design: false positives on common team names
+   * (e.g. just "Texans") are possible but the alternative — strict
+   * substring on the full title — produces too many false negatives
+   * because ESPN abbreviates differently in tile labels.
+   */
+  private async _verifyFocusedTileMatchesTitle(
+    intendedTitle: string,
+  ): Promise<{ matched: boolean; actualText: string }> {
+    try {
+      // Dump the current UI state. Use a fresh path each time so a stale
+      // dump from a previous walker run doesn't get re-read.
+      const dumpPath = `/sdcard/espn_verify_${Date.now()}.xml`
+      await this.executeShellCommand(`uiautomator dump ${dumpPath}`, 8000)
+      const xml = await this.executeShellCommand(`cat ${dumpPath}`, 8000)
+      // Best-effort cleanup; not critical if it fails.
+      this.executeShellCommand(`rm -f ${dumpPath}`, 3000).catch(() => {})
+
+      if (!xml || xml.length < 200) {
+        logger.warn(`[ADB CLIENT] verifyFocusedTile: empty dump (size=${xml?.length ?? 0})`)
+        return { matched: false, actualText: '' }
+      }
+
+      // Find the focused="true" node's bounds.
+      const focusedMatch = xml.match(
+        /<node[^>]*focused="true"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/,
+      )
+      if (!focusedMatch) {
+        logger.warn(`[ADB CLIENT] verifyFocusedTile: no focused="true" node in dump`)
+        return { matched: false, actualText: '' }
+      }
+      const [fx1, fy1, fx2, fy2] = focusedMatch.slice(1, 5).map(Number)
+
+      // Walk all <node> entries; collect text/content-desc from nodes whose
+      // bounds are contained within the focused node's bounds.
+      const accumulated: string[] = []
+      const nodeRe = /<node[^>]*?bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"[^>]*?\/>|<node[^>]*?bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"[^>]*?>/g
+      // Simpler: extract every <node ...> tag and check each
+      const nodeTags = xml.match(/<node[^>]*\/?>/g) || []
+      for (const tag of nodeTags) {
+        const bm = tag.match(/bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/)
+        if (!bm) continue
+        const [x1, y1, x2, y2] = bm.slice(1, 5).map(Number)
+        // Contained in focused tile (inclusive — same-bounds sibling counts)
+        if (x1 < fx1 || y1 < fy1 || x2 > fx2 || y2 > fy2) continue
+        const tm = tag.match(/ text="([^"]+)"/)
+        const cdm = tag.match(/ content-desc="([^"]+)"/)
+        if (tm) accumulated.push(tm[1])
+        if (cdm) accumulated.push(cdm[1])
+      }
+      const actualText = accumulated.join(' | ').trim()
+
+      if (!actualText) {
+        return { matched: false, actualText: '' }
+      }
+
+      // Token-overlap match. Strip rankings + punctuation, lowercase, drop
+      // short stopwords, then check if any token from intended is in actual.
+      const stripNoise = (s: string) =>
+        s
+          .toLowerCase()
+          .replace(/\(\d+\)/g, ' ')
+          .replace(/[^a-z0-9\s]/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim()
+      const stop = new Set(['the', 'at', 'vs', 'a', 'an', 'of', 'and', 'on', 'in', '&', 'live', 'ncaa', 'espn', 'plus'])
+      const intendedTokens = stripNoise(intendedTitle)
+        .split(' ')
+        .filter((t) => t.length >= 3 && !stop.has(t))
+      const actualLower = stripNoise(actualText)
+      const matched = intendedTokens.some((t) => actualLower.includes(t))
+
+      return { matched, actualText }
+    } catch (err: any) {
+      logger.warn(`[ADB CLIENT] verifyFocusedTile error: ${err.message}`)
+      return { matched: false, actualText: '' }
     }
   }
 
