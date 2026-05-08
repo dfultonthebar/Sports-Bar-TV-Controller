@@ -187,6 +187,32 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.80 — Pass 2 (ops tooling): heartbeat refresh on no-op + verify-install lint
+**Released:** 2026-05-08
+
+Pass 2 of the simplify-skill code-cleanup campaign — focused on the operationally-critical scripts (`scripts/auto-update.sh`, `scripts/setup-iris-ollama.sh`, `scripts/verify-install.sh`). These run nightly at all 6 venues, so the bar for changes here is higher than for app code. Static analysis with `shellcheck` (filtered SC2317/SC2094 false-positives from trap handlers) found minimal real issues — the scripts are well-written. Real changes:
+
+**Improvement 1 — Heartbeat refreshes os.* on no-op auto-update runs** (`scripts/auto-update.sh`)
+
+Closes Outstanding work item #4. Pre-fix: when `auto-update.sh` exited at "no update available" (origin/main already merged into the location branch) it skipped the heartbeat-write block entirely. Operator-driven changes that happen OUTSIDE auto-update — the most common is a kernel reboot from `apt dist-upgrade` — left the Fleet Dashboard showing stale `os.kernel` until the next real merge. Today's fleet-wide kernel sync (graystone/appleton/greenville on 6.8.0-111, holmgren/leglamp/lucky-s rebooted from 6.8.0-100/-110 to -111) hit this exact case; I had to write `/tmp/refresh-heartbeat.sh` ad-hoc to push fresh `os.kernel` per box. Fix: new `refresh_heartbeat_os_only()` helper. Conservative scope — only patches the `os` block; leaves `verifyInstall`/`configChecksums`/`dbRowCounts` intact since those reflect the last full verify run and weren't re-checked. Idempotent: a python helper compares current vs stored os fields and exits 1 if no change, so commit+push only fire when something actually changed.
+
+**Improvement 2 — verify-install.sh lint cleanup** (`scripts/verify-install.sh`)
+
+Three real `shellcheck` findings, all small:
+- `CRASH_LOG_WINDOW_SECS=60` was declared `readonly` but never read in code (only mentioned in a comment). Removed; updated the comment to match what the code actually does (no time-window check).
+- `pm_uptime` was destructured from `pm2 jlist` JSON output but never used. Removed from both the node JSON producer and the bash `read -r` consumer.
+- `for attempt in $(seq 1 $HTTP_RETRIES)` (3 sites) → `seq 1 "$HTTP_RETRIES"`. Cosmetic — `$HTTP_RETRIES` is an integer constant — but quieting the lint keeps the next round of `shellcheck` clean.
+
+`scripts/setup-iris-ollama.sh` had zero shellcheck findings. `scripts/auto-update.sh` had zero real findings (the 39 SC2317 hits were trap-handler false-positives).
+
+**Held items:** None at this scope. Pass 3 (broad packages/* audit) follows separately.
+
+**Required Manual Step:** None — all changes are pure refactors / lint fixes. Auto-update merge picks them up at every location.
+
+**Verification:** `bash -n` clean on both modified scripts. Python heartbeat-patch logic dry-run against greenville's live heartbeat: same OS values → exit 1 (no commit), simulated older kernel → exit 0 (would update). `npm run build` clean (no app code changed).
+
+---
+
 ### v2.32.79 — Pass 1 Tier 3: extract two duplicated helpers in channel-guide
 **Released:** 2026-05-08
 

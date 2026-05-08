@@ -285,6 +285,55 @@ JSON
 }
 
 # ---------------------------------------------------------------------------
+# v2.32.80 — Refresh just the os.* fields of an existing heartbeat. Called
+# on the "no update available" exit path so the Fleet Dashboard still gets
+# fresh OS info after operator-driven changes outside auto-update (e.g.
+# apt dist-upgrade + kernel reboot — see FLEET_STATUS Outstanding #4).
+#
+# Conservative on purpose: only patches the `os` block, leaves
+# verifyInstall / configChecksums / dbRowCounts intact (those reflect the
+# last full verify run and weren't re-checked here). Commits + pushes only
+# if the os fields actually changed (uses python's atomic write + git's
+# no-op-on-no-diff behavior).
+# ---------------------------------------------------------------------------
+refresh_heartbeat_os_only() {
+  local hb="$REPO_ROOT/.auto-update-last-success.json"
+  [ -f "$hb" ] || return 0  # no existing heartbeat → nothing to patch
+
+  local codename version kernel
+  codename=$(lsb_release -cs 2>/dev/null || echo "unknown")
+  version=$(lsb_release -rs 2>/dev/null || echo "unknown")
+  kernel=$(uname -r 2>/dev/null || echo "unknown")
+
+  # Use python for in-place JSON patching — pure shell sed/grep would
+  # break the rest of the heartbeat structure on edge cases.
+  if ! python3 - "$hb" "$codename" "$version" "$kernel" <<'PY' 2>/dev/null
+import json, sys
+path, codename, version, kernel = sys.argv[1:5]
+with open(path) as f:
+    d = json.load(f)
+new_os = {"codename": codename, "version": version, "kernel": kernel}
+if d.get("os") == new_os:
+    sys.exit(1)  # nothing to do — caller treats as no-op
+d["os"] = new_os
+with open(path, "w") as f:
+    json.dump(d, f, indent=2)
+    f.write("\n")
+PY
+  then
+    return 0  # python returned 1: no change needed
+  fi
+
+  git -C "$REPO_ROOT" add -f ".auto-update-last-success.json" 2>/dev/null || true
+  if ! git -C "$REPO_ROOT" diff --cached --quiet -- ".auto-update-last-success.json" 2>/dev/null; then
+    git -C "$REPO_ROOT" commit -q \
+      -m "chore(heartbeat): refresh os fields on no-op auto-update ($(date +%Y-%m-%d-%H-%M))" 2>/dev/null || true
+    git -C "$REPO_ROOT" push -q origin "$BRANCH" 2>/dev/null || true
+    log "Heartbeat os.* refreshed (kernel=$kernel)"
+  fi
+}
+
+# ---------------------------------------------------------------------------
 # Cleanup trap — runs on every exit, success or fail
 # ---------------------------------------------------------------------------
 cleanup_on_error() {
@@ -588,6 +637,10 @@ log "origin/main: $TARGET_SHA"
 if git merge-base --is-ancestor "$TARGET_SHA" HEAD 2>/dev/null; then
   log "origin/main is already merged into $BRANCH — no update available"
   POST_MERGE_SHA=$PRE_MERGE_SHA
+  # v2.32.80 — refresh os.* fields in the heartbeat even on no-op runs so
+  # the Fleet Dashboard reflects kernel/OS changes that happened outside
+  # auto-update (apt dist-upgrade + reboot). No-op if values unchanged.
+  refresh_heartbeat_os_only
   # Write a "no-op pass" history row so the Sync tab UI shows the run occurred
   history_insert_start
   history_update_result "pass" "no update available"
