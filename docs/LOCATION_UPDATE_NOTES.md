@@ -46,6 +46,22 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-08 — v2.32.97 — Text-targeted tap + MEDIA_STOP
+
+**Risk:** GO. Better-than-DPAD approach: scan all visible tiles for a content match, tap the matched tile by coordinates. Falls back to clear failure with diagnostic listing visible tiles when no match found.
+
+**What changed:**
+- ESPN autoplay no longer presses DPAD_DOWN + CENTER blindly. Dumps UI after search query is typed, scans every <node> with text/content-desc, groups by bounds (ESPN tiles are focusable parent + sibling at same bounds with description), token-matches against intended title, taps the highest-scoring match's bounds center.
+- Pre-tune cleanup: KEYCODE_MEDIA_STOP + force-stop at start.
+
+**What could break:** Same as v2.32.96 — when no tile matches, API returns success:false with diagnostic. Now the diagnostic is more useful (lists ALL visible tiles).
+
+**Manual steps required:** None.
+
+**Rollback:** `git revert` clean.
+
+---
+
 ### 2026-05-08 — v2.32.96 — ESPN focused-tile verification gate
 
 **Risk:** GO. Adds a pre-CENTER verification step that refuses to play the wrong game. Worst case for the operator: the API now returns success:false with a clear message instead of silently playing whatever tile was focused.
