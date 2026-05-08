@@ -496,6 +496,10 @@ export default function EnhancedChannelGuideBartenderRemote() {
           deviceName,
           channelNumber: game.channel.channelNumber || game.channel.number,
           channelName: game.channel.name,
+          // v2.32.85 — forward the per-event deep link captured by the
+          // catalog walker so the scheduler can autoplay this specific
+          // game on a Fire TV at tune-time, not just the app home.
+          ...(game.channel.deepLink ? { deepLink: game.channel.deepLink } : {}),
           gameInfo: {
             homeTeam: game.homeTeam,
             awayTeam: game.awayTeam,

@@ -46,6 +46,25 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-08 — v2.32.85 — ESPN autoplay + Schedule deep-link pipe
+
+**Risk:** GO with one ALTER TABLE step (see VERSION_SETUP_GUIDE.md). Same pattern as v2.32.84 (Prime Video) extended to ESPN + scheduled tunes. Verified live on Cube 3.
+
+**What changed:** (1) ESPN catalog scheme corrected `espn://` → `sportscenter://`; new launchEspnToLiveContent autoplay sequence verified to reach `com.espn.video.dmp.PlayerActivity`. (2) Schedule button now stores per-event deep link in `input_source_allocations.deep_link` column; scheduler-service forwards at game-time so streaming tunes autoplay the specific game.
+
+**What could break at a location:** Without the ALTER TABLE, schedule POST will fail with "no such column: deep_link" the moment a bartender hits Schedule. Watch button is unaffected.
+
+**Manual steps required:**
+```
+sqlite3 /home/ubuntu/sports-bar-data/production.db "ALTER TABLE input_source_allocations ADD COLUMN deep_link TEXT;"
+```
+
+**Affected:** 9 files (see VERSION_SETUP_GUIDE.md). Schema, adb-client, walker, streaming-service-manager, channel-presets/tune, bartender-schedule POST, scheduler-service, bartender remote, streaming-apps-database.
+
+**Rollback:** `git revert` clean. The new column is nullable and ignored by older code; safe to leave in place even if reverting.
+
+---
+
 ### 2026-05-08 — v2.32.84 — Prime Video Watch button plays the game
 
 **Risk:** GO with one ALTER TABLE step at install (see VERSION_SETUP_GUIDE.md). The fix is additive — non-Prime-Video paths unchanged. Verified live on Cube 3 reaching PlaybackActivity, MediaSession state=3 PLAYING.

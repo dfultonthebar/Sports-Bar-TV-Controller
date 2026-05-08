@@ -77,7 +77,7 @@ export async function POST(request: NextRequest) {
   try {
     const { data: body } = bodyValidation
     logger.info(`[TUNE API] Request body: ${JSON.stringify(body)}`)
-    let { channelNumber, deviceType, deviceIp, presetId, cableBoxId, directTVId, fireTVId, trackOnly } = body
+    let { channelNumber, deviceType, deviceIp, presetId, cableBoxId, directTVId, fireTVId, trackOnly, deepLink } = body
 
     // If presetId is provided but channelNumber/deviceType are missing, fetch the preset
     if (presetId && presetId !== 'manual' && (!channelNumber || !deviceType)) {
@@ -163,11 +163,19 @@ export async function POST(request: NextRequest) {
               result = { success: false, error: `Unknown streaming app: ${channelNumberStr}` }
             } else {
               const { streamingManager } = await import('@/services/streaming-service-manager')
+              // v2.32.85 — forward deepLink (provided by scheduler-service
+              // for bartender-scheduled tunes from v2.32.85+) so the
+              // streaming-service-manager routes Prime Video / ESPN through
+              // the autoplay sequence and lands on the specific game's
+              // PlayerActivity, not the app home screen.
+              const launchOptions: { deepLink?: string } = {}
+              const deepLinkStr = typeof deepLink === 'string' && deepLink.trim() ? deepLink : undefined
+              if (deepLinkStr) launchOptions.deepLink = deepLinkStr
               const ok = await streamingManager.launchApp(
                 fireTVIdStr,
                 ftRow.ipAddress,
                 app.id,
-                {},
+                launchOptions,
                 ftRow.port || 5555
               )
               result = ok
