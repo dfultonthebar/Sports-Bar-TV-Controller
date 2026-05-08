@@ -46,6 +46,27 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-08 — v2.32.92 — Bug hunt batch (ESPN+ allocator, Paramount+, subscription-polling timeouts)
+
+**Risk:** GO. Seven bug fixes from a multi-agent code audit, all in the same root-cause classes as today's earlier ships. Each is small and additive; together they close several latent silent-failure paths.
+
+**What changed:**
+- `packages/scheduler/src/network-map.ts` — NEW shared module with `availableNetworksMatch` for normalizing broadcast names to catalog names before checking `available_networks`.
+- `smart-input-allocator.ts` + `conflict-detector.ts` — both import the new helper. Pre-fix any ESPN+ / NBC / CBS / FOX / FS1 game silently excluded every Fire TV from allocation candidates.
+- `subscription-polling.ts` — explicit timeouts on `adb connect` (8s) and `pm list packages` (15s); pre-fix could hang 60-120s on unresponsive Cubes.
+- `adb-client.ts launchParamountLiveTV` — DPAD_CENTER now passes `timeoutMs=8000` (matching Prime Video / ESPN per v2.32.91).
+- `adb-client.ts getDeviceProperty` — accepts optional `timeoutMs` (default 3000 unchanged).
+- `firetv-app-sync.ts hasPrimeAlready` — string mismatch fix; was wasting an ADB probe per sync per device.
+- `scheduler-service.ts` — bare `catch {}` on tvOutputIds parse now `logger.warn`s the bad value.
+
+**What could break:** Nothing. All changes are bounded — defaults preserved for any caller that doesn't opt in to the new behavior. The allocator/conflict-detector matching becomes more permissive (correctly so), so the only behavior delta is more Fire TVs eligible for ESPN+ games, which is the intended fix.
+
+**Manual steps required:** None.
+
+**Rollback:** `git revert` clean.
+
+---
+
 ### 2026-05-08 — v2.32.91 — Walker walks Prime Video now + sendKey timeout fix
 
 **Risk:** GO. Real operator-visible fix. Two interlocking bugs together meant the Watch button on the bartender remote did nothing for any Prime Video game (because no Prime Video games surfaced in the channel guide in the first place). After fix: walker captures Prime Video tiles end-to-end, /api/streaming/launch returns 200 with autoplay reaching at least Prime Video's search/landing.
