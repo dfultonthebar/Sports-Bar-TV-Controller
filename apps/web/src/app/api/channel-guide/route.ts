@@ -722,15 +722,54 @@ export async function POST(request: NextRequest) {
           // Calculate end time (3 hours after start)
           const endTime = new Date(eventDate.getTime() + 3 * 60 * 60 * 1000)
 
+          const homeTeam = listing.data['home team'] || listing.data['team'] || ''
+          const awayTeam = listing.data['visiting team'] || listing.data['opponent'] || ''
+
+          // v2.32.95 — Per-game deepLink for the Rail Media streaming path.
+          // Same fix as the broadcast_networks path (also v2.32.95) and the
+          // walker path (v2.32.94). Without this, every Rail-Media-sourced
+          // streaming program shared the un-deeplinked appChannel reference
+          // and the bartender's Watch button would fall through to the
+          // featured-tile autoplay (today: a PGA quad-view that played for
+          // every NCAA game on the guide).
+          //
+          // Search query priority (most specific to least):
+          //   1. cleaned `awayTeam homeTeam` (NFL/NBA/NCAA team-vs-team)
+          //   2. listing.data['event']/['tour'] (golf, tennis, motorsports)
+          //   3. group.group_title (final fallback — at least lands on the
+          //      right sport tab, e.g. searching "Lacrosse" beats landing
+          //      on whatever ESPN is currently featuring)
+          //
+          // Cleanup strips Rail Media's noisy prefixes from team strings
+          // (e.g. `NCAA: (22)Southern Miss` → `Southern Miss`). ESPN's
+          // search ranks bare team names higher than ones with ranking
+          // or league prefixes.
+          const cleanTeam = (s: string) =>
+            s.replace(/^[A-Z]+:\s*/i, '').replace(/^\(\d+\)\s*/, '').trim()
+          const teamPair = `${cleanTeam(awayTeam)} ${cleanTeam(homeTeam)}`.trim()
+          const eventName = (listing.data['event'] || listing.data['tour'] || '').replace(/^[A-Z]+:\s*/i, '').trim()
+          const searchQuery = teamPair || eventName || group.group_title || ''
+          let perGameDeepLink: string | undefined = undefined
+          if (searchQuery) {
+            if (channelInfo.appId === 'espn-plus') {
+              perGameDeepLink = `sportscenter://x-callback-url/showHomeTab?q=${encodeURIComponent(searchQuery)}`
+            } else if (channelInfo.appId === 'amazon-prime') {
+              perGameDeepLink = `https://watch.amazon.com/search?phrase=${encodeURIComponent(searchQuery)}`
+            }
+          }
+          const programChannel = perGameDeepLink
+            ? { ...channelInfo, deepLink: perGameDeepLink }
+            : channelInfo
+
           const program = {
             id: programId,
             league: group.group_title,
-            homeTeam: listing.data['home team'] || listing.data['team'] || '',
-            awayTeam: listing.data['visiting team'] || listing.data['opponent'] || '',
+            homeTeam,
+            awayTeam,
             gameTime: listing.time,
             startTime: eventDate.toISOString(),
             endTime: endTime.toISOString(),
-            channel: channelInfo,
+            channel: programChannel,
             description: Object.entries(listing.data).map(([k, v]) => `${k}: ${v}`).join(', '),
             isSports: true,
             isLive: false,
@@ -848,6 +887,42 @@ export async function POST(request: NextRequest) {
             channels.set(appChannel.id, appChannel)
           }
 
+          // v2.32.95 — Build a per-game deepLink so the bartender's Watch
+          // button reaches the SPECIFIC game's playback rather than ESPN's
+          // featured tile. Pre-fix every broadcast_networks-injected ESPN
+          // game shared the same `appChannel` reference (no deepLink); the
+          // streaming-service-manager then fell through to the featured-
+          // tile autoplay path which lands on whatever ESPN is currently
+          // promoting (today: a PGA quad-view that played for every game
+          // operator clicked).
+          //
+          // Format mirrors the walker's per-tile deepLink (v2.32.94):
+          //   ESPN  → sportscenter://x-callback-url/showHomeTab?q=<title>
+          //   Prime → https://watch.amazon.com/search?phrase=<title>
+          // Other apps fall through to their generic launch path for now.
+          //
+          // Search query is `<awayTeam> <homeTeam>` — most distinctive for
+          // ESPN search ranking. Single team names (like "Texans") collide
+          // with multiple ESPN entities; the pair is unambiguous.
+          let perGameDeepLink: string | undefined = undefined
+          const searchQuery = `${game.awayTeamName} ${game.homeTeamName}`.trim()
+          // v2.32.95 — Match on appChannel.appId (catalog ID) instead of
+          // matchedAppInfo.app (user-facing name) to handle the "ESPN" vs
+          // "ESPN+" naming variants. matchedAppInfo.app for ESPN+ broadcasts
+          // is "ESPN+" (not "ESPN"), so the previous check missed every
+          // college-baseball / college-football / international-soccer
+          // ESPN+ game synced through this path.
+          if (searchQuery) {
+            if (appChannel.appId === 'espn-plus') {
+              perGameDeepLink = `sportscenter://x-callback-url/showHomeTab?q=${encodeURIComponent(searchQuery)}`
+            } else if (appChannel.appId === 'amazon-prime') {
+              perGameDeepLink = `https://watch.amazon.com/search?phrase=${encodeURIComponent(searchQuery)}`
+            }
+          }
+          const programChannel = perGameDeepLink
+            ? { ...appChannel, deepLink: perGameDeepLink }
+            : appChannel
+
           const startDate = new Date(game.scheduledStart * 1000)
           const endDate = new Date(game.estimatedEnd * 1000)
           const gameTimeLabel = startDate.toLocaleTimeString('en-US', {
@@ -866,7 +941,7 @@ export async function POST(request: NextRequest) {
             gameTime: gameTimeLabel,
             startTime: startDate.toISOString(),
             endTime: endDate.toISOString(),
-            channel: appChannel,
+            channel: programChannel,
             description: `${game.awayTeamName} @ ${game.homeTeamName}${game.venueName ? ' · ' + game.venueName : ''} (${matchedAppInfo.app})`,
             isSports: true,
             isLive,

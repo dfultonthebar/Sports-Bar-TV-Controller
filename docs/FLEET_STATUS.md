@@ -1,6 +1,6 @@
 # Fleet Status
 
-**Last updated:** 2026-05-08 (Bug-hunt batch shipped v2.32.92 + audit follow-ups v2.32.93. ESPN+/TNT/TBS allocator matching, Paramount+ sendKey timeout, subscription-polling timeouts, hasPrimeAlready string, Max catalog entry, firebat in subscription-polling, longer adb-connect. 10 fixes total across 8 files. Full fleet at v2.32.93.)
+**Last updated:** 2026-05-08 (ESPN search-by-title autoplay shipped v2.32.94 — Watch button on niche/specific ESPN games now reaches PlayerActivity instead of stopping at ESPN's home tab. Walker writes per-tile `?q=<title>` deep links; adb-client navigates ESPN's in-app Search rail and types the title. Verified live on Cube 3. Full fleet at v2.32.94.)
 
 A snapshot of where each location stands. Update this file after every fleet-wide change so future operators (and Claude) have a single place to see the truth.
 
@@ -10,12 +10,12 @@ A snapshot of where each location stands. Update this file after every fleet-wid
 
 | Location | Branch | OS | Software ver | Bartender proxy | AI Suggest backend | iGPU acceleration | Notes |
 |---|---|---|---|---|---|---|---|
-| holmgren-way | `location/holmgren-way` | noble (24.04) | **v2.32.93** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | Reference deployment; first to receive drift-recovery fix |
-| graystone | `location/graystone` | noble (24.04) | **v2.32.93** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | |
-| greenville | `location/stoneyard-greenville` | noble (24.04) | **v2.32.93** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | OS upgraded 2026-05-08; AI Suggest 119s on iGPU. |
-| leglamp | `location/leg-lamp` | noble (24.04) | **v2.32.93** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | |
-| lucky-s-1313 | `location/lucky-s-1313` | noble (24.04) | **v2.32.93** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | |
-| stoneyard-appleton | `location/stoneyard-appleton` | noble (24.04) | **v2.32.93** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | AI Suggest 67.3s on iGPU (fleet best) |
+| holmgren-way | `location/holmgren-way` | noble (24.04) | **v2.32.94** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | Reference deployment; first to receive drift-recovery fix |
+| graystone | `location/graystone` | noble (24.04) | **v2.32.94** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | |
+| greenville | `location/stoneyard-greenville` | noble (24.04) | **v2.32.94** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | OS upgraded 2026-05-08; AI Suggest 119s on iGPU. |
+| leglamp | `location/leg-lamp` | noble (24.04) | **v2.32.94** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | |
+| lucky-s-1313 | `location/lucky-s-1313` | noble (24.04) | **v2.32.94** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | |
+| stoneyard-appleton | `location/stoneyard-appleton` | noble (24.04) | **v2.32.94** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | AI Suggest 67.3s on iGPU (fleet best) |
 
 **Aggregate health (2026-05-08 18:00 UTC):**
 - 6/6: bartender remote on Nginx ✓
@@ -82,6 +82,8 @@ Audio processor and matrix details live in each location's `.claude/locations/<b
 1. New `Max` catalog entry (`com.wbd.stream`, alias `com.hbo.hbonow`) + TNT/TBS/truTV/'TNT Sports' → 'Max' in network-map. Pre-fix any TNT/TBS game (NBA playoffs, MLB postseason, March Madness) silently excluded Cubes with Max installed.
 2. `subscription-polling.ts` was missing `'com.amazon.firebat'` in its packageName→displayName map. AFTR Cubes (Fire TV Cube 2nd gen) host Prime Video via firebat (CLAUDE.md gotcha #9), so the device-config UI's subscription-detect endpoint reported "Prime Video not installed" on every AFTR Cube. Added entry.
 3. `subscription-polling.ts` `adb connect` timeout 8s → 12s to cover sleeping-Cube wake (10-14s in practice on AFTR).
+
+**v2.32.94** — ESPN search-by-title autoplay (per-event Watch button reaches specific games). Pre-fix the bartender's Watch button on ESPN games landed on whatever ESPN featured as its first content tile (typically PGA, MLB, headline NFL). Niche/specific games — college softball (operator-flagged Tarleton State Texans today), regional sports, mid-tier matchups — never reached PlayerActivity. Fix: walker now writes `sportscenter://x-callback-url/showHomeTab?q=<title>` per ESPN tile; streaming-service-manager extracts `q` and passes to `launchEspnToLiveContent`'s new search-by-title path: DPAD_LEFT to rail → DPAD_UP to Search → CENTER → `input text "<title>"` → DPAD_DOWN → CENTER. Verified live on Cube 3 — pre-fix landed on PageControllerActivity (state=0 NONE), post-fix lands on PlayerActivity (state=8 BUFFERING). Backwards-compatible: catalog rows without `?q=` fall through to v2.32.85 featured-tile path.
 
 **v2.32.81** — auto-update branch-drift recovery — detects when a box is on `main` instead of its `location/*` branch and switches back via the heartbeat file. Single defensive guard, normal-path code unchanged.
 

@@ -46,6 +46,22 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-08 — v2.32.95 — All ESPN/Prime Video programs get per-game deepLinks (v2.32.94 verification gap)
+
+**Risk:** GO. Operator-flagged bug. v2.32.94 fix only covered the walker-injected path; the broadcast_networks fallback and Rail Media streaming paths were missed → 39 of 45 ESPN programs in the bartender guide still had no per-game deepLink → Watch button fell through to ESPN's featured-tile autoplay (PGA quad-view today) for every NCAA / college-baseball / soccer / lacrosse game.
+
+**What changed:**
+- `apps/web/src/app/api/channel-guide/route.ts` Rail Media streaming injection now builds a per-program shallow copy with a per-game deepLink. Search query priority: `<awayTeam> <homeTeam>` → `listing.data['event']/['tour']` → `group.group_title`.
+- Same path's broadcast_networks fallback fix: switched from `matchedAppInfo.app === 'ESPN'` to `appChannel.appId === 'espn-plus'` (handles ESPN+ broadcasts whose app value is "ESPN+" not "ESPN").
+
+**What could break:** Nothing. Adding deepLinks to programs that previously had none — strictly additive. Old behavior (no deepLink → featured-tile fallback) is impossible to trigger now since every program has a deepLink.
+
+**Manual steps required:** None.
+
+**Rollback:** `git revert` clean.
+
+---
+
 ### 2026-05-08 — v2.32.94 — ESPN search-by-title autoplay (specific games reach playback)
 
 **Risk:** GO. Adds a new autoplay path for ESPN that types the game title into ESPN's in-app search. Backwards-compatible with old catalog rows (no `?q=` → falls back to v2.32.85 featured-tile path).
