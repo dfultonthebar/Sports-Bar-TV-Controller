@@ -187,6 +187,124 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.80 — Pass 2 (ops tooling): heartbeat refresh on no-op + verify-install lint
+**Released:** 2026-05-08
+
+Pass 2 of the simplify-skill code-cleanup campaign — focused on the operationally-critical scripts (`scripts/auto-update.sh`, `scripts/setup-iris-ollama.sh`, `scripts/verify-install.sh`). These run nightly at all 6 venues, so the bar for changes here is higher than for app code. Static analysis with `shellcheck` (filtered SC2317/SC2094 false-positives from trap handlers) found minimal real issues — the scripts are well-written. Real changes:
+
+**Improvement 1 — Heartbeat refreshes os.* on no-op auto-update runs** (`scripts/auto-update.sh`)
+
+Closes Outstanding work item #4. Pre-fix: when `auto-update.sh` exited at "no update available" (origin/main already merged into the location branch) it skipped the heartbeat-write block entirely. Operator-driven changes that happen OUTSIDE auto-update — the most common is a kernel reboot from `apt dist-upgrade` — left the Fleet Dashboard showing stale `os.kernel` until the next real merge. Today's fleet-wide kernel sync (graystone/appleton/greenville on 6.8.0-111, holmgren/leglamp/lucky-s rebooted from 6.8.0-100/-110 to -111) hit this exact case; I had to write `/tmp/refresh-heartbeat.sh` ad-hoc to push fresh `os.kernel` per box. Fix: new `refresh_heartbeat_os_only()` helper. Conservative scope — only patches the `os` block; leaves `verifyInstall`/`configChecksums`/`dbRowCounts` intact since those reflect the last full verify run and weren't re-checked. Idempotent: a python helper compares current vs stored os fields and exits 1 if no change, so commit+push only fire when something actually changed.
+
+**Improvement 2 — verify-install.sh lint cleanup** (`scripts/verify-install.sh`)
+
+Three real `shellcheck` findings, all small:
+- `CRASH_LOG_WINDOW_SECS=60` was declared `readonly` but never read in code (only mentioned in a comment). Removed; updated the comment to match what the code actually does (no time-window check).
+- `pm_uptime` was destructured from `pm2 jlist` JSON output but never used. Removed from both the node JSON producer and the bash `read -r` consumer.
+- `for attempt in $(seq 1 $HTTP_RETRIES)` (3 sites) → `seq 1 "$HTTP_RETRIES"`. Cosmetic — `$HTTP_RETRIES` is an integer constant — but quieting the lint keeps the next round of `shellcheck` clean.
+
+`scripts/setup-iris-ollama.sh` had zero shellcheck findings. `scripts/auto-update.sh` had zero real findings (the 39 SC2317 hits were trap-handler false-positives).
+
+**Held items:** None at this scope. Pass 3 (broad packages/* audit) follows separately.
+
+**Required Manual Step:** None — all changes are pure refactors / lint fixes. Auto-update merge picks them up at every location.
+
+**Verification:** `bash -n` clean on both modified scripts. Python heartbeat-patch logic dry-run against greenville's live heartbeat: same OS values → exit 1 (no commit), simulated older kernel → exit 0 (would update). `npm run build` clean (no app code changed).
+
+---
+
+### v2.32.79 — Pass 1 Tier 3: extract two duplicated helpers in channel-guide
+**Released:** 2026-05-08
+
+Pass 1 Tier 3 of the code-cleanup campaign. Kept narrow on this commit to avoid bundling many independent refactors that complicate review.
+
+**Cleanup 1 — `parseListingDate(date, time)` helper** (`apps/web/src/app/api/channel-guide/route.ts`)
+
+Three blocks parsed Rail Media listing `(date, time)` into a `Date` with the year-rollover heuristic. Two were verbatim duplicates (cable/satellite path + streaming path). The third (local-channel-override path) had different control flow — `continue` on NaN instead of rolling over to `currentYear + 1` — so it kept its own variant. Extracted the shared form to a module-level helper used in both verbatim sites.
+
+**Cleanup 2 — `deriveIsLive(game, nowSec)` helper** (same file)
+
+Two copy-pasted four-term boolean expressions for deriving `isLive` from a `game_schedules` row (one in cable/satellite injection, one in streaming injection). Both included the v2.28.2 carve-out for ESPN's lag in marking OT games `completed`. Extracted to a module-level helper so a future change to the status-string set (e.g. ESPN renames `completed` → `final` or adds `forfeited`) updates one site instead of two.
+
+**Held items:** A 7-site `parseJsonArray` helper extraction (covers `broadcastNetworks`/`availableNetworks`/`installedApps` JSON parses with inconsistent error handling) and a 44-site `logInfo`/`logError` wrapper replacement (current wrappers double-format timestamps and double-log) were flagged by the audit. Both are mechanical but high-touch — deferred to a separate cleanup pass to keep the v2.32.79 diff reviewable. Same goes for the dynamic-import hoist in channel-guide (Quality #7) — many sites with name shadowing, modest payoff (Node module cache makes them effectively no-ops after first load).
+
+**Required Manual Step:** None — pure extractive refactor with no behavioral change. Auto-update merge picks them up.
+
+**Verification:** `npm run build` clean (34/34 turbo tasks). PM2 restart, `/api/system/health` returns `healthy` (55/57 devices online — 2 known-failing Holmgren Cubes per memory). Bartender :3002 returns 200.
+
+This closes Pass 1 (recent streaming feature). Pass 2 (ops tooling — `auto-update.sh`, `setup-iris-ollama.sh`, `verify-install.sh`) and Pass 3 (broad packages/* audit) follow as separate sessions.
+
+---
+
+### v2.32.78 — Pass 1 Tier 2: performance wins from simplify-skill audit
+**Released:** 2026-05-08
+
+Pass 1 Tier 2 of the code-cleanup campaign. The efficiency reviewer flagged 10 items; this commit ships the 4 with concrete savings and low behavioral risk. (One flagged item — "double Rail Media fetch on streaming requests" — was a false alarm; the cable/satellite and streaming branches are mutually exclusive `if` blocks so only one fetch fires per request.)
+
+**Perf 1 — Parallel Fire TV walks** (`packages/scheduler/src/firetv-catalog-walker.ts`)
+
+`runFiretvCatalogWalk()` iterated over `firetvInputs` with a sequential `for…of` loop. Each Fire TV is a physically distinct device with its own ADB session, so the outer per-device loop is fully parallelizable (the per-app inner loop must stay serial — only one screen). Switched to `Promise.all(firetvInputs.map(...))`. At Holmgren with 2 Fire TVs × 2 walkable apps each, this halves wall-clock walk time (~56s → ~28s). Stats aggregation is unchanged because `stats.appWalksAttempted` etc. are mutated under the same Promise.all rather than racing.
+
+**Perf 2 — Live game data change detection** (`apps/web/src/components/EnhancedChannelGuideBartenderRemote.tsx`)
+
+`loadLiveGameData()` ran every 30s and unconditionally called `setLiveGameData(gameMap)` with a fresh Map identity. React's reference comparison saw a change every tick and re-ran the `useEffect` at line 306 → `filterPrograms()` → full `.filter()` + `.sort()` over potentially 100+ programs. Added a `setLiveGameData(prev => …)` updater that compares Map size + per-game (homeScore, awayScore, timeRemaining, quarter, isLive, status) and returns the previous Map identity when nothing material changed. iPad render loop no longer re-filters when scores haven't moved.
+
+**Perf 3 — Throttle catalog DELETE on GET** (`apps/web/src/app/api/firestick-scout/catalog/route.ts`)
+
+The expired-row DELETE ran on every GET. With multiple bartender remotes hitting `/api/channel-guide` simultaneously (which queries the catalog table), the DELETE write-lock could contend with concurrent reads. Added a module-level `lastCatalogCleanupSec` timestamp; cleanup now runs at most once per 60s. The 36h TTL makes sub-minute precision irrelevant.
+
+**Perf 4 — Cache firebat probe per device** (`packages/scheduler/src/firetv-app-sync.ts`)
+
+The launcher-hosted Prime Video back-fill probes Cubes for `com.amazon.firebat` via `pm path` (~50ms ADB round-trip per device per sweep). Package install state doesn't change at runtime, so once we have a definitive answer (true/false) it can be cached for 1 hour. Null results (probe failed, network blip) are not cached — we want to retry. Cache is module-level `Map<deviceId, {result: boolean, ts: number}>`. Eliminates ~2 round-trips per Fire TV per 5-min sweep at Holmgren.
+
+**Required Manual Step:** None — pure performance/runtime improvements. Auto-update merge picks them up.
+
+**Verification:** `npm run build` clean (34/34 turbo tasks). PM2 restart, `/api/system/health` returns `healthy` (55/57 devices online). Bartender :3002 returns 200.
+
+Tier 3 (helpers + cleanup — extract `parseListingDate`/`deriveIsLive`/`parseJsonArray`, remove dead `launchStreamingApp` legacy path, replace `logInfo`/`logError` wrappers, etc.) ships as v2.32.79.
+
+---
+
+### v2.32.77 — three latent bugs found by simplify-skill audit
+**Released:** 2026-05-08
+
+Pass 1 of the simplify-skill code-cleanup campaign (3 parallel agents: reuse / quality / efficiency reviews against the recent streaming feature). The reuse and efficiency agents independently found the same per-box-app gate bug; the quality agent found the Quick Access tile launching the wrong package on AFTR Cubes. All three are bug fixes — no behavioral change for users beyond the bugs being fixed.
+
+**Bug 1 — `parseOllamaResponse` double-parses already-parsed `availableNetworks`** (`apps/web/src/app/api/scheduling/ai-suggest/route.ts`)
+
+The v2.31.7 optimization that hoisted `JSON.parse` of `availableNetworks` into a per-input cache (`appsByInputId`) called `JSON.parse` on a value that `loadInputSources()` had already JSON-parsed into a JS array. `JSON.parse` coerces the array to a string and throws — the catch silently set every Set to empty. Result: the v2.29.1 per-box app gate (`if (!inputHasApp(input, appLower))` at line 789) was bypassed, the reroute branch found zero candidates because `inputHasApp` returned false for everything, and every Fire TV suggestion was rejected with `wrong_firetv_app`. Fix: operate on the array directly with a defensive `Array.isArray()` guard.
+
+**Bug 2 — Quick Access Prime Video tile launches `com.amazon.avod` directly via `monkey -p`** (`apps/web/src/components/EnhancedChannelGuideBartenderRemote.tsx`)
+
+The Quick Access apps grid in the streaming guide hard-coded `com.amazon.avod` as the package name and called `launchStreamingApp()` which sent `monkey -p com.amazon.avod 1` directly via ADB. On AFTR/PVFTV Cubes (Holmgren has these per CLAUDE.md gotcha #9), `com.amazon.avod` is not installed — Prime Video lives in `com.amazon.firebat`. The streaming-apps-database catalog has the alias chain (`packageAliases: ['com.amazon.avod.thirdpartyclient', 'com.amazon.firebat']`) and `/api/streaming/launch` resolves through `LEANBACK_LAUNCHER` intents that handle the fallback — but the Quick Access tile bypassed all of that. Fix: `launchStreamingApp()` now first calls `findStreamingAppByPackageName()` (already exported from `@sports-bar/streaming` since v2.32.9) and routes through `launchStreamingAppByCatalog()` if the package is in the catalog. Falls back to the original `monkey -p` command for off-catalog packages.
+
+**Bug 3 — Streaming `game_schedules` injection lacks the v2.32.62 in_progress estimatedEnd tightening** (`apps/web/src/app/api/channel-guide/route.ts`)
+
+The cable/satellite `game_schedules` fallback was tightened in v2.32.62 to require `estimatedEnd >= sixHoursAgo` for the `in_progress` catch-all clause — fixed the 72-zombie-game leak (NFL Draft from 11 days ago surfacing). The mirror block on the streaming path (~line 750) still had the loose original filter (`eq(status, 'in_progress')` only). Result: stale `in_progress` rows leaked through the streaming-injection path while the cable path correctly filtered them. Fix: parity update — same `andOp(eq, gte)` shape as cable.
+
+**Required Manual Step:** None — all three are pure bug fixes with no schema/config impact. Auto-update merge will pick them up.
+
+**Verification:** `npm run build` clean (34/34 turbo tasks). PM2 restart, `/api/system/health` returns `healthy`. Bartender remote :3002 returns 200. Held items in scope (Tier 2 perf wins + Tier 3 reuse cleanup) ship in subsequent passes (v2.32.78+).
+
+---
+
+### v2.32.76 — fleet outstanding-work list refresh + post-campaign captures
+**Released:** 2026-05-08
+
+Pure-docs update: refreshed `docs/FLEET_STATUS.md` Outstanding work section after the OS-upgrade campaign closed and dist-upgrade-and-kernel-reboot pass put all 6 fleet boxes on identical `noble + 6.8.0-111-generic + v2.32.75`. Renumbered to consecutive (1-8 vs the old 1, 4, 5, 6 with gaps) and added 4 new items captured from today's work:
+
+- **#2 Per-event Fire TV deep links** — promoted to next-session priority after operator flagged that the Watch button on Prime Video opens the app but not the game. Includes investigation paths (ESPN scoreboard API, dumpsys URL harvest, walker per-tile URL extraction).
+- **#3 More streaming-app walker rules** — extends the catalog walker beyond Prime Video to cover Netflix / ESPN+ / Hulu / Disney+ / Max / Peacock / YouTube TV. Pairs with #2.
+- **#4 `auto-update.sh` heartbeat refresh on no-op runs** — the script exits at "no update available" before the heartbeat-write block, so kernel changes done outside auto-update (apt dist-upgrade + reboot) leave the dashboard showing stale OS info. Small low-risk fix to write at least the OS delta on no-op runs.
+- **#5 Fleet dashboard manual-refresh button** — `/api/fleet/status?refresh=1` works but isn't exposed in the UI; operators can stare at stale data for the 5-min cache TTL after a fleet-wide change.
+- **#6 Why Holmgren's kernel drifted to 6.8.0-100** — investigation item; suggests `unattended-upgrades` either isn't running or isn't pulling `linux-generic` metapackage at Holmgren. Worth a check so it doesn't drift again.
+
+**Required Manual Step:** None — pure docs entry. The next auto-update merge into each location branch carries the doc updates with no behavioral change.
+
+**Verification:** `docs/FLEET_STATUS.md` Outstanding work section now reads 1-8 in order, with #2 explicitly marked as the next-session priority.
+
+---
+
 ### v2.32.75 — greenville jammy → noble upgrade complete (full fleet on noble + iGPU)
 **Released:** 2026-05-08
 
