@@ -201,12 +201,27 @@ The host-side code falls back to the v2.32.97 text-targeted-tap autoplay automat
 
 After confirming v2.32.98 host code is at the location (`grep version /home/ubuntu/Sports-Bar-TV-Controller/package.json` shows `2.32.98` or later), run the install script. Any time. The host already fires the PLAY_GAME broadcast on every Watch click; until the script runs, it's a no-op.
 
-## Currently provisioned
+## Currently provisioned (full fleet — 2026-05-08)
 
-| Location | Cubes with v1.5.0 + AS enabled |
+| Location | Cubes with v2.1.5 + AS enabled |
 |---|---|
-| Holmgren | Cube 3 (10.11.3.51) ✓ |
-| All others | None — host code shipped, awaiting per-location run of the script |
+| Holmgren | 2/2 (10.11.3.50, 10.11.3.51) ✓ |
+| Graystone | 4/4 (192.168.5.131-134) ✓ |
+| Stoneyard Appleton | 3/3 (10.40.10.92-94) ✓ |
+| Lucky's 1313 | 4/4 (192.168.10.42-45) ✓ |
+| Greenville | 3/3 (10.40.10.92-94) ✓ |
+| Leg Lamp | N/A (no Amazon Cubes) |
+
+**Fleet total:** 16/16 Amazon Cubes provisioned with Scout v2.1.5-accessibility-automation. Bartender Watch button on ESPN/NFHS games will use the in-app PlaybackAutomationService click path on every Cube, falling through to the v2.32.97 host-side autoplay if anything goes wrong with the AS path.
+
+## Lessons learned during the initial rollout
+
+Two gotchas surfaced (and were folded into the install script):
+
+1. **Stale gradle cache produces APKs without new manifest entries.** The script now always runs `./gradlew --no-daemon clean assembleDebug` (not just `assembleDebug`). Without the `clean`, a previous build's incremental cache can serve an APK whose merged manifest predates the new service/receiver entries.
+2. **Each host has its own debug keystore.** When an APK built on one host tries to upgrade-install over an APK built on another, Android rejects with `INSTALL_FAILED_UPDATE_INCOMPATIBLE: signatures do not match`. The script now detects this and falls back to `pm uninstall com.sportsbar.scout` + `adb install` (clean install). Loses the previous SharedPreferences (server URL + transient mailbox), which the script re-broadcasts immediately. Both fine to lose.
+
+Re-running the script on a fully-provisioned Cube is a fast no-op (version match + AS already bound).
 
 ## Runbook for rolling out to a new location
 

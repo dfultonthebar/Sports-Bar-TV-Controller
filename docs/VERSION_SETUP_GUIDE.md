@@ -187,6 +187,175 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.33.1 — Bartender remote rendering fix + live-data parity for streaming + completed-game filter + UI-label noise filter
+**Released:** 2026-05-09
+
+**No setup required.** Pure code fixes building on v2.33.0.
+
+**Fixed (operator-facing):**
+
+1. **Bartender remote was showing "NO LIVE GAMES" even when streaming games were available.** v2.33.0's catalog injection used `capturedAt` as the startTime fallback, which was usually yesterday. The bartender component's "past midnight of scheduled day" filter (line 920 of `EnhancedChannelGuideBartenderRemote.tsx`) discarded every program. Fix: fall back to `now` so live tiles always pass the date filter.
+
+2. **Streaming games now show live scores + clock + status** — same parity as cable/satellite. Channel-guide route inlines `liveData` (homeScore/awayScore/clock/period/statusDetail/espnGameId) on each streaming program when it has a `game_schedules` enrichment match. ESPN sync writes these every 10min. No separate fetch needed (the cable path's `/api/sports-guide/live-by-channel?deviceType=cable` doesn't return streaming-only games like Prime Video NBA exclusives).
+
+3. **Completed games auto-removed.** Streaming programs with a schedule match in `('completed','final','postponed','cancelled')` are filtered out at the channel-guide API layer. Walker may capture an "in progress" tile from ESPN's UI a few minutes after the game actually ended; the schedule status is authoritative.
+
+4. **Proper home/away team split for streaming tiles.** v2.33.0 set `homeTeam=contentTitle, awayTeam=''`, breaking the bartender's existing live-data lookup (keyed by `${away}-${home}`). v2.33.1 prefers schedule-match team names; falls back to splitting `contentTitle` on " vs.? " when no match.
+
+5. **"(deep-linkable)" annotation removed from bartender-facing descriptions** — internal detail, the bartender doesn't care.
+
+6. **ESPN extractor noise filter tightened.** "ESPN", "ESPN+", "ESPN Unlimited", "ESPNU", "SportsCenter", "SECN+", "ACCN", "All ACC ACCN", "NFL Live", etc. were leaking through as "live tiles" because Pattern A (comma-separated content-desc) takes the first segment as title without re-validating against the chrome blocklist. Fix: re-test extracted title against an extended chrome regex AND against a `looksLikeGame()` predicate that requires either a matchup indicator (`vs`, `@`, ` at `) OR a known event format (Grand Prix, Open, Final, Championship, Cup, Tournament, Match, Series, Race, Qualifying).
+
+7. **Prime Video extractor blocks player-UI labels.** A walker run on Cube 3 captured a video info / settings panel ("Audio languages", "Subtitles", "Spanish, English", "How do I choose languages?", etc.) as if each row were a game tile in the currently-tracked NBA section — because the Cube was on a player overlay when the walker dumped, and inheriting `lastSportRow="NBA Playoffs"`. Filter: question-marked text + UI-label blocklist (Audio languages, Subtitles, Closed captions, language tokens, language-help Q&A, Watchlist, Skip intro/recap/credits, Next up/episode, Resume watching).
+
+8. **Racing/golf/tennis event-name de-duplication.** v2.33.0 stuffed the event name into BOTH home and away (intended fix for empty-team-name rows). v2.33.1 puts it into home only — the bartender filter accepts home OR away populated, no need to duplicate.
+
+**Walker schedule unchanged from v2.33.0** (3x daily 04:00 + 12:00 + 17:00). Operators who hit the bartender remote's refresh button trigger a manual walk (`POST /api/firestick-scout/catalog/walk`). If a Cube is mid-playback or on a settings overlay when refresh is pressed, the captured tiles will reflect that screen — see filter #7 for the fallout. Returning the Cube to the home screen before pressing refresh helps.
+
+**Why a Cube can show 0 streaming games right now even when it has fresh hardware:**
+- All games on its home rails are completed (filter #3).
+- ESPN/Prime Video isn't logged in / isn't entitled to today's content.
+- The Cube is mid-playback when walker fired (catches detail-page noise; filter #7 drops it).
+- ADB connection is broken (walker logs `send-command HTTP 500` warnings; nothing uploaded).
+
+**Verification commands** (same as v2.33.0):
+
+```bash
+# Check catalog state per Cube:
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "SELECT app, contentTitle, isLive, datetime(capturedAt,'unixepoch','localtime') FROM firetv_streaming_catalog ORDER BY deviceId, app;"
+
+# Force a refresh for all Cubes:
+curl -s -X POST http://localhost:3001/api/firestick-scout/catalog/walk -d '{}'
+
+# Channel-guide for a specific Cube + verify live data + day/time:
+curl -s -X POST http://localhost:3001/api/channel-guide \
+  -H "Content-Type: application/json" \
+  -d '{"inputNumber":<INPUT>,"deviceType":"streaming","deviceId":"<DEVICE_ID>"}' \
+  | jq '.programs[] | {title:.homeTeam,away:.awayTeam,day,time,isLive,score:[.liveData.awayScore,.liveData.homeScore],clock:.liveData.clock,status:.liveData.statusDetail}'
+```
+
+---
+
+### v2.33.0 — Bartender guide is Scout-only for streaming + AI Suggest reads catalog + walker 3x daily + start-time enrichment
+**Released:** 2026-05-08
+
+**The bartender remote streaming guide now shows ONLY games discovered by the per-Cube Scout catalog walker** — `firetv_streaming_catalog` table. The previous Rail Media streaming + ESPN-sync `game_schedules` streaming-fallback paths are removed. AI Suggest + Auto Pilot also switch to catalog-as-source for streaming so suggestions are guaranteed launchable on the device they're routed to.
+
+**Why:** Rail Media + ESPN-sync produced games whose `deepLink` was either generic ("open the app") or built from team-name search queries that didn't always reach the right tile. After v2.32.99 fixed the Watch-button autoplay (DPAD_CENTER advance from detail page → PlayerActivity), the remaining bartender complaint was "it opens the wrong game." Catalog walker captures the EXACT tile the user sees on a Cube's home screen + a deeplink that ESPN/Prime Video search-by-title resolves to the correct event. Different Cubes at the same venue can have different installed/logged-in apps; per-device catalog respects that.
+
+**Trade-off accepted:** Games on apps the walker can't extract from (Peacock, Hulu, fuboTV, Apple TV+, YouTube TV/YouTube, Sling, Fox Sports — all WebView/Cobalt/accessibility-blind) are NOT shown in the bartender guide. The Watch button on those games would have failed to advance to playback anyway, so this is correctness over coverage.
+
+**Walker schedule:** Walker now runs **3x daily — 04:00, 12:00, 17:00 local** (`America/Chicago`). Cooldown reduced from 6h to 3h. Long-gap catch-up trigger reduced from 25h to 9h so a PM2 restart that spans 04:00 + 12:00 still recovers within hours.
+
+**Start-time enrichment (v2.33.0 channel-guide cross-reference):** Walker doesn't always extract a startTime (Prime Video tiles hide times until focused, ESPN tile times vary by sport). Channel-guide enriches missing startTimes by token-matching tile titles against `game_schedules` (the existing ESPN sync, ±2h..+48h window). Enrichment fills `day` + `time` + `startTime` fields without changing WHICH games appear (Scout still gates that). Sports outside ESPN's 23-league sync (rugby, F1, motorsports) stay as "On demand" — no false time labels.
+
+---
+
+#### Per-location auto-update procedure
+
+**Standard auto-update flow handles everything.** No manual SQL, no APK reinstall, no settings changes.
+
+```bash
+bash /home/ubuntu/Sports-Bar-TV-Controller/scripts/auto-update.sh --triggered-by=manual_cli
+```
+
+The script merges `main` into the location branch, runs `npm ci`, `drizzle-kit push` (no schema changes in this version — purely additive feature work), force-rebuilds via Turbo, restarts PM2, and runs the verify-install layers.
+
+**Verification after auto-update lands** (run on the location host):
+
+```bash
+# 1. PM2 healthy + version reads 2.33.0
+curl -s http://localhost:3001/api/health | jq -r '.status'
+grep '"version"' /home/ubuntu/Sports-Bar-TV-Controller/package.json
+
+# 2. Scout catalog has fresh per-device tiles for any Cube the location uses
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "SELECT app, COUNT(*) tiles, datetime(MAX(capturedAt),'unixepoch','localtime') latest FROM firetv_streaming_catalog GROUP BY app;"
+# Expect: rows for at least Prime Video and ESPN (per Cube), latest within last 8h.
+# If empty, manually trigger: curl -X POST http://localhost:3001/api/firestick-scout/catalog/walk -d '{}'
+
+# 3. Channel guide returns Scout-only streaming entries with deepLinks
+# Find a streaming input number on the location:
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "SELECT mi.channelNumber, mi.label, isr.device_id FROM MatrixInput mi JOIN input_sources isr ON isr.matrix_input_id = mi.id WHERE mi.deviceType='Fire TV' AND mi.isActive=1 LIMIT 1;"
+# Then (substitute INPUT_NUM and DEVICE_ID):
+curl -s -X POST http://localhost:3001/api/channel-guide \
+  -H "Content-Type: application/json" \
+  -d '{"inputNumber":<INPUT_NUM>,"deviceType":"streaming","deviceId":"<DEVICE_ID>"}' \
+  | jq '.programs[] | {title:.homeTeam,day,time,live:.isLive,app:.channel.streamingApp,deepLink:.channel.deepLink}'
+# Expect: every streaming program has a `deepLink` and a populated `day`+`time` (or "LIVE" / "On demand").
+
+# 4. Logs confirm the right injection paths fired
+pm2 logs sports-bar-tv-controller --lines 100 --nostream | grep -E "firetv_streaming_catalog injection|FIRETV-CATALOG.*walk"
+# Expect a line per request like:
+#   firetv_streaming_catalog injection for <deviceId>: +N from scout walker, 0 dedup, M enriched startTime from game_schedules
+```
+
+#### Known caveats per location
+
+- **Cubes without a working ADB connection:** Walker silently skips them (logs `[FIRETV-CATALOG] send-command HTTP 500` warnings). Bartender guide for those Cubes' input will show 0 streaming games. Fix the underlying ADB issue (re-pair, reauthorize, or replace hardware) — see `feedback_holmgren_firecube_replacement.md` if a Cube is on the swap list.
+- **Cubes signed out of streaming services:** Walker captures whatever is visible. A signed-out Sling/fubo Cube has no sports tiles regardless of subscription tier; bartender guide reflects that. Sign in via TV remote and trigger `POST /api/firestick-scout/catalog/walk` to refresh.
+- **Apps with no walker rule:** Peacock, Apple TV+, fuboTV, YouTube TV, YouTube, Sling, Fox Sports are intentionally deferred (WebView/Cobalt/accessibility-blind — see comments in `packages/scheduler/src/firetv-catalog-walker.ts` `APP_WALK_RULES`). Their games will not appear in the bartender guide. Accepted trade-off.
+- **NFHS Network high-school games:** Untouched by this change — NFHS continues to flow through the existing `/api/nfhs` sync path (cross-fleet, not per-Cube). NFHS games will still appear in the bartender guide.
+- **Cable / satellite / DirecTV paths:** Untouched. This change is streaming-only.
+
+#### Auto Pilot / AI Suggest behavior change
+
+- AI Suggest's streaming candidates now come from `firetv_streaming_catalog` rows scoped to the specific Fire TV input (no venue-wide fallback). Suggestions are pre-bound to the source Cube — the LLM cannot reroute a streaming game to a different Cube.
+- `inputSourceAllocations.deepLink` (column already existed at v2.32.85) is now populated from the catalog row when AI Suggest creates an allocation. Auto Pilot's tune at game time forwards this deeplink to the v2.32.99 launch path → ESPN advances to PlayerActivity / Prime Video runs its autoplay sequence.
+- Cable / satellite / DirecTV suggestions are unchanged: still come from `game_schedules` + broadcast_networks resolver.
+
+#### What the operator sees (bartender remote)
+
+- Streaming game tiles show: title (from catalog `contentTitle`), sport tag, app name, day + time formatted in CT, "LIVE" badge for in-progress games. Deep-linkable tiles annotate "(deep-linkable)" in the description.
+- Watch button: launches the streaming app and uses the per-tile deeplink to navigate to the correct game (ESPN search-by-title, Prime Video search-by-phrase). Then DPAD_CENTER advances from detail page to PlayerActivity (v2.32.99 fix).
+- Schedule button: creates an allocation that fires at game start time; Auto Pilot tunes via the same path as the bartender Watch button.
+- Games on apps without walker support do NOT appear (operator notice — previously they appeared with broken Watch buttons).
+
+---
+
+### v2.32.99 — ESPN autoplay reaches PlayerActivity (host-side DPAD CENTER advance from detail page)
+**Released:** 2026-05-08
+
+**No setup required.** Pure code fix in `packages/firecube/src/adb-client.ts`.
+
+**What changed:** `launchEspnToLiveContent`'s text-targeted-tap branch
+ended on the detail page after tapping a search result tile. Bartender
+saw "ESPN opened to game info, but I have to press OK on the TV remote
+to start playback." The fix appends a 5s wait + DPAD_CENTER + 1s + DPAD_CENTER
+(safety) after the tap — same pattern as Prime Video's autoplay
+(`launchPrimeVideoToContent`). ESPN's detail page auto-focuses the Watch
+CTA at bounds [1306,506][1872,602] on AFTR Cube 2 (1920x1080); DPAD_CENTER
+on the focused CTA advances to `com.espn.video.dmp.PlayerActivity` (or
+`ComposePaywallActivity` if the location isn't entitled to that league
+on ESPN+ — that's a downstream entitlement issue, not a code issue).
+
+**Per-location verification:** After auto-update, click any ESPN+ game
+on the bartender remote. The Cube should land on PlayerActivity with
+playback starting (or ComposePaywallActivity if unentitled). It should
+NOT land on `PageControllerActivity` waiting for an OK press.
+
+**Why two DPAD_CENTERs:** The first sometimes fires while the detail
+page is still in a loading-focus state (focus animation in progress)
+and is consumed silently. The second fires 1s later when focus has
+settled. The second is a no-op if the first already advanced —
+DPAD_CENTER on PlayerActivity briefly toggles play/pause and snaps
+back. Verified live on Holmgren Way Cube 2 (10.11.3.50, AFTR, Fire OS
+7.7) on 2026-05-08: API returns success in 30s, foreground transitions
+to ComposePaywallActivity (Cube unentitled to ESPN+ MLB at this
+location, but the advance from detail-page-with-OK-pending → action
+DID fire).
+
+**Scout AS contribution:** v2.32.98's `sendScoutPlayGameBroadcast` is
+still called before this path runs, but the host's force-stop in
+`launchEspnToLiveContent` kills ESPN before Scout's tile click takes
+effect. Scout AS is NOT load-bearing for the bartender autoplay; it
+remains in place as a no-op safety net (and may matter for future
+flows that don't force-stop ESPN, e.g. catalog walker re-entry).
+
+---
+
 ### v2.32.98 — Scout AccessibilityService for in-app ESPN/NFHS playback automation
 **Released:** 2026-05-08
 
