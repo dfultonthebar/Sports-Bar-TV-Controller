@@ -36,6 +36,15 @@
             android:enabled="true"
             android:exported="false" />
 
+        <!-- v2.2.0 — Active periodic catalog extraction. Foreground
+             service that on SNAPSHOT_NOW broadcast walks the AS tree
+             of target apps and POSTs structured catalog JSON. -->
+        <service
+            android:name=".CatalogSnapshotService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
         <receiver
             android:name=".BootReceiver"
             android:enabled="true"
@@ -62,6 +71,20 @@
             android:enabled="true">
             <intent-filter>
                 <action android:name="com.sportsbar.scout.PLAY_GAME" />
+            </intent-filter>
+        </receiver>
+
+        <!-- v2.2.0 — SNAPSHOT_NOW broadcast triggers CatalogSnapshotService
+             to walk the AS tree of Prime Video / ESPN and POST results to
+             scoutServerUrl. Trigger via:
+               adb shell "am broadcast -a com.sportsbar.scout.SNAPSHOT_NOW \
+                 -n com.sportsbar.scout/.SnapshotCommandReceiver" -->
+        <receiver
+            android:name=".SnapshotCommandReceiver"
+            android:exported="true"
+            android:enabled="true">
+            <intent-filter>
+                <action android:name="com.sportsbar.scout.SNAPSHOT_NOW" />
             </intent-filter>
         </receiver>
 

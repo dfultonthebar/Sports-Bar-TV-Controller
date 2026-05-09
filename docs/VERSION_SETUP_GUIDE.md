@@ -187,6 +187,128 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.33.6 — Scout v2.2.0 active extraction ships ESPN-only + IPv6-mapped IP fix
+**Released:** 2026-05-09
+
+**No setup required for the host.** Pure code change to the snapshot
+endpoint + Scout APK (location-side install handled by the existing
+firestick-scout-deploy script when run).
+
+**What changed:**
+
+1. **`apps/web/src/app/api/firestick-scout/snapshot/route.ts`** — IPv6-mapped IPv4 strip in the deviceId resolver. Node's net stack reports IPv4 connections as `::ffff:10.11.3.50`; `FireTVDevice.ipAddress` stores plain `10.11.3.50`. Without the strip, Scout's first POST (when MainActivity.deviceId is still `fire-tv-unknown`) couldn't resolve to the canonical FireTVDevice.id and rows piled up under `fire-tv-unknown`. After fix, rows land cleanly under `firetv_<id>_<location>`.
+
+2. **Scout APK v2.2.0 final scope** — ESPN-only target list in `CatalogSnapshotService`. Prime Video PVFTV-215 was attempted (4 iterations, see `docs/V2_2_0_PVFTV320_FINDINGS.md` iter#6-9) but Compose top-nav tabs don't respond to AccessibilityService click/focus actions. Without `INJECT_EVENTS` (signature-permission, requires platform-key signing) Scout cannot drive Compose tabs. Prime Video continues on the existing server-side walker path; Scout active-extraction handles ESPN only at this version.
+
+**Includes prior unbumped versions:**
+- **v2.33.4** — Scout v2.1.6 hardening (fleet bartender remote)
+- **v2.33.5** — `/api/firestick-scout/snapshot` endpoint added (server side of Scout v2.2.0)
+
+**Verification command** (run on any host after auto-update lands):
+```bash
+# Trigger Scout snapshot from one Cube, verify rows land under canonical deviceId
+DEV_IP=$(sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "SELECT ipAddress FROM FireTVDevice WHERE platform LIKE 'Fire TV%' LIMIT 1")
+adb -s "${DEV_IP}:5555" shell \
+  "am broadcast -a com.sportsbar.scout.SNAPSHOT_NOW -n com.sportsbar.scout/.SnapshotCommandReceiver" >/dev/null
+sleep 60
+# Should see ESPN rows with capturedAt within last 90 seconds
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "SELECT app, COUNT(*) tiles FROM firetv_streaming_catalog WHERE app='ESPN' AND capturedAt > strftime('%s','now')-90 GROUP BY app;"
+# Should also see SCOUT-SNAPSHOT log lines:
+pm2 logs sports-bar-tv-controller --lines 50 --nostream | grep "SCOUT-SNAPSHOT"
+```
+
+Expected: at least 1-8 ESPN rows depending on what's live, and one
+`Resolved Scout deviceId=fire-tv-unknown@<ip> → firetv_<id> (<name>)`
+log line per Cube reporting in.
+
+**Known limitation:** Scout snapshot is on-demand only via SNAPSHOT_NOW
+broadcast at v2.2.0. AlarmManager 6h periodic schedule is queued for
+v2.2.1. The server-side walker continues running its 3x-daily schedule
+unchanged so nothing is lost in the meantime.
+
+**Applies to:** all locations with PVFTV-215 firmware Cubes (Holmgren,
+Graystone, Stoneyards, Lucky's 3+4). PVFTV-320 Cubes (Lucky's 1+2) gain
+nothing from this version's Scout APK — see findings doc for the path
+forward (Option B Path 4 or Option C hardware swap).
+
+---
+
+### v2.33.3 — Walker wakes the Cube before launching apps (Lucky's screensaver fix)
+**Released:** 2026-05-09
+
+**No setup required.** Pure code fix in `packages/scheduler/src/firetv-catalog-walker.ts`.
+
+**What changed:** Walker's `walkApp()` now sends `KEYCODE_WAKEUP` (224) + 500ms wait BEFORE the existing `KEYCODE_HOME` step. Fire TV Cubes idle into the screensaver (`Sys2023:dream` window) after ~5 minutes of inactivity. Pre-fix, launching an app while the screensaver was foreground meant `uiautomator dump` captured the screensaver overlay (3-4KB, 0 content tiles) instead of the actual app content. Lucky's 1313 had this happening on all 4 Cubes for weeks before the diagnosis 2026-05-09 — bartender saw 0 Prime Video tiles even though the Cubes were healthy.
+
+**Verification command** (run on any Cube-having location host after auto-update lands):
+```bash
+# Force a walk while at least one Cube is actively in screensaver
+curl -s -X POST http://localhost:3001/api/firestick-scout/catalog/walk -d '{}'
+sleep 90
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "SELECT app, COUNT(*) tiles, datetime(MAX(capturedAt),'unixepoch','localtime') latest FROM firetv_streaming_catalog GROUP BY app;"
+```
+
+Expect both ESPN and Prime Video tile counts > 0 at locations that were previously showing only ESPN.
+
+**What this DOES NOT fix:** The fundamental "walker only handles ESPN + Prime Video" limitation is unchanged. Hulu/Peacock/fuboTV/Sling/Apple TV+/YouTube TV still don't appear in the bartender's streaming guide — that's the multi-day-per-app project documented in `docs/STREAMING_PROVIDER_ROADMAP.md`. v2.33.3 specifically targets the screensaver issue that was hiding Prime Video content at Lucky's.
+
+---
+
+### v2.33.2 — Walker noise filter unified across both Prime Video branches + Lucky's available_networks backfill + thorough operator DB-health doc
+**Released:** 2026-05-09
+
+**Code change:** v2.33.1's noise filter only ran in the non-matchup branch of `extractPrimeVideoTiles`. Tiles tagged `LIVE`/`UPCOMING` (e.g. "Season 2026 LIVE", "Recently watched LIVE", "Live events for you LIVE") took the OTHER branch and never re-validated. v2.33.2 hoists the entire filter into a shared `isPrimeVideoNoise()` predicate called from BOTH branches. Expanded the list with patterns observed in fleet catalogs 2026-05-09: news shows (ABC News, Dateline NBC), section headers (Recently watched, Live events for you), channel shells (RugbyPass TV, MLB Network), music events (Rolling Loud), long descriptive strings (>89 chars).
+
+**Per-location operator action — backfill `input_sources.available_networks` for any Cube-having location where it's still empty `[]`.** Without this, the walker logs `no walkable apps in available_networks` and skips the Cube → bartender shows 0 streaming games. Lucky's 1313 hit this on the v2.33.x rollout (`available_networks` was empty since install). Verify + fix:
+
+```bash
+DB=/home/ubuntu/sports-bar-data/production.db
+
+# Detect: any firetv input_source with empty available_networks?
+sqlite3 $DB "SELECT name, json_array_length(available_networks) AS app_count FROM input_sources WHERE type='firetv' AND json_array_length(available_networks)=0;"
+
+# Fix: populate based on what's actually installed on each Cube. Per the
+# Lucky's 1313 example (substitute IDs + IPs):
+for ip in <cube-ip-1> <cube-ip-2> ...; do
+  echo "== $ip ==" && adb -s $ip:5555 shell "pm list packages -3" | grep -iE "espn|peacock|hulu|fubo|sling|youtube|appletv|paramount"
+done
+# Then UPDATE per Cube; example for a Cube with ESPN + Peacock + Hulu installed
+# (Prime Video is firebat — system app, every Cube has it):
+sqlite3 $DB "UPDATE input_sources SET available_networks = json_array('ESPN', 'Prime Video', 'Peacock', 'Hulu') WHERE id = '<input_source_id>';"
+
+# Verify by triggering a manual walk:
+curl -s -X POST http://localhost:3001/api/firestick-scout/catalog/walk -d '{}'
+sleep 90
+sqlite3 $DB "SELECT app, COUNT(*) FROM firetv_streaming_catalog GROUP BY app;"
+```
+
+**Full friendly-name → package mapping + per-app walker support matrix:** see `docs/OPERATOR_DB_HEALTH.md` (new in this release). That doc also covers EVERY DB row + JSON file the streaming guide depends on, plus a 5-minute per-location audit script.
+
+**Cleanup of pre-v2.33.2 noise tiles** (one-shot per location host):
+```bash
+DB=/home/ubuntu/sports-bar-data/production.db
+for pat in \
+  "contentTitle IN ('ABC News','NBC News','Recently watched','Live events for you','Rolling Loud','Dateline NBC','Season 2026','SportsCenter','SECN+','RugbyPass TV','ESPN','ESPN+','ESPN Unlimited')" \
+  "length(contentTitle) > 89" \
+  "contentTitle LIKE 'Season 20%'" \
+  "contentTitle LIKE 'How do%'" \
+  "contentTitle LIKE 'Audio language%'" \
+  "contentTitle LIKE 'Subtitle%'"; do
+  sqlite3 $DB "DELETE FROM firetv_streaming_catalog WHERE $pat"
+done
+```
+
+After cleanup, the next walker run (next scheduled at 04:00/12:00/17:00 OR `POST /api/firestick-scout/catalog/walk` for immediate) will repopulate with the v2.33.2 filter applied.
+
+**Verified live 2026-05-09:** v2.33.2 deployed fleet-wide via `sshpass`-based parallel rollout (see `docs/FLEET_TRIGGER_RUNBOOK.md`). All 6 boxes report PASS 7/7 verify-install. Lucky's 1313 backfilled `available_networks` for all 4 Cubes; first walker run after backfill produced 5 ESPN tiles (was 0 before). Graystone walker noise dropped from 8 leaked rows to 0 after cleanup pass + v2.33.2 filter.
+
+**Scout APK status (verified 2026-05-09):** 16/16 reachable Cubes across the fleet running `v2.1.5-accessibility-automation` with AccessibilityService bound. No drift. The 2 Holmgren Cubes at 10.11.3.48/.49 are on the documented swap list (failing hardware, not code) and not counted.
+
+---
+
 ### v2.33.1 — Bartender remote rendering fix + live-data parity for streaming + completed-game filter + UI-label noise filter
 **Released:** 2026-05-09
 
