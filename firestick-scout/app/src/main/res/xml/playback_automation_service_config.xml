@@ -5,9 +5,24 @@
     This AccessibilityService is what gives Scout per-event playback
     automation + verification on Fire TV. It is scoped narrowly:
 
-    - packageNames: only ESPN (com.espn.gtv) and NFHS (com.playon.nfhslive)
-      are inspected. We DO NOT receive events from other apps; this is both
-      a privacy-correctness boundary and a battery-life one.
+    - packageNames: ESPN (com.espn.gtv), NFHS (com.playon.nfhslive),
+      Prime Video (com.amazon.firebat — both DeepLinkRoutingActivity
+      and IgnitionActivity firebat variants), and the Fire TV launcher
+      itself (com.amazon.tv.launcher).
+
+      v2.1.6 (2026-05-09): added `com.amazon.tv.launcher` because on
+      PVFTV-320 Cubes (newer firebat) Prime Video IS the launcher —
+      `com.amazon.firebat` resolves to `com.amazon.tv.launcher/
+      HomeActivity_vNext`, not a separate Prime Video activity. Without
+      the launcher in the watch list, Scout AS couldn't see or click
+      Prime Video tiles on those Cubes. With it, the same tile-token-
+      match logic works whether the activity is the older
+      DeepLinkRoutingActivity (firebat package events) or the newer
+      IgnitionActivity / launcher-hosted (com.amazon.tv.launcher
+      events). Lucky's 1313 Cubes 1+2 are PVFTV-320.
+
+      We DO NOT receive events from other apps; this is both a privacy-
+      correctness boundary and a battery-life one.
 
     - canRetrieveWindowContent="true": needed to read the on-screen tile
       tree to find a tile whose accessibility content matches the
@@ -31,5 +46,5 @@
     android:canRetrieveWindowContent="true"
     android:canPerformGestures="true"
     android:notificationTimeout="100"
-    android:packageNames="com.espn.gtv,com.playon.nfhslive,com.amazon.firebat"
+    android:packageNames="com.espn.gtv,com.playon.nfhslive,com.amazon.firebat,com.amazon.tv.launcher"
     android:description="@string/playback_automation_description" />
