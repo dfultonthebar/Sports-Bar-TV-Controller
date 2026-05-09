@@ -45,9 +45,21 @@ import java.net.URL
  */
 class CatalogSnapshotService : Service() {
 
+    // v2.2.1 — Re-add Prime Video target via the new LauncherHomeNavigator
+    // path for PVFTV-320+ Cubes (firebat resolves to launcher home, Sports
+    // tab is directly in the top nav). On PVFTV-215 the navigator falls
+    // back to the previous PRIME_APP_HOSTED path (which doesn't work but
+    // logs diagnostics — server filter drops nav_failed payloads).
+    //
+    // Unlike v2.2.0 ESPN-only ship, this version uses dispatchGesture
+    // (synthetic touch events that drive Compose pointerInput) as one
+    // click strategy — different from ACTION_CLICK which only fires AS
+    // handlers. May actually drive Compose tabs.
+    //
+    // ESPN remains the most-reliable target — its tile tree is AS-friendly.
     private val targets = listOf(
-        SnapshotTarget("Prime Video", "com.amazon.firebat", postSettleHydrationMs = 4_000L),
-        // ESPN + NFHS deferred to later iteration — focus on Prime PVFTV-320 first
+        SnapshotTarget("Sports Tab",  "com.amazon.firebat",      postSettleHydrationMs = 4_000L),
+        SnapshotTarget("ESPN",        "com.espn.gtv",            postSettleHydrationMs = 4_000L),
     )
 
     override fun onCreate() {
@@ -120,16 +132,11 @@ class CatalogSnapshotService : Service() {
         Log.i(TAG, "${target.displayName}: firebat=${fbVersion ?: "?"} navPath=$navPath")
 
         val navOk = when (navPath) {
-            NavPath.PRIME_LAUNCHER_HOSTED -> LauncherNavigator(this).gotoLiveTab()
-            NavPath.PRIME_APP_HOSTED -> {
-                Log.w(TAG, "PRIME_APP_HOSTED nav not implemented in v2.2.0 first cut — skipping")
-                false
-            }
-            NavPath.ESPN_LIVE -> {
-                Log.w(TAG, "ESPN_LIVE nav not implemented in v2.2.0 first cut — skipping")
-                false
-            }
-            NavPath.NONE -> true
+            NavPath.LAUNCHER_HOME_SPORTS_TAB -> LauncherHomeNavigator(this).gotoSportsTab()
+            NavPath.PRIME_LAUNCHER_HOSTED    -> LauncherNavigator(this).gotoLiveTab()
+            NavPath.PRIME_APP_HOSTED         -> AppNavigator(this).gotoPrimeVideoSports()
+            NavPath.ESPN_LIVE                -> AppNavigator(this).gotoEspnLive()
+            NavPath.NONE                     -> true
         }
         if (!navOk) {
             return AppSnapshotResult(target, "nav_failed", emptyList(), 0, started)
