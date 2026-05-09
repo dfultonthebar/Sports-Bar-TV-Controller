@@ -43,7 +43,7 @@ object CatalogExtractor {
             val h = rect.height()
             // Tile bounds heuristic: real tiles are 100-1400 wide, 40-600 tall.
             // Reject too-small (chrome) and too-large (background containers).
-            if (w in 100..1400 && h in 40..600) {
+            if (w in 100..1400 && h in 40..600 && !isAccessibilityChrome(combined)) {
                 val key = combined.lowercase()
                 if (!seen.contains(key)) {
                     seen.add(key)
@@ -146,23 +146,63 @@ object CatalogExtractor {
     private fun looksLive(text: String): Boolean =
         Regex("""\blive(\s+now)?\b""", RegexOption.IGNORE_CASE).containsMatchIn(text)
 
+    /**
+     * v2.33.10 — Reject TalkBack-style accessibility chrome strings
+     * BEFORE they enter the candidate list. Examples seen in real dumps:
+     *   "Watch, button 1 of 1", "Search, 2 of 5", "Main menu, Selected, 3 of 5",
+     *   "Home, Tab, Selected, 1 of 8", "My Stuff, 4 of 5",
+     *   "Settings for Luckys Madison",
+     *   "More Apps press select to view all of your apps and channels"
+     */
+    private fun isAccessibilityChrome(text: String): Boolean {
+        val l = text.lowercase().trim()
+        if (Regex("""\b\d+\s+of\s+\d+\b""").containsMatchIn(l)) return true
+        if (l.contains(", tab, selected,")) return true
+        if (l.contains(", tab, ")) return true
+        if (l.startsWith("more apps press select")) return true
+        if (l.startsWith("settings for ")) return true
+        if (l == "main menu" || l == "my stuff" || l == "home" || l == "search") return true
+        if (Regex(""", (button|tab|switch|checkbox)\b""").containsMatchIn(l)) return true
+        return false
+    }
+
     private fun inferSportTag(text: String): String? {
         val tags = mapOf(
-            "MLB" to listOf("mlb", "baseball"),
+            "MLB" to listOf("mlb", "baseball", "world series"),
             "NBA" to listOf("nba"),
-            "NFL" to listOf("nfl", "thursday night football", "sunday night football"),
+            "WNBA" to listOf("wnba"),
+            "NFL" to listOf("nfl", "thursday night football", "sunday night football", "monday night football"),
             "NHL" to listOf("nhl", "hockey"),
             "NCAAF" to listOf("college football", "ncaaf"),
             "NCAAB" to listOf("college basketball", "ncaab"),
             "MLS" to listOf("mls"),
             "EPL" to listOf("premier league", "epl"),
+            "LALIGA" to listOf("la liga", "laliga", "spanish la liga"),
+            "Bundesliga" to listOf("bundesliga", "german bundesliga"),
+            "ChampionsLeague" to listOf("champions league", "uefa champions"),
             "F1" to listOf("formula 1", " f1 ", "grand prix"),
+            "NASCAR" to listOf("nascar"),
+            "PGA" to listOf("pga tour", "pga", "lpga", "championship golf", "the masters", "u.s. open"),
             "UFC" to listOf("ufc", "mma"),
+            "Boxing" to listOf("boxing", "wba ", "wbo ", "wbc "),
             "PLL" to listOf("premier lacrosse", "pll"),
             "Rugby" to listOf("rugby"),
+            "Tennis" to listOf("atp", "wta", "wimbledon", "roland garros", "australian open", "u.s. open tennis"),
         )
         val l = text.lowercase()
-        return tags.entries.firstOrNull { (_, kws) -> kws.any { l.contains(it) } }?.key
+        tags.entries.firstOrNull { (_, kws) -> kws.any { l.contains(it) } }?.let { return it.key }
+
+        // v2.33.10 — Network-name pattern fallback. Tiles like "FOX Sports 1"
+        // or "ESPN+ • PGA TOUR" or "ESPN on ABC • WNBA" carry the league
+        // name AFTER a network suffix; if the keyword pass missed it, try
+        // splitting on bullet/dash/middot separators and re-matching.
+        val parts = l.split(Regex("""\s*[•·–—-]\s*"""))
+        for (part in parts) {
+            for ((tag, kws) in tags) {
+                if (kws.any { part.contains(it) }) return tag
+            }
+        }
+        return null
     }
 
     private fun cleanTitle(s: String): String {

@@ -187,6 +187,61 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.33.10 — Scout v2.2.3 polish: deepLink synth, accessibility-chrome filter, mislabel guard
+**Released:** 2026-05-09
+
+**No required setup.** Polish over v2.33.9.
+
+**What changed:**
+
+1. **deepLink synthesis on Scout snapshot rows.** Previously `null`; now
+   matches walker output:
+   - Prime Video / Sports Tab → `https://watch.amazon.com/search?phrase=<title>`
+   - ESPN → `sportscenter://x-callback-url/showHomeTab?q=<title>`
+   - Other apps → null (bartender falls back to plain app-launch)
+   Bartender Watch button now does the same thing whichever source
+   produced the row.
+
+2. **Accessibility-chrome filter (Scout APK).** TalkBack-style strings
+   like `"Watch, button 1 of 1"`, `"Search, 2 of 5"`, `"Home, Tab,
+   Selected, 1 of 8"`, `"Settings for Luckys Madison"` are now rejected
+   BEFORE entering the candidate list. Was producing score=0.0 noise
+   that bloated the diagnostic dump and the candidate count.
+
+3. **Mislabeled-window guard (Scout APK).** When Scout's app-launch
+   transitions don't actually bring the target to foreground, the
+   extractor was walking whatever tree IS active and POSTing it under
+   the target's name — Greenville Cube 2026-05-09 caught Prime Video
+   tiles being labeled as ESPN. Now verifies `rootInActiveWindow.packageName`
+   matches `target.pkg` (with launcher fallback only for the launcher-
+   hosted Sports Tab path); mismatched windows return `status=wrong_window`
+   with no rows written.
+
+4. **Improved sportTag inference** — added WNBA, LALIGA, Bundesliga,
+   ChampionsLeague, NASCAR, PGA, Boxing, Tennis. Network-suffix
+   pattern fallback splits on bullet/dash/middot separators so tiles
+   like `"WNBA Countdown ESPN on ABC • WNBA"` get tagged WNBA even
+   when the keyword is in the suffix.
+
+**Verification command:**
+```bash
+DEV_IP=192.168.10.42  # Lucky's Cube 1
+adb -s ${DEV_IP}:5555 shell "input keyevent 3"; sleep 4
+adb -s ${DEV_IP}:5555 shell "am broadcast -a com.sportsbar.scout.SNAPSHOT_NOW -n com.sportsbar.scout/.SnapshotCommandReceiver"
+sleep 75
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "SELECT app, contentTitle, sportTag, substr(deepLink,1,40) FROM firetv_streaming_catalog WHERE source='scout-snapshot' AND capturedAt > strftime('%s','now')-180 ORDER BY app, contentTitle"
+```
+
+Expected: ESPN rows have `sportcenter://...` deepLinks; sportTag set
+for league-named tiles (WNBA, PGA, NBA, etc.); no `"Watch, button 1
+of 1"` / `"Home, Tab, Selected, 1 of 8"` style chrome strings.
+
+**Applies to:** all locations after fleet auto-update + APK redeploy
+(`scripts/install-scout-accessibility.sh --skip-build` per host).
+
+---
+
 ### v2.33.9 — Hybrid Scout-snapshot + walker (per-source coexistence + skip-on-Scout-sufficient)
 **Released:** 2026-05-09
 
