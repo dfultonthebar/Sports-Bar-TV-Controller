@@ -67,8 +67,18 @@ object FirebatVersionDetector {
         pkg == "com.amazon.firebat" && major != null && major >= 300 -> NavPath.LAUNCHER_HOME_SPORTS_TAB
         pkg == "com.amazon.tv.launcher" && major != null && major >= 300 -> NavPath.LAUNCHER_HOME_SPORTS_TAB
 
-        // PVFTV-215 and below: Prime Video opens its own app with a
-        // top-tab strip. Sports lives under that.
+        // v2.33.12 — PVFTV-104/107/115 (Stoneyard Appleton + Greenville
+        // mix) lacks the Prime Video Sports tab entirely. The walker
+        // never reaches a Sports row; AppNavigator's PRIME_APP_HOSTED
+        // path always returns nav_failed. Skip the target outright on
+        // firebat < 200 to avoid the wasted ~10s nav attempt + bogus
+        // status=nav_failed entries cluttering the diagnostic logs.
+        pkg == "com.amazon.firebat" && major != null && major < 200  -> NavPath.NONE
+
+        // PVFTV-215 / 213 / 214: Prime Video opens its own app with a
+        // top-tab strip. Sports lives under that. AppNavigator handles
+        // (still doesn't drive Compose tabs reliably, but at least it
+        // doesn't waste cycles on cubes where the tab can't exist).
         pkg == "com.amazon.firebat"                                  -> NavPath.PRIME_APP_HOSTED
 
         // ESPN: home tab IS the live-sports landing.
