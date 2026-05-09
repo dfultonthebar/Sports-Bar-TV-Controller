@@ -14,6 +14,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * v2.2.0 — Active periodic catalog extraction. Replaces the brittle
@@ -45,6 +46,11 @@ import java.net.URL
  */
 class CatalogSnapshotService : Service() {
 
+    // v2.33.13 — Re-entrancy guard for SNAPSHOT_NOW broadcasts. A second
+    // broadcast while a cycle is in progress is silently dropped to avoid
+    // racing on the foreground window + duplicate POSTs.
+    private val cycleRunning = AtomicBoolean(false)
+
     // v2.2.1 — Re-add Prime Video target via the new LauncherHomeNavigator
     // path for PVFTV-320+ Cubes (firebat resolves to launcher home, Sports
     // tab is directly in the top nav). On PVFTV-215 the navigator falls
@@ -71,8 +77,20 @@ class CatalogSnapshotService : Service() {
         startForeground(NOTIFICATION_ID, buildNotification("Idle — awaiting trigger"))
         Log.i(TAG, "CatalogSnapshotService started")
         if (intent?.getBooleanExtra(EXTRA_RUN_NOW, false) == true) {
-            Log.i(TAG, "Trigger: SNAPSHOT_NOW")
-            Thread { runOneSnapshotCycle() }.start()
+            // v2.33.13 — Re-entrancy guard. Code reviewer caught: a second
+            // SNAPSHOT_NOW broadcast while the first cycle is still running
+            // would spawn a second runOneSnapshotCycle() thread on the
+            // SAME device — both calling LauncherIntent.launchPackage,
+            // both racing for the foreground window, both POSTing to the
+            // server. Use AtomicBoolean to serialize.
+            if (!cycleRunning.compareAndSet(false, true)) {
+                Log.w(TAG, "SNAPSHOT_NOW received but a cycle is already in progress — ignoring duplicate trigger")
+            } else {
+                Log.i(TAG, "Trigger: SNAPSHOT_NOW")
+                Thread {
+                    try { runOneSnapshotCycle() } finally { cycleRunning.set(false) }
+                }.start()
+            }
         }
         return START_STICKY
     }
