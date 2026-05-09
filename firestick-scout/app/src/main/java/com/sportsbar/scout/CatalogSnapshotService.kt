@@ -45,9 +45,19 @@ import java.net.URL
  */
 class CatalogSnapshotService : Service() {
 
+    // v2.2.0 ship scope: ESPN-only active extraction.
+    // Prime Video PVFTV-215 was attempted (iter #6-9) but Compose top-nav
+    // tabs don't respond to AccessibilityService actions — neither
+    // ACTION_CLICK on ancestors, nor ACTION_FOCUS / ACTION_ACCESSIBILITY_FOCUS
+    // on the tab text node, nor bounds-contained clickable ancestor walk
+    // moves the selected tab off "Home". Without INJECT_EVENTS (signature
+    // permission) or root, Scout cannot drive Compose tabs the way the
+    // server-side walker can via `adb shell input keyevent`. So Prime
+    // Video continues on the server-side walker path; Scout active-
+    // extraction handles ESPN only. See docs/V2_2_0_PVFTV320_FINDINGS.md
+    // for the full iteration log.
     private val targets = listOf(
-        SnapshotTarget("Prime Video", "com.amazon.firebat", postSettleHydrationMs = 4_000L),
-        // ESPN + NFHS deferred to later iteration — focus on Prime PVFTV-320 first
+        SnapshotTarget("ESPN", "com.espn.gtv", postSettleHydrationMs = 4_000L),
     )
 
     override fun onCreate() {
@@ -121,15 +131,9 @@ class CatalogSnapshotService : Service() {
 
         val navOk = when (navPath) {
             NavPath.PRIME_LAUNCHER_HOSTED -> LauncherNavigator(this).gotoLiveTab()
-            NavPath.PRIME_APP_HOSTED -> {
-                Log.w(TAG, "PRIME_APP_HOSTED nav not implemented in v2.2.0 first cut — skipping")
-                false
-            }
-            NavPath.ESPN_LIVE -> {
-                Log.w(TAG, "ESPN_LIVE nav not implemented in v2.2.0 first cut — skipping")
-                false
-            }
-            NavPath.NONE -> true
+            NavPath.PRIME_APP_HOSTED      -> AppNavigator(this).gotoPrimeVideoSports()
+            NavPath.ESPN_LIVE             -> AppNavigator(this).gotoEspnLive()
+            NavPath.NONE                  -> true
         }
         if (!navOk) {
             return AppSnapshotResult(target, "nav_failed", emptyList(), 0, started)

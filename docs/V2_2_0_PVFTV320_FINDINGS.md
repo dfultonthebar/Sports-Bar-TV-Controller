@@ -164,6 +164,8 @@ for Option A.
 
 ## Iteration log (for reference)
 
+### PVFTV-320 (Lucky's Cube 1, iters 1-5)
+
 | # | Change | Result |
 |---|---|---|
 | 1 | Initial v2.2.0: launch firebat → search for "Live" anywhere in tree → click | Crashed at "no Live tab found" — landed on IgnitionActivity (no tree content) |
@@ -176,3 +178,60 @@ Iterations 1-4 had a verify-gate that returned "successfully navigated to
 Live tab" too eagerly — `verifyLiveTabContent()` accepted the launcher
 home as Live-tab-content because it found a "B1G" string. Tightening
 that gate in iteration #5 surfaced the real issue cleanly.
+
+---
+
+### PVFTV-215 (Holmgren Cube 2, iters 6-9)
+
+After picking Option A and implementing AppNavigator, ran 4 iterations
+against Holmgren Cube 2 (10.11.3.50, AFTR + PVFTV-215). ESPN works
+flawlessly; Prime Video does NOT.
+
+| # | Change | Result |
+|---|---|---|
+| 6 | First AppNavigator: `performGlobalAction(GLOBAL_ACTION_DPAD_*)` for UP×2/RIGHT×3/CENTER | Failed silently — those constants are API 33+, Cube 2 is API 28 |
+| 7 | Replaced DPAD with direct node-find + ACTION_CLICK via ancestor walk | "Sports" tab found at correct bounds [529,62][647,95]; ancestor walk hit the wrong (side-menu) clickable. Verify lied → fixed verify gate |
+| 8 | Tighter verify checking focused-Tab-Selected against Sports name | Verify correctly catches failure now. Click STILL fails — focus moves to "Main menu, Selected, 3 of 5" (side menu, not top tab) |
+| 9 | Multi-strategy click: ACTION_ACCESSIBILITY_FOCUS, ACTION_FOCUS, bounds-contained ancestor, legacy walk | All four strategies fail. Compose top-nav tabs do not respond to AS actions on PVFTV-215 either |
+
+**ESPN extraction works perfectly — 8 sports tiles per snapshot, real
+live game data:**
+
+```
+#1 score=0.65 'Wolfsburg vs. FC Bayern ESPN+ • German Bundesliga'
+#2 score=0.65 'Atlético Madrid vs. Celta ESPN+ • Spanish LALIGA'
+#3 score=0.60 'Truist Championship: Main Feed ESPN+ • PGA TOUR'
+... etc
+```
+
+Rows land in `firetv_streaming_catalog` under canonical deviceId after
+the v2.33.6 IPv6-mapped-IPv4 strip in the snapshot endpoint.
+
+### Why Prime Video AS click fundamentally doesn't work
+
+Server-side walker drives Prime Video tabs via `adb shell input keyevent`
+— DPAD events that go through the kernel input pipeline (uinput) and
+trigger the Compose framework's onKeyEvent handlers. Scout's
+AccessibilityService cannot send DPAD events: `performGlobalAction(DPAD_*)`
+requires API 33, and `ACTION_CLICK` / `ACTION_FOCUS` on a Compose tab's
+visible node doesn't fire the tab's click handler because Compose tabs
+register key listeners, not accessibility action handlers.
+
+Without `INJECT_EVENTS` permission (signature/system level — only granted
+to system apps signed with the platform key) or root, Scout has no way
+to drive Compose-based tab navigation in user-installed apps.
+
+**Net effect for v2.2.0 ship:** Prime Video continues on the existing
+server-side walker path (which works fine). Scout active-extraction
+ships ESPN-only. The Path 4 / MediaProjection + Vision LLM proposal
+remains the long-term answer for any app whose tabs are Compose-locked.
+
+---
+
+## v2.2.0 final ship scope (revised after iter #9)
+
+- **ESPN active-extraction** ✅ ships fleet-wide on PVFTV-215 Cubes
+- **Prime Video active-extraction** ✗ blocked by Compose accessibility-hardening
+  → continues on server-side walker
+- **PVFTV-320 (Lucky's Cubes 1+2)** ✗ same blocker as Prime PVFTV-215; needs Option B/C
+- **AlarmManager 6h schedule** to be added in v2.2.1 (currently on-demand only)
