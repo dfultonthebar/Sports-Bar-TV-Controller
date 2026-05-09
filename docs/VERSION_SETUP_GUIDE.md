@@ -187,6 +187,58 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.33.2 — Walker noise filter unified across both Prime Video branches + Lucky's available_networks backfill + thorough operator DB-health doc
+**Released:** 2026-05-09
+
+**Code change:** v2.33.1's noise filter only ran in the non-matchup branch of `extractPrimeVideoTiles`. Tiles tagged `LIVE`/`UPCOMING` (e.g. "Season 2026 LIVE", "Recently watched LIVE", "Live events for you LIVE") took the OTHER branch and never re-validated. v2.33.2 hoists the entire filter into a shared `isPrimeVideoNoise()` predicate called from BOTH branches. Expanded the list with patterns observed in fleet catalogs 2026-05-09: news shows (ABC News, Dateline NBC), section headers (Recently watched, Live events for you), channel shells (RugbyPass TV, MLB Network), music events (Rolling Loud), long descriptive strings (>89 chars).
+
+**Per-location operator action — backfill `input_sources.available_networks` for any Cube-having location where it's still empty `[]`.** Without this, the walker logs `no walkable apps in available_networks` and skips the Cube → bartender shows 0 streaming games. Lucky's 1313 hit this on the v2.33.x rollout (`available_networks` was empty since install). Verify + fix:
+
+```bash
+DB=/home/ubuntu/sports-bar-data/production.db
+
+# Detect: any firetv input_source with empty available_networks?
+sqlite3 $DB "SELECT name, json_array_length(available_networks) AS app_count FROM input_sources WHERE type='firetv' AND json_array_length(available_networks)=0;"
+
+# Fix: populate based on what's actually installed on each Cube. Per the
+# Lucky's 1313 example (substitute IDs + IPs):
+for ip in <cube-ip-1> <cube-ip-2> ...; do
+  echo "== $ip ==" && adb -s $ip:5555 shell "pm list packages -3" | grep -iE "espn|peacock|hulu|fubo|sling|youtube|appletv|paramount"
+done
+# Then UPDATE per Cube; example for a Cube with ESPN + Peacock + Hulu installed
+# (Prime Video is firebat — system app, every Cube has it):
+sqlite3 $DB "UPDATE input_sources SET available_networks = json_array('ESPN', 'Prime Video', 'Peacock', 'Hulu') WHERE id = '<input_source_id>';"
+
+# Verify by triggering a manual walk:
+curl -s -X POST http://localhost:3001/api/firestick-scout/catalog/walk -d '{}'
+sleep 90
+sqlite3 $DB "SELECT app, COUNT(*) FROM firetv_streaming_catalog GROUP BY app;"
+```
+
+**Full friendly-name → package mapping + per-app walker support matrix:** see `docs/OPERATOR_DB_HEALTH.md` (new in this release). That doc also covers EVERY DB row + JSON file the streaming guide depends on, plus a 5-minute per-location audit script.
+
+**Cleanup of pre-v2.33.2 noise tiles** (one-shot per location host):
+```bash
+DB=/home/ubuntu/sports-bar-data/production.db
+for pat in \
+  "contentTitle IN ('ABC News','NBC News','Recently watched','Live events for you','Rolling Loud','Dateline NBC','Season 2026','SportsCenter','SECN+','RugbyPass TV','ESPN','ESPN+','ESPN Unlimited')" \
+  "length(contentTitle) > 89" \
+  "contentTitle LIKE 'Season 20%'" \
+  "contentTitle LIKE 'How do%'" \
+  "contentTitle LIKE 'Audio language%'" \
+  "contentTitle LIKE 'Subtitle%'"; do
+  sqlite3 $DB "DELETE FROM firetv_streaming_catalog WHERE $pat"
+done
+```
+
+After cleanup, the next walker run (next scheduled at 04:00/12:00/17:00 OR `POST /api/firestick-scout/catalog/walk` for immediate) will repopulate with the v2.33.2 filter applied.
+
+**Verified live 2026-05-09:** v2.33.2 deployed fleet-wide via `sshpass`-based parallel rollout (see `docs/FLEET_TRIGGER_RUNBOOK.md`). All 6 boxes report PASS 7/7 verify-install. Lucky's 1313 backfilled `available_networks` for all 4 Cubes; first walker run after backfill produced 5 ESPN tiles (was 0 before). Graystone walker noise dropped from 8 leaked rows to 0 after cleanup pass + v2.33.2 filter.
+
+**Scout APK status (verified 2026-05-09):** 16/16 reachable Cubes across the fleet running `v2.1.5-accessibility-automation` with AccessibilityService bound. No drift. The 2 Holmgren Cubes at 10.11.3.48/.49 are on the documented swap list (failing hardware, not code) and not counted.
+
+---
+
 ### v2.33.1 — Bartender remote rendering fix + live-data parity for streaming + completed-game filter + UI-label noise filter
 **Released:** 2026-05-09
 
