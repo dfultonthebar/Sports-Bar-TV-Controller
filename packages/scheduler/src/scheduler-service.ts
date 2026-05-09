@@ -190,10 +190,18 @@ class SchedulerService {
   }
 
   /**
-   * Decide whether to run the daily catalog walk and execute if so.
-   * Two gates: time-of-day window (04:00–04:05 local) OR last-walk-was-25h+
-   * for catch-up after long downtime. The Date.now() guard prevents
-   * double-runs within the same window.
+   * Decide whether to run a catalog walk and execute if so.
+   *
+   * v2.33.0 — Walks 3x daily (04:00, 12:00, 17:00 local) instead of
+   * 1x daily. Bartender guide is now Scout-catalog-only for streaming
+   * games (no game_schedules / Rail-Media-streaming fallback), so
+   * stale catalog data = missing games on the bartender remote.
+   * Three windows balance freshness with Cube wear:
+   *   - 04:00 — overnight refresh while bar is closed (existing)
+   *   - 12:00 — catches afternoon games that weren't on tiles at 04:00
+   *   - 17:00 — pre-primetime refresh for evening sports
+   * Cooldown reduced from 6h to 3h to allow consecutive 04→12 and
+   * 12→17 windows (5h gap each).
    */
   private async maybeRunCatalogWalk() {
     const now = new Date();
@@ -205,17 +213,21 @@ class SchedulerService {
       now.toLocaleString('en-US', { timeZone: VENUE_TIMEZONE, minute: 'numeric' }),
       10
     );
-    const inWindow = localHour === 4 && localMinute < 5;
+    const walkHours = [4, 12, 17];
+    const inWindow = walkHours.includes(localHour) && localMinute < 5;
     const last = this.lastCatalogWalk;
-    const longGap = !last || (now.getTime() - last.getTime() > 25 * 60 * 60 * 1000);
+    // Long-gap catch-up: if we missed all three windows for >9h (e.g. PM2
+    // restart spans 04:00 + 12:00 windows), trigger on next poll regardless.
+    const longGap = !last || (now.getTime() - last.getTime() > 9 * 60 * 60 * 1000);
 
-    // Cooldown: don't re-run within 6h regardless of window
-    const recent = last && (now.getTime() - last.getTime() < 6 * 60 * 60 * 1000);
+    // Cooldown: don't re-run within 3h regardless of window. 04→12 = 8h,
+    // 12→17 = 5h, 17→04 = 11h — all clear of the 3h floor.
+    const recent = last && (now.getTime() - last.getTime() < 3 * 60 * 60 * 1000);
     if (recent) return;
 
     if (!inWindow && !longGap) return;
 
-    logger.info(`[FIRETV-CATALOG] Triggering daily walk (window=${inWindow}, longGap=${longGap})`);
+    logger.info(`[FIRETV-CATALOG] Triggering walk (window=${inWindow}, longGap=${longGap}, hour=${localHour})`);
     this.lastCatalogWalk = now;
     try {
       await runFiretvCatalogWalk();

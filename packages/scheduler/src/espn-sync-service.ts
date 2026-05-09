@@ -243,6 +243,29 @@ class ESPNSyncService {
         homeTeamName = ''
       }
     }
+    // v2.33.0 — Individual / non-team-vs-team sports (racing F1/NASCAR/IndyCar,
+    // golf PGA/LPGA, tennis ATP/WTA) come back from ESPN with empty home/away
+    // displayName + a meaningful event name like "Lenovo Canadian Grand Prix".
+    // Pre-fix the row stored as `"" at ""` and filtered out everywhere — F1
+    // qualifying tiles in the bartender catalog couldn't be enriched with a
+    // start time because the team-token lookup had nothing to match. Stuff the
+    // event name into homeTeamName (and the shortName fallback into away) so
+    // downstream consumers see something renderable AND the channel-guide
+    // enrichment lookup-by-token has tokens to match.
+    if (
+      ['racing', 'golf', 'tennis'].includes(sport) &&
+      (!homeTeamName || !awayTeamName)
+    ) {
+      const eventName = (game.name || game.shortName || '').trim()
+      if (eventName) {
+        // Individual sports: stuff event name into home only, leave away
+        // empty. The bartender filter accepts home OR away populated.
+        // Pre-fix this set BOTH to the same string and the UI rendered
+        // "Grand Prix at Grand Prix" duplicates.
+        homeTeamName = eventName
+        awayTeamName = ''
+      }
+    }
 
     const gameData = {
       espnEventId: game.id,
