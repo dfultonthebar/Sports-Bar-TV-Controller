@@ -32,8 +32,8 @@ android {
         applicationId "com.sportsbar.scout"
         minSdk 22
         targetSdk 33
-        versionCode 223
-        versionName "2.2.3-extractor-polish"
+        versionCode 224
+        versionName "2.2.4-stoneyard-bugs"
         buildConfigField "String", "SERVER_URL_DEFAULT", "\"${resolveScoutServerUrl()}\""
     }
 

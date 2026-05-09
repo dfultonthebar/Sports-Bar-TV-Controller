@@ -167,14 +167,18 @@ object CatalogExtractor {
     }
 
     private fun inferSportTag(text: String): String? {
-        val tags = mapOf(
-            "MLB" to listOf("mlb", "baseball", "world series"),
-            "NBA" to listOf("nba"),
+        // v2.33.12 — WNBA must be checked BEFORE NBA because "nba" is a
+        // substring of "wnba". Greenville Cube 2026-05-09 caught WNBA
+        // games being mis-tagged as NBA. LinkedHashMap preserves order
+        // so the iterator in firstOrNull below sees WNBA first.
+        val tags = linkedMapOf(
             "WNBA" to listOf("wnba"),
-            "NFL" to listOf("nfl", "thursday night football", "sunday night football", "monday night football"),
-            "NHL" to listOf("nhl", "hockey"),
             "NCAAF" to listOf("college football", "ncaaf"),
             "NCAAB" to listOf("college basketball", "ncaab"),
+            "MLB" to listOf("mlb", "baseball", "world series"),
+            "NBA" to listOf("nba"),
+            "NFL" to listOf("nfl", "thursday night football", "sunday night football", "monday night football"),
+            "NHL" to listOf("nhl", "hockey"),
             "MLS" to listOf("mls"),
             "EPL" to listOf("premier league", "epl"),
             "LALIGA" to listOf("la liga", "laliga", "spanish la liga"),
