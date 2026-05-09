@@ -235,3 +235,72 @@ remains the long-term answer for any app whose tabs are Compose-locked.
   → continues on server-side walker
 - **PVFTV-320 (Lucky's Cubes 1+2)** ✗ same blocker as Prime PVFTV-215; needs Option B/C
 - **AlarmManager 6h schedule** to be added in v2.2.1 (currently on-demand only)
+
+---
+
+# v2.2.2 — PVFTV-320 launcher Live tab works (Lucky's Cube 1 verified 2026-05-09)
+
+After capturing real launcher tree dumps from Lucky's Cube 1
+(192.168.10.42, PVFTV-320.0001-L) via the v2.2.1 `ACTION_DUMP_LAUNCHER_TREE`
+broadcast, several assumptions were corrected:
+
+## Lucky's PVFTV-320.0001-L launcher reality
+
+The launcher tab strip lives at **y=532-612** (NOT y<200 as the original
+LauncherNavigator assumed). Tabs visible:
+
+```
+y=532  My Stuff / Games / Find / Free / Home / Live /
+       [Netflix / Prime Video / YouTube / Disney+ / Tubi shortcuts] /
+       News / More Apps / Settings
+```
+
+Each tab is a `ViewGroup` with `click=true focus=true` and
+`contentDescription` carrying the tab name. **There is NO Sports tab**
+on PVFTV-320.0001-L — the Live tab is the destination.
+
+`isFocused=true` is the reliable verify signal. `isSelected` and
+`Tab, Selected` desc patterns are NOT used by this launcher build.
+
+## What works
+
+- **Live tab navigation** ✅ via `ACTION_FOCUS` on the tab node — one
+  click strategy of five, the simplest. After ACTION_FOCUS, the
+  launcher activates the Live tab cleanly (`isFocused=true` transfers
+  to the Live ViewGroup; `verifyLiveSportsContent` succeeds).
+- **ESPN active-extraction on PVFTV-320** ✅ — 7 sports tiles per
+  snapshot, scores 0.50-1.00 including WNBA Countdown, Truist
+  Championship, German Bundesliga LIVE Wolfsburg/Bayern, Spanish
+  LALIGA LIVE Atlético/Celta Vigo. Same as PVFTV-215 ESPN.
+- **HOME-key reset** ✅ — `performGlobalAction(GLOBAL_ACTION_HOME)` is
+  available on API 28 (unlike `GLOBAL_ACTION_DPAD_*` which is API 33+).
+  Sent at the start of LauncherHomeNavigator.gotoSportsTab so the snapshot
+  works regardless of what activity was foreground when triggered.
+
+## What doesn't work (next iteration)
+
+- **Live tab content extraction beyond row 1.** When triggered manually
+  via DPAD (kernel input pipeline), the dump captured 100 nodes
+  including "Live Sports", "Featured live TV apps", "Free Live
+  Channels" rows + FOX Sports 1, CBS Sports, "FOX: Stream live NFL"
+  tiles. When triggered via Scout's snapshot service (ACTION_FOCUS +
+  swipe gesture), the tree only contains 8 nodes — tab chrome + the
+  first content row's tiles ("Law & Order", "College Softball").
+  **Deeper rows render lazily** and either dispatchGesture's swipe
+  doesn't trigger the Compose RecyclerView's onScrolled handlers, or
+  the lazy hydration only happens for actual user-visible viewport
+  changes.
+
+  **Path forward (deferred):** server-side walker uses ADB `input
+  swipe` which DOES go through the kernel input pipeline and triggers
+  full hydration; for now Prime Video / aggregated sports content on
+  PVFTV-320 launcher continues to use that walker. Scout's launcher-
+  Live-tab path delivers correct navigation but limited extraction.
+
+## v2.2.2 ship scope
+
+- ESPN active-extraction (PVFTV-215 + PVFTV-320) ✅
+- PVFTV-320 launcher Live tab navigation framework ✅
+- Reference dumps for Lucky's PVFTV-320.0001-L committed under
+  `docs/probes/pvftv320-launcher/` for future iteration
+- ACTION_DUMP_LAUNCHER_TREE diagnostic for any new-launcher probe
