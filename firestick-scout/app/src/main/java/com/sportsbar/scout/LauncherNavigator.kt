@@ -42,13 +42,54 @@ class LauncherNavigator(private val ctx: Context) {
         }
         Log.i(TAG, "Strategy 1: navigate to Live tab")
 
+        // Step 0 — Press HOME to ensure we're on the launcher's
+        // HomeActivity_vNext view (which has the top-nav strip with
+        // Home/Find/Live tabs). On PVFTV-320, launching firebat via
+        // Intent lands on com.amazon.firebat/IgnitionActivity (a sparse
+        // bouncer activity with no top nav). HOME forces the launcher
+        // home view to come foreground.
+        Log.i(TAG, "Sending HOME to surface launcher home view")
+        svc.performGlobalActionSafe(AccessibilityService.GLOBAL_ACTION_HOME)
+        sleep(HOME_TRANSITION_DELAY_MS)
+
         // Step 1 — find the Live tab node by content-desc.
-        val root = freshRoot(svc) ?: return false
+        // Retry the freshRoot lookup — observed 2026-05-09 that on the
+        // 2nd+ snapshot in a row, rootInActiveWindow can return null
+        // briefly during the HOME transition. Retry settles within ~2s.
+        var root: AccessibilityNodeInfo? = null
+        for (attempt in 1..ROOT_FETCH_RETRIES) {
+            root = freshRoot(svc)
+            if (root != null) break
+            Log.w(TAG, "freshRoot returned null (attempt $attempt/$ROOT_FETCH_RETRIES) — retrying")
+            sleep(1_000)
+        }
+        if (root == null) {
+            Log.w(TAG, "[DIAG] freshRoot returned null after $ROOT_FETCH_RETRIES retries — AS may be unbound or window transition stuck")
+            return false
+        }
+        Log.i(TAG, "Got root after HOME — package=${root.packageName} class=${root.className}")
+
+        // Find the Live TAB specifically — must be in the top nav strip
+        // (y < TOP_NAV_Y_MAX). Iteration #4 (2026-05-09) found a content-
+        // card "Live" at y=532 that blind findFirstMatching latched onto
+        // first; clicking it triggered firebat IgnitionActivity, NOT the
+        // Live-tab content view.
         val liveNode = findFirstMatching(root) { n ->
-            nodeTextOrDescEquals(n, "Live")
+            if (!nodeTextOrDescEquals(n, "Live")) return@findFirstMatching false
+            val rect = android.graphics.Rect()
+            n.getBoundsInScreen(rect)
+            rect.top < TOP_NAV_Y_MAX && rect.height() < 200
         }
         if (liveNode == null) {
-            dumpTopOfTree(svc, "no Live tab found in launcher home")
+            // Fallback: if no top-nav Live found, check whether ANY Live
+            // node exists (helps diagnose if the tree shape changed).
+            val anyLive = findFirstMatching(root) { nodeTextOrDescEquals(it, "Live") }
+            if (anyLive != null) {
+                val r = android.graphics.Rect()
+                anyLive.getBoundsInScreen(r)
+                Log.w(TAG, "[DIAG] Found 'Live' node but at y=${r.top} (need y < $TOP_NAV_Y_MAX) — likely a content card not top-nav tab")
+            }
+            dumpTopOfTree(svc, "no top-nav Live tab found in launcher home")
             return false
         }
         Log.i(TAG, "Found Live tab node — class=${liveNode.className} viewId=${liveNode.viewIdResourceName} bounds=${nodeBounds(liveNode)}")
@@ -70,13 +111,30 @@ class LauncherNavigator(private val ctx: Context) {
         svc.performGlobalActionSafe(AccessibilityService.GLOBAL_ACTION_DPAD_CENTER)
         sleep(LIVE_TAB_RENDER_DELAY_MS)
 
-        // Step 5 — verify content rendered. Live tab should show at
+        // Step 5 — Scroll DOWN to surface the actual sports content rows.
+        // Iteration #3 finding (2026-05-09): landing on Live tab dumps app
+        // shortcuts (Netflix/Disney+/Prime/YouTube) at the top — those are
+        // app launcher tiles, not games. The "Live now" / "Sports" rows are
+        // BELOW the fold. DPAD_DOWN×N scrolls the RecyclerView to load them.
+        Log.i(TAG, "Scrolling down to find sports rows past the app shortcuts row")
+        for (i in 1..LIVE_TAB_SCROLL_HOPS) {
+            svc.performGlobalActionSafe(AccessibilityService.GLOBAL_ACTION_DPAD_DOWN)
+            sleep(450)
+        }
+        sleep(LIVE_TAB_POST_SCROLL_DELAY_MS)
+
+        // Step 6 — verify content rendered. Live tab should show at
         // least one row with "Live now" / "Live & upcoming" / sports tiles.
         if (!verifyLiveTabContent(svc)) {
-            dumpTopOfTree(svc, "Live tab activated but content doesn't look right")
-            return false
+            // Soft-fail: still let the extractor try. Even non-ideal
+            // content gets dumped + scored; if zero tiles score above
+            // threshold, snapshot status will be "ok" but tiles=0 — better
+            // than nav_failed (which prevents extraction entirely).
+            Log.w(TAG, "Live tab content check did NOT find clear sports row, but proceeding to extract anyway")
+            dumpTopOfTree(svc, "Live tab content unclear — extractor will see what's here")
+        } else {
+            Log.i(TAG, "Successfully navigated to Live tab WITH visible sports content")
         }
-        Log.i(TAG, "Successfully navigated to Live tab")
         return true
     }
 
@@ -236,6 +294,13 @@ class LauncherNavigator(private val ctx: Context) {
     companion object {
         private const val TAG = "LauncherNav"
         private const val LIVE_TAB_RENDER_DELAY_MS = 5_000L
+        private const val HOME_TRANSITION_DELAY_MS = 2_500L
+        private const val LIVE_TAB_SCROLL_HOPS = 3
+        private const val LIVE_TAB_POST_SCROLL_DELAY_MS = 2_500L
+        private const val ROOT_FETCH_RETRIES = 4
+        // Top nav strip is in the upper ~100-200px of a 1080p screen.
+        // Use 200 as the cutoff to be safe across launcher revisions.
+        private const val TOP_NAV_Y_MAX = 200
     }
 }
 

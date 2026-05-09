@@ -187,6 +187,135 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.33.7 — Scout v2.2.1 tree-dump diagnostic + LauncherHomeNavigator for PVFTV-320+
+**Released:** 2026-05-09
+
+**No required setup for the host.** New API endpoint and dump storage
+directory created automatically (`apps/web/data/tree-dumps/`,
+gitignored).
+
+**What changed:**
+
+1. **New diagnostic broadcast** `ACTION_DUMP_LAUNCHER_TREE` (and
+   `ACTION_DUMP_AS_TREE`) on the Scout APK. When triggered, dumps the
+   full AccessibilityNodeInfo tree of the foreground window to logcat
+   AND POSTs the JSON to `/api/firestick-scout/tree-dump` for offline
+   analysis. Trigger from any Cube:
+   ```bash
+   adb -s <ip>:5555 shell "am broadcast \
+     -a com.sportsbar.scout.ACTION_DUMP_LAUNCHER_TREE \
+     -n com.sportsbar.scout/.TreeDumpReceiver \
+     --es trigger <label>"
+   ```
+   See `docs/SCOUT_TREE_DUMP.md` for full usage.
+
+2. **New `LauncherHomeNavigator`** for PVFTV-320+ Cubes. The 2026
+   redesigned Fire TV launcher places content tabs (Home/Movies/TV/
+   Sports/Live/News) directly on the home screen — no need to launch
+   Prime Video first. The navigator:
+   - Walks the WHOLE tree for `text="Sports"` matches (no Y hardcode —
+     Holmgren PVFTV-215 dump revealed tabs sit at variable Y positions
+     between 532 and 976)
+   - Scores candidates by focusable + clickable + topmost-leftmost
+   - Tries 5 click strategies: ACTION_FOCUS, ACTION_CLICK, bounds-
+     contained ancestor, **dispatchGesture synthetic tap** (drives
+     Compose pointerInput differently from ACTION_CLICK), then
+     ACTION_ACCESSIBILITY_FOCUS as last resort
+   - Verify gate: rejects "Home/Movies/TV/News/etc" still-selected,
+     accepts known sports section headers OR ≥3 `vs.` matchups visible
+
+3. **FirebatVersionDetector** routes firebat≥300 → `LAUNCHER_HOME_SPORTS_TAB`
+   (was `PRIME_LAUNCHER_HOSTED`, which never worked).
+
+4. **CatalogSnapshotService** re-adds Prime Video as a target via the
+   new launcher path; ESPN unchanged.
+
+5. **CatalogExtractor** adds launcher-aggregated tile heuristics —
+   provider name suffixes (`on Prime`, `ESPN+`), watch-with-subscription
+   badges, `vs + league` co-occurrence bonus.
+
+**Verification command** — capture a launcher dump from any Cube:
+```bash
+DEV_IP=10.11.3.50
+SVC=com.sportsbar.scout/com.sportsbar.scout.PlaybackAutomationService
+adb -s ${DEV_IP}:5555 shell "settings put secure enabled_accessibility_services ${SVC}"
+adb -s ${DEV_IP}:5555 shell "settings put secure accessibility_enabled 1"
+adb -s ${DEV_IP}:5555 shell "input keyevent 3"  # HOME
+sleep 4
+adb -s ${DEV_IP}:5555 shell "am broadcast \
+  -a com.sportsbar.scout.ACTION_DUMP_LAUNCHER_TREE \
+  -n com.sportsbar.scout/.TreeDumpReceiver \
+  --es trigger verify_v2_2_1"
+sleep 5
+ls -la /home/ubuntu/Sports-Bar-TV-Controller/apps/web/data/tree-dumps/ | tail -3
+pm2 logs sports-bar-tv-controller --lines 30 --nostream | grep TREE-DUMP
+```
+
+Expected: a `.json` file appears in `tree-dumps/`, server logs
+`[TREE-DUMP] Stored: ...` with non-zero `nodes=`. Smoke-tested on
+Holmgren Cube 2 PVFTV-215 (78 nodes captured cleanly).
+
+**Known limitation (intentional):** PVFTV-215 launcher tabs include
+Find/Home/Live/News but NO Sports tab — the aggregated content tabs
+are only on PVFTV-320+. So on PVFTV-215 the Sports Tab snapshot will
+return `nav_failed` (no Sports node found). This is expected; ESPN
+extraction continues to work on PVFTV-215.
+
+**Applies to:** all locations. Diagnostic dump works everywhere; the
+LauncherHomeNavigator delivers value only on PVFTV-320+ Cubes (Lucky's
+1+2 today). Once we capture a real PVFTV-320 dump and write the
+specific selectors, this releases active extraction for those Cubes.
+
+---
+
+### v2.33.6 — Scout v2.2.0 active extraction ships ESPN-only + IPv6-mapped IP fix
+**Released:** 2026-05-09
+
+**No setup required for the host.** Pure code change to the snapshot
+endpoint + Scout APK (location-side install handled by the existing
+firestick-scout-deploy script when run).
+
+**What changed:**
+
+1. **`apps/web/src/app/api/firestick-scout/snapshot/route.ts`** — IPv6-mapped IPv4 strip in the deviceId resolver. Node's net stack reports IPv4 connections as `::ffff:10.11.3.50`; `FireTVDevice.ipAddress` stores plain `10.11.3.50`. Without the strip, Scout's first POST (when MainActivity.deviceId is still `fire-tv-unknown`) couldn't resolve to the canonical FireTVDevice.id and rows piled up under `fire-tv-unknown`. After fix, rows land cleanly under `firetv_<id>_<location>`.
+
+2. **Scout APK v2.2.0 final scope** — ESPN-only target list in `CatalogSnapshotService`. Prime Video PVFTV-215 was attempted (4 iterations, see `docs/V2_2_0_PVFTV320_FINDINGS.md` iter#6-9) but Compose top-nav tabs don't respond to AccessibilityService click/focus actions. Without `INJECT_EVENTS` (signature-permission, requires platform-key signing) Scout cannot drive Compose tabs. Prime Video continues on the existing server-side walker path; Scout active-extraction handles ESPN only at this version.
+
+**Includes prior unbumped versions:**
+- **v2.33.4** — Scout v2.1.6 hardening (fleet bartender remote)
+- **v2.33.5** — `/api/firestick-scout/snapshot` endpoint added (server side of Scout v2.2.0)
+
+**Verification command** (run on any host after auto-update lands):
+```bash
+# Trigger Scout snapshot from one Cube, verify rows land under canonical deviceId
+DEV_IP=$(sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "SELECT ipAddress FROM FireTVDevice WHERE platform LIKE 'Fire TV%' LIMIT 1")
+adb -s "${DEV_IP}:5555" shell \
+  "am broadcast -a com.sportsbar.scout.SNAPSHOT_NOW -n com.sportsbar.scout/.SnapshotCommandReceiver" >/dev/null
+sleep 60
+# Should see ESPN rows with capturedAt within last 90 seconds
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "SELECT app, COUNT(*) tiles FROM firetv_streaming_catalog WHERE app='ESPN' AND capturedAt > strftime('%s','now')-90 GROUP BY app;"
+# Should also see SCOUT-SNAPSHOT log lines:
+pm2 logs sports-bar-tv-controller --lines 50 --nostream | grep "SCOUT-SNAPSHOT"
+```
+
+Expected: at least 1-8 ESPN rows depending on what's live, and one
+`Resolved Scout deviceId=fire-tv-unknown@<ip> → firetv_<id> (<name>)`
+log line per Cube reporting in.
+
+**Known limitation:** Scout snapshot is on-demand only via SNAPSHOT_NOW
+broadcast at v2.2.0. AlarmManager 6h periodic schedule is queued for
+v2.2.1. The server-side walker continues running its 3x-daily schedule
+unchanged so nothing is lost in the meantime.
+
+**Applies to:** all locations with PVFTV-215 firmware Cubes (Holmgren,
+Graystone, Stoneyards, Lucky's 3+4). PVFTV-320 Cubes (Lucky's 1+2) gain
+nothing from this version's Scout APK — see findings doc for the path
+forward (Option B Path 4 or Option C hardware swap).
+
+---
+
 ### v2.33.3 — Walker wakes the Cube before launching apps (Lucky's screensaver fix)
 **Released:** 2026-05-09
 
