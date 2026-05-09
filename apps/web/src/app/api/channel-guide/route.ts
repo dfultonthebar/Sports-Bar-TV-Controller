@@ -719,13 +719,28 @@ export async function POST(request: NextRequest) {
         // time so the bartender remote can show "Fri 7:30 PM CT" instead
         // of "On demand". Match priority: both home AND away tokens
         // present → enrich. Single-team match → skip (too ambiguous).
-        const scheduleWindowStart = nowSec - 2 * 3600
+        const scheduleWindowStart = nowSec - 6 * 3600 // 6h grace for in-progress games
         const scheduleWindowEnd = nowSec + 48 * 3600
         const upcomingSchedules = await db
           .select({
             home: schema.gameSchedules.homeTeamName,
             away: schema.gameSchedules.awayTeamName,
             scheduledStart: schema.gameSchedules.scheduledStart,
+            estimatedEnd: schema.gameSchedules.estimatedEnd,
+            status: schema.gameSchedules.status,
+            statusDetail: schema.gameSchedules.statusDetail,
+            espnEventId: schema.gameSchedules.espnEventId,
+            league: schema.gameSchedules.league,
+            // v2.33.1 — pull live state too. ESPN sync writes these every
+            // 10min. Streaming programs include this inline so the
+            // bartender remote can show scores/clock without a separate
+            // /api/sports-guide/live-by-channel fetch (which is hardcoded
+            // to deviceType=cable and skips streaming-only games like
+            // Prime Video NBA exclusives).
+            homeScore: schema.gameSchedules.homeScore,
+            awayScore: schema.gameSchedules.awayScore,
+            currentPeriod: schema.gameSchedules.currentPeriod,
+            clockTime: schema.gameSchedules.clockTime,
           })
           .from(schema.gameSchedules)
           .where(
@@ -740,11 +755,24 @@ export async function POST(request: NextRequest) {
             .replace(/[^\w\s]/g, ' ')
             .split(/\s+/)
             .filter((t) => t.length >= 4) // skip short tokens like "vs", "the", "at"
-        const lookupStartTime = (title: string): number | undefined => {
+        type ScheduleMatch = {
+          home: string
+          away: string
+          scheduledStart: number
+          estimatedEnd: number
+          status: string | null
+          statusDetail: string | null
+          espnEventId: string | null
+          league: string | null
+          homeScore: number | null
+          awayScore: number | null
+          currentPeriod: number | null
+          clockTime: string | null
+        }
+        const lookupSchedule = (title: string): ScheduleMatch | undefined => {
           const titleTokens = new Set(tokenize(title))
           if (titleTokens.size < 2) return undefined
-          // Prefer the temporally-closest match if multiple games match.
-          let best: { ts: number; matchedTokens: number } | null = null
+          let best: { row: ScheduleMatch; matchedTokens: number } | null = null
           for (const sch of upcomingSchedules) {
             const homeTokens = tokenize(sch.home)
             const awayTokens = tokenize(sch.away)
@@ -755,15 +783,19 @@ export async function POST(request: NextRequest) {
               homeTokens.filter((t) => titleTokens.has(t)).length +
               awayTokens.filter((t) => titleTokens.has(t)).length
             if (!best || matched > best.matchedTokens) {
-              best = { ts: sch.scheduledStart, matchedTokens: matched }
+              best = { row: sch, matchedTokens: matched }
             }
           }
-          return best?.ts
+          return best?.row
         }
+        // Statuses that mean "this game is over — don't show it on the
+        // bartender remote." Cable/satellite path filters the same way.
+        const completedStatuses = new Set(['completed', 'final', 'postponed', 'cancelled'])
 
         let catInjected = 0
         let catSkippedDupe = 0
         let catEnriched = 0
+        let catSkippedCompleted = 0
         // Within-catalog dedup: same app + same title. The walker can capture
         // the same tile twice on adjacent passes (e.g. featured carousel +
         // sport-specific row); de-dup so the bartender doesn't see twins.
@@ -784,44 +816,55 @@ export async function POST(request: NextRequest) {
             channels.set(appChannelId, appChannel)
           }
 
-          // Walker's startTime takes precedence; if missing, try the
-          // game_schedules enrichment lookup (v2.33.0); finally fall back
-          // to capturedAt for tiles with no time anchor anywhere.
+          // v2.33.1 — Look up the full schedule match (start time, status,
+          // espnEventId, home/away team names) from game_schedules. Match
+          // is by team-token overlap; we use the result for: (a) start
+          // time enrichment, (b) auto-removal of completed games,
+          // (c) proper home/away split (so bartender's existing live-
+          // data match-by-team-name lookup works), (d) espnEventId so
+          // future code can fetch live scores by ID.
+          const scheduleMatch = lookupSchedule(row.contentTitle)
+          if (scheduleMatch && scheduleMatch.status &&
+              completedStatuses.has(scheduleMatch.status.toLowerCase())) {
+            // Game is over — don't include it. Same behavior as cable/sat
+            // path which filters status='completed'/'final' rows out.
+            catSkippedCompleted++
+            continue
+          }
+
+          // Walker's startTime takes precedence; otherwise enrichment
+          // match's scheduledStart; otherwise fall back to NOW so the
+          // bartender's "past midnight of scheduled day" filter passes
+          // for live/on-demand tiles. Pre-v2.33.1 we fell back to
+          // capturedAt (typically yesterday) and the bartender filter
+          // discarded every program — that's why "NO LIVE GAMES"
+          // showed instead of the expected list.
           let resolvedStart: number | undefined =
             typeof row.startTime === 'number' && row.startTime > 0
               ? row.startTime
               : undefined
-          if (resolvedStart === undefined) {
-            const enriched = lookupStartTime(row.contentTitle)
-            if (enriched !== undefined) {
-              resolvedStart = enriched
-              catEnriched++
-            }
+          if (resolvedStart === undefined && scheduleMatch) {
+            resolvedStart = scheduleMatch.scheduledStart
+            catEnriched++
           }
           const hasStartTime = resolvedStart !== undefined
-          const startSec = hasStartTime ? (resolvedStart as number) : row.capturedAt
+          const startSec = hasStartTime ? (resolvedStart as number) : nowSec
           const startMs = startSec * 1000
           const startDate = new Date(startMs)
 
-          // 3-hour estimated duration when we have a real startTime; otherwise
-          // use the catalog row's expiresAt (which is capturedAt + 36h TTL —
-          // not a real game end, but at least a valid forward-looking ISO).
+          // 3-hour estimated duration when we have a real startTime;
+          // otherwise default to 3h from now so the program stays valid
+          // through current game window. Don't use expiresAt (36h TTL)
+          // anymore — that was forward-looking but unrelated to game end.
           const endMs = hasStartTime
             ? startMs + 3 * 60 * 60 * 1000
-            : row.expiresAt * 1000
+            : startMs + 3 * 60 * 60 * 1000
 
           // Display fields formatted in VENUE_TIMEZONE (America/Chicago).
-          // `gameTime` keeps the legacy display (LIVE / time / "On demand")
-          // for backwards compat with components that already render it.
-          // `day` + `time` are new explicit fields the UI can render directly
-          // (e.g. "Sat" / "7:30 PM CT") without re-parsing the ISO string.
           let day = ''
           let time = ''
           let gameTimeLabel: string
-          if (row.isLive) {
-            // For live tiles: show "LIVE" as the prominent label. If we have
-            // a real startTime, surface the day too (so a multi-day live
-            // event shows e.g. "Sun · LIVE" not just "Live · Live").
+          if (row.isLive || (scheduleMatch && scheduleMatch.status === 'in_progress')) {
             gameTimeLabel = 'LIVE'
             time = 'LIVE'
             day = hasStartTime ? dayFormatter.format(startDate) : 'LIVE'
@@ -830,10 +873,7 @@ export async function POST(request: NextRequest) {
             time = timeFormatter.format(startDate)
             gameTimeLabel = time
           } else {
-            // Older walker passes that didn't populate startTime: tile has
-            // a title but no time anchor (on-demand / replay / featured).
-            // Show "On demand" consistently across all three fields rather
-            // than the misleading "Live" we used to emit here.
+            // No walker startTime + no schedule match → on-demand / replay.
             gameTimeLabel = 'On demand'
             day = 'On demand'
             time = ''
@@ -847,30 +887,73 @@ export async function POST(request: NextRequest) {
             ? { ...appChannel, deepLink: row.deepLink }
             : appChannel
 
+          // v2.33.1 — Split contentTitle into home/away on " vs.? "
+          // separator so the bartender's existing live-data lookup
+          // (keyed by `${away}-${home}`) can match these tiles.
+          // When the schedule match is found, prefer ITS team names —
+          // they're authoritative ESPN names, while the walker tile
+          // text may have minor variations ("Mariners vs. White Sox"
+          // vs ESPN's "Seattle Mariners" / "Chicago White Sox").
+          let homeTeam = row.contentTitle
+          let awayTeam = ''
+          if (scheduleMatch && scheduleMatch.home && scheduleMatch.away) {
+            homeTeam = scheduleMatch.home
+            awayTeam = scheduleMatch.away
+          } else {
+            const vsMatch = row.contentTitle.split(/\s+vs\.?\s+/i)
+            if (vsMatch.length === 2 && vsMatch[0].length >= 2 && vsMatch[1].length >= 2) {
+              awayTeam = vsMatch[0].trim()
+              homeTeam = vsMatch[1].trim()
+            }
+          }
+
+          // v2.33.1 — Inline liveData on the program when we have a
+          // schedule match. The bartender remote already renders
+          // homeScore/awayScore/timeRemaining/quarter/status from
+          // program.liveData when present (mirrors the cable/satellite
+          // path which gets it from the separate live-by-channel
+          // endpoint). For streaming we put it inline so bartender
+          // doesn't need a second round-trip.
+          const liveData = scheduleMatch ? {
+            isLive: scheduleMatch.status === 'in_progress',
+            homeScore: scheduleMatch.homeScore,
+            awayScore: scheduleMatch.awayScore,
+            clock: scheduleMatch.clockTime,
+            period: scheduleMatch.currentPeriod,
+            statusDetail: scheduleMatch.statusDetail,
+            espnGameId: scheduleMatch.espnEventId,
+          } : undefined
+
           programs.push({
             id: `cat-${row.id}`,
-            league: row.sportTag || 'Sports',
-            homeTeam: row.contentTitle,
-            awayTeam: '',
+            league: scheduleMatch?.league || row.sportTag || 'Sports',
+            homeTeam,
+            awayTeam,
             gameTime: gameTimeLabel,
             day,
             time,
             startTime: startDate.toISOString(),
             endTime: new Date(endMs).toISOString(),
             channel: programChannel,
-            description: `${row.contentTitle} (${row.app}${row.deepLink ? ' · deep-linkable' : ''})`,
+            // v2.33.1 — clean bartender-facing description. No more
+            // "(deep-linkable)" annotation; that's an internal detail
+            // the bartender doesn't need.
+            description: `${row.contentTitle} on ${row.app}`,
             isSports: true,
-            isLive: !!row.isLive,
+            isLive: !!row.isLive || scheduleMatch?.status === 'in_progress',
             venue: '',
             station: row.app,
             sportTag: row.sportTag || undefined,
+            // v2.33.1 — espnEventId for downstream live-data matching.
+            espnEventId: scheduleMatch?.espnEventId || undefined,
+            liveData,
           })
           catInjected++
         }
 
-        if (catInjected > 0 || catSkippedDupe > 0) {
+        if (catInjected > 0 || catSkippedDupe > 0 || catSkippedCompleted > 0) {
           logInfo(
-            `firetv_streaming_catalog injection for ${deviceId}: +${catInjected} from scout walker, ${catSkippedDupe} dedup, ${catEnriched} enriched startTime from game_schedules`
+            `firetv_streaming_catalog injection for ${deviceId}: +${catInjected} from scout walker, ${catSkippedDupe} dedup, ${catEnriched} enriched startTime from game_schedules, ${catSkippedCompleted} completed games skipped`
           )
         }
       } catch (catalogError: any) {

@@ -336,6 +336,31 @@ function extractPrimeVideoTiles(xmlDump: string): CatalogTile[] {
         if (/^S\d+\s*[•·]?\s*E\d+/i.test(t)) continue
         if (/^\d{4}$/.test(t)) continue
         if (/^Documentary$/i.test(t)) continue
+        // v2.33.1 — reject Prime Video PLAYER UI labels and accessibility
+        // settings strings. The walker landed on a video info / settings
+        // panel on Cube 3 (Holmgren) 2026-05-08 and captured the entire
+        // language-options screen as if each row were a tile in the
+        // currently-tracked NBA section. Result: bartender remote showed
+        // "Audio languages", "Subtitles", "Spanish, English", "How do I
+        // choose languages?" as games.
+        // Question-marked text is never a game title:
+        if (/\?$/.test(t)) continue
+        // Generic UI-label blocklist (case-insensitive exact-or-prefix):
+        const uiLabelBlocklist = [
+          /^Audio languages?\b/i,
+          /^Subtitles?\b/i,
+          /^Closed [Cc]aptions?\b/i,
+          /^(English|Spanish|French|German|Portuguese)([,\s]+(English|Spanish|French|German|Portuguese))*\s*$/i,
+          /^(English|Spanish|French|German|Portuguese)\s+Commentary\b/i,
+          /^(Español|Français|Deutsch|Italiano)\b/i,
+          /^Choose (subtitle|audio|language|caption)/i,
+          /^(How|What|Why|When|Where|Which) /i, // Q&A help text
+          /^Watchlist$/i,
+          /^Skip (intro|recap|credits)$/i,
+          /^Next (up|episode)$/i,
+          /^Resume watching$/i,
+        ]
+        if (uiLabelBlocklist.some((p) => p.test(t))) continue
 
         const key = t.toLowerCase()
         if (seen.has(key)) continue
@@ -412,15 +437,27 @@ function extractEspnTiles(xmlDump: string): CatalogTile[] {
 
   // Skip ESPN nav chrome — including subscription-tier labels (ESPN /
   // ESPN+ / ESPN Unlimited) that are NOT games. v2.33.0 — added the
-  // bare network/tier names + content tier suffix detection. Prior to
-  // this, the catalog accumulated rows like "ESPN", "ESPN+", "ESPN
-  // Unlimited", "Mariners vs. White Sox ESPN Unlimited" — none are
-  // launchable games, all confuse the bartender remote and AI Suggest.
-  const navChrome = /^(Search|Home|Films & Shows|Browse|Highlights|Settings|Featured|Featured Group \d|Watch, button \d of \d|button \d of \d|ESPN(\+| Unlimited| 2)?|ABC|FS1|FS2|SEC Network|ACC Network|Big Ten Network)$/i
+  // bare network/tier names + content tier suffix detection. v2.33.1 —
+  // added show names + network-acronym variants (SECN+, ACCN, ESPNU,
+  // SportsCenter, "All ACC ACCN" etc.) caught after a Cube-3 walk
+  // captured them as fake live-tile rows. None are launchable games,
+  // all confuse the bartender remote and AI Suggest.
+  const navChrome = /^(Search|Home|Films & Shows|Browse|Highlights|Settings|Featured|Featured Group \d|Watch, button \d of \d|button \d of \d|ESPN(\+| Unlimited| 2|U)?|ABC|FS1|FS2|FOX|NBC|CBS|TBS|TNT|SEC Network\+?|SECN\+?|ACC Network\+?|ACCN\+?|Big Ten Network\+?|BTN\+?|SportsCenter|NFL Live|NBA Live|MLB Live|College GameDay|All ACC|All SEC|All Big Ten|All ACCN|All SECN)$/i
   // Strip a trailing subscription-tier suffix from accumulated tile
   // text. Matches "<title> ESPN+" / "<title> ESPN Unlimited" / "<title>
   // ESPN2" — leaves a clean title.
-  const tierSuffix = /\s+(ESPN(\+| Unlimited| 2)?|ABC|FS1|FS2|SEC Network|ACC Network|Big Ten Network)\s*$/
+  const tierSuffix = /\s+(ESPN(\+| Unlimited| 2|U)?|ABC|FS1|FS2|FOX|NBC|CBS|TBS|TNT|SEC Network\+?|SECN\+?|ACC Network\+?|ACCN\+?|Big Ten Network\+?|BTN\+?)\s*$/
+  // After title extraction, require it to look like a game/event:
+  // either a matchup ("vs", "@", " at ") OR a known event format
+  // (Grand Prix, Open, Final, Championship, Cup, Tournament, Match).
+  // This catches "SportsCenter", "NFL Live", "All ACC ACCN", and other
+  // section-header / show-name strings that survive the chrome filter
+  // because they're embedded as comma-segment tile titles.
+  const looksLikeGame = (s: string): boolean => {
+    if (/(vs\.?|\sat\s|@)/i.test(s)) return true
+    if (/(Grand Prix|Open|Final|Championship|Cup|Tournament|\bMatch\b|Series|Race|Qualifying|Stage \d)/i.test(s)) return true
+    return false
+  }
 
   for (const t of all) {
     if (navChrome.test(t.trim())) continue
@@ -459,6 +496,10 @@ function extractEspnTiles(xmlDump: string): CatalogTile[] {
     // Skip pure tier/network labels even if they survive earlier filters
     // (e.g. accumulated text was "ESPN+ ESPN+" → after strip → "ESPN+").
     if (navChrome.test(title)) continue
+    // v2.33.1 — drop tiles whose title doesn't look like a game/event.
+    // Catches "SportsCenter", "NFL Live", "All ACC ACCN" etc that
+    // sneak through Pattern A as the first comma segment.
+    if (!looksLikeGame(title)) continue
     const key = title.toLowerCase()
     if (seen.has(key)) continue
     seen.add(key)
