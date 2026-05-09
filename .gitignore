@@ -156,3 +156,6 @@ playwright-screenshots/
 
 # Turborepo
 .turbo
+
+# Scout tree dumps (diagnostic, per-Cube — not committed)
+apps/web/data/tree-dumps/

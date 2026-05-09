@@ -108,6 +108,38 @@ object CatalogExtractor {
         if (app == "Prime Video" && lower.contains("on prime")) s += 0.10
         if (app == "ESPN" && Regex("""\b(espn\+?|abc|sec network|acc network|big ten network|fs1|fs2)\b""").containsMatchIn(lower)) s += 0.10
 
+        // v2.2.2 — PVFTV-320 launcher Live tab tile heuristics. The tab
+        // shows live-sports CHANNELS (FOX Sports 1, CBS Sports, etc.)
+        // by name without ever including a vs/league/score in the title,
+        // plus tiles like "FOX: Stream live NFL". Lucky's Cube 1 dump
+        // 2026-05-09 confirmed.
+        val sportsNetworks = Regex("""\b(fox sports( [12])?|cbs sports|nbc sports|tnt sports|tbs sports|espn(\+|u| 2| deportes)?|big ten network|sec network|acc network|tennis channel|fs1|fs2)\b""")
+        if (sportsNetworks.containsMatchIn(lower)) s += 0.45  // strong signal: this IS a sports channel
+        // "Stream live NFL" / "Watch live MLB" type tiles
+        if (Regex("""\bstream live\b|\bwatch live\b""").containsMatchIn(lower) && leagues.any { lower.contains(it) }) {
+            s += 0.30
+        }
+
+        // v2.2.1 — Launcher home Sports tab heuristics. The PVFTV-320+
+        // launcher Sports tab aggregates tiles from multiple providers;
+        // each tile is annotated with its source app/network, and the
+        // tab itself filters out non-sports content. So provider hints
+        // there are MORE trustworthy than on-app pages.
+        if (app == "Sports Tab") {
+            // Provider/network suffix indicates launcher-aggregated sports tile
+            if (Regex("""\b(prime video|espn\+?|paramount\+?|peacock|max|disney\+|apple tv\+?|fubo|sling|youtube tv)\b""").containsMatchIn(lower)) s += 0.20
+            // "Watch with X subscription" badges in the launcher Sports row
+            if (Regex("""watch (with|on|via) """).containsMatchIn(lower)) s += 0.15
+            // Tile chrome that the Sports tab strips out by design — penalize
+            // anything that looks like generic launcher row labels
+            if (Regex("""\b(continue watching|recently watched|because you watched)\b""").containsMatchIn(lower)) s -= 0.50
+            // The Sports tab puts league-tagged content prominently; bonus
+            // when both `vs` AND a league are present (high-confidence game)
+            val hasVs = Regex("""\bvs\.?\b""").containsMatchIn(lower)
+            val hasLeague = leagues.any { lower.contains(it) }
+            if (hasVs && hasLeague) s += 0.15
+        }
+
         return s.coerceIn(0.0, 1.0)
     }
 
