@@ -131,12 +131,21 @@ class CatalogSnapshotService : Service() {
         val navPath = FirebatVersionDetector.choosePath(target.pkg, fbVersion)
         Log.i(TAG, "${target.displayName}: firebat=${fbVersion ?: "?"} navPath=$navPath")
 
+        // v2.33.12 — When the version detector returns NONE for a target,
+        // it means this firmware has no path to the target's content.
+        // Skip without extracting (don't write garbage rows from whatever
+        // window happens to be foreground; don't waste extractor cycles).
+        if (navPath == NavPath.NONE) {
+            Log.i(TAG, "${target.displayName}: navPath=NONE on firebat=${fbVersion ?: "?"} — target unsupported on this firmware, skipping")
+            return AppSnapshotResult(target, "unsupported_firmware", emptyList(), 0, started)
+        }
+
         val navOk = when (navPath) {
             NavPath.LAUNCHER_HOME_SPORTS_TAB -> LauncherHomeNavigator(this).gotoSportsTab()
             NavPath.PRIME_LAUNCHER_HOSTED    -> LauncherNavigator(this).gotoLiveTab()
             NavPath.PRIME_APP_HOSTED         -> AppNavigator(this).gotoPrimeVideoSports()
             NavPath.ESPN_LIVE                -> AppNavigator(this).gotoEspnLive()
-            NavPath.NONE                     -> true
+            NavPath.NONE                     -> true  // unreachable; handled above
         }
         if (!navOk) {
             return AppSnapshotResult(target, "nav_failed", emptyList(), 0, started)
