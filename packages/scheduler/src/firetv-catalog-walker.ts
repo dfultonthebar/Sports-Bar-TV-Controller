@@ -363,10 +363,59 @@ function extractPrimeVideoTiles(xmlDump: string): CatalogTile[] {
   const isPrimeVideoNoise = (s: string): boolean =>
     nonGameNoise.some((p) => p.test(s))
 
+  // v2.33.11 — A non-matchup tile is accepted only when its title (or
+  // surrounding sport-row header) contains at least one sport-related
+  // signal. Without this, "This Old House" / "Project Runway" / any
+  // entertainment TV title slips through if it's directly under a
+  // Sports row header in the dump.
+  const sportKeywordRegex = /\b(NBA|NFL|MLB|NHL|WNBA|NCAA|MLS|UFC|MMA|PGA|LPGA|F1|NASCAR|Formula 1|Premier League|La Liga|LaLiga|Bundesliga|Champions League|UEFA|Boxing|Rugby|Cricket|Tennis|Soccer|Football|Basketball|Baseball|Hockey|Golf|Lacrosse|Wrestling|WWE|Cycling|Marathon|Olympics|Tournament|Championship|Final|Semifinal|Playoff|Grand Prix|Stage \d|Round \d|Qualifying|Qualifier|World Series|Open|Masters|Cup|League|Series|Match|Game \d)\b/i
+  const hasSportSignal = (title: string, sportRow: string | null): boolean => {
+    if (sportKeywordRegex.test(title)) return true
+    // If the lastSportRow has a strong league name in it, accept tiles
+    // beneath it (e.g. "Knicks vs. Hawks" under "NBA Playoffs on Prime"
+    // even though the tile alone has no league keyword).
+    if (sportRow && sportKeywordRegex.test(sportRow)) return true
+    // The "vs." and "@" patterns are caught by the matchup branch above;
+    // by the time we reach here neither is present, so reject.
+    return false
+  }
+
+  // v2.33.11 — Non-sport row headers that should CLEAR lastSportRow.
+  // Prime Video's Sports tab includes "Continue Watching" / "Top picks
+  // for you" / "Because you watched" sections that contain non-sports
+  // content (TV shows, movies). Without resetting context, tiles like
+  // "This Old House" / "Project Runway" beneath those sections inherit
+  // the previous Sports-row context and get accepted as sports tiles.
+  // Holmgren catalog 2026-05-09 caught both leaking through.
+  const nonSportRowPatterns = [
+    /^Continue [Ww]atching$/i,
+    /^Recently [Ww]atched$/i,
+    /^Top picks for you$/i,
+    /^Top picks$/i,
+    /^Because you watched/i,
+    /^Recommended for you$/i,
+    /^Watchlist$/i,
+    /^My [Ss]tuff$/i,
+    /^Up next$/i,
+    /^More to watch$/i,
+    /^Browse all$/i,
+    /^Featured movies?$/i,
+    /^Featured TV shows?$/i,
+    /^TV shows for you$/i,
+    /^Movies for you$/i,
+  ]
+
   for (const t of all) {
     // Track sport-row context
     if (sportRowPatterns.some((p) => p.test(t))) {
       lastSportRow = t
+      continue
+    }
+    // v2.33.11 — Clear sport-row context when a non-sport row header
+    // appears. Prevents tile leakage like "This Old House" being attributed
+    // to a still-active "Sports for you" context.
+    if (nonSportRowPatterns.some((p) => p.test(t))) {
+      lastSportRow = null
       continue
     }
 
@@ -408,6 +457,13 @@ function extractPrimeVideoTiles(xmlDump: string): CatalogTile[] {
         // v2.33.2 — Unified non-game noise filter (series metadata,
         // UI labels, section headers, news shows, channel shells).
         if (isPrimeVideoNoise(t)) continue
+        // v2.33.11 — Belt-and-suspenders: even with the lastSportRow
+        // context-reset, require at least one sport-related signal in
+        // the tile text itself before accepting a non-matchup non-LIVE
+        // tile. Prevents "This Old House" / "Project Runway" / generic
+        // TV titles slipping through if the dump's row-header ordering
+        // isn't what we expect.
+        if (!hasSportSignal(t, lastSportRow)) continue
 
         const key = t.toLowerCase()
         if (seen.has(key)) continue
