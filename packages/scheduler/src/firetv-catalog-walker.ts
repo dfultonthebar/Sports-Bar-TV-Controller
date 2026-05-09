@@ -994,8 +994,47 @@ export interface CatalogWalkStats {
   inputsWalked: number
   appWalksAttempted: number
   appWalksSucceeded: number
+  appWalksSkippedScout: number
   totalTilesUploaded: number
   errors: string[]
+}
+
+// v2.33.9 — Hybrid: skip a walker entry when Scout's recent snapshot
+// already produced enough tiles for that (deviceId, app). Saves the
+// 30-60s per-app walker cost when Scout's faster active-extraction
+// path was sufficient.
+//
+// Tunables — keep them simple. If Scout produced fewer tiles than the
+// floor OR its newest tile is older than the staleness window, the
+// walker runs.
+const SCOUT_SUFFICIENT_FLOOR = 5            // need at least N Scout tiles to skip walker
+const SCOUT_FRESHNESS_WINDOW_SEC = 30 * 60  // Scout result must be within 30 min
+
+async function scoutCoversThisApp(deviceId: string, appName: string): Promise<{ ok: boolean; tiles: number; ageSec: number | null }> {
+  try {
+    const nowSec = Math.floor(Date.now() / 1000)
+    const cutoff = nowSec - SCOUT_FRESHNESS_WINDOW_SEC
+    const rows = await db
+      .select({
+        capturedAt: schema.firetvStreamingCatalog.capturedAt,
+      })
+      .from(schema.firetvStreamingCatalog)
+      .where(
+        and(
+          eq(schema.firetvStreamingCatalog.deviceId, deviceId),
+          eq(schema.firetvStreamingCatalog.app, appName),
+          eq(schema.firetvStreamingCatalog.source, 'scout-snapshot'),
+        )
+      )
+      .all()
+    if (rows.length === 0) return { ok: false, tiles: 0, ageSec: null }
+    const newest = Math.max(...rows.map((r) => r.capturedAt))
+    if (newest < cutoff) return { ok: false, tiles: rows.length, ageSec: nowSec - newest }
+    return { ok: rows.length >= SCOUT_SUFFICIENT_FLOOR, tiles: rows.length, ageSec: nowSec - newest }
+  } catch (e: any) {
+    logger.warn(`[FIRETV-CATALOG] scoutCoversThisApp(${deviceId}/${appName}) crashed: ${e.message}`)
+    return { ok: false, tiles: 0, ageSec: null }
+  }
 }
 
 /**
@@ -1014,6 +1053,7 @@ export async function runFiretvCatalogWalk(): Promise<CatalogWalkStats> {
     inputsWalked: 0,
     appWalksAttempted: 0,
     appWalksSucceeded: 0,
+    appWalksSkippedScout: 0,
     totalTilesUploaded: 0,
     errors: [],
   }
@@ -1104,6 +1144,19 @@ export async function runFiretvCatalogWalk(): Promise<CatalogWalkStats> {
         stats.inputsWalked++
 
         for (const { ruleKey: appName, rule } of appsToWalk) {
+          // v2.33.9 — Hybrid skip: if Scout's recent snapshot already
+          // wrote enough tiles for this (deviceId, app), don't waste 30-60s
+          // on a walker run. Walker still runs for apps where Scout's
+          // active extraction can't reach (Compose-locked tabs, etc.).
+          const scoutCheck = await scoutCoversThisApp(input.deviceId, appName)
+          if (scoutCheck.ok) {
+            stats.appWalksSkippedScout++
+            logger.info(
+              `[FIRETV-CATALOG] ⏭️  ${input.name} / ${appName}: skip walker — Scout has ${scoutCheck.tiles} tiles, ${scoutCheck.ageSec}s old`
+            )
+            continue
+          }
+
           stats.appWalksAttempted++
           const result = await walkOneApp(input, ipAddress, rule, correlationId)
           if (result.uploaded) {
@@ -1133,7 +1186,7 @@ export async function runFiretvCatalogWalk(): Promise<CatalogWalkStats> {
     await schedulerLogger.info(
       'firetv-catalog-walker',
       'walk',
-      `Catalog walk complete: ${stats.inputsWalked} inputs, ${stats.appWalksSucceeded}/${stats.appWalksAttempted} apps, ${stats.totalTilesUploaded} total tiles`,
+      `Catalog walk complete: ${stats.inputsWalked} inputs, ${stats.appWalksSucceeded}/${stats.appWalksAttempted} apps, ${stats.appWalksSkippedScout} scout-skip, ${stats.totalTilesUploaded} total tiles`,
       correlationId,
       { metadata: stats as any }
     )

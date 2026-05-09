@@ -187,6 +187,63 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.33.9 — Hybrid Scout-snapshot + walker (per-source coexistence + skip-on-Scout-sufficient)
+**Released:** 2026-05-09
+
+**Required: schema migration (auto-applied via auto-update.sh).** Adds
+`source` TEXT NOT NULL DEFAULT 'walker' column to `firetv_streaming_catalog`
++ a `firetv_catalog_device_app_source_idx` composite index. Idempotent
+ALTER — safe to re-run.
+
+**What changed:**
+
+1. **`source` column** distinguishes Scout active extraction (`'scout-snapshot'`)
+   from server-side walker (`'walker'`). Each writer now replaces only
+   its own source's rows for a (deviceId, app) pair, so the two paths
+   coexist instead of clobbering each other. Channel guide / bartender
+   remote consume rows from any source — no reader changes needed.
+
+2. **Walker skip-on-Scout-sufficient.** Before walking each
+   (input, app), the walker checks if Scout's recent snapshot (last 30
+   min, source='scout-snapshot') has produced ≥5 tiles for that app.
+   If so, it skips the walker run — saves ~30-60s per skipped app per
+   walk cycle. New stats field `appWalksSkippedScout` tracks the count.
+
+3. **Snapshot endpoint sets `source='scout-snapshot'`** + replace-by-source.
+   Walker `/catalog` endpoint sets `source='walker'` + replace-by-source.
+
+**Tunables** (in `packages/scheduler/src/firetv-catalog-walker.ts`):
+- `SCOUT_SUFFICIENT_FLOOR = 5` — minimum scout-snapshot rows to consider
+  the app "covered" and skip the walker.
+- `SCOUT_FRESHNESS_WINDOW_SEC = 30 * 60` — snapshot must be within this
+  window or walker runs as fallback.
+
+**Verification command:**
+```bash
+# 1. Insert 6 fake scout-snapshot rows for ESPN
+DEV=firetv_1741700000002_holmgren2
+NOW=$(date +%s)
+for i in 1 2 3 4 5 6; do
+  sqlite3 /home/ubuntu/sports-bar-data/production.db \
+    "INSERT INTO firetv_streaming_catalog (id, deviceId, app, contentTitle, isLive, capturedAt, expiresAt, source) VALUES
+       ('test-$i', '$DEV', 'ESPN', 'fake $i', 0, $NOW, $NOW+3600, 'scout-snapshot')"
+done
+# 2. Trigger walker; expect "1 scout-skip" in stats + ⏭ log
+curl -s -X POST http://localhost:3001/api/firestick-scout/catalog/walk -d '{}' | jq .stats
+# 3. Cleanup
+sqlite3 /home/ubuntu/sports-bar-data/production.db "DELETE FROM firetv_streaming_catalog WHERE id LIKE 'test-%'"
+```
+
+Expected stats: `appWalksSkippedScout >= 1`, accompanying log line:
+`[FIRETV-CATALOG] ⏭️  <input> / ESPN: skip walker — Scout has 6 tiles, <age>s old`.
+
+**Applies to:** all locations. Scout ≥ v2.2.2 produces source='scout-snapshot'
+rows automatically; walker ≥ v2.33.9 honors the skip rule. Older Scout
+versions still write under default 'walker' source — no harm, walker
+won't skip anything.
+
+---
+
 ### v2.33.8 — Scout v2.2.2 verified on real PVFTV-320 (Lucky's Cube 1)
 **Released:** 2026-05-09
 
