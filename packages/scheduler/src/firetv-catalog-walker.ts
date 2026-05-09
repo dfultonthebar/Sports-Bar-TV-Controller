@@ -819,8 +819,18 @@ async function walkOneApp(
   }
 
   try {
-    // 1. HOME to clear
-    await adbShell(deviceId, 'input keyevent 3')
+    // 1. Wake + HOME to clear. v2.33.3 — added KEYCODE_WAKEUP (224)
+    // before HOME because Fire TV Cubes idle into screensaver
+    // (Sys2023:dream window) after ~5min of inactivity. Pre-fix,
+    // launching an app while the screensaver was foreground meant
+    // uiautomator dumped the screensaver overlay (3-4KB, 0 content
+    // tiles) instead of the app — Lucky's 1313 had this happening
+    // on all 4 Cubes for weeks before the diagnosis on 2026-05-09.
+    // KEYCODE_WAKEUP forces the device awake; HOME then dismisses
+    // any leftover screensaver and returns to the launcher.
+    await adbShell(deviceId, 'input keyevent 224') // KEYCODE_WAKEUP
+    await sleep(500)
+    await adbShell(deviceId, 'input keyevent 3') // KEYCODE_HOME
     await sleep(1000)
 
     // 2. Launch the app
