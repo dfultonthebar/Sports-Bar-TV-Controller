@@ -45,19 +45,21 @@ import java.net.URL
  */
 class CatalogSnapshotService : Service() {
 
-    // v2.2.0 ship scope: ESPN-only active extraction.
-    // Prime Video PVFTV-215 was attempted (iter #6-9) but Compose top-nav
-    // tabs don't respond to AccessibilityService actions — neither
-    // ACTION_CLICK on ancestors, nor ACTION_FOCUS / ACTION_ACCESSIBILITY_FOCUS
-    // on the tab text node, nor bounds-contained clickable ancestor walk
-    // moves the selected tab off "Home". Without INJECT_EVENTS (signature
-    // permission) or root, Scout cannot drive Compose tabs the way the
-    // server-side walker can via `adb shell input keyevent`. So Prime
-    // Video continues on the server-side walker path; Scout active-
-    // extraction handles ESPN only. See docs/V2_2_0_PVFTV320_FINDINGS.md
-    // for the full iteration log.
+    // v2.2.1 — Re-add Prime Video target via the new LauncherHomeNavigator
+    // path for PVFTV-320+ Cubes (firebat resolves to launcher home, Sports
+    // tab is directly in the top nav). On PVFTV-215 the navigator falls
+    // back to the previous PRIME_APP_HOSTED path (which doesn't work but
+    // logs diagnostics — server filter drops nav_failed payloads).
+    //
+    // Unlike v2.2.0 ESPN-only ship, this version uses dispatchGesture
+    // (synthetic touch events that drive Compose pointerInput) as one
+    // click strategy — different from ACTION_CLICK which only fires AS
+    // handlers. May actually drive Compose tabs.
+    //
+    // ESPN remains the most-reliable target — its tile tree is AS-friendly.
     private val targets = listOf(
-        SnapshotTarget("ESPN", "com.espn.gtv", postSettleHydrationMs = 4_000L),
+        SnapshotTarget("Sports Tab",  "com.amazon.firebat",      postSettleHydrationMs = 4_000L),
+        SnapshotTarget("ESPN",        "com.espn.gtv",            postSettleHydrationMs = 4_000L),
     )
 
     override fun onCreate() {
@@ -130,10 +132,11 @@ class CatalogSnapshotService : Service() {
         Log.i(TAG, "${target.displayName}: firebat=${fbVersion ?: "?"} navPath=$navPath")
 
         val navOk = when (navPath) {
-            NavPath.PRIME_LAUNCHER_HOSTED -> LauncherNavigator(this).gotoLiveTab()
-            NavPath.PRIME_APP_HOSTED      -> AppNavigator(this).gotoPrimeVideoSports()
-            NavPath.ESPN_LIVE             -> AppNavigator(this).gotoEspnLive()
-            NavPath.NONE                  -> true
+            NavPath.LAUNCHER_HOME_SPORTS_TAB -> LauncherHomeNavigator(this).gotoSportsTab()
+            NavPath.PRIME_LAUNCHER_HOSTED    -> LauncherNavigator(this).gotoLiveTab()
+            NavPath.PRIME_APP_HOSTED         -> AppNavigator(this).gotoPrimeVideoSports()
+            NavPath.ESPN_LIVE                -> AppNavigator(this).gotoEspnLive()
+            NavPath.NONE                     -> true
         }
         if (!navOk) {
             return AppSnapshotResult(target, "nav_failed", emptyList(), 0, started)
