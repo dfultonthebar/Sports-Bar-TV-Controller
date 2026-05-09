@@ -167,6 +167,16 @@ export async function register() {
         // Tennis — ATP/WTA tours
         { sport: 'tennis', league: 'atp' },
         { sport: 'tennis', league: 'wta' },
+        // v2.33.0 — Lacrosse + Rugby. Bartender catalog walker captures
+        // Premier Lacrosse League ("Atlas vs. Chaos") + Super Rugby
+        // tiles ("Highlanders vs. NSW Waratahs") on Prime Video; without
+        // these in the sync list, the channel-guide can't enrich those
+        // tiles with start times. Returns empty when off-season — the
+        // sync loop tolerates 0-event responses.
+        { sport: 'lacrosse', league: 'pll' },
+        { sport: 'rugby', league: 'super-rugby' },
+        { sport: 'rugby', league: 'nrl' },
+        { sport: 'rugby', league: 'six-nations' },
       ]
 
       const runEspnSyncAll = async () => {
