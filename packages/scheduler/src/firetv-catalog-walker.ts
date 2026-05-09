@@ -286,6 +286,83 @@ function extractPrimeVideoTiles(xmlDump: string): CatalogTile[] {
     /^Not for me$/i,
   ]
 
+  // v2.33.2 — Comprehensive non-game noise filter. Applied to BOTH the
+  // non-matchup branch AND the matchup/LIVE branch (was only on the
+  // former in v2.33.1; "Season 2026 LIVE" leaked through because LIVE-
+  // tagged tiles took the matchup branch and never re-validated).
+  // Patterns observed in fleet catalogs 2026-05-09 across Graystone,
+  // Stoneyard Appleton, Stoneyard Greenville:
+  //   - Series-metadata: "Season 2026", "Season 1", year strings
+  //   - UI labels: "Audio languages", "Subtitles", "How do I choose..."
+  //   - Section headers caught as tiles: "Recently watched", "Live
+  //     events for you", "Sports for you", "Watch live"
+  //   - Non-sports shows + news in the "Live now" rail: "ABC News",
+  //     "Dateline NBC", "Dateline 24/7", news ticker text
+  //   - Channel/network shells: "RugbyPass TV" (NOT a game; the actual
+  //     event name is e.g. "Highlanders vs. NSW Waratahs")
+  //   - Promotional / non-game events that get caught by Live-tag:
+  //     "Rolling Loud" (music festival)
+  const nonGameNoise = [
+    // Series metadata
+    /^Season\s+(\d+|\d{4})$/i,
+    /^Episode\s+\d+/i,
+    /^S\d+\s*[•·]?\s*E\d+/i,
+    /^\d{4}$/,
+    /^Documentary$/i,
+    // UI labels (already in non-matchup branch; promote to global)
+    /^Audio languages?\b/i,
+    /^Subtitles?\b/i,
+    /^Closed [Cc]aptions?\b/i,
+    /^(English|Spanish|French|German|Portuguese)([,\s]+(English|Spanish|French|German|Portuguese))*\s*$/i,
+    /^(English|Spanish|French|German|Portuguese)\s+Commentary\b/i,
+    /^(Español|Français|Deutsch|Italiano)\b/i,
+    /^Choose (subtitle|audio|language|caption)/i,
+    /^(How|What|Why|When|Where|Which) /i,
+    /^Watchlist$/i,
+    /^Skip (intro|recap|credits)$/i,
+    /^Next (up|episode)$/i,
+    /^Resume watching$/i,
+    // Section headers / nav strings caught as tiles
+    /^Recently watched$/i,
+    /^Live events for you$/i,
+    /^Sports for you$/i,
+    /^Watch live$/i,
+    /^Live (now|today)$/i,
+    /^Featured\b/i,
+    /^Continue watching$/i,
+    /^Up next$/i,
+    /^Top picks$/i,
+    /^Browse all$/i,
+    /^More to watch$/i,
+    /^See all$/i,
+    /^My stuff$/i,
+    // Non-sports shows / news (when they bleed into a sports row context)
+    /^ABC News\b/i,
+    /^NBC News\b/i,
+    /^CBS News\b/i,
+    /^Fox News\b/i,
+    /^Dateline (NBC|24\/7)$/i,
+    /^Dateline$/i,
+    /^The Daily Show\b/i,
+    /^60 Minutes\b/i,
+    // Long descriptive strings (>80 chars) are typically tile descriptions
+    // that got lifted as titles by the walker — too long to be a real
+    // game title. Real game tiles cap around 60-70 chars at the longest.
+    /^.{90,}$/,
+    // Music/entertainment events that aren't sports (catch-all for known
+    // Prime Video entertainment tiles in the Live-now rail)
+    /^Rolling Loud$/i,
+    /^Coachella$/i,
+    /^Lollapalooza$/i,
+    // Channel/network shells (the row header for the channel, not the game)
+    /^RugbyPass TV$/i,
+    /^MLB Network$/i,
+    /^NHL Network$/i,
+    /^NBA TV$/i,
+  ]
+  const isPrimeVideoNoise = (s: string): boolean =>
+    nonGameNoise.some((p) => p.test(s))
+
   for (const t of all) {
     // Track sport-row context
     if (sportRowPatterns.some((p) => p.test(t))) {
@@ -326,41 +403,11 @@ function extractPrimeVideoTiles(xmlDump: string): CatalogTile[] {
         if (/^Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec/i.test(t)) continue
         // v2.32.84 — reject Amazon promotional copy
         if (promoBlocklist.some((p) => p.test(t))) continue
-        // v2.33.0 — reject series-metadata tiles that aren't games/events
-        // ("Season 2026", "Season 2", "Episode 5", "S1 E12", bare year).
-        // These leak into the catalog when a Prime Video docu-series tile
-        // is rendered inside a sports section row but the visible label is
-        // the show's season descriptor, not a matchup/event title.
-        if (/^Season\s+(\d+|\d{4})$/i.test(t)) continue
-        if (/^Episode\s+\d+/i.test(t)) continue
-        if (/^S\d+\s*[•·]?\s*E\d+/i.test(t)) continue
-        if (/^\d{4}$/.test(t)) continue
-        if (/^Documentary$/i.test(t)) continue
-        // v2.33.1 — reject Prime Video PLAYER UI labels and accessibility
-        // settings strings. The walker landed on a video info / settings
-        // panel on Cube 3 (Holmgren) 2026-05-08 and captured the entire
-        // language-options screen as if each row were a tile in the
-        // currently-tracked NBA section. Result: bartender remote showed
-        // "Audio languages", "Subtitles", "Spanish, English", "How do I
-        // choose languages?" as games.
-        // Question-marked text is never a game title:
+        // v2.33.2 — Question-marked text is never a game title (Q&A help):
         if (/\?$/.test(t)) continue
-        // Generic UI-label blocklist (case-insensitive exact-or-prefix):
-        const uiLabelBlocklist = [
-          /^Audio languages?\b/i,
-          /^Subtitles?\b/i,
-          /^Closed [Cc]aptions?\b/i,
-          /^(English|Spanish|French|German|Portuguese)([,\s]+(English|Spanish|French|German|Portuguese))*\s*$/i,
-          /^(English|Spanish|French|German|Portuguese)\s+Commentary\b/i,
-          /^(Español|Français|Deutsch|Italiano)\b/i,
-          /^Choose (subtitle|audio|language|caption)/i,
-          /^(How|What|Why|When|Where|Which) /i, // Q&A help text
-          /^Watchlist$/i,
-          /^Skip (intro|recap|credits)$/i,
-          /^Next (up|episode)$/i,
-          /^Resume watching$/i,
-        ]
-        if (uiLabelBlocklist.some((p) => p.test(t))) continue
+        // v2.33.2 — Unified non-game noise filter (series metadata,
+        // UI labels, section headers, news shows, channel shells).
+        if (isPrimeVideoNoise(t)) continue
 
         const key = t.toLowerCase()
         if (seen.has(key)) continue
@@ -399,6 +446,16 @@ function extractPrimeVideoTiles(xmlDump: string): CatalogTile[] {
       cleanTitle = stripped
     }
     if (!cleanTitle || cleanTitle.length < 3) continue
+
+    // v2.33.2 — Re-validate the stripped title against the non-game
+    // noise filter. Pre-fix "Season 2026 LIVE" stripped to "Season 2026"
+    // and bypassed all filters because the LIVE-tag branch never
+    // re-checked. Same for "Recently watched LIVE", "Live events for
+    // you LIVE" — all non-games that the original loop accepted as
+    // legit because they had a LIVE/UPCOMING decoration.
+    if (isPrimeVideoNoise(cleanTitle)) continue
+    if (/\?$/.test(cleanTitle)) continue
+    if (promoBlocklist.some((p) => p.test(cleanTitle))) continue
 
     const key = cleanTitle.toLowerCase()
     if (seen.has(key)) continue
