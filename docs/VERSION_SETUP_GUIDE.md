@@ -187,6 +187,47 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.32.99 — ESPN autoplay reaches PlayerActivity (host-side DPAD CENTER advance from detail page)
+**Released:** 2026-05-08
+
+**No setup required.** Pure code fix in `packages/firecube/src/adb-client.ts`.
+
+**What changed:** `launchEspnToLiveContent`'s text-targeted-tap branch
+ended on the detail page after tapping a search result tile. Bartender
+saw "ESPN opened to game info, but I have to press OK on the TV remote
+to start playback." The fix appends a 5s wait + DPAD_CENTER + 1s + DPAD_CENTER
+(safety) after the tap — same pattern as Prime Video's autoplay
+(`launchPrimeVideoToContent`). ESPN's detail page auto-focuses the Watch
+CTA at bounds [1306,506][1872,602] on AFTR Cube 2 (1920x1080); DPAD_CENTER
+on the focused CTA advances to `com.espn.video.dmp.PlayerActivity` (or
+`ComposePaywallActivity` if the location isn't entitled to that league
+on ESPN+ — that's a downstream entitlement issue, not a code issue).
+
+**Per-location verification:** After auto-update, click any ESPN+ game
+on the bartender remote. The Cube should land on PlayerActivity with
+playback starting (or ComposePaywallActivity if unentitled). It should
+NOT land on `PageControllerActivity` waiting for an OK press.
+
+**Why two DPAD_CENTERs:** The first sometimes fires while the detail
+page is still in a loading-focus state (focus animation in progress)
+and is consumed silently. The second fires 1s later when focus has
+settled. The second is a no-op if the first already advanced —
+DPAD_CENTER on PlayerActivity briefly toggles play/pause and snaps
+back. Verified live on Holmgren Way Cube 2 (10.11.3.50, AFTR, Fire OS
+7.7) on 2026-05-08: API returns success in 30s, foreground transitions
+to ComposePaywallActivity (Cube unentitled to ESPN+ MLB at this
+location, but the advance from detail-page-with-OK-pending → action
+DID fire).
+
+**Scout AS contribution:** v2.32.98's `sendScoutPlayGameBroadcast` is
+still called before this path runs, but the host's force-stop in
+`launchEspnToLiveContent` kills ESPN before Scout's tile click takes
+effect. Scout AS is NOT load-bearing for the bartender autoplay; it
+remains in place as a no-op safety net (and may matter for future
+flows that don't force-stop ESPN, e.g. catalog walker re-entry).
+
+---
+
 ### v2.32.98 — Scout AccessibilityService for in-app ESPN/NFHS playback automation
 **Released:** 2026-05-08
 
