@@ -187,6 +187,70 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.33.11 — Walker no longer leaks entertainment TV (This Old House / Project Runway)
+**Released:** 2026-05-09
+
+**No required setup.** Pure walker filter fix.
+
+**What was happening:** Operator at Holmgren reported bartender channel
+guide was showing "This Old House" and "Project Runway" as if they were
+sports games. Walker investigation showed Prime Video Sports tab page
+mixes a "Continue Watching" / "Top picks for you" row alongside the
+sports rows. The walker's non-matchup branch accepted any tile under
+the most-recent `lastSportRow` context, regardless of whether the
+intervening row was still a sports row. So when the dump went:
+```
+Sports for you  ← lastSportRow set
+[sports tiles]
+Continue Watching  ← no reset, lastSportRow stayed
+This Old House     ← accepted as sports tile
+Project Runway     ← accepted as sports tile
+```
+
+**Fix (in `packages/scheduler/src/firetv-catalog-walker.ts`):**
+
+1. **`nonSportRowPatterns` list.** When the walker hits a row header
+   like `Continue Watching`, `Recently Watched`, `Top picks for you`,
+   `Because you watched`, `Recommended for you`, `My Stuff`, etc., it
+   now CLEARS `lastSportRow` so subsequent tiles don't inherit a stale
+   sport context.
+
+2. **`hasSportSignal` belt-and-suspenders check.** Even with context
+   reset, a non-matchup non-LIVE tile must contain at least one
+   sport-keyword pattern (NBA / NFL / MLB / NHL / WNBA / NCAA / MLS /
+   UFC / PGA / F1 / NASCAR / Premier League / La Liga / Bundesliga /
+   Champions League / Boxing / Rugby / Tennis / Soccer / Football /
+   Basketball / Baseball / Hockey / Golf / Tournament / Championship /
+   Final / Semifinal / Playoff / etc.) OR the lastSportRow must
+   contain one. "This Old House" matches none → rejected.
+
+3. **Cleanup:** existing rows are deleted manually post-merge:
+   ```bash
+   sqlite3 /home/ubuntu/sports-bar-data/production.db \
+     "DELETE FROM firetv_streaming_catalog WHERE source='walker' AND app='Prime Video' AND
+       (LOWER(contentTitle) LIKE '%this old house%' OR LOWER(contentTitle) LIKE '%project runway%'
+        OR contentTitle='No ads, except live TV and sports' OR contentTitle='Live Sports'
+        OR contentTitle='Semifinals')"
+   ```
+   The next walker cycle re-populates with cleaner data; rows expire
+   naturally at 36h regardless.
+
+**Verification:**
+```bash
+# Trigger walker
+curl -s -X POST http://localhost:3001/api/firestick-scout/catalog/walk -d '{}'
+sleep 100
+# Check NO entertainment TV in walker rows
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "SELECT contentTitle FROM firetv_streaming_catalog WHERE source='walker' AND app='Prime Video' AND (LOWER(contentTitle) LIKE '%this old house%' OR LOWER(contentTitle) LIKE '%project runway%' OR LOWER(contentTitle) LIKE '%real housewives%')"
+# Should return empty
+```
+
+**Applies to:** all locations after fleet auto-update lands. Prime Video
+walker output should now be sports-only on every Cube.
+
+---
+
 ### v2.33.10 — Scout v2.2.3 polish: deepLink synth, accessibility-chrome filter, mislabel guard
 **Released:** 2026-05-09
 
