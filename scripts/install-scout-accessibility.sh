@@ -124,10 +124,21 @@ if [ "$SKIP_BUILD" = "0" ]; then
     exit 1
   fi
   echo "[INSTALL-SCOUT-AS] Building APK..."
+  # Always do a `clean` first — without it, gradle's incremental build
+  # cache can serve a stale APK that's missing newly-added manifest
+  # entries (services, receivers). This bit us during the v1.5.0 rollout
+  # at Lucky's: PlaybackAutomationService didn't appear in the installed
+  # APK's manifest until we forced a clean rebuild.
+  # Gradle 8.0 needs JDK 17 (not 21+ — class file major version 65
+  # is unsupported). Pin JAVA_HOME if a JDK 17 install is present.
+  GRADLE_JAVA_HOME="${JAVA_HOME:-}"
+  if [ -d /usr/lib/jvm/java-17-openjdk-amd64 ]; then
+    GRADLE_JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+  fi
   if [ "$DRY_RUN" = "1" ]; then
-    echo "[DRY] cd $SCOUT_DIR && ./gradlew --no-daemon assembleDebug"
+    echo "[DRY] cd $SCOUT_DIR && JAVA_HOME=$GRADLE_JAVA_HOME ./gradlew --no-daemon clean assembleDebug"
   else
-    (cd "$SCOUT_DIR" && ./gradlew --no-daemon assembleDebug 2>&1 | tail -3)
+    (cd "$SCOUT_DIR" && JAVA_HOME="$GRADLE_JAVA_HOME" ./gradlew --no-daemon clean assembleDebug 2>&1 | tail -3)
   fi
 fi
 
@@ -201,6 +212,23 @@ for CUBE_IP in $CUBES; do
       echo "$RESULT" | sed "s/^/[$CUBE_IP]   /"
       if echo "$RESULT" | grep -q Success; then
         INSTALLED_OK=1
+      elif echo "$RESULT" | grep -q INSTALL_FAILED_UPDATE_INCOMPATIBLE; then
+        # Signature mismatch — different host built this APK with a
+        # different debug keystore. Each host's
+        # `~/.android/debug.keystore` is generated independently. The
+        # only way to upgrade across keystores is uninstall + install
+        # fresh. We lose the previous scout_config.xml (server URL),
+        # which is re-broadcast below; transient mailbox state is
+        # also wiped. Both are fine to lose.
+        echo "[$CUBE_IP]   Signature mismatch — uninstall + reinstall"
+        adb -s "${CUBE_IP}:5555" shell "pm uninstall com.sportsbar.scout" 2>&1 | head -1 | sed "s/^/[$CUBE_IP]   /"
+        RESULT2=$(adb -s "${CUBE_IP}:5555" install -r "$APK_PATH" 2>&1 | tail -1)
+        echo "$RESULT2" | sed "s/^/[$CUBE_IP]   /"
+        if echo "$RESULT2" | grep -q Success; then
+          INSTALLED_OK=1
+        else
+          INSTALLED_OK=0
+        fi
       else
         INSTALLED_OK=0
       fi

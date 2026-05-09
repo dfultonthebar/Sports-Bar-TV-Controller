@@ -20,7 +20,6 @@ import {
   getStationToPresetMaps,
   resolveChannelsForNetworks,
   findLocalChannelOverride,
-  getStreamingAppInfoForStation,
   normalizeStation,
 } from '@/lib/network-channel-resolver'
 // v2.32.9 — display-name lookup is now centralized in
@@ -660,319 +659,43 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // For streaming devices, use The Rail Media API
-    if (deviceType === 'streaming') {
-      logInfo(`Device logged in packages: ${deviceLoggedInPackages.join(', ')}`)
-
-      const api = getSportsGuideApi()
-      const guide = await api.fetchDateRangeGuide(days)
-      logInfo(`The Rail API returned ${guide.listing_groups?.length || 0} listing groups for streaming`)
-
-      for (const group of guide.listing_groups || []) {
-        for (const listing of group.listings || []) {
-          // Extract channel info for streaming devices
-          let channelInfo: any = null
-
-          // For streaming/Fire TV devices, check if any station has a streaming app
-          const stationList = listing.stations
-          if (stationList) {
-            const stations: string[] = Array.isArray(stationList)
-              ? stationList
-              : Object.values(stationList).filter((s): s is string => typeof s === 'string')
-
-            for (const station of stations) {
-              // Pass group_title as the sport hint so league-gated streaming
-              // codes (MLBEI, NHLCI, NBALP, MLSDK) resolve correctly. The
-              // helper's normalizeSport() handles MLB/NBA/NHL/MLS strings.
-              const appInfo = getStreamingAppInfoForStation(station, group.group_title)
-              if (appInfo) {
-                // Check if the Fire TV device has this service LOGGED IN (not just installed)
-                const hasLoggedIn = deviceLoggedInPackages.some(pkg => appInfo.packages.includes(pkg))
-                if (hasLoggedIn) {
-                  // v2.32.9 — use shared builder so Rail Media-sourced
-                  // streaming programs ALSO carry appId/packageName
-                  // (without these the bartender click silently does
-                  // nothing — same fix as v2.31.2 applied to this third
-                  // injection path).
-                  channelInfo = buildStreamingAppChannel({
-                    appName: appInfo.app,
-                    channelNumber: station,
-                    packagesOverride: appInfo.packages,
-                  })
-                  logInfo(`Matched streaming station ${station} to app ${appInfo.app} on device ${deviceId}`)
-                  break
-                }
-              }
-            }
-          }
-
-          // Skip this listing if no matching channel was found
-          if (!channelInfo) {
-            continue
-          }
-
-          // Add channel to map
-          channels.set(channelInfo.id, channelInfo)
-
-          // Create program entry with proper date parsing
-          const programId = `${group.group_title}-${listing.time}-${Math.random().toString(36).substring(7)}`
-
-          const eventDate = parseListingDate(listing.date, listing.time)
-
-          // Calculate end time (3 hours after start)
-          const endTime = new Date(eventDate.getTime() + 3 * 60 * 60 * 1000)
-
-          const homeTeam = listing.data['home team'] || listing.data['team'] || ''
-          const awayTeam = listing.data['visiting team'] || listing.data['opponent'] || ''
-
-          // v2.32.95 — Per-game deepLink for the Rail Media streaming path.
-          // Same fix as the broadcast_networks path (also v2.32.95) and the
-          // walker path (v2.32.94). Without this, every Rail-Media-sourced
-          // streaming program shared the un-deeplinked appChannel reference
-          // and the bartender's Watch button would fall through to the
-          // featured-tile autoplay (today: a PGA quad-view that played for
-          // every NCAA game on the guide).
-          //
-          // Search query priority (most specific to least):
-          //   1. cleaned `awayTeam homeTeam` (NFL/NBA/NCAA team-vs-team)
-          //   2. listing.data['event']/['tour'] (golf, tennis, motorsports)
-          //   3. group.group_title (final fallback — at least lands on the
-          //      right sport tab, e.g. searching "Lacrosse" beats landing
-          //      on whatever ESPN is currently featuring)
-          //
-          // Cleanup strips Rail Media's noisy prefixes from team strings
-          // (e.g. `NCAA: (22)Southern Miss` → `Southern Miss`). ESPN's
-          // search ranks bare team names higher than ones with ranking
-          // or league prefixes.
-          const cleanTeam = (s: string) =>
-            s.replace(/^[A-Z]+:\s*/i, '').replace(/^\(\d+\)\s*/, '').trim()
-          const teamPair = `${cleanTeam(awayTeam)} ${cleanTeam(homeTeam)}`.trim()
-          const eventName = (listing.data['event'] || listing.data['tour'] || '').replace(/^[A-Z]+:\s*/i, '').trim()
-          const searchQuery = teamPair || eventName || group.group_title || ''
-          let perGameDeepLink: string | undefined = undefined
-          if (searchQuery) {
-            if (channelInfo.appId === 'espn-plus') {
-              perGameDeepLink = `sportscenter://x-callback-url/showHomeTab?q=${encodeURIComponent(searchQuery)}`
-            } else if (channelInfo.appId === 'amazon-prime') {
-              perGameDeepLink = `https://watch.amazon.com/search?phrase=${encodeURIComponent(searchQuery)}`
-            }
-          }
-          const programChannel = perGameDeepLink
-            ? { ...channelInfo, deepLink: perGameDeepLink }
-            : channelInfo
-
-          const program = {
-            id: programId,
-            league: group.group_title,
-            homeTeam,
-            awayTeam,
-            gameTime: listing.time,
-            startTime: eventDate.toISOString(),
-            endTime: endTime.toISOString(),
-            channel: programChannel,
-            description: Object.entries(listing.data).map(([k, v]) => `${k}: ${v}`).join(', '),
-            isSports: true,
-            isLive: false,
-            venue: listing.data['venue'] || listing.data['location'] || ''
-          }
-
-          programs.push(program)
-        }
-      }
-    }
-
     logInfo(`Processed ${programs.length} programs and ${channels.size} channels`)
 
-    // Streaming: augment with ESPN-synced game_schedules. Rail Media only covers
-    // nationally-carried games; our ESPN sync covers 23 leagues. For each game
-    // we walk broadcast_networks looking for a streaming app, and ONLY include
-    // games whose app is actually logged-in on THIS specific Fire TV — different
-    // Fire TVs at the same venue can have different apps installed.
-    if (deviceType === 'streaming' && deviceId) {
-      try {
-        const { db } = await import('@/db')
-        const { schema } = await import('@/db')
-        const { and, gte, lte } = await import('drizzle-orm')
-
-        const windowStartSec = Math.floor(new Date(startTime).getTime() / 1000)
-        const windowEndSec = Math.floor(new Date(endTime).getTime() / 1000)
-
-        // v2.28.2 — overlap filter + in_progress catch-all (see cable/directv path)
-        // v2.32.77 — apply the v2.32.62 in_progress tightening to this path too:
-        // require estimatedEnd >= sixHoursAgo so zombie rows (NFL Draft from
-        // 11 days ago, etc) don't leak through the streaming injection path.
-        const nowSecForFilter = Math.floor(Date.now() / 1000)
-        const sixHoursAgo = nowSecForFilter - 6 * 60 * 60
-        const { or, eq, and: andOp } = await import('drizzle-orm')
-        const localGames = await db
-          .select()
-          .from(schema.gameSchedules)
-          .where(
-            or(
-              and(
-                lte(schema.gameSchedules.scheduledStart, windowEndSec),
-                gte(schema.gameSchedules.estimatedEnd, windowStartSec)
-              ),
-              andOp(
-                eq(schema.gameSchedules.status, 'in_progress'),
-                gte(schema.gameSchedules.estimatedEnd, sixHoursAgo)
-              )
-            )
-          )
-          .all()
-
-        let gsInjected = 0
-        let gsSkippedNoApp = 0
-        let gsSkippedNotLoggedIn = 0
-        let gsSkippedDupe = 0
-
-        const nowSec = Math.floor(Date.now() / 1000)
-
-        for (const game of localGames) {
-          if (!game.homeTeamName || !game.awayTeamName) continue
-
-          let broadcastNetworks: string[] = []
-          try {
-            if (game.broadcastNetworks) {
-              broadcastNetworks = JSON.parse(game.broadcastNetworks)
-            }
-          } catch {
-            broadcastNetworks = []
-          }
-
-          // Walk networks looking for a streaming app this device can play.
-          // Sport-gate MLBEI/NHLCI/NBALP/MLSDK by passing the game's league.
-          let matchedAppInfo: { app: string; code: string; packages: string[] } | null = null
-          let matchedNetwork: string | null = null
-          for (const network of broadcastNetworks) {
-            const appInfo = getStreamingAppInfoForStation(network, game.league)
-            if (!appInfo) continue
-            const loggedIn = deviceLoggedInPackages.some(pkg => appInfo.packages.includes(pkg))
-            if (loggedIn) {
-              matchedAppInfo = appInfo
-              matchedNetwork = network
-              break
-            }
-          }
-
-          if (!matchedAppInfo) {
-            // We had no streaming app resolution at all, OR the app isn't
-            // logged in on this device.
-            const anyResolved = broadcastNetworks.some(
-              n => getStreamingAppInfoForStation(n, game.league)
-            )
-            if (anyResolved) gsSkippedNotLoggedIn++
-            else gsSkippedNoApp++
-            continue
-          }
-
-          // Dedupe against programs already added from Rail Media
-          const dupe = programs.some(p =>
-            p.channel?.streamingApp === matchedAppInfo!.app &&
-            p.homeTeam === game.homeTeamName &&
-            p.awayTeam === game.awayTeamName
-          )
-          if (dupe) {
-            gsSkippedDupe++
-            continue
-          }
-
-          // v2.31.7 — shared builder; carries appId+packageName so bartender click works
-          const appChannel = buildStreamingAppChannel({
-            appName: matchedAppInfo.app,
-            channelNumber: matchedNetwork || matchedAppInfo.code,
-            packagesOverride: matchedAppInfo.packages,
-          })
-          if (!channels.has(appChannel.id)) {
-            channels.set(appChannel.id, appChannel)
-          }
-
-          // v2.32.95 — Build a per-game deepLink so the bartender's Watch
-          // button reaches the SPECIFIC game's playback rather than ESPN's
-          // featured tile. Pre-fix every broadcast_networks-injected ESPN
-          // game shared the same `appChannel` reference (no deepLink); the
-          // streaming-service-manager then fell through to the featured-
-          // tile autoplay path which lands on whatever ESPN is currently
-          // promoting (today: a PGA quad-view that played for every game
-          // operator clicked).
-          //
-          // Format mirrors the walker's per-tile deepLink (v2.32.94):
-          //   ESPN  → sportscenter://x-callback-url/showHomeTab?q=<title>
-          //   Prime → https://watch.amazon.com/search?phrase=<title>
-          // Other apps fall through to their generic launch path for now.
-          //
-          // Search query is `<awayTeam> <homeTeam>` — most distinctive for
-          // ESPN search ranking. Single team names (like "Texans") collide
-          // with multiple ESPN entities; the pair is unambiguous.
-          let perGameDeepLink: string | undefined = undefined
-          const searchQuery = `${game.awayTeamName} ${game.homeTeamName}`.trim()
-          // v2.32.95 — Match on appChannel.appId (catalog ID) instead of
-          // matchedAppInfo.app (user-facing name) to handle the "ESPN" vs
-          // "ESPN+" naming variants. matchedAppInfo.app for ESPN+ broadcasts
-          // is "ESPN+" (not "ESPN"), so the previous check missed every
-          // college-baseball / college-football / international-soccer
-          // ESPN+ game synced through this path.
-          if (searchQuery) {
-            if (appChannel.appId === 'espn-plus') {
-              perGameDeepLink = `sportscenter://x-callback-url/showHomeTab?q=${encodeURIComponent(searchQuery)}`
-            } else if (appChannel.appId === 'amazon-prime') {
-              perGameDeepLink = `https://watch.amazon.com/search?phrase=${encodeURIComponent(searchQuery)}`
-            }
-          }
-          const programChannel = perGameDeepLink
-            ? { ...appChannel, deepLink: perGameDeepLink }
-            : appChannel
-
-          const startDate = new Date(game.scheduledStart * 1000)
-          const endDate = new Date(game.estimatedEnd * 1000)
-          const gameTimeLabel = startDate.toLocaleTimeString('en-US', {
-            hour: 'numeric',
-            minute: '2-digit',
-            hour12: true,
-          }).toLowerCase()
-
-          const isLive = deriveIsLive(game, nowSec)
-
-          programs.push({
-            id: `gs-stream-${game.id}`,
-            league: game.league || 'Sports',
-            homeTeam: game.homeTeamName,
-            awayTeam: game.awayTeamName,
-            gameTime: gameTimeLabel,
-            startTime: startDate.toISOString(),
-            endTime: endDate.toISOString(),
-            channel: programChannel,
-            description: `${game.awayTeamName} @ ${game.homeTeamName}${game.venueName ? ' · ' + game.venueName : ''} (${matchedAppInfo.app})`,
-            isSports: true,
-            isLive,
-            venue: game.venueName || '',
-            station: matchedNetwork,
-          })
-          gsInjected++
-        }
-
-        if (gsInjected > 0 || gsSkippedNotLoggedIn > 0 || gsSkippedNoApp > 0) {
-          logInfo(
-            `game_schedules streaming fallback for ${deviceId}: +${gsInjected} injected, ${gsSkippedNotLoggedIn} skipped (app not logged in), ${gsSkippedNoApp} skipped (no streaming app), ${gsSkippedDupe} dedup`
-          )
-        }
-      } catch (fallbackError: any) {
-        logger.error('[Channel-Guide-API] game_schedules streaming fallback failed (non-fatal):', { error: fallbackError.message })
-      }
-    }
-
-    // v2.30.0 — Per-box on-device catalog injection.
+    // Per-box on-device catalog injection — SOLE SOURCE for streaming games.
     // Sports Bar Scout's CatalogWalker reports per-box per-app sports content
-    // tiles (regional broadcasts ESPN doesn't tag, on-demand sports docuseries,
-    // app-specific live events). This data fills the gap left by the
-    // broadcast_networks fallback above, which only covers content ESPN syncs.
-    // Catalog rows live in firetv_streaming_catalog with a 36h TTL — older
-    // rows are pruned by the daily cron (Phase 3).
+    // tiles (regional broadcasts, league passes, on-demand sports docuseries,
+    // app-specific live events) with the actual deep links resolved off the
+    // device's UI. Catalog rows live in firetv_streaming_catalog with a 36h
+    // TTL — older rows are pruned by the daily cron (Phase 3).
+    //
+    // Replaces (v2.32.99+) the previous Rail-Media + game_schedules streaming
+    // injection paths whose search-query deep links were not specific enough
+    // to land on the right game's playback. The walker's per-tile deep links
+    // come straight from each app's tile metadata so the bartender's Watch
+    // button reaches the actual content. NFHS still has its own injection
+    // block below (separate data source, app-specific deep links).
+    //
+    // VENUE_TIMEZONE: All locations are in America/Chicago (Wisconsin). The
+    // `day` and `time` display fields are formatted in this zone so the
+    // bartender remote shows the local time the game starts, not UTC.
+    const VENUE_TIMEZONE = 'America/Chicago'
+    const dayFormatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: VENUE_TIMEZONE,
+      weekday: 'short',
+    })
+    const timeFormatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: VENUE_TIMEZONE,
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+      timeZoneName: 'short',
+    })
+
     if (deviceType === 'streaming' && deviceId) {
       try {
         const { db } = await import('@/db')
         const { schema } = await import('@/db')
-        const { eq, gt, and: dAnd } = await import('drizzle-orm')
+        const { eq, gt, gte, lte, and: dAnd } = await import('drizzle-orm')
 
         const nowSec = Math.floor(Date.now() / 1000)
         const catalogRows = await db
@@ -986,73 +709,251 @@ export async function POST(request: NextRequest) {
           )
           .all()
 
+        // v2.33.0 — Start-time enrichment from game_schedules. The walker
+        // doesn't always extract a startTime from tile UI (Prime Video
+        // hides times unless the tile is focused, ESPN tiles vary by
+        // sport). For each catalog row missing a startTime, look up
+        // game_schedules within ±2h..+48h and match by team-name token
+        // overlap. This DOES NOT change which games appear (Scout is
+        // still source of truth for that) — only fills in the start
+        // time so the bartender remote can show "Fri 7:30 PM CT" instead
+        // of "On demand". Match priority: both home AND away tokens
+        // present → enrich. Single-team match → skip (too ambiguous).
+        const scheduleWindowStart = nowSec - 6 * 3600 // 6h grace for in-progress games
+        const scheduleWindowEnd = nowSec + 48 * 3600
+        const upcomingSchedules = await db
+          .select({
+            home: schema.gameSchedules.homeTeamName,
+            away: schema.gameSchedules.awayTeamName,
+            scheduledStart: schema.gameSchedules.scheduledStart,
+            estimatedEnd: schema.gameSchedules.estimatedEnd,
+            status: schema.gameSchedules.status,
+            statusDetail: schema.gameSchedules.statusDetail,
+            espnEventId: schema.gameSchedules.espnEventId,
+            league: schema.gameSchedules.league,
+            // v2.33.1 — pull live state too. ESPN sync writes these every
+            // 10min. Streaming programs include this inline so the
+            // bartender remote can show scores/clock without a separate
+            // /api/sports-guide/live-by-channel fetch (which is hardcoded
+            // to deviceType=cable and skips streaming-only games like
+            // Prime Video NBA exclusives).
+            homeScore: schema.gameSchedules.homeScore,
+            awayScore: schema.gameSchedules.awayScore,
+            currentPeriod: schema.gameSchedules.currentPeriod,
+            clockTime: schema.gameSchedules.clockTime,
+          })
+          .from(schema.gameSchedules)
+          .where(
+            dAnd(
+              gte(schema.gameSchedules.scheduledStart, scheduleWindowStart),
+              lte(schema.gameSchedules.scheduledStart, scheduleWindowEnd)
+            )
+          )
+          .all()
+        const tokenize = (s: string): string[] =>
+          s.toLowerCase()
+            .replace(/[^\w\s]/g, ' ')
+            .split(/\s+/)
+            .filter((t) => t.length >= 4) // skip short tokens like "vs", "the", "at"
+        type ScheduleMatch = {
+          home: string
+          away: string
+          scheduledStart: number
+          estimatedEnd: number
+          status: string | null
+          statusDetail: string | null
+          espnEventId: string | null
+          league: string | null
+          homeScore: number | null
+          awayScore: number | null
+          currentPeriod: number | null
+          clockTime: string | null
+        }
+        const lookupSchedule = (title: string): ScheduleMatch | undefined => {
+          const titleTokens = new Set(tokenize(title))
+          if (titleTokens.size < 2) return undefined
+          let best: { row: ScheduleMatch; matchedTokens: number } | null = null
+          for (const sch of upcomingSchedules) {
+            const homeTokens = tokenize(sch.home)
+            const awayTokens = tokenize(sch.away)
+            const homeHit = homeTokens.some((t) => titleTokens.has(t))
+            const awayHit = awayTokens.some((t) => titleTokens.has(t))
+            if (!homeHit || !awayHit) continue
+            const matched =
+              homeTokens.filter((t) => titleTokens.has(t)).length +
+              awayTokens.filter((t) => titleTokens.has(t)).length
+            if (!best || matched > best.matchedTokens) {
+              best = { row: sch, matchedTokens: matched }
+            }
+          }
+          return best?.row
+        }
+        // Statuses that mean "this game is over — don't show it on the
+        // bartender remote." Cable/satellite path filters the same way.
+        const completedStatuses = new Set(['completed', 'final', 'postponed', 'cancelled'])
+
         let catInjected = 0
         let catSkippedDupe = 0
+        let catEnriched = 0
+        let catSkippedCompleted = 0
+        // Within-catalog dedup: same app + same title. The walker can capture
+        // the same tile twice on adjacent passes (e.g. featured carousel +
+        // sport-specific row); de-dup so the bartender doesn't see twins.
+        const seenInCatalog = new Set<string>()
+
         for (const row of catalogRows) {
-          // Dedupe against programs already added — same app + same title
-          const dupe = programs.some(
-            (p) =>
-              p.channel?.streamingApp === row.app &&
-              (p.description?.includes(row.contentTitle) || p.homeTeam === row.contentTitle)
-          )
-          if (dupe) {
+          const dupeKey = `${row.app}::${row.contentTitle}`
+          if (seenInCatalog.has(dupeKey)) {
             catSkippedDupe++
             continue
           }
+          seenInCatalog.add(dupeKey)
 
           const appChannelId = `stream-${row.app.replace(/\s+/g, '-').toLowerCase()}`
           let appChannel = channels.get(appChannelId)
           if (!appChannel) {
-            // v2.31.7 — shared builder
             appChannel = buildStreamingAppChannel({ appName: row.app, channelNumber: row.app })
             channels.set(appChannelId, appChannel)
           }
 
-          // v2.32.63 — prefer the walker-extracted startTime over capturedAt
-          // for `gameTime` display (e.g. "7:30 PM"). Falls back to the
-          // capturedAt-derived "On demand"/"LIVE" labels when the walker
-          // didn't extract a time (most non-sports tiles).
-          const start = row.startTime ?? row.capturedAt
-          const startMs = start * 1000
-          const gameTimeLabel = row.isLive
-            ? 'LIVE'
-            : (row.startTime
-                ? new Date(startMs).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' })
-                : 'On demand')
+          // v2.33.1 — Look up the full schedule match (start time, status,
+          // espnEventId, home/away team names) from game_schedules. Match
+          // is by team-token overlap; we use the result for: (a) start
+          // time enrichment, (b) auto-removal of completed games,
+          // (c) proper home/away split (so bartender's existing live-
+          // data match-by-team-name lookup works), (d) espnEventId so
+          // future code can fetch live scores by ID.
+          const scheduleMatch = lookupSchedule(row.contentTitle)
+          if (scheduleMatch && scheduleMatch.status &&
+              completedStatuses.has(scheduleMatch.status.toLowerCase())) {
+            // Game is over — don't include it. Same behavior as cable/sat
+            // path which filters status='completed'/'final' rows out.
+            catSkippedCompleted++
+            continue
+          }
+
+          // Walker's startTime takes precedence; otherwise enrichment
+          // match's scheduledStart; otherwise fall back to NOW so the
+          // bartender's "past midnight of scheduled day" filter passes
+          // for live/on-demand tiles. Pre-v2.33.1 we fell back to
+          // capturedAt (typically yesterday) and the bartender filter
+          // discarded every program — that's why "NO LIVE GAMES"
+          // showed instead of the expected list.
+          let resolvedStart: number | undefined =
+            typeof row.startTime === 'number' && row.startTime > 0
+              ? row.startTime
+              : undefined
+          if (resolvedStart === undefined && scheduleMatch) {
+            resolvedStart = scheduleMatch.scheduledStart
+            catEnriched++
+          }
+          const hasStartTime = resolvedStart !== undefined
+          const startSec = hasStartTime ? (resolvedStart as number) : nowSec
+          const startMs = startSec * 1000
+          const startDate = new Date(startMs)
+
+          // 3-hour estimated duration when we have a real startTime;
+          // otherwise default to 3h from now so the program stays valid
+          // through current game window. Don't use expiresAt (36h TTL)
+          // anymore — that was forward-looking but unrelated to game end.
+          const endMs = hasStartTime
+            ? startMs + 3 * 60 * 60 * 1000
+            : startMs + 3 * 60 * 60 * 1000
+
+          // Display fields formatted in VENUE_TIMEZONE (America/Chicago).
+          let day = ''
+          let time = ''
+          let gameTimeLabel: string
+          if (row.isLive || (scheduleMatch && scheduleMatch.status === 'in_progress')) {
+            gameTimeLabel = 'LIVE'
+            time = 'LIVE'
+            day = hasStartTime ? dayFormatter.format(startDate) : 'LIVE'
+          } else if (hasStartTime) {
+            day = dayFormatter.format(startDate)
+            time = timeFormatter.format(startDate)
+            gameTimeLabel = time
+          } else {
+            // No walker startTime + no schedule match → on-demand / replay.
+            gameTimeLabel = 'On demand'
+            day = 'On demand'
+            time = ''
+          }
 
           // v2.32.84 — bartender consumer reads `game.channel.deepLink`
-          // (apps/web/src/components/EnhancedChannelGuideBartenderRemote.tsx
-          // line ~1139), but the channels Map caches one channel per app id
-          // so we can't mutate the shared object. Build a per-program shallow
-          // copy that carries this game's specific deepLink. Pre-fix: deepLink
-          // was put on the program (game.deepLink) which the bartender ignored
-          // → every Prime Video Watch click silently fell through to home
-          // screen. Confirmed by code-reviewer agent on 2026-05-08.
+          // (EnhancedChannelGuideBartenderRemote.tsx line ~1139). The channels
+          // Map caches one channel per app id, so build a per-program shallow
+          // copy that carries this game's specific deep link.
           const programChannel = row.deepLink
             ? { ...appChannel, deepLink: row.deepLink }
             : appChannel
+
+          // v2.33.1 — Split contentTitle into home/away on " vs.? "
+          // separator so the bartender's existing live-data lookup
+          // (keyed by `${away}-${home}`) can match these tiles.
+          // When the schedule match is found, prefer ITS team names —
+          // they're authoritative ESPN names, while the walker tile
+          // text may have minor variations ("Mariners vs. White Sox"
+          // vs ESPN's "Seattle Mariners" / "Chicago White Sox").
+          let homeTeam = row.contentTitle
+          let awayTeam = ''
+          if (scheduleMatch && scheduleMatch.home && scheduleMatch.away) {
+            homeTeam = scheduleMatch.home
+            awayTeam = scheduleMatch.away
+          } else {
+            const vsMatch = row.contentTitle.split(/\s+vs\.?\s+/i)
+            if (vsMatch.length === 2 && vsMatch[0].length >= 2 && vsMatch[1].length >= 2) {
+              awayTeam = vsMatch[0].trim()
+              homeTeam = vsMatch[1].trim()
+            }
+          }
+
+          // v2.33.1 — Inline liveData on the program when we have a
+          // schedule match. The bartender remote already renders
+          // homeScore/awayScore/timeRemaining/quarter/status from
+          // program.liveData when present (mirrors the cable/satellite
+          // path which gets it from the separate live-by-channel
+          // endpoint). For streaming we put it inline so bartender
+          // doesn't need a second round-trip.
+          const liveData = scheduleMatch ? {
+            isLive: scheduleMatch.status === 'in_progress',
+            homeScore: scheduleMatch.homeScore,
+            awayScore: scheduleMatch.awayScore,
+            clock: scheduleMatch.clockTime,
+            period: scheduleMatch.currentPeriod,
+            statusDetail: scheduleMatch.statusDetail,
+            espnGameId: scheduleMatch.espnEventId,
+          } : undefined
+
           programs.push({
             id: `cat-${row.id}`,
-            league: row.sportTag || 'Sports',
-            homeTeam: row.contentTitle,
-            awayTeam: '',
+            league: scheduleMatch?.league || row.sportTag || 'Sports',
+            homeTeam,
+            awayTeam,
             gameTime: gameTimeLabel,
-            startTime: new Date(startMs).toISOString(),
-            endTime: new Date(row.expiresAt * 1000).toISOString(),
+            day,
+            time,
+            startTime: startDate.toISOString(),
+            endTime: new Date(endMs).toISOString(),
             channel: programChannel,
-            description: `${row.contentTitle} (${row.app}${row.deepLink ? ' · deep-linkable' : ''})`,
+            // v2.33.1 — clean bartender-facing description. No more
+            // "(deep-linkable)" annotation; that's an internal detail
+            // the bartender doesn't need.
+            description: `${row.contentTitle} on ${row.app}`,
             isSports: true,
-            isLive: !!row.isLive,
+            isLive: !!row.isLive || scheduleMatch?.status === 'in_progress',
             venue: '',
             station: row.app,
             sportTag: row.sportTag || undefined,
+            // v2.33.1 — espnEventId for downstream live-data matching.
+            espnEventId: scheduleMatch?.espnEventId || undefined,
+            liveData,
           })
           catInjected++
         }
 
-        if (catInjected > 0 || catSkippedDupe > 0) {
+        if (catInjected > 0 || catSkippedDupe > 0 || catSkippedCompleted > 0) {
           logInfo(
-            `firetv_streaming_catalog injection for ${deviceId}: +${catInjected} from scout walker, ${catSkippedDupe} dedup`
+            `firetv_streaming_catalog injection for ${deviceId}: +${catInjected} from scout walker, ${catSkippedDupe} dedup, ${catEnriched} enriched startTime from game_schedules, ${catSkippedCompleted} completed games skipped`
           )
         }
       } catch (catalogError: any) {

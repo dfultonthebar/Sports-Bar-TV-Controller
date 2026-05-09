@@ -631,8 +631,34 @@ export class ADBClient {
             `[ADB CLIENT] ESPN tile match — tapping "${tapTarget.text}" at (${tapTarget.cx}, ${tapTarget.cy})`,
           )
           await this.executeShellCommand(`input tap ${tapTarget.cx} ${tapTarget.cy}`, 8000)
-          logger.info(`[ADB CLIENT] ESPN text-targeted tap dispatched`)
-          return `ESPN text-targeted tap dispatched for "${trimmedTitle}" (matched: ${tapTarget.text})`
+
+          // v2.32.99 — Detail page → PlayerActivity. ESPN's detail page
+          // auto-focuses the Watch CTA (verified live at bounds
+          // [1306,506][1872,602] on AFTR Cube 2). DPAD_CENTER on it
+          // advances to com.espn.video.dmp.PlayerActivity. Without
+          // this step, the autoplay sequence stops on the detail page
+          // and the bartender has to press OK on the TV remote
+          // manually. Pattern mirrors Prime Video's autoplay.
+          //
+          // Empirical timing on Cube 2 (AFTR / com.espn.gtv):
+          //   - Tap dispatched at T+0
+          //   - Detail page activity transition: T+~1s
+          //   - Focus settled on Watch CTA: T+~2-4s
+          //   - First DPAD_CENTER firing at T+3s sometimes lost
+          //     (consumed by loading-state focus)
+          // Solution: 5s wait + send DPAD_CENTER, then wait 1s and
+          // send a second DPAD_CENTER as a safety. The second is a
+          // no-op if the first already advanced (DPAD_CENTER on
+          // PlayerActivity toggles play/pause briefly and snaps back).
+          logger.info(`[ADB CLIENT] Waiting 5s for ESPN detail page focus to settle`)
+          await new Promise((r) => setTimeout(r, 5000))
+          logger.info(`[ADB CLIENT] DPAD_CENTER → trigger Watch (1st)`)
+          await this.sendKey(23, 8000) // KEYCODE_DPAD_CENTER
+          await new Promise((r) => setTimeout(r, 1000))
+          logger.info(`[ADB CLIENT] DPAD_CENTER → trigger Watch (2nd, safety)`)
+          await this.sendKey(23, 8000).catch(() => {}) // KEYCODE_DPAD_CENTER
+          logger.info(`[ADB CLIENT] ESPN text-targeted tap + Watch advance dispatched`)
+          return `ESPN text-targeted tap + Watch advance dispatched for "${trimmedTitle}" (matched: ${tapTarget.text})`
         }
         logger.warn(
           `[ADB CLIENT] ESPN no visible tile matched "${trimmedTitle}". NOT tapping.`,

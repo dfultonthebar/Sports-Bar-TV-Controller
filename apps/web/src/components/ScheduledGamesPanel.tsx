@@ -75,6 +75,10 @@ interface AISuggestion {
   startTime: string
   channelNumber: string
   channelName: string
+  appName?: string
+  // v2.32.100 — Per-event deep link forwarded from firetv_streaming_catalog
+  // through ai-suggest so approve writes it to inputSourceAllocations.
+  deepLink?: string
   suggestedInput: string
   suggestedInputId: string
   suggestedDeviceId?: string
@@ -562,6 +566,10 @@ export default function ScheduledGamesPanel() {
           deviceType: suggestion.suggestedDeviceType || 'cable',
           channelNumber: suggestion.channelNumber,
           channelName: suggestion.channelName,
+          // v2.32.100 — forward the catalog-sourced deepLink so the
+          // allocation row carries it through to scheduler-service's tune
+          // (Fire TV opens directly to the game instead of the app's home).
+          deepLink: suggestion.deepLink || undefined,
           gameInfo: {
             homeTeam: suggestion.homeTeam,
             awayTeam: suggestion.awayTeam,
