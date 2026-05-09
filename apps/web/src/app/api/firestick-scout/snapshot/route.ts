@@ -30,6 +30,27 @@ import { db, schema } from '@/db'
 import { and, eq } from 'drizzle-orm'
 import { logger } from '@sports-bar/logger'
 
+/**
+ * v2.33.10 — Synthesize a search-style deepLink per app. Mirrors what
+ * the server-side walker emits for the same apps, so the bartender's
+ * Watch button works identically regardless of which path produced the
+ * row. Null for apps we don't have a search-URL pattern for; bartender
+ * falls back to plain app-launch in that case.
+ */
+function synthDeepLink(appName: string, contentTitle: string): string | null {
+  const t = encodeURIComponent(contentTitle.trim())
+  if (!t) return null
+  switch (appName) {
+    case 'Prime Video':
+    case 'Sports Tab': // PVFTV-320 launcher Live tab → Prime Video search backend works
+      return `https://watch.amazon.com/search?phrase=${t}`
+    case 'ESPN':
+      return `sportscenter://x-callback-url/showHomeTab?q=${t}`
+    default:
+      return null
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
@@ -132,10 +153,11 @@ export async function POST(request: NextRequest) {
             contentTitle: title,
             isLive: !!tile.isLive,
             sportTag: tile.sportTag ?? null,
-            // No deepLink yet — Scout snapshot path doesn't synthesize
-            // deep links (that's a v2.3 future). Bartender can still
-            // see the tile + use its app-launcher Watch button.
-            deepLink: null,
+            // v2.33.10 — synthesize deepLink per-app when Scout doesn't
+            // supply one. Same patterns the walker uses, so the bartender
+            // remote's Watch button does the same thing whichever source
+            // produced the row.
+            deepLink: tile.deepLink ?? synthDeepLink(appName, title),
             startTime: null,
             capturedAt: takenAtUnix,
             expiresAt,
