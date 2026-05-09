@@ -92,15 +92,18 @@ export async function POST(request: NextRequest) {
     // Group new items by app so we can do per-app replace
     const appsInIngest = Array.from(new Set(data.items.map((i) => i.app)))
 
-    // Delete previous rows for this (deviceId, app) set — scout is the
-    // authority on what's playable per app per box.
+    // v2.33.9 — Per-source replace. Delete only walker-sourced rows for
+    // (deviceId, app); Scout-snapshot rows (source='scout-snapshot')
+    // survive untouched. Both writers can coexist for the same
+    // (deviceId, app); readers see the union.
     if (appsInIngest.length > 0) {
       await db
         .delete(schema.firetvStreamingCatalog)
         .where(
           and(
             eq(schema.firetvStreamingCatalog.deviceId, resolvedDeviceId),
-            inArray(schema.firetvStreamingCatalog.app, appsInIngest)
+            inArray(schema.firetvStreamingCatalog.app, appsInIngest),
+            eq(schema.firetvStreamingCatalog.source, 'walker'),
           )
         )
         .run()
@@ -118,6 +121,7 @@ export async function POST(request: NextRequest) {
         startTime: item.startTime ?? null,
         capturedAt,
         expiresAt,
+        source: 'walker',
       }))
       await db.insert(schema.firetvStreamingCatalog).values(insertRows).run()
     }
