@@ -806,8 +806,6 @@ async function walkOneApp(
   if (!deviceId) {
     return { app: rule.displayName, tilesFound: 0, uploaded: false, error: 'no-device-id' }
   }
-  // v2.33.4-diag: always log at entry so we can correlate later branches.
-  logger.info(`[FIRETV-CATALOG] walkOneApp ENTRY: ${inputSource.name} / ${rule.displayName} (catalogId=${rule.catalogId})`)
 
   // v2.31.9 — WebView-based apps (Peacock, likely Hulu/fubo/MLB.TV)
   // can't be walked via uiautomator (the dump shows one big WebView
@@ -874,12 +872,7 @@ async function walkOneApp(
     if (rule.catalogId === 'amazon-prime') {
       // Filter mCurrentFocus in TypeScript instead of via shell `|` pipe —
       // the send-command API mangles pipes and the grep returned empty.
-      // 10s timeout — `dumpsys window windows` returns 100KB+ on a
-      // populated Cube and the default 3s aborts mid-stream.
-      const fgDump = await adbShell(deviceId, 'dumpsys window windows', 10000).catch((e) => {
-        logger.warn(`[FIRETV-CATALOG] ${inputSource.name} / Prime Video: dumpsys window threw: ${e?.message || e}`)
-        return ''
-      })
+      const fgDump = await adbShell(deviceId, 'dumpsys window windows').catch(() => '')
       const focusLine = fgDump.split('\n').find((l) => l.includes('mCurrentFocus')) || ''
       const isLauncherForeground = focusLine.includes('com.amazon.tv.launcher/com.amazon.tv.launcher')
       logger.info(
