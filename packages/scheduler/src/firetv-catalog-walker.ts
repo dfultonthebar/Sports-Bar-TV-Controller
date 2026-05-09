@@ -870,8 +870,15 @@ async function walkOneApp(
     // Targeted at Prime Video; ESPN doesn't have this issue (separate
     // app on every observed firebat version).
     if (rule.catalogId === 'amazon-prime') {
-      const fg = await adbShell(deviceId, "dumpsys window windows | grep mCurrentFocus | tail -1").catch(() => '')
-      const isLauncherForeground = fg.includes('com.amazon.tv.launcher/com.amazon.tv.launcher')
+      // Filter mCurrentFocus in TypeScript instead of via shell `|` pipe —
+      // the send-command API mangles pipes and the grep returned empty.
+      const fgDump = await adbShell(deviceId, 'dumpsys window windows').catch(() => '')
+      const focusLine = fgDump.split('\n').find((l) => l.includes('mCurrentFocus')) || ''
+      const isLauncherForeground = focusLine.includes('com.amazon.tv.launcher/com.amazon.tv.launcher')
+      logger.info(
+        `[FIRETV-CATALOG] ${inputSource.name} / ${rule.displayName}: ` +
+          `post-launch foreground=${focusLine.trim().substring(0, 150) || '(empty)'}`,
+      )
       if (isLauncherForeground) {
         logger.info(
           `[FIRETV-CATALOG] ${inputSource.name} / ${rule.displayName}: ` +
@@ -880,8 +887,9 @@ async function walkOneApp(
         )
         await adbShell(deviceId, `am start -a android.intent.action.VIEW -d 'https://watch.amazon.com/sports' -p com.amazon.firebat`).catch(() => '')
         await sleep(8000)
-        const fg2 = await adbShell(deviceId, "dumpsys window windows | grep mCurrentFocus | tail -1").catch(() => '')
-        if (fg2.includes('com.amazon.tv.launcher/com.amazon.tv.launcher')) {
+        const fg2Dump = await adbShell(deviceId, 'dumpsys window windows').catch(() => '')
+        const focus2 = fg2Dump.split('\n').find((l) => l.includes('mCurrentFocus')) || ''
+        if (focus2.includes('com.amazon.tv.launcher/com.amazon.tv.launcher')) {
           logger.warn(
             `[FIRETV-CATALOG] ${inputSource.name} / ${rule.displayName}: ` +
               `deep-link did NOT navigate away from launcher — Cube has launcher-hosted firebat ` +
@@ -892,7 +900,7 @@ async function walkOneApp(
         }
         logger.info(
           `[FIRETV-CATALOG] ${inputSource.name} / ${rule.displayName}: ` +
-            `deep-link landed on ${fg2.substring(0, 100)} — proceeding with walk`,
+            `deep-link landed on ${focus2.trim().substring(0, 100)} — proceeding with walk`,
         )
       }
     }
