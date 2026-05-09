@@ -46,8 +46,27 @@ class PlaybackAutomationService : AccessibilityService() {
     // a successful result with a "no_match [null]" timeout.
     @Volatile private var settledSessionId = 0L
 
+    // v2.2.0 — Track most-recent window-state events so an active extractor
+    // (CatalogSnapshotService) can wait for an Intent.startActivity to
+    // actually render before walking the tree. Filled by onAccessibilityEvent
+    // for ANY package in our packageNames filter, regardless of whether a
+    // PLAY_GAME mailbox command is pending.
+    @Volatile private var lastWindowSettledAtMs = 0L
+    @Volatile private var lastWindowPackage: String = ""
+
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
+
+        // v2.2.0 — record window-settle events for ANY watched package
+        // (independent of whether a PLAY_GAME mailbox command is pending).
+        // Active-extraction service uses this to wait for app launches.
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+            event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED
+        ) {
+            lastWindowSettledAtMs = System.currentTimeMillis()
+            lastWindowPackage = event.packageName?.toString().orEmpty()
+        }
+
         val targetPackage = pendingTargetPackage() ?: return
         val eventPackage = event.packageName?.toString().orEmpty()
         if (eventPackage != targetPackage) return
@@ -101,11 +120,17 @@ class PlaybackAutomationService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
-        Log.i("PlaybackAutomation", "Connected (Scout v1.5.0). Watching ESPN/NFHS/firebat.")
+        instance = this
+        Log.i("PlaybackAutomation", "Connected (Scout v2.2.0). Watching ESPN/NFHS/firebat/launcher. instance attached for snapshot use.")
         // If a command was queued before we connected, kick the loop.
         if (pendingTargetPackage() != null) {
             attemptsRemaining = pendingMaxAttempts()
         }
+    }
+
+    override fun onUnbind(intent: android.content.Intent?): Boolean {
+        if (instance === this) instance = null
+        return super.onUnbind(intent)
     }
 
     private fun tryClickMatchingTile() {
@@ -260,5 +285,68 @@ class PlaybackAutomationService : AccessibilityService() {
             "PlaybackAutomation",
             "Result=$result message='$message' matched='$matchedText'",
         )
+    }
+
+    // ─── v2.2.0: companion entry points for active extraction ────────
+
+    companion object {
+        @Volatile private var instance: PlaybackAutomationService? = null
+
+        /** AccessibilityService instance for navigators that need
+         *  performGlobalAction / findFocus access. Null when AS isn't
+         *  currently bound (e.g. operator hasn't toggled accessibility
+         *  on after install). */
+        fun instanceForNav(): AccessibilityService? = instance
+
+        /**
+         * Block until we observe a TYPE_WINDOW_STATE_CHANGED event
+         * for [forPackage], or timeoutMs elapses. Used by the snapshot
+         * service to know when an Intent.startActivity has actually
+         * rendered before we try to walk the tree.
+         *
+         * Returns true if the package was observed within the window;
+         * false on timeout or AS not connected.
+         */
+        fun awaitWindowSettled(forPackage: String, timeoutMs: Long): Boolean {
+            val deadline = System.currentTimeMillis() + timeoutMs
+            val startedAt = System.currentTimeMillis()
+            while (System.currentTimeMillis() < deadline) {
+                val svc = instance ?: return false
+                if (svc.lastWindowPackage == forPackage &&
+                    svc.lastWindowSettledAtMs >= startedAt
+                ) {
+                    return true
+                }
+                try { Thread.sleep(150) } catch (_: InterruptedException) {}
+            }
+            return false
+        }
+
+        /**
+         * Snapshot the current accessibility tree. Calls refresh() on
+         * the root before returning so callers get current state — without
+         * this, focus/text checks done milliseconds after a navigation
+         * event return stale data and verify-gates flap.
+         *
+         * Returns null when AS isn't connected.
+         */
+        fun snapshotCurrentTree(): AccessibilityNodeInfo? {
+            val root = instance?.rootInActiveWindow ?: return null
+            try { root.refresh() } catch (_: Throwable) {}
+            return root
+        }
+
+        /**
+         * True if a bartender PLAY_GAME mailbox command is pending +
+         * unsettled. CatalogSnapshotService checks this before starting
+         * a cycle so the snapshot loop doesn't fight a real bartender
+         * click for the screen.
+         */
+        fun hasPendingClickCommand(): Boolean {
+            val svc = instance ?: return false
+            val pending = svc.pendingTargetPackage()
+            val queuedAt = svc.pendingQueuedAt()
+            return pending != null && queuedAt > svc.settledSessionId
+        }
     }
 }
