@@ -145,6 +145,25 @@ class CatalogSnapshotService : Service() {
         val root = PlaybackAutomationService.snapshotCurrentTree()
             ?: return AppSnapshotResult(target, "no_as_tree", emptyList(), 0, started)
 
+        // v2.2.3 — Verify the active window's package actually matches the
+        // target before extracting. Without this, when ESPN's launch fails
+        // but the AS observes any other window-state event (e.g. Prime
+        // Video sitting in foreground from a prior session), the snapshot
+        // walks Prime Video's tree but POSTs it as ESPN — mislabeled
+        // catalog rows. Greenville Cube 2026-05-09 v2.33.10 caught this.
+        val activePkg = root.packageName?.toString() ?: ""
+        val acceptedPkgs = when (navPath) {
+            // The "Sports Tab" target's pkg is com.amazon.firebat which on
+            // PVFTV-320 routes through the launcher; accept either.
+            NavPath.LAUNCHER_HOME_SPORTS_TAB -> setOf(target.pkg, "com.amazon.tv.launcher")
+            NavPath.PRIME_LAUNCHER_HOSTED    -> setOf(target.pkg, "com.amazon.tv.launcher")
+            else -> setOf(target.pkg)
+        }
+        if (activePkg !in acceptedPkgs) {
+            Log.w(TAG, "${target.displayName}: window package mismatch — expected ${acceptedPkgs.joinToString("|")}, got $activePkg. Skipping extraction (don't write mislabeled rows).")
+            return AppSnapshotResult(target, "wrong_window", emptyList(), 0, started)
+        }
+
         val tiles = CatalogExtractor.collectCandidateTiles(root, target.displayName)
         CatalogExtractor.dumpTopCandidates(tiles, target.displayName, top = 8)
         val sportsTiles = tiles.filter { it.sportsScore >= SPORTS_SCORE_THRESHOLD }
