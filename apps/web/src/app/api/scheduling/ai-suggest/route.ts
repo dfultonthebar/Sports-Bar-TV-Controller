@@ -52,6 +52,22 @@ interface GameListing {
   channelName?: string
   directvChannel?: string  // directv channel (different numbering)
   streamingApp?: string    // app name for firetv inputs (e.g. "Prime Video", "Apple TV+")
+  // v2.32.100 — Fields populated only for streaming candidates that came
+  // from firetv_streaming_catalog (per-device Scout walker output).
+  // `firetvInputId` is the input_sources.id of the Fire TV input whose
+  // catalog row produced this candidate — the parser uses it to lock the
+  // suggestion to that exact input, since a streaming candidate is
+  // device-specific (same content title may appear on multiple Fire TVs
+  // as separate candidates). `deepLink` is the per-event launch URI the
+  // walker captured (e.g. "primevideo://detail?gti=...") which the apply
+  // path forwards to scheduler-service so the tune lands on the exact
+  // game instead of the app's home screen. `isLive`, `sportTag`, and
+  // `gameSource` are display-only context for the LLM prompt.
+  firetvInputId?: string
+  deepLink?: string
+  isLive?: boolean
+  sportTag?: string
+  gameSource?: 'gameSchedules' | 'streamingCatalog'
 }
 
 interface AISuggestion {
@@ -63,6 +79,12 @@ interface AISuggestion {
   channelNumber: string
   channelName: string
   appName?: string          // populated for firetv suggestions
+  // v2.32.100 — Per-event deep link for firetv suggestions sourced from
+  // firetv_streaming_catalog. When present, the apply path forwards this
+  // to inputSourceAllocations.deepLink, which scheduler-service uses at
+  // tune time to launch the Fire TV directly to the specific game (vs.
+  // landing on the app's home screen).
+  deepLink?: string
   suggestedInput: string
   suggestedInputId: string
   suggestedDeviceId: string
@@ -76,6 +98,14 @@ interface AISuggestion {
 // Uses the same data source as the bartender remote channel guide, resolved
 // through the shared network-channel-resolver for correct per-device-type
 // channel numbers.
+//
+// v2.32.100 — Streaming routes are NO LONGER resolved here. The bartender
+// channel guide moved its streaming source to firetv_streaming_catalog
+// (per-device Scout walker output) and AI Suggest now does the same via
+// fetchStreamingCatalogCandidates() so its suggestions are guaranteed
+// launchable on a real Fire TV input. This function returns ONLY cable +
+// directv candidates — streaming-only games are skipped here and may be
+// picked up by the catalog path, which carries deepLink for autoplay.
 
 async function fetchUpcomingGames(): Promise<GameListing[]> {
   try {
@@ -98,29 +128,13 @@ async function fetchUpcomingGames(): Promise<GameListing[]> {
       )
     )
 
-    // Collect apps that are actually available on at least one firetv input at
-    // this venue. An "installed" app is one the venue has a login for — if
-    // nobody at Holmgren has MLB.TV, a Cubs/Mets MLB.TV-only game is not
-    // playable here even though we have Fire TVs. Store as lowercase for
-    // case-insensitive comparison against the resolver's app names.
-    const firetvSources = await db.select().from(schema.inputSources).where(
-      and(eq(schema.inputSources.isActive, true), eq(schema.inputSources.type, 'firetv'))
-    )
-    const availableApps = new Set<string>()
-    for (const src of firetvSources) {
-      try {
-        const apps = JSON.parse(src.availableNetworks || '[]') as string[]
-        for (const app of apps) {
-          if (app) availableApps.add(app.toLowerCase().trim())
-        }
-      } catch { /* ignore */ }
-    }
-    logger.info(`[AI-SUGGEST] Available firetv apps at venue: ${[...availableApps].join(', ') || '(none)'}`)
-
     // v2.32.3 — Parallelize resolveChannelsForGame across all rows
     // (was awaited serially in a for-loop, ~30 sequential resolver calls
     // per request). One Promise.all fans out, then a fast synchronous
     // pass builds the games array.
+    //
+    // v2.32.100 — Resolver called with cable+directv only; streaming
+    // candidates come from fetchStreamingCatalogCandidates().
     const resolverInputs = rows.map((row) => {
       let networks: string[] = []
       try { networks = JSON.parse(row.broadcastNetworks || '[]') } catch { /* ignore */ }
@@ -130,7 +144,7 @@ async function fetchUpcomingGames(): Promise<GameListing[]> {
       resolverInputs.map(({ row, networks }) =>
         resolveChannelsForGame(
           { networks, primaryNetwork: networks[0] || null, league: row.league, sport: row.sport },
-          ['cable', 'directv', 'streaming']
+          ['cable', 'directv']
         )
       )
     )
@@ -141,17 +155,9 @@ async function fetchUpcomingGames(): Promise<GameListing[]> {
       const { row, networks } = resolverInputs[i]
       const resolved = resolverResults[i]
 
-      // Gate the streaming route against apps actually installed on our
-      // Fire TVs. If the resolved app is MLB.TV but no venue Fire TV has
-      // MLB.TV, clear the streaming app so this doesn't count as a playable
-      // route.
-      let streamingAppName = resolved.streamingApp?.app || ''
-      if (streamingAppName && !availableApps.has(streamingAppName.toLowerCase())) {
-        streamingAppName = ''
-      }
-
-      // Skip games that don't have ANY playable route at this venue.
-      if (!resolved.cableChannel && !resolved.directvChannel && !streamingAppName) {
+      // Skip games that don't have a cable OR directv route. Streaming-only
+      // games are NOT included here — they come from the per-device catalog.
+      if (!resolved.cableChannel && !resolved.directvChannel) {
         skippedNoChannel++
         continue
       }
@@ -172,7 +178,8 @@ async function fetchUpcomingGames(): Promise<GameListing[]> {
         channelNumber: resolved.cableChannel || '',
         channelName: resolved.primaryMatch || networks[0] || '',
         directvChannel: resolved.directvChannel || '',
-        streamingApp: streamingAppName,
+        streamingApp: '',
+        gameSource: 'gameSchedules',
       })
     }
 
@@ -214,11 +221,148 @@ async function fetchUpcomingGames(): Promise<GameListing[]> {
     scored.sort((a, b) => (a.p !== b.p ? a.p - b.p : a.t - b.t))
     const capped = scored.slice(0, 30).map((s) => s.g)
     logger.info(
-      `[AI-SUGGEST] Games in window: ${rows.length}, playable at this venue: ${games.length} (skipped ${skippedNoChannel} with no resolvable channel), capped to ${capped.length}`
+      `[AI-SUGGEST] gameSchedules in window: ${rows.length}, with cable/directv route: ${games.length} (skipped ${skippedNoChannel} streaming-only/no-route), capped to ${capped.length}`
     )
     return capped
   } catch (err: any) {
     logger.error('[AI-SUGGEST] Error fetching games from game_schedules:', err)
+    return []
+  }
+}
+
+// ---------- helper: pull streaming candidates from per-device Scout catalog ----------
+//
+// v2.32.100 — Source-of-truth shift: streaming game candidates now come from
+// firetv_streaming_catalog (one row per content tile the Scout walker pulled
+// off a specific Fire TV) instead of game_schedules + the network resolver.
+// Why: the bartender remote already moved to this source so the channel guide
+// shows EXACTLY what the Fire TVs can launch right now (with deepLinks for
+// autoplay). AI Suggest reads from the same well so its suggestions are
+// guaranteed launchable on a specific input — no more "I picked Apple TV+
+// but no Fire TV here has Apple TV+" rejections.
+//
+// Each catalog row becomes one GameListing locked to its source Fire TV
+// input via firetvInputId. Same content title appearing on multiple Fire
+// TVs produces multiple candidates — the LLM treats them as alternates.
+//
+// Cable/satellite candidates are unchanged (fetchUpcomingGames above).
+async function fetchStreamingCatalogCandidates(
+  firetvInputs: Array<{ id: string; deviceId: string | null; name: string }>,
+): Promise<GameListing[]> {
+  if (firetvInputs.length === 0) return []
+  try {
+    const nowSec = Math.floor(Date.now() / 1000)
+    const windowEnd = nowSec + 12 * 60 * 60
+    const candidates: GameListing[] = []
+    let totalRows = 0
+    let skippedDupes = 0
+    let skippedOutOfWindow = 0
+    let skippedNoTimeAnchor = 0
+
+    // Per-input dedupe: same contentTitle on the same input produces one
+    // candidate (catalog can have duplicates from multiple walker passes).
+    // Cross-input duplicates (same title on Fire TV 1 AND Fire TV 2) are
+    // KEPT as separate candidates — they're real alternates.
+    for (const input of firetvInputs) {
+      if (!input.deviceId) continue
+
+      const rows = await db
+        .select()
+        .from(schema.firetvStreamingCatalog)
+        .where(
+          and(
+            eq(schema.firetvStreamingCatalog.deviceId, input.deviceId),
+            sql`${schema.firetvStreamingCatalog.expiresAt} > ${nowSec}`,
+          ),
+        )
+        .all()
+
+      totalRows += rows.length
+      const seen = new Set<string>()
+      for (const row of rows) {
+        // Time-window filter: AI Suggest plans the next 12h. Include rows
+        // that are currently live OR have an explicit startTime within the
+        // window. Skip rows with no time anchor at all (typically generic
+        // app-home tiles + on-demand content) — those have no game-time
+        // for the scheduler to pivot on. capturedAt is NOT a substitute
+        // since it's "when scout walked the tile", not "when the game
+        // airs". Keeps the prompt focused on schedulable content.
+        if (!row.isLive) {
+          if (row.startTime == null) {
+            skippedNoTimeAnchor++
+            continue
+          }
+          if (row.startTime < nowSec - 30 * 60 || row.startTime > windowEnd) {
+            skippedOutOfWindow++
+            continue
+          }
+        }
+
+        const key = `${row.app}::${row.contentTitle}`
+        if (seen.has(key)) {
+          skippedDupes++
+          continue
+        }
+        seen.add(key)
+
+        // Best-effort home/away split. Most catalog titles aren't
+        // "Away at Home" formatted (they're "MLB.TV: Brewers vs Cubs",
+        // "Thursday Night Football", "Drive to Survive S6E1"). Try a
+        // light split on " at " / " vs " / " vs. " separators; otherwise
+        // put the full title in awayTeam as a single token so the LLM
+        // shows it verbatim. The home-team rule matcher does substring
+        // checks so "Brewers" inside a "vs Brewers" title still matches.
+        const title = row.contentTitle || '(untitled)'
+        let awayTeam = title
+        let homeTeam = ''
+        const sepMatch = title.match(/^(.+?)\s+(?:at|vs\.?)\s+(.+)$/i)
+        if (sepMatch) {
+          awayTeam = sepMatch[1].trim()
+          homeTeam = sepMatch[2].trim()
+        }
+
+        // Time used for the prompt + scheduling. Walker prefers
+        // row.startTime (extracted from accessibility text) when present;
+        // capturedAt is the fallback for on-demand content.
+        const startSec = row.startTime ?? row.capturedAt
+        const sport = row.sportTag ? row.sportTag.toUpperCase() : ''
+
+        candidates.push({
+          time: new Date(startSec * 1000).toISOString(),
+          title,
+          league: sport || 'STREAMING',
+          homeTeam,
+          awayTeam,
+          stations: [row.app],
+          channelNumber: '',
+          channelName: row.app,
+          directvChannel: '',
+          streamingApp: row.app,
+          firetvInputId: input.id,
+          deepLink: row.deepLink || undefined,
+          isLive: !!row.isLive,
+          sportTag: row.sportTag || undefined,
+          gameSource: 'streamingCatalog',
+        })
+      }
+    }
+
+    // Cap streaming candidates so a Fire TV with 50+ tiles doesn't blow
+    // out the prompt. Sort by isLive first (live games matter most), then
+    // by startTime (soonest first), and slice to 20. Per-input cap keeps a
+    // single overflowing Fire TV from dominating the suggestions list.
+    candidates.sort((a, b) => {
+      if (!!b.isLive !== !!a.isLive) return b.isLive ? 1 : -1
+      return new Date(a.time).getTime() - new Date(b.time).getTime()
+    })
+    const capped = candidates.slice(0, 20)
+
+    logger.info(
+      `[AI-SUGGEST] firetv_streaming_catalog candidates: ${capped.length} (capped from ${candidates.length}) from ${totalRows} rows across ${firetvInputs.length} Fire TV inputs (deduped ${skippedDupes}, no-time-anchor ${skippedNoTimeAnchor}, out-of-window ${skippedOutOfWindow})`,
+    )
+    return capped
+  } catch (err: any) {
+    logger.error('[AI-SUGGEST] Error fetching streaming catalog candidates:', err)
     return []
   }
 }
@@ -501,19 +645,37 @@ function buildPrompt(
   // suggestions; max 8 keeps a single game from claiming the whole bar.
   const tvPerGame = Math.max(2, Math.min(8, Math.floor(tvCount / Math.max(1, games.length))))
 
-  // Build game list with per-route labels. A game can have multiple simultaneous
-  // routes — cable channel, directv channel, and/or a streaming app on Fire TV.
-  // The AI picks whichever input it wants and uses the matching identifier.
+  // Build game list with per-route labels. Cable/sat games may have either
+  // a cable channel, a directv channel, or both. Streaming games are
+  // catalog-sourced (firetv_streaming_catalog) and pre-bound to a specific
+  // Fire TV input — the prompt names that input so the LLM knows where the
+  // game lands but the parser locks it regardless.
   //
   // v2.28.4 — per-game TV target. Home-team games get HomeTeam.minTVsWhenActive
   // (Packers=20, Bucks=5, Brewers=3, Badgers=3 at Holmgren). Non-home games
   // get the default tvPerGame share. The LLM sees an explicit "assign N TVs"
   // per row PLUS a [HOME TEAM: <Name>] tag so it can't miss the rule.
+  //
+  // v2.32.100 — Streaming candidates from firetv_streaming_catalog include
+  // [LIVE]/[UPCOMING] badge + locked-input note. When the catalog row has a
+  // deepLink, the line is tagged "deep-link ready" so the LLM knows the
+  // tune lands on the exact event (autoplay) rather than the app's home.
+  const inputNameById = new Map<string, string>(inputSources.map((s: any) => [s.id, s.name]))
   const gameLines = games.map((g, i) => {
     const time = new Date(g.time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: HARDWARE_CONFIG.venue.timezone })
     const cableCh = g.channelNumber ? `cable ch ${g.channelNumber}` : ''
     const dtvCh = g.directvChannel ? `directv ch ${g.directvChannel}` : ''
-    const app = g.streamingApp ? `firetv app "${g.streamingApp}"` : ''
+    const isStreamingCatalog = g.gameSource === 'streamingCatalog' && g.firetvInputId
+    const lockedInputName = isStreamingCatalog ? inputNameById.get(g.firetvInputId!) : ''
+    let app = ''
+    if (g.streamingApp) {
+      const lockNote = isStreamingCatalog && lockedInputName
+        ? ` on ${lockedInputName} (LOCKED — pre-bound)`
+        : ''
+      const deepLinkNote = isStreamingCatalog && g.deepLink ? ' · deep-link ready (autoplay)' : ''
+      const liveNote = isStreamingCatalog ? (g.isLive ? ' · LIVE NOW' : ' · UPCOMING') : ''
+      app = `firetv app "${g.streamingApp}"${lockNote}${liveNote}${deepLinkNote}`
+    }
     const routes = [cableCh, dtvCh, app].filter(Boolean).join(', ')
     const availability: string[] = []
     if (g.channelNumber) availability.push('CABLE')
@@ -621,8 +783,8 @@ ${patternHints}
 
 RULES:
 1. CRITICAL: Cable inputs MUST use the "cable ch" number. DirecTV inputs MUST use the "directv ch" number. Fire TV inputs MUST use the streaming app name as the channelNumber value (e.g. "Prime Video", "Apple TV+", "Peacock"). Never mix identifiers.
-2. STREAMING-ONLY GAMES: Any game tagged [FIRETV] (Prime Video, Apple TV+, Peacock, ESPN+, Max, Paramount+) with no cable/directv route MUST be routed to a firetv input. Skip the game entirely if no Fire TV has the required app installed.
-3. FIRE TV WITHOUT APP: Skip a [FIRETV] game if the streaming app is not in the firetv input's apps list — no other input can tune it.
+2. STREAMING (FIRETV) GAMES ARE PRE-LOCKED TO A SPECIFIC FIRE TV: Each [FIRETV] line names the input it's bound to (e.g. "on Fire TV 2 (LOCKED — pre-bound)"). The catalog walker confirmed the app is launchable on THAT box; the deepLink (when shown as "deep-link ready") opens the EXACT game with autoplay. Use the LOCKED input name as your suggestedInput — do NOT pick a different Fire TV. The server enforces this regardless.
+3. FIRE TV WITHOUT APP: This rule no longer applies — every [FIRETV] line is from a Fire TV that proved the app launches there. Just use the locked input.
 4. NO INPUT DOUBLE-BOOKING: Each input source can host only ONE game at a time. Two games whose time windows overlap on the same input are forbidden. Game windows are 3 hours starting at the listed time.
 5. SPREAD BEFORE STACK: Before assigning any game to DirecTV, check whether an idle cable box can carry the channel. Spread games across ALL available inputs (cable + DirecTV) rather than packing DirecTV. Pull the next idle input from the full pool — do not default to DirecTV just because it appears later in the INPUTS list.
 6. CHANNEL TELLS YOU DEVICE CLASS: The channel number tells you device class — cable channels prefer cable boxes; RSNs that are DirecTV-only get DirecTV. Do not default to DirecTV when a cable box is idle and the channel is on cable.
@@ -742,25 +904,47 @@ function parseOllamaResponse(
       const game = games[gameIdx]
       if (!game) continue
 
-      const input = resolveInput(s.suggestedInputId || '', s.suggestedInput || '')
-      // v2.32.3 — resolveInput now returns null when the LLM names a
-      // non-existent input (was silently substituting first cable; see
-      // the function for context). Reject cleanly.
-      if (!input) {
-        rejections.push({
-          gameId: `game-${gameIdx}`,
-          suggestedInput: s.suggestedInput || s.suggestedInputId || '?',
-          reason: 'no_route',
-          detail: `Input "${s.suggestedInput || s.suggestedInputId}" not found in current input list`,
-        })
-        continue
+      // v2.32.100 — Streaming candidates from firetv_streaming_catalog are
+      // device-locked: each candidate was produced by a specific Fire TV's
+      // walker output and is only launchable on that input. We bypass the
+      // LLM's input pick for these and pin to the source input directly.
+      // This sidesteps the entire wrong_firetv_app reroute path because the
+      // catalog row already proved the app is launchable on this Fire TV.
+      let input: any = null
+      if (game.firetvInputId) {
+        input = inputSources.find((src: any) => src.id === game.firetvInputId) || null
+        if (!input) {
+          // Fire TV input was active when we built candidates but is gone now —
+          // very rare. Reject cleanly so the operator sees something is off.
+          rejections.push({
+            gameId: `game-${gameIdx}`,
+            suggestedInput: game.streamingApp ? `firetv (${game.streamingApp})` : 'firetv',
+            reason: 'no_route',
+            detail: `Source Fire TV input ${game.firetvInputId} no longer available`,
+          })
+          continue
+        }
+      } else {
+        input = resolveInput(s.suggestedInputId || '', s.suggestedInput || '')
+        // v2.32.3 — resolveInput now returns null when the LLM names a
+        // non-existent input (was silently substituting first cable; see
+        // the function for context). Reject cleanly.
+        if (!input) {
+          rejections.push({
+            gameId: `game-${gameIdx}`,
+            suggestedInput: s.suggestedInput || s.suggestedInputId || '?',
+            reason: 'no_route',
+            detail: `Input "${s.suggestedInput || s.suggestedInputId}" not found in current input list`,
+          })
+          continue
+        }
       }
 
       // CRITICAL: Don't trust the LLM's channel number — it hallucinates.
       // Use the server-side resolved identifier based on the input type:
       //   cable  → cable channel number
       //   directv → directv channel number
-      //   firetv → streaming app name
+      //   firetv → streaming app name (+ deepLink for catalog-sourced games)
       const inputType = input?.type || 'cable'
       const isDirectv = inputType === 'directv' || inputType === 'satellite'
       let isFiretv = inputType === 'firetv'
@@ -771,21 +955,15 @@ function parseOllamaResponse(
         appName = game.streamingApp || ''
         channelNumberStr = appName // display value carries the app name
 
-        // v2.29.1 — Per-box app availability enforcement.
-        // Until v2.29.0 the gate was venue-wide ("does ANY firetv have this
-        // app?"). Now that input_sources.available_networks is reconciled
-        // per-box every 5 min from scout heartbeats (firetv-app-sync.ts),
-        // we can enforce that the LLM-chosen input ACTUALLY has the app.
-        // The prompt already tells the LLM each input's app list (line ~466)
-        // and Rule 3 forbids picking the wrong box, but the LLM occasionally
-        // ignores it. This server-side reroute ensures we land on a Fire TV
-        // that has the app, or reject the suggestion entirely.
-        if (appName) {
+        // For catalog-sourced streaming games (firetvInputId set), the
+        // walker already proved the app launches on THIS Fire TV — skip the
+        // per-box reroute. For LLM-picked Fire TVs (legacy path, no longer
+        // exercised in v2.32.100 since fetchUpcomingGames stopped emitting
+        // streaming routes — but kept defensively in case a path re-emerges):
+        // verify the app is actually on the input and reroute if not.
+        if (!game.firetvInputId && appName) {
           const appLower = appName.toLowerCase().trim()
           if (!inputHasApp(input, appLower)) {
-            // LLM picked a Fire TV that doesn't have this app — reroute to
-            // the first firetv input that DOES (excluding currently-allocated
-            // boxes already busy with another game). If none, reject.
             const firetvCandidates = inputSources.filter(
               (src: any) => src.type === 'firetv' && inputHasApp(src, appLower) && !src.currentlyAllocated
             )
@@ -841,6 +1019,11 @@ function parseOllamaResponse(
         channelNumber: channelNumberStr,
         channelName: game.channelName || '',
         appName: appName || undefined,
+        // v2.32.100 — propagate the per-event deepLink the catalog walker
+        // captured. The apply path forwards it to bartender-schedule, which
+        // writes inputSourceAllocations.deep_link, which scheduler-service
+        // reads at tune time so the Fire TV opens directly to the game.
+        deepLink: isFiretv ? (game.deepLink || undefined) : undefined,
         suggestedInput: resolvedInput?.name || s.suggestedInput || 'Unknown',
         suggestedInputId: resolvedInput?.id || '',
         suggestedDeviceId: resolvedInput?.deviceId || '',
@@ -1131,8 +1314,37 @@ export async function GET(request: NextRequest) {
   if (!queryValidation.success) return queryValidation.error
 
   try {
-    // 1. Fetch upcoming games from sports guide
-    const games = await fetchUpcomingGames()
+    // v2.32.100 — Load input sources FIRST so the streaming catalog fetch
+    // can scope to this venue's actual Fire TV inputs. Cable/satellite
+    // candidates from gameSchedules are then merged with per-device
+    // streaming candidates from firetv_streaming_catalog.
+    const [inputSources, channelPresets, tvOutputs, patterns, historicalSummary] = await Promise.all([
+      loadInputSources(),
+      loadChannelPresets(),
+      loadTVOutputs(),
+      loadSchedulingPatterns(),
+      loadHistoricalPatterns(),
+    ])
+
+    if (inputSources.length === 0) {
+      logger.warn('[AI-SUGGEST] No active input sources configured')
+      return NextResponse.json({
+        success: true,
+        suggestions: [],
+        analyzedAt: new Date().toISOString(),
+        message: 'No active input sources configured. Add cable boxes or streaming devices first.',
+      })
+    }
+
+    // 1. Fetch cable/directv games + per-device streaming candidates in parallel.
+    const firetvInputs = inputSources
+      .filter((s: any) => s.type === 'firetv')
+      .map((s: any) => ({ id: s.id, deviceId: s.deviceId, name: s.name }))
+    const [cableSatGames, streamingGames] = await Promise.all([
+      fetchUpcomingGames(),
+      fetchStreamingCatalogCandidates(firetvInputs),
+    ])
+    const games = [...cableSatGames, ...streamingGames]
 
     // Phase 2 (v2.26.0): Dual-run diff harness when USE_UNIFIED_CONTEXT=true.
     // Builds the same 12h window via the new buildGameContexts() composer
@@ -1181,28 +1393,9 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    // 2. Load all required data in parallel
-    const [inputSources, channelPresets, tvOutputs, patterns, historicalSummary] = await Promise.all([
-      loadInputSources(),
-      loadChannelPresets(),
-      loadTVOutputs(),
-      loadSchedulingPatterns(),
-      loadHistoricalPatterns(),
-    ])
-
-    if (inputSources.length === 0) {
-      logger.warn('[AI-SUGGEST] No active input sources configured')
-      return NextResponse.json({
-        success: true,
-        suggestions: [],
-        analyzedAt: new Date().toISOString(),
-        message: 'No active input sources configured. Add cable boxes or streaming devices first.',
-      })
-    }
-
     // 2b. Filter to games that have at least one resolved route (cable, directv, or streaming)
     const filteredGames = games.filter(g => g.channelNumber || g.directvChannel || g.streamingApp)
-    logger.info(`[AI-SUGGEST] Filtered ${games.length} games to ${filteredGames.length} with resolved routes`)
+    logger.info(`[AI-SUGGEST] Filtered ${games.length} games (${cableSatGames.length} cable/sat + ${streamingGames.length} streaming) to ${filteredGames.length} with resolved routes`)
 
     if (filteredGames.length === 0) {
       return NextResponse.json({

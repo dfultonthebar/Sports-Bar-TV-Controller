@@ -326,6 +326,41 @@ function extractPrimeVideoTiles(xmlDump: string): CatalogTile[] {
         if (/^Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec/i.test(t)) continue
         // v2.32.84 — reject Amazon promotional copy
         if (promoBlocklist.some((p) => p.test(t))) continue
+        // v2.33.0 — reject series-metadata tiles that aren't games/events
+        // ("Season 2026", "Season 2", "Episode 5", "S1 E12", bare year).
+        // These leak into the catalog when a Prime Video docu-series tile
+        // is rendered inside a sports section row but the visible label is
+        // the show's season descriptor, not a matchup/event title.
+        if (/^Season\s+(\d+|\d{4})$/i.test(t)) continue
+        if (/^Episode\s+\d+/i.test(t)) continue
+        if (/^S\d+\s*[•·]?\s*E\d+/i.test(t)) continue
+        if (/^\d{4}$/.test(t)) continue
+        if (/^Documentary$/i.test(t)) continue
+        // v2.33.1 — reject Prime Video PLAYER UI labels and accessibility
+        // settings strings. The walker landed on a video info / settings
+        // panel on Cube 3 (Holmgren) 2026-05-08 and captured the entire
+        // language-options screen as if each row were a tile in the
+        // currently-tracked NBA section. Result: bartender remote showed
+        // "Audio languages", "Subtitles", "Spanish, English", "How do I
+        // choose languages?" as games.
+        // Question-marked text is never a game title:
+        if (/\?$/.test(t)) continue
+        // Generic UI-label blocklist (case-insensitive exact-or-prefix):
+        const uiLabelBlocklist = [
+          /^Audio languages?\b/i,
+          /^Subtitles?\b/i,
+          /^Closed [Cc]aptions?\b/i,
+          /^(English|Spanish|French|German|Portuguese)([,\s]+(English|Spanish|French|German|Portuguese))*\s*$/i,
+          /^(English|Spanish|French|German|Portuguese)\s+Commentary\b/i,
+          /^(Español|Français|Deutsch|Italiano)\b/i,
+          /^Choose (subtitle|audio|language|caption)/i,
+          /^(How|What|Why|When|Where|Which) /i, // Q&A help text
+          /^Watchlist$/i,
+          /^Skip (intro|recap|credits)$/i,
+          /^Next (up|episode)$/i,
+          /^Resume watching$/i,
+        ]
+        if (uiLabelBlocklist.some((p) => p.test(t))) continue
 
         const key = t.toLowerCase()
         if (seen.has(key)) continue
@@ -400,11 +435,32 @@ function extractEspnTiles(xmlDump: string): CatalogTile[] {
   const tiles: CatalogTile[] = []
   const seen = new Set<string>()
 
-  // Skip ESPN nav chrome
-  const navChrome = /^(Search|Home|Films & Shows|Browse|Highlights|Settings|Featured|Featured Group \d|Watch, button \d of \d|button \d of \d)$/i
+  // Skip ESPN nav chrome — including subscription-tier labels (ESPN /
+  // ESPN+ / ESPN Unlimited) that are NOT games. v2.33.0 — added the
+  // bare network/tier names + content tier suffix detection. v2.33.1 —
+  // added show names + network-acronym variants (SECN+, ACCN, ESPNU,
+  // SportsCenter, "All ACC ACCN" etc.) caught after a Cube-3 walk
+  // captured them as fake live-tile rows. None are launchable games,
+  // all confuse the bartender remote and AI Suggest.
+  const navChrome = /^(Search|Home|Films & Shows|Browse|Highlights|Settings|Featured|Featured Group \d|Watch, button \d of \d|button \d of \d|ESPN(\+| Unlimited| 2|U)?|ABC|FS1|FS2|FOX|NBC|CBS|TBS|TNT|SEC Network\+?|SECN\+?|ACC Network\+?|ACCN\+?|Big Ten Network\+?|BTN\+?|SportsCenter|NFL Live|NBA Live|MLB Live|College GameDay|All ACC|All SEC|All Big Ten|All ACCN|All SECN)$/i
+  // Strip a trailing subscription-tier suffix from accumulated tile
+  // text. Matches "<title> ESPN+" / "<title> ESPN Unlimited" / "<title>
+  // ESPN2" — leaves a clean title.
+  const tierSuffix = /\s+(ESPN(\+| Unlimited| 2|U)?|ABC|FS1|FS2|FOX|NBC|CBS|TBS|TNT|SEC Network\+?|SECN\+?|ACC Network\+?|ACCN\+?|Big Ten Network\+?|BTN\+?)\s*$/
+  // After title extraction, require it to look like a game/event:
+  // either a matchup ("vs", "@", " at ") OR a known event format
+  // (Grand Prix, Open, Final, Championship, Cup, Tournament, Match).
+  // This catches "SportsCenter", "NFL Live", "All ACC ACCN", and other
+  // section-header / show-name strings that survive the chrome filter
+  // because they're embedded as comma-segment tile titles.
+  const looksLikeGame = (s: string): boolean => {
+    if (/(vs\.?|\sat\s|@)/i.test(s)) return true
+    if (/(Grand Prix|Open|Final|Championship|Cup|Tournament|\bMatch\b|Series|Race|Qualifying|Stage \d)/i.test(s)) return true
+    return false
+  }
 
   for (const t of all) {
-    if (navChrome.test(t)) continue
+    if (navChrome.test(t.trim())) continue
     if (t.length < 5) continue
 
     let title = ''
@@ -432,7 +488,18 @@ function extractEspnTiles(xmlDump: string): CatalogTile[] {
       continue
     }
 
+    // Strip trailing subscription-tier label that the dump occasionally
+    // glues onto the title (Pattern B path catches most of these via
+    // its existing replace, but Pattern A doesn't — re-apply globally).
+    title = title.replace(tierSuffix, '').trim()
     if (!title || title.length < 3) continue
+    // Skip pure tier/network labels even if they survive earlier filters
+    // (e.g. accumulated text was "ESPN+ ESPN+" → after strip → "ESPN+").
+    if (navChrome.test(title)) continue
+    // v2.33.1 — drop tiles whose title doesn't look like a game/event.
+    // Catches "SportsCenter", "NFL Live", "All ACC ACCN" etc that
+    // sneak through Pattern A as the first comma segment.
+    if (!looksLikeGame(title)) continue
     const key = title.toLowerCase()
     if (seen.has(key)) continue
     seen.add(key)
@@ -561,15 +628,51 @@ const APP_WALK_RULES: Record<string, AppWalkRule> = {
     usesWebView: true,
     extractTiles: () => [],
   },
-  // YouTube TV: probed at graystone-tvcontroller 2026-05-08.
-  // dev.cobalt.app.MainActivity is YouTube's Cobalt runtime — renders via
-  // OpenGL surfaces. Dump = 5.4KB, 0 readable text nodes (same pattern
-  // as Apple TV+). uiautomator cannot extract tile titles regardless of
-  // login state. Future work: HTTP catalog fetch from YouTube TV's
-  // public lineup endpoint, or screen-capture + OCR.
+  // YouTube TV (com.google.android.youtube.tvunplugged): probed at
+  // graystone-tvcontroller 2026-05-08. dev.cobalt.app.MainActivity is
+  // YouTube's Cobalt runtime — renders via OpenGL surfaces. Dump =
+  // 5.4KB, 0 readable text nodes (same pattern as Apple TV+).
+  // uiautomator cannot extract tile titles regardless of login state.
+  // Future work: HTTP catalog fetch from YouTube TV's public lineup
+  // endpoint, or screen-capture + OCR.
   'YouTube TV': {
     catalogId: 'youtube-tv',
     displayName: 'YouTube TV',
+    postLaunchDelayMs: 0,
+    usesWebView: true,
+    extractTiles: () => [],
+  },
+  // YouTube (regular, com.amazon.firetv.youtube): Amazon's pre-installed
+  // YouTube on Fire TV, NOT the same product as YouTube TV above.
+  // Holmgren Cube 2 probed 2026-05-08: 4.6KB / 14 nodes (FrameLayout
+  // chrome + 11 empty Views), zero readable text. Same Cobalt runtime
+  // as YouTube TV — uiautomator cannot extract regardless of login.
+  // Tracked separately because at locations with regular YouTube
+  // installed (vs. YouTube TV), package matching for app-launch needs
+  // the right key; without an entry the walker silently skips on YouTube-
+  // having Cubes when checking installed-package coverage.
+  'YouTube': {
+    catalogId: 'youtube',
+    displayName: 'YouTube',
+    postLaunchDelayMs: 0,
+    usesWebView: true,
+    extractTiles: () => [],
+  },
+  // Sling (com.sling): probed at holmgren-way 2026-05-08 on a signed-out
+  // Cube 2 (AFTR). React Native shell with WORKING a11y exposure —
+  // content-desc strings like "LIVE, <Channel>, <Show>" are extractable
+  // for live tiles. However: Cube 2 is on Sling Freestream (free,
+  // signed-out) tier, which has zero sports content on home (Dateline,
+  // ION, A&E Crime 360, news/entertainment only — keyword scan of full
+  // 45KB dump returned 0 matches for NBA/NFL/MLB/NHL/sports/ESPN/FS1).
+  // Acceptance threshold (>=3 sports tiles) FAILS for the signed-out
+  // probe → deferred. If a future operator subscribes Sling and a
+  // re-probe shows a Sports row, build an extractor on top of the
+  // proven `^LIVE, <ChannelName>, <ShowTitle>$` pattern (same shape as
+  // ESPN's comma-segmented Pattern A).
+  'Sling': {
+    catalogId: 'sling',
+    displayName: 'Sling',
     postLaunchDelayMs: 0,
     usesWebView: true,
     extractTiles: () => [],
