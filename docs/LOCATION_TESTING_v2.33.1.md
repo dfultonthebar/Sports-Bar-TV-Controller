@@ -10,14 +10,23 @@
 
 ## Quick reference — which locations care about which fixes
 
+**Every location EXCEPT Leg Lamp has Amazon Fire TV Cubes** and should run the full streaming-guide test (Steps 1-5). Leg Lamp runs a shorter test (Steps 1 + 6) since it has no Cubes.
+
 | Location | Has Fire TV Cubes? | What to test |
 |---|---|---|
-| Graystone | YES (4) | Full bartender streaming + per-Cube guide |
-| Holmgren Way | YES (5) | Already verified during v2.33.1 release |
-| Lucky's 1313 | YES (4) | Full bartender streaming + per-Cube guide |
-| Leg Lamp | NO | Just confirm cable/satellite guide still works |
-| Stoneyard Appleton | NO | Same as Leg Lamp |
-| Stoneyard Greenville | NO | Same as Leg Lamp |
+| Graystone | YES | Full bartender streaming + per-Cube guide (Steps 1-5) |
+| Holmgren Way | YES | Already verified during v2.33.1 release; still re-run Steps 1-5 after the auto-update lands |
+| Lucky's 1313 | YES | Full bartender streaming + per-Cube guide (Steps 1-5) |
+| Stoneyard Appleton | YES | Full bartender streaming + per-Cube guide (Steps 1-5) |
+| Stoneyard Greenville | YES | Full bartender streaming + per-Cube guide (Steps 1-5) |
+| Leg Lamp | NO | Just confirm cable/satellite guide still works (Step 1 + Step 6) |
+
+**Why the "(0 Fire TV devices)" footnote you may have seen during v2.33.1 release was wrong:** the per-location `apps/web/data/firetv-devices.json` file is a SEED template that's empty by default. The actual Cube records live in each location's database (see CLAUDE.md → "Device DB source of truth"). Don't trust the JSON for "does this location have Cubes" — query the DB:
+
+```bash
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "SELECT id, name, ipAddress FROM FireTVDevice WHERE name NOT LIKE '%REPLAC%';"
+```
 
 ---
 
@@ -153,7 +162,7 @@ If `X > 0`, the filter is correctly removing finished games.
 
 ---
 
-## Step 6 (no-Cubes locations only) — Cable/satellite untouched
+## Step 6 (Leg Lamp only — others can also run as a sanity check) — Cable/satellite untouched
 
 Open the bartender remote (same URL as Step 4). Pick a cable or DirecTV input. Navigate to the channel guide. Confirm:
 
