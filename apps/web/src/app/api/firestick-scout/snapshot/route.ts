@@ -102,18 +102,16 @@ export async function POST(request: NextRequest) {
         continue
       }
 
-      // Replace existing snapshot-sourced rows for this (deviceId, app).
-      // KEEP walker-sourced rows untouched — different source, can coexist.
-      // Scout-snapshot replaces only its own.
+      // v2.33.9 — Per-source replace. Delete only rows previously written
+      // by Scout-snapshot for this (deviceId, app) pair; walker-sourced
+      // rows survive untouched, so the walker's broader extraction
+      // coexists with Scout's faster/narrower one.
       try {
         await db.delete(schema.firetvStreamingCatalog).where(
           and(
             eq(schema.firetvStreamingCatalog.deviceId, deviceId),
             eq(schema.firetvStreamingCatalog.app, appName),
-            // Note: schema doesn't yet have a `source` column. For first
-            // iteration we accept that snapshot writes overwrite walker
-            // writes for the same (deviceId, app). Add `source` column
-            // in v2.2.1 once the snapshot path is verified working.
+            eq(schema.firetvStreamingCatalog.source, 'scout-snapshot'),
           )
         )
       } catch (e: any) {
@@ -141,6 +139,7 @@ export async function POST(request: NextRequest) {
             startTime: null,
             capturedAt: takenAtUnix,
             expiresAt,
+            source: 'scout-snapshot',
           })
           inserted++
         } catch (e: any) {
