@@ -187,6 +187,28 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.33.3 — Walker wakes the Cube before launching apps (Lucky's screensaver fix)
+**Released:** 2026-05-09
+
+**No setup required.** Pure code fix in `packages/scheduler/src/firetv-catalog-walker.ts`.
+
+**What changed:** Walker's `walkApp()` now sends `KEYCODE_WAKEUP` (224) + 500ms wait BEFORE the existing `KEYCODE_HOME` step. Fire TV Cubes idle into the screensaver (`Sys2023:dream` window) after ~5 minutes of inactivity. Pre-fix, launching an app while the screensaver was foreground meant `uiautomator dump` captured the screensaver overlay (3-4KB, 0 content tiles) instead of the actual app content. Lucky's 1313 had this happening on all 4 Cubes for weeks before the diagnosis 2026-05-09 — bartender saw 0 Prime Video tiles even though the Cubes were healthy.
+
+**Verification command** (run on any Cube-having location host after auto-update lands):
+```bash
+# Force a walk while at least one Cube is actively in screensaver
+curl -s -X POST http://localhost:3001/api/firestick-scout/catalog/walk -d '{}'
+sleep 90
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "SELECT app, COUNT(*) tiles, datetime(MAX(capturedAt),'unixepoch','localtime') latest FROM firetv_streaming_catalog GROUP BY app;"
+```
+
+Expect both ESPN and Prime Video tile counts > 0 at locations that were previously showing only ESPN.
+
+**What this DOES NOT fix:** The fundamental "walker only handles ESPN + Prime Video" limitation is unchanged. Hulu/Peacock/fuboTV/Sling/Apple TV+/YouTube TV still don't appear in the bartender's streaming guide — that's the multi-day-per-app project documented in `docs/STREAMING_PROVIDER_ROADMAP.md`. v2.33.3 specifically targets the screensaver issue that was hiding Prime Video content at Lucky's.
+
+---
+
 ### v2.33.2 — Walker noise filter unified across both Prime Video branches + Lucky's available_networks backfill + thorough operator DB-health doc
 **Released:** 2026-05-09
 
