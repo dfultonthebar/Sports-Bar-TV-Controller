@@ -187,6 +187,56 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.33.1 — Bartender remote rendering fix + live-data parity for streaming + completed-game filter + UI-label noise filter
+**Released:** 2026-05-09
+
+**No setup required.** Pure code fixes building on v2.33.0.
+
+**Fixed (operator-facing):**
+
+1. **Bartender remote was showing "NO LIVE GAMES" even when streaming games were available.** v2.33.0's catalog injection used `capturedAt` as the startTime fallback, which was usually yesterday. The bartender component's "past midnight of scheduled day" filter (line 920 of `EnhancedChannelGuideBartenderRemote.tsx`) discarded every program. Fix: fall back to `now` so live tiles always pass the date filter.
+
+2. **Streaming games now show live scores + clock + status** — same parity as cable/satellite. Channel-guide route inlines `liveData` (homeScore/awayScore/clock/period/statusDetail/espnGameId) on each streaming program when it has a `game_schedules` enrichment match. ESPN sync writes these every 10min. No separate fetch needed (the cable path's `/api/sports-guide/live-by-channel?deviceType=cable` doesn't return streaming-only games like Prime Video NBA exclusives).
+
+3. **Completed games auto-removed.** Streaming programs with a schedule match in `('completed','final','postponed','cancelled')` are filtered out at the channel-guide API layer. Walker may capture an "in progress" tile from ESPN's UI a few minutes after the game actually ended; the schedule status is authoritative.
+
+4. **Proper home/away team split for streaming tiles.** v2.33.0 set `homeTeam=contentTitle, awayTeam=''`, breaking the bartender's existing live-data lookup (keyed by `${away}-${home}`). v2.33.1 prefers schedule-match team names; falls back to splitting `contentTitle` on " vs.? " when no match.
+
+5. **"(deep-linkable)" annotation removed from bartender-facing descriptions** — internal detail, the bartender doesn't care.
+
+6. **ESPN extractor noise filter tightened.** "ESPN", "ESPN+", "ESPN Unlimited", "ESPNU", "SportsCenter", "SECN+", "ACCN", "All ACC ACCN", "NFL Live", etc. were leaking through as "live tiles" because Pattern A (comma-separated content-desc) takes the first segment as title without re-validating against the chrome blocklist. Fix: re-test extracted title against an extended chrome regex AND against a `looksLikeGame()` predicate that requires either a matchup indicator (`vs`, `@`, ` at `) OR a known event format (Grand Prix, Open, Final, Championship, Cup, Tournament, Match, Series, Race, Qualifying).
+
+7. **Prime Video extractor blocks player-UI labels.** A walker run on Cube 3 captured a video info / settings panel ("Audio languages", "Subtitles", "Spanish, English", "How do I choose languages?", etc.) as if each row were a game tile in the currently-tracked NBA section — because the Cube was on a player overlay when the walker dumped, and inheriting `lastSportRow="NBA Playoffs"`. Filter: question-marked text + UI-label blocklist (Audio languages, Subtitles, Closed captions, language tokens, language-help Q&A, Watchlist, Skip intro/recap/credits, Next up/episode, Resume watching).
+
+8. **Racing/golf/tennis event-name de-duplication.** v2.33.0 stuffed the event name into BOTH home and away (intended fix for empty-team-name rows). v2.33.1 puts it into home only — the bartender filter accepts home OR away populated, no need to duplicate.
+
+**Walker schedule unchanged from v2.33.0** (3x daily 04:00 + 12:00 + 17:00). Operators who hit the bartender remote's refresh button trigger a manual walk (`POST /api/firestick-scout/catalog/walk`). If a Cube is mid-playback or on a settings overlay when refresh is pressed, the captured tiles will reflect that screen — see filter #7 for the fallout. Returning the Cube to the home screen before pressing refresh helps.
+
+**Why a Cube can show 0 streaming games right now even when it has fresh hardware:**
+- All games on its home rails are completed (filter #3).
+- ESPN/Prime Video isn't logged in / isn't entitled to today's content.
+- The Cube is mid-playback when walker fired (catches detail-page noise; filter #7 drops it).
+- ADB connection is broken (walker logs `send-command HTTP 500` warnings; nothing uploaded).
+
+**Verification commands** (same as v2.33.0):
+
+```bash
+# Check catalog state per Cube:
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "SELECT app, contentTitle, isLive, datetime(capturedAt,'unixepoch','localtime') FROM firetv_streaming_catalog ORDER BY deviceId, app;"
+
+# Force a refresh for all Cubes:
+curl -s -X POST http://localhost:3001/api/firestick-scout/catalog/walk -d '{}'
+
+# Channel-guide for a specific Cube + verify live data + day/time:
+curl -s -X POST http://localhost:3001/api/channel-guide \
+  -H "Content-Type: application/json" \
+  -d '{"inputNumber":<INPUT>,"deviceType":"streaming","deviceId":"<DEVICE_ID>"}' \
+  | jq '.programs[] | {title:.homeTeam,away:.awayTeam,day,time,isLive,score:[.liveData.awayScore,.liveData.homeScore],clock:.liveData.clock,status:.liveData.statusDetail}'
+```
+
+---
+
 ### v2.33.0 — Bartender guide is Scout-only for streaming + AI Suggest reads catalog + walker 3x daily + start-time enrichment
 **Released:** 2026-05-08
 

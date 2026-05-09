@@ -258,10 +258,12 @@ class ESPNSyncService {
     ) {
       const eventName = (game.name || game.shortName || '').trim()
       if (eventName) {
+        // Individual sports: stuff event name into home only, leave away
+        // empty. The bartender filter accepts home OR away populated.
+        // Pre-fix this set BOTH to the same string and the UI rendered
+        // "Grand Prix at Grand Prix" duplicates.
         homeTeamName = eventName
-        awayTeamName = game.shortName && game.shortName !== eventName
-          ? game.shortName
-          : eventName
+        awayTeamName = ''
       }
     }
 
