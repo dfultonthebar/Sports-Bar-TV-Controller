@@ -43,7 +43,41 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const deviceId = String(body.deviceId)
+    let deviceId = String(body.deviceId)
+
+    // v2.33.6 — Resolve "fire-tv-unknown" (Scout default before any
+    // server CONFIG broadcast assigns a canonical deviceId) to the real
+    // FireTVDevice.id by IP lookup. Pulls the requesting IP from the
+    // forwarded headers (Next.js / nginx pass it as x-forwarded-for or
+    // x-real-ip) and matches against FireTVDevice.ipAddress. Without
+    // this, snapshot rows pile up under "fire-tv-unknown" and the
+    // bartender remote / channel guide never see them (they query by
+    // the canonical deviceId).
+    if (deviceId === 'fire-tv-unknown' || deviceId.startsWith('fire-tv-unknown')) {
+      // Node's net stack reports IPv4 connections as IPv6-mapped
+      // ("::ffff:10.11.3.50"); FireTVDevice.ipAddress stores plain v4.
+      const remoteIp = (
+        request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+        request.headers.get('x-real-ip') ||
+        ''
+      ).replace(/^::ffff:/, '')
+      if (remoteIp) {
+        try {
+          const match = await db.select()
+            .from(schema.fireTVDevices)
+            .where(eq(schema.fireTVDevices.ipAddress, remoteIp))
+            .get()
+          if (match) {
+            logger.info(`[SCOUT-SNAPSHOT] Resolved Scout deviceId=fire-tv-unknown@${remoteIp} → ${match.id} (${match.name})`)
+            deviceId = match.id
+          } else {
+            logger.warn(`[SCOUT-SNAPSHOT] No FireTVDevice row for IP=${remoteIp} — keeping deviceId=${deviceId}`)
+          }
+        } catch (e: any) {
+          logger.warn(`[SCOUT-SNAPSHOT] IP→deviceId lookup crashed: ${e.message}`)
+        }
+      }
+    }
     const scoutVersion = String(body.scoutVersion ?? 'unknown')
     const takenAtUnix = Number(body.takenAtUnix ?? Math.floor(Date.now() / 1000))
 
