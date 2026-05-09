@@ -88,6 +88,22 @@
             </intent-filter>
         </receiver>
 
+        <!-- v2.2.1 - Diagnostic: dump the current AccessibilityNodeInfo
+             tree to logcat AND POST as JSON to scoutServerUrl/tree-dump.
+             Used to capture ground truth from PVFTV-320+ Cubes so we can
+             write reliable node selectors instead of guessing.
+             Trigger via adb broadcast; see docs/SCOUT_TREE_DUMP.md for
+             the exact command (XML comments cannot contain double-dash). -->
+        <receiver
+            android:name=".TreeDumpReceiver"
+            android:exported="true"
+            android:enabled="true">
+            <intent-filter>
+                <action android:name="com.sportsbar.scout.ACTION_DUMP_LAUNCHER_TREE" />
+                <action android:name="com.sportsbar.scout.ACTION_DUMP_AS_TREE" />
+            </intent-filter>
+        </receiver>
+
         <!-- v1.5.0 — In-app navigator. Operates ONLY on com.espn.gtv,
              com.playon.nfhslive, and com.amazon.firebat per the
              packageNames filter in res/xml/playback_automation_service

@@ -59,13 +59,44 @@ object FirebatVersionDetector {
     }
 
     fun choosePath(pkg: String, major: Int?): NavPath = when {
-        pkg == "com.amazon.firebat" && major != null && major >= 300 -> NavPath.PRIME_LAUNCHER_HOSTED
+        // PVFTV-320+ Cubes: redesigned launcher with aggregated content
+        // tabs (Home/Movies/TV/Sports/Live/News) directly on the home
+        // screen. Sports tab pulls from Prime Video, ESPN+, etc. — no
+        // need to launch the Prime Video app first. Use LauncherHome-
+        // Navigator.
+        pkg == "com.amazon.firebat" && major != null && major >= 300 -> NavPath.LAUNCHER_HOME_SPORTS_TAB
+        pkg == "com.amazon.tv.launcher" && major != null && major >= 300 -> NavPath.LAUNCHER_HOME_SPORTS_TAB
+
+        // PVFTV-215 and below: Prime Video opens its own app with a
+        // top-tab strip. Sports lives under that.
         pkg == "com.amazon.firebat"                                  -> NavPath.PRIME_APP_HOSTED
+
+        // ESPN: home tab IS the live-sports landing.
         pkg == "com.espn.gtv"                                        -> NavPath.ESPN_LIVE
+
         else                                                          -> NavPath.NONE
     }
 
     private const val TAG = "FirebatVersion"
 }
 
-enum class NavPath { PRIME_LAUNCHER_HOSTED, PRIME_APP_HOSTED, ESPN_LIVE, NONE }
+/**
+ * NavPath enum — chosen per (pkg, version) by FirebatVersionDetector.
+ *
+ * - LAUNCHER_HOME_SPORTS_TAB → PVFTV-320+ launcher home, Sports tab
+ *   directly in top nav (LauncherHomeNavigator)
+ * - PRIME_LAUNCHER_HOSTED    → DEPRECATED. Used to mean "PVFTV-320+
+ *   launcher-hosted Prime Video, click Live tab" — but that selector
+ *   never worked (see V2_2_0_PVFTV320_FINDINGS.md iters 1-5). Keep the
+ *   enum value to avoid breaking compilation of deprecated code paths,
+ *   but new code should use LAUNCHER_HOME_SPORTS_TAB instead.
+ * - PRIME_APP_HOSTED         → PVFTV-215 and below, open Prime Video
+ *   then click Sports top-tab. Doesn't work either (Compose tabs don't
+ *   respond to AS clicks); kept enabled for the version range so the
+ *   navigator gets to log diagnostics, but production filter strips
+ *   the empty result via `status=nav_failed`.
+ * - ESPN_LIVE                → No nav, ESPN home is already the
+ *   live-sports landing.
+ * - NONE                     → Skip this app entirely.
+ */
+enum class NavPath { LAUNCHER_HOME_SPORTS_TAB, PRIME_LAUNCHER_HOSTED, PRIME_APP_HOSTED, ESPN_LIVE, NONE }
