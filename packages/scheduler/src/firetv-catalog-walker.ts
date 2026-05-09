@@ -852,6 +852,51 @@ async function walkOneApp(
     // 3. Wait for first screen to render
     await sleep(rule.postLaunchDelayMs)
 
+    // 3a-pre. (v2.33.4) Detect launcher-hosted firebat. On PVFTV-320
+    // Cubes (Lucky's 1+2 confirmed 2026-05-09), com.amazon.firebat IS
+    // the Fire TV launcher itself — `am start <leanback launcher activity>`
+    // resolves to com.amazon.tv.launcher/HomeActivity_vNext, NOT a
+    // separate Prime Video activity. Walker would then dump the launcher
+    // home (movie ads, generic carousels) and either upload noise OR
+    // get filtered to nothing by the v2.33.2 noise blocklist.
+    //
+    // Fix: when launching Prime Video on these Cubes, FIRST try a
+    // deep-link to Prime Video's sports landing page. If that succeeds
+    // (foreground changes from launcher), proceed with normal walk.
+    // If the launcher is still foreground after the deep-link attempt,
+    // skip the walk for this Cube/app — explicit log so operators see
+    // which Cubes are launcher-hosted-only.
+    //
+    // Targeted at Prime Video; ESPN doesn't have this issue (separate
+    // app on every observed firebat version).
+    if (rule.catalogId === 'amazon-prime') {
+      const fg = await adbShell(deviceId, "dumpsys window windows | grep mCurrentFocus | tail -1").catch(() => '')
+      const isLauncherForeground = fg.includes('com.amazon.tv.launcher/com.amazon.tv.launcher')
+      if (isLauncherForeground) {
+        logger.info(
+          `[FIRETV-CATALOG] ${inputSource.name} / ${rule.displayName}: ` +
+            `firebat resolved to launcher (PVFTV-320 firmware). ` +
+            `Trying deep-link to https://watch.amazon.com/sports`,
+        )
+        await adbShell(deviceId, `am start -a android.intent.action.VIEW -d 'https://watch.amazon.com/sports' -p com.amazon.firebat`).catch(() => '')
+        await sleep(8000)
+        const fg2 = await adbShell(deviceId, "dumpsys window windows | grep mCurrentFocus | tail -1").catch(() => '')
+        if (fg2.includes('com.amazon.tv.launcher/com.amazon.tv.launcher')) {
+          logger.warn(
+            `[FIRETV-CATALOG] ${inputSource.name} / ${rule.displayName}: ` +
+              `deep-link did NOT navigate away from launcher — Cube has launcher-hosted firebat ` +
+              `with no separate Prime Video activity. Skipping walk. ` +
+              `(v2.33.4 limitation; per-launcher-version DPAD nav needed for full coverage.)`,
+          )
+          return { app: rule.displayName, tilesFound: 0, uploaded: true }
+        }
+        logger.info(
+          `[FIRETV-CATALOG] ${inputSource.name} / ${rule.displayName}: ` +
+            `deep-link landed on ${fg2.substring(0, 100)} — proceeding with walk`,
+        )
+      }
+    }
+
     // 3a. (v2.31.4) Optional navigation to a sports/live tab. Without
     // this, apps whose home screen rotates content (Prime Video, Peacock,
     // etc.) yield inconsistent walks — TV shows in the afternoon, sports
