@@ -48,7 +48,7 @@
  * a rule are skipped (no false data).
  */
 
-import { db, schema, eq, and } from '@sports-bar/database'
+import { db, schema, eq, and, gt } from '@sports-bar/database'
 import { logger } from '@sports-bar/logger'
 import { findStreamingAppByDisplayName } from '@sports-bar/streaming'
 import { schedulerLogger } from './scheduler-logger'
@@ -368,7 +368,10 @@ function extractPrimeVideoTiles(xmlDump: string): CatalogTile[] {
   // signal. Without this, "This Old House" / "Project Runway" / any
   // entertainment TV title slips through if it's directly under a
   // Sports row header in the dump.
-  const sportKeywordRegex = /\b(NBA|NFL|MLB|NHL|WNBA|NCAA|MLS|UFC|MMA|PGA|LPGA|F1|NASCAR|Formula 1|Premier League|La Liga|LaLiga|Bundesliga|Champions League|UEFA|Boxing|Rugby|Cricket|Tennis|Soccer|Football|Basketball|Baseball|Hockey|Golf|Lacrosse|Wrestling|WWE|Cycling|Marathon|Olympics|Tournament|Championship|Final|Semifinal|Playoff|Grand Prix|Stage \d|Round \d|Qualifying|Qualifier|World Series|Open|Masters|Cup|League|Series|Match|Game \d)\b/i
+  // v2.33.13 — Code reviewer flagged: WWE was here but AEW / TNA / ROH /
+  // bare Wrestling were missing. The Kotlin extractor's leagues list
+  // already had Wrestling; this regex was inconsistent with it.
+  const sportKeywordRegex = /\b(NBA|NFL|MLB|NHL|WNBA|NCAA|MLS|UFC|MMA|PGA|LPGA|F1|NASCAR|Formula 1|Premier League|La Liga|LaLiga|Bundesliga|Champions League|UEFA|Boxing|Rugby|Cricket|Tennis|Soccer|Football|Basketball|Baseball|Hockey|Golf|Lacrosse|Wrestling|WWE|AEW|TNA Impact|ROH|Cycling|Marathon|Olympics|Tournament|Championship|Final|Semifinal|Playoff|Grand Prix|Stage \d|Round \d|Qualifying|Qualifier|World Series|Open|Masters|Cup|League|Series|Match|Game \d)\b/i
   const hasSportSignal = (title: string, sportRow: string | null): boolean => {
     if (sportKeywordRegex.test(title)) return true
     // If the lastSportRow has a strong league name in it, accept tiles
@@ -1070,6 +1073,14 @@ async function scoutCoversThisApp(deviceId: string, appName: string): Promise<{ 
   try {
     const nowSec = Math.floor(Date.now() / 1000)
     const cutoff = nowSec - SCOUT_FRESHNESS_WINDOW_SEC
+    // v2.33.13 — Filter out expired rows in the query itself (gt expiresAt
+    // nowSec). Without this, post-36h-TTL rows that haven't been swept
+    // yet by the GET-time cleanup could falsely trigger the skip — code
+    // reviewer caught this narrow window: post-TTL, pre-cleanup, walker
+    // would see N stale rows + correctly compare capturedAt to the 30-min
+    // cutoff (which fails for a row that's >30min old AND past TTL), but
+    // if Scout last ran 28min ago AND those rows somehow survived past
+    // a 36h TTL boundary, the count guard could mis-trigger.
     const rows = await db
       .select({
         capturedAt: schema.firetvStreamingCatalog.capturedAt,
@@ -1080,6 +1091,7 @@ async function scoutCoversThisApp(deviceId: string, appName: string): Promise<{ 
           eq(schema.firetvStreamingCatalog.deviceId, deviceId),
           eq(schema.firetvStreamingCatalog.app, appName),
           eq(schema.firetvStreamingCatalog.source, 'scout-snapshot'),
+          gt(schema.firetvStreamingCatalog.expiresAt, nowSec),
         )
       )
       .all()

@@ -156,7 +156,23 @@ object CatalogExtractor {
      */
     private fun isAccessibilityChrome(text: String): Boolean {
         val l = text.lowercase().trim()
-        if (Regex("""\b\d+\s+of\s+\d+\b""").containsMatchIn(l)) return true
+        // v2.33.13 — Code reviewer caught a false-positive on the bare
+        // "X of Y" pattern matching legitimate sports titles (e.g.
+        // "Game 3 of 7" NBA playoffs, "Round 2 of 4" boxing, "Stage 3 of
+        // 21" cycling). Two-step rejection now:
+        //   (a) "X of Y" + TalkBack widget role suffix → chrome
+        //   (b) "X of Y" preceded by a known launcher-menu label
+        //       ("Search,", "Find,", "Home,", "Free,", "Movies,",
+        //       "TV shows,", "News,", "Settings,", etc.) → chrome
+        // Sports titles never start with a launcher-menu label.
+        val hasPositionSuffix = Regex("""\b\d+\s+of\s+\d+\b""").containsMatchIn(l)
+        val hasWidgetRoleSuffix = Regex(""",\s*(button|tab|switch|checkbox|selected)\b""").containsMatchIn(l)
+        if (hasPositionSuffix && hasWidgetRoleSuffix) return true
+        // Match launcher-menu chrome prefixes followed by ", X of Y"
+        val launcherMenuChrome = Regex(
+            """^(search|find|home|free|movies|tv shows|sports|live|news|subscriptions|my stuff|main menu|settings|profile|games|tubi|netflix|prime video|youtube|disney\+|more apps),\s*\d+\s+of\s+\d+"""
+        )
+        if (hasPositionSuffix && launcherMenuChrome.containsMatchIn(l)) return true
         if (l.contains(", tab, selected,")) return true
         if (l.contains(", tab, ")) return true
         if (l.startsWith("more apps press select")) return true

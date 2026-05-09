@@ -24,6 +24,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { logger } from '@sports-bar/logger'
 import { promises as fs } from 'fs'
 import path from 'path'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
+
+// v2.33.13 — Code reviewer flagged: tree-dump payloads can be ~800KB
+// and there's no rate limit. A misbehaving Cube hammering the endpoint
+// would fill the disk. Reject obviously-oversized payloads here too;
+// 4000 nodes × ~200 bytes ≈ 800KB at the documented MAX_NODES cap.
+const MAX_DUMP_NODES = 8000  // 2× MAX_NODES from TreeDumper.kt as a safety ceiling
 
 // Under PM2 the runtime cwd is apps/web/, so a literal `apps/web/data/...`
 // path doubles up. Use `data/tree-dumps` (relative to apps/web/) which
@@ -33,8 +41,22 @@ const DUMP_DIR = path.isAbsolute(process.env.SCOUT_DUMP_DIR ?? '')
   : path.resolve(process.cwd(), 'data/tree-dumps')
 
 export async function POST(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.DEFAULT)
+  if (!rateLimit.allowed) return rateLimit.response
+
   try {
     const body = await request.json()
+
+    // Reject obviously-oversized payloads before persisting (each row
+    // ~200 bytes; 8000 rows = ~1.6MB JSON file written to disk).
+    const reportedNodeCount = Number(body.nodeCount ?? 0)
+    if (reportedNodeCount > MAX_DUMP_NODES) {
+      logger.warn(`[TREE-DUMP] Reject oversized dump: nodeCount=${reportedNodeCount} > ${MAX_DUMP_NODES}`)
+      return NextResponse.json(
+        { success: false, error: 'dump_too_large', limit: MAX_DUMP_NODES, got: reportedNodeCount },
+        { status: 413 }
+      )
+    }
 
     const deviceId = String(body.deviceId ?? 'fire-tv-unknown').replace(/[^a-zA-Z0-9_\-]/g, '_')
     const trigger = String(body.trigger ?? 'unknown').replace(/[^a-zA-Z0-9_\-]/g, '_').slice(0, 40)
