@@ -187,6 +187,76 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.33.8 — Scout v2.2.2 verified on real PVFTV-320 (Lucky's Cube 1)
+**Released:** 2026-05-09
+
+**No required setup.** v2.33.7's scaffolding hardened against real
+PVFTV-320 launcher behavior captured via the v2.2.1 tree-dump
+diagnostic from Lucky's Cube 1.
+
+**What changed:**
+
+1. **`LauncherHomeNavigator` retargeted to "Live" tab.** Lucky's
+   PVFTV-320.0001-L launcher dump revealed there is NO "Sports" tab
+   on this build. Visible tabs at y=532-612: `My Stuff / Games / Find
+   / Free / Home / Live / Netflix / Prime Video / YouTube / Disney+ /
+   News / Tubi / More Apps / Settings`. Live tab content includes
+   "Live Sports" section, FOX Sports 1, CBS Sports, "Stream live NFL".
+   Navigator now tries "Sports" first (in case future builds add it),
+   falls back to "Live".
+
+2. **HOME-key reset added before tab search.** Snapshot service now
+   calls `performGlobalAction(GLOBAL_ACTION_HOME)` (API 16+, works on
+   Fire OS 7.7) at the start of LauncherHomeNavigator. Without this,
+   if the Cube was on a Prime Video content detail page when triggered,
+   the tab strip wasn't in the AS tree.
+
+3. **Verify gate uses `isFocused=true` on tab node.** Confirmed reliable
+   signal via dump diff (home-tab dump: `idx=17 'Home' isFocused=true`;
+   live-tab dump: `idx=18 'Live' isFocused=true`). `isSelected` and
+   `Tab, Selected` desc patterns are NOT present on PVFTV-320 launcher
+   tabs.
+
+4. **CatalogExtractor scores Live-tab network names.** "FOX Sports 1",
+   "CBS Sports", "ESPN", etc. are now recognized as live-sports
+   channels (+0.45 score bump) even when the tile text doesn't include
+   vs./league/score keywords.
+
+5. **Reference dumps committed** under `docs/probes/pvftv320-launcher/`
+   so future sessions have ground-truth tree data without needing to
+   re-capture.
+
+**Known limitation:** Live tab content extraction is limited to the
+first visible content row. The deeper rows ("Live Sports", "Featured
+live TV apps") render LAZILY and Scout's `dispatchGesture` swipe
+doesn't trigger the Compose RecyclerView's onScrolled handler the way
+ADB `input swipe` does. Server-side walker continues to handle Prime
+Video / launcher-aggregated sports content via the proven kernel-input
+path. Scout's launcher Live-tab path delivers reliable navigation
+framework (and works for ESPN extraction) but limited deep extraction.
+
+**Verification command:**
+```bash
+DEV_IP=192.168.10.42  # Lucky's Cube 1
+adb -s ${DEV_IP}:5555 shell "input keyevent 3"
+sleep 4
+adb -s ${DEV_IP}:5555 logcat -c
+adb -s ${DEV_IP}:5555 shell "am broadcast -a com.sportsbar.scout.SNAPSHOT_NOW -n com.sportsbar.scout/.SnapshotCommandReceiver"
+sleep 90
+adb -s ${DEV_IP}:5555 logcat -d -s LauncherHomeNav:* CatalogExtractor:* | tail -30
+```
+
+Expected on PVFTV-320 Cubes:
+- `tab 'Live': isFocused=true — click took. Verifying content…`
+- `tab 'Live': content verified.`
+- ESPN target produces 7+ tiles (WNBA, Truist, etc.)
+
+**Applies to:** Lucky's Cubes 1+2 (PVFTV-320). Other PVFTV-215 Cubes
+unchanged behavior — this version's launcher framework can be exercised
+when those launchers add a Sports/Live tab in future firmware.
+
+---
+
 ### v2.33.7 — Scout v2.2.1 tree-dump diagnostic + LauncherHomeNavigator for PVFTV-320+
 **Released:** 2026-05-09
 

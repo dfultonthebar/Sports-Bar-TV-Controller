@@ -12,115 +12,226 @@ import android.util.Log
 import android.view.accessibility.AccessibilityNodeInfo
 
 /**
- * v2.2.1 — Navigator for PVFTV-320+ launcher home, where the redesigned
- * 2026 Fire TV launcher places aggregated content tabs (Home / Movies /
- * TV Shows / Sports / Live / News / Subscriptions) directly in the top
- * navigation bar. The Sports tab aggregates content from Prime Video,
- * ESPN+, Paramount+, etc. — no need to launch the Prime Video app
- * first like we used to on PVFTV-215 and earlier.
+ * v2.2.2 — Navigator for the PVFTV-320 launcher's live-sports content
+ * tab. Confirmed via Lucky's Cube 1 dump 2026-05-09: the launcher tab
+ * strip on PVFTV-320.0001-L contains:
  *
- * Strategy stack (tries each in order until one succeeds):
+ *   `My Stuff / Games / Find / Free / Home / Live / [Netflix /
+ *   Prime Video / YouTube / Disney+ / Tubi shortcuts] / News /
+ *   More Apps / Settings`
  *
- *   1. Find a top-nav node (y < 200) whose text/desc equals or contains
- *      "Sports" — try ACTION_FOCUS, then ACTION_CLICK, then a synthetic
- *      gesture tap at the node's bounds center via dispatchGesture.
- *      The gesture path is THE one that drives Compose UIs (real touch
- *      event reaches View.onTouchEvent / pointerInput modifiers; this
- *      is different from ACTION_CLICK which only fires AS handlers).
+ * NO Sports tab exists. The "Live" tab is the sports destination —
+ * its content includes "Live Sports" section header, "FOX Sports 1",
+ * "CBS Sports", "FOX: Stream live NFL", "Featured live TV apps", and
+ * "Free Live Channels" rows.
  *
- *   2. If no top-nav "Sports" node found, look for a horizontal
- *      RecyclerView at y < 200 (the tab strip itself) and dispatchGesture
- *      a left-to-right swipe to expose tabs that may be off-screen.
+ * The tab strip lives at y=532-612 (NOT y<200 as initial guess
+ * assumed), and tab nodes are accessibility-friendly:
+ *   - `isClickable=true`, `isFocusable=true` on the ViewGroup container
+ *   - `contentDescription` carries the tab name ("Home", "Live", etc.)
+ *   - Inner TextView at y=612 has `text` matching the desc
  *
- *   3. Find the bounds-contained clickable ancestor with implausibly-
- *      large rejection (h<200, w<600) — avoids hitting unrelated parent
- *      containers in the same Compose tree.
+ * Verify signal: `isFocused=true` on the destination tab node. The
+ * `isSelected` flag does NOT track tab activation here, and there are
+ * NO `Tab, Selected` desc patterns like Prime Video has internally.
  *
- *   4. Last resort: ACTION_ACCESSIBILITY_FOCUS chain ("TalkBack-style"
- *      virtual focus traversal). Some Compose builds activate on
- *      accessibility focus.
+ * Click strategy stack (tries in order, each gated by anyTabFocused):
+ *   1a. ACTION_FOCUS on tab node — most launcher builds activate on focus
+ *   1b. ACTION_CLICK on tab node directly
+ *   1c. Bounds-contained clickable ancestor walk
+ *   1d. Synthetic gesture tap via dispatchGesture (real touch event)
+ *   1e. ACTION_ACCESSIBILITY_FOCUS + ACTION_CLICK (TalkBack-style)
  *
- * Verify gate (HARD): after the click, the focused/selected tab must
- * say "Sports" — not Home/Movies/TV/etc. We REJECT the launcher home's
- * default "Home, Tab, Selected, ..." pattern. Soft gates: known sports
- * section headers ("Live now", "Sports for you", "NBA on Prime") OR
- * count of `vs.` patterns >= 2.
+ * Reference dumps committed under `docs/probes/pvftv320-launcher/`
+ * show the exact home-tab vs live-tab tree structure.
  */
 class LauncherHomeNavigator(private val ctx: Context) {
 
     private val service: AccessibilityService?
         get() = PlaybackAutomationService.instanceForNav()
 
+    /**
+     * Navigate to the launcher home's sports-content tab. On Lucky's
+     * PVFTV-320.0001-L (probed 2026-05-09), the launcher tab strip
+     * does NOT contain a "Sports" tab. Visible tabs are:
+     * `My Stuff / Games / Find / Free / Home / Live / [Netflix /
+     * Prime Video / YouTube / Disney+ / Tubi shortcuts] / News /
+     * More Apps / Settings`. The "Live" tab is the actual destination
+     * — it contains "Live Sports" section header, FOX Sports 1, CBS
+     * Sports, "FOX: Stream live NFL", and other live-channel content.
+     *
+     * Strategy:
+     *   1. Try "Sports" (in case a future PVFTV build adds it).
+     *   2. Fall back to "Live" — confirmed working on PVFTV-320.0001-L.
+     *
+     * Verify gate uses `isFocused=true` on the destination tab node
+     * (the reliable signal — `isSelected` and `Tab, Selected` desc
+     * patterns are NOT present on PVFTV-320 launcher tabs).
+     */
     fun gotoSportsTab(): Boolean {
         val svc = service ?: run {
             Log.w(TAG, "AS not connected — can't navigate")
             return false
         }
-        Log.i(TAG, "PVFTV-320 launcher home → Sports tab navigation begin")
+        Log.i(TAG, "PVFTV-320 launcher → live-sports content tab navigation begin")
 
-        // Wait for the launcher to settle — the redesigned home renders
-        // top tabs first (~400ms after window state change) then
-        // hydrates content rows over the next 2-3s.
-        sleep(POST_SETTLE_DELAY_MS)
+        // v2.2.2 — Always send HOME first to reset launcher state. Without
+        // this, firing the snapshot from a Cube with focus on a Prime Video
+        // content detail page (e.g. "Watkins Glen Practice & Qualifying")
+        // leaves the activeWindow on com.amazon.firebat's detail FrameLayout
+        // — no tab strip in tree, navigation immediately fails.
+        // GLOBAL_ACTION_HOME has been in AccessibilityService since API 16,
+        // so it works on PVFTV-215 + PVFTV-320 alike (unlike GLOBAL_ACTION_DPAD_*
+        // which is API 33+ and silently no-ops on Fire OS 7.7).
+        svc.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME)
+        sleep(HOME_SETTLE_DELAY_MS)
 
-        // Strategy 1: direct text match in top-nav region
-        val sportsNode = findTopNavSportsNode(svc)
-        if (sportsNode != null) {
-            val r = Rect()
-            sportsNode.getBoundsInScreen(r)
-            Log.i(TAG, "S1: Found Sports tab in top nav at bounds=[${r.left},${r.top}][${r.right},${r.bottom}] (cls=${sportsNode.className}, click=${sportsNode.isClickable}, focus=${sportsNode.isFocusable})")
-
-            // Try in order: ACTION_FOCUS, ACTION_CLICK on node, ancestor walk, gesture tap
-            if (tryAllClickStrategies(svc, sportsNode)) {
-                sleep(SPORTS_TAB_RENDER_DELAY_MS)
-                if (verifySportsActive(svc)) {
-                    Log.i(TAG, "S1: Sports tab navigation succeeded.")
-                    return true
-                }
-                Log.w(TAG, "S1: clicks fired but verify gate rejected — Sports tab not active.")
-            } else {
-                Log.w(TAG, "S1: All click strategies failed for Sports node.")
-            }
-        } else {
-            Log.w(TAG, "S1: no top-nav Sports node visible.")
+        // Try "Sports" first (PVFTV-320 may add it in future builds),
+        // then "Live" (the actual sports destination on .0001-L).
+        for (tabName in TAB_TARGETS) {
+            if (tryTab(svc, tabName)) return true
         }
 
-        // Strategy 2: horizontal scroll the tab RecyclerView in case
-        // Sports is off-screen in a paginated tab strip.
-        if (tryScrollTabStripRight(svc)) {
-            sleep(800)
-            val sportsNodeAfterScroll = findTopNavSportsNode(svc)
-            if (sportsNodeAfterScroll != null) {
-                Log.i(TAG, "S2: Sports node revealed after scroll; clicking…")
-                if (tryAllClickStrategies(svc, sportsNodeAfterScroll)) {
-                    sleep(SPORTS_TAB_RENDER_DELAY_MS)
-                    if (verifySportsActive(svc)) {
-                        Log.i(TAG, "S2: Sports tab navigation succeeded after scroll.")
-                        return true
-                    }
-                }
-            }
-        }
-
-        // Strategy 3: try the Sports text-search fallback ANYWHERE in
-        // tree (not just top-nav) — some launcher builds may put the
-        // tab strip outside our y<200 cutoff at smaller resolutions.
-        val anywhereSports = findAnywhereSportsTab(svc)
-        if (anywhereSports != null) {
-            val r = Rect()
-            anywhereSports.getBoundsInScreen(r)
-            Log.i(TAG, "S3: Found Sports candidate anywhere in tree at bounds=[${r.left},${r.top}][${r.right},${r.bottom}]")
-            if (tryAllClickStrategies(svc, anywhereSports)) {
-                sleep(SPORTS_TAB_RENDER_DELAY_MS)
-                if (verifySportsActive(svc)) {
-                    Log.i(TAG, "S3: Sports tab navigation succeeded.")
-                    return true
-                }
-            }
-        }
-
-        dumpTopOfTree(svc, "All strategies exhausted; no Sports tab activation.")
+        dumpTopOfTree(svc, "All tab targets exhausted (${TAB_TARGETS.joinToString()})")
         return false
+    }
+
+    private fun tryTab(svc: AccessibilityService, tabName: String): Boolean {
+        val node = findTopNavTabNode(svc, tabName)
+        if (node == null) {
+            Log.i(TAG, "tab '$tabName': not found in tree")
+            return false
+        }
+        val r = Rect()
+        node.getBoundsInScreen(r)
+        Log.i(TAG, "tab '$tabName': found at bounds=[${r.left},${r.top}][${r.right},${r.bottom}] (cls=${node.className}, click=${node.isClickable}, focus=${node.isFocusable})")
+
+        if (isTabFocused(svc, tabName)) {
+            Log.i(TAG, "tab '$tabName': already focused — skipping click, verify content")
+            sleep(SPORTS_TAB_RENDER_DELAY_MS)
+            if (verifyLiveSportsContent(svc)) {
+                Log.i(TAG, "tab '$tabName': content verified.")
+                return true
+            }
+        }
+
+        if (!tryAllClickStrategies(svc, node)) {
+            Log.w(TAG, "tab '$tabName': all click strategies failed")
+            return false
+        }
+        sleep(SPORTS_TAB_RENDER_DELAY_MS)
+
+        if (!isTabFocused(svc, tabName)) {
+            Log.w(TAG, "tab '$tabName': click fired but isFocused did not transfer to '$tabName' tab")
+            return false
+        }
+        Log.i(TAG, "tab '$tabName': isFocused=true — click took. Verifying content…")
+
+        if (!verifyLiveSportsContent(svc)) {
+            Log.w(TAG, "tab '$tabName': focus moved but live-sports content not visible")
+            return false
+        }
+        Log.i(TAG, "tab '$tabName': content verified. Forcing lazy-row hydration via swipe…")
+
+        // The Live tab's deeper rows ("Featured live TV apps", "Live
+        // Sports", "Free Live Channels") render LAZILY — initial post-
+        // click tree only has the tab strip + first content row.
+        // Lucky's Cube 1 v2.2.2c run captured 8 nodes; manual dump after
+        // DPAD navigation captured 100. The difference: real DPAD events
+        // through the kernel input pipeline trigger lazy-list rendering;
+        // ACTION_FOCUS does not. A synthetic swipe down via dispatchGesture
+        // sends a real touch event that triggers the launcher's
+        // RecyclerView.onScrolled hydration.
+        forceLazyRowHydration(svc)
+        sleep(POST_VERIFY_HYDRATION_MS)
+        return true
+    }
+
+    /** Send a synthetic down-swipe via dispatchGesture to trigger
+     *  launcher RecyclerView lazy-hydration. After this, nodes for the
+     *  deeper content rows (Live Sports / Featured live TV apps / Free
+     *  Live Channels) appear in the AS tree where the snapshot
+     *  extractor can walk them. */
+    private fun forceLazyRowHydration(svc: AccessibilityService) {
+        if (Build.VERSION.SDK_INT < 24) return
+        try {
+            // Swipe upward from y=900 to y=400 in screen center —
+            // simulates a "scroll content up" gesture that the launcher
+            // typically interprets as "show next row"
+            val path = Path().apply {
+                moveTo(960f, 900f)
+                lineTo(960f, 400f)
+            }
+            val stroke = GestureDescription.StrokeDescription(path, 0L, 350L)
+            val gesture = GestureDescription.Builder().addStroke(stroke).build()
+            val latch = Object()
+            svc.dispatchGesture(gesture, object : AccessibilityService.GestureResultCallback() {
+                override fun onCompleted(g: GestureDescription?) { synchronized(latch) { latch.notifyAll() } }
+                override fun onCancelled(g: GestureDescription?) { synchronized(latch) { latch.notifyAll() } }
+            }, Handler(Looper.getMainLooper()))
+            synchronized(latch) {
+                try { latch.wait(2_000L) } catch (_: InterruptedException) {}
+            }
+        } catch (t: Throwable) {
+            Log.w(TAG, "forceLazyRowHydration crashed: ${t.message}")
+        }
+    }
+
+    private fun findTopNavTabNode(svc: AccessibilityService, tabName: String): AccessibilityNodeInfo? {
+        // Look for a clickable+focusable node with text/desc EXACTLY
+        // matching tabName, anywhere in the tree. Score by topmost-
+        // leftmost (tabs are in upper region) + clickable/focusable.
+        for (attempt in 1..ROOT_RETRIES) {
+            val root = freshRoot(svc)
+            if (root == null) { sleep(500); continue }
+            val candidates = mutableListOf<Pair<AccessibilityNodeInfo, Rect>>()
+            traverseLimited(root, 4000) { n ->
+                if (!hasTextExact(n, tabName)) return@traverseLimited
+                if (!n.isClickable && !n.isFocusable) return@traverseLimited
+                val r = Rect()
+                n.getBoundsInScreen(r)
+                if (r.width() <= 0 || r.height() <= 0 || r.height() > 250) return@traverseLimited
+                candidates.add(n to r)
+            }
+            if (candidates.isNotEmpty()) {
+                val best = candidates.maxByOrNull { (n, r) ->
+                    var score = 0.0
+                    if (n.isClickable) score += 5.0
+                    if (n.isFocusable) score += 5.0
+                    if (n.isVisibleToUser) score += 2.0
+                    score -= r.top * 0.001
+                    score -= r.left * 0.0005
+                    score
+                }!!
+                return best.first
+            }
+            sleep(500)
+        }
+        return null
+    }
+
+    /** True iff a node with text/desc exactly matching tabName is the
+     *  currently `isFocused=true` node. This is the PVFTV-320 verify
+     *  signal (confirmed via Lucky's Cube 1 home/live tab dumps). */
+    private fun isTabFocused(svc: AccessibilityService, tabName: String): Boolean {
+        val root = freshRoot(svc) ?: return false
+        val focused = findFirstMatching(root) { n -> n.isFocused }
+            ?: return false
+        return hasTextExact(focused, tabName)
+    }
+
+    /** Quick sanity check used between click attempts: did focus land
+     *  on ANY tab in the strip (not the original Home/Live default)?
+     *  More forgiving than isTabFocused — used as an early "click
+     *  worked" signal before the post-render verify. */
+    private fun anyTabFocused(svc: AccessibilityService): Boolean {
+        val root = freshRoot(svc) ?: return false
+        val focused = findFirstMatching(root) { n -> n.isFocused } ?: return false
+        // The focused node should be a tab-strip member, not a content tile.
+        // Tab-strip nodes are at y=520-620 on PVFTV-320 launcher.
+        val r = Rect()
+        focused.getBoundsInScreen(r)
+        return r.top in 480..640 && r.height() in 30..200
     }
 
     // ─── click strategy stack ─────────────────────────────────────
@@ -132,7 +243,7 @@ class LauncherHomeNavigator(private val ctx: Context) {
         // 1a. ACTION_FOCUS on node — Compose tab's focus listener may activate it
         if (node.isFocusable && node.performAction(AccessibilityNodeInfo.ACTION_FOCUS)) {
             sleep(150)
-            if (isSportsSelected(svc)) {
+            if (anyTabFocused(svc)) {
                 Log.i(TAG, "click: ACTION_FOCUS on node activated tab")
                 return true
             }
@@ -141,7 +252,7 @@ class LauncherHomeNavigator(private val ctx: Context) {
         // 1b. ACTION_CLICK on node directly
         if (node.isClickable && node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
             sleep(200)
-            if (isSportsSelected(svc)) {
+            if (anyTabFocused(svc)) {
                 Log.i(TAG, "click: ACTION_CLICK on node activated tab")
                 return true
             }
@@ -151,7 +262,7 @@ class LauncherHomeNavigator(private val ctx: Context) {
         val ancestor = findBoundsContainedClickableAncestor(node, r, maxHeight = 200, maxWidth = 600)
         if (ancestor != null && ancestor.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
             sleep(200)
-            if (isSportsSelected(svc)) {
+            if (anyTabFocused(svc)) {
                 Log.i(TAG, "click: bounds-contained ancestor ACTION_CLICK activated tab")
                 return true
             }
@@ -166,7 +277,7 @@ class LauncherHomeNavigator(private val ctx: Context) {
             val cy = r.exactCenterY()
             if (dispatchTap(svc, cx, cy)) {
                 sleep(250)
-                if (isSportsSelected(svc)) {
+                if (anyTabFocused(svc)) {
                     Log.i(TAG, "click: dispatchGesture tap at ($cx, $cy) activated tab")
                     return true
                 }
@@ -178,7 +289,7 @@ class LauncherHomeNavigator(private val ctx: Context) {
             sleep(200)
             if (node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
                 sleep(200)
-                if (isSportsSelected(svc)) {
+                if (anyTabFocused(svc)) {
                     Log.i(TAG, "click: a11y-focus + ACTION_CLICK activated tab")
                     return true
                 }
@@ -215,166 +326,54 @@ class LauncherHomeNavigator(private val ctx: Context) {
 
     // ─── tab discovery ────────────────────────────────────────────
 
-    private fun findTopNavSportsNode(svc: AccessibilityService): AccessibilityNodeInfo? {
-        // v2.2.1 (Holmgren Cube 2 PVFTV-215 dump 2026-05-09):
-        // Launcher tabs aren't always at y<200 — Holmgren's are at y=532
-        // (Find / Home / Live / News on a horizontal strip). PVFTV-320
-        // may place them differently again. So we walk the WHOLE tree
-        // and collect every focusable+clickable node whose text/desc is
-        // exactly "Sports", then return the best candidate by:
-        //   - prefer focusable AND clickable
-        //   - prefer height < 200 (a tile is taller; a tab is shorter)
-        //   - prefer leftmost-and-topmost position (tabs are usually
-        //     in the upper half of the screen)
-        for (attempt in 1..ROOT_RETRIES) {
-            val root = freshRoot(svc)
-            if (root != null) {
-                val candidates = mutableListOf<Pair<AccessibilityNodeInfo, Rect>>()
-                traverseLimited(root, 4000) { n ->
-                    if (!hasTextExact(n, "Sports")) return@traverseLimited
-                    val r = Rect()
-                    n.getBoundsInScreen(r)
-                    if (r.width() <= 0 || r.height() <= 0) return@traverseLimited
-                    if (r.height() > 250) return@traverseLimited  // too tall = a content card
-                    candidates.add(n to r)
-                }
-                if (candidates.isNotEmpty()) {
-                    val best = candidates.maxByOrNull { (n, r) ->
-                        var score = 0.0
-                        if (n.isFocusable) score += 5.0
-                        if (n.isClickable) score += 5.0
-                        if (n.isVisibleToUser) score += 2.0
-                        // Topmost & leftmost = tab strip (most launchers put tabs in upper half)
-                        score -= r.top * 0.001
-                        score -= r.left * 0.0005
-                        score
-                    }!!
-                    Log.i(TAG, "Sports tab candidate: ${candidates.size} match(es), best at bounds=[${best.second.left},${best.second.top}][${best.second.right},${best.second.bottom}] (focus=${best.first.isFocusable} click=${best.first.isClickable})")
-                    return best.first
-                }
-            }
-            sleep(700)
-        }
-        return null
-    }
-
     private fun hasTextExact(n: AccessibilityNodeInfo, target: String): Boolean {
         val t = (n.text?.toString() ?: "").trim()
         val d = (n.contentDescription?.toString() ?: "").trim()
         return t.equals(target, ignoreCase = true) || d.equals(target, ignoreCase = true)
     }
 
-    private fun findAnywhereSportsTab(svc: AccessibilityService): AccessibilityNodeInfo? {
-        val root = freshRoot(svc) ?: return null
-        // Prefer the Sports candidate that's MOST LIKELY a tab vs a
-        // content card: focusable, not too tall (<200), not in the
-        // bottom half of the screen.
-        var best: AccessibilityNodeInfo? = null
-        var bestScore = -1.0
-        traverseLimited(root, 3000) { n ->
-            if (!hasText(n, "Sports")) return@traverseLimited
-            val r = Rect()
-            n.getBoundsInScreen(r)
-            if (r.height() <= 0 || r.height() > 250) return@traverseLimited
-            // Score: lower is better for top placement, focusable bonus
-            var score = 1.0 / (r.top + 1.0)
-            if (n.isFocusable) score += 0.5
-            if (n.isClickable) score += 0.3
-            if (n.isSelected) score += 1.0  // already-selected? not what we want; demote
-            if (score > bestScore) { best = n; bestScore = score }
-        }
-        return best
-    }
-
-    private fun tryScrollTabStripRight(svc: AccessibilityService): Boolean {
-        val root = freshRoot(svc) ?: return false
-        // Same Y-range relaxation as findTopNavSportsNode — PVFTV-215
-        // tabs sit at y=532. Look for a wide+thin scrollable strip
-        // anywhere in the upper 2/3 of the screen.
-        val tabStrip = findFirstMatching(root) { n ->
-            if (!n.isScrollable) return@findFirstMatching false
-            val r = Rect()
-            n.getBoundsInScreen(r)
-            r.top < 750 && r.width() > 600 && r.height() < 200
-        }
-        if (tabStrip != null) {
-            val ok = tabStrip.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
-            Log.i(TAG, "S2: scrolled tab strip via SCROLL_FORWARD = $ok")
-            return ok
-        }
-        return false
-    }
-
     // ─── verify ───────────────────────────────────────────────────
 
-    private fun verifySportsActive(svc: AccessibilityService): Boolean {
+    /** Verify the destination tab is now showing live-sports content.
+     *  Confirmed signals from Lucky's PVFTV-320.0001-L Live tab dump:
+     *  "Live Sports" section header, "Featured live TV apps" header,
+     *  "Free Live Channels" header, FOX Sports 1, CBS Sports, "Stream
+     *  live NFL". Soft fallback: ≥3 LIVE-badge nodes visible. */
+    private fun verifyLiveSportsContent(svc: AccessibilityService): Boolean {
         val root = freshRoot(svc) ?: return false
 
-        // Hard gate 1: the focused/selected tab text must say "Sports".
-        // Reject "Home" / "Movies" / "TV shows" / "News" / "Live TV" /
-        // "Subscriptions" / "For you" — those mean the click didn't
-        // take the tab.
-        // Y-range loosened to 750 (Holmgren PVFTV-215 has tabs at y=532).
-        val selectedTab = findFirstMatching(root) { n ->
-            val d = (n.contentDescription?.toString() ?: "")
-            (d.contains("Tab, Selected", ignoreCase = true) ||
-             d.contains("Selected, Tab", ignoreCase = true) ||
-             (n.isSelected && n.isFocusable && nodeNearTop(n, 750)))
-        }
-        if (selectedTab != null) {
-            val sel = selectedTab.contentDescription?.toString()
-                ?: selectedTab.text?.toString() ?: ""
-            Log.i(TAG, "verify: selected tab desc='${sel.take(80)}'")
-            if (sel.contains("Sports", ignoreCase = true)) {
-                return true
-            }
-            // Explicitly listed REJECT patterns
-            val rejectStarts = listOf("Home", "Movies", "TV shows", "TV", "News",
-                "Live TV", "Live", "Subscriptions", "For you", "Find")
-            if (rejectStarts.any { sel.startsWith(it, ignoreCase = true) }) {
-                Log.w(TAG, "verify: still on '$sel' — Sports activation didn't take")
-                return false
-            }
-        } else {
-            Log.i(TAG, "verify: no Selected-tab pattern found in tree")
-        }
-
-        // Soft gate: known Sports section headers
-        val sportsHeaders = listOf(
-            "Live now", "Live & Upcoming", "Live and upcoming",
-            "Sports for you", "Live sports", "Today's games", "Today's matchups",
-            "NBA on Prime", "MLB on Prime", "NHL on Prime", "NFL on Prime",
-            "Thursday Night Football", "Sports highlights", "Top sports picks",
-            "By League", "By Sport"
+        // Strong signal: known section headers on Live / Sports tabs
+        val knownHeaders = listOf(
+            "Live Sports", "Featured live TV apps", "Free Live Channels",
+            "Sports for you", "Live and upcoming", "Live & Upcoming",
+            "By League", "By Sport", "Today's games", "NBA on Prime",
+            "MLB on Prime", "NHL on Prime", "NFL on Prime",
+            "Thursday Night Football"
         )
-        if (sportsHeaders.any { hdr ->
+        if (knownHeaders.any { hdr ->
             findFirstMatching(root) { n -> hasText(n, hdr) } != null
         }) {
             return true
         }
 
-        // Last resort: count `vs.` / `@` patterns. Aggregated launcher
-        // sports tab should have at least 3 matchup tiles visible.
-        var matchups = 0
-        traverseLimited(root, 2000) { n ->
-            val t = (n.text?.toString() ?: "") + " " + (n.contentDescription?.toString() ?: "")
-            val l = t.lowercase()
-            if (Regex("""\bvs\.?\s+\b""").containsMatchIn(l)) matchups++
+        // Medium signal: known live-sports network names visible on the tab
+        val knownNetworks = listOf("FOX Sports 1", "FOX Sports 2", "CBS Sports",
+            "NBC Sports", "ESPN", "ESPN+", "TNT Sports", "TBS Sports",
+            "Big Ten Network", "SEC Network", "Tennis Channel")
+        if (knownNetworks.any { net ->
+            findFirstMatching(root) { n -> hasText(n, net) } != null
+        }) {
+            return true
         }
-        Log.i(TAG, "verify: matchup count = $matchups (need >= 3 for soft accept)")
-        return matchups >= 3
-    }
 
-    /** Quick check used between click attempts (cheaper than verify). */
-    private fun isSportsSelected(svc: AccessibilityService): Boolean {
-        val root = freshRoot(svc) ?: return false
-        val sel = findFirstMatching(root) { n ->
-            val d = (n.contentDescription?.toString() ?: "")
-            (d.contains("Tab, Selected", ignoreCase = true) ||
-             d.contains("Selected, Tab", ignoreCase = true)) &&
-                d.contains("Sports", ignoreCase = true)
+        // Soft signal: ≥3 LIVE badges (TextView with text="LIVE")
+        var liveBadges = 0
+        traverseLimited(root, 1500) { n ->
+            val t = (n.text?.toString() ?: "").trim()
+            if (t.equals("LIVE", ignoreCase = true)) liveBadges++
         }
-        return sel != null
+        Log.i(TAG, "verify: LIVE-badge count = $liveBadges (need ≥3)")
+        return liveBadges >= 3
     }
 
     // ─── tree helpers ─────────────────────────────────────────────
@@ -475,8 +474,16 @@ class LauncherHomeNavigator(private val ctx: Context) {
 
     companion object {
         private const val TAG = "LauncherHomeNav"
+        private const val HOME_SETTLE_DELAY_MS = 4_000L
         private const val POST_SETTLE_DELAY_MS = 3_000L
         private const val SPORTS_TAB_RENDER_DELAY_MS = 4_000L
+        private const val POST_VERIFY_HYDRATION_MS = 5_000L
         private const val ROOT_RETRIES = 4
+
+        // Tab labels to look for in the launcher tab strip, in order.
+        // "Sports" comes first in case a future PVFTV build adds it; if
+        // not present, fall back to "Live" (the actual destination on
+        // Lucky's PVFTV-320.0001-L per 2026-05-09 dump).
+        private val TAB_TARGETS = listOf("Sports", "Live")
     }
 }

@@ -108,6 +108,18 @@ object CatalogExtractor {
         if (app == "Prime Video" && lower.contains("on prime")) s += 0.10
         if (app == "ESPN" && Regex("""\b(espn\+?|abc|sec network|acc network|big ten network|fs1|fs2)\b""").containsMatchIn(lower)) s += 0.10
 
+        // v2.2.2 — PVFTV-320 launcher Live tab tile heuristics. The tab
+        // shows live-sports CHANNELS (FOX Sports 1, CBS Sports, etc.)
+        // by name without ever including a vs/league/score in the title,
+        // plus tiles like "FOX: Stream live NFL". Lucky's Cube 1 dump
+        // 2026-05-09 confirmed.
+        val sportsNetworks = Regex("""\b(fox sports( [12])?|cbs sports|nbc sports|tnt sports|tbs sports|espn(\+|u| 2| deportes)?|big ten network|sec network|acc network|tennis channel|fs1|fs2)\b""")
+        if (sportsNetworks.containsMatchIn(lower)) s += 0.45  // strong signal: this IS a sports channel
+        // "Stream live NFL" / "Watch live MLB" type tiles
+        if (Regex("""\bstream live\b|\bwatch live\b""").containsMatchIn(lower) && leagues.any { lower.contains(it) }) {
+            s += 0.30
+        }
+
         // v2.2.1 — Launcher home Sports tab heuristics. The PVFTV-320+
         // launcher Sports tab aggregates tiles from multiple providers;
         // each tile is annotated with its source app/network, and the
