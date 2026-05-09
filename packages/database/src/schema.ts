@@ -1996,10 +1996,23 @@ export const firetvStreamingCatalog = sqliteTable('firetv_streaming_catalog', {
   capturedAt: integer('capturedAt').notNull(),
   expiresAt: integer('expiresAt').notNull(),
 
+  // v2.33.9 — Hybrid source tracking. Two writers populate this table:
+  //   'walker'         — server-side TypeScript walker via adb input
+  //                      keyevent (kernel input pipeline; drives Compose)
+  //   'scout-snapshot' — Scout APK v2.2.0+ AccessibilityService active
+  //                      extraction (faster ~16s, but limited to apps
+  //                      whose tabs are AS-clickable)
+  // Each writer replaces only rows matching its own source for a given
+  // (deviceId, app) pair, so the two paths coexist instead of clobbering
+  // each other. Channel-guide / bartender-remote readers consume rows
+  // from any source.
+  source: text('source').notNull().default('walker'),
+
   createdAt: integer('createdAt').notNull().default(sql`(strftime('%s','now'))`),
 }, (table) => ({
   byDeviceApp: index('firetv_catalog_device_app_idx').on(table.deviceId, table.app),
   byExpiresAt: index('firetv_catalog_expires_idx').on(table.expiresAt),
+  byDeviceAppSource: index('firetv_catalog_device_app_source_idx').on(table.deviceId, table.app, table.source),
 }))
 
 // ============================================================================
