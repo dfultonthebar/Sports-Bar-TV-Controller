@@ -570,53 +570,47 @@ export class ADBClient {
 
       const trimmedTitle = (contentTitle || '').trim()
       if (trimmedTitle) {
-        // v2.33.34 — DPAD navigation to Search rail item with
-        // longer settle delays. Operator at Holmgren Cube 3 reported
-        // 2026-05-11: the v2.33.33 500ms inter-key delay was too
-        // short — DPAD_UP got coalesced into DPAD_CENTER before
-        // focus had moved up to Search, so CENTER opened Home (or
-        // the NHL/Live section it bounced into) instead of Search.
+        // v2.33.36 — Walk to the top of the rail with N idempotent
+        // DPAD_UPs instead of trusting a single UP. Operator at
+        // Holmgren Cube 3 reported v2.33.34 was still missing Search
+        // ("going too fast not selecting the search window"). Log
+        // confirmed DPAD_CENTER landed on EntityPageActivity, not
+        // Search — meaning DPAD_UP didn't reach the Search rail
+        // item before CENTER fired.
         //
-        // Sequence:
-        //   1. DPAD_LEFT — focus expands left nav rail, lands on Home
-        //   2. wait 1500ms — rail expand animation + focus settle
-        //   3. DPAD_UP — focus moves one step up to Search
-        //   4. wait 1500ms — focus animation
-        //   5. DPAD_CENTER — opens Search activity
-        //   6. wait 4000ms — activity transition + EditText focus
+        // Rail order top-to-bottom: Search, Home, Films & Shows,
+        // Browse, Highlights, Settings (6 items). DPAD_LEFT lands
+        // on Home by default; pressing DPAD_UP 5 times is enough to
+        // reach Search from any rail position. At Search (the top
+        // of the rail), additional DPAD_UPs are no-ops. Each UP gets
+        // 1000ms to take effect before the next is sent.
         //
-        // After CENTER, also verify the Search activity actually
-        // opened. If still on PageControllerActivity, the nav
-        // failed and we abort rather than typing into nothing.
+        // Then verify focus IS on Search by dumping the UI and
+        // looking for content-desc="Search" in the left rail
+        // (x<350). Only press CENTER if the verify passes — falling
+        // through to typing on a non-search page just types into
+        // nothing.
         logger.info(`[ADB CLIENT] DPAD_LEFT → expand rail / focus Home`)
-        await this.sendKey(21, 8000) // KEYCODE_DPAD_LEFT
-        await new Promise((r) => setTimeout(r, 1500))
-        logger.info(`[ADB CLIENT] DPAD_UP → focus Search (one above Home)`)
-        await this.sendKey(19, 8000) // KEYCODE_DPAD_UP
-        await new Promise((r) => setTimeout(r, 1500))
-        logger.info(`[ADB CLIENT] DPAD_CENTER → open Search activity`)
-        await this.sendKey(23, 8000) // KEYCODE_DPAD_CENTER
-        await new Promise((r) => setTimeout(r, 4000))
-        // Sanity check: confirm the Search activity actually opened.
-        // If we're still on the home page, the rail nav failed
-        // (typically because focus didn't reach Search before
-        // CENTER fired). Log and continue — `input text` will land
-        // somewhere harmless if we're still on Home.
-        try {
-          const focusOut = await this.executeShellCommand(
-            `dumpsys window windows | grep mCurrentFocus`,
-            5000,
-          )
-          if (focusOut && focusOut.includes('PageControllerActivity')) {
-            logger.warn(
-              `[ADB CLIENT] After DPAD_CENTER still on PageControllerActivity — Search nav failed`,
-            )
-          } else if (focusOut) {
-            logger.info(`[ADB CLIENT] Post-CENTER focus: ${focusOut.trim().slice(0, 120)}`)
-          }
-        } catch {
-          /* non-fatal */
+        await this.sendKey(21, 8000)
+        await new Promise((r) => setTimeout(r, 2000))
+        const RAIL_UP_COUNT = 5
+        for (let i = 0; i < RAIL_UP_COUNT; i++) {
+          logger.info(`[ADB CLIENT] DPAD_UP ${i + 1}/${RAIL_UP_COUNT} → walk up to Search`)
+          await this.sendKey(19, 8000)
+          await new Promise((r) => setTimeout(r, 1000))
         }
+        // Verify we ended up on Search before pressing CENTER.
+        const onSearch = await this._verifyFocusedOnRailItem('Search')
+        if (!onSearch) {
+          logger.warn(
+            `[ADB CLIENT] Search rail item not focused after ${RAIL_UP_COUNT} UPs — pressing CENTER anyway as best-effort`,
+          )
+        } else {
+          logger.info(`[ADB CLIENT] Search rail item confirmed focused`)
+        }
+        logger.info(`[ADB CLIENT] DPAD_CENTER → open Search activity`)
+        await this.sendKey(23, 8000)
+        await new Promise((r) => setTimeout(r, 4000))
         const querySanitized = trimmedTitle
           .replace(/[@]/g, ' ')
           .replace(/\s+/g, ' ')
@@ -717,6 +711,52 @@ export class ADBClient {
     } catch (error) {
       logger.error(`[ADB CLIENT] ESPN autoplay error:`, error)
       throw error
+    }
+  }
+
+  /**
+   * v2.33.36 — Verify the named rail item (e.g. "Search") is what's
+   * currently focused. ESPN GTV's left navigation rail items
+   * (Search, Home, Films & Shows, Browse, Highlights, Settings)
+   * live in the narrow x<350 column. Returns true if the dump shows
+   * a focused element whose bounds enclose the rail item with the
+   * given content-desc.
+   *
+   * Used by the search-nav sequence to confirm focus reached the
+   * Search rail item before pressing DPAD_CENTER (avoids opening
+   * the wrong page when the DPAD_UP walk didn't land where expected).
+   */
+  private async _verifyFocusedOnRailItem(targetDesc: string): Promise<boolean> {
+    try {
+      const dumpPath = `/sdcard/espn_focus_${Date.now()}.xml`
+      await this.executeShellCommand(`uiautomator dump ${dumpPath}`, 8000)
+      const xml = await this.executeShellCommand(`cat ${dumpPath}`, 8000)
+      this.executeShellCommand(`rm -f ${dumpPath}`, 3000).catch(() => {})
+      if (!xml || xml.length < 200) return false
+      // Find the bounds of the rail item with the target content-desc.
+      const targetEsc = targetDesc.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      const itemRe = new RegExp(
+        `<node[^>]*content-desc="${targetEsc}"[^>]*bounds="\\[(\\d+),(\\d+)\\]\\[(\\d+),(\\d+)\\]"`,
+      )
+      const itemMatch = itemRe.exec(xml)
+      if (!itemMatch) return false
+      const [ix1, iy1, ix2, iy2] = itemMatch.slice(1, 5).map(Number)
+      if (ix2 > 350) return false // not in the rail column
+      // Find the focused element's bounds and check if they enclose
+      // (or overlap with) the target rail item.
+      const focusRe = /<node[^>]*focused="true"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/g
+      let focusMatch: RegExpExecArray | null
+      while ((focusMatch = focusRe.exec(xml)) !== null) {
+        const [fx1, fy1, fx2, fy2] = focusMatch.slice(1, 5).map(Number)
+        // Treat the focus as "on" the rail item if their y-ranges
+        // overlap and the focused element is in the rail column.
+        if (fx2 <= 350 && fy1 <= iy2 && fy2 >= iy1) {
+          return true
+        }
+      }
+      return false
+    } catch {
+      return false
     }
   }
 
