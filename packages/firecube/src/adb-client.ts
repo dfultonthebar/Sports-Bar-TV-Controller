@@ -563,44 +563,51 @@ export class ADBClient {
 
       const trimmedTitle = (contentTitle || '').trim()
       if (trimmedTitle) {
-        // v2.32.94 — Search-by-title autoplay. Verified end-to-end on
-        // Cube 3 (AFTR / com.espn.gtv) — final foreground:
-        // com.espn.gtv/com.espn.video.dmp.PlayerActivity, MediaSession
-        // state=3 PLAYING.
+        // v2.33.32 — Direct-tap on Search rail item instead of DPAD nav.
         //
-        // Sequence:
-        //   1. DPAD_LEFT — focus moves from first content tile (where
-        //      ESPN's home tab leaves it after launch) to the left
-        //      navigation rail. Lands on "Home" (rail bounds y=436-484).
-        //   2. DPAD_UP — moves up the rail to "Search" (rail bounds
-        //      y=356-404, immediately above Home).
-        //   3. DPAD_CENTER — opens the search activity (focuses an
-        //      EditText).
-        //   4. `input text` — Android types the query into the focused
-        //      EditText. Spaces must be `%s`-escaped because `adb shell`
-        //      tokenizes on whitespace; backslash-escape any single
-        //      quotes to safely wrap the whole arg in single quotes.
-        //   5. Wait 4s for ESPN's search results to populate.
-        //   6. DPAD_DOWN — moves focus from the search EditText down
-        //      into the first result tile.
-        //   7. DPAD_CENTER — opens the result, lands on PlayerActivity.
+        // Previous (v2.32.94) sequence: DPAD_LEFT → DPAD_UP → DPAD_CENTER.
+        // Failed at Holmgren Cube 3 on 2026-05-11: post-launch focus
+        // landed on the Featured hero "Explore" banner, where DPAD_LEFT
+        // did not move into the left nav rail at all — leaving focus on
+        // Explore, DPAD_UP did nothing, DPAD_CENTER opened the Explore
+        // overlay. Subsequent `input text` typed into nothing and the
+        // tile-matcher saw the still-Home content (Featured + Also Live
+        // rows) which doesn't include niche ESPN+ college baseball
+        // games like Army @ Holy Cross.
         //
-        // Per-step `timeoutMs: 8000` matches the v2.32.91 sendKey
-        // pattern (framework pins during search-results render).
-        logger.info(`[ADB CLIENT] DPAD_LEFT → focus left navigation rail`)
-        await this.sendKey(21, 8000) // KEYCODE_DPAD_LEFT
-        await new Promise((r) => setTimeout(r, 400))
-        logger.info(`[ADB CLIENT] DPAD_UP → focus Search rail item`)
-        await this.sendKey(19, 8000) // KEYCODE_DPAD_UP
-        await new Promise((r) => setTimeout(r, 400))
-        logger.info(`[ADB CLIENT] DPAD_CENTER → open Search activity`)
-        await this.sendKey(23, 8000) // KEYCODE_DPAD_CENTER
+        // New: dump UI, locate the `<node content-desc="Search">` rail
+        // item, tap its center bounds directly. The left rail items are
+        // at stable positions (Search y=356-404 at the top, then Home,
+        // Films & Shows, Browse, Highlights, Settings below) so a
+        // bounds-targeted tap reliably opens the Search activity
+        // regardless of where post-launch focus landed.
+        //
+        // Search query also drops "@" — ESPN's tile content-desc uses
+        // "vs." not "@" for matchups, and the literal "@" symbol may
+        // not match how ESPN tokenizes the search index. Stripping it
+        // does not lose information (the surrounding team names are
+        // still typed).
+        const searchTap = await this._findSearchRailTapTarget()
+        if (searchTap) {
+          logger.info(`[ADB CLIENT] input tap Search rail at (${searchTap.cx}, ${searchTap.cy})`)
+          await this.executeShellCommand(`input tap ${searchTap.cx} ${searchTap.cy}`, 8000)
+        } else {
+          logger.warn(`[ADB CLIENT] Search rail bounds not found in dump; falling back to DPAD nav`)
+          await this.sendKey(21, 8000).catch(() => {}) // DPAD_LEFT
+          await new Promise((r) => setTimeout(r, 400))
+          await this.sendKey(19, 8000).catch(() => {}) // DPAD_UP
+          await new Promise((r) => setTimeout(r, 400))
+          await this.sendKey(23, 8000).catch(() => {}) // DPAD_CENTER
+        }
         await new Promise((r) => setTimeout(r, 3000))
-        // `input text` arg: spaces → %s, single-quote → '\''.
-        const escaped = trimmedTitle
+        const querySanitized = trimmedTitle
+          .replace(/[@]/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim()
+        const escaped = querySanitized
           .replace(/'/g, "'\\''")
           .replace(/ /g, '%s')
-        logger.info(`[ADB CLIENT] input text "${trimmedTitle}" (escaped: ${escaped})`)
+        logger.info(`[ADB CLIENT] input text "${querySanitized}" (escaped: ${escaped})`)
         await this.executeShellCommand(`input text '${escaped}'`, 8000)
         logger.info(`[ADB CLIENT] Waiting 4s for ESPN search results to render`)
         await new Promise((r) => setTimeout(r, 4000))
@@ -685,6 +692,46 @@ export class ADBClient {
     } catch (error) {
       logger.error(`[ADB CLIENT] ESPN autoplay error:`, error)
       throw error
+    }
+  }
+
+  /**
+   * v2.33.32 — Dump the ESPN home UI and return the tap-center bounds
+   * of the left-rail `Search` item. Stable across ESPN GTV versions
+   * (rail at x∈[60,118], Search at y∈[356,404]) so a bounds-targeted
+   * tap reliably opens the Search activity from any post-launch focus
+   * state — replaces the DPAD_LEFT/UP/CENTER navigation that broke
+   * when post-launch focus landed on the Featured "Explore" hero
+   * banner.
+   */
+  private async _findSearchRailTapTarget(): Promise<{ cx: number; cy: number } | null> {
+    try {
+      const dumpPath = `/sdcard/espn_search_${Date.now()}.xml`
+      await this.executeShellCommand(`uiautomator dump ${dumpPath}`, 8000)
+      const xml = await this.executeShellCommand(`cat ${dumpPath}`, 8000)
+      this.executeShellCommand(`rm -f ${dumpPath}`, 3000).catch(() => {})
+      if (!xml || xml.length < 200) return null
+      // Match a node whose content-desc is exactly "Search" and pull
+      // its bounds. The Search rail item is in the narrow left column
+      // (x<200) so an extra column-guard rejects any accidental
+      // "Search" labels elsewhere in the UI.
+      const re = /<node[^>]*content-desc="Search"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"[^/]*\/>/g
+      let match: RegExpExecArray | null
+      while ((match = re.exec(xml)) !== null) {
+        const x1 = Number(match[1])
+        const y1 = Number(match[2])
+        const x2 = Number(match[3])
+        const y2 = Number(match[4])
+        if (x2 < 200 && y2 - y1 < 200 && x2 - x1 < 200) {
+          return {
+            cx: Math.round((x1 + x2) / 2),
+            cy: Math.round((y1 + y2) / 2),
+          }
+        }
+      }
+      return null
+    } catch {
+      return null
     }
   }
 
