@@ -86,6 +86,14 @@ export default function DistributionPlanModal({ open, proposedGames, onClose, on
   useEffect(() => {
     if (open && proposedGames.length > 0) {
       fetchPlan()
+    } else if (open && proposedGames.length === 0) {
+      // v2.33.29 — Operator caught 2026-05-11: clicking Smart Distribute
+      // with no AI suggestions yet opened the modal but did nothing
+      // (no spinner, no error, no plan). Auto-trigger the AI Suggest
+      // flow from inside the modal by calling the suggestions endpoint
+      // ourselves, then building the plan from the result. Falls back
+      // to a clear empty-state message if Suggest also returns nothing.
+      bootstrapPlanFromSuggestions()
     } else if (!open) {
       setPlan(null)
       setSkipIds(new Set())
@@ -95,16 +103,19 @@ export default function DistributionPlanModal({ open, proposedGames, onClose, on
     }
   }, [open, proposedGames.length])
 
-  async function fetchPlan() {
+  async function fetchPlan(games?: Array<{ gameScheduleId: string }>) {
+    const gameList = games ?? proposedGames.map(g => ({ gameScheduleId: g.gameScheduleId }))
+    if (gameList.length === 0) {
+      setError('No games to distribute. Run AI Suggest first or wait for upcoming games.')
+      return
+    }
     setLoading(true)
     setError(null)
     try {
       const res = await fetch('/api/ai/distribution-plan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          games: proposedGames.map(g => ({ gameScheduleId: g.gameScheduleId })),
-        }),
+        body: JSON.stringify({ games: gameList }),
       })
       const data = await res.json()
       if (!data.success) throw new Error(data.error || 'distribution plan failed')
@@ -113,6 +124,40 @@ export default function DistributionPlanModal({ open, proposedGames, onClose, on
       setError(e.message)
       logger.error('[DIST-MODAL] fetchPlan', e)
     } finally {
+      setLoading(false)
+    }
+  }
+
+  /**
+   * v2.33.29 — When the operator clicks Smart Distribute without first
+   * running AI Suggest, `proposedGames` is empty. Auto-fetch AI Suggest
+   * suggestions, then use them to build a plan. If even AI Suggest
+   * returns no proposals, show a clear empty-state message.
+   */
+  async function bootstrapPlanFromSuggestions() {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/scheduling/ai-suggest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      })
+      const data = await res.json()
+      if (!data.success) {
+        throw new Error(data.error || 'AI Suggest failed')
+      }
+      const suggestions = data.suggestions || []
+      if (suggestions.length === 0) {
+        setError('No upcoming games to distribute. AI Suggest returned 0 proposals.')
+        setLoading(false)
+        return
+      }
+      const games = suggestions.map((s: any) => ({ gameScheduleId: s.gameId }))
+      await fetchPlan(games)
+    } catch (e: any) {
+      setError(e.message)
+      logger.error('[DIST-MODAL] bootstrapPlanFromSuggestions', e)
       setLoading(false)
     }
   }
