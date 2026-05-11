@@ -647,24 +647,33 @@ export class ADBClient {
         logger.info(`[ADB CLIENT] Waiting 4s for ESPN search results to render`)
         await new Promise((r) => setTimeout(r, 4000))
 
-        // v2.33.39 — Dismiss IME with KEYCODE_BACK, then DPAD_DOWN
-        // to focus first result. Operator-confirmed at Holmgren Cube
-        // 3 (2026-05-11): "the keyboard seems to be overlaid over
-        // the main ESPN screen" — Fire TV renders the on-screen
-        // keyboard in a separate IME window above the activity, so
-        // DPAD_DOWN from the focused EditText navigates INTO the
-        // keyboard's top row instead of past it to the results
-        // (which are rendered below/behind the keyboard).
+        // v2.33.40 — Tap the keyboard's bottom-right "Next" button
+        // directly at known Fire TV IME coordinates. Operator at
+        // Holmgren Cube 3 reported v2.33.39's KEYCODE_BACK was
+        // exiting the search activity entirely (back-press on Fire
+        // TV's leanback IME closes the search screen, not the
+        // keyboard overlay). Earlier hint: "the next key on the
+        // keyboard is the bottom right button."
         //
-        // KEYCODE_BACK dismisses the IME window (closes the
-        // keyboard) without exiting the search activity, exposing
-        // the result rows for DPAD navigation.
-        logger.info(`[ADB CLIENT] KEYCODE_BACK → dismiss keyboard IME`)
-        await this.sendKey(4, 8000) // KEYCODE_BACK
-        await new Promise((r) => setTimeout(r, 2000))
-        logger.info(`[ADB CLIENT] DPAD_DOWN → focus first result row`)
-        await this.sendKey(20, 8000) // KEYCODE_DPAD_DOWN
+        // Fire TV's standard leanback IME positions the submit/Next
+        // key at the bottom-right corner: approximately (1820, 985)
+        // on 1920x1080 displays. `input tap` at those coordinates
+        // submits the search and dismisses the keyboard in one step,
+        // exposing the result rows. Each subsequent DPAD_DOWN /
+        // CENTER then navigates results normally.
+        //
+        // If the tap lands on a different key (keyboard layout
+        // varies across Fire TV OS builds), the tile-match step
+        // below will still detect no matching tile and abort —
+        // safer than the BACK keystroke which exits search.
+        const NEXT_KEY_X = 1820
+        const NEXT_KEY_Y = 985
+        logger.info(`[ADB CLIENT] input tap (${NEXT_KEY_X}, ${NEXT_KEY_Y}) → keyboard bottom-right Next`)
+        await this.executeShellCommand(`input tap ${NEXT_KEY_X} ${NEXT_KEY_Y}`, 8000)
         await new Promise((r) => setTimeout(r, 2500))
+        logger.info(`[ADB CLIENT] DPAD_DOWN → focus first result row (if keyboard dismissed)`)
+        await this.sendKey(20, 8000) // KEYCODE_DPAD_DOWN
+        await new Promise((r) => setTimeout(r, 2000))
 
         const tapTarget = await this._findVisibleTileMatchingTitle(trimmedTitle)
         if (tapTarget) {
