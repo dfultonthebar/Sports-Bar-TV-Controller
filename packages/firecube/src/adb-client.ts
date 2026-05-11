@@ -647,17 +647,22 @@ export class ADBClient {
         logger.info(`[ADB CLIENT] Waiting 4s for ESPN search results to render`)
         await new Promise((r) => setTimeout(r, 4000))
 
-        // v2.33.38 — DPAD_DOWN to leave keyboard / focus first
-        // result. Operator confirmed in v2.33.34 testing: "got the
-        // typing to work [then] need to go down to next on the
-        // keyboard." The dedicated keyboard "Next" button (bottom-
-        // right on Fire TV's IME) would also work via `input tap`
-        // but ESPN's continuous-animation screen blocks uiautomator
-        // dumps mid-flow ("could not get idle state"), so we can't
-        // reliably target it by bounds. DPAD_DOWN works equivalently
-        // — from the EditText with focused IME, one DOWN exits the
-        // keyboard and lands on the first result row.
-        logger.info(`[ADB CLIENT] DPAD_DOWN → leave keyboard / focus first result`)
+        // v2.33.39 — Dismiss IME with KEYCODE_BACK, then DPAD_DOWN
+        // to focus first result. Operator-confirmed at Holmgren Cube
+        // 3 (2026-05-11): "the keyboard seems to be overlaid over
+        // the main ESPN screen" — Fire TV renders the on-screen
+        // keyboard in a separate IME window above the activity, so
+        // DPAD_DOWN from the focused EditText navigates INTO the
+        // keyboard's top row instead of past it to the results
+        // (which are rendered below/behind the keyboard).
+        //
+        // KEYCODE_BACK dismisses the IME window (closes the
+        // keyboard) without exiting the search activity, exposing
+        // the result rows for DPAD navigation.
+        logger.info(`[ADB CLIENT] KEYCODE_BACK → dismiss keyboard IME`)
+        await this.sendKey(4, 8000) // KEYCODE_BACK
+        await new Promise((r) => setTimeout(r, 2000))
+        logger.info(`[ADB CLIENT] DPAD_DOWN → focus first result row`)
         await this.sendKey(20, 8000) // KEYCODE_DPAD_DOWN
         await new Promise((r) => setTimeout(r, 2500))
 
