@@ -608,31 +608,58 @@ export class ADBClient {
         logger.info(`[ADB CLIENT] DPAD_CENTER → launch Search`)
         await this.sendKey(23, 8000)
         await new Promise((r) => setTimeout(r, 4500))
-        const querySanitized = trimmedTitle
-          .replace(/[@]/g, ' ')
-          .replace(/\s+/g, ' ')
-          .trim()
-        const escaped = querySanitized
+        // v2.33.38 — Drop mascot words from typed query.
+        //   - Holy Cross Crusaders @ Army Black Knights → "Holy Cross Army"
+        // Operator caught 2026-05-11: ESPN's IME autocomplete added
+        // an extra "s" to "Knights" (typed "Knightss"). Shorter
+        // query → fewer chances for autocomplete weirdness → ESPN
+        // returns the same live result anyway (tile-matcher only
+        // needs token overlap, not the full string).
+        const queryShort = (() => {
+          // Split on @ / vs. / vs to get away vs home, then take the
+          // first 1-2 distinctive words of each.
+          const parts = trimmedTitle
+            .split(/\s+(?:@|vs\.?)\s+/i)
+            .map((s) => s.trim())
+            .filter(Boolean)
+          if (parts.length === 2) {
+            // Take first N tokens of each team where N drops the
+            // typical mascot suffix. Most college team names end
+            // with a mascot word: "Holy Cross Crusaders" → "Holy
+            // Cross"; "Army Black Knights" → "Army"; "Navy
+            // Midshipmen" → "Navy". Heuristic: keep all words
+            // EXCEPT the last one IF the team has >=2 words. For
+            // 2-word team names that's just the first word; for
+            // longer it keeps enough to disambiguate.
+            const stripMascot = (s: string) => {
+              const w = s.split(/\s+/).filter(Boolean)
+              return (w.length >= 2 ? w.slice(0, -1) : w).join(' ')
+            }
+            return `${stripMascot(parts[0])} ${stripMascot(parts[1])}`
+          }
+          return trimmedTitle.replace(/[@]/g, ' ').replace(/\s+/g, ' ').trim()
+        })()
+        const escaped = queryShort
           .replace(/'/g, "'\\''")
           .replace(/ /g, '%s')
-        logger.info(`[ADB CLIENT] input text "${querySanitized}" (escaped: ${escaped})`)
+        logger.info(`[ADB CLIENT] input text "${queryShort}" (escaped: ${escaped})`)
         await this.executeShellCommand(`input text '${escaped}'`, 8000)
         logger.info(`[ADB CLIENT] Waiting 4s for ESPN search results to render`)
         await new Promise((r) => setTimeout(r, 4000))
 
-        // v2.33.37 — Try ENTER first (submits search), then DPAD_DOWN
-        // as fallback. Operator: "we either have to hit enter after
-        // typing it out or go down to next then click on the matching
-        // game and hit watch." Different ESPN GTV builds handle the
-        // keyboard differently — ENTER often dismisses the IME and
-        // focuses results in one step; if not, DPAD_DOWN moves focus
-        // off the keyboard onto the first result row.
-        logger.info(`[ADB CLIENT] KEYCODE_ENTER → submit search`)
-        await this.sendKey(66, 8000) // KEYCODE_ENTER
-        await new Promise((r) => setTimeout(r, 2000))
-        logger.info(`[ADB CLIENT] DPAD_DOWN → fallback to leave keyboard / focus first result`)
+        // v2.33.38 — DPAD_DOWN to leave keyboard / focus first
+        // result. Operator confirmed in v2.33.34 testing: "got the
+        // typing to work [then] need to go down to next on the
+        // keyboard." The dedicated keyboard "Next" button (bottom-
+        // right on Fire TV's IME) would also work via `input tap`
+        // but ESPN's continuous-animation screen blocks uiautomator
+        // dumps mid-flow ("could not get idle state"), so we can't
+        // reliably target it by bounds. DPAD_DOWN works equivalently
+        // — from the EditText with focused IME, one DOWN exits the
+        // keyboard and lands on the first result row.
+        logger.info(`[ADB CLIENT] DPAD_DOWN → leave keyboard / focus first result`)
         await this.sendKey(20, 8000) // KEYCODE_DPAD_DOWN
-        await new Promise((r) => setTimeout(r, 2000))
+        await new Promise((r) => setTimeout(r, 2500))
 
         const tapTarget = await this._findVisibleTileMatchingTitle(trimmedTitle)
         if (tapTarget) {
