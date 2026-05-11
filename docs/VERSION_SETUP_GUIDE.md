@@ -187,6 +187,121 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### Operational note: 2026-05-09 — ESPN GTV install on Stoneyard Appleton cubes
+**Operator action required (one-time per cube)**
+
+Investigated why Stoneyard Appleton was producing zero `scout-snapshot`
+catalog rows while Stoneyard Greenville was producing 22. Root cause:
+**ESPN GTV (`com.espn.gtv`) was not installed on any of Appleton's 3
+cubes.** Greenville had ESPN on all 3 cubes; Holmgren and Lucky's also
+have it.
+
+**Fixed (2026-05-09):** ESPN APK pulled from a Greenville cube and
+installed on Appleton's 3 cubes (`10.40.10.92`, `10.40.10.93`,
+`10.40.10.94`). All show `pm path com.espn.gtv` returning a real path
+post-install. Confirmed via `adb shell pm path com.espn.gtv`.
+
+**Remaining operator step:** Each Appleton cube needs a one-time
+manual sign-in OR "continue as guest" via the TV remote. A
+freshly-installed ESPN opens to a welcome / paywall screen — Scout's
+`verifyEspnContent` looks for `vs.` patterns and `LIVE` badges that
+only appear AFTER the user reaches the live-sports landing. Without
+sign-in, snapshots return `status=nav_failed`.
+
+After operator signs each cube into ESPN once, Scout snapshots should
+produce 7-11 ESPN tiles per cycle (matching Greenville). Verify with:
+```bash
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "SELECT source, app, COUNT(*) tiles FROM firetv_streaming_catalog \
+   WHERE capturedAt > strftime('%s','now')-300 \
+     AND source='scout-snapshot' GROUP BY source, app"
+```
+
+**Generalization:** before declaring a location's Scout-snapshot
+coverage broken, run `adb -s <cube_ip>:5555 shell pm path com.espn.gtv`
+on its cubes. If empty, the SCout APK + AS configuration is fine —
+ESPN simply isn't installed, and the fix is a one-time `adb install`
+of the ESPN APK followed by an operator sign-in. No code changes
+required.
+
+---
+
+### v2.33.13 — Code-review fixes: re-entrancy guard, regex tightening, expiresAt filter, AEW
+**Released:** 2026-05-09
+
+**No required setup.** Five issues from a `feature-dev:code-reviewer`
+audit of the v2.33.7-12 release train:
+
+1. **`SnapshotCommandReceiver` re-entrancy guard** (HIGH). A second
+   SNAPSHOT_NOW broadcast while the first cycle is still running used
+   to spawn a second `runOneSnapshotCycle()` thread on the same device,
+   racing for the foreground window + duplicate POSTs. Added
+   `AtomicBoolean cycleRunning` in CatalogSnapshotService — second
+   broadcast logs warning and returns.
+
+2. **`isAccessibilityChrome` regex false-positive** (HIGH, NBA-playoff-
+   relevant). Bare `\b\d+\s+of\s+\d+\b` was rejecting legitimate sports
+   tiles like "Game 3 of 7" (NBA/NHL playoffs), "Round 2 of 4" (boxing/
+   MMA), "Stage 3 of 21" (cycling). Now ANDed with EITHER (a) TalkBack
+   widget-role suffix, OR (b) known launcher-menu prefix. 18/18 unit
+   tests pass.
+
+3. **`scoutCoversThisApp` didn't filter by `expiresAt`** (HIGH). Stale-
+   but-unexpired-from-DB rows could falsely trigger walker skip in a
+   narrow post-TTL/pre-cleanup window. Added `gt(expiresAt, nowSec)`.
+
+4. **Walker `hasSportSignal` regex** missed AEW / TNA Impact / ROH /
+   bare Wrestling — inconsistent with Kotlin extractor. Added all four.
+
+5. **`tree-dump` endpoint** had no rate limit + no payload size cap.
+   Added `withRateLimit(DEFAULT)` + `nodeCount > 8000 → 413` reject.
+
+**Verification (regex fix):**
+```python
+# Game 3 of 7 → accept; Search, 2 of 5 → reject
+python3 -c "import re; ..."
+```
+See commit f911b93d for the full unit test list.
+
+**Applies to:** all locations after auto-update.
+
+---
+
+### v2.33.12 — Stoneyard PVFTV-104/107/115 fixes + WNBA tag
+**Released:** 2026-05-09
+
+**No required setup.** Fixes for older-firmware Stoneyard cubes.
+
+1. **`FirebatVersionDetector`**: PVFTV<200 firebat returns NavPath.NONE.
+   Stoneyard Appleton (PVFTV-104.0379 / PVFTV-115.6073) and Greenville
+   (PVFTV-107.0175) cubes don't have a Prime Video Sports tab; the
+   PRIME_APP_HOSTED path always returned nav_failed. Skipping early
+   saves ~10s/snapshot/cube + cleans diagnostic logs.
+
+2. **`CatalogSnapshotService`**: when navPath==NONE, return
+   status="unsupported_firmware" before extraction. Prevents writing
+   garbage rows from whatever window happens to be foreground.
+
+3. **`CatalogExtractor.inferSportTag`**: WNBA must check BEFORE NBA
+   because "nba" is a substring of "wnba". Switched from `mapOf` to
+   `linkedMapOf` to preserve insertion order. Greenville Cube
+   2026-05-09 caught WNBA games being mistagged NBA.
+
+**Verification:**
+```bash
+adb -s 10.40.10.92:5555 shell "input keyevent 3"; sleep 4
+adb -s 10.40.10.92:5555 shell "am broadcast -a com.sportsbar.scout.SNAPSHOT_NOW -n com.sportsbar.scout/.SnapshotCommandReceiver"
+sleep 60
+# Should see Sports Tab status=unsupported_firmware and ESPN status=ok with WNBA-tagged tiles
+adb -s 10.40.10.92:5555 logcat -d -s CatalogSnapshot:* CatalogExtractor:* | tail -15
+```
+
+**No firmware upgrade needed.** Stoneyard cubes are healthy — the
+bugs were code-side assumptions about firmware features that don't
+exist on those builds.
+
+---
+
 ### v2.33.11 — Walker no longer leaks entertainment TV (This Old House / Project Runway)
 **Released:** 2026-05-09
 
