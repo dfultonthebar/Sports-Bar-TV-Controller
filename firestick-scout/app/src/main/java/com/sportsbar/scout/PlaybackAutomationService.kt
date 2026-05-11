@@ -63,6 +63,18 @@ class PlaybackAutomationService : AccessibilityService() {
     // and clicks "Watch Live" / "Resume" / "Continue Watching".
     @Volatile private var watchLivePromptUntilMs = 0L
 
+    // v2.2.9 — Scrolling state for tile-visibility. When the target tile
+    // isn't visible on the current screen, we swipe horizontally (right-
+    // to-left, surfacing tiles further down a rail) and retry. Track how
+    // many swipes we've already attempted for the current session so we
+    // bound the search and don't loop forever.
+    @Volatile private var scrollAttempts = 0
+    private val MAX_SCROLL_ATTEMPTS = 4
+    // Only swipe every Nth event tick — gives the rail time to settle
+    // between swipes so the AS tree refreshes with the new tiles.
+    @Volatile private var ticksSinceLastScroll = 0
+    private val TICKS_BETWEEN_SCROLLS = 5
+
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
 
@@ -116,9 +128,13 @@ class PlaybackAutomationService : AccessibilityService() {
         if (attemptsRemaining <= 0) {
             // Initialize attempt counter on first event after queue.
             attemptsRemaining = pendingMaxAttempts().coerceIn(1, 200)
+            // v2.2.9 — Reset scroll state for the new session
+            scrollAttempts = 0
+            ticksSinceLastScroll = 0
         }
 
         attemptsRemaining--
+        ticksSinceLastScroll++
         try {
             tryClickMatchingTile()
         } catch (t: Throwable) {
@@ -198,11 +214,24 @@ class PlaybackAutomationService : AccessibilityService() {
         // rendered yet, and clicking a wrong tile is worse than waiting.
         val minMatchScore = maxOf(3, (tokens.size + 1) / 2)
         if (best!!.score < minMatchScore) {
-            // Below confidence threshold — don't commit. Will retry on next event.
-            Log.d(
-                "PlaybackAutomation",
-                "Skipping low-confidence match: '${best!!.text.take(60)}' (score=${best!!.score}/${tokens.size}, need >= $minMatchScore)",
-            )
+            // v2.2.9 — Confidence below threshold. Maybe the right tile is
+            // off-screen in a horizontal rail. Try swiping right-to-left
+            // every TICKS_BETWEEN_SCROLLS attempts to expose more tiles.
+            if (scrollAttempts < MAX_SCROLL_ATTEMPTS &&
+                ticksSinceLastScroll >= TICKS_BETWEEN_SCROLLS) {
+                scrollAttempts++
+                ticksSinceLastScroll = 0
+                Log.i(
+                    "PlaybackAutomation",
+                    "Low-confidence match (${best!!.score}/${tokens.size}). Swiping right-to-left to expose more tiles (attempt $scrollAttempts/$MAX_SCROLL_ATTEMPTS)",
+                )
+                dispatchHorizontalSwipe()
+            } else {
+                Log.d(
+                    "PlaybackAutomation",
+                    "Skipping low-confidence match: '${best!!.text.take(60)}' (score=${best!!.score}/${tokens.size}, need >= $minMatchScore)",
+                )
+            }
             return
         }
 
@@ -253,6 +282,74 @@ class PlaybackAutomationService : AccessibilityService() {
             watchLivePromptUntilMs = System.currentTimeMillis() + 30_000L
             Log.i("PlaybackAutomation", "Watch-Live prompt handler armed for 30s post-click")
         }
+    }
+
+    /**
+     * v2.2.9 — Swipe horizontally right-to-left across the active
+     * rail to expose tiles that are off-screen. Used when the
+     * tile-match's best score is below the confidence threshold —
+     * the right tile may be further down the rail.
+     *
+     * Swipe path: from (right edge - 200) to (left edge + 200) at
+     * mid-screen height. Duration 300ms — fast enough to be a "fling"
+     * gesture that scrolls one rail-page, slow enough that Compose
+     * recognizes it as a horizontal scroll vs a flick-click.
+     */
+    private fun dispatchHorizontalSwipe() {
+        val rootBounds = android.graphics.Rect()
+        rootInActiveWindow?.getBoundsInScreen(rootBounds) ?: return
+        if (rootBounds.width() <= 400 || rootBounds.height() <= 200) return
+
+        // Find the FOCUSED row to swipe inside its bounds. Otherwise
+        // swipe at mid-screen which is usually a content rail on
+        // Fire TV apps.
+        val focused = findFocusedNode(rootInActiveWindow)
+        val focusedRow = focused?.let { walkToHorizontalRowAncestor(it) }
+        val rowRect = if (focusedRow != null) {
+            val r = android.graphics.Rect()
+            focusedRow.getBoundsInScreen(r); r
+        } else {
+            android.graphics.Rect(0, rootBounds.height() / 2 - 100, rootBounds.width(), rootBounds.height() / 2 + 100)
+        }
+        val cy = rowRect.exactCenterY()
+        val startX = (rootBounds.right - 200).toFloat().coerceAtLeast(0f)
+        val endX = (rootBounds.left + 200).toFloat()
+        try {
+            val path = android.graphics.Path().apply {
+                moveTo(startX, cy)
+                lineTo(endX, cy)
+            }
+            val stroke = android.accessibilityservice.GestureDescription.StrokeDescription(path, 0L, 300L)
+            val gesture = android.accessibilityservice.GestureDescription.Builder().addStroke(stroke).build()
+            dispatchGesture(gesture, null, null)
+        } catch (t: Throwable) {
+            Log.w("PlaybackAutomation", "dispatchHorizontalSwipe crashed: ${t.message}")
+        }
+    }
+
+    private fun findFocusedNode(root: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
+        if (root == null) return null
+        if (root.isFocused) return root
+        for (i in 0 until root.childCount) {
+            root.getChild(i)?.let { findFocusedNode(it)?.let { f -> return f } }
+        }
+        return null
+    }
+
+    /** Walk up parents to find a node likely to be a horizontal rail
+     *  (wide and short). Used to scope the swipe gesture so we scroll
+     *  within the row that has focus, not the whole screen. */
+    private fun walkToHorizontalRowAncestor(start: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        var cur: AccessibilityNodeInfo? = start
+        var hops = 0
+        while (cur != null && hops < 8) {
+            val r = android.graphics.Rect()
+            cur.getBoundsInScreen(r)
+            if (r.width() > 1000 && r.height() < 500) return cur
+            cur = cur.parent
+            hops++
+        }
+        return null
     }
 
     /**
