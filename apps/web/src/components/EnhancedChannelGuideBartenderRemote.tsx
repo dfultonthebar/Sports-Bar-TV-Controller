@@ -1576,7 +1576,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
               <span>{lastOperationTime.toLocaleTimeString()}</span>
             </div>
           )}
-          <button
+          <button type="button"
             onClick={() => setShowChannelGuide(!showChannelGuide)}
             className={`group relative px-3 py-1 backdrop-blur-xl rounded-full font-medium flex items-center space-x-1 transition-all duration-300 ${
               showChannelGuide
@@ -1588,7 +1588,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
             <span>Channel Guide</span>
           </button>
           {selectedDevice && (
-            <button
+            <button type="button"
               onClick={() => setShowRemotePopup(true)}
               className="group relative px-3 py-1 backdrop-blur-xl bg-gradient-to-br from-blue-500/20 to-indigo-500/20 rounded-full font-medium flex items-center space-x-1 transition-all duration-300 border border-blue-400/30 hover:border-blue-400/50 hover:scale-105 shadow-xl"
             >
@@ -1616,7 +1616,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
 
                 return (
                   <div key={input.id} className="relative">
-                    <button
+                    <button type="button"
                       onClick={() => handleInputSelection(input.channelNumber)}
                       className={`group relative w-full p-3 rounded-xl text-left transition-all duration-300 ${
                         selectedInput === input.channelNumber
@@ -1911,7 +1911,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
 
                           <div className="ml-4 flex flex-col space-y-2">
                             {/* Watch Button */}
-                            <button className="group/btn relative backdrop-blur-xl bg-gradient-to-br from-green-500/20 to-emerald-500/20 rounded-xl border-2 border-green-400/30 hover:border-green-400/50 hover:scale-110 transition-all duration-300 shadow-xl px-3 py-2">
+                            <button type="button" className="group/btn relative backdrop-blur-xl bg-gradient-to-br from-green-500/20 to-emerald-500/20 rounded-xl border-2 border-green-400/30 hover:border-green-400/50 hover:scale-110 transition-all duration-300 shadow-xl px-3 py-2">
                               <div className="absolute inset-0 bg-gradient-to-br from-green-500/10 to-emerald-500/10 opacity-0 group-hover/btn:opacity-100 transition-opacity duration-300 rounded-xl"></div>
                               <div className="relative z-10 flex items-center space-x-1 text-green-300 font-medium text-sm">
                                 <Play className="w-3 h-3" />
@@ -1933,7 +1933,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
                                 const currentTVOutputIds: number[] = alloc?.tvOutputIds || []
                                 return (
                                   <div className="flex items-center gap-2 flex-wrap">
-                                    <button
+                                    <button type="button"
                                       onClick={(e) => handleCancelSchedule(currentScheduleId, e)}
                                       className="group/btn relative backdrop-blur-xl bg-gradient-to-br from-red-500/20 to-rose-500/20 rounded-xl border-2 border-red-400/30 hover:border-red-400/50 hover:scale-110 transition-all duration-300 shadow-xl px-3 py-2"
                                     >
@@ -1958,7 +1958,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
                               } else {
                                 // Not scheduled - show Schedule button
                                 return (
-                                  <button
+                                  <button type="button"
                                     onClick={(e) => handleScheduleGame(game, e)}
                                     disabled={schedulingGame === game.id}
                                     className="group/btn relative backdrop-blur-xl bg-gradient-to-br from-blue-500/20 to-indigo-500/20 rounded-xl border-2 border-blue-400/30 hover:border-blue-400/50 hover:scale-110 transition-all duration-300 shadow-xl px-3 py-2 disabled:opacity-50"
@@ -1992,7 +1992,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
                   <h3 className="text-lg font-medium bg-gradient-to-r from-green-400 to-emerald-400 bg-clip-text text-transparent mb-3">Quick Access Sports Apps</h3>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                     {guideData.apps.filter(app => app.sportsContent).map((app) => (
-                      <button
+                      <button type="button"
                         key={app.packageName}
                         onClick={() => launchStreamingApp(app.packageName, app.displayName)}
                         className="group relative p-2 backdrop-blur-xl bg-gradient-to-br from-green-500/10 to-emerald-500/10 border border-green-400/20 hover:border-green-400/40 rounded-xl transition-all duration-300 text-center hover:scale-105 shadow-xl"
@@ -2027,7 +2027,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
 
             {/* Device Type Tabs */}
             <div className="flex gap-2 mb-4">
-              <button
+              <button type="button"
                 onClick={() => {
                   setSchedulePickerDeviceType('cable')
                   // Auto-select first cable box
@@ -2043,7 +2043,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
                 <Cable className="w-4 h-4 inline mr-2" />
                 Cable Box
               </button>
-              <button
+              <button type="button"
                 onClick={() => {
                   setSchedulePickerDeviceType('directv')
                   // Auto-select first DirecTV device
@@ -2058,7 +2058,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
                 <Satellite className="w-4 h-4 inline mr-2" />
                 DirecTV
               </button>
-              <button
+              <button type="button"
                 onClick={() => {
                   setSchedulePickerDeviceType('firetv')
                   setSchedulePickerDeviceId(fireTVDevices.length > 0 ? fireTVDevices[0].id : '')
@@ -2085,7 +2085,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
                     <p className="text-sm text-slate-500 py-3 text-center">No cable boxes configured</p>
                   ) : (
                     irDevices.filter(d => d.deviceType === 'Cable Box' || d.deviceType === 'CableBox').map(device => (
-                      <button
+                      <button type="button"
                         key={device.id}
                         onClick={() => setSchedulePickerDeviceId(device.id)}
                         className={`w-full text-left p-3 rounded-xl transition-all duration-200 ${
@@ -2106,7 +2106,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
                     <p className="text-sm text-slate-500 py-3 text-center">No DirecTV receivers configured</p>
                   ) : (
                     direcTVDevices.map(device => (
-                      <button
+                      <button type="button"
                         key={device.id}
                         onClick={() => setSchedulePickerDeviceId(device.id)}
                         className={`w-full text-left p-3 rounded-xl transition-all duration-200 ${
@@ -2136,7 +2136,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
                     <p className="text-sm text-slate-500 py-3 text-center">No Fire TV devices configured</p>
                   ) : (
                     fireTVDevices.map(device => (
-                      <button
+                      <button type="button"
                         key={device.id}
                         onClick={() => setSchedulePickerDeviceId(device.id)}
                         className={`w-full text-left p-3 rounded-xl transition-all duration-200 ${
@@ -2165,13 +2165,13 @@ export default function EnhancedChannelGuideBartenderRemote() {
 
             {/* Actions */}
             <div className="flex gap-3">
-              <button
+              <button type="button"
                 onClick={() => setSchedulePickerGame(null)}
                 className="flex-1 py-3 px-4 rounded-xl font-medium text-sm bg-white/5 border border-white/10 text-slate-400 hover:bg-white/10 transition-all duration-200"
               >
                 Cancel
               </button>
-              <button
+              <button type="button"
                 onClick={confirmScheduleGame}
                 disabled={!schedulePickerDeviceId}
                 className="flex-1 py-3 px-4 rounded-xl font-medium text-sm bg-blue-500/30 border-2 border-blue-400/50 text-blue-300 hover:bg-blue-500/40 transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
