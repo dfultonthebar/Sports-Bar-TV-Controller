@@ -647,31 +647,17 @@ export class ADBClient {
         logger.info(`[ADB CLIENT] Waiting 4s for ESPN search results to render`)
         await new Promise((r) => setTimeout(r, 4000))
 
-        // v2.33.40 — Tap the keyboard's bottom-right "Next" button
-        // directly at known Fire TV IME coordinates. Operator at
-        // Holmgren Cube 3 reported v2.33.39's KEYCODE_BACK was
-        // exiting the search activity entirely (back-press on Fire
-        // TV's leanback IME closes the search screen, not the
-        // keyboard overlay). Earlier hint: "the next key on the
-        // keyboard is the bottom right button."
-        //
-        // Fire TV's standard leanback IME positions the submit/Next
-        // key at the bottom-right corner: approximately (1820, 985)
-        // on 1920x1080 displays. `input tap` at those coordinates
-        // submits the search and dismisses the keyboard in one step,
-        // exposing the result rows. Each subsequent DPAD_DOWN /
-        // CENTER then navigates results normally.
-        //
-        // If the tap lands on a different key (keyboard layout
-        // varies across Fire TV OS builds), the tile-match step
-        // below will still detect no matching tile and abort —
-        // safer than the BACK keystroke which exits search.
-        const NEXT_KEY_X = 1820
-        const NEXT_KEY_Y = 985
-        logger.info(`[ADB CLIENT] input tap (${NEXT_KEY_X}, ${NEXT_KEY_Y}) → keyboard bottom-right Next`)
-        await this.executeShellCommand(`input tap ${NEXT_KEY_X} ${NEXT_KEY_Y}`, 8000)
+        // v2.33.41 — KEYCODE_MEDIA_FAST_FORWARD (90) submits the
+        // search. Operator-confirmed at Holmgren Cube 3, 2026-05-11:
+        // "the FF button is also the next button." The Fast Forward
+        // key on the Fire TV remote serves as the Next/Submit action
+        // when ESPN's on-screen keyboard is active — much cleaner
+        // than blind coordinate-tap (works across Fire TV models /
+        // resolutions, doesn't depend on IME layout).
+        logger.info(`[ADB CLIENT] KEYCODE_MEDIA_FAST_FORWARD (90) → submit search / Next`)
+        await this.sendKey(90, 8000)
         await new Promise((r) => setTimeout(r, 2500))
-        logger.info(`[ADB CLIENT] DPAD_DOWN → focus first result row (if keyboard dismissed)`)
+        logger.info(`[ADB CLIENT] DPAD_DOWN → focus first result row`)
         await this.sendKey(20, 8000) // KEYCODE_DPAD_DOWN
         await new Promise((r) => setTimeout(r, 2000))
 
