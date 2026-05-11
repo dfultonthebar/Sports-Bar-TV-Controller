@@ -184,6 +184,23 @@ class PlaybackAutomationService : AccessibilityService() {
             return
         }
 
+        // v2.2.7 — Reject low-confidence matches. Operator caught this
+        // 2026-05-11: Scout was clicking "Films & Shows" navigation tile
+        // (score 2/9) for a Pat McAfee Show query, then ESPN navigated
+        // to the wrong section showing "Where It Lies" docs. Require at
+        // least 50% of tokens matched OR absolute >= 3 matches, whichever
+        // is higher. Below that, retry — the right tile may not have
+        // rendered yet, and clicking a wrong tile is worse than waiting.
+        val minMatchScore = maxOf(3, (tokens.size + 1) / 2)
+        if (best!!.score < minMatchScore) {
+            // Below confidence threshold — don't commit. Will retry on next event.
+            Log.d(
+                "PlaybackAutomation",
+                "Skipping low-confidence match: '${best!!.text.take(60)}' (score=${best!!.score}/${tokens.size}, need >= $minMatchScore)",
+            )
+            return
+        }
+
         val matchedText = best!!.text.take(160)
         val clickable = findClickableAncestor(best!!.node)
         if (clickable == null) {
