@@ -570,47 +570,44 @@ export class ADBClient {
 
       const trimmedTitle = (contentTitle || '').trim()
       if (trimmedTitle) {
-        // v2.33.36 — Walk to the top of the rail with N idempotent
-        // DPAD_UPs instead of trusting a single UP. Operator at
-        // Holmgren Cube 3 reported v2.33.34 was still missing Search
-        // ("going too fast not selecting the search window"). Log
-        // confirmed DPAD_CENTER landed on EntityPageActivity, not
-        // Search — meaning DPAD_UP didn't reach the Search rail
-        // item before CENTER fired.
+        // v2.33.37 — Operator-confirmed sequence at Holmgren Cube 3,
+        // 2026-05-11: "wait for it to load then 1 left arrow to get
+        // the menu to open then one arrow up for search then center
+        // to launch search ... then type in what game then we either
+        // have to hit enter after typing it out or go down to next
+        // then click on the matching game and hit watch."
         //
-        // Rail order top-to-bottom: Search, Home, Films & Shows,
-        // Browse, Highlights, Settings (6 items). DPAD_LEFT lands
-        // on Home by default; pressing DPAD_UP 5 times is enough to
-        // reach Search from any rail position. At Search (the top
-        // of the rail), additional DPAD_UPs are no-ops. Each UP gets
-        // 1000ms to take effect before the next is sent.
-        //
-        // Then verify focus IS on Search by dumping the UI and
-        // looking for content-desc="Search" in the left rail
-        // (x<350). Only press CENTER if the verify passes — falling
-        // through to typing on a non-search page just types into
-        // nothing.
-        logger.info(`[ADB CLIENT] DPAD_LEFT → expand rail / focus Home`)
-        await this.sendKey(21, 8000)
-        await new Promise((r) => setTimeout(r, 2000))
-        const RAIL_UP_COUNT = 5
-        for (let i = 0; i < RAIL_UP_COUNT; i++) {
-          logger.info(`[ADB CLIENT] DPAD_UP ${i + 1}/${RAIL_UP_COUNT} → walk up to Search`)
-          await this.sendKey(19, 8000)
-          await new Promise((r) => setTimeout(r, 1000))
-        }
-        // Verify we ended up on Search before pressing CENTER.
-        const onSearch = await this._verifyFocusedOnRailItem('Search')
-        if (!onSearch) {
-          logger.warn(
-            `[ADB CLIENT] Search rail item not focused after ${RAIL_UP_COUNT} UPs — pressing CENTER anyway as best-effort`,
-          )
-        } else {
-          logger.info(`[ADB CLIENT] Search rail item confirmed focused`)
-        }
-        logger.info(`[ADB CLIENT] DPAD_CENTER → open Search activity`)
-        await this.sendKey(23, 8000)
+        // Reverted v2.33.36's 5x DPAD_UP walk (5 UPs were over-shooting
+        // through the rail wrap-around or otherwise confusing focus).
+        // The real fix is timing: each animation needs ~3s to settle.
+        // Sequence:
+        //   1. extra 4s settle after home activity (rail render-ready)
+        //   2. DPAD_LEFT — menu opens, focus on Home
+        //   3. wait 3000ms — menu open animation + focus settle
+        //   4. DPAD_UP — focus moves up to Search (one above Home)
+        //   5. wait 3000ms — focus animation
+        //   6. DPAD_CENTER — opens Search activity
+        //   7. wait 4500ms — activity transition + EditText focus
+        // After typing: KEYCODE_ENTER (66) to submit + DPAD_DOWN
+        // fallback if Enter doesn't dismiss keyboard.
+        logger.info(`[ADB CLIENT] Extra 4s settle after home activity`)
         await new Promise((r) => setTimeout(r, 4000))
+        logger.info(`[ADB CLIENT] DPAD_LEFT → open menu, focus Home`)
+        await this.sendKey(21, 8000)
+        await new Promise((r) => setTimeout(r, 3000))
+        logger.info(`[ADB CLIENT] DPAD_UP → focus Search (one above Home)`)
+        await this.sendKey(19, 8000)
+        await new Promise((r) => setTimeout(r, 3000))
+        // Verify we landed on Search before pressing CENTER.
+        const onSearch = await this._verifyFocusedOnRailItem('Search')
+        if (onSearch) {
+          logger.info(`[ADB CLIENT] Search rail item confirmed focused`)
+        } else {
+          logger.warn(`[ADB CLIENT] Search rail not confirmed focused — pressing CENTER anyway`)
+        }
+        logger.info(`[ADB CLIENT] DPAD_CENTER → launch Search`)
+        await this.sendKey(23, 8000)
+        await new Promise((r) => setTimeout(r, 4500))
         const querySanitized = trimmedTitle
           .replace(/[@]/g, ' ')
           .replace(/\s+/g, ' ')
@@ -623,27 +620,19 @@ export class ADBClient {
         logger.info(`[ADB CLIENT] Waiting 4s for ESPN search results to render`)
         await new Promise((r) => setTimeout(r, 4000))
 
-        // v2.33.35 — DPAD_DOWN to leave keyboard then DPAD_CENTER on
-        // the focused first result. Operator-confirmed sequence at
-        // Holmgren Cube 3, 2026-05-11: "need to go down to next on
-        // the keyboard, then click on the video then watch."
-        //
-        // After typing, ESPN's search Activity keeps keyboard
-        // focused; results render below/beside but aren't directly
-        // tappable via `input tap` (the keyboard overlay or input-
-        // focus state blocks the synthetic touch from reaching the
-        // result tile). The reliable path is DPAD navigation:
-        //   1. DPAD_DOWN — focus moves off keyboard onto the first
-        //      result row.
-        //   2. DPAD_CENTER — opens the focused result's detail page.
-        //
-        // Pre-flight check via the tile matcher (now scanning the
-        // dump for any result-row tile matching the title) decides
-        // whether to proceed. If no matching tile is visible after
-        // DPAD_DOWN, abort rather than firing CENTER blindly.
-        logger.info(`[ADB CLIENT] DPAD_DOWN → leave keyboard, focus first result`)
+        // v2.33.37 — Try ENTER first (submits search), then DPAD_DOWN
+        // as fallback. Operator: "we either have to hit enter after
+        // typing it out or go down to next then click on the matching
+        // game and hit watch." Different ESPN GTV builds handle the
+        // keyboard differently — ENTER often dismisses the IME and
+        // focuses results in one step; if not, DPAD_DOWN moves focus
+        // off the keyboard onto the first result row.
+        logger.info(`[ADB CLIENT] KEYCODE_ENTER → submit search`)
+        await this.sendKey(66, 8000) // KEYCODE_ENTER
+        await new Promise((r) => setTimeout(r, 2000))
+        logger.info(`[ADB CLIENT] DPAD_DOWN → fallback to leave keyboard / focus first result`)
         await this.sendKey(20, 8000) // KEYCODE_DPAD_DOWN
-        await new Promise((r) => setTimeout(r, 1500))
+        await new Promise((r) => setTimeout(r, 2000))
 
         const tapTarget = await this._findVisibleTileMatchingTitle(trimmedTitle)
         if (tapTarget) {
