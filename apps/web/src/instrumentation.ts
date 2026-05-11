@@ -174,9 +174,13 @@ export async function register() {
         // tiles with start times. Returns empty when off-season — the
         // sync loop tolerates 0-event responses.
         { sport: 'lacrosse', league: 'pll' },
-        { sport: 'rugby', league: 'super-rugby' },
-        { sport: 'rugby', league: 'nrl' },
-        { sport: 'rugby', league: 'six-nations' },
+        // v2.33.25 — Rugby leagues commented out 2026-05-11. ESPN
+        // retired these scoreboard endpoints (returns 400 every sync
+        // cycle, polluting error logs). Re-enable when ESPN restores
+        // them or replace with the new endpoint paths.
+        //   { sport: 'rugby', league: 'super-rugby' },
+        //   { sport: 'rugby', league: 'nrl' },
+        //   { sport: 'rugby', league: 'six-nations' },
       ]
 
       const runEspnSyncAll = async () => {
