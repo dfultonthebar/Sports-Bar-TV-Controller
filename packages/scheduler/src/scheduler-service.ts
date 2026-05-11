@@ -192,16 +192,21 @@ class SchedulerService {
   /**
    * Decide whether to run a catalog walk and execute if so.
    *
-   * v2.33.0 — Walks 3x daily (04:00, 12:00, 17:00 local) instead of
-   * 1x daily. Bartender guide is now Scout-catalog-only for streaming
-   * games (no game_schedules / Rail-Media-streaming fallback), so
-   * stale catalog data = missing games on the bartender remote.
-   * Three windows balance freshness with Cube wear:
-   *   - 04:00 — overnight refresh while bar is closed (existing)
-   *   - 12:00 — catches afternoon games that weren't on tiles at 04:00
-   *   - 17:00 — pre-primetime refresh for evening sports
-   * Cooldown reduced from 6h to 3h to allow consecutive 04→12 and
-   * 12→17 windows (5h gap each).
+   * v2.33.23 — OPERATOR-VISIBLE BEHAVIOR change. Operator reported
+   * 2026-05-11: walker force-stops apps to run uiautomator dumps,
+   * which kicks customers out of whatever they're watching mid-show.
+   * Previous schedule (04:00 / 12:00 / 17:00) hit the noon and 5pm
+   * lunch/dinner windows when bar was busy. Now: NIGHT-ONLY by default
+   * — walker only runs between 02:00 and 06:00 local time (2-6 AM
+   * Central). Bar is closed; no customer disruption.
+   *
+   * Two windows kept inside the night block:
+   *   - 02:30 — early post-close refresh (catches west-coast late games)
+   *   - 05:30 — pre-open refresh with current-day game schedule
+   *
+   * Long-gap catch-up retained at 24h (was 9h) — won't aggressively
+   * re-fire after a daytime PM2 restart; will wait for the next
+   * overnight window.
    */
   private async maybeRunCatalogWalk() {
     const now = new Date();
@@ -213,21 +218,29 @@ class SchedulerService {
       now.toLocaleString('en-US', { timeZone: VENUE_TIMEZONE, minute: 'numeric' }),
       10
     );
-    const walkHours = [4, 12, 17];
-    const inWindow = walkHours.includes(localHour) && localMinute < 5;
+    // v2.33.23 — Walks are night-only. Two windows: 02:30 + 05:30
+    // Central. The actual trigger fires when within ±5 minutes of
+    // each window's start, gated by the cooldown.
+    const isQuietHours = localHour >= 2 && localHour < 6
+    const inEarlyWindow = localHour === 2 && localMinute >= 30 && localMinute < 35
+    const inLateWindow = localHour === 5 && localMinute >= 30 && localMinute < 35
+    const inWindow = inEarlyWindow || inLateWindow
     const last = this.lastCatalogWalk;
-    // Long-gap catch-up: if we missed all three windows for >9h (e.g. PM2
-    // restart spans 04:00 + 12:00 windows), trigger on next poll regardless.
-    const longGap = !last || (now.getTime() - last.getTime() > 9 * 60 * 60 * 1000);
+    // Long-gap catch-up bumped to 24h — only trigger an off-schedule
+    // walk after a full day of nothing (e.g. host was down through
+    // both windows). Even then, ONLY during quiet hours so we don't
+    // interrupt customers.
+    const longGap = !last || (now.getTime() - last.getTime() > 24 * 60 * 60 * 1000);
 
-    // Cooldown: don't re-run within 3h regardless of window. 04→12 = 8h,
-    // 12→17 = 5h, 17→04 = 11h — all clear of the 3h floor.
-    const recent = last && (now.getTime() - last.getTime() < 3 * 60 * 60 * 1000);
+    // Cooldown 2h — covers the 3h gap between early/late windows.
+    const recent = last && (now.getTime() - last.getTime() < 2 * 60 * 60 * 1000);
     if (recent) return;
 
+    // STRICT quiet-hours gate: no daytime walks ever (even long-gap).
+    if (!isQuietHours) return;
     if (!inWindow && !longGap) return;
 
-    logger.info(`[FIRETV-CATALOG] Triggering walk (window=${inWindow}, longGap=${longGap}, hour=${localHour})`);
+    logger.info(`[FIRETV-CATALOG] Triggering walk (window=${inWindow}, longGap=${longGap}, hour=${localHour}:${String(localMinute).padStart(2,'0')})`);
     this.lastCatalogWalk = now;
     try {
       await runFiretvCatalogWalk();
