@@ -212,14 +212,32 @@ class PlaybackAutomationService : AccessibilityService() {
             return
         }
 
-        // v2.2.7 — Reject low-confidence matches. Operator caught this
-        // 2026-05-11: Scout was clicking "Films & Shows" navigation tile
-        // (score 2/9) for a Pat McAfee Show query, then ESPN navigated
-        // to the wrong section showing "Where It Lies" docs. Require at
-        // least 50% of tokens matched OR absolute >= 3 matches, whichever
-        // is higher. Below that, retry — the right tile may not have
-        // rendered yet, and clicking a wrong tile is worse than waiting.
-        val minMatchScore = maxOf(3, (tokens.size + 1) / 2)
+        // v2.2.11 — Reject low-confidence matches, but accept enough
+        // for short-token queries. Two operator-observed cases drive
+        // the threshold tuning:
+        //
+        // (a) Pat McAfee 4-token query "pat mcafee show espn/espn+"
+        //     wrongly matched "Films & Shows" (2/9 originally). The
+        //     v2.2.7 fix required max(3, ceil(tokens/2)) = 3 matches.
+        //     "Films & Shows" matches only 1 — correctly rejected.
+        //
+        // (b) Navy/Bucknell 4-token query "navy midshipmen bucknell
+        //     bison" matched real tile "Navy 1 Bucknell 0 Bot 3rd"
+        //     at score 2/4 (ESPN's tile uses short team names, not
+        //     mascot suffixes). v2.2.7's threshold rejected this real
+        //     match. v2.2.11 lowers to max(2, ceil(tokens/2)) so 2/4
+        //     accepts. False-positive risk: a tile that happens to
+        //     match 2 of 4 tokens by coincidence — but for sports
+        //     queries the 2 matched tokens are typically team-name
+        //     words (high specificity), and 2/4 = 50% is still
+        //     half-the-query confidence.
+        //
+        // - 2-token query: need 2 (100%)  — strict for short queries
+        // - 3-token query: need 2 (66%)
+        // - 4-token query: need 2 (50%)   — Navy/Bucknell case
+        // - 6-token query: need 3 (50%)
+        // - 9-token query: need 5 (56%)
+        val minMatchScore = maxOf(2, (tokens.size + 1) / 2)
         if (best!!.score < minMatchScore) {
             // v2.2.9 — Confidence below threshold. Maybe the right tile is
             // off-screen in a horizontal rail. Try swiping right-to-left
