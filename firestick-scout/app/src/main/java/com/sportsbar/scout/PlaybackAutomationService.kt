@@ -88,18 +88,25 @@ class PlaybackAutomationService : AccessibilityService() {
             lastWindowPackage = event.packageName?.toString().orEmpty()
         }
 
-        // v2.2.6 + v2.2.8 — Watch-Live prompt handler. Fires on ANY
-        // accessibility event during the armed window (state changed,
-        // content changed, view focused, view selected). Originally
-        // limited to window-state and content-changed but those don't
-        // always fire when ESPN's prompt sheet renders — view-focused
-        // is more reliable for dialog detection.
-        if (System.currentTimeMillis() < watchLivePromptUntilMs) {
-            val t = event.eventType
-            if (t == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
-                t == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
-                t == AccessibilityEvent.TYPE_VIEW_FOCUSED ||
-                t == AccessibilityEvent.TYPE_VIEW_SELECTED) {
+        // v2.2.6 + v2.2.8 + v2.2.10 — Watch-Live prompt handler. Two
+        // arm paths now:
+        //   (a) Recent tile-click (12-30s window via watchLivePromptUntilMs)
+        //   (b) Passive detect: when both a "Watch live"-like label AND
+        //       a sibling co-label (Watchlist/Start Over/From Beginning/
+        //       Resume) are visible, it's an in-progress-live prompt
+        //       regardless of how the app got launched.
+        // Path (b) catches Prime Video launches that go through the
+        // server's launchStreamingAppByCatalog flow instead of Scout's
+        // PLAY_GAME mailbox (operator-reported 2026-05-11 ATP/WTA case).
+        val t = event.eventType
+        val isRelevantEvent = t == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+            t == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
+            t == AccessibilityEvent.TYPE_VIEW_FOCUSED ||
+            t == AccessibilityEvent.TYPE_VIEW_SELECTED
+        if (isRelevantEvent) {
+            val withinArmedWindow = System.currentTimeMillis() < watchLivePromptUntilMs
+            val passivePromptDetected = !withinArmedWindow && isLiveVsResumePromptVisible()
+            if (withinArmedWindow || passivePromptDetected) {
                 try { tryClickWatchLiveButton() } catch (e: Throwable) {
                     Log.w("PlaybackAutomation", "tryClickWatchLiveButton crashed: ${e.message}")
                 }
@@ -282,6 +289,57 @@ class PlaybackAutomationService : AccessibilityService() {
             watchLivePromptUntilMs = System.currentTimeMillis() + 30_000L
             Log.i("PlaybackAutomation", "Watch-Live prompt handler armed for 30s post-click")
         }
+    }
+
+    /**
+     * v2.2.10 — Passive detection of in-progress-live prompt pages.
+     * Returns true when the visible AS tree contains BOTH a "Watch
+     * Live" label AND at least one sibling co-label (Watchlist /
+     * Start Over / Watch from the Beginning / From Beginning /
+     * Restart / Resume / Continue Watching). That co-occurrence is
+     * a strong signal we're on a live-event detail / resume sheet
+     * — common to ESPN, Prime Video, Peacock, MLB.TV.
+     *
+     * Avoids false-positives where a screen has a bare "Watch live"
+     * banner ad or marketing copy: those screens lack the sibling
+     * "Watchlist" / "Start over" buttons.
+     */
+    private fun isLiveVsResumePromptVisible(): Boolean {
+        val root = rootInActiveWindow ?: return false
+        // Only run for our target packages — packageNames in the AS
+        // config restricts events to those, but rootInActiveWindow
+        // could be something else briefly during transitions.
+        val pkg = root.packageName?.toString().orEmpty()
+        if (pkg !in setOf("com.espn.gtv", "com.amazon.firebat", "com.amazon.tv.launcher", "com.playon.nfhslive")) {
+            return false
+        }
+        var sawWatchLive = false
+        var sawCoLabel = false
+        val coLabels = listOf("watchlist", "start over", "from the beginning",
+            "from beginning", "restart", "resume", "continue watching")
+        val queue = ArrayDeque<AccessibilityNodeInfo>()
+        queue.add(root)
+        var visited = 0
+        while (queue.isNotEmpty() && visited < 3000 && (!sawWatchLive || !sawCoLabel)) {
+            val n = queue.removeFirst()
+            visited++
+            val text = ((n.text?.toString() ?: "") + " " + (n.contentDescription?.toString() ?: ""))
+                .trim().lowercase()
+            if (text.isNotEmpty()) {
+                if (!sawWatchLive && (text.contains("watch live") ||
+                                       text.contains("join live") ||
+                                       text.contains("go live"))) {
+                    sawWatchLive = true
+                }
+                if (!sawCoLabel && coLabels.any { text.contains(it) }) {
+                    sawCoLabel = true
+                }
+            }
+            for (i in 0 until n.childCount) {
+                n.getChild(i)?.let { queue.add(it) }
+            }
+        }
+        return sawWatchLive && sawCoLabel
     }
 
     /**
