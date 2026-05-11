@@ -485,22 +485,77 @@ export async function POST(request: NextRequest) {
             broadcastNetworks = []
           }
 
-          // Resolve via the shared helper. This walks the networks array,
-          // does direct + alias lookup, and respects the WI RSN split.
-          const resolution = await resolveChannelsForNetworks(
-            broadcastNetworks,
-            game.primaryNetwork ?? null
-          )
-          const resolvedForDevice = presetDeviceType === 'directv' ? resolution.directv : resolution.cable
-          if (!resolvedForDevice) {
-            gsSkippedNoChannel++
-            continue
+          // v2.33.15 — For STREAMING devices (Fire TV cubes), the cable/
+          // directv preset resolver doesn't apply. Instead, walk the
+          // broadcast_networks and check if any maps to a streaming app
+          // the device has in `available_networks`. Without this branch,
+          // streaming devices got ZERO game_schedules fallback rows —
+          // Angels @ Guardians (today 17:10 today, broadcasts on
+          // "ESPN Unlmtd"/"MLB.TV"/team RSN feeds) was invisible in the
+          // Cube 2 bartender guide despite Cube 2 having ESPN installed.
+          // Operator reported 2026-05-11.
+          let resolvedPreset: { channelNumber: string; name: string } | null = null
+          let matchedStation = ''
+          let resolvedStreamingApp: string | null = null
+
+          if (presetDeviceType === 'streaming') {
+            // Normalize each broadcast_network → canonical streaming app
+            // name. Match against the device's available_networks.
+            const STREAMING_NETWORK_ALIASES: Record<string, string> = {
+              'espn': 'ESPN',
+              'espn2': 'ESPN', 'espnu': 'ESPN', 'espnnews': 'ESPN',
+              'espn unlmtd': 'ESPN', 'espn unlimited': 'ESPN', 'espn+': 'ESPN',
+              'sec network': 'ESPN', 'acc network': 'ESPN', 'big ten network': 'ESPN',
+              'mlb.tv': 'MLB.TV', 'mlb network': 'MLB.TV',
+              'nhl.tv': 'NHL.TV',
+              'nba.tv': 'NBA.TV',
+              'prime video': 'Amazon Prime Video', 'amazon prime video': 'Amazon Prime Video',
+              'apple tv+': 'Apple TV', 'apple tv': 'Apple TV',
+              'peacock': 'Peacock', 'hulu': 'Hulu',
+              'paramount+': 'Paramount+', 'max': 'Max', 'hbo max': 'Max',
+              'fubo': 'FuboTV', 'fubotv': 'FuboTV',
+              'youtube tv': 'YouTube TV', 'sling tv': 'Sling TV',
+              'nfhs network': 'NFHS Network',
+              // Team RSN-as-app feeds — fold to MLB.TV for the bartender
+              // (most operator cubes that have MLB.TV will have access).
+              'brewers.tv': 'MLB.TV', 'angels.tv': 'MLB.TV',
+              'cleguardians.tv': 'MLB.TV', 'guardians.tv': 'MLB.TV',
+              'dodgers.tv': 'MLB.TV', 'yankees.tv': 'MLB.TV',
+            }
+            for (const net of broadcastNetworks) {
+              const canonical = STREAMING_NETWORK_ALIASES[net.toLowerCase().trim()]
+              if (!canonical) continue
+              if (deviceInstalledApps.length > 0 &&
+                  !deviceInstalledApps.includes(canonical)) {
+                continue  // device doesn't have this app
+              }
+              // Otherwise (or no installed-apps list): accept
+              resolvedStreamingApp = canonical
+              matchedStation = net
+              resolvedPreset = { channelNumber: canonical, name: canonical }
+              break
+            }
+            if (!resolvedStreamingApp) {
+              gsSkippedNoChannel++
+              continue
+            }
+          } else {
+            // Cable / DirecTV: existing preset-resolver path.
+            const resolution = await resolveChannelsForNetworks(
+              broadcastNetworks,
+              game.primaryNetwork ?? null
+            )
+            const resolvedForDevice = presetDeviceType === 'directv' ? resolution.directv : resolution.cable
+            if (!resolvedForDevice) {
+              gsSkippedNoChannel++
+              continue
+            }
+            resolvedPreset = {
+              channelNumber: resolvedForDevice.channelNumber,
+              name: resolvedForDevice.presetName,
+            }
+            matchedStation = resolvedForDevice.matchedNetwork
           }
-          const resolvedPreset = {
-            channelNumber: resolvedForDevice.channelNumber,
-            name: resolvedForDevice.presetName,
-          }
-          const matchedStation = resolvedForDevice.matchedNetwork
 
           const startDate = new Date(game.scheduledStart * 1000)
           const endDate = new Date(game.estimatedEnd * 1000)
@@ -522,18 +577,24 @@ export async function POST(request: NextRequest) {
             continue
           }
 
-          const channelInfo = {
-            id: `${deviceType}-${resolvedPreset.channelNumber}`,
-            name: resolvedPreset.name,
-            number: resolvedPreset.channelNumber,
-            type: deviceType,
-            cost: 'subscription',
-            platforms: [deviceType === 'satellite' ? 'DirecTV' : 'Cable'],
-            channelNumber: resolvedPreset.channelNumber,
-            deviceType: deviceType,
-            station: matchedStation,
-            presetName: resolvedPreset.name,
-          }
+          // v2.33.15 — Use the standard streaming app-channel for
+          // streaming devices so the bartender's Watch button hits the
+          // same code path as catalog-sourced rows. For cable/satellite
+          // keep the existing channel info shape.
+          const channelInfo = presetDeviceType === 'streaming' && resolvedStreamingApp
+            ? buildStreamingAppChannel({ appName: resolvedStreamingApp, channelNumber: resolvedStreamingApp })
+            : {
+                id: `${deviceType}-${resolvedPreset!.channelNumber}`,
+                name: resolvedPreset!.name,
+                number: resolvedPreset!.channelNumber,
+                type: deviceType,
+                cost: 'subscription',
+                platforms: [deviceType === 'satellite' ? 'DirecTV' : 'Cable'],
+                channelNumber: resolvedPreset!.channelNumber,
+                deviceType: deviceType,
+                station: matchedStation,
+                presetName: resolvedPreset!.name,
+              }
           if (!channels.has(channelInfo.id)) {
             channels.set(channelInfo.id, channelInfo)
           }
@@ -984,6 +1045,177 @@ export async function POST(request: NextRequest) {
         }
       } catch (catalogError: any) {
         logger.error('[Channel-Guide-API] catalog injection failed (non-fatal):', { error: catalogError.message })
+      }
+
+      // v2.33.15 — game_schedules fallback for STREAMING. The cable/sat
+      // path has had this since v2.28.2, but streaming has only ever
+      // pulled from the catalog. So a game ESPN has in game_schedules
+      // but Scout/walker didn't capture (because the cube was in
+      // screensaver, the tile was below the fold, etc.) is INVISIBLE
+      // in the bartender guide. Operator caught Angels @ Guardians +
+      // UC Irvine + Avalanche missing on Holmgren Cube 2 today
+      // (2026-05-11) even though all three were on the cube's ESPN
+      // "Upcoming" rail.
+      //
+      // For each scheduled-today game in game_schedules, resolve its
+      // broadcast_networks against the streaming app aliases. If any
+      // alias matches an app the cube has installed (or any app at
+      // all when installedApps unknown), synthesize a program.
+      try {
+        const { db } = await import('@/db')
+        const { schema } = await import('@/db')
+        const { and: andOp2, gte: gteOp, lte: lteOp, or: orOp, eq: eqOp } = await import('drizzle-orm')
+
+        // Use `start`/`end` (local Date vars with defaults) — `startTime`/
+        // `endTime` are the raw request params and are often undefined,
+        // which would give NaN unix seconds and match 0 rows.
+        const windowStartSec = Math.floor(start.getTime() / 1000)
+        const windowEndSec = Math.floor(end.getTime() / 1000)
+        const nowSec = Math.floor(Date.now() / 1000)
+        const sixHoursAgo = nowSec - 6 * 60 * 60
+
+        const localGames = await db
+          .select()
+          .from(schema.gameSchedules)
+          .where(
+            orOp(
+              andOp2(
+                lteOp(schema.gameSchedules.scheduledStart, windowEndSec),
+                gteOp(schema.gameSchedules.estimatedEnd, windowStartSec)
+              ),
+              andOp2(
+                eqOp(schema.gameSchedules.status, 'in_progress'),
+                gteOp(schema.gameSchedules.estimatedEnd, sixHoursAgo)
+              )
+            )
+          )
+          .all()
+
+        // Network-name → canonical streaming app name. Matches against the
+        // device's installedApps (case-insensitive substring) so e.g.
+        // "ESPN Unlmtd" resolves to ESPN when the cube has the ESPN app.
+        const STREAMING_NETWORK_ALIASES: Record<string, string> = {
+          'espn': 'ESPN', 'espn2': 'ESPN', 'espnu': 'ESPN', 'espnnews': 'ESPN',
+          'espn unlmtd': 'ESPN', 'espn unlimited': 'ESPN', 'espn+': 'ESPN',
+          'sec network': 'ESPN', 'acc network': 'ESPN', 'big ten network': 'ESPN',
+          'mlb.tv': 'MLB.TV', 'mlb network': 'MLB.TV',
+          'nhl.tv': 'NHL.TV', 'nba.tv': 'NBA.TV',
+          'prime video': 'Amazon Prime Video', 'amazon prime video': 'Amazon Prime Video',
+          'apple tv+': 'Apple TV', 'apple tv': 'Apple TV',
+          'peacock': 'Peacock', 'hulu': 'Hulu',
+          'paramount+': 'Paramount+', 'max': 'Max', 'hbo max': 'Max',
+          'fubo': 'FuboTV', 'fubotv': 'FuboTV',
+          'youtube tv': 'YouTube TV', 'sling tv': 'Sling TV',
+          'nfhs network': 'NFHS Network',
+          // Team RSN-as-streaming feeds — fold to MLB.TV
+          'brewers.tv': 'MLB.TV', 'angels.tv': 'MLB.TV',
+          'cleguardians.tv': 'MLB.TV', 'guardians.tv': 'MLB.TV',
+          'dodgers.tv': 'MLB.TV', 'yankees.tv': 'MLB.TV',
+        }
+
+        let gsStreamInjected = 0
+        let gsStreamSkippedNoApp = 0
+        let gsStreamSkippedDupe = 0
+
+        for (const game of localGames) {
+          if (!game.homeTeamName || !game.awayTeamName) continue
+
+          let broadcastNetworks: string[] = []
+          try {
+            if (game.broadcastNetworks) broadcastNetworks = JSON.parse(game.broadcastNetworks)
+          } catch { broadcastNetworks = [] }
+          if (broadcastNetworks.length === 0) continue
+
+          // v2.33.15 — Find first network that maps to an app the cube
+          // has. `deviceInstalledApps` contains PACKAGE names (e.g.
+          // "com.espn.gtv"), not display names, so check via the
+          // canonical-app → package-substring map. Also accept when
+          // installedApps is empty (e.g. Scout hasn't reported yet) so
+          // we don't suppress all upcoming games during cube startup.
+          const APP_TO_PACKAGE_TOKEN: Record<string, string> = {
+            'ESPN': 'espn',
+            'MLB.TV': 'mlb',
+            'NHL.TV': 'nhl',
+            'NBA.TV': 'nba',
+            'Amazon Prime Video': 'firebat',  // PVFTV launcher hosts Prime Video
+            'Apple TV': 'appletv',
+            'Peacock': 'peacock',
+            'Hulu': 'hulu',
+            'Paramount+': 'paramount',
+            'Max': 'wbtvd',
+            'FuboTV': 'fubo',
+            'YouTube TV': 'youtube.tv',
+            'Sling TV': 'sling',
+            'NFHS Network': 'nfhs',
+          }
+          let matchedApp: string | null = null
+          let matchedNetwork = ''
+          for (const net of broadcastNetworks) {
+            const canonical = STREAMING_NETWORK_ALIASES[net.toLowerCase().trim()]
+            if (!canonical) continue
+            if (deviceInstalledApps.length > 0) {
+              const token = APP_TO_PACKAGE_TOKEN[canonical]
+              if (token) {
+                const installedLower = deviceInstalledApps.map(a => a.toLowerCase())
+                const hasApp = installedLower.some(pkg => pkg.includes(token))
+                if (!hasApp) continue
+              }
+              // Unknown canonical → assume installed (don't block)
+            }
+            matchedApp = canonical
+            matchedNetwork = net
+            break
+          }
+          if (!matchedApp) { gsStreamSkippedNoApp++; continue }
+
+          // Dedup against catalog-injected programs for same teams
+          const dupe = programs.some(p =>
+            p.homeTeam?.toLowerCase() === game.homeTeamName.toLowerCase() &&
+            p.awayTeam?.toLowerCase() === game.awayTeamName.toLowerCase()
+          )
+          if (dupe) { gsStreamSkippedDupe++; continue }
+
+          const appChannelId = `stream-${matchedApp.replace(/\s+/g, '-').toLowerCase()}`
+          let appChan = channels.get(appChannelId)
+          if (!appChan) {
+            appChan = buildStreamingAppChannel({ appName: matchedApp, channelNumber: matchedApp })
+            channels.set(appChannelId, appChan)
+          }
+
+          const startDate = new Date(game.scheduledStart * 1000)
+          const endDate = new Date(game.estimatedEnd * 1000)
+          const isLive = game.status === 'in_progress'
+          const gameTimeLabel = isLive
+            ? 'LIVE'
+            : startDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+
+          programs.push({
+            id: `gs-stream-${game.id}`,
+            league: game.league || 'Sports',
+            homeTeam: game.homeTeamName,
+            awayTeam: game.awayTeamName,
+            gameTime: gameTimeLabel,
+            day: isLive ? 'LIVE' : startDate.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'America/Chicago' }),
+            time: isLive ? 'LIVE' : startDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'America/Chicago' }),
+            startTime: startDate.toISOString(),
+            endTime: endDate.toISOString(),
+            channel: appChan,
+            description: `${game.awayTeamName} @ ${game.homeTeamName}${game.venueName ? ' · ' + game.venueName : ''} on ${matchedApp}`,
+            isSports: true,
+            isLive,
+            venue: game.venueName || '',
+            station: matchedApp,
+            sportTag: game.league?.toUpperCase().replace(/[^A-Z]/g, '') || undefined,
+            espnEventId: game.espnEventId || undefined,
+          })
+          gsStreamInjected++
+        }
+
+        if (gsStreamInjected > 0 || gsStreamSkippedNoApp > 0) {
+          logInfo(`game_schedules STREAMING fallback for ${deviceId}: +${gsStreamInjected} injected, ${gsStreamSkippedDupe} dedup, ${gsStreamSkippedNoApp} skipped (no app match)`)
+        }
+      } catch (streamFallbackError: any) {
+        logger.error('[Channel-Guide-API] streaming game_schedules fallback failed (non-fatal):', { error: streamFallbackError.message })
       }
     }
 
