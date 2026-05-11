@@ -647,15 +647,13 @@ export class ADBClient {
         logger.info(`[ADB CLIENT] Waiting 4s for ESPN search results to render`)
         await new Promise((r) => setTimeout(r, 4000))
 
-        // v2.33.41 — KEYCODE_MEDIA_FAST_FORWARD (90) submits the
+        // v2.33.42 — KEYCODE_MEDIA_PLAY_PAUSE (85) submits the
         // search. Operator-confirmed at Holmgren Cube 3, 2026-05-11:
-        // "the FF button is also the next button." The Fast Forward
-        // key on the Fire TV remote serves as the Next/Submit action
-        // when ESPN's on-screen keyboard is active — much cleaner
-        // than blind coordinate-tap (works across Fire TV models /
-        // resolutions, doesn't depend on IME layout).
-        logger.info(`[ADB CLIENT] KEYCODE_MEDIA_FAST_FORWARD (90) → submit search / Next`)
-        await this.sendKey(90, 8000)
+        // "it's the play button for next." The Play/Pause key on
+        // the Fire TV remote serves as the Next/Submit action when
+        // ESPN's on-screen keyboard is active.
+        logger.info(`[ADB CLIENT] KEYCODE_MEDIA_PLAY_PAUSE (85) → submit search / Next`)
+        await this.sendKey(85, 8000)
         await new Promise((r) => setTimeout(r, 2500))
         logger.info(`[ADB CLIENT] DPAD_DOWN → focus first result row`)
         await this.sendKey(20, 8000) // KEYCODE_DPAD_DOWN
