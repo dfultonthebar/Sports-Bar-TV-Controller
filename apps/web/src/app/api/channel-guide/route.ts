@@ -975,6 +975,45 @@ export async function POST(request: NextRequest) {
             resolvedStart = scheduleMatch.scheduledStart
             catEnriched++
           }
+          // v2.33.21 — Hardcoded ESPN show schedule lookup. Shows like
+          // Pat McAfee Show, Rich Eisen Show, First Take, SportsCenter
+          // etc. aren't in game_schedules (no ESPN events feed for talk
+          // shows) and Scout doesn't extract start times. Without this,
+          // live show tiles only display "LIVE" with no time context.
+          // Lookup is title-substring → daily ET start time. Times are
+          // computed for TODAY in America/New_York (ESPN's broadcast TZ).
+          if (resolvedStart === undefined && row.isLive) {
+            const KNOWN_ESPN_SHOWS: Array<{ titleKey: string; etHour: number; etMin: number; weekdaysOnly: boolean }> = [
+              { titleKey: 'first take',         etHour: 10, etMin: 0,  weekdaysOnly: true },
+              { titleKey: 'get up',             etHour: 8,  etMin: 0,  weekdaysOnly: true },
+              { titleKey: 'pat mcafee show',    etHour: 12, etMin: 0,  weekdaysOnly: true },
+              { titleKey: 'rich eisen show',    etHour: 12, etMin: 0,  weekdaysOnly: true },
+              { titleKey: 'around the horn',    etHour: 17, etMin: 0,  weekdaysOnly: true },
+              { titleKey: 'pardon the interruption', etHour: 17, etMin: 30, weekdaysOnly: true },
+              { titleKey: 'nfl live',           etHour: 16, etMin: 0,  weekdaysOnly: true },
+              { titleKey: 'nba today',          etHour: 15, etMin: 0,  weekdaysOnly: true },
+              { titleKey: 'baseball tonight',   etHour: 20, etMin: 0,  weekdaysOnly: false },
+              { titleKey: 'sportscenter',       etHour: 6,  etMin: 0,  weekdaysOnly: false },
+              { titleKey: 'espn radio',         etHour: 6,  etMin: 0,  weekdaysOnly: false },
+            ]
+            const titleLower = row.contentTitle.toLowerCase()
+            const show = KNOWN_ESPN_SHOWS.find(s => titleLower.includes(s.titleKey))
+            if (show) {
+              // Build today's ET start time. ESPN's broadcast TZ is
+              // always America/New_York; convert to a unix timestamp.
+              const now = new Date()
+              const etDateStr = now.toLocaleString('en-US', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' })
+              const [m, d, y] = etDateStr.split('/').map(Number)
+              const dayOfWeek = new Date(`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}T12:00:00-05:00`).getUTCDay()
+              if (!show.weekdaysOnly || (dayOfWeek >= 1 && dayOfWeek <= 5)) {
+                // Construct ET timestamp manually: EDT in May = UTC-4
+                const etOffsetHours = -4  // DST in May
+                const utcHour = show.etHour - etOffsetHours
+                const showStartUtcMs = Date.UTC(y, m - 1, d, utcHour, show.etMin)
+                resolvedStart = Math.floor(showStartUtcMs / 1000)
+              }
+            }
+          }
           const hasStartTime = resolvedStart !== undefined
           const startSec = hasStartTime ? (resolvedStart as number) : nowSec
           const startMs = startSec * 1000
@@ -1000,9 +1039,25 @@ export async function POST(request: NextRequest) {
             ? scheduleMatch.status === 'in_progress'
             : !!row.isLive
           if (effectiveIsLive) {
-            gameTimeLabel = 'LIVE'
-            time = 'LIVE'
-            day = hasStartTime ? dayFormatter.format(startDate) : 'LIVE'
+            // v2.33.21 — Show go-live time alongside LIVE marker when known.
+            // Bartender wants context — "did this game just start, or has
+            // it been on for hours?" — so a Pat McAfee Show or in-progress
+            // matchup displays e.g. "LIVE • 11:00 AM" instead of just
+            // "LIVE". Uses scheduleMatch.scheduledStart when available
+            // (game_schedules sync), otherwise the walker's row.startTime
+            // (parseTileTime extracted from the tile content-desc), and
+            // only falls back to "LIVE" alone when no start time exists
+            // anywhere.
+            if (hasStartTime) {
+              const startTimeLabel = timeFormatter.format(startDate)
+              gameTimeLabel = `LIVE • ${startTimeLabel}`
+              time = `LIVE • ${startTimeLabel}`
+              day = dayFormatter.format(startDate)
+            } else {
+              gameTimeLabel = 'LIVE'
+              time = 'LIVE'
+              day = 'LIVE'
+            }
           } else if (hasStartTime) {
             day = dayFormatter.format(startDate)
             time = timeFormatter.format(startDate)
@@ -1292,9 +1347,13 @@ export async function POST(request: NextRequest) {
           const startDate = new Date(game.scheduledStart * 1000)
           const endDate = new Date(game.estimatedEnd * 1000)
           const isLive = game.status === 'in_progress'
-          const gameTimeLabel = isLive
-            ? 'LIVE'
-            : startDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+          // v2.33.21 — Same go-live time format as the catalog injection
+          // path: for live games show "LIVE • <start time>" so bartender
+          // knows when it actually started (vs just "LIVE" with no context).
+          const startTimeLabel = startDate.toLocaleTimeString('en-US', {
+            hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'America/Chicago',
+          })
+          const gameTimeLabel = isLive ? `LIVE • ${startTimeLabel}` : startTimeLabel
 
           programs.push({
             id: `gs-stream-${game.id}`,
@@ -1303,7 +1362,7 @@ export async function POST(request: NextRequest) {
             awayTeam: game.awayTeamName,
             gameTime: gameTimeLabel,
             day: isLive ? 'LIVE' : startDate.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'America/Chicago' }),
-            time: isLive ? 'LIVE' : startDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'America/Chicago' }),
+            time: isLive ? `LIVE • ${startTimeLabel}` : startTimeLabel,
             startTime: startDate.toISOString(),
             endTime: endDate.toISOString(),
             channel: appChan,
