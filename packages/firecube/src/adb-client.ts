@@ -558,47 +558,43 @@ export class ADBClient {
       // through `launchApp` here.
       await this.launchApp(packageName)
 
-      logger.info(`[ADB CLIENT] Waiting 8s for ESPN content rows to render`)
-      await new Promise((r) => setTimeout(r, 8000))
+      // v2.33.33 — Poll for ESPN to leave StartupActivity before
+      // attempting any navigation. Holmgren Cube 3 verified
+      // 2026-05-11: ESPN can sit in StartupActivity (splash/launch)
+      // for 10-15s before transitioning to PageControllerActivity
+      // (home). A blind 8s wait was too short — DPAD nav and rail
+      // dumps happened while ESPN was still on the splash screen,
+      // so the left rail items weren't in the AS tree yet. Poll
+      // up to 20s for the home activity to appear.
+      await this._waitForEspnHome(20000)
 
       const trimmedTitle = (contentTitle || '').trim()
       if (trimmedTitle) {
-        // v2.33.32 — Direct-tap on Search rail item instead of DPAD nav.
+        // v2.33.33 — DPAD navigation to Search rail item.
+        // Sequence (operator-confirmed at Holmgren Cube 3, 2026-05-11):
+        //   1. DPAD_LEFT — focus moves into the left nav rail (which
+        //      collapses by default and expands on this keypress).
+        //      Lands on Home (the default rail position).
+        //   2. DPAD_UP — moves one step up to Search (immediately
+        //      above Home in the rail order: Search, Home, Films &
+        //      Shows, Browse, Highlights, Settings).
+        //   3. DPAD_CENTER — opens the Search activity (focuses the
+        //      search EditText, ready for input text).
         //
-        // Previous (v2.32.94) sequence: DPAD_LEFT → DPAD_UP → DPAD_CENTER.
-        // Failed at Holmgren Cube 3 on 2026-05-11: post-launch focus
-        // landed on the Featured hero "Explore" banner, where DPAD_LEFT
-        // did not move into the left nav rail at all — leaving focus on
-        // Explore, DPAD_UP did nothing, DPAD_CENTER opened the Explore
-        // overlay. Subsequent `input text` typed into nothing and the
-        // tile-matcher saw the still-Home content (Featured + Also Live
-        // rows) which doesn't include niche ESPN+ college baseball
-        // games like Army @ Holy Cross.
-        //
-        // New: dump UI, locate the `<node content-desc="Search">` rail
-        // item, tap its center bounds directly. The left rail items are
-        // at stable positions (Search y=356-404 at the top, then Home,
-        // Films & Shows, Browse, Highlights, Settings below) so a
-        // bounds-targeted tap reliably opens the Search activity
-        // regardless of where post-launch focus landed.
-        //
-        // Search query also drops "@" — ESPN's tile content-desc uses
-        // "vs." not "@" for matchups, and the literal "@" symbol may
-        // not match how ESPN tokenizes the search index. Stripping it
-        // does not lose information (the surrounding team names are
-        // still typed).
-        const searchTap = await this._findSearchRailTapTarget()
-        if (searchTap) {
-          logger.info(`[ADB CLIENT] input tap Search rail at (${searchTap.cx}, ${searchTap.cy})`)
-          await this.executeShellCommand(`input tap ${searchTap.cx} ${searchTap.cy}`, 8000)
-        } else {
-          logger.warn(`[ADB CLIENT] Search rail bounds not found in dump; falling back to DPAD nav`)
-          await this.sendKey(21, 8000).catch(() => {}) // DPAD_LEFT
-          await new Promise((r) => setTimeout(r, 400))
-          await this.sendKey(19, 8000).catch(() => {}) // DPAD_UP
-          await new Promise((r) => setTimeout(r, 400))
-          await this.sendKey(23, 8000).catch(() => {}) // DPAD_CENTER
-        }
+        // The earlier v2.32.94 implementation of this same sequence
+        // failed because it fired during ESPN's StartupActivity
+        // (splash screen, before home renders) — the keys went
+        // nowhere. v2.33.33's _waitForEspnHome polling gates this
+        // sequence behind the activity transition so the rail is
+        // actually drawn and accepts input.
+        logger.info(`[ADB CLIENT] DPAD_LEFT → expand rail / focus Home`)
+        await this.sendKey(21, 8000) // KEYCODE_DPAD_LEFT
+        await new Promise((r) => setTimeout(r, 500))
+        logger.info(`[ADB CLIENT] DPAD_UP → focus Search (one above Home)`)
+        await this.sendKey(19, 8000) // KEYCODE_DPAD_UP
+        await new Promise((r) => setTimeout(r, 500))
+        logger.info(`[ADB CLIENT] DPAD_CENTER → open Search activity`)
+        await this.sendKey(23, 8000) // KEYCODE_DPAD_CENTER
         await new Promise((r) => setTimeout(r, 3000))
         const querySanitized = trimmedTitle
           .replace(/[@]/g, ' ')
@@ -696,46 +692,43 @@ export class ADBClient {
   }
 
   /**
-   * v2.33.32 — Dump the ESPN home UI and return the tap-center bounds
-   * of the left-rail `Search` item. Stable across ESPN GTV versions
-   * (rail at x∈[60,118], Search at y∈[356,404]) so a bounds-targeted
-   * tap reliably opens the Search activity from any post-launch focus
-   * state — replaces the DPAD_LEFT/UP/CENTER navigation that broke
-   * when post-launch focus landed on the Featured "Explore" hero
-   * banner.
+   * v2.33.33 — Poll for ESPN to leave StartupActivity. ESPN GTV
+   * launches into a splash screen (`com.espn.startup.presentation.
+   * StartupActivity`) that can take 10-15s before transitioning to
+   * `com.espn.androidtv.page.PageControllerActivity` (the home /
+   * featured page). Any DPAD nav or UI dump fired during the splash
+   * sees an empty / placeholder tree and the rail items aren't yet
+   * rendered. Polls dumpsys every 1s until home appears or timeout.
    */
-  private async _findSearchRailTapTarget(): Promise<{ cx: number; cy: number } | null> {
-    try {
-      const dumpPath = `/sdcard/espn_search_${Date.now()}.xml`
-      await this.executeShellCommand(`uiautomator dump ${dumpPath}`, 8000)
-      const xml = await this.executeShellCommand(`cat ${dumpPath}`, 8000)
-      this.executeShellCommand(`rm -f ${dumpPath}`, 3000).catch(() => {})
-      if (!xml || xml.length < 200) return null
-      // Match a node whose content-desc is exactly "Search" and pull
-      // its bounds. The Search rail item is in the narrow left column
-      // (x<200) so an extra column-guard rejects any accidental
-      // "Search" labels elsewhere in the UI.
-      const re = /<node[^>]*content-desc="Search"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"[^/]*\/>/g
-      let match: RegExpExecArray | null
-      while ((match = re.exec(xml)) !== null) {
-        const x1 = Number(match[1])
-        const y1 = Number(match[2])
-        const x2 = Number(match[3])
-        const y2 = Number(match[4])
-        if (x2 < 200 && y2 - y1 < 200 && x2 - x1 < 200) {
-          return {
-            cx: Math.round((x1 + x2) / 2),
-            cy: Math.round((y1 + y2) / 2),
-          }
+  private async _waitForEspnHome(timeoutMs: number): Promise<void> {
+    const deadline = Date.now() + timeoutMs
+    let lastFocus = ''
+    while (Date.now() < deadline) {
+      try {
+        const out = await this.executeShellCommand(
+          `dumpsys window windows | grep mCurrentFocus`,
+          5000,
+        )
+        lastFocus = (out || '').trim()
+        if (lastFocus.includes('PageControllerActivity')) {
+          logger.info(`[ADB CLIENT] ESPN home reached (${Math.round((timeoutMs - (deadline - Date.now())) / 1000)}s)`)
+          // Brief settle so content rows finish hydrating after the
+          // activity transition.
+          await new Promise((r) => setTimeout(r, 2000))
+          return
         }
+      } catch {
+        // Ignore intermittent dumpsys errors
       }
-      return null
-    } catch {
-      return null
+      await new Promise((r) => setTimeout(r, 1000))
     }
+    logger.warn(`[ADB CLIENT] ESPN home wait timed out after ${timeoutMs}ms (last focus: ${lastFocus.slice(0, 120)})`)
+    // Final 2s settle as a best-effort fallback so the nav code
+    // still has something to work with.
+    await new Promise((r) => setTimeout(r, 2000))
   }
 
-  /**
+/**
    * v2.32.97 — Find an on-screen tile whose accessibility content
    * matches the intended title, return its bounds center for tapping.
    *
