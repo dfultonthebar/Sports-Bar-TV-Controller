@@ -1344,6 +1344,42 @@ export async function POST(request: NextRequest) {
             channels.set(appChannelId, appChan)
           }
 
+          // v2.33.27 — Per-program deepLink for gs-stream- programs.
+          // Without this, the bartender's Watch button reaches the
+          // server's /api/streaming/launch path but the absence of a
+          // deepLink suppresses the Scout PLAY_GAME broadcast — ESPN
+          // launches but no tile-match fires. Operator caught this
+          // 2026-05-11 with Navy @ Bucknell: ESPN opened but didn't
+          // navigate to the game. Mirror the synth pattern from
+          // /api/firestick-scout/snapshot synthDeepLink for the same
+          // apps so Scout receives a searchable title.
+          const searchTitle = `${game.awayTeamName} @ ${game.homeTeamName}`
+          const synthGsStreamDeepLink = (appName: string, title: string): string | undefined => {
+            const t = encodeURIComponent(title.trim())
+            if (!t) return undefined
+            switch (appName) {
+              case 'Amazon Prime Video':
+                return `https://watch.amazon.com/search?phrase=${t}`
+              case 'ESPN':
+                return `sportscenter://x-callback-url/showHomeTab?q=${t}`
+              case 'MLB.TV':
+                return `mlbtv://search?q=${t}`
+              case 'NHL.TV':
+                return `nhl://search?q=${t}`
+              case 'NBA.TV':
+                return `nba://search?q=${t}`
+              default:
+                // Other apps don't have well-known deep-link schemes;
+                // pass the title as a query to encourage the server's
+                // launch path to fire Scout PLAY_GAME with team tokens.
+                return `app://${appName.toLowerCase().replace(/\s+/g, '-')}/search?q=${t}`
+            }
+          }
+          const programDeepLink = synthGsStreamDeepLink(matchedApp, searchTitle)
+          const programChannel = programDeepLink
+            ? { ...appChan, deepLink: programDeepLink }
+            : appChan
+
           const startDate = new Date(game.scheduledStart * 1000)
           const endDate = new Date(game.estimatedEnd * 1000)
           const isLive = game.status === 'in_progress'
@@ -1365,7 +1401,7 @@ export async function POST(request: NextRequest) {
             time: isLive ? `LIVE • ${startTimeLabel}` : startTimeLabel,
             startTime: startDate.toISOString(),
             endTime: endDate.toISOString(),
-            channel: appChan,
+            channel: programChannel,
             description: `${game.awayTeamName} @ ${game.homeTeamName}${game.venueName ? ' · ' + game.venueName : ''} on ${matchedApp}`,
             isSports: true,
             isLive,
