@@ -76,16 +76,21 @@ class PlaybackAutomationService : AccessibilityService() {
             lastWindowPackage = event.packageName?.toString().orEmpty()
         }
 
-        // v2.2.6 — Watch-Live prompt handler (runs INDEPENDENT of pending
-        // PLAY_GAME mailbox). When a streaming app shows a "Watch Live /
-        // Watch from Beginning" sheet after a click, find and click
-        // "Watch Live" so the operator doesn't have to. Active for the
-        // ~12s window after a successful tile click.
-        if (System.currentTimeMillis() < watchLivePromptUntilMs &&
-            (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
-             event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED)) {
-            try { tryClickWatchLiveButton() } catch (t: Throwable) {
-                Log.w("PlaybackAutomation", "tryClickWatchLiveButton crashed: ${t.message}")
+        // v2.2.6 + v2.2.8 — Watch-Live prompt handler. Fires on ANY
+        // accessibility event during the armed window (state changed,
+        // content changed, view focused, view selected). Originally
+        // limited to window-state and content-changed but those don't
+        // always fire when ESPN's prompt sheet renders — view-focused
+        // is more reliable for dialog detection.
+        if (System.currentTimeMillis() < watchLivePromptUntilMs) {
+            val t = event.eventType
+            if (t == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+                t == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
+                t == AccessibilityEvent.TYPE_VIEW_FOCUSED ||
+                t == AccessibilityEvent.TYPE_VIEW_SELECTED) {
+                try { tryClickWatchLiveButton() } catch (e: Throwable) {
+                    Log.w("PlaybackAutomation", "tryClickWatchLiveButton crashed: ${e.message}")
+                }
             }
         }
 
@@ -240,27 +245,40 @@ class PlaybackAutomationService : AccessibilityService() {
         // beginning sheet; give it a 12s window to appear and we'll auto-
         // click "Watch Live".
         if (ok) {
-            watchLivePromptUntilMs = System.currentTimeMillis() + 12_000L
-            Log.i("PlaybackAutomation", "Watch-Live prompt handler armed for 12s post-click")
+            // v2.2.8 — Extended from 12s to 30s. ESPN's resume sheet can
+            // take 5-15s to render after the tile click (live stream
+            // probing, manifest fetch, etc.). The 12s window was
+            // sometimes expiring before the sheet appeared, especially
+            // on PVFTV-320 Cubes. 30s covers the slow-render case.
+            watchLivePromptUntilMs = System.currentTimeMillis() + 30_000L
+            Log.i("PlaybackAutomation", "Watch-Live prompt handler armed for 30s post-click")
         }
     }
 
     /**
      * v2.2.6 — After a successful tile click, the streaming app may show
      * a "Watch Live" vs "Watch from the Beginning" sheet. Find the
-     * "Watch Live" button (or equivalent — "Resume", "Continue Watching",
-     * "Live") and click it.
+     * "Watch Live" button and tap it.
      *
-     * Strategy: BFS the active tree, find the first clickable+focusable
-     * node whose text/desc matches a preferred-button label. Preferred
-     * order: "Watch Live" > "Resume" > "Continue Watching" > bare "Live".
+     * v2.2.8 — ESPN built these as Compose buttons with isClickable=false
+     * AND isFocusable=false on every node (the buttons accept DPAD CENTER
+     * when focused, but no accessibility-clickable flags). Strategy now:
+     *
+     *   1. Find a node (any node) whose text/desc matches "Watch Live"
+     *      (or fallback labels), regardless of clickable/focusable flags
+     *   2. Try ACTION_CLICK on it AND its ancestors (fast no-op for Compose)
+     *   3. Use dispatchGesture to send a synthetic touch tap at the
+     *      button's bounds center — this drives Compose's pointerInput
+     *      modifier and reliably activates the button
+     *
+     * Strategy: BFS the active tree, find the first node whose text/desc
+     * matches a preferred-button label. Preferred order:
+     * "Watch Live" > "Resume" > "Continue Watching" > bare "Live".
      * Avoid "Watch from the Beginning" / "Start Over" / "From Beginning".
      */
     private fun tryClickWatchLiveButton() {
         val root = rootInActiveWindow ?: return
 
-        // Preferred labels (case-insensitive substring match), in priority
-        // order. First match wins.
         val preferred = listOf(
             "watch live",
             "continue watching live",
@@ -270,8 +288,6 @@ class PlaybackAutomationService : AccessibilityService() {
             "join live",
             "go live",
         )
-        // Reject any node that matches a "from beginning" label — those
-        // are the WRONG button.
         val rejected = listOf(
             "watch from the beginning",
             "from the beginning",
@@ -280,7 +296,10 @@ class PlaybackAutomationService : AccessibilityService() {
             "start from beginning",
         )
 
-        // Collect clickable nodes
+        // BFS — v2.2.8 now collects ALL matching nodes regardless of
+        // clickable/focusable flags. ESPN's Compose buttons set both
+        // to false; the click happens via dispatchGesture tap, not
+        // ACTION_CLICK.
         val candidates = mutableListOf<Pair<AccessibilityNodeInfo, String>>()
         val queue = ArrayDeque<AccessibilityNodeInfo>()
         queue.add(root)
@@ -290,9 +309,9 @@ class PlaybackAutomationService : AccessibilityService() {
             visited++
             val text = ((n.text?.toString() ?: "") + " " + (n.contentDescription?.toString() ?: ""))
                 .trim().lowercase()
-            if (text.isNotEmpty() && (n.isClickable || n.isFocusable)) {
+            if (text.isNotEmpty()) {
                 if (rejected.any { text.contains(it) }) {
-                    // Don't even add as candidate — explicitly the wrong button
+                    // skip
                 } else if (preferred.any { text.contains(it) }) {
                     candidates.add(n to text)
                 }
@@ -303,7 +322,6 @@ class PlaybackAutomationService : AccessibilityService() {
         }
         if (candidates.isEmpty()) return
 
-        // Pick the highest-priority preferred label that matched
         var best: AccessibilityNodeInfo? = null
         var bestPriority = preferred.size
         var bestText = ""
@@ -318,20 +336,48 @@ class PlaybackAutomationService : AccessibilityService() {
         }
         if (best == null) return
 
-        // Walk up to clickable ancestor if the matched node isn't itself
-        val clickable = if (best!!.isClickable) best else findClickableAncestor(best!!)
-        if (clickable == null) {
-            Log.w("PlaybackAutomation", "Watch-Live match '$bestText' has no clickable ancestor")
+        // Try fast path: ACTION_CLICK on node or any clickable ancestor.
+        if (best!!.isClickable) {
+            if (best!!.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+                Log.i("PlaybackAutomation", "Watch-Live ACTION_CLICK ok: '$bestText'")
+                watchLivePromptUntilMs = 0L
+                return
+            }
+        }
+        val clickAncestor = findClickableAncestor(best!!)
+        if (clickAncestor != null && clickAncestor.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+            Log.i("PlaybackAutomation", "Watch-Live ancestor ACTION_CLICK ok: '$bestText'")
+            watchLivePromptUntilMs = 0L
             return
         }
-        val ok = clickable.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-        Log.i(
-            "PlaybackAutomation",
-            "Watch-Live auto-click ${if (ok) "ok" else "FAILED"}: matched='$bestText'",
-        )
-        if (ok) {
-            // Disarm to prevent repeated clicks on subsequent events
-            watchLivePromptUntilMs = 0L
+
+        // Fallback: dispatchGesture tap at the matched node's bounds
+        // center. This is what makes ESPN's Compose buttons actually
+        // activate. Required canPerformGestures=true (declared in
+        // service config).
+        val bounds = android.graphics.Rect()
+        best!!.getBoundsInScreen(bounds)
+        if (bounds.width() <= 0 || bounds.height() <= 0) {
+            Log.w("PlaybackAutomation", "Watch-Live match '$bestText' has zero bounds — can't tap")
+            return
+        }
+        val cx = bounds.exactCenterX()
+        val cy = bounds.exactCenterY()
+        try {
+            val path = android.graphics.Path().apply { moveTo(cx, cy) }
+            val stroke = android.accessibilityservice.GestureDescription.StrokeDescription(
+                path, 0L, 100L
+            )
+            val gesture = android.accessibilityservice.GestureDescription.Builder()
+                .addStroke(stroke).build()
+            val ok = dispatchGesture(gesture, null, null)
+            Log.i(
+                "PlaybackAutomation",
+                "Watch-Live dispatchGesture tap at ($cx,$cy) ${if (ok) "ok" else "FAILED"}: '$bestText'",
+            )
+            if (ok) watchLivePromptUntilMs = 0L
+        } catch (t: Throwable) {
+            Log.w("PlaybackAutomation", "Watch-Live dispatchGesture crashed: ${t.message}")
         }
     }
 
