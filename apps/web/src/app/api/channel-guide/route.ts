@@ -879,10 +879,18 @@ export async function POST(request: NextRequest) {
         // (table is empty fleet-wide as of v2.33.16), default streaming
         // devices to ESPN+ only. Once operators populate the login
         // table this default falls through to actual data.
-        const detectEspnTier = (title: string): 'espn-linear' | 'espn-plus' | 'espn-unlimited' | 'espn-abc' | null => {
+        const detectEspnTier = (title: string, isLive: boolean): 'espn-linear' | 'espn-plus' | 'espn-unlimited' | 'espn-abc' | null => {
           const t = title.toLowerCase()
           if (t.includes('espn unlimited')) return 'espn-unlimited'
           if (t.includes('espn on abc')) return 'espn-abc'
+          // v2.33.18 — "ESPN/ESPN+" simulcasts → always espn-plus. The
+          // slash indicates the content is available on BOTH linear ESPN
+          // AND on ESPN+ (live simulcast + on-demand replay). A bar with
+          // ESPN+ subscription can watch via the ESPN+ feed regardless
+          // of whether it's currently live or already aired.
+          // (Reverted v2.33.17's live=linear treatment after operator
+          // confirmed Pat McAfee Show should be playable on ESPN+.)
+          if (t.includes('espn/espn+') || t.includes('espn / espn+')) return 'espn-plus'
           if (t.includes('espn+') || t.includes('espn deportes/espn+')) return 'espn-plus'
           // Bare " espn " or "espn •" suffix (linear) — must NOT match espn+ which has + before space
           if (/\bespn\s*(?:[2u]|news)?\s*[•·]/i.test(title)) return 'espn-linear'
@@ -903,7 +911,7 @@ export async function POST(request: NextRequest) {
 
           // ESPN tier check: only filter ESPN app rows; other apps unaffected.
           if (row.app === 'ESPN') {
-            const tier = detectEspnTier(row.contentTitle)
+            const tier = detectEspnTier(row.contentTitle, !!row.isLive)
             if (tier && !deviceSubscribedTiers.has(tier)) {
               catSkippedNoSubscription++
               continue

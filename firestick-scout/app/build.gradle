@@ -32,8 +32,8 @@ android {
         applicationId "com.sportsbar.scout"
         minSdk 22
         targetSdk 33
-        versionCode 225
-        versionName "2.2.5-code-review-fixes"
+        versionCode 226
+        versionName "2.2.6-watch-live-handler"
         buildConfigField "String", "SERVER_URL_DEFAULT", "\"${resolveScoutServerUrl()}\""
     }
 
