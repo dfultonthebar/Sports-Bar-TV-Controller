@@ -70,6 +70,17 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
+    # Scheduler Corrections page (override-learn) — operator-facing
+    # analytics of bartender corrections during the first 10 min after
+    # a scheduled tune. Reachable via the bartender remote menu.
+    location = /override-learn {
+        proxy_pass http://127.0.0.1:3001;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
     # Next.js static assets
     location /_next/ { proxy_pass http://127.0.0.1:3001; proxy_set_header Host $host; }
     location /favicon.ico { proxy_pass http://127.0.0.1:3001; }
@@ -98,6 +109,7 @@ server {
 
     location /api/schedules/bartender-schedule { proxy_pass http://127.0.0.1:3001; proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; }
     location /api/schedules/recovery           { proxy_pass http://127.0.0.1:3001; proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; }
+    location /api/override-learn/              { proxy_pass http://127.0.0.1:3001; proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; }
 
     location /api/dmx/              { proxy_pass http://127.0.0.1:3001; proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; }
     location /api/audio-processor   { proxy_pass http://127.0.0.1:3001; proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; }
