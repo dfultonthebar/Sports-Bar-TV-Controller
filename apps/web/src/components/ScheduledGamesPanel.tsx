@@ -938,11 +938,18 @@ export default function ScheduledGamesPanel() {
         </button>
       </div>
 
-      {/* Cable Box Status Cards (always visible) */}
+      {/* Input Box Status Cards (cable + DirecTV + Fire TV, always visible) */}
+      {/* v2.33.26 — Operator reported 2026-05-11: DirecTV and Fire TV
+          boxes were missing from manual-mode quick-tune cards. The DB
+          had the rows (5 DirecTV + 2 Fire TV at Holmgren) but the UI
+          filter dropped everything that wasn't `deviceType==='cable'`.
+          Filter removed so all inputs render with the same status card
+          pattern. The deviceType icon and channel/app label adapt
+          per-row (Cable shows channel number, DirecTV shows channel
+          number, Fire TV shows current app name). */}
       {Object.keys(cableBoxChannels).length > 0 && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {Object.entries(cableBoxChannels)
-            .filter(([_, channel]) => channel.deviceType === 'cable')
             .sort(([a], [b]) => Number(a) - Number(b))
             .map(([inputNum, channel]) => {
               // Find active allocation for this cable box by matching inputLabel
