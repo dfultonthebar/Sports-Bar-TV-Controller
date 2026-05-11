@@ -54,6 +54,15 @@ class PlaybackAutomationService : AccessibilityService() {
     @Volatile private var lastWindowSettledAtMs = 0L
     @Volatile private var lastWindowPackage: String = ""
 
+    // v2.2.6 — After a successful tile click, ESPN / MLB.TV / Prime Video
+    // sometimes show a "Watch Live" vs "Watch from the Beginning" sheet
+    // for in-progress live events. Bartender always wants "Watch Live"
+    // (operator: 2026-05-11 reported the prompt sitting unanswered).
+    // Set this to (now + 12s) after a successful tile click; window
+    // during which onAccessibilityEvent looks for live-vs-replay buttons
+    // and clicks "Watch Live" / "Resume" / "Continue Watching".
+    @Volatile private var watchLivePromptUntilMs = 0L
+
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
 
@@ -65,6 +74,19 @@ class PlaybackAutomationService : AccessibilityService() {
         ) {
             lastWindowSettledAtMs = System.currentTimeMillis()
             lastWindowPackage = event.packageName?.toString().orEmpty()
+        }
+
+        // v2.2.6 — Watch-Live prompt handler (runs INDEPENDENT of pending
+        // PLAY_GAME mailbox). When a streaming app shows a "Watch Live /
+        // Watch from Beginning" sheet after a click, find and click
+        // "Watch Live" so the operator doesn't have to. Active for the
+        // ~12s window after a successful tile click.
+        if (System.currentTimeMillis() < watchLivePromptUntilMs &&
+            (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+             event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED)) {
+            try { tryClickWatchLiveButton() } catch (t: Throwable) {
+                Log.w("PlaybackAutomation", "tryClickWatchLiveButton crashed: ${t.message}")
+            }
         }
 
         val targetPackage = pendingTargetPackage() ?: return
@@ -195,6 +217,105 @@ class PlaybackAutomationService : AccessibilityService() {
         clearPending()
         settledSessionId = sessionId
         attemptsRemaining = 0
+
+        // v2.2.6 — After a successful tile click, arm the watch-live
+        // prompt handler. ESPN typically takes 1-3s to render the live-vs-
+        // beginning sheet; give it a 12s window to appear and we'll auto-
+        // click "Watch Live".
+        if (ok) {
+            watchLivePromptUntilMs = System.currentTimeMillis() + 12_000L
+            Log.i("PlaybackAutomation", "Watch-Live prompt handler armed for 12s post-click")
+        }
+    }
+
+    /**
+     * v2.2.6 — After a successful tile click, the streaming app may show
+     * a "Watch Live" vs "Watch from the Beginning" sheet. Find the
+     * "Watch Live" button (or equivalent — "Resume", "Continue Watching",
+     * "Live") and click it.
+     *
+     * Strategy: BFS the active tree, find the first clickable+focusable
+     * node whose text/desc matches a preferred-button label. Preferred
+     * order: "Watch Live" > "Resume" > "Continue Watching" > bare "Live".
+     * Avoid "Watch from the Beginning" / "Start Over" / "From Beginning".
+     */
+    private fun tryClickWatchLiveButton() {
+        val root = rootInActiveWindow ?: return
+
+        // Preferred labels (case-insensitive substring match), in priority
+        // order. First match wins.
+        val preferred = listOf(
+            "watch live",
+            "continue watching live",
+            "resume live",
+            "continue watching",
+            "resume",
+            "join live",
+            "go live",
+        )
+        // Reject any node that matches a "from beginning" label — those
+        // are the WRONG button.
+        val rejected = listOf(
+            "watch from the beginning",
+            "from the beginning",
+            "start over",
+            "from beginning",
+            "start from beginning",
+        )
+
+        // Collect clickable nodes
+        val candidates = mutableListOf<Pair<AccessibilityNodeInfo, String>>()
+        val queue = ArrayDeque<AccessibilityNodeInfo>()
+        queue.add(root)
+        var visited = 0
+        while (queue.isNotEmpty() && visited < 3000) {
+            val n = queue.removeFirst()
+            visited++
+            val text = ((n.text?.toString() ?: "") + " " + (n.contentDescription?.toString() ?: ""))
+                .trim().lowercase()
+            if (text.isNotEmpty() && (n.isClickable || n.isFocusable)) {
+                if (rejected.any { text.contains(it) }) {
+                    // Don't even add as candidate — explicitly the wrong button
+                } else if (preferred.any { text.contains(it) }) {
+                    candidates.add(n to text)
+                }
+            }
+            for (i in 0 until n.childCount) {
+                n.getChild(i)?.let { queue.add(it) }
+            }
+        }
+        if (candidates.isEmpty()) return
+
+        // Pick the highest-priority preferred label that matched
+        var best: AccessibilityNodeInfo? = null
+        var bestPriority = preferred.size
+        var bestText = ""
+        for ((node, text) in candidates) {
+            for ((i, p) in preferred.withIndex()) {
+                if (text.contains(p) && i < bestPriority) {
+                    best = node
+                    bestPriority = i
+                    bestText = text
+                }
+            }
+        }
+        if (best == null) return
+
+        // Walk up to clickable ancestor if the matched node isn't itself
+        val clickable = if (best!!.isClickable) best else findClickableAncestor(best!!)
+        if (clickable == null) {
+            Log.w("PlaybackAutomation", "Watch-Live match '$bestText' has no clickable ancestor")
+            return
+        }
+        val ok = clickable.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+        Log.i(
+            "PlaybackAutomation",
+            "Watch-Live auto-click ${if (ok) "ok" else "FAILED"}: matched='$bestText'",
+        )
+        if (ok) {
+            // Disarm to prevent repeated clicks on subsequent events
+            watchLivePromptUntilMs = 0L
+        }
     }
 
     private data class ScoredNode(val node: AccessibilityNodeInfo, val text: String, val score: Int)
