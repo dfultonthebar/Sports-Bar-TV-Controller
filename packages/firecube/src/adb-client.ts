@@ -570,32 +570,53 @@ export class ADBClient {
 
       const trimmedTitle = (contentTitle || '').trim()
       if (trimmedTitle) {
-        // v2.33.33 — DPAD navigation to Search rail item.
-        // Sequence (operator-confirmed at Holmgren Cube 3, 2026-05-11):
-        //   1. DPAD_LEFT — focus moves into the left nav rail (which
-        //      collapses by default and expands on this keypress).
-        //      Lands on Home (the default rail position).
-        //   2. DPAD_UP — moves one step up to Search (immediately
-        //      above Home in the rail order: Search, Home, Films &
-        //      Shows, Browse, Highlights, Settings).
-        //   3. DPAD_CENTER — opens the Search activity (focuses the
-        //      search EditText, ready for input text).
+        // v2.33.34 — DPAD navigation to Search rail item with
+        // longer settle delays. Operator at Holmgren Cube 3 reported
+        // 2026-05-11: the v2.33.33 500ms inter-key delay was too
+        // short — DPAD_UP got coalesced into DPAD_CENTER before
+        // focus had moved up to Search, so CENTER opened Home (or
+        // the NHL/Live section it bounced into) instead of Search.
         //
-        // The earlier v2.32.94 implementation of this same sequence
-        // failed because it fired during ESPN's StartupActivity
-        // (splash screen, before home renders) — the keys went
-        // nowhere. v2.33.33's _waitForEspnHome polling gates this
-        // sequence behind the activity transition so the rail is
-        // actually drawn and accepts input.
+        // Sequence:
+        //   1. DPAD_LEFT — focus expands left nav rail, lands on Home
+        //   2. wait 1500ms — rail expand animation + focus settle
+        //   3. DPAD_UP — focus moves one step up to Search
+        //   4. wait 1500ms — focus animation
+        //   5. DPAD_CENTER — opens Search activity
+        //   6. wait 4000ms — activity transition + EditText focus
+        //
+        // After CENTER, also verify the Search activity actually
+        // opened. If still on PageControllerActivity, the nav
+        // failed and we abort rather than typing into nothing.
         logger.info(`[ADB CLIENT] DPAD_LEFT → expand rail / focus Home`)
         await this.sendKey(21, 8000) // KEYCODE_DPAD_LEFT
-        await new Promise((r) => setTimeout(r, 500))
+        await new Promise((r) => setTimeout(r, 1500))
         logger.info(`[ADB CLIENT] DPAD_UP → focus Search (one above Home)`)
         await this.sendKey(19, 8000) // KEYCODE_DPAD_UP
-        await new Promise((r) => setTimeout(r, 500))
+        await new Promise((r) => setTimeout(r, 1500))
         logger.info(`[ADB CLIENT] DPAD_CENTER → open Search activity`)
         await this.sendKey(23, 8000) // KEYCODE_DPAD_CENTER
-        await new Promise((r) => setTimeout(r, 3000))
+        await new Promise((r) => setTimeout(r, 4000))
+        // Sanity check: confirm the Search activity actually opened.
+        // If we're still on the home page, the rail nav failed
+        // (typically because focus didn't reach Search before
+        // CENTER fired). Log and continue — `input text` will land
+        // somewhere harmless if we're still on Home.
+        try {
+          const focusOut = await this.executeShellCommand(
+            `dumpsys window windows | grep mCurrentFocus`,
+            5000,
+          )
+          if (focusOut && focusOut.includes('PageControllerActivity')) {
+            logger.warn(
+              `[ADB CLIENT] After DPAD_CENTER still on PageControllerActivity — Search nav failed`,
+            )
+          } else if (focusOut) {
+            logger.info(`[ADB CLIENT] Post-CENTER focus: ${focusOut.trim().slice(0, 120)}`)
+          }
+        } catch {
+          /* non-fatal */
+        }
         const querySanitized = trimmedTitle
           .replace(/[@]/g, ' ')
           .replace(/\s+/g, ' ')
