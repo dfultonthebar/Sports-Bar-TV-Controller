@@ -776,12 +776,30 @@ export class ADBClient {
         return null
       }
 
+      // v2.33.31 — Whole-word match + minimum-score threshold.
+      // Previous (score > 0 + substring match) false-positived on
+      // partial-word overlap: "Holy Cross @ Army Black Knights" got
+      // tapped onto "Marist vs Princeton NCAA Lacrosse" because
+      // "cross" is a substring of "lacrosse" (score 1/6 → "winner").
+      // Operator caught 2026-05-11.
+      //
+      // Whole-word check via tokenized Set instead of substring; and
+      // require at least 2 tokens OR half the intended tokens to
+      // match (whichever is bigger, capped at the intended count for
+      // 1-token edge case).
+      const minScore = Math.min(
+        intendedTokens.length,
+        Math.max(2, Math.ceil(intendedTokens.length / 2)),
+      )
       let best: { score: number; text: string; cx: number; cy: number } | null = null
       for (const tile of tilesByBounds.values()) {
         const combined = stripNoise(tile.text.join(' '))
         if (!combined) continue
-        const score = intendedTokens.filter((t) => combined.includes(t)).length
-        if (score > 0 && (!best || score > best.score)) {
+        const combinedTokens = new Set(
+          combined.split(' ').filter((t) => t.length >= 3),
+        )
+        const score = intendedTokens.filter((t) => combinedTokens.has(t)).length
+        if (score >= minScore && (!best || score > best.score)) {
           best = {
             score,
             text: tile.text.join(' | ').slice(0, 200),
@@ -803,7 +821,7 @@ export class ADBClient {
         return null
       }
       logger.info(
-        `[ADB CLIENT] findVisibleTile: best match score=${best.score}/${intendedTokens.length} text="${best.text}"`,
+        `[ADB CLIENT] findVisibleTile: best match score=${best.score}/${intendedTokens.length} (min=${minScore}) text="${best.text}"`,
       )
       return { text: best.text, cx: best.cx, cy: best.cy }
     } catch (err: any) {
