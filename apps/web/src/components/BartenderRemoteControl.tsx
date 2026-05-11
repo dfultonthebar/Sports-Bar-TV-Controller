@@ -1047,7 +1047,7 @@ export default function BartenderRemoteControl() {
               Sports: {sportsGuideStatus}
             </div>
           )}
-          <button
+          <button type="button"
             onClick={() => setShowSportsGuide(!showSportsGuide)}
             className={`px-3 py-1 rounded-full font-medium flex items-center space-x-1 transition-all ${
               showSportsGuide 
@@ -1071,7 +1071,7 @@ export default function BartenderRemoteControl() {
                 Sports Guide
               </h2>
               <div className="flex items-center space-x-3">
-                <button
+                <button type="button"
                   onClick={generateSportsGuide}
                   disabled={isLoadingSportsGuide}
                   className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium flex items-center space-x-2"
@@ -1088,7 +1088,7 @@ export default function BartenderRemoteControl() {
                     </>
                   )}
                 </button>
-                <button
+                <button type="button"
                   onClick={() => setShowSportsGuide(false)}
                   className="px-3 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm"
                 >
@@ -1197,7 +1197,7 @@ export default function BartenderRemoteControl() {
                 const irDevice = irDevices.find(d => d.inputChannel === input.channelNumber)
                 
                 return (
-                  <button
+                  <button type="button"
                     key={input.id}
                     onClick={() => selectInput(input.channelNumber)}
                     className={`w-full p-3 rounded-lg text-left transition-all ${
@@ -1261,7 +1261,7 @@ export default function BartenderRemoteControl() {
                     {/* Power and Main Controls */}
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                       {CONTROL_COMMANDS.map((cmd) => (
-                        <button
+                        <button type="button"
                           key={cmd.command}
                           onClick={() => sendIRCommand(cmd.command)}
                           disabled={loading}
@@ -1282,7 +1282,7 @@ export default function BartenderRemoteControl() {
                       <h3 className="text-lg font-medium text-white mb-2">Channels</h3>
                       <div className="grid grid-cols-3 gap-2">
                         {CHANNEL_COMMANDS.map((cmd) => (
-                          <button
+                          <button type="button"
                             key={cmd.command}
                             onClick={() => sendIRCommand(cmd.command)}
                             disabled={loading}
@@ -1336,13 +1336,13 @@ export default function BartenderRemoteControl() {
               TV Power
             </h3>
             <div className="space-y-2">
-              <button
+              <button type="button"
                 disabled
                 className="w-full p-2 bg-green-500/20 text-green-300 border border-green-500/30 rounded-lg text-sm opacity-50 cursor-not-allowed"
               >
                 All TVs ON
               </button>
-              <button
+              <button type="button"
                 disabled
                 className="w-full p-2 bg-red-500/20 text-red-300 border border-red-500/30 rounded-lg text-sm opacity-50 cursor-not-allowed"
               >
@@ -1443,13 +1443,13 @@ export default function BartenderRemoteControl() {
                     <span className="text-white font-mono">{selectedAudioZone.volume}%</span>
                   </div>
                   <div className="flex space-x-1">
-                    <button
+                    <button type="button"
                       onClick={() => adjustZoneVolume(selectedAudioZone, -2)}
                       className="flex-1 p-2 bg-red-600 hover:bg-red-500 text-white rounded text-sm transition-all font-medium"
                     >
                       -2
                     </button>
-                    <button
+                    <button type="button"
                       onClick={() => toggleZoneMute(selectedAudioZone)}
                       className={`flex-1 p-2 rounded text-sm transition-all ${
                         selectedAudioZone.muted
@@ -1459,7 +1459,7 @@ export default function BartenderRemoteControl() {
                     >
                       {selectedAudioZone.muted ? <Volume2 className="w-4 h-4 mx-auto" /> : <VolumeX className="w-4 h-4 mx-auto" />}
                     </button>
-                    <button
+                    <button type="button"
                       onClick={() => adjustZoneVolume(selectedAudioZone, 2)}
                       className="flex-1 p-2 bg-green-600 hover:bg-green-500 text-white rounded text-sm transition-all font-medium"
                     >
@@ -1492,7 +1492,7 @@ export default function BartenderRemoteControl() {
           <div className="bg-slate-800 or bg-slate-900/10 backdrop-blur-sm rounded-lg p-4">
             <h3 className="text-lg font-bold text-white mb-3">Actions</h3>
             <div className="space-y-2">
-              <button
+              <button type="button"
                 onClick={() => {
                   setSelectedInput(null)
                   setSelectedDevice(null)
@@ -1504,7 +1504,7 @@ export default function BartenderRemoteControl() {
                 <span>Reset TV</span>
               </button>
               
-              <button
+              <button type="button"
                 onClick={() => {
                   setSelectedProcessor(null)
                   setSelectedAudioZone(null)
@@ -1516,7 +1516,7 @@ export default function BartenderRemoteControl() {
                 <span>Reset Audio</span>
               </button>
               
-              <button
+              <button type="button"
                 onClick={() => {
                   setShowSportsGuide(false)
                   setSportsGuide([])
@@ -1528,7 +1528,7 @@ export default function BartenderRemoteControl() {
                 <span>Clear Sports</span>
               </button>
               
-              <button
+              <button type="button"
                 onClick={() => {
                   setSelectedInput(null)
                   setSelectedDevice(null)
