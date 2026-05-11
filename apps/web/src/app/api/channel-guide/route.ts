@@ -832,6 +832,25 @@ export async function POST(request: NextRequest) {
             continue
           }
 
+          // v2.33.14 — Stale-live filter for catalog rows without a
+          // game_schedules match. Walker's `isLive` is captured-in-time:
+          // it was true when the walker dumped the AS tree, but the
+          // catalog row sits in the DB for 36h, so a game that finished
+          // hours ago still reads isLive=1. game_schedules can rescue
+          // SOME games (ESPN-tracked leagues — NBA/NFL/MLB/NHL/MLS/EPL/
+          // college), but not all (Spanish La Liga 2nd division, Copa
+          // del Rey, lower-tier soccer, niche events). For those, if
+          // row.isLive=1 and capturedAt is more than STALE_LIVE_HOURS
+          // ago, treat the row as completed and skip injection.
+          // Operator-reported on 2026-05-11: "CD Tenerife vs FC Barcelona"
+          // captured 02:05, still showing LIVE 8h after end of match.
+          const STALE_LIVE_HOURS = 4
+          if (row.isLive && !scheduleMatch &&
+              (nowSec - row.capturedAt) > STALE_LIVE_HOURS * 3600) {
+            catSkippedCompleted++
+            continue
+          }
+
           // Walker's startTime takes precedence; otherwise enrichment
           // match's scheduledStart; otherwise fall back to NOW so the
           // bartender's "past midnight of scheduled day" filter passes
@@ -864,7 +883,14 @@ export async function POST(request: NextRequest) {
           let day = ''
           let time = ''
           let gameTimeLabel: string
-          if (row.isLive || (scheduleMatch && scheduleMatch.status === 'in_progress')) {
+          // v2.33.14 — scheduleMatch is authoritative when present
+          // (real-time ESPN status). Only trust the walker's row.isLive
+          // when no schedule match — and even then only if not stale
+          // (already filtered above).
+          const effectiveIsLive = scheduleMatch
+            ? scheduleMatch.status === 'in_progress'
+            : !!row.isLive
+          if (effectiveIsLive) {
             gameTimeLabel = 'LIVE'
             time = 'LIVE'
             day = hasStartTime ? dayFormatter.format(startDate) : 'LIVE'
@@ -940,7 +966,7 @@ export async function POST(request: NextRequest) {
             // the bartender doesn't need.
             description: `${row.contentTitle} on ${row.app}`,
             isSports: true,
-            isLive: !!row.isLive || scheduleMatch?.status === 'in_progress',
+            isLive: effectiveIsLive,
             venue: '',
             station: row.app,
             sportTag: row.sportTag || undefined,
