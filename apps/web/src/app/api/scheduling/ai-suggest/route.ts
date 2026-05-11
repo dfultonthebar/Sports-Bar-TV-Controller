@@ -296,6 +296,20 @@ async function fetchStreamingCatalogCandidates(
             skippedOutOfWindow++
             continue
           }
+        } else {
+          // v2.33.30 — Even when scout flagged the tile as live, the
+          // row's startTime can be from a previous walk (e.g. yesterday's
+          // game still has isLive=1 in DB because catalog hasn't been
+          // re-walked since). If startTime is present and points past
+          // the realistic live window, skip — otherwise the approve
+          // endpoint pivots on that stale anchor, matches yesterday's
+          // game in game_schedules ±1hr, and rejects "game already
+          // ended" while the operator sees an upcoming-game card.
+          // Operator caught 2026-05-11 at Holmgren.
+          if (row.startTime != null && row.startTime < nowSec - 4 * 60 * 60) {
+            skippedOutOfWindow++
+            continue
+          }
         }
 
         const key = `${row.app}::${row.contentTitle}`
