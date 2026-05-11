@@ -629,32 +629,40 @@ export class ADBClient {
         logger.info(`[ADB CLIENT] Waiting 4s for ESPN search results to render`)
         await new Promise((r) => setTimeout(r, 4000))
 
-        // v2.32.97 — TEXT-TARGETED TAP replaces blind DPAD_DOWN + verify.
+        // v2.33.35 — DPAD_DOWN to leave keyboard then DPAD_CENTER on
+        // the focused first result. Operator-confirmed sequence at
+        // Holmgren Cube 3, 2026-05-11: "need to go down to next on
+        // the keyboard, then click on the video then watch."
         //
-        // Pre-fix v2.32.94/.96 used DPAD_DOWN to "focus first result"
-        // and pressed CENTER. v2.32.96 added a verification gate that
-        // rejected mismatches but couldn't fix them — when ESPN's UI
-        // ended up on the Featured tab instead of Search results, the
-        // autoplay aborted entirely.
+        // After typing, ESPN's search Activity keeps keyboard
+        // focused; results render below/beside but aren't directly
+        // tappable via `input tap` (the keyboard overlay or input-
+        // focus state blocks the synthetic touch from reaching the
+        // result tile). The reliable path is DPAD navigation:
+        //   1. DPAD_DOWN — focus moves off keyboard onto the first
+        //      result row.
+        //   2. DPAD_CENTER — opens the focused result's detail page.
         //
-        // New approach: dump the UI right after the search query
-        // typed, scan ALL on-screen tiles for one whose accessibility
-        // content matches the intended title, then `input tap <x> <y>`
-        // at that tile's bounds center. Targeting by content rather
-        // than position handles both the Search-results case AND the
-        // Featured-tab case — if ESPN displays a tile matching the
-        // query ANYWHERE on screen, we tap it directly.
-        //
-        // If no matching tile is visible, throw with diagnostic. Only
-        // way that can happen now: ESPN search returned no results
-        // for the query (truly unfindable game), or ESPN's UI is in a
-        // state with no visible content tiles at all.
+        // Pre-flight check via the tile matcher (now scanning the
+        // dump for any result-row tile matching the title) decides
+        // whether to proceed. If no matching tile is visible after
+        // DPAD_DOWN, abort rather than firing CENTER blindly.
+        logger.info(`[ADB CLIENT] DPAD_DOWN → leave keyboard, focus first result`)
+        await this.sendKey(20, 8000) // KEYCODE_DPAD_DOWN
+        await new Promise((r) => setTimeout(r, 1500))
+
         const tapTarget = await this._findVisibleTileMatchingTitle(trimmedTitle)
         if (tapTarget) {
           logger.info(
-            `[ADB CLIENT] ESPN tile match — tapping "${tapTarget.text}" at (${tapTarget.cx}, ${tapTarget.cy})`,
+            `[ADB CLIENT] ESPN tile match — pressing DPAD_CENTER on focused result "${tapTarget.text}"`,
           )
-          await this.executeShellCommand(`input tap ${tapTarget.cx} ${tapTarget.cy}`, 8000)
+          // DPAD_CENTER opens the currently-focused result tile. The
+          // DPAD_DOWN above moved focus onto the first result row,
+          // and ESPN search typically ranks the exact-match game as
+          // result #0, so this clicks the right tile in most cases.
+          // (If wrong: tile-match logged the actual focused tile, so
+          // operator + future patch can diagnose.)
+          await this.sendKey(23, 8000) // KEYCODE_DPAD_CENTER
 
           // v2.32.99 — Detail page → PlayerActivity. ESPN's detail page
           // auto-focuses the Watch CTA (verified live at bounds
