@@ -857,10 +857,41 @@ export async function POST(request: NextRequest) {
         let catSkippedDupe = 0
         let catEnriched = 0
         let catSkippedCompleted = 0
+        let catSkippedNoSubscription = 0
         // Within-catalog dedup: same app + same title. The walker can capture
         // the same tile twice on adjacent passes (e.g. featured carousel +
         // sport-specific row); de-dup so the bartender doesn't see twins.
         const seenInCatalog = new Set<string>()
+
+        // v2.33.16 — ESPN tier filter. ESPN's content tiles embed the
+        // required-subscription tier in their title suffix, e.g.:
+        //   "First Take ESPN • First Take"            → ESPN linear (cable)
+        //   "Truist Championship ESPN+ • PGA TOUR"    → ESPN+
+        //   "Backlash 2026 ESPN Unlimited • WWE..."   → ESPN Unlimited
+        //   "WNBA Countdown ESPN on ABC • WNBA"       → ABC broadcast
+        //   "ESPN Deportes/ESPN+ • EN/ES • ..."       → ESPN+ (Spanish)
+        // Operator on 2026-05-11 reported clicking "First Take" produced
+        // a "get access" paywall — the bar has ESPN+ but not linear ESPN
+        // (no cable provider login on the cube) and not ESPN Unlimited.
+        // Hide tiles whose tier isn't in the device's subscription set.
+        //
+        // Without per-device subscription data in DeviceStreamingLogin
+        // (table is empty fleet-wide as of v2.33.16), default streaming
+        // devices to ESPN+ only. Once operators populate the login
+        // table this default falls through to actual data.
+        const detectEspnTier = (title: string): 'espn-linear' | 'espn-plus' | 'espn-unlimited' | 'espn-abc' | null => {
+          const t = title.toLowerCase()
+          if (t.includes('espn unlimited')) return 'espn-unlimited'
+          if (t.includes('espn on abc')) return 'espn-abc'
+          if (t.includes('espn+') || t.includes('espn deportes/espn+')) return 'espn-plus'
+          // Bare " espn " or "espn •" suffix (linear) — must NOT match espn+ which has + before space
+          if (/\bespn\s*(?:[2u]|news)?\s*[•·]/i.test(title)) return 'espn-linear'
+          return null
+        }
+        // Per-device subscription tier set. TODO: populate from
+        // DeviceStreamingLogin when operators configure subscriptions
+        // per-cube. Default for streaming devices: ESPN+ only.
+        const deviceSubscribedTiers = new Set<string>(['espn-plus'])
 
         for (const row of catalogRows) {
           const dupeKey = `${row.app}::${row.contentTitle}`
@@ -869,6 +900,15 @@ export async function POST(request: NextRequest) {
             continue
           }
           seenInCatalog.add(dupeKey)
+
+          // ESPN tier check: only filter ESPN app rows; other apps unaffected.
+          if (row.app === 'ESPN') {
+            const tier = detectEspnTier(row.contentTitle)
+            if (tier && !deviceSubscribedTiers.has(tier)) {
+              catSkippedNoSubscription++
+              continue
+            }
+          }
 
           const appChannelId = `stream-${row.app.replace(/\s+/g, '-').toLowerCase()}`
           let appChannel = channels.get(appChannelId)
@@ -1040,7 +1080,7 @@ export async function POST(request: NextRequest) {
 
         if (catInjected > 0 || catSkippedDupe > 0 || catSkippedCompleted > 0) {
           logInfo(
-            `firetv_streaming_catalog injection for ${deviceId}: +${catInjected} from scout walker, ${catSkippedDupe} dedup, ${catEnriched} enriched startTime from game_schedules, ${catSkippedCompleted} completed games skipped`
+            `firetv_streaming_catalog injection for ${deviceId}: +${catInjected} from scout walker, ${catSkippedDupe} dedup, ${catEnriched} enriched startTime from game_schedules, ${catSkippedCompleted} completed games skipped, ${catSkippedNoSubscription} tier-paywall skipped`
           )
         }
       } catch (catalogError: any) {
@@ -1126,45 +1166,104 @@ export async function POST(request: NextRequest) {
           } catch { broadcastNetworks = [] }
           if (broadcastNetworks.length === 0) continue
 
-          // v2.33.15 — Find first network that maps to an app the cube
-          // has. `deviceInstalledApps` contains PACKAGE names (e.g.
-          // "com.espn.gtv"), not display names, so check via the
-          // canonical-app → package-substring map. Also accept when
-          // installedApps is empty (e.g. Scout hasn't reported yet) so
-          // we don't suppress all upcoming games during cube startup.
+          // v2.33.15 — Find a network that maps to an app the cube has.
+          // v2.33.16 — Two-pass: prefer dedicated apps (MLB.TV / NHL.TV /
+          // NBA.TV / Peacock) over ESPN linear when both are listed,
+          // because ESPN linear/Unlimited often requires a higher tier
+          // than ESPN+. Operator caught this 2026-05-11: Angels @
+          // Guardians broadcast networks = ["ESPN Unlmtd","MLB.TV",
+          // "CLEGuardians.TV","Angels.TV"]. ESPN was picked first → bar
+          // paywalled. Should prefer MLB.TV (dedicated app, broader MLB
+          // coverage).
+          //
+          // deviceInstalledApps contains PACKAGE names (e.g. "com.espn.gtv"),
+          // not display names, so check via canonical-app → package-token map.
+          // Accept when installedApps is empty (Scout hasn't reported)
+          // so we don't suppress all upcoming games during cube startup.
+          // Substring tokens that match the actual package names installed
+          // on Fire TV cubes. Verified against real `pm list packages`
+          // output on Holmgren Cube 2: MLB.TV ships as
+          // `com.bamnetworks.mobile.android.gameday.atbat` — no "mlb"
+          // substring, so use `bamnetworks`. Peacock package is
+          // `com.peacock.peacockfiretv` not `com.peacocktv.peacockandroid`
+          // — accept either via `peacock` substring.
           const APP_TO_PACKAGE_TOKEN: Record<string, string> = {
             'ESPN': 'espn',
-            'MLB.TV': 'mlb',
+            'MLB.TV': 'bamnetworks',
             'NHL.TV': 'nhl',
             'NBA.TV': 'nba',
-            'Amazon Prime Video': 'firebat',  // PVFTV launcher hosts Prime Video
+            'Amazon Prime Video': 'firebat',
             'Apple TV': 'appletv',
             'Peacock': 'peacock',
             'Hulu': 'hulu',
             'Paramount+': 'paramount',
             'Max': 'wbtvd',
             'FuboTV': 'fubo',
-            'YouTube TV': 'youtube.tv',
+            'YouTube TV': 'youtube',
             'Sling TV': 'sling',
             'NFHS Network': 'nfhs',
           }
+          // Preference: dedicated subscription apps > ESPN+ > ESPN linear.
+          const APP_PREFERENCE: Record<string, number> = {
+            'MLB.TV': 100, 'NHL.TV': 100, 'NBA.TV': 100,
+            'Peacock': 80, 'Paramount+': 80, 'Max': 80,
+            'Amazon Prime Video': 70, 'Apple TV': 70, 'Hulu': 70,
+            'FuboTV': 60, 'YouTube TV': 60, 'Sling TV': 60,
+            'ESPN': 50,
+            'NFHS Network': 40,
+          }
+          const isAppInstalled = (canonical: string): boolean => {
+            if (deviceInstalledApps.length === 0) return true  // unknown — accept
+            const token = APP_TO_PACKAGE_TOKEN[canonical]
+            if (!token) return true  // unknown — accept
+            const installedLower = deviceInstalledApps.map(a => a.toLowerCase())
+            return installedLower.some(pkg => pkg.includes(token))
+          }
+          // v2.33.16 — ESPN tier from broadcast_networks. "ESPN Unlmtd" /
+          // "ESPN Unlimited" requires the higher tier; ESPN+ flagged
+          // networks work with ESPN+ subscription. Bare ESPN/ESPN2/ESPNU
+          // is linear (requires cable provider login).
+          const espnTierFromNetworks = (networks: string[]): 'espn-plus' | 'espn-unlimited' | 'espn-linear' | null => {
+            const lower = networks.map(n => n.toLowerCase().trim())
+            if (lower.some(n => n === 'espn+' || n === 'espn plus')) return 'espn-plus'
+            if (lower.some(n => n.includes('unlmtd') || n.includes('unlimited'))) return 'espn-unlimited'
+            if (lower.some(n => n === 'espn' || n === 'espn2' || n === 'espnu' || n === 'espnnews')) return 'espn-linear'
+            return null
+          }
+          // Hardcoded device tiers — bar has ESPN+ only per operator
+          // statement 2026-05-11. Replace with DeviceStreamingLogin
+          // table lookup once populated.
+          const deviceTiers = new Set<string>(['espn-plus'])
+
+          // v2.33.16 — Scout's installedApps report is incomplete (only
+          // tracks apps with catalog DB entries, ~8 of ~19 on Holmgren
+          // Cube 2). So an isAppInstalled check is too strict — would
+          // wrongly hide MLB.TV games even though the bartender can play
+          // them. Strategy: for non-ESPN canonicals (dedicated sport
+          // apps, streaming services), TRUST broadcast_networks. For
+          // ESPN, apply the tier check against the bar's subscription
+          // set. If bartender clicks Watch and the app isn't actually
+          // installed, the launch fails — but installed cases work.
           let matchedApp: string | null = null
           let matchedNetwork = ''
+          let bestPref = -1
           for (const net of broadcastNetworks) {
             const canonical = STREAMING_NETWORK_ALIASES[net.toLowerCase().trim()]
             if (!canonical) continue
-            if (deviceInstalledApps.length > 0) {
-              const token = APP_TO_PACKAGE_TOKEN[canonical]
-              if (token) {
-                const installedLower = deviceInstalledApps.map(a => a.toLowerCase())
-                const hasApp = installedLower.some(pkg => pkg.includes(token))
-                if (!hasApp) continue
-              }
-              // Unknown canonical → assume installed (don't block)
+            if (canonical === 'ESPN') {
+              // ESPN: must pass install AND tier check.
+              if (!isAppInstalled(canonical)) continue
+              const tier = espnTierFromNetworks(broadcastNetworks)
+              if (tier && !deviceTiers.has(tier)) continue
             }
-            matchedApp = canonical
-            matchedNetwork = net
-            break
+            // Non-ESPN dedicated apps: trust broadcast_networks. Bartender's
+            // launch path will handle absent-app cases at runtime.
+            const pref = APP_PREFERENCE[canonical] ?? 0
+            if (pref > bestPref) {
+              matchedApp = canonical
+              matchedNetwork = net
+              bestPref = pref
+            }
           }
           if (!matchedApp) { gsStreamSkippedNoApp++; continue }
 
