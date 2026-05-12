@@ -1421,6 +1421,131 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // v2.33.43 — Rail Media injection for ESPN-family channels on
+    // streaming devices. Operator request 2026-05-11: ESPN's app on
+    // Fire TV shows niche ESPN+ games (Rayo, Virginia Tech baseball,
+    // Yale lacrosse) that our ESPN scoreboard sync doesn't cover
+    // (it only fetches MLB/NBA/NHL/NFL/CFB/MCBB/WCBB). Rail Media's
+    // channel guide has comprehensive ESPN+/ESPN/ESPN2/ESPNU/ACCN/
+    // SECN/BTN/LHN listings. Inject those as Fire TV programs with
+    // search-by-title deeplinks so the bartender's tap fires the
+    // Scout PLAY_GAME flow against ESPN GTV.
+    //
+    // Also removes our dependence on the catalog walker for ESPN
+    // content (the walker can't reliably dump ESPN's home page
+    // due to continuous Featured-row animation).
+    if (deviceType === 'streaming' && deviceId) {
+      try {
+        const ESPN_FAMILY_PATTERNS = [
+          /^espn/i,                       // ESPN, ESPN2, ESPNU, ESPN+, ESPND
+          /^accn$|^acc[\s-]?network/i,    // ACCN / ACC Network
+          /^secn$|^sec[\s-]?network/i,    // SECN / SEC Network
+          /^btn$|^big[\s-]?ten/i,         // BTN / Big Ten Network
+          /^lhn$|^longhorn/i,             // LHN / Longhorn Network
+        ]
+        const isEspnFamilyStation = (s: string) =>
+          ESPN_FAMILY_PATTERNS.some((re) => re.test(s.trim()))
+
+        const api = getSportsGuideApi()
+        const railDays = Math.max(1, days)
+        const railGuide = await api.fetchDateRangeGuide(railDays)
+
+        let railInjected = 0
+        let railSkippedDupe = 0
+        let railSkippedPast = 0
+        const nowMs = Date.now()
+        const windowEndMs = end.getTime()
+        const windowStartMs = start.getTime() - 30 * 60 * 1000  // 30min grace
+        const railSeenKeys = new Set<string>()
+
+        for (const group of railGuide.listing_groups || []) {
+          for (const listing of group.listings || []) {
+            const channelNumbers =
+              listing.channel_numbers?.['CAB'] ||
+              listing.channel_numbers?.['DRTV']
+            if (!channelNumbers) continue
+
+            const espnStations = Object.keys(channelNumbers).filter((s) =>
+              isEspnFamilyStation(s),
+            )
+            if (espnStations.length === 0) continue
+
+            const homeTeam =
+              listing.data?.['home team'] || listing.data?.['team'] || ''
+            const awayTeam =
+              listing.data?.['visiting team'] || listing.data?.['opponent'] || ''
+            if (!homeTeam && !awayTeam) continue
+
+            const eventDate = parseListingDate(listing.date, listing.time)
+            const endTime = new Date(eventDate.getTime() + 3 * 60 * 60 * 1000)
+            // Filter past games (end >30min ago) and out-of-window future.
+            if (endTime.getTime() < windowStartMs) { railSkippedPast++; continue }
+            if (eventDate.getTime() > windowEndMs) { railSkippedPast++; continue }
+
+            const dupeKey = `${homeTeam.toLowerCase()}|${awayTeam.toLowerCase()}|${listing.time}`
+            if (railSeenKeys.has(dupeKey)) { railSkippedDupe++; continue }
+            railSeenKeys.add(dupeKey)
+            // Dedup against existing catalog/game_schedules programs.
+            const dupe = programs.some((p) =>
+              p.homeTeam?.toLowerCase() === homeTeam.toLowerCase() &&
+              p.awayTeam?.toLowerCase() === awayTeam.toLowerCase() &&
+              Math.abs(new Date(p.startTime).getTime() - eventDate.getTime()) < 90 * 60 * 1000,
+            )
+            if (dupe) { railSkippedDupe++; continue }
+
+            const appChannelId = 'stream-espn'
+            let appChan = channels.get(appChannelId)
+            if (!appChan) {
+              appChan = buildStreamingAppChannel({ appName: 'ESPN', channelNumber: 'ESPN' })
+              channels.set(appChannelId, appChan)
+            }
+
+            const searchTitle = awayTeam && homeTeam
+              ? `${awayTeam} @ ${homeTeam}`
+              : (homeTeam || awayTeam)
+            const programDeepLink = `sportscenter://x-callback-url/showHomeTab?q=${encodeURIComponent(searchTitle.trim())}`
+            const programChannel = { ...appChan, deepLink: programDeepLink }
+
+            const startTimeLabel = eventDate.toLocaleTimeString('en-US', {
+              hour: 'numeric', minute: '2-digit', hour12: true,
+              timeZone: 'America/Chicago',
+            })
+            const isLive = eventDate.getTime() <= nowMs && endTime.getTime() > nowMs
+            const sourceStation = espnStations[0]
+
+            programs.push({
+              id: `rail-stream-${eventDate.getTime()}-${homeTeam}-${awayTeam}`
+                .replace(/[^a-zA-Z0-9-]/g, '_')
+                .slice(0, 120),
+              league: group.group_title,
+              homeTeam,
+              awayTeam,
+              gameTime: isLive ? `LIVE • ${startTimeLabel}` : startTimeLabel,
+              day: isLive
+                ? 'LIVE'
+                : eventDate.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'America/Chicago' }),
+              time: isLive ? `LIVE • ${startTimeLabel}` : startTimeLabel,
+              startTime: eventDate.toISOString(),
+              endTime: endTime.toISOString(),
+              channel: programChannel,
+              description: `${awayTeam} @ ${homeTeam} on ${sourceStation}`,
+              isSports: true,
+              isLive,
+              venue: listing.data?.['venue'] || listing.data?.['location'] || '',
+              station: sourceStation,
+              sportTag: group.group_title?.toUpperCase().replace(/[^A-Z]/g, '') || undefined,
+            })
+            railInjected++
+          }
+        }
+        logInfo(
+          `Rail Media STREAMING ESPN injection for ${deviceId}: +${railInjected} programs, ${railSkippedDupe} dedup, ${railSkippedPast} out-of-window`,
+        )
+      } catch (railErr: any) {
+        logger.error('[Channel-Guide-API] Rail Media streaming ESPN injection failed (non-fatal):', { error: railErr.message })
+      }
+    }
+
     // For streaming devices, check if NFHS Network is logged in and add NFHS games
     if (deviceType === 'streaming' && deviceId) {
       const hasNfhsLogin = NFHS_PACKAGES.some(pkg => deviceLoggedInPackages.includes(pkg))
