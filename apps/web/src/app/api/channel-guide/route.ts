@@ -12,6 +12,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSportsGuideApi } from '@/lib/sportsGuideApi'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
+import { db, schema } from '@/db'
+import { and, eq, gt, gte, lte, or } from 'drizzle-orm'
 
 import { logger } from '@sports-bar/logger'
 import { z } from 'zod'
@@ -87,14 +89,16 @@ export const dynamic = 'force-dynamic'
 // list directly to check against device login status, not station-code lookup.
 const NFHS_PACKAGES = ['com.nfhsnetwork.ui', 'com.nfhsnetwork.app', 'com.playon.nfhslive']
 
+// Catalog rows can sit in the DB for 36h, so a game that finished hours
+// ago still reads isLive=1. Treat as completed past this cutoff when no
+// game_schedules row corroborates the row.
+const STALE_LIVE_SECONDS = 4 * 3600
+
 // Per-request fetch of local_channel_overrides rows — needed because the
 // override-injection block uses channelName (which the shared helper does not
 // expose). The shared helper has its own 5-min cache for the channel-number
 // lookup; this DB call returns the row-level data alongside it.
 async function getLocalChannelOverrideRows(): Promise<{ teamName: string; channelNumber: number; channelName: string }[]> {
-  const { db } = await import('@/db')
-  const { schema } = await import('@/db')
-  const { eq } = await import('drizzle-orm')
   const rows = await db.select().from(schema.localChannelOverrides)
     .where(eq(schema.localChannelOverrides.isActive, true))
   return rows.map(r => ({
@@ -112,20 +116,22 @@ interface DeviceGuideRequest {
   endTime?: string
 }
 
-// MAXIMUM VERBOSITY LOGGING
+// Thin wrappers around the structured logger. The logger already attaches
+// a timestamp; pass `data` as the structured-metadata arg so log search/
+// analytics get it as fields, not stringified JSON.
 function logInfo(message: string, data?: any) {
-  const timestamp = new Date().toISOString()
-  logger.info(`[${timestamp}] [Channel-Guide-API] INFO: ${message}`)
-  if (data) {
-    logger.info(`[${timestamp}] [Channel-Guide-API] DATA:`, { data: JSON.stringify(data, null, 2) })
+  if (data !== undefined) {
+    logger.info(`[CHANNEL-GUIDE] ${message}`, data)
+  } else {
+    logger.info(`[CHANNEL-GUIDE] ${message}`)
   }
 }
 
 function logError(message: string, error?: any) {
-  const timestamp = new Date().toISOString()
-  logger.error(`[${timestamp}] [Channel-Guide-API] ERROR: ${message}`)
-  if (error) {
-    logger.error(`[${timestamp}] [Channel-Guide-API] ERROR-DETAILS:`, error)
+  if (error !== undefined) {
+    logger.error(`[CHANNEL-GUIDE] ${message}`, error)
+  } else {
+    logger.error(`[CHANNEL-GUIDE] ${message}`)
   }
 }
 
@@ -239,11 +245,8 @@ export async function POST(request: NextRequest) {
       // Load channel presets and build a station name -> user channel mapping
       // This is critical because Rail API returns national channel numbers, but users
       // configure their own local channel numbers in presets
-      const { db: dbPresets } = await import('@/db')
-      const { schema: schemaPresets } = await import('@/db')
-
-      presets = await dbPresets.select().from(schemaPresets.channelPresets)
-        .where(require('drizzle-orm').eq(schemaPresets.channelPresets.deviceType, presetDeviceType))
+      presets = await db.select().from(schema.channelPresets)
+        .where(eq(schema.channelPresets.deviceType, presetDeviceType))
 
       logInfo(`Loaded ${presets.length} ${presetDeviceType} channel presets`)
 
@@ -432,10 +435,6 @@ export async function POST(request: NextRequest) {
       // broadcast_networks can be resolved to a user preset via the shared
       // network-channel-resolver helper.
       try {
-        const { db } = await import('@/db')
-        const { schema } = await import('@/db')
-        const { and, gte, lte } = await import('drizzle-orm')
-
         const windowStartSec = Math.floor(new Date(startTime).getTime() / 1000)
         const windowEndSec = Math.floor(new Date(endTime).getTime() / 1000)
 
@@ -448,7 +447,6 @@ export async function POST(request: NextRequest) {
         // (small 6h grace allows real OT past the original estimate).
         const nowSecForFilter = Math.floor(Date.now() / 1000)
         const sixHoursAgo = nowSecForFilter - 6 * 60 * 60
-        const { or, eq, and: andOp } = await import('drizzle-orm')
         const localGames = await db
           .select()
           .from(schema.gameSchedules)
@@ -458,7 +456,7 @@ export async function POST(request: NextRequest) {
                 lte(schema.gameSchedules.scheduledStart, windowEndSec),
                 gte(schema.gameSchedules.estimatedEnd, windowStartSec)
               ),
-              andOp(
+              and(
                 eq(schema.gameSchedules.status, 'in_progress'),
                 gte(schema.gameSchedules.estimatedEnd, sixHoursAgo)
               )
@@ -652,9 +650,6 @@ export async function POST(request: NextRequest) {
       // independently — but both rows share the same ipAddress.
       let deviceIp: string | null = null
       try {
-        const { db } = await import('@/db')
-        const { schema } = await import('@/db')
-        const { eq } = await import('drizzle-orm')
         const row = await db.select().from(schema.fireTVDevices)
           .where(eq(schema.fireTVDevices.id, deviceId)).get()
         deviceIp = row?.ipAddress ?? null
@@ -682,10 +677,6 @@ export async function POST(request: NextRequest) {
 
       // Fetch device login status (which subscriptions are logged in)
       try {
-        const { db } = await import('@/db')
-        const { schema } = await import('@/db')
-        const { eq, and } = await import('drizzle-orm')
-
         // Get all services with their packages
         const services = await db.select().from(schema.streamingServices)
 
@@ -754,16 +745,12 @@ export async function POST(request: NextRequest) {
 
     if (deviceType === 'streaming' && deviceId) {
       try {
-        const { db } = await import('@/db')
-        const { schema } = await import('@/db')
-        const { eq, gt, gte, lte, and: dAnd } = await import('drizzle-orm')
-
         const nowSec = Math.floor(Date.now() / 1000)
         const catalogRows = await db
           .select()
           .from(schema.firetvStreamingCatalog)
           .where(
-            dAnd(
+            and(
               eq(schema.firetvStreamingCatalog.deviceId, deviceId),
               gt(schema.firetvStreamingCatalog.expiresAt, nowSec)
             )
@@ -805,7 +792,7 @@ export async function POST(request: NextRequest) {
           })
           .from(schema.gameSchedules)
           .where(
-            dAnd(
+            and(
               gte(schema.gameSchedules.scheduledStart, scheduleWindowStart),
               lte(schema.gameSchedules.scheduledStart, scheduleWindowEnd)
             )
@@ -830,21 +817,27 @@ export async function POST(request: NextRequest) {
           currentPeriod: number | null
           clockTime: string | null
         }
+        // Pre-tokenize schedule rows once. lookupSchedule runs per catalog
+        // row; without this we re-ran tokenize() ~2× per schedule × per
+        // catalog row on every guide refresh.
+        const scheduleTokens = upcomingSchedules.map((sch) => ({
+          row: sch as ScheduleMatch,
+          homeTokens: tokenize(sch.home),
+          awayTokens: tokenize(sch.away),
+        }))
         const lookupSchedule = (title: string): ScheduleMatch | undefined => {
           const titleTokens = new Set(tokenize(title))
           if (titleTokens.size < 2) return undefined
           let best: { row: ScheduleMatch; matchedTokens: number } | null = null
-          for (const sch of upcomingSchedules) {
-            const homeTokens = tokenize(sch.home)
-            const awayTokens = tokenize(sch.away)
-            const homeHit = homeTokens.some((t) => titleTokens.has(t))
-            const awayHit = awayTokens.some((t) => titleTokens.has(t))
+          for (const sch of scheduleTokens) {
+            const homeHit = sch.homeTokens.some((t) => titleTokens.has(t))
+            const awayHit = sch.awayTokens.some((t) => titleTokens.has(t))
             if (!homeHit || !awayHit) continue
             const matched =
-              homeTokens.filter((t) => titleTokens.has(t)).length +
-              awayTokens.filter((t) => titleTokens.has(t)).length
+              sch.homeTokens.filter((t) => titleTokens.has(t)).length +
+              sch.awayTokens.filter((t) => titleTokens.has(t)).length
             if (!best || matched > best.matchedTokens) {
-              best = { row: sch, matchedTokens: matched }
+              best = { row: sch.row, matchedTokens: matched }
             }
           }
           return best?.row
@@ -953,9 +946,8 @@ export async function POST(request: NextRequest) {
           // ago, treat the row as completed and skip injection.
           // Operator-reported on 2026-05-11: "CD Tenerife vs FC Barcelona"
           // captured 02:05, still showing LIVE 8h after end of match.
-          const STALE_LIVE_HOURS = 4
           if (row.isLive && !scheduleMatch &&
-              (nowSec - row.capturedAt) > STALE_LIVE_HOURS * 3600) {
+              (nowSec - row.capturedAt) > STALE_LIVE_SECONDS) {
             catSkippedCompleted++
             continue
           }
@@ -1165,10 +1157,6 @@ export async function POST(request: NextRequest) {
       // alias matches an app the cube has installed (or any app at
       // all when installedApps unknown), synthesize a program.
       try {
-        const { db } = await import('@/db')
-        const { schema } = await import('@/db')
-        const { and: andOp2, gte: gteOp, lte: lteOp, or: orOp, eq: eqOp } = await import('drizzle-orm')
-
         // Use `start`/`end` (local Date vars with defaults) — `startTime`/
         // `endTime` are the raw request params and are often undefined,
         // which would give NaN unix seconds and match 0 rows.
@@ -1181,14 +1169,14 @@ export async function POST(request: NextRequest) {
           .select()
           .from(schema.gameSchedules)
           .where(
-            orOp(
-              andOp2(
-                lteOp(schema.gameSchedules.scheduledStart, windowEndSec),
-                gteOp(schema.gameSchedules.estimatedEnd, windowStartSec)
+            or(
+              and(
+                lte(schema.gameSchedules.scheduledStart, windowEndSec),
+                gte(schema.gameSchedules.estimatedEnd, windowStartSec)
               ),
-              andOp2(
-                eqOp(schema.gameSchedules.status, 'in_progress'),
-                gteOp(schema.gameSchedules.estimatedEnd, sixHoursAgo)
+              and(
+                eq(schema.gameSchedules.status, 'in_progress'),
+                gte(schema.gameSchedules.estimatedEnd, sixHoursAgo)
               )
             )
           )
