@@ -218,17 +218,71 @@ export default function ScheduledGamesPanel() {
   // -----------------------------------------------------------------------
   // AI Suggest state
   // -----------------------------------------------------------------------
-  const [suggestions, setSuggestions] = useState<AISuggestion[]>([])
+  // v2.33.30 — suggestions also initialized from localStorage; that way
+  // a page navigation away and back doesn't blank the operator's AI
+  // Suggest run. Cleared only on explicit re-run by user (fetchSuggestions).
+  const _SUGG_KEY_INIT = typeof window !== 'undefined'
+    ? `ai-suggest-suggestions-${new Date().toISOString().slice(0, 10)}`
+    : ''
+  const [suggestions, setSuggestions] = useState<AISuggestion[]>(() => {
+    try {
+      if (typeof window === 'undefined') return []
+      const raw = localStorage.getItem(_SUGG_KEY_INIT)
+      return raw ? JSON.parse(raw) : []
+    } catch { return [] }
+  })
   const [suggestLoading, setSuggestLoading] = useState(false)
   const [suggestError, setSuggestError] = useState<string | null>(null)
   const [approvingId, setApprovingId] = useState<string | null>(null)
-  const [skippedIds, setSkippedIds] = useState<Set<string>>(new Set())
-  const [approvedIds, setApprovedIds] = useState<Set<string>>(new Set())
-  const [approvedAllocations, setApprovedAllocations] = useState<Record<string, string>>({}) // gameId → allocationId
+  // v2.33.30 — Persist approvedIds + skippedIds to localStorage so they
+  // survive mode-switch / page navigation. Operator caught 2026-05-11:
+  // approved games in AI Suggest disappeared when switching modes
+  // (component remount cleared state). Keyed per date so yesterday's
+  // approvals don't bleed into today; cleared on fetchSuggestions
+  // which represents a fresh AI Suggest run.
+  const APPROVED_IDS_KEY = `ai-suggest-approved-${new Date().toISOString().slice(0, 10)}`
+  const SKIPPED_IDS_KEY = `ai-suggest-skipped-${new Date().toISOString().slice(0, 10)}`
+  const APPROVED_ALLOC_KEY = `ai-suggest-allocations-${new Date().toISOString().slice(0, 10)}`
+  const SUGGESTIONS_KEY = `ai-suggest-suggestions-${new Date().toISOString().slice(0, 10)}`
+  const [skippedIds, setSkippedIds] = useState<Set<string>>(() => {
+    try {
+      if (typeof window === 'undefined') return new Set()
+      const raw = localStorage.getItem(SKIPPED_IDS_KEY)
+      return new Set(raw ? JSON.parse(raw) : [])
+    } catch { return new Set() }
+  })
+  const [approvedIds, setApprovedIds] = useState<Set<string>>(() => {
+    try {
+      if (typeof window === 'undefined') return new Set()
+      const raw = localStorage.getItem(APPROVED_IDS_KEY)
+      return new Set(raw ? JSON.parse(raw) : [])
+    } catch { return new Set() }
+  })
+  const [approvedAllocations, setApprovedAllocations] = useState<Record<string, string>>(() => {
+    try {
+      if (typeof window === 'undefined') return {}
+      const raw = localStorage.getItem(APPROVED_ALLOC_KEY)
+      return raw ? JSON.parse(raw) : {}
+    } catch { return {} }
+  })
   const [approvingAll, setApprovingAll] = useState(false)
   const [modifyingId, setModifyingId] = useState<string | null>(null)
   const [modifyOutputs, setModifyOutputs] = useState<Record<string, number[]>>({})
   const [distributeOpen, setDistributeOpen] = useState(false)
+
+  // v2.33.30 — Persist on every change so a mode-switch / remount keeps state.
+  useEffect(() => {
+    try { localStorage.setItem(APPROVED_IDS_KEY, JSON.stringify([...approvedIds])) } catch {}
+  }, [approvedIds, APPROVED_IDS_KEY])
+  useEffect(() => {
+    try { localStorage.setItem(SKIPPED_IDS_KEY, JSON.stringify([...skippedIds])) } catch {}
+  }, [skippedIds, SKIPPED_IDS_KEY])
+  useEffect(() => {
+    try { localStorage.setItem(APPROVED_ALLOC_KEY, JSON.stringify(approvedAllocations)) } catch {}
+  }, [approvedAllocations, APPROVED_ALLOC_KEY])
+  useEffect(() => {
+    try { localStorage.setItem(SUGGESTIONS_KEY, JSON.stringify(suggestions)) } catch {}
+  }, [suggestions, SUGGESTIONS_KEY])
 
   // -----------------------------------------------------------------------
   // Auto-Pilot state
@@ -974,14 +1028,24 @@ export default function ScheduledGamesPanel() {
                       }`}
                     />
                     <span className="text-sm font-semibold text-white truncate">
-                      Cable Box {inputNum}
+                      {channel.deviceType === 'directv'
+                        ? `DirecTV ${inputNum}`
+                        : channel.deviceType === 'firetv'
+                        ? `Fire TV ${inputNum}`
+                        : `Cable Box ${inputNum}`}
                     </span>
                   </div>
                   <div className="flex items-center gap-1.5 text-sm text-slate-300 mb-1">
                     <Tv className="h-3.5 w-3.5 text-slate-500 shrink-0" />
                     <span className="truncate">
-                      Ch {channel.channelNumber}
-                      {channel.channelName ? ` - ${channel.channelName}` : ''}
+                      {channel.deviceType === 'firetv'
+                        ? (channel.channelName || channel.inputLabel || 'Idle')
+                        : (
+                          <>
+                            Ch {channel.channelNumber}
+                            {channel.channelName ? ` - ${channel.channelName}` : ''}
+                          </>
+                        )}
                     </span>
                   </div>
                   {hasActiveAllocation && activeGame ? (
