@@ -10,7 +10,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { db, schema } from '@/db'
-import { eq, and, sql, gte } from 'drizzle-orm'
+import { eq, and, sql, gte, inArray } from 'drizzle-orm'
 import { logger } from '@sports-bar/logger'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
@@ -253,11 +253,33 @@ async function fetchStreamingCatalogCandidates(
   try {
     const nowSec = Math.floor(Date.now() / 1000)
     const windowEnd = nowSec + 12 * 60 * 60
+    const STALE_LIVE_SECONDS = 4 * 60 * 60 // see channel-guide STALE_LIVE_SECONDS — same intent
     const candidates: GameListing[] = []
     let totalRows = 0
     let skippedDupes = 0
     let skippedOutOfWindow = 0
     let skippedNoTimeAnchor = 0
+
+    // Single bulk query across all inputs — was previously N round-trips
+    // (one per Fire TV) which serialized on the SQLite connection.
+    const deviceIds = firetvInputs.map((i) => i.deviceId).filter((d): d is string => !!d)
+    if (deviceIds.length === 0) return []
+    const allRows = await db
+      .select()
+      .from(schema.firetvStreamingCatalog)
+      .where(
+        and(
+          inArray(schema.firetvStreamingCatalog.deviceId, deviceIds),
+          sql`${schema.firetvStreamingCatalog.expiresAt} > ${nowSec}`,
+        ),
+      )
+      .all()
+    const rowsByDeviceId = new Map<string, typeof allRows>()
+    for (const r of allRows) {
+      const arr = rowsByDeviceId.get(r.deviceId) ?? []
+      arr.push(r)
+      rowsByDeviceId.set(r.deviceId, arr)
+    }
 
     // Per-input dedupe: same contentTitle on the same input produces one
     // candidate (catalog can have duplicates from multiple walker passes).
@@ -266,16 +288,7 @@ async function fetchStreamingCatalogCandidates(
     for (const input of firetvInputs) {
       if (!input.deviceId) continue
 
-      const rows = await db
-        .select()
-        .from(schema.firetvStreamingCatalog)
-        .where(
-          and(
-            eq(schema.firetvStreamingCatalog.deviceId, input.deviceId),
-            sql`${schema.firetvStreamingCatalog.expiresAt} > ${nowSec}`,
-          ),
-        )
-        .all()
+      const rows = rowsByDeviceId.get(input.deviceId) ?? []
 
       totalRows += rows.length
       const seen = new Set<string>()
@@ -293,6 +306,20 @@ async function fetchStreamingCatalogCandidates(
             continue
           }
           if (row.startTime < nowSec - 30 * 60 || row.startTime > windowEnd) {
+            skippedOutOfWindow++
+            continue
+          }
+        } else {
+          // v2.33.30 — Even when scout flagged the tile as live, the
+          // row's startTime can be from a previous walk (e.g. yesterday's
+          // game still has isLive=1 in DB because catalog hasn't been
+          // re-walked since). If startTime is present and points past
+          // the realistic live window, skip — otherwise the approve
+          // endpoint pivots on that stale anchor, matches yesterday's
+          // game in game_schedules ±1hr, and rejects "game already
+          // ended" while the operator sees an upcoming-game card.
+          // Operator caught 2026-05-11 at Holmgren.
+          if (row.startTime != null && row.startTime < nowSec - STALE_LIVE_SECONDS) {
             skippedOutOfWindow++
             continue
           }
@@ -383,44 +410,6 @@ async function loadSchedulingPatterns(): Promise<SchedulingPattern[]> {
   }
 }
 
-// ---------- helper: load historical allocation patterns from existing data ----------
-
-async function loadHistoricalPatterns(): Promise<string> {
-  try {
-    const rows = await db.all(sql`
-      SELECT
-        isa.input_source_type,
-        isa.channel_number,
-        isa.tv_output_ids,
-        isa.status,
-        isa.scheduled_by,
-        gs.home_team_name,
-        gs.away_team_name,
-        gs.league,
-        isrc.name as input_name,
-        isrc.matrix_input_id
-      FROM input_source_allocations isa
-      JOIN game_schedules gs ON isa.game_schedule_id = gs.id
-      JOIN input_sources isrc ON isa.input_source_id = isrc.id
-      WHERE isa.status IN ('completed', 'active')
-      ORDER BY isa.allocated_at DESC
-      LIMIT 50
-    `) as any[]
-
-    if (rows.length === 0) return 'No historical scheduling data available yet.'
-
-    const summary = rows.map(r => {
-      let outputs: number[] = []
-      try { outputs = JSON.parse(r.tv_output_ids || '[]') } catch { /* ignore */ }
-      return `- ${r.away_team_name || '?'} at ${r.home_team_name || '?'} (${r.league}): Input "${r.input_name}" (matrix input ${r.matrix_input_id || 'N/A'}), ch ${r.channel_number || 'N/A'}, TVs ${outputs.join(',') || 'none'}`
-    })
-
-    return summary.join('\n')
-  } catch (err: any) {
-    logger.warn(`[AI-SUGGEST] Could not load historical patterns: ${err.message}`)
-    return 'No historical scheduling data available.'
-  }
-}
 
 // ---------- helper: load input sources ----------
 //
@@ -514,17 +503,6 @@ async function loadInputSources() {
   })
 }
 
-// ---------- helper: load channel presets ----------
-
-async function loadChannelPresets() {
-  const presets = await db.select().from(schema.channelPresets).where(eq(schema.channelPresets.isActive, true))
-  return presets.map(p => ({
-    name: p.name,
-    channelNumber: p.channelNumber,
-    deviceType: p.deviceType,
-  }))
-}
-
 // ---------- helper: load TV outputs ----------
 
 async function loadTVOutputs() {
@@ -605,10 +583,8 @@ export function matchHomeTeamRule(
 function buildPrompt(
   games: GameListing[],
   inputSources: any[],
-  _channelPresets: any[],
   tvOutputs: any[],
   patterns: SchedulingPattern[],
-  _historicalSummary: string,
   homeTeamRules: HomeTeamRule[] = [],
 ): string {
   // Group inputs by type so the AI knows which channel number to use
@@ -1318,12 +1294,10 @@ export async function GET(request: NextRequest) {
     // can scope to this venue's actual Fire TV inputs. Cable/satellite
     // candidates from gameSchedules are then merged with per-device
     // streaming candidates from firetv_streaming_catalog.
-    const [inputSources, channelPresets, tvOutputs, patterns, historicalSummary] = await Promise.all([
+    const [inputSources, tvOutputs, patterns] = await Promise.all([
       loadInputSources(),
-      loadChannelPresets(),
       loadTVOutputs(),
       loadSchedulingPatterns(),
-      loadHistoricalPatterns(),
     ])
 
     if (inputSources.length === 0) {
@@ -1432,7 +1406,7 @@ export async function GET(request: NextRequest) {
     }
 
     // 3. Build prompt and call Ollama
-    const prompt = buildPrompt(filteredGames, inputSources, channelPresets, tvOutputs, patterns, historicalSummary, homeTeamRules)
+    const prompt = buildPrompt(filteredGames, inputSources, tvOutputs, patterns, homeTeamRules)
     logger.info(`[AI-SUGGEST] Sending prompt to Ollama (${prompt.length} chars, ${games.length} games, ${inputSources.length} inputs)`)
 
     let ollamaResponse: string

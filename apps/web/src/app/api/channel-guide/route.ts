@@ -12,6 +12,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSportsGuideApi } from '@/lib/sportsGuideApi'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
+import { db, schema } from '@/db'
+import { and, eq, gt, gte, lte, or } from 'drizzle-orm'
 
 import { logger } from '@sports-bar/logger'
 import { z } from 'zod'
@@ -87,14 +89,16 @@ export const dynamic = 'force-dynamic'
 // list directly to check against device login status, not station-code lookup.
 const NFHS_PACKAGES = ['com.nfhsnetwork.ui', 'com.nfhsnetwork.app', 'com.playon.nfhslive']
 
+// Catalog rows can sit in the DB for 36h, so a game that finished hours
+// ago still reads isLive=1. Treat as completed past this cutoff when no
+// game_schedules row corroborates the row.
+const STALE_LIVE_SECONDS = 4 * 3600
+
 // Per-request fetch of local_channel_overrides rows — needed because the
 // override-injection block uses channelName (which the shared helper does not
 // expose). The shared helper has its own 5-min cache for the channel-number
 // lookup; this DB call returns the row-level data alongside it.
 async function getLocalChannelOverrideRows(): Promise<{ teamName: string; channelNumber: number; channelName: string }[]> {
-  const { db } = await import('@/db')
-  const { schema } = await import('@/db')
-  const { eq } = await import('drizzle-orm')
   const rows = await db.select().from(schema.localChannelOverrides)
     .where(eq(schema.localChannelOverrides.isActive, true))
   return rows.map(r => ({
@@ -112,20 +116,22 @@ interface DeviceGuideRequest {
   endTime?: string
 }
 
-// MAXIMUM VERBOSITY LOGGING
+// Thin wrappers around the structured logger. The logger already attaches
+// a timestamp; pass `data` as the structured-metadata arg so log search/
+// analytics get it as fields, not stringified JSON.
 function logInfo(message: string, data?: any) {
-  const timestamp = new Date().toISOString()
-  logger.info(`[${timestamp}] [Channel-Guide-API] INFO: ${message}`)
-  if (data) {
-    logger.info(`[${timestamp}] [Channel-Guide-API] DATA:`, { data: JSON.stringify(data, null, 2) })
+  if (data !== undefined) {
+    logger.info(`[CHANNEL-GUIDE] ${message}`, data)
+  } else {
+    logger.info(`[CHANNEL-GUIDE] ${message}`)
   }
 }
 
 function logError(message: string, error?: any) {
-  const timestamp = new Date().toISOString()
-  logger.error(`[${timestamp}] [Channel-Guide-API] ERROR: ${message}`)
-  if (error) {
-    logger.error(`[${timestamp}] [Channel-Guide-API] ERROR-DETAILS:`, error)
+  if (error !== undefined) {
+    logger.error(`[CHANNEL-GUIDE] ${message}`, error)
+  } else {
+    logger.error(`[CHANNEL-GUIDE] ${message}`)
   }
 }
 
@@ -239,11 +245,8 @@ export async function POST(request: NextRequest) {
       // Load channel presets and build a station name -> user channel mapping
       // This is critical because Rail API returns national channel numbers, but users
       // configure their own local channel numbers in presets
-      const { db: dbPresets } = await import('@/db')
-      const { schema: schemaPresets } = await import('@/db')
-
-      presets = await dbPresets.select().from(schemaPresets.channelPresets)
-        .where(require('drizzle-orm').eq(schemaPresets.channelPresets.deviceType, presetDeviceType))
+      presets = await db.select().from(schema.channelPresets)
+        .where(eq(schema.channelPresets.deviceType, presetDeviceType))
 
       logInfo(`Loaded ${presets.length} ${presetDeviceType} channel presets`)
 
@@ -432,10 +435,6 @@ export async function POST(request: NextRequest) {
       // broadcast_networks can be resolved to a user preset via the shared
       // network-channel-resolver helper.
       try {
-        const { db } = await import('@/db')
-        const { schema } = await import('@/db')
-        const { and, gte, lte } = await import('drizzle-orm')
-
         const windowStartSec = Math.floor(new Date(startTime).getTime() / 1000)
         const windowEndSec = Math.floor(new Date(endTime).getTime() / 1000)
 
@@ -448,7 +447,6 @@ export async function POST(request: NextRequest) {
         // (small 6h grace allows real OT past the original estimate).
         const nowSecForFilter = Math.floor(Date.now() / 1000)
         const sixHoursAgo = nowSecForFilter - 6 * 60 * 60
-        const { or, eq, and: andOp } = await import('drizzle-orm')
         const localGames = await db
           .select()
           .from(schema.gameSchedules)
@@ -458,7 +456,7 @@ export async function POST(request: NextRequest) {
                 lte(schema.gameSchedules.scheduledStart, windowEndSec),
                 gte(schema.gameSchedules.estimatedEnd, windowStartSec)
               ),
-              andOp(
+              and(
                 eq(schema.gameSchedules.status, 'in_progress'),
                 gte(schema.gameSchedules.estimatedEnd, sixHoursAgo)
               )
@@ -652,9 +650,6 @@ export async function POST(request: NextRequest) {
       // independently — but both rows share the same ipAddress.
       let deviceIp: string | null = null
       try {
-        const { db } = await import('@/db')
-        const { schema } = await import('@/db')
-        const { eq } = await import('drizzle-orm')
         const row = await db.select().from(schema.fireTVDevices)
           .where(eq(schema.fireTVDevices.id, deviceId)).get()
         deviceIp = row?.ipAddress ?? null
@@ -682,10 +677,6 @@ export async function POST(request: NextRequest) {
 
       // Fetch device login status (which subscriptions are logged in)
       try {
-        const { db } = await import('@/db')
-        const { schema } = await import('@/db')
-        const { eq, and } = await import('drizzle-orm')
-
         // Get all services with their packages
         const services = await db.select().from(schema.streamingServices)
 
@@ -754,16 +745,12 @@ export async function POST(request: NextRequest) {
 
     if (deviceType === 'streaming' && deviceId) {
       try {
-        const { db } = await import('@/db')
-        const { schema } = await import('@/db')
-        const { eq, gt, gte, lte, and: dAnd } = await import('drizzle-orm')
-
         const nowSec = Math.floor(Date.now() / 1000)
         const catalogRows = await db
           .select()
           .from(schema.firetvStreamingCatalog)
           .where(
-            dAnd(
+            and(
               eq(schema.firetvStreamingCatalog.deviceId, deviceId),
               gt(schema.firetvStreamingCatalog.expiresAt, nowSec)
             )
@@ -805,7 +792,7 @@ export async function POST(request: NextRequest) {
           })
           .from(schema.gameSchedules)
           .where(
-            dAnd(
+            and(
               gte(schema.gameSchedules.scheduledStart, scheduleWindowStart),
               lte(schema.gameSchedules.scheduledStart, scheduleWindowEnd)
             )
@@ -830,21 +817,27 @@ export async function POST(request: NextRequest) {
           currentPeriod: number | null
           clockTime: string | null
         }
+        // Pre-tokenize schedule rows once. lookupSchedule runs per catalog
+        // row; without this we re-ran tokenize() ~2× per schedule × per
+        // catalog row on every guide refresh.
+        const scheduleTokens = upcomingSchedules.map((sch) => ({
+          row: sch as ScheduleMatch,
+          homeTokens: tokenize(sch.home),
+          awayTokens: tokenize(sch.away),
+        }))
         const lookupSchedule = (title: string): ScheduleMatch | undefined => {
           const titleTokens = new Set(tokenize(title))
           if (titleTokens.size < 2) return undefined
           let best: { row: ScheduleMatch; matchedTokens: number } | null = null
-          for (const sch of upcomingSchedules) {
-            const homeTokens = tokenize(sch.home)
-            const awayTokens = tokenize(sch.away)
-            const homeHit = homeTokens.some((t) => titleTokens.has(t))
-            const awayHit = awayTokens.some((t) => titleTokens.has(t))
+          for (const sch of scheduleTokens) {
+            const homeHit = sch.homeTokens.some((t) => titleTokens.has(t))
+            const awayHit = sch.awayTokens.some((t) => titleTokens.has(t))
             if (!homeHit || !awayHit) continue
             const matched =
-              homeTokens.filter((t) => titleTokens.has(t)).length +
-              awayTokens.filter((t) => titleTokens.has(t)).length
+              sch.homeTokens.filter((t) => titleTokens.has(t)).length +
+              sch.awayTokens.filter((t) => titleTokens.has(t)).length
             if (!best || matched > best.matchedTokens) {
-              best = { row: sch, matchedTokens: matched }
+              best = { row: sch.row, matchedTokens: matched }
             }
           }
           return best?.row
@@ -953,9 +946,8 @@ export async function POST(request: NextRequest) {
           // ago, treat the row as completed and skip injection.
           // Operator-reported on 2026-05-11: "CD Tenerife vs FC Barcelona"
           // captured 02:05, still showing LIVE 8h after end of match.
-          const STALE_LIVE_HOURS = 4
           if (row.isLive && !scheduleMatch &&
-              (nowSec - row.capturedAt) > STALE_LIVE_HOURS * 3600) {
+              (nowSec - row.capturedAt) > STALE_LIVE_SECONDS) {
             catSkippedCompleted++
             continue
           }
@@ -1165,10 +1157,6 @@ export async function POST(request: NextRequest) {
       // alias matches an app the cube has installed (or any app at
       // all when installedApps unknown), synthesize a program.
       try {
-        const { db } = await import('@/db')
-        const { schema } = await import('@/db')
-        const { and: andOp2, gte: gteOp, lte: lteOp, or: orOp, eq: eqOp } = await import('drizzle-orm')
-
         // Use `start`/`end` (local Date vars with defaults) — `startTime`/
         // `endTime` are the raw request params and are often undefined,
         // which would give NaN unix seconds and match 0 rows.
@@ -1181,14 +1169,14 @@ export async function POST(request: NextRequest) {
           .select()
           .from(schema.gameSchedules)
           .where(
-            orOp(
-              andOp2(
-                lteOp(schema.gameSchedules.scheduledStart, windowEndSec),
-                gteOp(schema.gameSchedules.estimatedEnd, windowStartSec)
+            or(
+              and(
+                lte(schema.gameSchedules.scheduledStart, windowEndSec),
+                gte(schema.gameSchedules.estimatedEnd, windowStartSec)
               ),
-              andOp2(
-                eqOp(schema.gameSchedules.status, 'in_progress'),
-                gteOp(schema.gameSchedules.estimatedEnd, sixHoursAgo)
+              and(
+                eq(schema.gameSchedules.status, 'in_progress'),
+                gte(schema.gameSchedules.estimatedEnd, sixHoursAgo)
               )
             )
           )
@@ -1418,6 +1406,131 @@ export async function POST(request: NextRequest) {
         }
       } catch (streamFallbackError: any) {
         logger.error('[Channel-Guide-API] streaming game_schedules fallback failed (non-fatal):', { error: streamFallbackError.message })
+      }
+    }
+
+    // v2.33.43 — Rail Media injection for ESPN-family channels on
+    // streaming devices. Operator request 2026-05-11: ESPN's app on
+    // Fire TV shows niche ESPN+ games (Rayo, Virginia Tech baseball,
+    // Yale lacrosse) that our ESPN scoreboard sync doesn't cover
+    // (it only fetches MLB/NBA/NHL/NFL/CFB/MCBB/WCBB). Rail Media's
+    // channel guide has comprehensive ESPN+/ESPN/ESPN2/ESPNU/ACCN/
+    // SECN/BTN/LHN listings. Inject those as Fire TV programs with
+    // search-by-title deeplinks so the bartender's tap fires the
+    // Scout PLAY_GAME flow against ESPN GTV.
+    //
+    // Also removes our dependence on the catalog walker for ESPN
+    // content (the walker can't reliably dump ESPN's home page
+    // due to continuous Featured-row animation).
+    if (deviceType === 'streaming' && deviceId) {
+      try {
+        const ESPN_FAMILY_PATTERNS = [
+          /^espn/i,                       // ESPN, ESPN2, ESPNU, ESPN+, ESPND
+          /^accn$|^acc[\s-]?network/i,    // ACCN / ACC Network
+          /^secn$|^sec[\s-]?network/i,    // SECN / SEC Network
+          /^btn$|^big[\s-]?ten/i,         // BTN / Big Ten Network
+          /^lhn$|^longhorn/i,             // LHN / Longhorn Network
+        ]
+        const isEspnFamilyStation = (s: string) =>
+          ESPN_FAMILY_PATTERNS.some((re) => re.test(s.trim()))
+
+        const api = getSportsGuideApi()
+        const railDays = Math.max(1, days)
+        const railGuide = await api.fetchDateRangeGuide(railDays)
+
+        let railInjected = 0
+        let railSkippedDupe = 0
+        let railSkippedPast = 0
+        const nowMs = Date.now()
+        const windowEndMs = end.getTime()
+        const windowStartMs = start.getTime() - 30 * 60 * 1000  // 30min grace
+        const railSeenKeys = new Set<string>()
+
+        for (const group of railGuide.listing_groups || []) {
+          for (const listing of group.listings || []) {
+            const channelNumbers =
+              listing.channel_numbers?.['CAB'] ||
+              listing.channel_numbers?.['DRTV']
+            if (!channelNumbers) continue
+
+            const espnStations = Object.keys(channelNumbers).filter((s) =>
+              isEspnFamilyStation(s),
+            )
+            if (espnStations.length === 0) continue
+
+            const homeTeam =
+              listing.data?.['home team'] || listing.data?.['team'] || ''
+            const awayTeam =
+              listing.data?.['visiting team'] || listing.data?.['opponent'] || ''
+            if (!homeTeam && !awayTeam) continue
+
+            const eventDate = parseListingDate(listing.date, listing.time)
+            const endTime = new Date(eventDate.getTime() + 3 * 60 * 60 * 1000)
+            // Filter past games (end >30min ago) and out-of-window future.
+            if (endTime.getTime() < windowStartMs) { railSkippedPast++; continue }
+            if (eventDate.getTime() > windowEndMs) { railSkippedPast++; continue }
+
+            const dupeKey = `${homeTeam.toLowerCase()}|${awayTeam.toLowerCase()}|${listing.time}`
+            if (railSeenKeys.has(dupeKey)) { railSkippedDupe++; continue }
+            railSeenKeys.add(dupeKey)
+            // Dedup against existing catalog/game_schedules programs.
+            const dupe = programs.some((p) =>
+              p.homeTeam?.toLowerCase() === homeTeam.toLowerCase() &&
+              p.awayTeam?.toLowerCase() === awayTeam.toLowerCase() &&
+              Math.abs(new Date(p.startTime).getTime() - eventDate.getTime()) < 90 * 60 * 1000,
+            )
+            if (dupe) { railSkippedDupe++; continue }
+
+            const appChannelId = 'stream-espn'
+            let appChan = channels.get(appChannelId)
+            if (!appChan) {
+              appChan = buildStreamingAppChannel({ appName: 'ESPN', channelNumber: 'ESPN' })
+              channels.set(appChannelId, appChan)
+            }
+
+            const searchTitle = awayTeam && homeTeam
+              ? `${awayTeam} @ ${homeTeam}`
+              : (homeTeam || awayTeam)
+            const programDeepLink = `sportscenter://x-callback-url/showHomeTab?q=${encodeURIComponent(searchTitle.trim())}`
+            const programChannel = { ...appChan, deepLink: programDeepLink }
+
+            const startTimeLabel = eventDate.toLocaleTimeString('en-US', {
+              hour: 'numeric', minute: '2-digit', hour12: true,
+              timeZone: 'America/Chicago',
+            })
+            const isLive = eventDate.getTime() <= nowMs && endTime.getTime() > nowMs
+            const sourceStation = espnStations[0]
+
+            programs.push({
+              id: `rail-stream-${eventDate.getTime()}-${homeTeam}-${awayTeam}`
+                .replace(/[^a-zA-Z0-9-]/g, '_')
+                .slice(0, 120),
+              league: group.group_title,
+              homeTeam,
+              awayTeam,
+              gameTime: isLive ? `LIVE • ${startTimeLabel}` : startTimeLabel,
+              day: isLive
+                ? 'LIVE'
+                : eventDate.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'America/Chicago' }),
+              time: isLive ? `LIVE • ${startTimeLabel}` : startTimeLabel,
+              startTime: eventDate.toISOString(),
+              endTime: endTime.toISOString(),
+              channel: programChannel,
+              description: `${awayTeam} @ ${homeTeam} on ${sourceStation}`,
+              isSports: true,
+              isLive,
+              venue: listing.data?.['venue'] || listing.data?.['location'] || '',
+              station: sourceStation,
+              sportTag: group.group_title?.toUpperCase().replace(/[^A-Z]/g, '') || undefined,
+            })
+            railInjected++
+          }
+        }
+        logInfo(
+          `Rail Media STREAMING ESPN injection for ${deviceId}: +${railInjected} programs, ${railSkippedDupe} dedup, ${railSkippedPast} out-of-window`,
+        )
+      } catch (railErr: any) {
+        logger.error('[Channel-Guide-API] Rail Media streaming ESPN injection failed (non-fatal):', { error: railErr.message })
       }
     }
 
