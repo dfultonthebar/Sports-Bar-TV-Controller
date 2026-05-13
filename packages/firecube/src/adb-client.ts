@@ -558,79 +558,119 @@ export class ADBClient {
       // through `launchApp` here.
       await this.launchApp(packageName)
 
-      logger.info(`[ADB CLIENT] Waiting 8s for ESPN content rows to render`)
-      await new Promise((r) => setTimeout(r, 8000))
+      // v2.33.33 — Poll for ESPN to leave StartupActivity before
+      // attempting any navigation. Holmgren Cube 3 verified
+      // 2026-05-11: ESPN can sit in StartupActivity (splash/launch)
+      // for 10-15s before transitioning to PageControllerActivity
+      // (home). A blind 8s wait was too short — DPAD nav and rail
+      // dumps happened while ESPN was still on the splash screen,
+      // so the left rail items weren't in the AS tree yet. Poll
+      // up to 20s for the home activity to appear.
+      await this._waitForEspnHome(20000)
 
       const trimmedTitle = (contentTitle || '').trim()
       if (trimmedTitle) {
-        // v2.32.94 — Search-by-title autoplay. Verified end-to-end on
-        // Cube 3 (AFTR / com.espn.gtv) — final foreground:
-        // com.espn.gtv/com.espn.video.dmp.PlayerActivity, MediaSession
-        // state=3 PLAYING.
+        // v2.33.37 — Operator-confirmed sequence at Holmgren Cube 3,
+        // 2026-05-11: "wait for it to load then 1 left arrow to get
+        // the menu to open then one arrow up for search then center
+        // to launch search ... then type in what game then we either
+        // have to hit enter after typing it out or go down to next
+        // then click on the matching game and hit watch."
         //
+        // Reverted v2.33.36's 5x DPAD_UP walk (5 UPs were over-shooting
+        // through the rail wrap-around or otherwise confusing focus).
+        // The real fix is timing: each animation needs ~3s to settle.
         // Sequence:
-        //   1. DPAD_LEFT — focus moves from first content tile (where
-        //      ESPN's home tab leaves it after launch) to the left
-        //      navigation rail. Lands on "Home" (rail bounds y=436-484).
-        //   2. DPAD_UP — moves up the rail to "Search" (rail bounds
-        //      y=356-404, immediately above Home).
-        //   3. DPAD_CENTER — opens the search activity (focuses an
-        //      EditText).
-        //   4. `input text` — Android types the query into the focused
-        //      EditText. Spaces must be `%s`-escaped because `adb shell`
-        //      tokenizes on whitespace; backslash-escape any single
-        //      quotes to safely wrap the whole arg in single quotes.
-        //   5. Wait 4s for ESPN's search results to populate.
-        //   6. DPAD_DOWN — moves focus from the search EditText down
-        //      into the first result tile.
-        //   7. DPAD_CENTER — opens the result, lands on PlayerActivity.
-        //
-        // Per-step `timeoutMs: 8000` matches the v2.32.91 sendKey
-        // pattern (framework pins during search-results render).
-        logger.info(`[ADB CLIENT] DPAD_LEFT → focus left navigation rail`)
-        await this.sendKey(21, 8000) // KEYCODE_DPAD_LEFT
-        await new Promise((r) => setTimeout(r, 400))
-        logger.info(`[ADB CLIENT] DPAD_UP → focus Search rail item`)
-        await this.sendKey(19, 8000) // KEYCODE_DPAD_UP
-        await new Promise((r) => setTimeout(r, 400))
-        logger.info(`[ADB CLIENT] DPAD_CENTER → open Search activity`)
-        await this.sendKey(23, 8000) // KEYCODE_DPAD_CENTER
+        //   1. extra 4s settle after home activity (rail render-ready)
+        //   2. DPAD_LEFT — menu opens, focus on Home
+        //   3. wait 3000ms — menu open animation + focus settle
+        //   4. DPAD_UP — focus moves up to Search (one above Home)
+        //   5. wait 3000ms — focus animation
+        //   6. DPAD_CENTER — opens Search activity
+        //   7. wait 4500ms — activity transition + EditText focus
+        // After typing: KEYCODE_ENTER (66) to submit + DPAD_DOWN
+        // fallback if Enter doesn't dismiss keyboard.
+        logger.info(`[ADB CLIENT] Extra 4s settle after home activity`)
+        await new Promise((r) => setTimeout(r, 4000))
+        logger.info(`[ADB CLIENT] DPAD_LEFT → open menu, focus Home`)
+        await this.sendKey(21, 8000)
         await new Promise((r) => setTimeout(r, 3000))
-        // `input text` arg: spaces → %s, single-quote → '\''.
-        const escaped = trimmedTitle
+        logger.info(`[ADB CLIENT] DPAD_UP → focus Search (one above Home)`)
+        await this.sendKey(19, 8000)
+        await new Promise((r) => setTimeout(r, 3000))
+        // Verify we landed on Search before pressing CENTER.
+        const onSearch = await this._verifyFocusedOnRailItem('Search')
+        if (onSearch) {
+          logger.info(`[ADB CLIENT] Search rail item confirmed focused`)
+        } else {
+          logger.warn(`[ADB CLIENT] Search rail not confirmed focused — pressing CENTER anyway`)
+        }
+        logger.info(`[ADB CLIENT] DPAD_CENTER → launch Search`)
+        await this.sendKey(23, 8000)
+        await new Promise((r) => setTimeout(r, 4500))
+        // v2.33.38 — Drop mascot words from typed query.
+        //   - Holy Cross Crusaders @ Army Black Knights → "Holy Cross Army"
+        // Operator caught 2026-05-11: ESPN's IME autocomplete added
+        // an extra "s" to "Knights" (typed "Knightss"). Shorter
+        // query → fewer chances for autocomplete weirdness → ESPN
+        // returns the same live result anyway (tile-matcher only
+        // needs token overlap, not the full string).
+        const queryShort = (() => {
+          // Split on @ / vs. / vs to get away vs home, then take the
+          // first 1-2 distinctive words of each.
+          const parts = trimmedTitle
+            .split(/\s+(?:@|vs\.?)\s+/i)
+            .map((s) => s.trim())
+            .filter(Boolean)
+          if (parts.length === 2) {
+            // Take first N tokens of each team where N drops the
+            // typical mascot suffix. Most college team names end
+            // with a mascot word: "Holy Cross Crusaders" → "Holy
+            // Cross"; "Army Black Knights" → "Army"; "Navy
+            // Midshipmen" → "Navy". Heuristic: keep all words
+            // EXCEPT the last one IF the team has >=2 words. For
+            // 2-word team names that's just the first word; for
+            // longer it keeps enough to disambiguate.
+            const stripMascot = (s: string) => {
+              const w = s.split(/\s+/).filter(Boolean)
+              return (w.length >= 2 ? w.slice(0, -1) : w).join(' ')
+            }
+            return `${stripMascot(parts[0])} ${stripMascot(parts[1])}`
+          }
+          return trimmedTitle.replace(/[@]/g, ' ').replace(/\s+/g, ' ').trim()
+        })()
+        const escaped = queryShort
           .replace(/'/g, "'\\''")
           .replace(/ /g, '%s')
-        logger.info(`[ADB CLIENT] input text "${trimmedTitle}" (escaped: ${escaped})`)
+        logger.info(`[ADB CLIENT] input text "${queryShort}" (escaped: ${escaped})`)
         await this.executeShellCommand(`input text '${escaped}'`, 8000)
         logger.info(`[ADB CLIENT] Waiting 4s for ESPN search results to render`)
         await new Promise((r) => setTimeout(r, 4000))
 
-        // v2.32.97 — TEXT-TARGETED TAP replaces blind DPAD_DOWN + verify.
-        //
-        // Pre-fix v2.32.94/.96 used DPAD_DOWN to "focus first result"
-        // and pressed CENTER. v2.32.96 added a verification gate that
-        // rejected mismatches but couldn't fix them — when ESPN's UI
-        // ended up on the Featured tab instead of Search results, the
-        // autoplay aborted entirely.
-        //
-        // New approach: dump the UI right after the search query
-        // typed, scan ALL on-screen tiles for one whose accessibility
-        // content matches the intended title, then `input tap <x> <y>`
-        // at that tile's bounds center. Targeting by content rather
-        // than position handles both the Search-results case AND the
-        // Featured-tab case — if ESPN displays a tile matching the
-        // query ANYWHERE on screen, we tap it directly.
-        //
-        // If no matching tile is visible, throw with diagnostic. Only
-        // way that can happen now: ESPN search returned no results
-        // for the query (truly unfindable game), or ESPN's UI is in a
-        // state with no visible content tiles at all.
+        // v2.33.42 — KEYCODE_MEDIA_PLAY_PAUSE (85) submits the
+        // search. Operator-confirmed at Holmgren Cube 3, 2026-05-11:
+        // "it's the play button for next." The Play/Pause key on
+        // the Fire TV remote serves as the Next/Submit action when
+        // ESPN's on-screen keyboard is active.
+        logger.info(`[ADB CLIENT] KEYCODE_MEDIA_PLAY_PAUSE (85) → submit search / Next`)
+        await this.sendKey(85, 8000)
+        await new Promise((r) => setTimeout(r, 2500))
+        logger.info(`[ADB CLIENT] DPAD_DOWN → focus first result row`)
+        await this.sendKey(20, 8000) // KEYCODE_DPAD_DOWN
+        await new Promise((r) => setTimeout(r, 2000))
+
         const tapTarget = await this._findVisibleTileMatchingTitle(trimmedTitle)
         if (tapTarget) {
           logger.info(
-            `[ADB CLIENT] ESPN tile match — tapping "${tapTarget.text}" at (${tapTarget.cx}, ${tapTarget.cy})`,
+            `[ADB CLIENT] ESPN tile match — pressing DPAD_CENTER on focused result "${tapTarget.text}"`,
           )
-          await this.executeShellCommand(`input tap ${tapTarget.cx} ${tapTarget.cy}`, 8000)
+          // DPAD_CENTER opens the currently-focused result tile. The
+          // DPAD_DOWN above moved focus onto the first result row,
+          // and ESPN search typically ranks the exact-match game as
+          // result #0, so this clicks the right tile in most cases.
+          // (If wrong: tile-match logged the actual focused tile, so
+          // operator + future patch can diagnose.)
+          await this.sendKey(23, 8000) // KEYCODE_DPAD_CENTER
 
           // v2.32.99 — Detail page → PlayerActivity. ESPN's detail page
           // auto-focuses the Watch CTA (verified live at bounds
@@ -689,6 +729,89 @@ export class ADBClient {
   }
 
   /**
+   * v2.33.36 — Verify the named rail item (e.g. "Search") is what's
+   * currently focused. ESPN GTV's left navigation rail items
+   * (Search, Home, Films & Shows, Browse, Highlights, Settings)
+   * live in the narrow x<350 column. Returns true if the dump shows
+   * a focused element whose bounds enclose the rail item with the
+   * given content-desc.
+   *
+   * Used by the search-nav sequence to confirm focus reached the
+   * Search rail item before pressing DPAD_CENTER (avoids opening
+   * the wrong page when the DPAD_UP walk didn't land where expected).
+   */
+  private async _verifyFocusedOnRailItem(targetDesc: string): Promise<boolean> {
+    try {
+      const dumpPath = `/sdcard/espn_focus_${Date.now()}.xml`
+      await this.executeShellCommand(`uiautomator dump ${dumpPath}`, 8000)
+      const xml = await this.executeShellCommand(`cat ${dumpPath}`, 8000)
+      this.executeShellCommand(`rm -f ${dumpPath}`, 3000).catch(() => {})
+      if (!xml || xml.length < 200) return false
+      // Find the bounds of the rail item with the target content-desc.
+      const targetEsc = targetDesc.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      const itemRe = new RegExp(
+        `<node[^>]*content-desc="${targetEsc}"[^>]*bounds="\\[(\\d+),(\\d+)\\]\\[(\\d+),(\\d+)\\]"`,
+      )
+      const itemMatch = itemRe.exec(xml)
+      if (!itemMatch) return false
+      const [ix1, iy1, ix2, iy2] = itemMatch.slice(1, 5).map(Number)
+      if (ix2 > 350) return false // not in the rail column
+      // Find the focused element's bounds and check if they enclose
+      // (or overlap with) the target rail item.
+      const focusRe = /<node[^>]*focused="true"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/g
+      let focusMatch: RegExpExecArray | null
+      while ((focusMatch = focusRe.exec(xml)) !== null) {
+        const [fx1, fy1, fx2, fy2] = focusMatch.slice(1, 5).map(Number)
+        // Treat the focus as "on" the rail item if their y-ranges
+        // overlap and the focused element is in the rail column.
+        if (fx2 <= 350 && fy1 <= iy2 && fy2 >= iy1) {
+          return true
+        }
+      }
+      return false
+    } catch {
+      return false
+    }
+  }
+
+  /**
+   * v2.33.33 — Poll for ESPN to leave StartupActivity. ESPN GTV
+   * launches into a splash screen (`com.espn.startup.presentation.
+   * StartupActivity`) that can take 10-15s before transitioning to
+   * `com.espn.androidtv.page.PageControllerActivity` (the home /
+   * featured page). Any DPAD nav or UI dump fired during the splash
+   * sees an empty / placeholder tree and the rail items aren't yet
+   * rendered. Polls dumpsys every 1s until home appears or timeout.
+   */
+  private async _waitForEspnHome(timeoutMs: number): Promise<void> {
+    const deadline = Date.now() + timeoutMs
+    let lastFocus = ''
+    while (Date.now() < deadline) {
+      try {
+        const out = await this.executeShellCommand(
+          `dumpsys window windows | grep mCurrentFocus`,
+          5000,
+        )
+        lastFocus = (out || '').trim()
+        if (lastFocus.includes('PageControllerActivity')) {
+          logger.info(`[ADB CLIENT] ESPN home reached (${Math.round((timeoutMs - (deadline - Date.now())) / 1000)}s)`)
+          // Brief settle so content rows finish hydrating after the
+          // activity transition.
+          await new Promise((r) => setTimeout(r, 2000))
+          return
+        }
+      } catch {
+        // Ignore intermittent dumpsys errors
+      }
+      await new Promise((r) => setTimeout(r, 1000))
+    }
+    logger.warn(`[ADB CLIENT] ESPN home wait timed out after ${timeoutMs}ms (last focus: ${lastFocus.slice(0, 120)})`)
+    // Final 2s settle as a best-effort fallback so the nav code
+    // still has something to work with.
+    await new Promise((r) => setTimeout(r, 2000))
+  }
+
+/**
    * v2.32.97 — Find an on-screen tile whose accessibility content
    * matches the intended title, return its bounds center for tapping.
    *
@@ -776,12 +899,30 @@ export class ADBClient {
         return null
       }
 
+      // v2.33.31 — Whole-word match + minimum-score threshold.
+      // Previous (score > 0 + substring match) false-positived on
+      // partial-word overlap: "Holy Cross @ Army Black Knights" got
+      // tapped onto "Marist vs Princeton NCAA Lacrosse" because
+      // "cross" is a substring of "lacrosse" (score 1/6 → "winner").
+      // Operator caught 2026-05-11.
+      //
+      // Whole-word check via tokenized Set instead of substring; and
+      // require at least 2 tokens OR half the intended tokens to
+      // match (whichever is bigger, capped at the intended count for
+      // 1-token edge case).
+      const minScore = Math.min(
+        intendedTokens.length,
+        Math.max(2, Math.ceil(intendedTokens.length / 2)),
+      )
       let best: { score: number; text: string; cx: number; cy: number } | null = null
       for (const tile of tilesByBounds.values()) {
         const combined = stripNoise(tile.text.join(' '))
         if (!combined) continue
-        const score = intendedTokens.filter((t) => combined.includes(t)).length
-        if (score > 0 && (!best || score > best.score)) {
+        const combinedTokens = new Set(
+          combined.split(' ').filter((t) => t.length >= 3),
+        )
+        const score = intendedTokens.filter((t) => combinedTokens.has(t)).length
+        if (score >= minScore && (!best || score > best.score)) {
           best = {
             score,
             text: tile.text.join(' | ').slice(0, 200),
@@ -803,7 +944,7 @@ export class ADBClient {
         return null
       }
       logger.info(
-        `[ADB CLIENT] findVisibleTile: best match score=${best.score}/${intendedTokens.length} text="${best.text}"`,
+        `[ADB CLIENT] findVisibleTile: best match score=${best.score}/${intendedTokens.length} (min=${minScore}) text="${best.text}"`,
       )
       return { text: best.text, cx: best.cx, cy: best.cy }
     } catch (err: any) {
