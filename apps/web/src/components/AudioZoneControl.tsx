@@ -1,7 +1,7 @@
 
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Volume2, VolumeX, Music, Radio, Tv, Wifi, Speaker } from 'lucide-react'
 
 import { logger } from '@sports-bar/logger'
@@ -74,6 +74,21 @@ export default function AudioZoneControl({ bartenderMode = false }: AudioZoneCon
   const [activeProcessorId, setActiveProcessorId] = useState<string | null>(null)
   const [isMounted, setIsMounted] = useState(false)
   const [expandedZones, setExpandedZones] = useState<Set<string>>(new Set()) // Track which zones have expanded output controls
+
+  // Volume slider debounce. HTML <input type="range"> fires onChange on
+  // every detent; without debouncing a single drag posts 20+ commands at
+  // the Atlas (operator-caught 2026-05-15 zone 8 — 20 writes in 2s). We
+  // hold the latest value, optimistically update UI immediately, and
+  // POST only after 200ms of slider idle.
+  const VOLUME_DEBOUNCE_MS = 200
+  const volumeTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
+  useEffect(() => {
+    const timers = volumeTimersRef.current
+    return () => {
+      timers.forEach((t) => clearTimeout(t))
+      timers.clear()
+    }
+  }, [])
 
   useEffect(() => {
     setIsMounted(true)
@@ -261,46 +276,53 @@ export default function AudioZoneControl({ bartenderMode = false }: AudioZoneCon
     }
   }
 
-  const handleVolumeChange = async (zoneId: string, newVolume: number) => {
+  const handleVolumeChange = (zoneId: string, newVolume: number) => {
     // Find the zone to get its zone number
     const zone = zones.find(z => z.id === zoneId)
     if (!zone || !activeProcessorId) return
 
     // Optimistically update UI
-    setZones(zones.map(z => 
-      z.id === zoneId 
+    setZones(zones.map(z =>
+      z.id === zoneId
         ? { ...z, volume: newVolume }
         : z
     ))
 
-    try {
-      // Send command to Atlas processor
-      const response = await fetch('/api/audio-processor/control', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          processorId: activeProcessorId,
-          command: {
-            action: 'volume',
-            zone: zone.atlasIndex !== undefined ? zone.atlasIndex + 1 : parseInt(zone.id.split('_')[1]) + 1,
-            value: newVolume
-          }
+    // Debounce the hardware POST — see VOLUME_DEBOUNCE_MS comment.
+    const timerKey = `zone:${zoneId}`
+    const prev = volumeTimersRef.current.get(timerKey)
+    if (prev) clearTimeout(prev)
+    const timer = setTimeout(async () => {
+      volumeTimersRef.current.delete(timerKey)
+      try {
+        const response = await fetch('/api/audio-processor/control', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            processorId: activeProcessorId,
+            command: {
+              action: 'volume',
+              zone: zone.atlasIndex !== undefined ? zone.atlasIndex + 1 : parseInt(zone.id.split('_')[1]) + 1,
+              value: newVolume
+            }
+          })
         })
-      })
 
-      if (!response.ok) {
-        const error = await response.json()
-        logger.error('Failed to set zone volume:', error)
+        if (!response.ok) {
+          const error = await response.json()
+          logger.error('Failed to set zone volume:', error)
+          // Revert optimistic update
+          await fetchDynamicAtlasConfiguration()
+        }
+      } catch (error) {
+        logger.error('Error setting zone volume:', error)
         // Revert optimistic update
         await fetchDynamicAtlasConfiguration()
       }
-    } catch (error) {
-      logger.error('Error setting zone volume:', error)
-      // Revert optimistic update
-      await fetchDynamicAtlasConfiguration()
-    }
+    }, VOLUME_DEBOUNCE_MS)
+    volumeTimersRef.current.set(timerKey, timer)
   }
-  const handleOutputVolumeChange = async (zoneId: string, outputId: string, newVolume: number) => {
+  const handleOutputVolumeChange = (zoneId: string, outputId: string, newVolume: number) => {
     // Update the output volume in state
     setZones(zones.map(zone => {
       if (zone.id === zoneId && zone.outputs) {
@@ -321,35 +343,43 @@ export default function AudioZoneControl({ bartenderMode = false }: AudioZoneCon
     const output = zone?.outputs?.find(o => o.id === outputId)
     if (!zone || !output || !activeProcessorId) return
 
-    try {
-      const response = await fetch('/api/audio-processor/control', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          processorId: activeProcessorId,
-          command: {
-            action: 'output-volume',
-            zone: zone.atlasIndex !== undefined ? zone.atlasIndex + 1 : parseInt(zone.id.split('_')[1]) + 1,
-            outputIndex: output.atlasIndex,
-            value: newVolume,
-            parameterName: output.parameterName
-          }
+    // Debounced POST — see VOLUME_DEBOUNCE_MS comment.
+    const timerKey = `output:${zoneId}:${outputId}`
+    const prev = volumeTimersRef.current.get(timerKey)
+    if (prev) clearTimeout(prev)
+    const timer = setTimeout(async () => {
+      volumeTimersRef.current.delete(timerKey)
+      try {
+        const response = await fetch('/api/audio-processor/control', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            processorId: activeProcessorId,
+            command: {
+              action: 'output-volume',
+              zone: zone.atlasIndex !== undefined ? zone.atlasIndex + 1 : parseInt(zone.id.split('_')[1]) + 1,
+              outputIndex: output.atlasIndex,
+              value: newVolume,
+              parameterName: output.parameterName
+            }
+          })
         })
-      })
 
-      if (!response.ok) {
-        logger.error('Failed to set output volume:', await response.json())
+        if (!response.ok) {
+          logger.error('Failed to set output volume:', await response.json())
+        }
+      } catch (error) {
+        logger.error('Error setting output volume:', error)
       }
-    } catch (error) {
-      logger.error('Error setting output volume:', error)
-    }
+    }, VOLUME_DEBOUNCE_MS)
+    volumeTimersRef.current.set(timerKey, timer)
   }
 
   /**
    * Handle master volume change - updates all outputs proportionally
    * Used in bartender mode for simplified control
    */
-  const handleMasterVolumeChange = async (zoneId: string, newMasterVolume: number) => {
+  const handleMasterVolumeChange = (zoneId: string, newMasterVolume: number) => {
     const zone = zones.find(z => z.id === zoneId)
     if (!zone || !zone.outputs || zone.outputs.length === 0 || !activeProcessorId) return
 
@@ -372,38 +402,49 @@ export default function AudioZoneControl({ bartenderMode = false }: AudioZoneCon
         : z
     ))
 
-    // Send commands to update all outputs
-    try {
-      const updatePromises = updatedOutputs.map(output => 
-        fetch('/api/audio-processor/control', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            processorId: activeProcessorId,
-            command: {
-              action: 'output-volume',
-              zone: zone.atlasIndex !== undefined ? zone.atlasIndex + 1 : parseInt(zone.id.split('_')[1]) + 1,
-              outputIndex: output.atlasIndex,
-              value: output.volume,
-              parameterName: output.parameterName
-            }
+    // Debounced batch — without this, a single master-slider drag fires
+    // (outputs × detents) POSTs. 4 outputs × 20 detents ≈ 80 commands
+    // hammering Atlas TCP, producing audible source-switch/volume-jump
+    // behavior (operator-caught 2026-05-15).
+    const timerKey = `master:${zoneId}`
+    const prev = volumeTimersRef.current.get(timerKey)
+    if (prev) clearTimeout(prev)
+    const finalOutputs = updatedOutputs
+    const timer = setTimeout(async () => {
+      volumeTimersRef.current.delete(timerKey)
+      try {
+        const updatePromises = finalOutputs.map(output =>
+          fetch('/api/audio-processor/control', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              processorId: activeProcessorId,
+              command: {
+                action: 'output-volume',
+                zone: zone.atlasIndex !== undefined ? zone.atlasIndex + 1 : parseInt(zone.id.split('_')[1]) + 1,
+                outputIndex: output.atlasIndex,
+                value: output.volume,
+                parameterName: output.parameterName
+              }
+            })
           })
-        })
-      )
+        )
 
-      const responses = await Promise.all(updatePromises)
-      const failedResponses = responses.filter(r => !r.ok)
-      
-      if (failedResponses.length > 0) {
-        logger.error('Some output volume updates failed')
+        const responses = await Promise.all(updatePromises)
+        const failedResponses = responses.filter(r => !r.ok)
+
+        if (failedResponses.length > 0) {
+          logger.error('Some output volume updates failed')
+          // Revert to actual state
+          await fetchDynamicAtlasConfiguration()
+        }
+      } catch (error) {
+        logger.error('Error setting master volume:', error)
         // Revert to actual state
         await fetchDynamicAtlasConfiguration()
       }
-    } catch (error) {
-      logger.error('Error setting master volume:', error)
-      // Revert to actual state
-      await fetchDynamicAtlasConfiguration()
-    }
+    }, VOLUME_DEBOUNCE_MS)
+    volumeTimersRef.current.set(timerKey, timer)
   }
 
   const toggleMute = async (zoneId: string) => {
