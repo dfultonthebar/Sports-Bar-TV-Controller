@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
-import { Volume2, VolumeX, Minus, Plus } from 'lucide-react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { Volume2, VolumeX, Minus, Plus, Mic, AlertTriangle } from 'lucide-react'
 import { logger } from '@sports-bar/logger'
 
 interface AtlasZone {
@@ -34,7 +34,31 @@ export default function AtlasZoneControl({
   const [sources, setSources] = useState<AtlasSource[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [pendingVolumes, setPendingVolumes] = useState<Map<number, number>>(new Map())
+
+  // Volume debounce. Bartenders drive volume via +/- buttons more than the
+  // slider; both call handleVolumeChange. Without debouncing, fast taps and
+  // slider drags fire 30-46 POSTs/sec at the Atlas (operator-caught
+  // 2026-05-16 zone 8 — 46 writes in 2s, zone 7 — 45 in 1s) and the
+  // slider visually "jumps" because each failed POST triggers a
+  // ?live=true refetch that overwrites the optimistic state with stale
+  // hardware values. We optimistically update UI immediately and POST
+  // only after VOLUME_DEBOUNCE_MS of slider/button idle.
+  const VOLUME_DEBOUNCE_MS = 200
+  const volumeTimersRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map())
+  // Pending target tracks the latest intended value per zone so rapid +/-
+  // taps in the same render frame don't all compute zone.volume + 5 from
+  // the same stale closure value.
+  const pendingVolumeRef = useRef<Map<number, number>>(new Map())
+
+  useEffect(() => {
+    const timers = volumeTimersRef.current
+    const pending = pendingVolumeRef.current
+    return () => {
+      timers.forEach((t) => clearTimeout(t))
+      timers.clear()
+      pending.clear()
+    }
+  }, [])
 
   const fetchZones = useCallback(async () => {
     try {
@@ -79,30 +103,78 @@ export default function AtlasZoneControl({
     }
   }, [processorId, processorIp, fetchZones, fetchSources])
 
-  const handleVolumeChange = async (zoneNumber: number, newVolume: number) => {
+  // Priority/page override indicator. Polls every 5s; backend writes
+  // events to atlas_priority_events when MIC inputs spike above threshold
+  // or when a zone source changes outside our control. The badge
+  // auto-clears 30s after the last event (server-side window).
+  const [priorityActive, setPriorityActive] = useState(false)
+  const [activeMics, setActiveMics] = useState<string[]>([])
+  const [overriddenZones, setOverriddenZones] = useState<string[]>([])
+
+  useEffect(() => {
+    let cancelled = false
+    const poll = async () => {
+      try {
+        const r = await fetch('/api/atlas-priority?active=true')
+        if (!r.ok || cancelled) return
+        const j = await r.json()
+        setPriorityActive(!!j.active)
+        setActiveMics(j.activeMics || [])
+        setOverriddenZones(j.overriddenZones || [])
+      } catch {
+        // Silent — UI badge is non-critical.
+      }
+    }
+    poll()
+    const id = setInterval(poll, 5_000)
+    return () => { cancelled = true; clearInterval(id) }
+  }, [])
+
+  const handleVolumeChange = (zoneNumber: number, newVolume: number) => {
     const clamped = Math.max(0, Math.min(100, newVolume))
-    // Optimistic update
+    pendingVolumeRef.current.set(zoneNumber, clamped)
+
+    // Optimistic UI update
     setZones(prev => prev.map(z =>
       z.zoneNumber === zoneNumber ? { ...z, volume: clamped } : z
     ))
 
-    try {
-      const response = await fetch('/api/audio-processor/control', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          processorId,
-          command: { action: 'volume', zone: zoneNumber + 1, value: clamped }
+    const prevTimer = volumeTimersRef.current.get(zoneNumber)
+    if (prevTimer) clearTimeout(prevTimer)
+    const timer = setTimeout(async () => {
+      volumeTimersRef.current.delete(zoneNumber)
+      const target = pendingVolumeRef.current.get(zoneNumber)
+      pendingVolumeRef.current.delete(zoneNumber)
+      if (target === undefined) return
+      try {
+        const response = await fetch('/api/audio-processor/control', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            processorId,
+            command: { action: 'volume', zone: zoneNumber + 1, value: target }
+          })
         })
-      })
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}))
-        throw new Error(data.error || 'Failed to set volume')
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}))
+          throw new Error(data.error || 'Failed to set volume')
+        }
+      } catch (err) {
+        logger.error('Error setting volume:', err)
+        fetchZones() // Revert to actual state
       }
-    } catch (err) {
-      logger.error('Error setting volume:', err)
-      fetchZones() // Revert to actual state
-    }
+    }, VOLUME_DEBOUNCE_MS)
+    volumeTimersRef.current.set(zoneNumber, timer)
+  }
+
+  const adjustVolume = (zoneNumber: number, delta: number) => {
+    // Read from pending target if user is mid-debounce; otherwise from
+    // rendered zone state. This makes rapid +/- taps additive even when
+    // React hasn't re-rendered between clicks.
+    const current = pendingVolumeRef.current.get(zoneNumber)
+      ?? zones.find(z => z.zoneNumber === zoneNumber)?.volume
+      ?? 0
+    handleVolumeChange(zoneNumber, current + delta)
   }
 
   const handleMuteToggle = async (zoneNumber: number, currentMuted: boolean) => {
@@ -176,6 +248,28 @@ export default function AtlasZoneControl({
 
   return (
     <div className="space-y-3">
+      {priorityActive && (
+        <div className="rounded-xl border border-amber-500/40 bg-amber-950/30 px-4 py-3 flex items-center gap-3">
+          <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0" />
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-semibold text-amber-200">Priority Override Active</div>
+            <div className="text-xs text-amber-300/80 mt-0.5 truncate">
+              {activeMics.length > 0 && (
+                <span className="inline-flex items-center gap-1 mr-3">
+                  <Mic className="w-3 h-3" />
+                  {activeMics.join(', ')}
+                </span>
+              )}
+              {overriddenZones.length > 0 && (
+                <span>Zones overridden: {overriddenZones.join(', ')}</span>
+              )}
+              {activeMics.length === 0 && overriddenZones.length === 0 && (
+                <span>Atlas is overriding zone control</span>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
       {zones.filter(z => z.enabled).map(zone => (
         <div
           key={zone.id}
@@ -206,7 +300,7 @@ export default function AtlasZoneControl({
           {/* Volume control */}
           <div className="flex items-center gap-3 mb-3">
             <button
-              onClick={() => handleVolumeChange(zone.zoneNumber, zone.volume - 5)}
+              onClick={() => adjustVolume(zone.zoneNumber, -5)}
               className="p-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 transition-colors"
             >
               <Minus className="w-4 h-4 text-slate-300" />
@@ -222,7 +316,7 @@ export default function AtlasZoneControl({
               />
             </div>
             <button
-              onClick={() => handleVolumeChange(zone.zoneNumber, zone.volume + 5)}
+              onClick={() => adjustVolume(zone.zoneNumber, 5)}
               className="p-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 transition-colors"
             >
               <Plus className="w-4 h-4 text-slate-300" />

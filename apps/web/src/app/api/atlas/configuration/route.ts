@@ -42,20 +42,18 @@ export async function GET(request: NextRequest) {
     if (processorIp && param) {
       const guard = await requireAtlasProcessor(processorIp, 'ATLAS CONFIG')
       if (guard) return guard
+      const client = new AtlasTCPClient({
+        ipAddress: processorIp,
+        tcpPort: HARDWARE_CONFIG.atlas.tcpPort,
+        timeout: 5000
+      })
       try {
-        const client = new AtlasTCPClient({
-          ipAddress: processorIp,
-          tcpPort: HARDWARE_CONFIG.atlas.tcpPort,
-          timeout: 5000
-        })
-
         await client.connect()
         const result = await client.sendCommand({
           method: 'get',
           param: param,
           format: 'str'
         })
-        await client.disconnect()
 
         return NextResponse.json({
           success: true,
@@ -67,6 +65,8 @@ export async function GET(request: NextRequest) {
           success: false,
           error: error instanceof Error ? error.message : 'Failed to fetch parameter'
         }, { status: 500 })
+      } finally {
+        client.disconnect()
       }
     }
 

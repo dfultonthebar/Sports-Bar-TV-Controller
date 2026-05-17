@@ -259,9 +259,10 @@ export class AtlasControlService extends EventEmitter {
     this.responseBuffer += data.toString()
 
     let newlineIndex: number
-    while ((newlineIndex = this.responseBuffer.indexOf('\r\n')) !== -1) {
-      const message = this.responseBuffer.substring(0, newlineIndex)
-      this.responseBuffer = this.responseBuffer.substring(newlineIndex + 2)
+    // Spec terminator is '\n' (LF) — was '\r\n' before 2026-05-17 audit.
+    while ((newlineIndex = this.responseBuffer.indexOf('\n')) !== -1) {
+      const message = this.responseBuffer.substring(0, newlineIndex).replace(/\r$/, '')
+      this.responseBuffer = this.responseBuffer.substring(newlineIndex + 1)
 
       if (message.length > 0) {
         this.handleTCPMessage(message)
