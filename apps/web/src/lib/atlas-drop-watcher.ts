@@ -17,6 +17,7 @@ import { and, eq, sql } from 'drizzle-orm'
 import { getAtlasClient } from '@sports-bar/atlas'
 import { logger } from '@sports-bar/logger'
 import { randomUUID } from 'crypto'
+import { wasRecentlyCommandedSource } from '@/lib/atlas-commanded-state'
 
 // During the 2026-05-17 investigation we discovered that nothing was
 // writing live ZoneGain values back to audioZones.volume. The control
@@ -65,6 +66,33 @@ async function ensureTable() {
   await db.run(sql`
     CREATE INDEX IF NOT EXISTS atlas_drop_events_zone_idx
       ON atlas_drop_events (processor_id, zone_number, detected_at)
+  `)
+
+  // Priority/page events. Populated by both atlas-drop-watcher (source
+  // overrides) and atlas-priority-watcher (mic input level spikes).
+  // event_type: 'source_override' | 'mic_active'
+  await db.run(sql`
+    CREATE TABLE IF NOT EXISTS atlas_priority_events (
+      id TEXT PRIMARY KEY,
+      processor_id TEXT NOT NULL,
+      event_type TEXT NOT NULL,
+      zone_number INTEGER,
+      zone_name TEXT,
+      previous_source INTEGER,
+      new_source INTEGER,
+      input_index INTEGER,
+      input_name TEXT,
+      input_level_db REAL,
+      detected_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+    )
+  `)
+  await db.run(sql`
+    CREATE INDEX IF NOT EXISTS atlas_priority_events_detected_at_idx
+      ON atlas_priority_events (detected_at)
+  `)
+  await db.run(sql`
+    CREATE INDEX IF NOT EXISTS atlas_priority_events_processor_type_idx
+      ON atlas_priority_events (processor_id, event_type, detected_at)
   `)
 }
 
@@ -162,6 +190,27 @@ async function pollOnce() {
             const tag = explained ? 'EXPLAINED' : 'SILENT'
             const fn = explained ? logger.info : logger.warn
             fn(`[ATLAS-DROP] ${tag} drop on "${zone.name}" (Atlas zone ${atlasZone}): ${prev.volume} → ${volume} (Δ${delta}, gap ${now - prev.observedAt}s, src=${source}, muted=${muted})`)
+          }
+        }
+
+        // Source override detection: if the source changed between
+        // polls AND the new value doesn't match anything we commanded
+        // in the last 10s, that's the Atlas firmware (priority/page)
+        // taking over.
+        if (prev && prev.source !== source && source >= 0) {
+          if (!wasRecentlyCommandedSource(p.id, zone.zoneNumber, source)) {
+            const atlasZone = zone.zoneNumber + 1
+            await db.run(sql`
+              INSERT INTO atlas_priority_events
+                (id, processor_id, event_type, zone_number, zone_name,
+                 previous_source, new_source, detected_at)
+              VALUES (
+                ${randomUUID()}, ${p.id}, 'source_override',
+                ${atlasZone}, ${zone.name},
+                ${prev.source}, ${source}, ${now}
+              )
+            `)
+            logger.warn(`[ATLAS-PRIORITY] Source override on "${zone.name}" (Atlas zone ${atlasZone}): src ${prev.source} → ${source} (not commanded by us)`)
           }
         }
 

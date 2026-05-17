@@ -133,6 +133,15 @@ export async function POST(request: NextRequest) {
             .set({ currentSource: String(command.value), updatedAt: new Date().toISOString() })
             .where(eq(schema.audioZones.id, zone.id))
         }
+        // Record commanded source so the priority watcher can distinguish
+        // operator-initiated changes from Atlas firmware-initiated overrides.
+        const { recordCommandedSource } = await import('@/lib/atlas-commanded-state')
+        const sourceVal = typeof command.value === 'number'
+          ? command.value
+          : parseInt(String(command.value), 10)
+        if (!Number.isNaN(sourceVal)) {
+          recordCommandedSource(processorId, zoneIndex, sourceVal)
+        }
       } catch {}
     }
 

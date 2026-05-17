@@ -328,11 +328,23 @@ export async function register() {
       // Diagnostic: catch silent Atlas zone-volume drops. Polls ZoneGain/
       // ZoneSource/ZoneMute every 30s, logs drops to atlas_drop_events,
       // and flags "SILENT" when no audio_volume_logs write correlates.
+      // Also detects ZoneSource overrides into atlas_priority_events.
       const { startAtlasDropWatcher } = await import('./lib/atlas-drop-watcher')
       await startAtlasDropWatcher()
       logger.info('[INSTRUMENTATION] ✅ Atlas drop watcher started (polls every 30s)')
     } catch (error) {
       logger.error('[INSTRUMENTATION] ❌ Failed to start Atlas drop watcher:', error)
+    }
+
+    try {
+      // Priority/paging detection via mic input meter levels. AZM8 doesn't
+      // expose a queryable priority param — we infer it from MIC input
+      // levels rising above the room noise floor.
+      const { startAtlasPriorityWatcher } = await import('./lib/atlas-priority-watcher')
+      startAtlasPriorityWatcher()
+      logger.info('[INSTRUMENTATION] ✅ Atlas priority watcher started (polls input meters every 5s)')
+    } catch (error) {
+      logger.error('[INSTRUMENTATION] ❌ Failed to start Atlas priority watcher:', error)
     }
   }
 }
