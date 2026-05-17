@@ -22,7 +22,11 @@ export const ATLAS_CONFIG = {
   
   // Protocol
   JSONRPC_VERSION: '2.0',
-  MESSAGE_TERMINATOR: '\r\n',
+  // Per AtlasIED Atmosphere TCP/IP spec ATS006993-B: '\n' (LF only).
+  // Was '\r\n' (caught 2026-05-17 audit) — never bit production because
+  // atlas-control-service.ts has no live consumers, but a future caller
+  // would silently time out on every withResponse=true command.
+  MESSAGE_TERMINATOR: '\n',
   
   // Device Models
   MODELS: {
