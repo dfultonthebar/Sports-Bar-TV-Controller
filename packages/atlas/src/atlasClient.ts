@@ -72,6 +72,11 @@ export class AtlasTCPClient {
   private maxReconnectAttempts: number = 10
   private circuitBreakerTripped: boolean = false
   private lastReconnectLog: number = 0
+  // Set by disconnect() so the 'close' handler can skip handleReconnection().
+  // Without this, every intentional disconnect immediately reconnects — caught
+  // 2026-05-17 when sources/groups/configuration routes were leaking TCP
+  // connections to the Atlas (8+ live sockets, growing on every request).
+  private intentionalDisconnect: boolean = false
 
   constructor(config: AtlasConnectionConfig) {
     this.config = {
@@ -244,6 +249,15 @@ export class AtlasTCPClient {
             reject(new Error('Connection closed'))
           })
           this.pendingResponses.clear()
+
+          // Skip reconnect if WE initiated the close (e.g., route called
+          // .disconnect() after a one-shot query). Without this guard, every
+          // disconnect was immediately followed by a reconnect — the
+          // route's "cleanup" actually leaked a fresh TCP socket.
+          if (this.intentionalDisconnect) {
+            this.intentionalDisconnect = false
+            return
+          }
 
           // Attempt reconnection
           this.handleReconnection()
@@ -436,6 +450,10 @@ export class AtlasTCPClient {
    * Disconnect from the Atlas processor
    */
   disconnect(): void {
+    // Mark this as an intentional close so the 'close' handler skips
+    // handleReconnection (see intentionalDisconnect field doc).
+    this.intentionalDisconnect = true
+
     if (this.keepAliveTimer) {
       clearInterval(this.keepAliveTimer)
       this.keepAliveTimer = null
@@ -1032,18 +1050,39 @@ export async function createAtlasClient(config: AtlasConnectionConfig): Promise<
 }
 
 /**
- * Helper function to execute a command with automatic connection management
+ * Helper function to execute a command with automatic connection management.
+ *
+ * Was: opened a fresh AtlasTCPClient per call (and per bartender volume/
+ * source/mute action), eating ~50-100ms of TCP setup and bypassing the
+ * meter manager's persistent TCP+UDP connection. Now: routes through the
+ * AtlasClientManager singleton so all command paths share ONE TCP
+ * connection with proper buffering and pending-response correlation.
+ * Lazy-import breaks the circular dep (atlas-client-manager imports
+ * AtlasTCPClient from this module).
+ *
+ * Note: do NOT call client.disconnect() in the finally — the singleton
+ * stays alive for other callers. releaseAtlasClient() decrements the
+ * refCount; cleanupIdleClients handles eventual teardown.
  */
 export async function executeAtlasCommand(
   config: AtlasConnectionConfig,
   commandFn: (client: AtlasTCPClient) => Promise<AtlasResponse>
 ): Promise<AtlasResponse> {
-  const client = new AtlasTCPClient(config)
-  
+  const { getAtlasClient, releaseAtlasClient } = await import('./atlas-client-manager')
+  const processorId = `cmd:${config.ipAddress}:${config.tcpPort ?? 5321}`
+  let client: AtlasTCPClient
   try {
-    await client.connect()
-    const result = await commandFn(client)
-    return result
+    client = await getAtlasClient(processorId, config)
+  } catch (error) {
+    atlasLogger.error('COMMAND', 'Failed to acquire singleton Atlas client', error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    }
+  }
+
+  try {
+    return await commandFn(client)
   } catch (error) {
     atlasLogger.error('COMMAND', 'Command execution error', error)
     return {
@@ -1051,6 +1090,6 @@ export async function executeAtlasCommand(
       error: error instanceof Error ? error.message : 'Unknown error'
     }
   } finally {
-    client.disconnect()
+    releaseAtlasClient(config.ipAddress, config.tcpPort)
   }
 }

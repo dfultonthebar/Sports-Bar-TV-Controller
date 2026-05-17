@@ -55,27 +55,46 @@ class ExtendedAtlasClient extends AtlasTCPClient {
 /**
  * Singleton manager for Atlas clients
  * Prevents duplicate UDP socket creation on port 3131
+ *
+ * CRITICAL — cross-bundle singleton. Next.js bundles each route handler
+ * separately; a per-module `private static instance` would yield ONE
+ * AtlasClientManager per bundle, with each bundle's "singleton"
+ * creating its own ExtendedAtlasClient (and its own UDP socket bound
+ * to port 3131 via SO_REUSEPORT). Live diagnosis 2026-05-17 found
+ * 2 UDP sockets bound and 8+ TCP connections to the Atlas — meter
+ * updates arrived on a socket whose bundle wasn't the one being read
+ * by the UI, so the meter cache rendered as stuck. We hoist the
+ * singleton to globalThis with a Symbol.for() key so every bundle
+ * shares ONE instance.
  */
 class AtlasClientManager {
-  private static instance: AtlasClientManager
   private clients: Map<string, ManagedClient> = new Map()
   private cleanupInterval: NodeJS.Timeout | null = null
-  
+  // Per-key in-flight promise lock. Without this, two concurrent
+  // getClient() calls for the same key both pass the map check before
+  // either inserts, creating duplicate ExtendedAtlasClient instances —
+  // each binding its own UDP socket on 3131. Caught 2026-05-17 v2.33.51
+  // boot: drop watcher and priority watcher both started in the same
+  // millisecond and produced 2 sockets where 1 was expected.
+  private inFlight: Map<string, Promise<void>> = new Map()
+
   private constructor() {
     // Start cleanup timer (check every 5 minutes)
     this.cleanupInterval = setInterval(() => {
       this.cleanupIdleClients()
     }, 300000) // 5 minutes
   }
-  
+
   /**
-   * Get singleton instance
+   * Get singleton instance — see class doc for why this uses globalThis.
    */
   public static getInstance(): AtlasClientManager {
-    if (!AtlasClientManager.instance) {
-      AtlasClientManager.instance = new AtlasClientManager()
+    const KEY = Symbol.for('@sports-bar/atlas/AtlasClientManager.instance')
+    const g = globalThis as any
+    if (!g[KEY]) {
+      g[KEY] = new AtlasClientManager()
     }
-    return AtlasClientManager.instance
+    return g[KEY] as AtlasClientManager
   }
   
   /**
@@ -84,53 +103,66 @@ class AtlasClientManager {
    */
   public async getClient(processorId: string, config: AtlasConnectionConfig): Promise<ExtendedAtlasClient> {
     const key = `${config.ipAddress}:${config.tcpPort || 5321}`
-    
+
+    // Wait for any in-flight creation for this key so concurrent callers
+    // converge on the same client instead of both creating one.
+    const pending = this.inFlight.get(key)
+    if (pending) await pending
+
     let managed = this.clients.get(key)
-    
+
     if (managed) {
       // Client exists, increment ref count and return
       managed.refCount++
       managed.lastUsed = new Date()
-      
+
       atlasLogger.info('CLIENT_MANAGER', 'Reusing existing Atlas client', {
         key,
         processorId,
         refCount: managed.refCount
       })
-      
+
       // Reconnect if disconnected
       if (!managed.client.isConnected()) {
         atlasLogger.info('CLIENT_MANAGER', 'Reconnecting existing client', { key })
         await managed.client.connect()
       }
-      
+
       return managed.client
     }
-    
-    // Create new client with UDP enabled (only the client manager should enable UDP)
+
+    // Truly first call for this key — create. Publish the in-flight
+    // promise SYNCHRONOUSLY (before the first await) so any concurrent
+    // caller waking up after our await sees it.
     atlasLogger.info('CLIENT_MANAGER', 'Creating new Atlas client WITH UDP', {
       key,
       processorId
     })
 
-    const clientConfig = {
-      ...config,
-      enableUdp: true  // Enable UDP for meter updates
-    }
-    const client = new ExtendedAtlasClient(clientConfig, processorId)
-    await client.connect()
-    
-    managed = {
-      client,
-      processorId,
-      ipAddress: config.ipAddress,
-      refCount: 1,
-      lastUsed: new Date()
-    }
-    
-    this.clients.set(key, managed)
-    
-    return client
+    const createPromise = (async () => {
+      const clientConfig = {
+        ...config,
+        enableUdp: true  // Enable UDP for meter updates
+      }
+      const client = new ExtendedAtlasClient(clientConfig, processorId)
+      await client.connect()
+      this.clients.set(key, {
+        client,
+        processorId,
+        ipAddress: config.ipAddress,
+        refCount: 0,  // bumped below by the caller
+        lastUsed: new Date()
+      })
+    })()
+    this.inFlight.set(key, createPromise.finally(() => this.inFlight.delete(key)))
+    await this.inFlight.get(key)
+
+    // Increment refCount for this caller. Concurrent waiters fall
+    // through to the map-check branch above and bump independently.
+    managed = this.clients.get(key)!
+    managed.refCount++
+    managed.lastUsed = new Date()
+    return managed.client
   }
   
   /**
