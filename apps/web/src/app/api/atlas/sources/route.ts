@@ -54,29 +54,30 @@ export async function GET(request: NextRequest) {
       timeout: 5000
     })
 
-    await client.connect()
-
-    // Get source information (Atlas typically has 14 sources: 0-13)
+    // Get source information (Atlas typically has 14 sources: 0-13).
+    // try/finally guarantees disconnect even on throw — without it any
+    // getParameter rejection left a TCP socket leaked at the Atlas.
     const sources: any[] = []
+    try {
+      await client.connect()
+      for (let i = 0; i < 14; i++) {
+        const nameResult = await client.getParameter(`SourceName_${i}`, 'str').catch((err) => {
+          logger.error(`Error getting SourceName_${i}:`, err)
+          return { success: false }
+        })
 
-    for (let i = 0; i < 14; i++) {
-      const nameResult = await client.getParameter(`SourceName_${i}`, 'str').catch((err) => {
-        logger.error(`Error getting SourceName_${i}:`, err)
-        return { success: false }
-      })
+        const name = (nameResult.success && 'data' in nameResult && nameResult.data?.value !== undefined && nameResult.data?.value !== null && nameResult.data?.value !== '')
+          ? nameResult.data.value
+          : `Source ${i + 1}`
 
-      // Extract the source name from the response
-      const name = (nameResult.success && 'data' in nameResult && nameResult.data?.value !== undefined && nameResult.data?.value !== null && nameResult.data?.value !== '')
-        ? nameResult.data.value
-        : `Source ${i + 1}`
-
-      sources.push({
-        index: i,
-        name
-      })
+        sources.push({
+          index: i,
+          name
+        })
+      }
+    } finally {
+      client.disconnect()
     }
-
-    await client.disconnect()
 
     const response = {
       success: true,
