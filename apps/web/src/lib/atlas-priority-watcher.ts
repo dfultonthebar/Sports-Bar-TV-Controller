@@ -31,6 +31,16 @@ const DEACTIVATE_THRESHOLD_DB = -55
 const ABOVE_THRESHOLD_POLLS = 1
 const BELOW_THRESHOLD_POLLS = 2
 
+// Inputs whose level rise should count as a priority/override event.
+// The AZM8 doesn't expose which inputs are configured as priority, so
+// we whitelist by name. Defaults cover paging mics + venues that have
+// the jukebox / page / intercom wired through the priority bus.
+// 2026-05-17: Holmgren operator reported the Juke box (input 3) is
+// their priority device — added 'juke' to the pattern. Add more
+// patterns here as new venues come online; see CLAUDE.md for the
+// long-term plan to move this to a per-venue DB setting.
+const PRIORITY_INPUT_PATTERN = /\b(mic|juke|page|intercom|priority)\b/i
+
 type InputState = { active: boolean; aboveCount: number; belowCount: number }
 const inputStates = new Map<string, InputState>()
 
@@ -57,7 +67,7 @@ async function pollOnce(baseUrl: string) {
     }
 
     for (const meter of meters) {
-      if (!meter.name || !/mic/i.test(meter.name)) continue
+      if (!meter.name || !PRIORITY_INPUT_PATTERN.test(meter.name)) continue
 
       const k = key(p.id, meter.index)
       const state = inputStates.get(k) ?? { active: false, aboveCount: 0, belowCount: 0 }
