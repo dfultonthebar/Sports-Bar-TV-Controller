@@ -70,6 +70,13 @@ class ExtendedAtlasClient extends AtlasTCPClient {
 class AtlasClientManager {
   private clients: Map<string, ManagedClient> = new Map()
   private cleanupInterval: NodeJS.Timeout | null = null
+  // Per-key in-flight promise lock. Without this, two concurrent
+  // getClient() calls for the same key both pass the map check before
+  // either inserts, creating duplicate ExtendedAtlasClient instances —
+  // each binding its own UDP socket on 3131. Caught 2026-05-17 v2.33.51
+  // boot: drop watcher and priority watcher both started in the same
+  // millisecond and produced 2 sockets where 1 was expected.
+  private inFlight: Map<string, Promise<void>> = new Map()
 
   private constructor() {
     // Start cleanup timer (check every 5 minutes)
@@ -96,53 +103,66 @@ class AtlasClientManager {
    */
   public async getClient(processorId: string, config: AtlasConnectionConfig): Promise<ExtendedAtlasClient> {
     const key = `${config.ipAddress}:${config.tcpPort || 5321}`
-    
+
+    // Wait for any in-flight creation for this key so concurrent callers
+    // converge on the same client instead of both creating one.
+    const pending = this.inFlight.get(key)
+    if (pending) await pending
+
     let managed = this.clients.get(key)
-    
+
     if (managed) {
       // Client exists, increment ref count and return
       managed.refCount++
       managed.lastUsed = new Date()
-      
+
       atlasLogger.info('CLIENT_MANAGER', 'Reusing existing Atlas client', {
         key,
         processorId,
         refCount: managed.refCount
       })
-      
+
       // Reconnect if disconnected
       if (!managed.client.isConnected()) {
         atlasLogger.info('CLIENT_MANAGER', 'Reconnecting existing client', { key })
         await managed.client.connect()
       }
-      
+
       return managed.client
     }
-    
-    // Create new client with UDP enabled (only the client manager should enable UDP)
+
+    // Truly first call for this key — create. Publish the in-flight
+    // promise SYNCHRONOUSLY (before the first await) so any concurrent
+    // caller waking up after our await sees it.
     atlasLogger.info('CLIENT_MANAGER', 'Creating new Atlas client WITH UDP', {
       key,
       processorId
     })
 
-    const clientConfig = {
-      ...config,
-      enableUdp: true  // Enable UDP for meter updates
-    }
-    const client = new ExtendedAtlasClient(clientConfig, processorId)
-    await client.connect()
-    
-    managed = {
-      client,
-      processorId,
-      ipAddress: config.ipAddress,
-      refCount: 1,
-      lastUsed: new Date()
-    }
-    
-    this.clients.set(key, managed)
-    
-    return client
+    const createPromise = (async () => {
+      const clientConfig = {
+        ...config,
+        enableUdp: true  // Enable UDP for meter updates
+      }
+      const client = new ExtendedAtlasClient(clientConfig, processorId)
+      await client.connect()
+      this.clients.set(key, {
+        client,
+        processorId,
+        ipAddress: config.ipAddress,
+        refCount: 0,  // bumped below by the caller
+        lastUsed: new Date()
+      })
+    })()
+    this.inFlight.set(key, createPromise.finally(() => this.inFlight.delete(key)))
+    await this.inFlight.get(key)
+
+    // Increment refCount for this caller. Concurrent waiters fall
+    // through to the map-check branch above and bump independently.
+    managed = this.clients.get(key)!
+    managed.refCount++
+    managed.lastUsed = new Date()
+    return managed.client
   }
   
   /**
