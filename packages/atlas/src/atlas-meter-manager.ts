@@ -27,9 +27,15 @@ interface ProcessorMeterCache {
 
 /**
  * Singleton manager for Atlas meter subscriptions
+ *
+ * CRITICAL — cross-bundle singleton via globalThis. See the matching
+ * note on AtlasClientManager. Without globalThis hoisting, each
+ * Next.js route bundle had its own meter cache and its own UDP
+ * subscription, so updates arriving on bundle A's socket never
+ * reached bundle B's cache — the UI ended up reading stale frozen
+ * values for hours (operator-caught 2026-05-17).
  */
 export class AtlasMeterManager {
-  private static instance: AtlasMeterManager
   private caches: Map<string, ProcessorMeterCache> = new Map()
   private updateCallbacks: Map<string, MeterUpdateCallback> = new Map()
 
@@ -38,10 +44,12 @@ export class AtlasMeterManager {
   }
 
   public static getInstance(): AtlasMeterManager {
-    if (!AtlasMeterManager.instance) {
-      AtlasMeterManager.instance = new AtlasMeterManager()
+    const KEY = Symbol.for('@sports-bar/atlas/AtlasMeterManager.instance')
+    const g = globalThis as any
+    if (!g[KEY]) {
+      g[KEY] = new AtlasMeterManager()
     }
-    return AtlasMeterManager.instance
+    return g[KEY] as AtlasMeterManager
   }
 
   /**
@@ -263,27 +271,23 @@ export class AtlasMeterManager {
   }
 
   /**
-   * Unsubscribe from meters for a processor
+   * Unsubscribe from meters for a processor.
+   *
+   * Note: we deliberately do NOT call getAtlasClient() to remove the
+   * callback. getAtlasClient increments refCount; the matching
+   * releaseAtlasClient below decrements by 1. Net effect was a leak
+   * of +1 refCount per unsubscribe (caught 2026-05-17 audit) — the
+   * managed client never reached 0 and was never cleaned up. Dropping
+   * our cache entry and releasing the original subscribe reference is
+   * sufficient; the callback registration dies with the client when
+   * cleanupIdleClients eventually disconnects it.
    */
   public async unsubscribe(processorIp: string): Promise<void> {
     const cache = this.caches.get(processorIp)
     if (!cache) return
 
-    // Remove callback
-    const callback = this.updateCallbacks.get(processorIp)
-    if (callback) {
-      const client = await getAtlasClient(cache.processorId, {
-        ipAddress: processorIp,
-        tcpPort: 5321
-      })
-      client.removeUpdateCallback(callback)
-      this.updateCallbacks.delete(processorIp)
-    }
-
-    // Release client
+    this.updateCallbacks.delete(processorIp)
     releaseAtlasClient(processorIp)
-
-    // Remove cache
     this.caches.delete(processorIp)
 
     logger.info(`[METER MANAGER] Unsubscribed from ${processorIp}`)

@@ -55,27 +55,39 @@ class ExtendedAtlasClient extends AtlasTCPClient {
 /**
  * Singleton manager for Atlas clients
  * Prevents duplicate UDP socket creation on port 3131
+ *
+ * CRITICAL — cross-bundle singleton. Next.js bundles each route handler
+ * separately; a per-module `private static instance` would yield ONE
+ * AtlasClientManager per bundle, with each bundle's "singleton"
+ * creating its own ExtendedAtlasClient (and its own UDP socket bound
+ * to port 3131 via SO_REUSEPORT). Live diagnosis 2026-05-17 found
+ * 2 UDP sockets bound and 8+ TCP connections to the Atlas — meter
+ * updates arrived on a socket whose bundle wasn't the one being read
+ * by the UI, so the meter cache rendered as stuck. We hoist the
+ * singleton to globalThis with a Symbol.for() key so every bundle
+ * shares ONE instance.
  */
 class AtlasClientManager {
-  private static instance: AtlasClientManager
   private clients: Map<string, ManagedClient> = new Map()
   private cleanupInterval: NodeJS.Timeout | null = null
-  
+
   private constructor() {
     // Start cleanup timer (check every 5 minutes)
     this.cleanupInterval = setInterval(() => {
       this.cleanupIdleClients()
     }, 300000) // 5 minutes
   }
-  
+
   /**
-   * Get singleton instance
+   * Get singleton instance — see class doc for why this uses globalThis.
    */
   public static getInstance(): AtlasClientManager {
-    if (!AtlasClientManager.instance) {
-      AtlasClientManager.instance = new AtlasClientManager()
+    const KEY = Symbol.for('@sports-bar/atlas/AtlasClientManager.instance')
+    const g = globalThis as any
+    if (!g[KEY]) {
+      g[KEY] = new AtlasClientManager()
     }
-    return AtlasClientManager.instance
+    return g[KEY] as AtlasClientManager
   }
   
   /**

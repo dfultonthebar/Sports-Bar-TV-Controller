@@ -72,6 +72,11 @@ export class AtlasTCPClient {
   private maxReconnectAttempts: number = 10
   private circuitBreakerTripped: boolean = false
   private lastReconnectLog: number = 0
+  // Set by disconnect() so the 'close' handler can skip handleReconnection().
+  // Without this, every intentional disconnect immediately reconnects — caught
+  // 2026-05-17 when sources/groups/configuration routes were leaking TCP
+  // connections to the Atlas (8+ live sockets, growing on every request).
+  private intentionalDisconnect: boolean = false
 
   constructor(config: AtlasConnectionConfig) {
     this.config = {
@@ -244,6 +249,15 @@ export class AtlasTCPClient {
             reject(new Error('Connection closed'))
           })
           this.pendingResponses.clear()
+
+          // Skip reconnect if WE initiated the close (e.g., route called
+          // .disconnect() after a one-shot query). Without this guard, every
+          // disconnect was immediately followed by a reconnect — the
+          // route's "cleanup" actually leaked a fresh TCP socket.
+          if (this.intentionalDisconnect) {
+            this.intentionalDisconnect = false
+            return
+          }
 
           // Attempt reconnection
           this.handleReconnection()
@@ -436,6 +450,10 @@ export class AtlasTCPClient {
    * Disconnect from the Atlas processor
    */
   disconnect(): void {
+    // Mark this as an intentional close so the 'close' handler skips
+    // handleReconnection (see intentionalDisconnect field doc).
+    this.intentionalDisconnect = true
+
     if (this.keepAliveTimer) {
       clearInterval(this.keepAliveTimer)
       this.keepAliveTimer = null
