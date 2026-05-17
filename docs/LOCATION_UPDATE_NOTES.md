@@ -46,6 +46,88 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-17 — v2.33.46 through v2.33.55 — Atlas audio fix train (10 versions)
+
+**Risk:** GO at every location with an Atlas processor. Backwards-compatible.
+No schema migrations, no env vars. Two new audit tables auto-create via
+`CREATE TABLE IF NOT EXISTS` on first watcher boot.
+
+**What changed (highest impact first):**
+- **Stuck-meter root fix** (v2.33.50): cross-bundle singleton via
+  `globalThis` Symbol.for() for `atlasClientManager` and `atlasMeterManager`.
+  Previously each Next.js route bundle had its own "singleton" → multiple
+  UDP sockets bound to 3131 with SO_REUSEPORT → Atlas meter updates lost
+  to whichever bundle the kernel hashed packets to. After fix: single TCP,
+  single UDP, meters live in both bartender remote audio tab and admin Audio.
+- **Stale DB cache fix** (v2.33.48): `audioZones.volume` was never written
+  back from live ZoneGain. Slider rendered multi-day-stale values (Bathroom
+  cached at 0 while Atlas hardware was at 45%). Drop watcher now syncs DB
+  cache to hardware truth every 30s.
+- **Slider/button debounce** (v2.33.46): bartender remote's
+  `AtlasZoneControl.tsx` was firing 30-46 POSTs/sec during drags (v2.33.45
+  fix had touched `AudioZoneControl.tsx`, the admin component).
+- **Two new audit tables**: `atlas_drop_events` (zone gain crashes),
+  `atlas_priority_events` (mic/page/jukebox activity + source overrides).
+  Auto-created via `CREATE TABLE IF NOT EXISTS`. Amber banner appears at
+  top of bartender remote audio tab while a priority input is hot.
+- **Leak fixes**: TCP leak in `/api/atlas/sources|groups|configuration`
+  (`.disconnect()` only in success path); `AtlasMeterManager.unsubscribe`
+  refCount leak; `executeAtlasCommand` opening fresh TCP per command (now
+  shares singleton); race in `getClient` between concurrent watcher boots
+  (per-key in-flight Promise lock).
+- **Dead code removal**: `packages/atlas/src/atlas-tcp-client.ts` deleted
+  (zero callers, buggy `socket.once('data')`).
+- **Priority input recognition**: name regex extended from `/mic/i` to
+  `/\b(mic|juke|page|intercom|priority)\b/i` for venues with non-mic
+  priority sources (Holmgren: Juke box on input 3).
+
+**What could break at a location:**
+- **Locations without an Atlas processor** — watchers iterate
+  `audioProcessors WHERE processorType='atlas'`. None present → no-op
+  loops, no errors. Safe.
+- **Locations with a differently-named priority input** that doesn't
+  match `mic|juke|page|intercom|priority` (case-insensitive, word-
+  boundaried). Banner won't fire for that input until regex is extended
+  at `apps/web/src/lib/atlas-priority-watcher.ts:35`. No regression —
+  just doesn't gain the feature for that input.
+
+**Manual steps required:** None.
+
+**Rollback notes:** Revert any of v2.33.46-55 individually if needed —
+each commit is independent. The two new tables can be dropped
+(`DROP TABLE atlas_drop_events; DROP TABLE atlas_priority_events;`) but
+cause no harm if left in place after rollback.
+
+**Affected files:**
+- `packages/atlas/src/atlas-client-manager.ts` (singleton + race lock)
+- `packages/atlas/src/atlas-meter-manager.ts` (singleton + unsubscribe fix)
+- `packages/atlas/src/atlasClient.ts` (intentional-disconnect flag +
+  executeAtlasCommand → singleton)
+- `packages/atlas/src/atlas-control-service.ts` (terminator fix)
+- `packages/atlas/src/atlas-tcp-client.ts` (DELETED)
+- `apps/web/src/lib/atlas-tcp-client.ts` (DELETED bridge)
+- `apps/web/src/lib/atlas-drop-watcher.ts` (new + DB cache sync)
+- `apps/web/src/lib/atlas-priority-watcher.ts` (new)
+- `apps/web/src/lib/atlas-commanded-state.ts` (new)
+- `apps/web/src/app/api/atlas-drops/route.ts` (new)
+- `apps/web/src/app/api/atlas-priority/route.ts` (new)
+- `apps/web/src/app/api/atlas/sources/route.ts` (try/finally disconnect)
+- `apps/web/src/app/api/atlas/groups/route.ts` (try/finally disconnect)
+- `apps/web/src/app/api/atlas/configuration/route.ts` (try/finally disconnect)
+- `apps/web/src/app/api/audio-processor/control/route.ts` (matrix_audio
+  guard + commanded-source recording)
+- `apps/web/src/components/AtlasZoneControl.tsx` (slider/button debounce
+  + priority banner)
+- `apps/web/src/instrumentation.ts` (watcher startup)
+
+**Checkpoint model:** sonnet — touches Atlas TCP/UDP socket lifecycle,
+the bartender's primary audio surface, and adds new DB tables. Haiku's
+risk assessment may miss a cross-cutting bundling issue.
+
+---
+
+## Current entries
+
 ### 2026-05-08 — v2.32.98 — Scout AccessibilityService for in-app playback automation
 
 **Risk:** GO. Backwards-compatible. Host now sends an extra ADB broadcast (`com.sportsbar.scout.PLAY_GAME`) before each ESPN autoplay; Cubes without the new Scout APK ignore it harmlessly.

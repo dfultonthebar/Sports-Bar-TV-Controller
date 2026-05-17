@@ -39,10 +39,11 @@ export async function GET(request: NextRequest) {
       maxRetries: 1       // Single retry
     })
 
-    await client.connect()
-
-    // Get group information
+    // Get group information. try/finally guarantees disconnect — without
+    // it any getParameter rejection left a TCP socket leaked at the Atlas.
     const groups: any[] = []
+    try {
+      await client.connect()
 
     for (let i = 0; i < 8; i++) {
       const [nameResult, activeResult, sourceResult, gainResult, muteResult] = await Promise.all([
@@ -99,8 +100,9 @@ export async function GET(request: NextRequest) {
         muted
       })
     }
-
-    await client.disconnect()
+    } finally {
+      client.disconnect()
+    }
 
     // Count active groups
     const activeGroups = groups.filter(g => g.isActive)
@@ -167,38 +169,38 @@ export async function POST(request: NextRequest) {
       maxRetries: 1       // Single retry for UI responsiveness
     })
 
-    await client.connect()
-
+    // try/finally guarantees disconnect on every exit path — including
+    // the invalid-action 400 below, which previously also leaked.
     let result
-    switch (action) {
-      case 'setActive':
-        result = await client.setGroupActive(groupIndexNum, Boolean(valueNum))
-        break
+    try {
+      await client.connect()
 
-      case 'setSource':
-        // Need to add setGroupSource method to atlasClient
-        result = await client.setGroupSource(groupIndexNum, valueNum)
-        break
+      switch (action) {
+        case 'setActive':
+          result = await client.setGroupActive(groupIndexNum, Boolean(valueNum))
+          break
 
-      case 'setGain':
-        // Need to add setGroupVolume method to atlasClient
-        result = await client.setGroupVolume(groupIndexNum, valueNum)
-        break
+        case 'setSource':
+          result = await client.setGroupSource(groupIndexNum, valueNum)
+          break
 
-      case 'setMute':
-        // Need to add setGroupMute method to atlasClient
-        result = await client.setGroupMute(groupIndexNum, Boolean(valueNum))
-        break
-      
-      default:
-        await client.disconnect()
-        return NextResponse.json(
-          { success: false, error: 'Invalid action' },
-          { status: 400 }
-        )
+        case 'setGain':
+          result = await client.setGroupVolume(groupIndexNum, valueNum)
+          break
+
+        case 'setMute':
+          result = await client.setGroupMute(groupIndexNum, Boolean(valueNum))
+          break
+
+        default:
+          return NextResponse.json(
+            { success: false, error: 'Invalid action' },
+            { status: 400 }
+          )
+      }
+    } finally {
+      client.disconnect()
     }
-
-    await client.disconnect()
 
     // Check if command was successful
     if (!result.success) {
