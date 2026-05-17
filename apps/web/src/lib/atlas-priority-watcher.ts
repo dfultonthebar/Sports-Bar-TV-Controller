@@ -41,8 +41,15 @@ const BELOW_THRESHOLD_POLLS = 2
 // long-term plan to move this to a per-venue DB setting.
 const PRIORITY_INPUT_PATTERN = /\b(mic|juke|page|intercom|priority)\b/i
 
-type InputState = { active: boolean; aboveCount: number; belowCount: number }
+type InputState = { active: boolean; aboveCount: number; belowCount: number; lastHeartbeatSec: number }
 const inputStates = new Map<string, InputState>()
+
+// While an input stays above threshold, re-insert a heartbeat row at
+// most every HEARTBEAT_INTERVAL_SEC so the banner endpoint's 30-second
+// active-window query keeps returning rows for as long as the source
+// is playing. Without this, the banner cleared 30s after the rising
+// edge even though the Juke box was still hot.
+const HEARTBEAT_INTERVAL_SEC = 20
 
 function key(processorId: string, inputIndex: number): string {
   return `${processorId}:${inputIndex}`
@@ -70,7 +77,7 @@ async function pollOnce(baseUrl: string) {
       if (!meter.name || !PRIORITY_INPUT_PATTERN.test(meter.name)) continue
 
       const k = key(p.id, meter.index)
-      const state = inputStates.get(k) ?? { active: false, aboveCount: 0, belowCount: 0 }
+      const state = inputStates.get(k) ?? { active: false, aboveCount: 0, belowCount: 0, lastHeartbeatSec: 0 }
       const level = typeof meter.level === 'number' ? meter.level : -80
 
       if (level >= ACTIVATE_THRESHOLD_DB) {
@@ -85,9 +92,8 @@ async function pollOnce(baseUrl: string) {
         state.belowCount = 0
       }
 
-      if (!state.active && state.aboveCount >= ABOVE_THRESHOLD_POLLS) {
-        state.active = true
-        const now = Math.floor(Date.now() / 1000)
+      const now = Math.floor(Date.now() / 1000)
+      const writeEvent = async (reason: string) => {
         await db.run(sql`
           INSERT INTO atlas_priority_events
             (id, processor_id, event_type, input_index, input_name, input_level_db, detected_at)
@@ -96,7 +102,17 @@ async function pollOnce(baseUrl: string) {
             ${meter.index}, ${meter.name}, ${level}, ${now}
           )
         `)
-        logger.warn(`[ATLAS-PRIORITY] Mic active: "${meter.name}" (input ${meter.index}) at ${level.toFixed(1)} dB`)
+        state.lastHeartbeatSec = now
+        logger.warn(`[ATLAS-PRIORITY] ${reason}: "${meter.name}" (input ${meter.index}) at ${level.toFixed(1)} dB`)
+      }
+
+      if (!state.active && state.aboveCount >= ABOVE_THRESHOLD_POLLS) {
+        state.active = true
+        await writeEvent('Mic active (rising edge)')
+      } else if (state.active && (now - state.lastHeartbeatSec) >= HEARTBEAT_INTERVAL_SEC) {
+        // Refresh the active row so the banner endpoint's 30s window
+        // stays fresh for as long as the input is still hot.
+        await writeEvent('Mic still active (heartbeat)')
       } else if (state.active && state.belowCount >= BELOW_THRESHOLD_POLLS) {
         state.active = false
         // No event written for deactivation — UI badge time-decays after
