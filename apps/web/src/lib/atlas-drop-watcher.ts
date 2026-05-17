@@ -242,6 +242,7 @@ async function pollOnce() {
 
 export async function startAtlasDropWatcher() {
   await ensureTable()
+  await writeStartupEvent('drop_watcher')
 
   setTimeout(() => {
     pollOnce().catch((err) => logger.error('[ATLAS-DROP-WATCHER] Initial poll failed:', err))
@@ -250,4 +251,26 @@ export async function startAtlasDropWatcher() {
   setInterval(() => {
     pollOnce().catch((err) => logger.error('[ATLAS-DROP-WATCHER] Poll failed:', err))
   }, POLL_INTERVAL_MS)
+}
+
+/**
+ * Write a synthetic startup row to atlas_priority_events so operators
+ * can see in the audit table that the watcher actually booted, even
+ * when no real events have fired. Shared by both watchers so a single
+ * SELECT on event_type='startup' shows the boot history.
+ */
+export async function writeStartupEvent(watcherName: string): Promise<void> {
+  try {
+    const now = Math.floor(Date.now() / 1000)
+    await db.run(sql`
+      INSERT INTO atlas_priority_events
+        (id, processor_id, event_type, input_name, detected_at)
+      VALUES (
+        ${randomUUID()}, ${''}, 'startup', ${watcherName}, ${now}
+      )
+    `)
+    logger.info(`[ATLAS-${watcherName.toUpperCase()}] startup row written (pid=${process.pid})`)
+  } catch (err) {
+    logger.warn(`[ATLAS-${watcherName.toUpperCase()}] failed to write startup row: ${(err as Error).message}`)
+  }
 }

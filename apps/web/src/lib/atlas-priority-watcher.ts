@@ -103,6 +103,14 @@ async function pollOnce(baseUrl: string) {
 export function startAtlasPriorityWatcher() {
   const baseUrl = `http://127.0.0.1:${process.env.PORT || 3001}`
 
+  // Fire-and-forget startup marker so the audit table shows the
+  // watcher booted, independent of whether any mic events fire.
+  // The table is created by the drop watcher's ensureTable, which
+  // instrumentation.ts awaits before launching this watcher.
+  import('./atlas-drop-watcher')
+    .then((m) => m.writeStartupEvent('priority_watcher'))
+    .catch((err) => logger.warn('[ATLAS-PRIORITY-WATCHER] startup row skipped:', err))
+
   setTimeout(() => {
     pollOnce(baseUrl).catch((err) => logger.error('[ATLAS-PRIORITY-WATCHER] Initial poll failed:', err))
   }, 50_000)
