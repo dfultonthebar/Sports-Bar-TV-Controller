@@ -227,6 +227,10 @@ Wolf Pack matrix does NOT pass CEC + Spectrum disables CEC in firmware → all c
 #### 7. Audio Processor Control
 `packages/bss-blu/` (HiQnet TCP 1023), `packages/dbx-zonepro/` (TCP 3804 preferred — **NO F0/64/00 prefix or checksum** over TCP, fire-and-forget; **CRITICAL** auto-recall Scene 1 on connect to escape failsafe-mode source-shift), `packages/atlas/` (AtlasIED). UI: Device Config → Audio Processors. Per-package READMEs hold full model lists, SV IDs, and protocol detail.
 
+**Atlas (AZMP4/8) TCP+UDP architecture (v2.33.50+):** ONE persistent `ExtendedAtlasClient` per processor IP:port via the `atlasClientManager` singleton (hoisted to `globalThis` per Gotcha #10). TCP port 5321 for JSON-RPC commands; UDP port 3131 for subscribed meter pushes (`SourceMeter_N`, `ZoneMeter_N`, `GroupMeter_N` in dB). All control paths — meter manager, drop watcher, priority watcher, `executeAtlasCommand` — share that one client. Adding new Atlas code: route through `getAtlasClient(processorId, config)`; never `new AtlasTCPClient(...)` directly (TCP leak + breaks the singleton).
+
+**Atlas audit tables (v2.33.47/49):** `atlas_drop_events` (zone gain crashes — drop watcher polls every 30s, fires on ≥15-point drop landing ≤10) and `atlas_priority_events` (mic/page/jukebox/priority-input activity + unexpected source overrides — priority watcher polls input meters every 5s, fires when any input matching `/\b(mic|juke|page|intercom|priority)\b/i` crosses −45 dB). Both watchers write `event_type='startup'` rows on boot so the table proves they're alive even with no real events. Banner at top of bartender remote audio tab while a priority event is active. Endpoints: `GET /api/atlas-drops`, `GET /api/atlas-priority?active=true`. **Atlas firmware exposes no queryable "priority active" parameter** (60+ candidate param names probed 2026-05-17, all returned `-32604`); priority is inferred from MIC-pattern input levels + unexpected `ZoneSource_X` changes.
+
 #### 8. Wolf Pack Multi-View Card Control
 `packages/multiview/` — HDTVSupply 4K60 Quad-View cards in Wolf Pack slots. RS-232 USB (115200 8N1), 8 display modes (single → quad), hex frame format. DB: `WolfpackMultiViewCard`. Full hex frames + mode table: `packages/multiview/README.md`.
 
@@ -374,6 +378,29 @@ If a future Cube model ships Prime Video under yet another package name, the dia
 4. Add the package to `packageAliases` for `amazon-prime` in the streaming catalog.
 
 The same reasoning applies to **other Amazon-branded apps that may be launcher-hosted on certain Fire OS builds** (Amazon Music, Photos). Don't trust the catalog package name as authoritative — trust what `pm path` returns on the actual device.
+
+### 10. Next.js bundles each route handler separately → module-private singletons are PER-BUNDLE, not per-process
+
+In Next.js App Router (16.x), every API route handler in `apps/web/src/app/api/**/route.ts` is compiled into its own server bundle. Modules imported by multiple routes — including workspace packages like `@sports-bar/atlas` — are **duplicated across bundles**. A `private static instance` field on a class is therefore **per-bundle**, not per-process: each route's compiled copy of the class has its own static. The "singleton" you wrote is actually N singletons.
+
+**Concrete symptom (v2.33.50 root cause):** `atlasClientManager` and `atlasMeterManager` each had one instance per route bundle. Each bundle's manager created its own `ExtendedAtlasClient` with its own UDP socket bound to port 3131 via `SO_REUSEPORT`. The Linux kernel hashes incoming meter packets to one of the bound sockets — packets landing on bundle A's socket never reach bundle B's cache. Result: bartender remote and admin Audio tab read different stale caches, meters appear frozen, looked like an Atlas bug for hours.
+
+**Fix pattern — hoist any cross-route singleton to `globalThis`:**
+
+```typescript
+public static getInstance(): YourClass {
+  const KEY = Symbol.for('@your-pkg/YourClass.instance')
+  const g = globalThis as any
+  if (!g[KEY]) g[KEY] = new YourClass()
+  return g[KEY] as YourClass
+}
+```
+
+`Symbol.for(...)` uses V8's process-wide symbol registry, so every bundle's lookup hits the same slot on `globalThis`. The first bundle to call `getInstance()` creates the instance; every other bundle finds it.
+
+**Race-condition addendum:** Even with the singleton fixed, concurrent `getClient(K)` calls for the same key can both pass a `map.get(key)` check before either inserts — creating duplicate clients. Use a per-key in-flight Promise lock (see `AtlasClientManager.getClient` for the pattern).
+
+**Apply this to:** any code where you wrote a "singleton" but a Next.js route bundle could load it. Notably: TCP/UDP socket managers, connection pools, in-memory caches that mirror external state, anything that binds an OS resource.
 
 ## Development Workflow
 

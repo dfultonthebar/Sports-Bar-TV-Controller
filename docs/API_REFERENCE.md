@@ -375,6 +375,103 @@ Scan for CEC cable box devices.
 
 ## Audio Management
 
+### Atlas Drop Events (read-only diagnostic)
+
+Returns rows from the `atlas_drop_events` audit table. Populated by
+the Atlas drop watcher (polls every 30s) whenever a zone's ZoneGain
+drops ≥15 points between polls AND lands ≤10. Each row is correlated
+against `audio_volume_logs` within the last 10s; `explained=true` means
+an operator-initiated drag landed there, `explained=false` means the
+Atlas firmware (group master, scene recall, page ducking, external Atlas
+client) crashed the zone with no command from this app.
+
+**Endpoint:** `GET /api/atlas-drops`
+
+**Query Parameters:**
+- `limit` (number, optional, default 100, max 500) — max rows returned
+- `silent` (boolean, optional) — set `true` to return only `explained=0`
+- `zone` (number, optional) — filter by Atlas zone number (1-based)
+
+**Response:**
+```json
+{
+  "success": true,
+  "count": 3,
+  "drops": [
+    {
+      "id": "uuid",
+      "processor_id": "...",
+      "zone_number": 7,
+      "zone_name": "Bathroom",
+      "previous_volume": 45,
+      "new_volume": 2,
+      "delta": 43,
+      "source_at_drop": 10,
+      "muted_at_drop": false,
+      "gap_seconds": 32,
+      "explained": false,
+      "detected_at": 1747521234,
+      "detected_at_iso": "2026-05-17T20:33:54.000Z"
+    }
+  ]
+}
+```
+
+---
+
+### Atlas Priority/Override Events (read-only diagnostic)
+
+Returns rows from the `atlas_priority_events` audit table. Populated by:
+- **drop watcher** (every 30s) — `event_type='source_override'` when a
+  zone's `ZoneSource_X` changes to a value this app didn't command
+- **priority watcher** (every 5s) — `event_type='mic_active'` when any
+  input matching `/\b(mic|juke|page|intercom|priority)\b/i` rises above
+  −45 dB. Re-fires every 20s while still hot.
+- **both watchers** — `event_type='startup'` row on boot, with
+  `input_name='drop_watcher'` or `'priority_watcher'`
+
+Drives the amber "Priority Override Active" banner at the top of the
+bartender remote audio tab. The banner activates when there's at least
+one event in the last 30s.
+
+**Endpoint:** `GET /api/atlas-priority`
+
+**Query Parameters:**
+- `active` (boolean, optional) — set `true` to return only events in
+  the last 30s (the banner's source of truth)
+- `limit` (number, optional, default 50, max 500)
+
+**Response:**
+```json
+{
+  "success": true,
+  "active": true,
+  "activeMics": ["Juke box"],
+  "overriddenZones": [],
+  "windowSeconds": 30,
+  "count": 1,
+  "events": [
+    {
+      "id": "uuid",
+      "processor_id": "...",
+      "event_type": "mic_active",
+      "zone_number": null,
+      "zone_name": null,
+      "previous_source": null,
+      "new_source": null,
+      "input_index": 3,
+      "input_name": "Juke box",
+      "input_level_db": -13.43,
+      "detected_at": 1747521234,
+      "detected_at_iso": "2026-05-17T20:33:54.000Z",
+      "seconds_ago": 7
+    }
+  ]
+}
+```
+
+---
+
 ### Soundtrack Your Brand - Now Playing
 
 Get currently playing track information.

@@ -187,6 +187,109 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.33.46 – v2.33.55 — Atlas audio fix train + audit tables (single batch)
+**Released:** 2026-05-17
+
+10 versions shipped in one session resolving a multi-symptom Atlas
+investigation at Holmgren. **No required setup at locations** —
+auto-update + PM2 restart cycle handles everything. Two new audit
+tables get auto-created via `CREATE TABLE IF NOT EXISTS` on first
+boot. No env vars, no migrations.
+
+**What changed (one-line per version):**
+
+- **v2.33.46** — Debounce bartender slider AND +/- buttons in
+  `AtlasZoneControl.tsx` (the bartender remote uses this, not
+  `AudioZoneControl.tsx` which got the v2.33.45 fix). Was firing
+  30-46 POSTs/sec to Atlas during drags, saturating the TCP queue.
+- **v2.33.47** — New diagnostic: `atlas-drop-watcher` polls every
+  zone's `ZoneGain_X` / `ZoneSource_X` / `ZoneMute_X` every 30s. On
+  ≥15-point drop landing ≤10, writes to new `atlas_drop_events`
+  table with explained/silent flag. GET `/api/atlas-drops`.
+- **v2.33.48** — Drop watcher syncs live ZoneGain back to
+  `audioZones.volume` DB cache. Was: nothing wrote that column from
+  hardware, so slider could render multi-day-stale values (Bathroom
+  cache stuck at 0 while hardware was actually at 45%; bartenders
+  saw 0, "fixed" it, which made things worse).
+- **v2.33.49** — New `atlas-priority-watcher` polls input meters
+  every 5s, fires `event_type='mic_active'` when an input matching
+  the priority name pattern crosses -45 dB. Plus source-override
+  detection in the drop watcher. New `atlas_priority_events` table.
+  Amber banner appears at top of bartender remote audio tab while
+  active. GET `/api/atlas-priority`.
+- **v2.33.50** ⭐ — Fixed stuck-meter root cause: hoisted
+  `atlasClientManager` and `atlasMeterManager` singletons to
+  `globalThis` via `Symbol.for()`. Next.js bundles each route handler
+  separately, so the previous private-static singleton was per-bundle,
+  causing multiple `ExtendedAtlasClient` instances → multiple UDP
+  sockets bound to port 3131 via SO_REUSEPORT → Atlas meter updates
+  arriving on a socket whose bundle wasn't being read. Also added
+  intentional-disconnect flag (close handler was unconditionally
+  reconnecting after every `.disconnect()`), try/finally around
+  direct `AtlasTCPClient` usage in `atlas/sources`, `atlas/groups`,
+  `atlas/configuration` routes, and dropped the redundant
+  `getAtlasClient` call in `AtlasMeterManager.unsubscribe`. **THIS
+  IS THE FIX YOU CARE ABOUT IF METERS ARE STUCK.**
+- **v2.33.51** — `executeAtlasCommand` now routes through the
+  singleton (was opening fresh TCP per bartender command). Guard
+  rejects out-of-range `matrix_audio_*` source values. `\r\n` → `\n`
+  terminator in unused `atlas-control-service.ts`. Deleted dead
+  `atlas-tcp-client.ts` (legacy duplicate with buggy `socket.once
+  ('data')` pattern; zero callers).
+- **v2.33.52** — Per-key in-flight Promise lock in
+  `AtlasClientManager.getClient` so concurrent calls for the same
+  IP:port converge on one client (v2.33.51 boot diagnostic showed
+  two `Creating new Atlas client` events at the same millisecond
+  → 2 TCP / 2 UDP where 1 of each was expected).
+- **v2.33.53** — Both watchers write a `event_type='startup'` row
+  to `atlas_priority_events` on boot so the audit table proves the
+  watcher is alive even when no real events fire.
+- **v2.33.54** — Priority watcher whitelist extended to
+  `/\b(mic|juke|page|intercom|priority)\b/i`. Was `/mic/i` only;
+  Holmgren's Juke box (input 3) wasn't detected.
+- **v2.33.55** — Priority watcher writes a heartbeat row every 20s
+  while an input stays above threshold so the bartender remote's
+  banner doesn't fade after 30s while the source is still hot.
+
+**What bartenders will see:**
+- Volume sliders no longer jump during drags.
+- Slider shows real Atlas value, not stale DB cache. (Bartenders who
+  had been "fixing volume from 0" should stop seeing the issue.)
+- New amber **"Priority Override Active 🎤 Juke box"** banner at the
+  top of the bartender remote audio tab when a priority input (mic /
+  juke / page / intercom) is playing.
+
+**No operator action required** post-update. Run these to confirm:
+
+```bash
+# Confirm watcher started (should see 2 rows per boot, drop_watcher +
+# priority_watcher):
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "SELECT datetime(detected_at,'unixepoch','localtime') ts, input_name
+   FROM atlas_priority_events WHERE event_type='startup'
+   ORDER BY detected_at DESC LIMIT 4"
+
+# Confirm only ONE TCP+UDP socket to Atlas (the singleton):
+ss -tn | grep ":5321" | wc -l   # expect 1
+ss -uln | grep ":3131" | wc -l  # expect 1
+
+# Confirm meters live (run twice ~12s apart; levels should differ):
+curl -s "http://localhost:3001/api/atlas/output-meters?processorIp=<ATLAS_IP>" \
+  | python3 -m json.tool | head -30
+```
+
+**Priority input naming per location:** the watcher uses a name regex
+to whitelist priority inputs. Current pattern:
+`/\b(mic|juke|page|intercom|priority)\b/i`. If a location has a
+differently-named priority input (e.g., "Announcer", "EmergencyBus"),
+extend the regex at
+`apps/web/src/lib/atlas-priority-watcher.ts:35`. Move to DB-driven
+per-venue config is a planned follow-up.
+
+**Applies to:** all locations after auto-update. Backwards-compatible.
+
+---
+
 ### Operational note: 2026-05-09 — ESPN GTV install on Stoneyard Appleton cubes
 **Operator action required (one-time per cube)**
 
