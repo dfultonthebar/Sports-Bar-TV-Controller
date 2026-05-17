@@ -1050,18 +1050,39 @@ export async function createAtlasClient(config: AtlasConnectionConfig): Promise<
 }
 
 /**
- * Helper function to execute a command with automatic connection management
+ * Helper function to execute a command with automatic connection management.
+ *
+ * Was: opened a fresh AtlasTCPClient per call (and per bartender volume/
+ * source/mute action), eating ~50-100ms of TCP setup and bypassing the
+ * meter manager's persistent TCP+UDP connection. Now: routes through the
+ * AtlasClientManager singleton so all command paths share ONE TCP
+ * connection with proper buffering and pending-response correlation.
+ * Lazy-import breaks the circular dep (atlas-client-manager imports
+ * AtlasTCPClient from this module).
+ *
+ * Note: do NOT call client.disconnect() in the finally — the singleton
+ * stays alive for other callers. releaseAtlasClient() decrements the
+ * refCount; cleanupIdleClients handles eventual teardown.
  */
 export async function executeAtlasCommand(
   config: AtlasConnectionConfig,
   commandFn: (client: AtlasTCPClient) => Promise<AtlasResponse>
 ): Promise<AtlasResponse> {
-  const client = new AtlasTCPClient(config)
-  
+  const { getAtlasClient, releaseAtlasClient } = await import('./atlas-client-manager')
+  const processorId = `cmd:${config.ipAddress}:${config.tcpPort ?? 5321}`
+  let client: AtlasTCPClient
   try {
-    await client.connect()
-    const result = await commandFn(client)
-    return result
+    client = await getAtlasClient(processorId, config)
+  } catch (error) {
+    atlasLogger.error('COMMAND', 'Failed to acquire singleton Atlas client', error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    }
+  }
+
+  try {
+    return await commandFn(client)
   } catch (error) {
     atlasLogger.error('COMMAND', 'Command execution error', error)
     return {
@@ -1069,6 +1090,6 @@ export async function executeAtlasCommand(
       error: error instanceof Error ? error.message : 'Unknown error'
     }
   } finally {
-    client.disconnect()
+    releaseAtlasClient(config.ipAddress, config.tcpPort)
   }
 }

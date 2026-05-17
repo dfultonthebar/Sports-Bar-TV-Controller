@@ -454,16 +454,37 @@ async function setZoneSource(processor: any, zone: number, source: string | numb
     // Format: "input_1" -> index 0
     sourceIndex = parseInt(source.split('_')[1]) - 1
   } else if (source.startsWith('matrix_audio_')) {
-    // Format: "matrix_audio_1" -> need to map to actual source index
-    // Matrix audio buses typically come after physical inputs
-    // This depends on the processor configuration
-    const matrixNum = parseInt(source.split('_')[2])
-    // For now, assuming matrix audio starts after physical inputs
-    // You may need to adjust this based on actual configuration
-    sourceIndex = matrixNum + 99  // Placeholder, needs actual mapping
+    // matrix_audio_* source mapping is not implemented. The previous
+    // placeholder computed sourceIndex = matrixNum + 99, which would
+    // write a guaranteed-out-of-range value to ZoneSource_X (caught
+    // 2026-05-17 audit) — corrupting both the Atlas state and our
+    // audioZones.currentSource cache. Until the real mapping lands,
+    // reject the command with a clear error rather than silently
+    // sending garbage. -1 keeps the existing "no match" downstream
+    // path; the explicit error log surfaces it for operators.
+    atlasLogger.error('ZONE_SOURCE', 'matrix_audio_* source mapping not implemented — command rejected', {
+      ipAddress: processor.ipAddress,
+      zone,
+      source
+    })
+    return { success: false, error: `matrix_audio source "${source}" is not mapped on this processor` }
   } else if (!isNaN(parseInt(source as string))) {
     // Direct number as string
     sourceIndex = parseInt(source as string)
+  }
+
+  // Final safety guard: any sourceIndex outside the Atlas range gets
+  // rejected before hitting the wire. Atlas accepts -1 (no source) to
+  // 13 (max for AZM8). Out-of-range writes either error on the unit
+  // or silently no-op while we still cache the bogus value.
+  if (sourceIndex < -1 || sourceIndex > 13) {
+    atlasLogger.error('ZONE_SOURCE', `Source index ${sourceIndex} out of range — command rejected`, {
+      ipAddress: processor.ipAddress,
+      zone,
+      source,
+      sourceIndex
+    })
+    return { success: false, error: `Source index ${sourceIndex} out of range (must be -1 to 13)` }
   }
 
   atlasLogger.info('ZONE_SOURCE', `Setting zone ${zone} source to ${source} (index ${sourceIndex})`, {
