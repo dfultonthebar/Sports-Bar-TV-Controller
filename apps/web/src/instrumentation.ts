@@ -323,5 +323,16 @@ export async function register() {
     } catch (error) {
       logger.error('[INSTRUMENTATION] ❌ Failed to initialize NFHS sync:', error)
     }
+
+    try {
+      // Diagnostic: catch silent Atlas zone-volume drops. Polls ZoneGain/
+      // ZoneSource/ZoneMute every 30s, logs drops to atlas_drop_events,
+      // and flags "SILENT" when no audio_volume_logs write correlates.
+      const { startAtlasDropWatcher } = await import('./lib/atlas-drop-watcher')
+      await startAtlasDropWatcher()
+      logger.info('[INSTRUMENTATION] ✅ Atlas drop watcher started (polls every 30s)')
+    } catch (error) {
+      logger.error('[INSTRUMENTATION] ❌ Failed to start Atlas drop watcher:', error)
+    }
   }
 }
