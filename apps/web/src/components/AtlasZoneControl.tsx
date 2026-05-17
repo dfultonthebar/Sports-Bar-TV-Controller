@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Volume2, VolumeX, Minus, Plus } from 'lucide-react'
+import { Volume2, VolumeX, Minus, Plus, Mic, AlertTriangle } from 'lucide-react'
 import { logger } from '@sports-bar/logger'
 
 interface AtlasZone {
@@ -102,6 +102,33 @@ export default function AtlasZoneControl({
       fetchSources()
     }
   }, [processorId, processorIp, fetchZones, fetchSources])
+
+  // Priority/page override indicator. Polls every 5s; backend writes
+  // events to atlas_priority_events when MIC inputs spike above threshold
+  // or when a zone source changes outside our control. The badge
+  // auto-clears 30s after the last event (server-side window).
+  const [priorityActive, setPriorityActive] = useState(false)
+  const [activeMics, setActiveMics] = useState<string[]>([])
+  const [overriddenZones, setOverriddenZones] = useState<string[]>([])
+
+  useEffect(() => {
+    let cancelled = false
+    const poll = async () => {
+      try {
+        const r = await fetch('/api/atlas-priority?active=true')
+        if (!r.ok || cancelled) return
+        const j = await r.json()
+        setPriorityActive(!!j.active)
+        setActiveMics(j.activeMics || [])
+        setOverriddenZones(j.overriddenZones || [])
+      } catch {
+        // Silent — UI badge is non-critical.
+      }
+    }
+    poll()
+    const id = setInterval(poll, 5_000)
+    return () => { cancelled = true; clearInterval(id) }
+  }, [])
 
   const handleVolumeChange = (zoneNumber: number, newVolume: number) => {
     const clamped = Math.max(0, Math.min(100, newVolume))
@@ -221,6 +248,28 @@ export default function AtlasZoneControl({
 
   return (
     <div className="space-y-3">
+      {priorityActive && (
+        <div className="rounded-xl border border-amber-500/40 bg-amber-950/30 px-4 py-3 flex items-center gap-3">
+          <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0" />
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-semibold text-amber-200">Priority Override Active</div>
+            <div className="text-xs text-amber-300/80 mt-0.5 truncate">
+              {activeMics.length > 0 && (
+                <span className="inline-flex items-center gap-1 mr-3">
+                  <Mic className="w-3 h-3" />
+                  {activeMics.join(', ')}
+                </span>
+              )}
+              {overriddenZones.length > 0 && (
+                <span>Zones overridden: {overriddenZones.join(', ')}</span>
+              )}
+              {activeMics.length === 0 && overriddenZones.length === 0 && (
+                <span>Atlas is overriding zone control</span>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
       {zones.filter(z => z.enabled).map(zone => (
         <div
           key={zone.id}
