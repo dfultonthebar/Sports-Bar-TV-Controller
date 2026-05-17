@@ -18,6 +18,15 @@ import { getAtlasClient } from '@sports-bar/atlas'
 import { logger } from '@sports-bar/logger'
 import { randomUUID } from 'crypto'
 
+// During the 2026-05-17 investigation we discovered that nothing was
+// writing live ZoneGain values back to audioZones.volume. The control
+// route only writes currentSource; ?live=true only syncs muted from
+// output meters. So the slider in the bartender remote was reading a
+// DB cache that hadn't been refreshed since the last UI-side write —
+// days-stale for any zone that auto-changed on the Atlas side. Bartenders
+// saw "Bathroom = 0" and dragged it up, when the actual Atlas gain was
+// already at 45%. The watcher polls the truth, so let it sync the cache.
+
 const POLL_INTERVAL_MS = 30_000
 // Counts as a drop only if BOTH conditions hold — large delta AND the
 // new value is in the "crashed" range. Filters out normal bartender
@@ -157,6 +166,24 @@ async function pollOnce() {
         }
 
         lastSeen.set(key, { volume, source, muted, observedAt: now })
+
+        // Sync audioZones cache with truth from Atlas so the bartender
+        // slider doesn't render a multi-day-stale volume on next load.
+        // Only write when something changed to keep DB churn low.
+        if (
+          zone.volume !== volume ||
+          (zone.muted ? 1 : 0) !== (muted ? 1 : 0) ||
+          (zone.currentSource ?? '') !== String(source)
+        ) {
+          await db.update(schema.audioZones)
+            .set({
+              volume,
+              muted,
+              currentSource: String(source),
+              updatedAt: new Date().toISOString(),
+            })
+            .where(eq(schema.audioZones.id, zone.id))
+        }
       } catch (err) {
         logger.debug(`[ATLAS-DROP-WATCHER] Zone ${zone.zoneNumber} (${zone.name}) query failed: ${(err as Error).message}`)
       }
