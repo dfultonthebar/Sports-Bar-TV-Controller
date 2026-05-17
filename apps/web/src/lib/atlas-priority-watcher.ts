@@ -93,7 +93,11 @@ async function pollOnce(baseUrl: string) {
       }
 
       const now = Math.floor(Date.now() / 1000)
-      const writeEvent = async (reason: string) => {
+      // Rising edge is a real state change worth surfacing in the
+      // error stream; heartbeats while still active are routine and
+      // should not flood the error log (operator audit caught 44
+      // heartbeat lines in a single session at warn level).
+      const writeEvent = async (reason: string, level_kind: 'warn' | 'info') => {
         await db.run(sql`
           INSERT INTO atlas_priority_events
             (id, processor_id, event_type, input_index, input_name, input_level_db, detected_at)
@@ -103,16 +107,18 @@ async function pollOnce(baseUrl: string) {
           )
         `)
         state.lastHeartbeatSec = now
-        logger.warn(`[ATLAS-PRIORITY] ${reason}: "${meter.name}" (input ${meter.index}) at ${level.toFixed(1)} dB`)
+        const msg = `[ATLAS-PRIORITY] ${reason}: "${meter.name}" (input ${meter.index}) at ${level.toFixed(1)} dB`
+        if (level_kind === 'warn') logger.warn(msg)
+        else logger.info(msg)
       }
 
       if (!state.active && state.aboveCount >= ABOVE_THRESHOLD_POLLS) {
         state.active = true
-        await writeEvent('Mic active (rising edge)')
+        await writeEvent('Mic active (rising edge)', 'warn')
       } else if (state.active && (now - state.lastHeartbeatSec) >= HEARTBEAT_INTERVAL_SEC) {
         // Refresh the active row so the banner endpoint's 30s window
         // stays fresh for as long as the input is still hot.
-        await writeEvent('Mic still active (heartbeat)')
+        await writeEvent('Mic still active (heartbeat)', 'info')
       } else if (state.active && state.belowCount >= BELOW_THRESHOLD_POLLS) {
         state.active = false
         // No event written for deactivation — UI badge time-decays after
