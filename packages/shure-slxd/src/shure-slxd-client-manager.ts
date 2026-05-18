@@ -14,7 +14,7 @@
 import { logger } from '@sports-bar/logger'
 import { ShureSlxdClient } from './shure-slxd-client'
 import { SHURE_NETWORK_CONFIG } from './config'
-import type { ShureSlxdClientConfig } from './types'
+import type { ShureSlxdClientConfig, ShureReceiverSnapshot } from './types'
 
 interface ManagedClient {
   client: ShureSlxdClient
@@ -112,6 +112,32 @@ class ShureSlxdClientManager {
       refCount: m.refCount,
       connected: m.client.isConnected(),
     }))
+  }
+
+  /**
+   * Full per-receiver state snapshot including receiver-scope metadata
+   * (model, firmware, RF band) and every channel's current state.
+   * Powers `/api/shure-rf/status` and the bartender battery+RSSI tile.
+   * Return type ShureReceiverSnapshot is exported from `./types` so
+   * the consuming endpoint + UI component share a single source.
+   */
+  getSnapshots(): ShureReceiverSnapshot[] {
+    return Array.from(this.clients.values()).map((m) => {
+      const receiver = m.client.getReceiverState()
+      const states = m.client.getAllChannelStates()
+      return {
+        receiverId: m.receiverId,
+        receiverName: m.client.receiverName,
+        ipAddress: m.ipAddress,
+        port: m.port,
+        connected: m.client.isConnected(),
+        model: receiver.model,
+        firmwareVersion: receiver.firmwareVersion,
+        rfBand: receiver.rfBand,
+        deviceId: receiver.deviceId,
+        channels: Array.from(states.values()).sort((a, b) => a.channel - b.channel),
+      }
+    })
   }
 
   private cleanupIdle(): void {
