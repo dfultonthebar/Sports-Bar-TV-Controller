@@ -46,6 +46,81 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-17 — v2.34.0 — Shure SLX-D wireless mic RF interference detection
+
+**What changed:**
+- New `@sports-bar/shure-slxd` package: TypeScript TCP client for Shure
+  SLX-D wireless mic receivers (port 2202, ASCII line protocol).
+  Singleton hoisted to `globalThis` per Gotcha #10. Per-key in-flight
+  Promise lock to close the same race window we fixed on Atlas v2.33.52.
+- New watcher `apps/web/src/lib/shure-rf-watcher.ts` subscribes to RSSI
+  meter pushes at 1 Hz, detects the ghost-carrier signature
+  (`TX_TYPE=UNKNOWN` + `RSSI ≥ -85 dBm` for 3 consecutive samples),
+  writes to new `shure_rf_events` audit table.
+- New dedicated daily-rotating log file at
+  `/home/ubuntu/sports-bar-data/logs/shure-rf-YYYY-MM-DD.log` with 30-day
+  retention. Operator request to make RF history diffable across game
+  days without grepping the entire app log.
+- New `GET /api/shure-rf?active=true` endpoint drives a cyan
+  "RF Interference Detected" banner on the bartender remote Audio tab.
+  Appears ALONGSIDE the existing amber priority banner; when both fire
+  simultaneously the priority event is labeled as RF-induced.
+- New 'shure-slxd' processor type in Device Config UI (`AudioProcessorManager.tsx`).
+- Comprehensive README at `packages/shure-slxd/README.md` documenting
+  the full protocol, gotchas, RF coordination SME briefing.
+
+**What could break at a location:**
+- **Locations without a Shure SLX-D receiver** — watcher queries
+  `audioProcessors WHERE processorType='shure-slxd'`, finds none,
+  logs "no shure-slxd receivers configured — watcher idle", no-op.
+  Safe. No regression possible.
+- **Locations WITH a Shure receiver but VLAN/network not yet routed
+  to the controller** — connect attempts will warn-log and trigger
+  exponential-backoff reconnect (max 10 attempts before giving up).
+  Operator action: route the receiver onto the controller's VLAN
+  before adding the processor row in Device Config, or be ready to
+  ignore the warn logs until routing is done.
+- **First-install gotcha** — Shure receiver's front panel
+  `Menu → Advanced → Network → Allow Third-Party Controls → Enable`
+  MUST be on, or port 2202 accepts the TCP connection but silently
+  drops every command (no error reaches us). Symptom: connection
+  succeeds but state cache never populates.
+
+**Manual steps required:**
+
+| Step | Where | Required if |
+|---|---|---|
+| Route receiver onto controller VLAN | network switch | Adding a Shure receiver |
+| Enable "Allow Third-Party Controls" on receiver front panel | Menu → Advanced → Network | Adding a Shure receiver |
+| Confirm firmware ≥ 1.1.0 | Settings → About on receiver, OR `GET FW_VER` reply | Adding a Shure receiver |
+| Confirm channel names on receiver | Settings → Channel Setup | Optional — operator-set labels surface in bartender banner |
+| Add row to `audioProcessors` table via Device Config UI | http://controller:3001/system-admin → Audio Processors | Adding a Shure receiver |
+
+**No manual steps required at locations without a Shure receiver.**
+
+**Rollback notes:**
+- New audit table `shure_rf_events` and new package are additive — no
+  data lost on rollback. Roll back via `git revert <commit>` then
+  `pm2 restart`. Leftover table is harmless.
+- Cyan banner only renders when `/api/shure-rf?active=true` returns
+  `active: true` — at locations without a Shure receiver the endpoint
+  returns `active: false` and the banner never appears.
+
+**Affected files:**
+- New: `packages/shure-slxd/` (5 files + README)
+- New: `apps/web/src/lib/shure-rf-logger.ts`
+- New: `apps/web/src/lib/shure-rf-watcher.ts`
+- New: `apps/web/src/app/api/shure-rf/route.ts`
+- Modified: `apps/web/src/components/AtlasZoneControl.tsx` (added cyan banner)
+- Modified: `apps/web/src/components/AudioProcessorManager.tsx` (added 'shure-slxd' processor type)
+- Modified: `apps/web/src/instrumentation.ts` (started watcher)
+- Modified: `apps/web/package.json` (added `@sports-bar/shure-slxd` dep)
+
+`Checkpoint model: sonnet` — new package + new daily-rotating log file
+warrant deeper-than-Haiku reasoning during Checkpoint B.
+
+---
+
 ### 2026-05-17 — v2.33.46 through v2.33.55 — Atlas audio fix train (10 versions)
 
 **Risk:** GO at every location with an Atlas processor. Backwards-compatible.

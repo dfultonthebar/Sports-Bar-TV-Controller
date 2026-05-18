@@ -419,6 +419,73 @@ client) crashed the zone with no command from this app.
 
 ---
 
+### Shure SLX-D RF Interference Events (read-only diagnostic)
+
+Returns rows from the `shure_rf_events` audit table. Populated by the
+Shure RF watcher (`apps/web/src/lib/shure-rf-watcher.ts`) which
+subscribes to RSSI meter pushes from each configured Shure SLX-D
+receiver (one entry per `audioProcessors` row with `processorType='shure-slxd'`).
+
+Events fired on:
+- **`rf_interference`** (rising edge) — `TX_TYPE='UNKNOWN'` AND `RSSI ≥ -85 dBm` sustained 3 consecutive samples
+- **`rf_interference_heartbeat`** — re-fired every 20s while interference persists, so the banner's 30-s active-window query stays fresh
+- **`rf_cleared`** — 3 consecutive samples below the -95 dBm hysteresis floor or TX returns
+- **`startup`** — synthetic row written on watcher boot, proves the watcher booted even with no real events
+- **`freq_changed`** — operator (or external client) changed the receiver's tuned frequency
+
+Drives the cyan "RF Interference Detected on Wireless Mic" banner on the bartender remote Audio tab. Appears alongside the amber Atlas Priority banner; when both fire simultaneously, the Priority event is labeled as RF-induced ("likely RF interference — see below").
+
+Mirrored to a dedicated daily log file at `/home/ubuntu/sports-bar-data/logs/shure-rf-YYYY-MM-DD.log` (30-day retention).
+
+**Endpoint:** `GET /api/shure-rf`
+
+**Query Parameters:**
+- `active` (boolean, optional) — set `true` to return only events in the last 30s + summary fields for the banner
+- `limit` (number, optional, default 50, max 500)
+- `receiver` (string, optional) — filter to one receiver_id
+- `channel` (number, optional) — filter to one channel (1-based)
+
+**Response:**
+```json
+{
+  "success": true,
+  "active": true,
+  "activeChannels": [
+    {
+      "receiverId": "uuid",
+      "receiverName": "Bar mics",
+      "channel": 1,
+      "frequencyMhz": 537.125,
+      "rssiDbm": -78.0,
+      "secondsAgo": 4
+    }
+  ],
+  "windowSeconds": 30,
+  "count": 12,
+  "events": [
+    {
+      "id": "uuid",
+      "receiver_id": "...",
+      "receiver_name": "Bar mics",
+      "ip_address": "192.168.x.y",
+      "channel": 1,
+      "event_type": "rf_interference",
+      "rssi_dbm": -78,
+      "frequency_mhz": 537.125,
+      "tx_type": "UNKNOWN",
+      "note": "rising edge: 3 samples ≥ -85dBm with TX off",
+      "detected_at": 1748549820,
+      "detected_at_iso": "2026-05-17T22:17:00.000Z",
+      "seconds_ago": 4
+    }
+  ]
+}
+```
+
+Rate limit: `RateLimitConfigs.DEFAULT`. Auth: none (matches the existing `/api/atlas-priority` and `/api/atlas-drops` pattern — these are read-only diagnostic endpoints consumed by the bartender remote's polling banner).
+
+---
+
 ### Atlas Priority/Override Events (read-only diagnostic)
 
 Returns rows from the `atlas_priority_events` audit table. Populated by:

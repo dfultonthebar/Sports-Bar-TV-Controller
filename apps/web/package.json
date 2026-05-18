@@ -110,6 +110,7 @@
     "@sports-bar/scheduler": "*",
     "@sports-bar/security": "*",
     "@sports-bar/services": "*",
+    "@sports-bar/shure-slxd": "*",
     "@sports-bar/soundtrack": "*",
     "@sports-bar/sports-apis": "*",
     "@sports-bar/streaming": "*",
