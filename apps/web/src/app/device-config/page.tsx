@@ -53,6 +53,36 @@ import DMXControllerManager from '@/components/dmx/DMXControllerManager'
 import { CommercialLightingManager } from '@/components/commercial-lighting'
 
 /**
+ * Two-level tab navigation grouping. Each entry is one top-level
+ * category button. `tabs[]` is the sub-tab IDs (must match the value
+ * of the corresponding TabsTrigger / TabsContent below). The first
+ * tab in each group is the default landing when the operator picks
+ * that category.
+ *
+ * Adding a new tab: append its ID to the relevant group's `tabs[]`
+ * AND add a matching TabsTrigger + TabsContent below. The trigger's
+ * value must equal the ID; otherwise the sub-tab row filter will
+ * silently hide it.
+ *
+ * Adding a new category: add a new entry here + add it to GROUP_ORDER.
+ */
+const TAB_GROUPS: Record<string, { label: string; icon: React.ComponentType<{ className?: string }>; tabs: string[] }> = {
+  overview:  { label: 'Overview',  icon: LayoutDashboard, tabs: ['overview'] },
+  channels:  { label: 'Channels',  icon: Star,            tabs: ['channel-presets', 'sports-channels', 'channel-finder'] },
+  video:     { label: 'Video',     icon: Tv,              tabs: ['directv', 'firetv', 'everpass', 'cec-discovery', 'subscriptions'] },
+  audio:     { label: 'Audio',     icon: Music2,          tabs: ['soundtrack', 'shure-mics'] },
+  hardware:  { label: 'Hardware',  icon: Settings,        tabs: ['globalcache', 'ir', 'dmx', 'commercial-lighting'] },
+}
+const GROUP_ORDER = ['overview', 'channels', 'video', 'audio', 'hardware'] as const
+
+function groupForTab(tab: string): string {
+  for (const key of GROUP_ORDER) {
+    if (TAB_GROUPS[key].tabs.includes(tab)) return key
+  }
+  return 'overview'
+}
+
+/**
  * Small helper rendered next to a CardTitle when AI Enhancements are
  * enabled. Replaces 9 copy-paste occurrences of the same conditional
  * Badge in this file.
@@ -274,78 +304,126 @@ export default function DeviceConfigPage() {
         </Badge>
       </div>
 
-      {/* Device Tabs.
-       *   Layout: horizontally-scrollable flex on mobile / iPad, wrapping
-       *   flex on desktop. Fixed grid template counts (the old approach)
-       *   silently break every time a new tab is added — Wireless Mics
-       *   was off-screen on 1024px until this fix.
-       *   Icons: each tab uses a UNIQUE icon so quick-scan reads cleanly.
-       *   Previously Radio appeared 3x and Lightbulb 2x; now: Wifi for
-       *   Global Cache (network gateway), Zap for IR Devices (fast IR
-       *   signals), Mic2 for Wireless Mics (vs general Radio). */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="flex w-full overflow-x-auto flex-nowrap gap-1 p-1 justify-start">
-          <TabsTrigger value="overview" className="flex items-center gap-2 flex-shrink-0">
-            <LayoutDashboard className="w-4 h-4" />
-            Overview
-          </TabsTrigger>
-          <TabsTrigger value="channel-presets" className="flex items-center gap-2 flex-shrink-0">
-            <Star className="w-4 h-4" />
-            Channel Presets
-          </TabsTrigger>
-          <TabsTrigger value="sports-channels" className="flex items-center gap-2 flex-shrink-0">
-            <Tv className="w-4 h-4" />
-            Sports Channels
-          </TabsTrigger>
-          <TabsTrigger value="channel-finder" className="flex items-center gap-2 flex-shrink-0">
-            <Cable className="w-4 h-4" />
-            Channel Finder
-          </TabsTrigger>
-          <TabsTrigger value="directv" className="flex items-center gap-2 flex-shrink-0">
-            <Satellite className="w-4 h-4" />
-            DirecTV
-          </TabsTrigger>
-          <TabsTrigger value="firetv" className="flex items-center gap-2 flex-shrink-0">
-            <MonitorPlay className="w-4 h-4" />
-            Fire TV
-          </TabsTrigger>
-          <TabsTrigger value="everpass" className="flex items-center gap-2 flex-shrink-0">
-            <PlayCircle className="w-4 h-4" />
-            EverPass
-          </TabsTrigger>
-          <TabsTrigger value="globalcache" className="flex items-center gap-2 flex-shrink-0">
-            <Wifi className="w-4 h-4" />
-            Global Cache
-          </TabsTrigger>
-          <TabsTrigger value="ir" className="flex items-center gap-2 flex-shrink-0">
-            <Zap className="w-4 h-4" />
-            IR Devices
-          </TabsTrigger>
-          <TabsTrigger value="dmx" className="flex items-center gap-2 flex-shrink-0">
-            <Lightbulb className="w-4 h-4" />
-            DMX Lighting
-          </TabsTrigger>
-          <TabsTrigger value="commercial-lighting" className="flex items-center gap-2 flex-shrink-0">
-            <Sun className="w-4 h-4" />
-            Smart Lighting
-          </TabsTrigger>
-          <TabsTrigger value="soundtrack" className="flex items-center gap-2 flex-shrink-0">
-            <Music2 className="w-4 h-4" />
-            Soundtrack
-          </TabsTrigger>
-          <TabsTrigger value="cec-discovery" className="flex items-center gap-2 flex-shrink-0">
-            <Tv className="w-4 h-4" />
-            TV Discovery
-          </TabsTrigger>
-          <TabsTrigger value="subscriptions" className="flex items-center gap-2 flex-shrink-0">
-            <BarChart3 className="w-4 h-4" />
-            Subscriptions
-          </TabsTrigger>
-          <TabsTrigger value="shure-mics" className="flex items-center gap-2 flex-shrink-0">
-            <Mic2 className="w-4 h-4" />
-            Wireless Mics
-          </TabsTrigger>
-        </TabsList>
+      {/* Two-level tab navigation (v2.37+):
+       *   Row 1: 5 category buttons (Overview, Channels, Video, Audio,
+       *          Hardware). Click switches activeTab to the first
+       *          sub-tab of that category.
+       *   Row 2: the active category's sub-tabs (or nothing for
+       *          Overview, which is a single-tab category).
+       *   The Tabs `value` is still the individual sub-tab ID, so
+       *   existing bookmarks (e.g. operator pinned "DirecTV") still
+       *   land on the right content; the group selector is purely
+       *   derived from activeTab via groupForTab(). */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+        {/* Top row — category selector */}
+        <div className="flex w-full overflow-x-auto flex-nowrap gap-1 p-1 bg-slate-900/40 border border-slate-700/50 rounded-lg">
+          {GROUP_ORDER.map((key) => {
+            const meta = TAB_GROUPS[key]
+            const Icon = meta.icon
+            const isActive = groupForTab(activeTab) === key
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setActiveTab(meta.tabs[0])}
+                className={`flex items-center gap-2 flex-shrink-0 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                  isActive
+                    ? 'bg-cyan-500/15 text-cyan-300 border border-cyan-500/40'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 border border-transparent'
+                }`}
+              >
+                <Icon className="w-4 h-4" />
+                {meta.label}
+                {meta.tabs.length > 1 && (
+                  <span className={`text-[10px] font-mono px-1 rounded ${
+                    isActive ? 'bg-cyan-500/20 text-cyan-200' : 'bg-slate-800 text-slate-500'
+                  }`}>
+                    {meta.tabs.length}
+                  </span>
+                )}
+              </button>
+            )
+          })}
+        </div>
+
+        {/* Row 2 — sub-tabs for the active category. Hidden when the
+            active group has only one tab (Overview). */}
+        {TAB_GROUPS[groupForTab(activeTab)].tabs.length > 1 && (
+          <TabsList className="flex w-full overflow-x-auto flex-nowrap gap-1 p-1 justify-start">
+            {groupForTab(activeTab) === 'channels' && (
+              <>
+                <TabsTrigger value="channel-presets" className="flex items-center gap-2 flex-shrink-0">
+                  <Star className="w-4 h-4" />
+                  Channel Presets
+                </TabsTrigger>
+                <TabsTrigger value="sports-channels" className="flex items-center gap-2 flex-shrink-0">
+                  <Tv className="w-4 h-4" />
+                  Sports Channels
+                </TabsTrigger>
+                <TabsTrigger value="channel-finder" className="flex items-center gap-2 flex-shrink-0">
+                  <Cable className="w-4 h-4" />
+                  Channel Finder
+                </TabsTrigger>
+              </>
+            )}
+            {groupForTab(activeTab) === 'video' && (
+              <>
+                <TabsTrigger value="directv" className="flex items-center gap-2 flex-shrink-0">
+                  <Satellite className="w-4 h-4" />
+                  DirecTV
+                </TabsTrigger>
+                <TabsTrigger value="firetv" className="flex items-center gap-2 flex-shrink-0">
+                  <MonitorPlay className="w-4 h-4" />
+                  Fire TV
+                </TabsTrigger>
+                <TabsTrigger value="everpass" className="flex items-center gap-2 flex-shrink-0">
+                  <PlayCircle className="w-4 h-4" />
+                  EverPass
+                </TabsTrigger>
+                <TabsTrigger value="cec-discovery" className="flex items-center gap-2 flex-shrink-0">
+                  <Tv className="w-4 h-4" />
+                  TV Discovery
+                </TabsTrigger>
+                <TabsTrigger value="subscriptions" className="flex items-center gap-2 flex-shrink-0">
+                  <BarChart3 className="w-4 h-4" />
+                  Subscriptions
+                </TabsTrigger>
+              </>
+            )}
+            {groupForTab(activeTab) === 'audio' && (
+              <>
+                <TabsTrigger value="soundtrack" className="flex items-center gap-2 flex-shrink-0">
+                  <Music2 className="w-4 h-4" />
+                  Soundtrack
+                </TabsTrigger>
+                <TabsTrigger value="shure-mics" className="flex items-center gap-2 flex-shrink-0">
+                  <Mic2 className="w-4 h-4" />
+                  Wireless Mics
+                </TabsTrigger>
+              </>
+            )}
+            {groupForTab(activeTab) === 'hardware' && (
+              <>
+                <TabsTrigger value="globalcache" className="flex items-center gap-2 flex-shrink-0">
+                  <Wifi className="w-4 h-4" />
+                  Global Cache
+                </TabsTrigger>
+                <TabsTrigger value="ir" className="flex items-center gap-2 flex-shrink-0">
+                  <Zap className="w-4 h-4" />
+                  IR Devices
+                </TabsTrigger>
+                <TabsTrigger value="dmx" className="flex items-center gap-2 flex-shrink-0">
+                  <Lightbulb className="w-4 h-4" />
+                  DMX Lighting
+                </TabsTrigger>
+                <TabsTrigger value="commercial-lighting" className="flex items-center gap-2 flex-shrink-0">
+                  <Sun className="w-4 h-4" />
+                  Smart Lighting
+                </TabsTrigger>
+              </>
+            )}
+          </TabsList>
+        )}
 
         <TabsContent value="overview" className="space-y-4">
           <DeviceConfigOverview onJumpToTab={setActiveTab} />
