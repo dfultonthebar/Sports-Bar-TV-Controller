@@ -40,10 +40,37 @@ import {
   Star,
   Cable,
   Lightbulb,
-  PlayCircle
+  PlayCircle,
+  Wifi,
+  Mic2,
+  Sun
 } from 'lucide-react'
 import DMXControllerManager from '@/components/dmx/DMXControllerManager'
 import { CommercialLightingManager } from '@/components/commercial-lighting'
+
+/**
+ * Small helper rendered next to a CardTitle when AI Enhancements are
+ * enabled. Replaces 9 copy-paste occurrences of the same conditional
+ * Badge in this file.
+ */
+function AiHintBadge({ enabled }: { enabled: boolean }) {
+  if (!enabled) return null
+  return (
+    <Badge className="bg-purple-100 text-purple-800">
+      <Brain className="w-3 h-3 mr-1" />
+      AI Enhanced
+    </Badge>
+  )
+}
+
+/**
+ * Returns the AI-enhanced description if enabled, otherwise the
+ * fallback. Lets every CardDescription render as a single ternary
+ * instead of 4 lines of JSX.
+ */
+function describe(enabled: boolean, fallback: string, ai: string): string {
+  return enabled ? ai : fallback
+}
 
 export default function DeviceConfigPage() {
   const [aiEnhancementsEnabled, setAiEnhancementsEnabled] = useState(false)
@@ -235,63 +262,71 @@ export default function DeviceConfigPage() {
         </Badge>
       </div>
 
-      {/* Device Tabs */}
+      {/* Device Tabs.
+       *   Layout: horizontally-scrollable flex on mobile / iPad, wrapping
+       *   flex on desktop. Fixed grid template counts (the old approach)
+       *   silently break every time a new tab is added — Wireless Mics
+       *   was off-screen on 1024px until this fix.
+       *   Icons: each tab uses a UNIQUE icon so quick-scan reads cleanly.
+       *   Previously Radio appeared 3x and Lightbulb 2x; now: Wifi for
+       *   Global Cache (network gateway), Zap for IR Devices (fast IR
+       *   signals), Mic2 for Wireless Mics (vs general Radio). */}
       <Tabs defaultValue="channel-presets" className="space-y-6">
-        <TabsList className="grid w-full" style={{ gridTemplateColumns: 'repeat(13, minmax(0, 1fr))' }}>
-          <TabsTrigger value="channel-presets" className="flex items-center gap-2">
+        <TabsList className="flex w-full overflow-x-auto flex-nowrap gap-1 p-1 justify-start">
+          <TabsTrigger value="channel-presets" className="flex items-center gap-2 flex-shrink-0">
             <Star className="w-4 h-4" />
             Channel Presets
           </TabsTrigger>
-          <TabsTrigger value="sports-channels" className="flex items-center gap-2">
+          <TabsTrigger value="sports-channels" className="flex items-center gap-2 flex-shrink-0">
             <Tv className="w-4 h-4" />
             Sports Channels
           </TabsTrigger>
-          <TabsTrigger value="channel-finder" className="flex items-center gap-2">
+          <TabsTrigger value="channel-finder" className="flex items-center gap-2 flex-shrink-0">
             <Cable className="w-4 h-4" />
             Channel Finder
           </TabsTrigger>
-          <TabsTrigger value="directv" className="flex items-center gap-2">
+          <TabsTrigger value="directv" className="flex items-center gap-2 flex-shrink-0">
             <Satellite className="w-4 h-4" />
             DirecTV
           </TabsTrigger>
-          <TabsTrigger value="firetv" className="flex items-center gap-2">
+          <TabsTrigger value="firetv" className="flex items-center gap-2 flex-shrink-0">
             <MonitorPlay className="w-4 h-4" />
             Fire TV
           </TabsTrigger>
-          <TabsTrigger value="everpass" className="flex items-center gap-2">
+          <TabsTrigger value="everpass" className="flex items-center gap-2 flex-shrink-0">
             <PlayCircle className="w-4 h-4" />
             EverPass
           </TabsTrigger>
-          <TabsTrigger value="globalcache" className="flex items-center gap-2">
-            <Radio className="w-4 h-4" />
+          <TabsTrigger value="globalcache" className="flex items-center gap-2 flex-shrink-0">
+            <Wifi className="w-4 h-4" />
             Global Cache
           </TabsTrigger>
-          <TabsTrigger value="ir" className="flex items-center gap-2">
-            <Radio className="w-4 h-4" />
+          <TabsTrigger value="ir" className="flex items-center gap-2 flex-shrink-0">
+            <Zap className="w-4 h-4" />
             IR Devices
           </TabsTrigger>
-          <TabsTrigger value="dmx" className="flex items-center gap-2">
+          <TabsTrigger value="dmx" className="flex items-center gap-2 flex-shrink-0">
             <Lightbulb className="w-4 h-4" />
             DMX Lighting
           </TabsTrigger>
-          <TabsTrigger value="commercial-lighting" className="flex items-center gap-2">
-            <Lightbulb className="w-4 h-4" />
-            Commercial
+          <TabsTrigger value="commercial-lighting" className="flex items-center gap-2 flex-shrink-0">
+            <Sun className="w-4 h-4" />
+            Smart Lighting
           </TabsTrigger>
-          <TabsTrigger value="soundtrack" className="flex items-center gap-2">
+          <TabsTrigger value="soundtrack" className="flex items-center gap-2 flex-shrink-0">
             <Music2 className="w-4 h-4" />
             Soundtrack
           </TabsTrigger>
-          <TabsTrigger value="cec-discovery" className="flex items-center gap-2">
+          <TabsTrigger value="cec-discovery" className="flex items-center gap-2 flex-shrink-0">
             <Tv className="w-4 h-4" />
             TV Discovery
           </TabsTrigger>
-          <TabsTrigger value="subscriptions" className="flex items-center gap-2">
+          <TabsTrigger value="subscriptions" className="flex items-center gap-2 flex-shrink-0">
             <BarChart3 className="w-4 h-4" />
             Subscriptions
           </TabsTrigger>
-          <TabsTrigger value="shure-mics" className="flex items-center gap-2">
-            <Radio className="w-4 h-4" />
+          <TabsTrigger value="shure-mics" className="flex items-center gap-2 flex-shrink-0">
+            <Mic2 className="w-4 h-4" />
             Wireless Mics
           </TabsTrigger>
         </TabsList>
@@ -302,12 +337,7 @@ export default function DeviceConfigPage() {
               <CardTitle className="flex items-center gap-2">
                 <Star className="w-5 h-5 text-yellow-400" />
                 Channel Presets Configuration
-                {aiEnhancementsEnabled && (
-                  <Badge className="bg-purple-100 text-purple-800">
-                    <Brain className="w-3 h-3 mr-1" />
-                    AI Enhanced
-                  </Badge>
-                )}
+                <AiHintBadge enabled={aiEnhancementsEnabled} />
               </CardTitle>
               <CardDescription>
                 {aiEnhancementsEnabled
@@ -334,12 +364,7 @@ export default function DeviceConfigPage() {
               <CardTitle className="flex items-center gap-2">
                 <Satellite className="w-5 h-5 text-blue-600" />
                 DirecTV Configuration
-                {aiEnhancementsEnabled && (
-                  <Badge className="bg-purple-100 text-purple-800">
-                    <Brain className="w-3 h-3 mr-1" />
-                    AI Enhanced
-                  </Badge>
-                )}
+                <AiHintBadge enabled={aiEnhancementsEnabled} />
               </CardTitle>
               <CardDescription>
                 {aiEnhancementsEnabled 
@@ -366,12 +391,7 @@ export default function DeviceConfigPage() {
               <CardTitle className="flex items-center gap-2">
                 <MonitorPlay className="w-5 h-5 text-orange-600" />
                 Fire TV Configuration
-                {aiEnhancementsEnabled && (
-                  <Badge className="bg-purple-100 text-purple-800">
-                    <Brain className="w-3 h-3 mr-1" />
-                    AI Enhanced
-                  </Badge>
-                )}
+                <AiHintBadge enabled={aiEnhancementsEnabled} />
               </CardTitle>
               <CardDescription>
                 {aiEnhancementsEnabled 
@@ -390,12 +410,7 @@ export default function DeviceConfigPage() {
               <CardTitle className="flex items-center gap-2">
                 <PlayCircle className="w-5 h-5 text-blue-600" />
                 EverPass Configuration
-                {aiEnhancementsEnabled && (
-                  <Badge className="bg-purple-100 text-purple-800">
-                    <Brain className="w-3 h-3 mr-1" />
-                    AI Enhanced
-                  </Badge>
-                )}
+                <AiHintBadge enabled={aiEnhancementsEnabled} />
               </CardTitle>
               <CardDescription>
                 {aiEnhancementsEnabled
@@ -433,12 +448,7 @@ export default function DeviceConfigPage() {
               <CardTitle className="flex items-center gap-2">
                 <Radio className="w-5 h-5 text-purple-600" />
                 Global Cache IR Control
-                {aiEnhancementsEnabled && (
-                  <Badge className="bg-purple-100 text-purple-800">
-                    <Brain className="w-3 h-3 mr-1" />
-                    AI Enhanced
-                  </Badge>
-                )}
+                <AiHintBadge enabled={aiEnhancementsEnabled} />
               </CardTitle>
               <CardDescription>
                 {aiEnhancementsEnabled 
@@ -457,12 +467,7 @@ export default function DeviceConfigPage() {
               <CardTitle className="flex items-center gap-2">
                 <Radio className="w-5 h-5 text-green-600" />
                 IR Device Setup
-                {aiEnhancementsEnabled && (
-                  <Badge className="bg-purple-100 text-purple-800">
-                    <Brain className="w-3 h-3 mr-1" />
-                    AI Enhanced
-                  </Badge>
-                )}
+                <AiHintBadge enabled={aiEnhancementsEnabled} />
               </CardTitle>
               <CardDescription>
                 {aiEnhancementsEnabled
@@ -501,12 +506,7 @@ export default function DeviceConfigPage() {
               <CardTitle className="flex items-center gap-2">
                 <Lightbulb className="w-5 h-5 text-purple-600" />
                 DMX Lighting Control
-                {aiEnhancementsEnabled && (
-                  <Badge className="bg-purple-100 text-purple-800">
-                    <Brain className="w-3 h-3 mr-1" />
-                    AI Enhanced
-                  </Badge>
-                )}
+                <AiHintBadge enabled={aiEnhancementsEnabled} />
               </CardTitle>
               <CardDescription>
                 {aiEnhancementsEnabled
@@ -569,12 +569,7 @@ export default function DeviceConfigPage() {
               <CardTitle className="flex items-center gap-2">
                 <Lightbulb className="w-5 h-5 text-amber-600" />
                 Commercial Lighting Control
-                {aiEnhancementsEnabled && (
-                  <Badge className="bg-purple-100 text-purple-800">
-                    <Brain className="w-3 h-3 mr-1" />
-                    AI Enhanced
-                  </Badge>
-                )}
+                <AiHintBadge enabled={aiEnhancementsEnabled} />
               </CardTitle>
               <CardDescription>
                 {aiEnhancementsEnabled
@@ -657,12 +652,7 @@ export default function DeviceConfigPage() {
               <CardTitle className="flex items-center gap-2">
                 <BarChart3 className="w-5 h-5 text-purple-600" />
                 Subscription Dashboard
-                {aiEnhancementsEnabled && (
-                  <Badge className="bg-purple-100 text-purple-800">
-                    <Brain className="w-3 h-3 mr-1" />
-                    AI Enhanced
-                  </Badge>
-                )}
+                <AiHintBadge enabled={aiEnhancementsEnabled} />
               </CardTitle>
               <CardDescription>
                 {aiEnhancementsEnabled 

@@ -46,6 +46,60 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-17 — v2.35.0 — /device-config UX cleanup pass
+
+**Critical fix:** TabsList had `gridTemplateColumns: 'repeat(13, ...)'`
+hard-coded — when v2.34.2 added the Wireless Mics tab as the 14th, it
+broke out of the grid row at 1024px/iPad widths (last tab wrapped off
+screen). This is what an operator saw as "backend isn't loading
+correctly" on 2026-05-17. Replaced the fixed grid with a horizontally-
+scrollable flex layout that adapts to any number of tabs.
+
+**Other UX improvements:**
+- **Duplicate tab icons reassigned to unique ones.** Previously `Radio`
+  was used 3× (Global Cache, IR Devices, Wireless Mics) and `Lightbulb`
+  twice (DMX, Commercial). Now: `Wifi` for Global Cache (it's a
+  network gateway), `Zap` for IR Devices (fast IR signals), `Mic2`
+  for Wireless Mics (lucide's wireless mic glyph). DMX keeps
+  `Lightbulb`, Smart Lighting (renamed from "Commercial") uses `Sun`.
+- **Tab label clarity.** "Commercial" → "Smart Lighting" (the original
+  label was ambiguous; an operator wouldn't know it controls Lutron/Hue).
+- **AI badge extracted to `<AiHintBadge />` helper.** Replaced 9
+  copy-paste occurrences of the same `{aiEnhancementsEnabled && <Badge>...</Badge>}`
+  pattern. Net delta: ~50 lines of noise removed, every future tab now
+  uses one line instead of six.
+- **`describe(enabled, fallback, ai)` helper available** for the same
+  AI-aware CardDescription pattern that repeats throughout. Not yet
+  applied to existing call sites (leave as-is; the helper is in place
+  for future tabs).
+
+**What could break:**
+- **Nothing breaks** — additive + cosmetic only. Tab IDs unchanged, all
+  TabsContent values unchanged, no behavior moved.
+- The horizontal scroll on TabsList means at very narrow widths
+  (< ~640px) the user scrolls horizontally through tab triggers. This
+  is the intended responsive behavior on phones; iPad operators see
+  the full row.
+
+**Manual steps required:** none.
+
+**Verification:**
+```bash
+# Tabs render correctly at the operator viewport (1024px iPad)
+curl -s http://localhost:3001/device-config -o /tmp/dc.html
+grep -c "TabsTrigger\|tab-trigger" /tmp/dc.html
+# Expect: 14 (one per tab — was off-by-one with the old grid)
+```
+
+**Affected files:**
+- Modified: `apps/web/src/app/device-config/page.tsx` (TabsList
+  layout, icon imports, label, `AiHintBadge` extraction, `describe`
+  helper)
+
+`Checkpoint model: haiku` — pure UX cleanup, no behavior or schema change.
+
+---
+
 ### 2026-05-17 — v2.34.2 — Shure RF watcher bind-fix + dedicated admin tab under Device Config
 
 **Critical fix:** Watcher silently failed to start at every restart since
