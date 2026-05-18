@@ -46,6 +46,53 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-17 — v2.37.1 — /device-config: standardized card pattern across all tabs
+
+Every TabsContent in /device-config now starts with the same
+`<SectionHeader />` helper instead of copy-pasted Card/CardHeader
+blocks. The three tabs that previously skipped the header card
+entirely (Sports Channels, Channel Finder, TV Discovery) now have
+one too, so the visual rhythm down the page is uniform.
+
+**Net diff:** +278 / −279 lines (no net code growth despite ~120
+lines of dedup absorbed by the helpers, because three tabs that had
+no header now have ~30 lines each of new headers).
+
+**Two new helpers** (top of `apps/web/src/app/device-config/page.tsx`):
+- `<SectionHeader icon iconColor title description aiEnabled? aiDescription? children? />`
+  — wraps the title + AI badge + description in a Card. Optional
+  children render as CardContent (info boxes, supported-hardware
+  lists, etc.).
+- `<BartenderRemoteToggle id controlName enabled loading onToggle />`
+  — extracted the duplicated DMX + Smart Lighting toggle box (~25
+  LOC each). Now one component, two call sites.
+
+**Three tabs got new headers** (previously bare):
+- Sports Channels — title + description
+- DirecTV Channel Finder — title + description
+- TV Discovery — title + description
+
+**Renamed in this pass:** "Commercial Lighting Control" →
+"Smart Lighting Control" (matches the tab label since v2.35.0).
+"Supported Commercial Lighting Systems" → "Supported Smart Lighting
+Systems".
+
+**What could break:**
+- Nothing breaks — additive + refactor only. No behavior, no schema,
+  no API, no operator-facing copy other than the "Commercial → Smart"
+  rename to match the already-renamed tab label.
+
+**Manual steps required:** none.
+
+**Affected files:**
+- Modified: `apps/web/src/app/device-config/page.tsx` (SectionHeader +
+  BartenderRemoteToggle helpers added; all 14 TabsContent blocks
+  refactored to use them)
+
+`Checkpoint model: haiku` — pure cosmetic dedup.
+
+---
+
 ### 2026-05-17 — v2.37.0 — /device-config: two-level tab navigation (5 category groups)
 
 **The big change:** 15 tabs in one horizontal row became 5 category
