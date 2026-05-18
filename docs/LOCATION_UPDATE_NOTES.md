@@ -46,6 +46,61 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-17 — v2.37.0 — /device-config: two-level tab navigation (5 category groups)
+
+**The big change:** 15 tabs in one horizontal row became 5 category
+buttons + an active-category sub-tab row. Operator no longer scrolls
+horizontally through a 15-wide list — they pick a category first
+(Overview / Channels / Video / Audio / Hardware), then see only that
+category's sub-tabs.
+
+**Grouping:**
+- **Overview** (1) — Overview
+- **Channels** (3) — Channel Presets · Sports Channels · Channel Finder
+- **Video** (5) — DirecTV · Fire TV · EverPass · TV Discovery · Subscriptions
+- **Audio** (2) — Soundtrack · Wireless Mics
+- **Hardware** (4) — Global Cache · IR Devices · DMX Lighting · Smart Lighting
+
+Each top-level button shows a small count badge for groups with > 1
+sub-tab so the operator knows what's nested. Overview is a single-tab
+group, so when selected the second-level row is hidden entirely — the
+overview content goes straight under the category buttons.
+
+**Backward-compat:** existing bookmarks like `?tab=directv` still
+work. The Tabs `value` is the individual sub-tab ID (unchanged from
+v2.36.0); the category buttons are derived from `groupForTab(activeTab)`.
+A bookmark to a specific sub-tab opens the right content AND the
+right category gets visually selected at the top.
+
+**Adding a new tab in the future** — append the new sub-tab ID to
+`TAB_GROUPS.<category>.tabs` in `apps/web/src/app/device-config/page.tsx`,
+then add a matching TabsTrigger + TabsContent. The trigger's `value`
+MUST match the ID (otherwise the sub-tab row's filter silently hides
+it). Adding a brand-new category needs an entry in `TAB_GROUPS` and
+its ID appended to `GROUP_ORDER`.
+
+**What could break:**
+- Nothing breaks — pure layout restructure on top of the existing
+  Tabs state machine. All TabsContent values + IDs are unchanged.
+- Visual: the Quick AI Actions card now appears under whatever
+  category is active (same as before — appears below the Tabs).
+
+**Manual steps required:** none.
+
+**Verification:**
+```bash
+# /device-config still renders 200, all sub-tabs reachable
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3001/device-config
+```
+
+**Affected files:**
+- Modified: `apps/web/src/app/device-config/page.tsx` (TAB_GROUPS
+  constant, GROUP_ORDER, groupForTab helper, two-row tab layout)
+
+`Checkpoint model: haiku` — pure UX, no behavior or schema change.
+
+---
+
 ### 2026-05-17 — v2.36.0 — /device-config Overview tab + collapsible Quick Actions
 
 **The big change:** /device-config now lands on a new **Overview** tab
