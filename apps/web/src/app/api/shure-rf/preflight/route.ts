@@ -82,10 +82,14 @@ async function runPreflight(ip: string, port: number): Promise<PreflightOutcome>
       clearTimeout(connectTimer)
       connected = true
       outcome.tcpReachable = true
-      // Fire all the probes we care about. The receiver will REP each.
-      sock.write(`${SHURE_PROTOCOL.FRAME_OPEN}GET 0 FW_VER${SHURE_PROTOCOL.FRAME_CLOSE}\r\n`)
-      sock.write(`${SHURE_PROTOCOL.FRAME_OPEN}GET 0 MODEL${SHURE_PROTOCOL.FRAME_CLOSE}\r\n`)
-      sock.write(`${SHURE_PROTOCOL.FRAME_OPEN}GET 0 RF_BAND${SHURE_PROTOCOL.FRAME_CLOSE}\r\n`)
+      // Device-scope GETs — NO channel field. SLXD4D firmware 1.4.7.0
+      // returns < REP ERR > for < GET 0 FW_VER > (channel "0" is only
+      // valid for the broadcast `GET 0 ALL` form, not for individual
+      // device-scope properties). Probed live on the Holmgren unit
+      // 2026-05-18 — < GET FW_VER > → < REP FW_VER {1.4.7.0 } >.
+      sock.write(`${SHURE_PROTOCOL.FRAME_OPEN}GET FW_VER${SHURE_PROTOCOL.FRAME_CLOSE}\r\n`)
+      sock.write(`${SHURE_PROTOCOL.FRAME_OPEN}GET MODEL${SHURE_PROTOCOL.FRAME_CLOSE}\r\n`)
+      sock.write(`${SHURE_PROTOCOL.FRAME_OPEN}GET RF_BAND${SHURE_PROTOCOL.FRAME_CLOSE}\r\n`)
     })
 
     sock.on('data', (chunk: Buffer) => {
@@ -109,10 +113,24 @@ async function runPreflight(ip: string, port: number): Promise<PreflightOutcome>
         const bracedValue = bracedMatch ? bracedMatch[1] : null
         const withoutBraces = inner.replace(/\{[^}]*\}/, '').trim()
         const tokens = withoutBraces.split(/\s+/).filter(Boolean)
-        if (tokens.length < 3) continue
-        const [verb, _chan, property, ...rest] = tokens
+        if (tokens.length < 2) continue
+        // Two REP shapes on SLXD4D firmware 1.4.7.0 — device-scope
+        // (< REP PROP {value} >, 2 tokens) and channel-scope
+        // (< REP CHAN PROP value >, 3+ tokens). Disambiguate via the
+        // second token.
+        const [verb, secondToken, ...rest] = tokens
         if (verb !== 'REP') continue
-        const value = bracedValue ?? rest.join(' ')
+        const chanMaybe = parseInt(secondToken, 10)
+        let property: string
+        let valueRest: string[]
+        if (Number.isFinite(chanMaybe) && String(chanMaybe) === secondToken && rest.length >= 1) {
+          property = rest[0]
+          valueRest = rest.slice(1)
+        } else {
+          property = secondToken
+          valueRest = rest
+        }
+        const value = (bracedValue ?? valueRest.join(' ')).trim()
 
         if (property === 'FW_VER') {
           outcome.firmwareVersion = value

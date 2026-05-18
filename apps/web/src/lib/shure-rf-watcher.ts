@@ -166,17 +166,29 @@ async function evaluateChannel(args: {
   }
 
   const rssi = state.rssiDbm
-  // TX-presence signal: battery bars first (pushed in every SAMPLE
-  // frame), txType second (slow REP-on-change, may not arrive promptly
-  // — Holmgren 2026-05-18 observation). 255 = sentinel "no TX seen".
-  // Treating undefined-txType as txOff was a false positive against
-  // the receiver's actual carrier-detect state.
+  // TX-presence signal — must be robust against the TX-power-on
+  // transient where the receiver detects an RF carrier (RSSI jumps
+  // up) BEFORE the TX_BATT_BARS / TX_TYPE REP messages have arrived
+  // (REP-on-change can lag 1-3 sec behind SAMPLE). Without the
+  // audio-silence guard, this window fired a false rf_interference
+  // event every time the operator powered the mic on at Holmgren
+  // 2026-05-18.
+  //
+  // Real interference signature:
+  //   - bars sentinel (255 or undefined) AND
+  //   - tx_type not a known model AND
+  //   - receiver audio output is at digital silence (no decoded carrier)
+  // TX-power-on transient differs on the audio criterion: the
+  // receiver locks the digital signal within ~100ms of carrier
+  // detection, so audio is already above the noise floor by the
+  // time we'd otherwise count interference samples.
   const hasBattery = state.txBattBars !== undefined && state.txBattBars !== 255
   const txTypeKnownPresent =
     state.txType !== undefined &&
     state.txType !== '' &&
     state.txType.toUpperCase() !== 'UNKNOWN'
-  const txOff = !hasBattery && !txTypeKnownPresent
+  const audioSilent = (state.audioPeakDbfs ?? -120) <= -100
+  const txOff = !hasBattery && !txTypeKnownPresent && audioSilent
 
   if (rssi === undefined) {
     counters.set(key, c)
