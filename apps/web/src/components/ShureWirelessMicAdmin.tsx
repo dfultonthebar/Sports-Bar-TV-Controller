@@ -137,6 +137,15 @@ export default function ShureWirelessMicAdmin() {
   })
   const [editSaving, setEditSaving] = useState(false)
   const [editError, setEditError] = useState<string | null>(null)
+  // "Find clean freq" sweep state — software equivalent of receiver's
+  // front-panel Group Scan, since SLX-D firmware 1.4.7.0 doesn't expose
+  // scan via TCP 2202 (probed live, 16 candidate commands all returned
+  // < REP ERR >). Sweeps ~12 G58 freqs, dwell 2.5s each.
+  const [sweepRunning, setSweepRunning] = useState(false)
+  const [sweepResults, setSweepResults] = useState<Array<{
+    freq: number; samples: number; avgRssi: number; maxRssi: number; verdict: string
+  }> | null>(null)
+  const [sweepError, setSweepError] = useState<string | null>(null)
   // Pattern-digest (Stage 1 AI) — Ollama summary of recurring
   // interference patterns. On-demand via "Analyze" button, server
   // caches for 1h (POST is gated by ADMIN auth + AI rate limit).
@@ -384,6 +393,46 @@ export default function ShureWirelessMicAdmin() {
       setDigestError((err as Error).message || 'Network error')
     } finally {
       setDigestRunning(false)
+    }
+  }
+
+  const runFindCleanFreq = async (receiverId: string, channel: number) => {
+    if (sweepRunning) return
+    const ok = window.confirm(
+      'Find Clean Frequency will tune Channel ' + channel + ' through ~12 candidate ' +
+      'frequencies, dwelling 2.5s at each.\n\n' +
+      'Effects:\n' +
+      '• Channel unusable for ~30 seconds\n' +
+      '• One audio click per hop (audible if mic is routed to speakers)\n' +
+      '• Channel will end up on the last swept freq — re-PATCH to the best one\n' +
+      '• TX handheld must NOT be powered on (will refuse if paired)\n' +
+      '• Handheld will need re-SYNC after applying the new freq\n\n' +
+      'Continue?',
+    )
+    if (!ok) return
+    setSweepRunning(true)
+    setSweepError(null)
+    setSweepResults(null)
+    try {
+      const r = await fetch('/api/shure-rf/find-clean-freq', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ receiverId, channel }),
+      })
+      const data = await r.json()
+      if (!r.ok || !data.success) {
+        setSweepError(data.error || `Sweep failed (${r.status})`)
+        return
+      }
+      setSweepResults(data.results)
+      setMessage({
+        type: 'success',
+        text: `Sweep complete. Suggested: ${data.best?.freqMhz?.toFixed(3) ?? '?'} MHz (${data.best?.verdict ?? '?'}).`,
+      })
+    } catch (err) {
+      setSweepError((err as Error).message || 'Network error')
+    } finally {
+      setSweepRunning(false)
     }
   }
 
@@ -773,6 +822,57 @@ export default function ShureWirelessMicAdmin() {
                                 ⚠ Changing the frequency resets GROUP/CHAN to Manual and requires re-SYNCing the TX
                                 via IR (Menu → SYNC on the receiver).
                               </div>
+                              <div className="flex items-center gap-2 pt-1">
+                                <Button
+                                  type="button"
+                                  onClick={() => runFindCleanFreq(rec.id, ch.channel)}
+                                  disabled={sweepRunning || editSaving}
+                                  variant="ghost"
+                                  className="text-cyan-400 hover:bg-cyan-500/10 h-7 text-xs"
+                                  title="Software equivalent of receiver's Group Scan — tunes through G58 candidate freqs and ranks by ambient RSSI"
+                                >
+                                  {sweepRunning ? (
+                                    <><RefreshCw className="w-3 h-3 mr-1 animate-spin" /> Sweeping (~30s)…</>
+                                  ) : (
+                                    <><PlayCircle className="w-3 h-3 mr-1" /> Find clean freq</>
+                                  )}
+                                </Button>
+                              </div>
+                              {sweepError && (
+                                <div className="text-[11px] text-red-400 flex items-center gap-1">
+                                  <AlertCircle className="w-3 h-3" /> {sweepError}
+                                </div>
+                              )}
+                              {sweepResults && sweepResults.length > 0 && (
+                                <div className="pt-1 space-y-0.5">
+                                  <div className="text-[10px] uppercase tracking-wide text-slate-400">Sweep results (quietest first)</div>
+                                  <div className="rounded border border-slate-700 bg-slate-900/50 max-h-40 overflow-y-auto">
+                                    {sweepResults.slice(0, 8).map((res) => {
+                                      const verdictColor =
+                                        res.verdict === 'clean' ? 'text-emerald-400' :
+                                        res.verdict === 'quiet' ? 'text-cyan-300' :
+                                        res.verdict === 'moderate' ? 'text-amber-400' : 'text-red-400'
+                                      return (
+                                        <button
+                                          key={res.freq}
+                                          type="button"
+                                          onClick={() => setEditForm({ ...editForm, freqMhz: res.freq.toFixed(3) })}
+                                          className="w-full flex items-center justify-between px-2 py-1 text-xs hover:bg-slate-800/60 border-b border-slate-700/40 last:border-b-0"
+                                          title="Click to use this frequency"
+                                        >
+                                          <span className="font-mono text-slate-200">{res.freq.toFixed(3)} MHz</span>
+                                          <span className={`font-mono ${verdictColor}`}>
+                                            {res.avgRssi.toFixed(0)} dBm · {res.verdict}
+                                          </span>
+                                        </button>
+                                      )
+                                    })}
+                                  </div>
+                                  <div className="text-[10px] text-slate-500">
+                                    Click a row to set frequency, then Save.
+                                  </div>
+                                </div>
+                              )}
                               {editError && (
                                 <div className="text-xs text-red-400 flex items-center gap-1">
                                   <AlertCircle className="w-3.5 h-3.5" /> {editError}
