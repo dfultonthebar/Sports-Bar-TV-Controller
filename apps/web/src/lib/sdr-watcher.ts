@@ -36,7 +36,18 @@ import { logger } from '@sports-bar/logger'
 import { db } from '@/db'
 import { sql } from 'drizzle-orm'
 
-const ENABLED = process.env.SDR_ENABLED === 'true'
+// SDR_ENABLED gate:
+//   'true'  — start regardless of dongle presence (errors logged
+//             every 5 min if no dongle)
+//   'auto'  — start only when rtl_power is installed AND a dongle is
+//             currently detected. Re-probes every 5 min. Recommended
+//             default after setup-sdr.sh runs — operator plugs the
+//             dongle in any time and the watcher self-starts within
+//             5 min, no PM2 restart needed.
+//   'false' / unset — explicit off. Watcher exits at boot, no probes.
+const SDR_ENABLED_MODE = (process.env.SDR_ENABLED ?? 'false').toLowerCase()
+const ENABLED = SDR_ENABLED_MODE === 'true' || SDR_ENABLED_MODE === 'auto'
+const AUTO_MODE = SDR_ENABLED_MODE === 'auto'
 // Default fallback band — G58 (470-514 MHz, US SLX-D). When
 // SDR_BAND_AUTO=true (default), the watcher overrides these with
 // the actual frequencies the connected Shure receivers are tuned to,
@@ -362,8 +373,11 @@ export async function startSdrWatcher(): Promise<void> {
   // error). Cheap: CREATE TABLE IF NOT EXISTS is a no-op after first run.
   await ensureTables()
   if (!ENABLED) {
-    logger.info('[SDR-WATCHER] disabled (set SDR_ENABLED=true to enable, requires rtl-sdr + dongle)')
+    logger.info('[SDR-WATCHER] disabled (set SDR_ENABLED=auto to auto-start when dongle plugged in, or =true to force-start)')
     return
+  }
+  if (AUTO_MODE) {
+    logger.info('[SDR-WATCHER] AUTO mode — probing every 5 min for a connected RTL-SDR dongle')
   }
   const check = await checkRtlPower()
   if (!check.available) {
