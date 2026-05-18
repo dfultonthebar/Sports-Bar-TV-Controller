@@ -358,7 +358,12 @@ export async function register() {
       await startShureRfWatcher()
       logger.info('[INSTRUMENTATION] ✅ Shure RF watcher started (1Hz meter polling per receiver)')
     } catch (error) {
-      logger.error('[INSTRUMENTATION] ❌ Failed to start Shure RF watcher:', error)
+      // logger.error(msg, options) treats the second arg as LogOptions —
+      // an Error object passed bare is silently dropped, leaving the
+      // log line as just "Failed: " with no detail. Inline the message
+      // + stack so the cause is always visible at boot.
+      const err = error as Error
+      logger.error(`[INSTRUMENTATION] ❌ Failed to start Shure RF watcher: ${err?.message ?? error}\n${err?.stack ?? ''}`)
     }
   }
 }

@@ -329,11 +329,11 @@ export async function startShureRfWatcher(): Promise<void> {
   // Initial discovery after 60s so the rest of the app has time to
   // settle (DB seeding, other watchers).
   setTimeout(() => {
-    discoverAndAttach().catch((err) => logger.error('[SHURE-RF-WATCHER] discovery failed:', err))
+    discoverAndAttach().catch((err) => logger.error(`[SHURE-RF-WATCHER] discovery failed: ${(err as Error)?.message ?? err}`))
   }, 60_000)
 
   // Re-scan every 5 minutes for newly-added receivers.
   setInterval(() => {
-    discoverAndAttach().catch((err) => logger.debug('[SHURE-RF-WATCHER] re-scan failed:', err))
+    discoverAndAttach().catch((err) => logger.debug(`[SHURE-RF-WATCHER] re-scan failed: ${(err as Error)?.message ?? err}`))
   }, 5 * 60 * 1000)
 }

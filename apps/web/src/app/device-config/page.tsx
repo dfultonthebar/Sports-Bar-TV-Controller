@@ -23,6 +23,7 @@ import { Label } from '@/components/ui/label'
 import SportsBarLayout from '@/components/SportsBarLayout'
 import SportsBarHeader from '@/components/SportsBarHeader'
 import TVNetworkDiscovery from '@/components/tv-network/TVNetworkDiscovery'
+import ShureWirelessMicAdmin from '@/components/ShureWirelessMicAdmin'
 import { logger } from '@sports-bar/logger'
 import {
   Satellite,
@@ -288,6 +289,10 @@ export default function DeviceConfigPage() {
           <TabsTrigger value="subscriptions" className="flex items-center gap-2">
             <BarChart3 className="w-4 h-4" />
             Subscriptions
+          </TabsTrigger>
+          <TabsTrigger value="shure-mics" className="flex items-center gap-2">
+            <Radio className="w-4 h-4" />
+            Wireless Mics
           </TabsTrigger>
         </TabsList>
 
@@ -668,6 +673,24 @@ export default function DeviceConfigPage() {
             </CardHeader>
           </Card>
           <SubscriptionDashboard />
+        </TabsContent>
+
+        <TabsContent value="shure-mics" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Radio className="w-5 h-5 text-cyan-400" />
+                Shure SLX-D Wireless Mics
+              </CardTitle>
+              <CardDescription>
+                Set up, test, and monitor Shure wireless mic receivers. Pre-flight check
+                catches the BLOCKED third-party-controls gate before save. Live battery
+                + RSSI per channel. Event history of all RF interference + low-battery
+                events. Dedicated log at <code className="font-mono text-xs">/home/ubuntu/sports-bar-data/logs/shure-rf-*.log</code>.
+              </CardDescription>
+            </CardHeader>
+          </Card>
+          <ShureWirelessMicAdmin />
         </TabsContent>
       </Tabs>
 
