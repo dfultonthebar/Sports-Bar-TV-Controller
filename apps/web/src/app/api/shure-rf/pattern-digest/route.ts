@@ -25,6 +25,7 @@ import { logger } from '@sports-bar/logger'
 import { requireAuth } from '@/lib/auth'
 import { db } from '@/db'
 import { sql } from 'drizzle-orm'
+import { retrieveContext } from '@/lib/rag-server/query-engine'
 
 const DEFAULT_WINDOW_DAYS = 30
 const CACHE_TTL_SECS = 60 * 60 // 1 hour
@@ -145,10 +146,82 @@ function computeStats(rows: RfEventRow[]): {
   }
 }
 
+/**
+ * Holmgren-specific RF environment facts hard-coded into every prompt.
+ * Ollama (llama3.1:8b) has general UHF knowledge from its training
+ * data but NOT specific knowledge of Green Bay's TV station layout,
+ * our current Shure assignments, or operator history. This context
+ * block makes the AI a meaningful local SME, not a generic chatbot.
+ *
+ * Update when: a Holmgren-specific RF fact changes (new freq, new
+ * TV station, hardware change). Keep terse — every prompt pays for
+ * these tokens.
+ */
+const HOLMGREN_CONTEXT = `LOCATION: Holmgren Way Sports Bar, Green Bay WI — across from Lambeau Field. High exposure to ENG (electronic news gathering) trucks + mobile broadcast rigs on game days. Stadium crowd noise + neighbor venue wireless gear adds RF density.
+
+GREEN BAY UHF TV STATIONS in / near the Shure G58 band (470-514 MHz):
+- WCWF (CW 14)  RF channel 14 → 470-476 MHz  (INSIDE G58, bottom edge)
+- WLUK (Fox 11) RF channel 19 → 500-506 MHz  (INSIDE G58, middle)
+- WBAY (ABC 2)  RF channel 22 → 518-524 MHz  (just above G58)
+- WGBA (NBC 26) RF channel 28 → 554-560 MHz
+- WACY (MyNet 32) RF channel 31 → 572-578 MHz
+
+CURRENT SHURE FREQ ASSIGNMENTS (set by front-panel Group Scan 2026-05-18):
+- Ch1 "Shure 1" → 510.900 MHz, Group 05 / Channel 28
+- Ch2 "Shure 2" → 484.700 MHz, Group 05 / Channel 10
+- Both in WCWF↔WLUK or WLUK↔WBAY gap zones (good placement)
+
+KNOWN OPERATOR-OBSERVED INTERFERERS:
+- 494.500 MHz — sustained -74 dBm noise floor (NOT a TV station; unidentified local source — possibly LMR or another venue)
+- Avoid placing Shure freqs within ±2 MHz of any of the TV station ranges above
+
+ROGUE-DETECTION FRAMING (fox-and-hound radio model): each unexplained carrier in our band is a "fox" — an unknown transmitter we want to characterize + (eventually) locate. Without directional antennas or multi-site SDR we cannot triangulate position, but we CAN classify the carrier by signature: continuous vs intermittent (PTT vs broadcast), narrow vs wide (mic vs TV), recurring vs one-off (regular operator vs anomaly), correlated vs uncorrelated with Atlas mic-active events. When recommending mitigation, treat each detected carrier as a named "fox" — describe its signature, hypothesize source type, suggest whether to move our freq away from it or just monitor.
+
+HARDWARE / FIRMWARE STATE:
+- Shure SLXD4D, firmware 1.4.7.0
+- Atlas Atmosphere AZM8, firmware 4.5.18 (Custom Priority Volume feature — see Atlas 4.5 release note re: zone-drop signature confusion)
+- SDR (RTL-SDR / NESDR Smart) — hardware in transit; pipeline ready
+
+NEVER RECOMMEND: switching to H55 band as a quick fix (requires new Shure SKU + handhelds; defer to next hardware purchase cycle). Always prefer in-band freq retune via /api/shure-rf/channel + handheld re-SYNC.`
+
+/**
+ * Pull the top-K most-relevant doc chunks from the RAG vector store
+ * for this digest's context. Query string blends worst frequencies +
+ * RF coordination keywords so retrieval surfaces CLAUDE.md §7a/§7b,
+ * packages/shure-slxd/README.md, and memory feedback files.
+ * Gracefully no-ops to empty array on any error.
+ */
+async function fetchRagContext(
+  stats: ReturnType<typeof computeStats>,
+  sdrStats: ReturnType<typeof computeSdrStats>,
+): Promise<{ chunks: string[]; sources: string[] }> {
+  try {
+    const topFreqs = stats.worstFrequencies.slice(0, 3).map((f) => f.freq.toFixed(3)).join(', ')
+    const sdrFreqs = sdrStats.topFrequencies.slice(0, 3).map((f) => f.freq.toFixed(3)).join(', ')
+    const query = [
+      'Shure SLX-D RF interference mitigation TX_MODEL GROUP_CHANNEL',
+      topFreqs ? `frequencies ${topFreqs} MHz` : '',
+      sdrFreqs ? `SDR carriers at ${sdrFreqs} MHz` : '',
+      'Holmgren Way Green Bay wireless mic coordination',
+      'Atlas priority custom volume zone drop',
+      'fox and hound rogue carrier classification',
+    ].filter(Boolean).join(' — ')
+    const result = await retrieveContext(query, 6)
+    const chunks = (result.chunks ?? []).map((c) =>
+      `[from ${c.source}, relevance ${(c.score * 100).toFixed(0)}%]\n${c.content.trim()}`
+    )
+    const sources = Array.from(new Set((result.chunks ?? []).map((c) => c.source)))
+    return { chunks, sources }
+  } catch {
+    return { chunks: [], sources: [] }
+  }
+}
+
 function buildPrompt(
   windowDays: number,
   stats: ReturnType<typeof computeStats>,
   sdrStats: ReturnType<typeof computeSdrStats>,
+  ragChunks: string[] = [],
 ): string {
   const names = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
   const dowLines = Object.entries(stats.byDayOfWeek)
@@ -202,7 +275,21 @@ times confirms the Shure detector is seeing real RF, not a false alarm.`
   // and sdrStats.totalCarriers for context. For now the prompt
   // tells Ollama the field exists in the notes so it can scan.)
 
-  return `You are an RF coordination expert analyzing wireless microphone interference logs from a sports bar's Shure SLX-D wireless mic system. Your job is to identify recurring patterns and suggest mitigation. Be concrete: name specific frequencies, days, and hours. Do not pad. Aim for 3-5 short paragraphs.
+  const ragBlock = ragChunks.length > 0
+    ? `RAG-RETRIEVED DOC SNIPPETS (from our codebase + operator-saved gotchas — cite by source name when you quote):
+
+${ragChunks.join('\n\n---\n\n')}
+
+END OF DOC SNIPPETS.
+`
+    : `(No RAG context retrieved — vector store may be empty. Run \`npx tsx scripts/scan-rf-docs.ts --clear\` to index the RF docs into Ollama's knowledge base.)
+`
+
+  return `You are an RF coordination SME analyzing wireless microphone interference logs for a specific sports bar. Use the LOCATION-SPECIFIC CONTEXT and RAG-RETRIEVED DOC SNIPPETS below — they are facts about THIS bar's RF environment + our integration's quirks, not generic info. When citing, cite by document name. Identify recurring patterns. Be concrete: name specific frequencies (down to 25 kHz), days, hours. Frame unidentified carriers as "foxes" per the fox-and-hound radio model in the context. Aim for 4-6 short paragraphs.
+
+${HOLMGREN_CONTEXT}
+
+${ragBlock}
 
 CRITICAL CONFIDENCE SIGNAL: Some rf_interference events will have notes ending with "(SDR-confirmed, SDR peak X dBm)". This means a SECOND, independent detector (a wide-band RTL-SDR scanning the entire band) saw a carrier at the same frequency at the same time. Two-detector agreement = HIGH-confidence real interference; act on these first. Single-detector events (Shure alone, no SDR confirmation) could still be real but warrant lower-priority action. When recommending mitigation, lead with SDR-confirmed patterns and note explicitly which suggestions are based on confirmed vs. unconfirmed evidence.
 
@@ -226,7 +313,7 @@ ${freqLines || '  (none)'}
 
 ${sdrBlock}
 
-Note: The Shure detector flags interference when an RF carrier appears at the receiver's tuned frequency WITHOUT a paired Shure transmitter (TX_TYPE=UNKNOWN, RSSI ≥ -85 dBm, audio silent). The SDR detector (when present) sweeps a wider band and flags any sustained carrier ≥ -85 dBm regardless of our channel placement. Common real-world sources include: ENG (electronic news gathering) trucks at sporting events, mobile broadcast rigs, other venues' wireless mic systems, IEM systems, body packs from nearby music venues. Sports bars near stadiums are especially exposed during game broadcasts.
+Note: The Shure detector flags interference when an RF carrier appears at the receiver's tuned frequency WITHOUT a paired Shure transmitter (TX_MODEL=UNKNOWN, RSSI ≥ -85 dBm, audio silent). The SDR detector (when present) sweeps a wider band and flags any sustained carrier ≥ -85 dBm regardless of our channel placement. Common real-world sources include: ENG (electronic news gathering) trucks at sporting events, mobile broadcast rigs, other venues' wireless mic systems, IEM systems, body packs from nearby music venues. Sports bars near stadiums are especially exposed during game broadcasts.
 
 Provide:
 1. A one-paragraph summary of what the data shows.
@@ -429,7 +516,8 @@ export async function POST(request: NextRequest) {
 
   try {
     const { rows, stats, sdrStats } = await fetchEventsAndCompute(windowDays)
-    const prompt = buildPrompt(windowDays, stats, sdrStats)
+    const ragResult = await fetchRagContext(stats, sdrStats)
+    const prompt = buildPrompt(windowDays, stats, sdrStats, ragResult.chunks)
     const ollamaStart = Date.now()
     const { text, model } = await callOllama(prompt)
     const ollamaMs = Date.now() - ollamaStart
