@@ -532,7 +532,14 @@ export default function ShureWirelessMicAdmin() {
                 {snap && snap.channels.length > 0 ? (
                   <div className="space-y-2">
                     {snap.channels.map((ch: ShureChannelState) => {
-                      const txOff = (ch.txType ?? '').toUpperCase() === 'UNKNOWN' || !ch.txType
+                      // TX-presence signal: battery bars + audio peak.
+                      // Same fix as ShureMicStatusPanel v2.37.6 — txType
+                      // is REP-on-change and may not arrive promptly;
+                      // battery bars + audio peak are SAMPLE-frame fields
+                      // pushed every second and are the real truth.
+                      const hasBattery = ch.txBattBars !== undefined && ch.txBattBars !== 255
+                      const hasAudio = (ch.audioPeakDbfs ?? -120) > -95
+                      const txOff = !hasBattery && !hasAudio
                       const batt = batteryDisplay(ch.txBattBars, txOff)
                       const BIcon = batt.Icon
                       const RIcon = txOff ? MicOff : Mic
