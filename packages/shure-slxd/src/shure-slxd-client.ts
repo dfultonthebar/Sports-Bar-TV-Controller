@@ -124,6 +124,17 @@ export class ShureSlxdClient extends EventEmitter {
         // Seed cache. REP-on-change is opportunistic, not historical,
         // so always replay state at connect time.
         this.sendRaw(`${SHURE_PROTOCOL.FRAME_OPEN}GET 0 ALL${SHURE_PROTOCOL.FRAME_CLOSE}`)
+        // GET 0 ALL covers channel-scope properties. Device-scope
+        // (FW_VER, MODEL, RF_BAND, DEVICE_ID) needs explicit GETs
+        // WITHOUT a channel field — `< GET 0 FW_VER >` returns
+        // `< REP ERR >` on SLXD4D firmware 1.4.7.0. Without this the
+        // receiver state's model/firmwareVersion/rfBand stay
+        // undefined, breaks preflight detection + the admin tile's
+        // "fw / band" subtitle.
+        this.sendRaw(`${SHURE_PROTOCOL.FRAME_OPEN}GET FW_VER${SHURE_PROTOCOL.FRAME_CLOSE}`)
+        this.sendRaw(`${SHURE_PROTOCOL.FRAME_OPEN}GET MODEL${SHURE_PROTOCOL.FRAME_CLOSE}`)
+        this.sendRaw(`${SHURE_PROTOCOL.FRAME_OPEN}GET RF_BAND${SHURE_PROTOCOL.FRAME_CLOSE}`)
+        this.sendRaw(`${SHURE_PROTOCOL.FRAME_OPEN}GET DEVICE_ID${SHURE_PROTOCOL.FRAME_CLOSE}`)
         this.startHeartbeat()
         if (this.meterRateMs > 0) {
           // Re-issue subscription — METER_RATE does NOT survive reconnect.
@@ -311,10 +322,29 @@ export class ShureSlxdClient extends EventEmitter {
     }
 
     const tokens = working.split(/\s+/).filter((t) => t.length > 0)
-    if (tokens.length < 3) return null
-    const [verb, chanStr, property, ...values] = tokens
-    const channel = parseInt(chanStr, 10)
-    if (!Number.isFinite(channel)) return null
+    if (tokens.length < 2) return null
+    // Two REP shapes seen on real SLXD4D firmware 1.4.7.0 at Holmgren:
+    //   Channel-scope: < REP <chan> <PROP> [value...] >   (3+ tokens)
+    //   Device-scope:  < REP <PROP> {value} >             (2 tokens)
+    // Older code required 3 tokens and silently dropped device-scope REPs,
+    // which is why FW_VER, MODEL, RF_BAND, DEVICE_ID never populated the
+    // receiver state on real hardware. Disambiguate by trying to parse
+    // the second token as a channel number — if it's numeric, channel-scope;
+    // otherwise device-scope (channel=0).
+    const [verb, secondToken, ...rest] = tokens
+    const chanMaybe = parseInt(secondToken, 10)
+    let channel: number
+    let property: string
+    let values: string[]
+    if (Number.isFinite(chanMaybe) && String(chanMaybe) === secondToken && rest.length >= 1) {
+      channel = chanMaybe
+      property = rest[0]
+      values = rest.slice(1)
+    } else {
+      channel = 0
+      property = secondToken
+      values = rest
+    }
     if (bracedValue !== null) values.push(bracedValue)
     return { verb, channel, property, values, raw }
   }
@@ -333,8 +363,11 @@ export class ShureSlxdClient extends EventEmitter {
 
       const setStr = (key: keyof ShureReceiverState, s: string | undefined) => {
         if (s === undefined) return
-        if (prev[key] !== s) {
-          (next as any)[key] = s
+        // Trim the trailing-space padding Shure applies to braced
+        // string values (FW_VER "1.4.7.0 ", MODEL "SLXD4D ", etc).
+        const trimmed = s.trim()
+        if (prev[key] !== trimmed) {
+          (next as any)[key] = trimmed
           changed = true
         }
       }
@@ -378,8 +411,15 @@ export class ShureSlxdClient extends EventEmitter {
       }
       const setStr = (key: keyof ShureChannelState, s: string | undefined) => {
         if (s === undefined) return
-        if (prev[key] !== s) {
-          (next as any)[key] = s
+        // Shure firmware pads braced string values (CHAN_NAME, GROUP_CHAN,
+        // FW_VER, etc.) to a fixed width with trailing spaces — e.g.
+        // CHAN_NAME comes through as "Shure1                         ".
+        // Trim once at the storage layer so every downstream consumer
+        // (snapshot, UI tile, log line) gets the operator-meaningful
+        // value without each having to .trim() defensively.
+        const trimmed = s.trim()
+        if (prev[key] !== trimmed) {
+          (next as any)[key] = trimmed
           changed = true
         }
       }
