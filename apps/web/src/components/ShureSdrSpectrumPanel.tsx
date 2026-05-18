@@ -72,6 +72,15 @@ interface Props {
   ourFrequencies?: Array<{ freqMhz: number; label: string }>
 }
 
+type InspectStat = {
+  freqMhz: number
+  maxDbm: number
+  avgDbm: number
+  p95Dbm: number | null
+  hotMinutes: number
+  lastHotAt: number | null
+}
+
 export default function ShureSdrSpectrumPanel({ ourFrequencies = [] }: Props) {
   const [status, setStatus] = useState<StatusResp | null>(null)
   // Rolling buffer of recent buckets, accumulated from SSE bucket
@@ -79,6 +88,11 @@ export default function ShureSdrSpectrumPanel({ ourFrequencies = [] }: Props) {
   // waterfall canvas re-renders any time this changes.
   const [buckets, setBuckets] = useState<SseBucket[]>([])
   const [sseStatus, setSseStatus] = useState<'idle' | 'connecting' | 'connected' | 'reconnecting'>('idle')
+  // Inspect popover — when operator clicks a column on the waterfall,
+  // we fetch /api/sdr/peak-stats narrowed to ±0.025 MHz around that
+  // freq + show recent stats for the bin. Click outside / click X
+  // closes.
+  const [inspect, setInspect] = useState<{ freqMhz: number; stats: InspectStat | null; loading: boolean } | null>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const sseRef = useRef<EventSource | null>(null)
 
@@ -343,16 +357,83 @@ export default function ShureSdrSpectrumPanel({ ourFrequencies = [] }: Props) {
                 ref={canvasRef}
                 width={1100}
                 height={180}
-                className="w-full rounded border border-slate-700 bg-slate-950"
+                className="w-full rounded border border-slate-700 bg-slate-950 cursor-crosshair"
                 style={{ imageRendering: 'pixelated' }}
+                onClick={async (e) => {
+                  if (!history || history.bins.length === 0) return
+                  const canvas = e.currentTarget
+                  const rect = canvas.getBoundingClientRect()
+                  const xFrac = (e.clientX - rect.left) / rect.width
+                  const minF = history.bins[0]
+                  const maxF = history.bins[history.bins.length - 1]
+                  const clickedFreq = minF + xFrac * (maxF - minF)
+                  // Round to nearest 25 kHz step.
+                  const freqMhz = Math.round(clickedFreq * 40) / 40
+                  setInspect({ freqMhz, stats: null, loading: true })
+                  try {
+                    const r = await fetch(`/api/sdr/peak-stats?daysAgo=7&freqStart=${(freqMhz - 0.05).toFixed(3)}&freqEnd=${(freqMhz + 0.05).toFixed(3)}&topN=1`)
+                    if (!r.ok) { setInspect({ freqMhz, stats: null, loading: false }); return }
+                    const d = await r.json()
+                    setInspect({ freqMhz, stats: d.stats?.[0] ?? null, loading: false })
+                  } catch {
+                    setInspect({ freqMhz, stats: null, loading: false })
+                  }
+                }}
               />
               <div className="flex items-center gap-3 mt-1 text-[10px] text-slate-500">
                 <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 inline-block" style={{ background: '#0a1929' }} /> floor (≤−100)</span>
                 <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 inline-block" style={{ background: '#1b9aaa' }} /> threshold (−80)</span>
                 <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 inline-block" style={{ background: '#facc15' }} /> strong (−50)</span>
                 <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 inline-block" style={{ background: '#ef4444' }} /> loud (≥−40)</span>
-                <span className="ml-auto text-slate-600">cyan vertical line = your mic freq</span>
+                <span className="ml-auto text-slate-600">click any column to inspect · cyan vertical line = your mic freq</span>
               </div>
+              {inspect && (
+                <div className="mt-2 rounded border border-cyan-500/40 bg-cyan-950/30 p-3 text-xs">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="font-mono font-medium text-cyan-200">
+                      Inspect {inspect.freqMhz.toFixed(3)} MHz (last 7 days)
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setInspect(null)}
+                      className="text-cyan-400 hover:text-cyan-200 text-xs"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  {inspect.loading && <div className="text-cyan-400/70 italic">Querying peak-stats…</div>}
+                  {!inspect.loading && !inspect.stats && (
+                    <div className="text-cyan-400/70 italic">
+                      No samples recorded for this frequency yet. The SDR may not have been running for long, or this freq sits outside the active sweep band.
+                    </div>
+                  )}
+                  {inspect.stats && (
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-cyan-100">
+                      <div>
+                        <div className="text-[10px] uppercase tracking-wide text-cyan-400">Max peak</div>
+                        <div className="font-mono font-medium">{inspect.stats.maxDbm.toFixed(0)} dBm</div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] uppercase tracking-wide text-cyan-400">95th percentile</div>
+                        <div className="font-mono font-medium">{inspect.stats.p95Dbm?.toFixed(0) ?? '—'} dBm</div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] uppercase tracking-wide text-cyan-400">Avg level</div>
+                        <div className="font-mono font-medium">{inspect.stats.avgDbm.toFixed(0)} dBm</div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] uppercase tracking-wide text-cyan-400">Minutes hot (≥−85)</div>
+                        <div className="font-mono font-medium">{inspect.stats.hotMinutes} min</div>
+                      </div>
+                      {inspect.stats.lastHotAt && (
+                        <div className="col-span-2 md:col-span-4 text-[10px] text-cyan-400/80">
+                          Last hot: {new Date(inspect.stats.lastHotAt * 1000).toLocaleString()}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
