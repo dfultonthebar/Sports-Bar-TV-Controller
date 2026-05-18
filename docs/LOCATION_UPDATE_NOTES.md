@@ -46,6 +46,78 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-17 — v2.37.2 — Shure final-review fixes (preflight state race + reconnect race + doc consistency)
+
+**Code fixes from the final-review pass** (4 parallel review agents
+on the v2.34.0 → v2.37.1 arc):
+
+- **CRITICAL: `runPreflightForExisting` raced against React state.**
+  The "Run Pre-flight" button on each row in the Wireless Mics admin
+  called `setForm({ipAddress: rec.ipAddress})` then
+  `setTimeout(runPreflight, 0)`. `runPreflight` read `form.ipAddress`
+  from its closure, which was still the previous value (or empty) —
+  so the probe would target the wrong IP. Refactored to
+  `runPreflightAgainst(ip, port)` taking explicit args; per-row button
+  now passes `rec.ipAddress` / `rec.tcpPort` directly. No state-race.
+- **IMPORTANT: Reconnect path in `shureSlxdClientManager.getClient`
+  also had a race window.** If two concurrent callers found the same
+  client `!isConnected()`, both called `client.connect()` and created
+  duplicate sockets (same shape as the Atlas v2.33.50 bug). Wrapped
+  the reconnect `await client.connect()` in the same in-flight
+  Promise lock that the create path uses.
+- **`evaluateChannel` hysteresis band comment.** The marginal-zone
+  fall-through that resets both counters is intentional (hysteresis,
+  prevents flapping while interference is real) but the code looked
+  like a bug to the reviewer. Added explicit comment.
+
+**Doc fixes from the final-review pass:**
+
+- **VERSION_SETUP_GUIDE v2.34.0 step 4** updated to point at the
+  canonical Wireless Mics tab (`/device-config → Audio → Wireless
+  Mics`) instead of the legacy `/system-admin → Audio Processors`
+  path. Cross-links to `packages/shure-slxd/README.md` for the SME
+  briefing.
+- **CLAUDE.md §10** (Next.js per-bundle singleton gotcha) now
+  references `@sports-bar/shure-slxd` as the second example
+  alongside Atlas + notes the v2.37.2 reconnect-path tightening.
+- **CLAUDE.md §7a** adds a "Canonical operator home" line pointing
+  at `/device-config → Audio → Wireless Mics` + cross-link to the
+  package README.
+- **packages/shure-slxd/README.md** adds:
+  - Explicit "Firmware ≥ 1.1.0 required" under Connection model
+  - Rationale for the 1000 ms METER_RATE choice (vs the Bitfocus
+    5000 ms baseline) — game-day RF interference detection within ~3s
+  - "Related project docs" section linking back to CLAUDE.md §7a,
+    VERSION_SETUP_GUIDE, API_REFERENCE, LOCATION_UPDATE_NOTES
+
+**Verified post-fix:**
+- `npx tsx scripts/test-shure-parser.ts` — 6/6 scenarios PASS
+- Production watcher: clean boot, 8 startup rows in `shure_rf_events`,
+  dedicated log file writing
+- All 9 monitored endpoints return 200
+- Playwright UI audit: 8/8 device-config interactions PASS (Overview
+  landing, category switching, sub-tab filtering, iPad viewport, no
+  console errors)
+
+**What could break:** nothing — fixes + doc updates only.
+
+**Manual steps required:** none.
+
+**Affected files:**
+- Modified: `apps/web/src/components/ShureWirelessMicAdmin.tsx`
+  (runPreflightAgainst refactor)
+- Modified: `packages/shure-slxd/src/shure-slxd-client-manager.ts`
+  (reconnect path in-flight lock)
+- Modified: `apps/web/src/lib/shure-rf-watcher.ts` (hysteresis comment)
+- Modified: `CLAUDE.md` (§10 cross-reference, §7a canonical home + link)
+- Modified: `docs/VERSION_SETUP_GUIDE.md` (v2.34.0 step 4 URL update)
+- Modified: `packages/shure-slxd/README.md` (firmware min, METER_RATE
+  rationale, Related project docs section)
+
+`Checkpoint model: haiku` — small targeted fixes + doc polish.
+
+---
+
 ### 2026-05-17 — v2.37.1 — /device-config: standardized card pattern across all tabs
 
 Every TabsContent in /device-config now starts with the same
