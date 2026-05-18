@@ -46,6 +46,134 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-18 — v2.38.0 → v2.45.1 — Shure channel-edit UI + LiveMicChips + SDR foundation + Day-4/5 polish + 7 critical fixes
+
+**Big multi-version push covering Shure operator-edit features, SDR
+spectrum monitoring foundation, and a stack of bug fixes caught by
+live debugging + code-reviewer agent. Spans 16 commits.**
+
+What changed (in order):
+
+- **v2.38.0** — Per-channel edit UI in `/device-config → Audio →
+  Wireless Mics`: rename channel, retune frequency, adjust audio
+  gain. PATCH `/api/shure-rf/channel` (ADMIN, HARDWARE bucket).
+  PLUS new `LiveMicChips` strip on bartender Audio tab showing
+  "Mic 1 Live / Mic 2 Off" + battery as a persistent indicator
+  independent of the speech-triggered priority banner.
+
+- **v2.39.0/2.39.1** — Stage 1 AI pattern digest: POST
+  `/api/shure-rf/pattern-digest` runs Ollama (llama3.1:8b on iGPU,
+  ~40-180s) on the last 30 days of `shure_rf_events`, returns a
+  natural-language summary identifying recurring patterns by
+  channel/freq/time-of-day/day-of-week with mitigation suggestions.
+  ADMIN-gated, AI rate-limit bucket, 1-hour cache. Plus baseline
+  RSSI sampling every 10 min so the digest has data even during
+  the May-August data-scarce window before preseason.
+  v2.39.1 fixed an AUDIO_GAIN wire-protocol offset bug found by
+  code review (was sending raw dB; receiver expects raw 0-60 with
+  -18 offset).
+
+- **v2.40.0/2.40.1/2.40.2** — Find Clean Freq (software equivalent
+  of Shure's front-panel Group Scan, since SLX-D firmware 1.4.7.0
+  does NOT expose scan over TCP — probed 16 candidate command
+  variants, all returned `< REP ERR >`). Sweeps 12 G58 candidates,
+  dwells 2.5s each, ranks by RSSI, drops gain to -18 dB during
+  sweep for audio safety. v2.40.1 fixed wire-protocol property
+  names (`TX_MODEL` not `TX_TYPE`, `GROUP_CHANNEL` not
+  `GROUP_CHAN`) — CLAUDE.md §7a had them backwards, real receiver
+  state never populated until v2.40.1. v2.40.2 added
+  `/api/atlas-priority`, `/api/atlas-drops`, `/api/shure-rf` routes
+  to the bartender nginx allow-list.
+
+- **v2.41.0 — v2.45.1** — SDR spectrum monitoring foundation:
+  `apps/web/src/lib/sdr-watcher.ts` spawns `rtl_power` subprocess,
+  parses CSV, aggregates per-minute into `sdr_spectrum`, runs
+  carrier-detection state machine writing `sdr_carriers`. NEW
+  endpoints: `/api/sdr/status`, `/api/sdr/history`, `/api/sdr/stream`
+  (Server-Sent Events), `/api/sdr/peak-stats`. NEW UI panel
+  `ShureSdrSpectrumPanel` with canvas waterfall, click-on-column
+  inspect, SSE live updates. `scripts/setup-sdr.sh` for one-time
+  install (apt + DVB blacklist). `SDR_ENABLED=auto` mode means
+  plug-and-play after the one-time setup. Cross-confirms with Shure
+  RF events (purple "SDR-confirmed" badge on event history rows).
+  Hardware (NESDR Smart) in transit; pipeline runs against tables
+  whether dongle is present or not. v2.43.1 added SafeBoundary
+  isolation for the panel. v2.43.2 fixed a TDZ ReferenceError that
+  blew up `/device-config` (TDZ on `loadCachedDigest` referenced in
+  useEffect deps before its declaration). v2.45.1 fixed 6 issues
+  caught by code-reviewer agent (SSE timer leak, readline zombie,
+  backoff race, flushAggregator over-call, status not honoring
+  'auto', peak-stats N+1).
+
+- **v2.42.1** — Atlas drop watcher cooldown fix. Holmgren operator
+  hit 50 false-positive drop events in 28 min after the Atlas
+  firmware update — one real drop (volume 45 → 5 at 10:22) got
+  re-fired every 30 sec for 28 min because `lastSeen.set` was at
+  the END of the per-zone try block, after an INSERT that could
+  throw and skip the cache update. Plus the Atlas 4.5 firmware's
+  new "Custom Priority Volume" feature pins zone gain to a fixed
+  low level while priority is active — looks identical to the drop
+  signature. Fix: per-zone 5-min cooldown + move `lastSeen.set` to
+  immediately after the read.
+
+What could break at a location:
+
+- **CRITICAL — nginx allow-list re-run REQUIRED for v2.40.2+**
+  features to work on the bartender remote. Run
+  `sudo bash scripts/setup-bartender-nginx.sh` once per location
+  after auto-update completes. Symptom if skipped: priority banner
+  + LiveMicChips + Shure RF events show empty on the iPad even
+  though backend is healthy (the polled endpoints return 403).
+  Already done at Holmgren but new locations MUST run it.
+
+- **NESDR Smart hardware not yet shipped to any location** — SDR
+  pipeline runs idle (`SDR_ENABLED` defaults to `false`). No
+  operator-visible effect at locations without a dongle. When
+  hardware arrives, run `sudo bash scripts/setup-sdr.sh` for the
+  one-time apt+DVB-blacklist install, set `SDR_ENABLED=auto` in
+  .env, restart PM2. Watcher then auto-starts within 5 min of
+  plugging in.
+
+- **Atlas firmware ≥ 4.5 introduces Custom Priority Volume.**
+  Operators who notice unexplained zone-gain drops should check
+  the Atlas GUI → Sources → Priority for the new "Custom Volume"
+  field on each priority-tagged input. If set low, it overrides
+  zone volume during priority events. Our drop watcher's cooldown
+  prevents alert spam but the underlying behavior is intentional
+  Atlas firmware behavior, not a bug.
+
+Manual steps required:
+
+1. **Bartender nginx re-run** (Holmgren done; other locations TODO
+   when they get a Shure receiver):
+   ```
+   sudo bash /home/ubuntu/Sports-Bar-TV-Controller/scripts/setup-bartender-nginx.sh
+   ```
+2. **SDR install** (when NESDR Smart arrives):
+   ```
+   sudo bash /home/ubuntu/Sports-Bar-TV-Controller/scripts/setup-sdr.sh
+   pm2 restart sports-bar-tv-controller --update-env
+   ```
+3. **No DB migrations needed** — all new tables (`sdr_spectrum`,
+   `sdr_carriers`, `sdr_rf_pattern_cache`, `shure_rf_events`) are
+   lazy-created by their watchers on first run.
+
+Rollback notes: revert to v2.37.2 if any of the above causes
+operator-visible failure. The DB tables are additive — no schema
+deletion required.
+
+Affected files:
+- `apps/web/src/lib/sdr-watcher.ts` (new)
+- `apps/web/src/lib/shure-rf-watcher.ts` (cross-confirmation)
+- `apps/web/src/lib/atlas-drop-watcher.ts` (cooldown fix)
+- `apps/web/src/app/api/shure-rf/{channel,pattern-digest,find-clean-freq}/route.ts`
+- `apps/web/src/app/api/sdr/{status,history,stream,peak-stats}/route.ts`
+- `apps/web/src/components/{ShureWirelessMicAdmin,ShureSdrSpectrumPanel,LiveMicChips,SafeBoundary}.tsx`
+- `packages/shure-slxd/src/shure-slxd-client.ts` (TX_MODEL fix, AUDIO_GAIN offset, setChannelName, setAudioGain)
+- `scripts/setup-sdr.sh` (new)
+- `scripts/setup-bartender-nginx.sh` (allow-list additions)
+- `CLAUDE.md` §7a (corrected) + §7b (new SDR section)
+
 ### 2026-05-17 — v2.37.2 — Shure final-review fixes (preflight state race + reconnect race + doc consistency)
 
 **Code fixes from the final-review pass** (4 parallel review agents

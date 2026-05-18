@@ -187,6 +187,67 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.45.x — SDR spectrum monitoring (NESDR Smart / RTL-SDR)
+
+**Required Manual Step — when an RTL-SDR dongle arrives at a
+location.** Skip entirely at locations without an SDR dongle (the
+watcher defaults to disabled and is a no-op).
+
+```bash
+# One-time install: apt rtl-sdr + DVB blacklist + .env default
+sudo bash /home/ubuntu/Sports-Bar-TV-Controller/scripts/setup-sdr.sh
+
+# Restart PM2 to pick up SDR_ENABLED=auto from .env
+pm2 restart sports-bar-tv-controller --update-env
+
+# Verify (immediate, while dongle is plugged in or not):
+curl -sS http://localhost:3001/api/sdr/status
+# Expected: {"success":true, "enabled":true, "healthy":<true if dongle plugged>, ...}
+```
+
+After the one-time setup, plugging or unplugging the dongle is
+plug-and-play — the watcher auto-detects within 5 min, no PM2
+restart needed.
+
+**Idempotent.** Re-running the setup script is safe — `apt install
+rtl-sdr` no-ops if already installed, the blacklist file is
+rewritten in-place, and the `.env` is only modified if
+`SDR_ENABLED` is missing.
+
+**Verification command after dongle is plugged in:**
+
+```bash
+# Should report "Found 1 device" (or more)
+rtl_test -t
+
+# Live stream test (should emit 'hello' event within 1s):
+timeout 3 curl -sS -N http://localhost:3001/api/sdr/status | head -5
+```
+
+**Per-location values** (none — pure software install, no
+per-location config):
+
+| Location | SDR hardware status | SDR_ENABLED |
+|---|---|---|
+| Holmgren Way | Pending (NESDR Smart in transit) | `auto` (set by setup-sdr.sh) |
+| All others | Not yet rolled out | `false` (default — no-op) |
+
+**Auto-band-tracking:** the watcher reads connected Shure receiver
+frequencies and sweeps MIN-5 MHz to MAX+5 MHz. Override via
+`SDR_BAND_PRESET=uhf-wireless` (470-700 MHz) or `full-uhf`
+(470-960 MHz) in `.env` if you want broader coverage; default
+'auto' is fine for game-day monitoring.
+
+**If something goes wrong:**
+- Symptom: `rtl_test -t` says "Failed to open rtlsdr device / usb_claim_interface error -6"
+  → DVB module still attached. Run `sudo rmmod dvb_usb_rtl28xxu` then `rtl_test -t` again.
+  If it persists, reboot once so the blacklist takes effect for the kernel.
+- Symptom: `/api/sdr/status` says `enabled: false` even after setup
+  → Check `.env` has `SDR_ENABLED=auto` (or `true`). Restart PM2 with `--update-env`.
+- Symptom: `/api/sdr/status` says `enabled: true, healthy: false`
+  → Dongle not detected. Check USB connection, try a different port
+  (avoid USB 3 — emits RFI in the UHF band). Watcher will retry every 5 min.
+
 ### v2.34.1 — Shure SLX-D Phase 2 (battery UI, preflight, correlation, low-battery, mock)
 
 **No required manual steps.** All additive on top of v2.34.0.
