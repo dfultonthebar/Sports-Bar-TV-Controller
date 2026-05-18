@@ -24,7 +24,14 @@ import { logger } from '@sports-bar/logger'
 import { shureSlxdClientManager } from '@sports-bar/shure-slxd'
 
 export async function GET(request: NextRequest) {
-  const rateLimit = await withRateLimit(request, RateLimitConfigs.DEFAULT)
+  // HARDWARE bucket (200/min, separate identifier from DEFAULT). The
+  // /device-config Wireless Mics tab polls this every 3s — at 20/min
+  // just from polling, the DEFAULT 30/min bucket was exhausted by
+  // mixing with /api/shure-rf history polling and other client calls,
+  // returning 429 → React snapshots state stayed empty → admin badge
+  // fell through to "Pending" even when the receiver was healthy
+  // (Holmgren 2026-05-18).
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
   if (!rateLimit.allowed) return rateLimit.response
 
   try {
