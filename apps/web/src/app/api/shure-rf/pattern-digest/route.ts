@@ -145,7 +145,11 @@ function computeStats(rows: RfEventRow[]): {
   }
 }
 
-function buildPrompt(windowDays: number, stats: ReturnType<typeof computeStats>): string {
+function buildPrompt(
+  windowDays: number,
+  stats: ReturnType<typeof computeStats>,
+  sdrStats: ReturnType<typeof computeSdrStats>,
+): string {
   const names = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
   const dowLines = Object.entries(stats.byDayOfWeek)
     .sort(([, a], [, b]) => b - a)
@@ -160,6 +164,32 @@ function buildPrompt(windowDays: number, stats: ReturnType<typeof computeStats>)
   const freqLines = stats.worstFrequencies
     .map((f) => `  ${f.freq.toFixed(3)} MHz: ${f.count} events${f.avgRssi !== null ? ` (avg RSSI ${f.avgRssi.toFixed(0)} dBm)` : ''}`)
     .join('\n')
+
+  // Build the SDR section conditionally — only included when the
+  // SDR pipeline has produced data. Without it (no dongle yet, or
+  // SDR_ENABLED=false), the digest is Shure-only and the prompt
+  // says nothing about spectrum data.
+  let sdrBlock = ''
+  if (sdrStats.totalCarriers > 0) {
+    const topSdrLines = sdrStats.topFrequencies
+      .map((f) => `  ${f.freq.toFixed(3)} MHz: ${f.activations} activations` +
+        (f.avgDurationSec !== null ? `, avg ${Math.round(f.avgDurationSec)}s duration` : '') +
+        (f.avgPeakDbm !== null ? `, avg peak ${f.avgPeakDbm.toFixed(0)} dBm` : ''))
+      .join('\n')
+    sdrBlock = `
+
+SDR spectrum data (wide-band RTL-SDR sweep — independent confirmation channel):
+  Total carrier activations: ${sdrStats.totalCarriers}
+  Unique frequencies seen: ${sdrStats.uniqueFreqs}
+  Most active frequencies:
+${topSdrLines}
+
+The SDR sees ALL RF activity in the swept band, not just on our channel
+frequencies. A frequency with many SDR activations but few Shure events
+means an interferer that's NOT hitting our tuned channels yet — useful
+forward warning. A frequency with both SDR + Shure events at similar
+times confirms the Shure detector is seeing real RF, not a false alarm.`
+  }
 
   return `You are an RF coordination expert analyzing wireless microphone interference logs from a sports bar's Shure SLX-D wireless mic system. Your job is to identify recurring patterns and suggest mitigation. Be concrete: name specific frequencies, days, and hours. Do not pad. Aim for 3-5 short paragraphs.
 
@@ -181,7 +211,9 @@ ${hourLines || '  (none)'}
 Frequencies most affected:
 ${freqLines || '  (none)'}
 
-Note: The detector flags interference when an RF carrier appears at the receiver's tuned frequency WITHOUT a paired Shure transmitter (TX_TYPE=UNKNOWN, RSSI ≥ -85 dBm, audio silent). Common real-world sources include: ENG (electronic news gathering) trucks at sporting events, mobile broadcast rigs, other venues' wireless mic systems, IEM systems, body packs from nearby music venues. Sports bars near stadiums are especially exposed during game broadcasts.
+${sdrBlock}
+
+Note: The Shure detector flags interference when an RF carrier appears at the receiver's tuned frequency WITHOUT a paired Shure transmitter (TX_TYPE=UNKNOWN, RSSI ≥ -85 dBm, audio silent). The SDR detector (when present) sweeps a wider band and flags any sustained carrier ≥ -85 dBm regardless of our channel placement. Common real-world sources include: ENG (electronic news gathering) trucks at sporting events, mobile broadcast rigs, other venues' wireless mic systems, IEM systems, body packs from nearby music venues. Sports bars near stadiums are especially exposed during game broadcasts.
 
 Provide:
 1. A one-paragraph summary of what the data shows.
@@ -231,9 +263,69 @@ async function loadCache(): Promise<{
   return rows[0] ?? null
 }
 
+type SdrCarrierRow = {
+  freq_mhz: number
+  event_type: string
+  peak_dbm: number | null
+  duration_sec: number | null
+  detected_at: number
+}
+
+async function fetchSdrCarriersIfAvailable(cutoff: number): Promise<SdrCarrierRow[]> {
+  // Returns [] when the SDR pipeline hasn't fired yet (table missing
+  // or empty), so the digest gracefully reflects whatever data is
+  // currently available — Shure-only at locations without an SDR,
+  // Shure + SDR once the dongle lands.
+  try {
+    return await db.all<SdrCarrierRow>(sql`
+      SELECT freq_mhz, event_type, peak_dbm, duration_sec, detected_at
+      FROM sdr_carriers
+      WHERE detected_at >= ${cutoff}
+        AND event_type IN ('carrier_active', 'carrier_cleared')
+      ORDER BY detected_at DESC
+      LIMIT 2000
+    `)
+  } catch {
+    return []
+  }
+}
+
+function computeSdrStats(rows: SdrCarrierRow[]): {
+  totalCarriers: number
+  uniqueFreqs: number
+  topFrequencies: Array<{ freq: number; activations: number; avgDurationSec: number | null; avgPeakDbm: number | null }>
+} {
+  const byFreq = new Map<number, { actCount: number; sumDuration: number; sumPeak: number; peakCount: number }>()
+  for (const r of rows) {
+    if (r.event_type !== 'carrier_active') continue
+    const f = Math.round(r.freq_mhz * 40) / 40 // 25 kHz bucket
+    const b = byFreq.get(f) ?? { actCount: 0, sumDuration: 0, sumPeak: 0, peakCount: 0 }
+    b.actCount += 1
+    if (r.duration_sec !== null) b.sumDuration += r.duration_sec
+    if (r.peak_dbm !== null) { b.sumPeak += r.peak_dbm; b.peakCount += 1 }
+    byFreq.set(f, b)
+  }
+  const top = Array.from(byFreq.entries())
+    .map(([freq, b]) => ({
+      freq,
+      activations: b.actCount,
+      avgDurationSec: b.actCount > 0 ? b.sumDuration / b.actCount : null,
+      avgPeakDbm: b.peakCount > 0 ? b.sumPeak / b.peakCount : null,
+    }))
+    .sort((a, b) => b.activations - a.activations)
+    .slice(0, 8)
+  return {
+    totalCarriers: rows.filter((r) => r.event_type === 'carrier_active').length,
+    uniqueFreqs: byFreq.size,
+    topFrequencies: top,
+  }
+}
+
 async function fetchEventsAndCompute(windowDays: number): Promise<{
   rows: RfEventRow[]
   stats: ReturnType<typeof computeStats>
+  sdrRows: SdrCarrierRow[]
+  sdrStats: ReturnType<typeof computeSdrStats>
 }> {
   const cutoff = Math.floor(Date.now() / 1000) - windowDays * 86_400
   const rows = await db.all<RfEventRow>(sql`
@@ -245,7 +337,9 @@ async function fetchEventsAndCompute(windowDays: number): Promise<{
     LIMIT 5000
   `)
   const stats = computeStats(rows)
-  return { rows, stats }
+  const sdrRows = await fetchSdrCarriersIfAvailable(cutoff)
+  const sdrStats = computeSdrStats(sdrRows)
+  return { rows, stats, sdrRows, sdrStats }
 }
 
 export async function GET(request: NextRequest) {
@@ -321,8 +415,8 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const { rows, stats } = await fetchEventsAndCompute(windowDays)
-    const prompt = buildPrompt(windowDays, stats)
+    const { rows, stats, sdrStats } = await fetchEventsAndCompute(windowDays)
+    const prompt = buildPrompt(windowDays, stats, sdrStats)
     const ollamaStart = Date.now()
     const { text, model } = await callOllama(prompt)
     const ollamaMs = Date.now() - ollamaStart

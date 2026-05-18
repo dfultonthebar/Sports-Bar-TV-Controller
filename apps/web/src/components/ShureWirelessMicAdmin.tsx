@@ -39,6 +39,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { logger } from '@sports-bar/logger'
 import type { ShureChannelState, ShureReceiverSnapshot } from '@sports-bar/shure-slxd'
+import ShureSdrSpectrumPanel from './ShureSdrSpectrumPanel'
 
 interface ShureReceiverRow {
   id: string
@@ -978,6 +979,22 @@ export default function ShureWirelessMicAdmin() {
           </div>
         )}
       </div>
+
+      {/* Wide-band SDR spectrum monitor — auto-hides into a setup
+          explainer when SDR_ENABLED is unset. Frequencies passed
+          through so the waterfall annotates our tuned freqs. */}
+      <ShureSdrSpectrumPanel
+        ourFrequencies={
+          snapshots.flatMap((r) =>
+            r.channels
+              .filter((c) => typeof c.frequencyMhz === 'number')
+              .map((c) => ({
+                freqMhz: c.frequencyMhz!,
+                label: c.channelName?.trim() || `Ch${c.channel}`,
+              })),
+          )
+        }
+      />
 
       <div className="rounded-xl border border-slate-700 bg-slate-800/50 p-4">
         <div className="flex items-center justify-between mb-3">

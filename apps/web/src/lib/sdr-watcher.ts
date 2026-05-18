@@ -37,8 +37,40 @@ import { db } from '@/db'
 import { sql } from 'drizzle-orm'
 
 const ENABLED = process.env.SDR_ENABLED === 'true'
+// Default fallback band — G58 (470-514 MHz, US SLX-D). When
+// SDR_BAND_AUTO=true (default), the watcher overrides these with
+// the actual frequencies the connected Shure receivers are tuned to,
+// re-evaluated every 5 min. If the operator buys an H55 receiver
+// later, sweep automatically tracks. Set SDR_BAND_AUTO=false to
+// pin to these env values explicitly.
 const BAND_START_MHZ = parseFloat(process.env.SDR_BAND_START_MHZ ?? '470')
 const BAND_END_MHZ = parseFloat(process.env.SDR_BAND_END_MHZ ?? '514')
+// SDR_BAND_PRESET controls the sweep range and tradeoffs:
+//
+//   auto          (default) — ±5 MHz around our Shure receivers' actual
+//                 tuned freqs. Fastest cycle (~1s for ~50 MHz wide band),
+//                 finest resolution. Catches anything that could
+//                 interfere with OUR mics. Best for monitoring during
+//                 game days.
+//   uhf-wireless  — 470-700 MHz fixed. ~9200 bins at 25 kHz, ~4-5s cycle.
+//                 Covers most US wireless mics, IEMs, guitar wireless,
+//                 in-ear monitors. Good for pre-show ecosystem survey
+//                 ("is the band's IEM rig stomping on us?").
+//   full-uhf      — 470-960 MHz fixed. ~19K bins, ~10s cycle.
+//                 Adds the 900 MHz wireless audio band and edges into
+//                 the cellular allocations (interference cause).
+//   custom        — use SDR_BAND_START_MHZ + SDR_BAND_END_MHZ env vars.
+//                 For fine operator control.
+//
+// auto-mode is recommended for ongoing monitoring. Switch to
+// uhf-wireless or full-uhf temporarily for ecosystem surveys, then
+// switch back.
+const BAND_PRESET = (process.env.SDR_BAND_PRESET ?? 'auto').toLowerCase()
+const BAND_AUTO = BAND_PRESET === 'auto'
+const BAND_BUFFER_MHZ = parseFloat(process.env.SDR_BAND_BUFFER_MHZ ?? '5')
+const BAND_REEVAL_MS = parseInt(process.env.SDR_BAND_REEVAL_MS ?? `${5 * 60 * 1000}`, 10)
+let currentBandStartMhz = BAND_START_MHZ
+let currentBandEndMhz = BAND_END_MHZ
 const RESOLUTION_KHZ = parseFloat(process.env.SDR_RESOLUTION_KHZ ?? '25')
 const SWEEP_INTERVAL_SEC = parseInt(process.env.SDR_SWEEP_INTERVAL_SEC ?? '1', 10)
 const GAIN_DB = process.env.SDR_GAIN_DB ?? '25'
@@ -255,10 +287,42 @@ function handleSweepLine(line: string): void {
   flushAggregator(false)
 }
 
+async function computeBand(): Promise<{ startMhz: number; endMhz: number }> {
+  // Preset-driven band selection. See BAND_PRESET docstring above.
+  if (BAND_PRESET === 'uhf-wireless') return { startMhz: 470, endMhz: 700 }
+  if (BAND_PRESET === 'full-uhf') return { startMhz: 470, endMhz: 960 }
+  if (BAND_PRESET === 'custom') return { startMhz: BAND_START_MHZ, endMhz: BAND_END_MHZ }
+  // Auto: track Shure receiver freqs ±5 MHz. Fall back to G58 defaults
+  // when no receivers are connected.
+  try {
+    const { shureSlxdClientManager } = await import('@sports-bar/shure-slxd')
+    const snapshots = shureSlxdClientManager.getSnapshots()
+    const freqs: number[] = []
+    for (const r of snapshots) {
+      if (!r.connected) continue
+      for (const c of r.channels) {
+        if (typeof c.frequencyMhz === 'number' && c.frequencyMhz > 0) freqs.push(c.frequencyMhz)
+      }
+    }
+    if (freqs.length === 0) return { startMhz: BAND_START_MHZ, endMhz: BAND_END_MHZ }
+    const min = Math.min(...freqs)
+    const max = Math.max(...freqs)
+    // Pad ±5 MHz around the operator's actual usage so we catch
+    // adjacent-channel interference (ENG trucks 1-2 MHz off our freq
+    // are exactly what we want to see). Round to whole MHz for
+    // cleaner rtl_power args.
+    const startMhz = Math.max(24, Math.floor(min - BAND_BUFFER_MHZ))
+    const endMhz = Math.min(1700, Math.ceil(max + BAND_BUFFER_MHZ))
+    return { startMhz, endMhz }
+  } catch {
+    return { startMhz: BAND_START_MHZ, endMhz: BAND_END_MHZ }
+  }
+}
+
 function spawnRtlPower(): void {
   if (stopRequested) return
   const args = [
-    '-f', `${BAND_START_MHZ}M:${BAND_END_MHZ}M:${RESOLUTION_KHZ}k`,
+    '-f', `${currentBandStartMhz}M:${currentBandEndMhz}M:${RESOLUTION_KHZ}k`,
     '-i', String(SWEEP_INTERVAL_SEC),
     '-g', GAIN_DB,
     '-e', '0', // run forever
@@ -293,22 +357,50 @@ function spawnRtlPower(): void {
  * quickly; the watcher runs as a background subprocess + handlers.
  */
 export async function startSdrWatcher(): Promise<void> {
+  // Always create the tables even when disabled — keeps /api/sdr/history
+  // and /api/sdr/status responses clean (empty grid vs. "no such table"
+  // error). Cheap: CREATE TABLE IF NOT EXISTS is a no-op after first run.
+  await ensureTables()
   if (!ENABLED) {
     logger.info('[SDR-WATCHER] disabled (set SDR_ENABLED=true to enable, requires rtl-sdr + dongle)')
     return
   }
-  await ensureTables()
   const check = await checkRtlPower()
   if (!check.available) {
     logger.warn(`[SDR-WATCHER] ${check.error} — retry in 5 min`)
     setTimeout(() => startSdrWatcher().catch(() => {}), 5 * 60 * 1000)
     return
   }
-  logger.info(`[SDR-WATCHER] band ${BAND_START_MHZ}-${BAND_END_MHZ} MHz @ ${RESOLUTION_KHZ} kHz resolution, ${SWEEP_INTERVAL_SEC}s sweep`)
+  const band = await computeBand()
+  currentBandStartMhz = band.startMhz
+  currentBandEndMhz = band.endMhz
+  logger.info(`[SDR-WATCHER] band ${currentBandStartMhz}-${currentBandEndMhz} MHz @ ${RESOLUTION_KHZ} kHz resolution, ${SWEEP_INTERVAL_SEC}s sweep (auto-band=${BAND_AUTO})`)
   // Periodic flush — even if no rollover yet, force any buckets older
   // than the current minute to disk.
   setInterval(() => flushAggregator(false), 30_000)
   spawnRtlPower()
+
+  // Periodic band re-evaluation — if the operator adds an H55
+  // receiver or changes channel frequencies, respawn rtl_power with
+  // the new band. Threshold of 1 MHz prevents thrashing on tiny
+  // freq changes (Shure SET FREQUENCY rounds to 25 kHz steps).
+  setInterval(async () => {
+    const next = await computeBand()
+    if (
+      Math.abs(next.startMhz - currentBandStartMhz) >= 1 ||
+      Math.abs(next.endMhz - currentBandEndMhz) >= 1
+    ) {
+      logger.info(`[SDR-WATCHER] band changed ${currentBandStartMhz}-${currentBandEndMhz} → ${next.startMhz}-${next.endMhz} MHz; respawning rtl_power`)
+      currentBandStartMhz = next.startMhz
+      currentBandEndMhz = next.endMhz
+      // Kill current subprocess; the 'exit' handler will respawn with
+      // the new args.
+      if (childProcess && !childProcess.killed) {
+        backoffMs = RESTART_BACKOFF_INITIAL_MS // skip backoff for an operator-driven retune
+        childProcess.kill('SIGTERM')
+      }
+    }
+  }, BAND_REEVAL_MS)
 }
 
 export function stopSdrWatcher(): void {
