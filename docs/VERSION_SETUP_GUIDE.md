@@ -187,6 +187,44 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.34.1 — Shure SLX-D Phase 2 (battery UI, preflight, correlation, low-battery, mock)
+
+**No required manual steps.** All additive on top of v2.34.0.
+
+**New developer tools** (no production impact):
+- `scripts/mock-shure-receiver.ts` — TCP server simulating an SLX-D
+  receiver. Scenarios: `clean`, `interference-rising`,
+  `tx-battery-dying`, `coalesced-frames`, `partial-frames`,
+  `third-party-controls-disabled`. Run with
+  `npx tsx scripts/mock-shure-receiver.ts --port=2202 --scenario=interference-rising`.
+- `scripts/test-shure-parser.ts` — integration test runner. Spawns
+  the mock for each scenario, drives the real client, verifies all
+  6 scenarios pass. Run with `npx tsx scripts/test-shure-parser.ts`.
+
+**New operator UX:**
+- Bartender Audio tab now shows a per-channel battery + RSSI tile
+  (one card per Shure receiver, one row per channel). Renders only
+  when a Shure receiver is configured; otherwise hidden.
+- Device Config → Audio Processors → Shure SLX-D type → "Run
+  pre-flight" button. Use BEFORE saving the receiver row — catches
+  third-party-controls-disabled, firmware too old, network unreachable.
+
+**Dependency note:** axios bumped 1.15.0 → 1.16.1 (CVE
+GHSA-w9j2-pvgh-6h63, prototype-pollution auth bypass). 4 vulns
+closed, 13 remain (all require breaking-major upgrades — separate PRs).
+
+**Verification post-update (any location):**
+```bash
+sqlite3 /home/ubuntu/sports-bar-data/production.db ".tables shure_rf_events"
+# Table still exists from v2.34.0; v2.34.1 didn't touch its schema.
+
+# Status endpoint should respond:
+curl -s http://localhost:3001/api/shure-rf/status | jq '.success'
+# Expect: true
+```
+
+---
+
 ### v2.34.0 — Shure SLX-D wireless mic RF interference detection
 
 **Required Manual Steps (per location, only if you HAVE a Shure SLX-D receiver):**

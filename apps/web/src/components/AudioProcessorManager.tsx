@@ -116,6 +116,13 @@ const defaultFormData: ProcessorFormData = {
   password: ''
 }
 
+interface PreflightCheck { name: string; passed: boolean; detail: string }
+interface PreflightResult {
+  ready: boolean
+  checks: PreflightCheck[]
+  receiver: { model: string | null; firmwareVersion: string | null; rfBand: string | null }
+}
+
 export default function AudioProcessorManager() {
   const [processors, setProcessors] = useState<AudioProcessor[]>([])
   const [loading, setLoading] = useState(true)
@@ -125,6 +132,8 @@ export default function AudioProcessorManager() {
   const [saving, setSaving] = useState(false)
   const [testing, setTesting] = useState<string | null>(null)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [preflightRunning, setPreflightRunning] = useState(false)
+  const [preflightResult, setPreflightResult] = useState<PreflightResult | null>(null)
 
   useEffect(() => {
     fetchProcessors()
@@ -219,6 +228,42 @@ export default function AudioProcessorManager() {
       outputs: bssModel?.outputs || prev.outputs,
       connectionType: hasEthernet ? 'ethernet' : 'rs232'
     }))
+  }
+
+  const runPreflight = async () => {
+    if (!formData.ipAddress.trim()) {
+      setMessage({ type: 'error', text: 'IP address required for pre-flight check' })
+      return
+    }
+    setPreflightRunning(true)
+    setPreflightResult(null)
+    try {
+      const r = await fetch('/api/shure-rf/preflight', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ip: formData.ipAddress.trim(), port: formData.tcpPort }),
+      })
+      const data = await r.json()
+      if (!r.ok || !data.success) {
+        setMessage({ type: 'error', text: data.error || 'Pre-flight check failed' })
+        return
+      }
+      setPreflightResult({
+        ready: data.ready,
+        checks: data.checks,
+        receiver: data.receiver,
+      })
+      // Auto-fill model from the receiver's MODEL reply so the operator
+      // doesn't have to pick from the dropdown when the actual hardware
+      // already told us what it is.
+      if (data.receiver?.model) {
+        setFormData(prev => ({ ...prev, model: data.receiver.model }))
+      }
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err.message || 'Pre-flight network error' })
+    } finally {
+      setPreflightRunning(false)
+    }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -354,6 +399,7 @@ export default function AudioProcessorManager() {
     : null
   const modelHasEthernet = selectedDbxModel?.hasEthernet ?? true
   const showConnectionTypeChoice = formData.processorType === 'dbx-zonepro' && modelHasEthernet
+  const isShure = formData.processorType === 'shure-slxd'
   const showSerialOptions = formData.processorType === 'dbx-zonepro' && formData.connectionType === 'rs232'
   const showCredentials = formData.processorType === 'atlas' || formData.processorType === 'bss-blu'
   const isBss = formData.processorType === 'bss-blu'
@@ -613,6 +659,47 @@ export default function AudioProcessorManager() {
                 </p>
               </div>
             </div>
+
+            {/* Shure SLX-D pre-flight check */}
+            {isShure && (
+              <div className="p-4 bg-cyan-500/10 border border-cyan-500/30 rounded-lg space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-cyan-300">Pre-flight Check</p>
+                    <p className="text-xs text-cyan-300/70">
+                      Verify the receiver is reachable, third-party controls are enabled, and firmware is ≥ 1.1.0 BEFORE saving.
+                      The #1 install failure is the receiver's front-panel
+                      <span className="font-mono"> Menu → Advanced → Network → Allow Third-Party Controls</span> being BLOCKED (default).
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    onClick={runPreflight}
+                    disabled={preflightRunning || !formData.ipAddress.trim()}
+                    className="bg-cyan-600 hover:bg-cyan-700 text-white"
+                  >
+                    {preflightRunning ? (
+                      <span className="inline-flex items-center gap-2"><RefreshCw className="w-3 h-3 animate-spin" /> Running…</span>
+                    ) : 'Run pre-flight'}
+                  </Button>
+                </div>
+                {preflightResult && (
+                  <div className="space-y-1.5">
+                    <div className={`text-xs font-medium ${preflightResult.ready ? 'text-green-400' : 'text-amber-400'}`}>
+                      {preflightResult.ready ? '✓ Ready to save' : '⚠ Issues found — fix before saving'}
+                    </div>
+                    {preflightResult.checks.map((chk) => (
+                      <div key={chk.name} className="flex items-start gap-2 text-xs">
+                        <span className={chk.passed ? 'text-green-400' : 'text-red-400'}>
+                          {chk.passed ? '✓' : '✗'}
+                        </span>
+                        <span className={`flex-1 ${chk.passed ? 'text-slate-300' : 'text-red-300'}`}>{chk.detail}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* RS-232 Settings */}
             {showSerialOptions && (

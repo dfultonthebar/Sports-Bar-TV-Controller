@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Volume2, VolumeX, Minus, Plus, Mic, AlertTriangle, Radio } from 'lucide-react'
+import ShureMicStatusPanel from './ShureMicStatusPanel'
 import { logger } from '@sports-bar/logger'
 
 interface AtlasZone {
@@ -283,6 +284,10 @@ export default function AtlasZoneControl({
 
   return (
     <div className="space-y-3">
+      {/* Shure wireless mic status tile — renders nothing if no Shure
+          receiver configured. Above the Atlas banners so operators see
+          mic status first when there's RF action. */}
+      <ShureMicStatusPanel />
       {priorityActive && (
         <div className="rounded-xl border border-amber-500/40 bg-amber-950/30 px-4 py-3 flex items-center gap-3">
           <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0" />

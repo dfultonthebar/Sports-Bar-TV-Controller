@@ -46,6 +46,95 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-17 — v2.34.1 — Shure SLX-D Phase 2: battery UI + preflight + Atlas correlation + low-battery + mock receiver
+
+**What changed:**
+- **Live battery + RSSI tile on bartender Audio tab** (`ShureMicStatusPanel.tsx`).
+  Per-receiver card, per-channel row showing channel name, frequency,
+  RSSI quality (Excellent/Good/Marginal/Poor color coded), TX type
+  (Handheld/Bodypack/Off), battery bars 0-5 with color tier, runtime
+  minutes when available, last-seen relative time. Polls
+  `/api/shure-rf/status` every 3s. Multi-receiver friendly. Hidden
+  entirely when no Shure receiver configured. Renders ABOVE the
+  Atlas priority banner.
+- **`POST /api/shure-rf/preflight`** — pre-install check endpoint.
+  Body `{ip, port}`, returns checklist: tcpReachable, third-party
+  controls enabled (inferred from REP-within-2s), firmware ≥ 1.1.0,
+  model detected. Catches the #1 install failure (BLOCKED gate)
+  before the operator saves the receiver row.
+- **Pre-flight UI button in `AudioProcessorManager`** — visible only
+  for `processorType='shure-slxd'`. Operator runs the check, gets
+  green/red checklist inline, auto-fills the Model field from the
+  receiver's MODEL reply.
+- **`GET /api/shure-rf/status`** — live per-receiver per-channel
+  snapshot from the managed client cache. Powers the battery tile.
+- **Atlas ↔ Shure correlation** — `atlas-priority-watcher` now queries
+  `shure_rf_events` for a ±30s match before inserting a `mic_active`
+  row. If correlated, writes `event_type='rf_induced_mic_active'` +
+  note containing receiver/freq/RSSI. Banner copy already gestures
+  at this; now the data row proves it. Operator stops chasing ghost
+  overrides.
+- **Low-battery watcher branch** — rising-edge event when
+  `TX_BATT_BARS <= 1` (also fires below; clears when back above).
+  Writes `event_type='low_battery'` with minutes-remaining note.
+- **Mock SLX-D receiver script** (`scripts/mock-shure-receiver.ts`) —
+  developer tool. Scriptable scenarios: `clean`,
+  `interference-rising`, `tx-battery-dying`, `coalesced-frames`,
+  `partial-frames`, `third-party-controls-disabled`. Per-session
+  partial-frame queue (single drain loop) so concurrent send() calls
+  can't interleave halves of different frames. Used by the
+  integration test below.
+- **Integration test** (`scripts/test-shure-parser.ts`) — spawns the
+  mock for each scenario, drives the real `@sports-bar/shure-slxd`
+  client, verifies the parser/cache/event surface. **6/6 scenarios
+  PASS** — parser is verified before any hardware lands.
+- **Dependency update** — `npm audit fix` applied. axios 1.15.0 →
+  1.16.1 (CVE auth-bypass-via-prototype-pollution fix). Total open
+  vulnerabilities: 17 → 13. Remaining 13 require breaking-major
+  upgrades (drizzle-kit, next-pwa transitives) — deferred to
+  dedicated PRs per new Standing Rule #10.
+
+**What could break at a location:**
+- **Locations without a Shure receiver** — battery tile renders
+  nothing, preflight endpoint unused, watcher idles. Safe.
+- **Locations with the existing Shure receiver added but the network
+  not yet ready** — preflight will warn "TCP unreachable". Operator
+  can defer enabling. No regression.
+- **Atlas priority banner copy CHANGES SLIGHTLY** when an RF event is
+  active — adds "(likely RF interference — see below)" suffix. Pure
+  cosmetic; no behavior change.
+
+**Manual steps required:**
+None. All additive. Existing v2.34.0 setup steps in
+`docs/VERSION_SETUP_GUIDE.md` still apply for the Shure receiver
+itself — this batch only adds capabilities on top.
+
+**Rollback notes:**
+- New files are deletable cleanly. The new `event_type='rf_induced_mic_active'`
+  value in `atlas_priority_events` will linger but is harmless —
+  /api/atlas-priority filters by event_type in its summary count but
+  doesn't choke on unknown values.
+- Lockfile dep bumps are safe; rolling back requires `git revert`
+  + `npm install`.
+
+**Affected files:**
+- New: `apps/web/src/app/api/shure-rf/status/route.ts`
+- New: `apps/web/src/app/api/shure-rf/preflight/route.ts`
+- New: `apps/web/src/components/ShureMicStatusPanel.tsx`
+- New: `scripts/mock-shure-receiver.ts`
+- New: `scripts/test-shure-parser.ts`
+- Modified: `packages/shure-slxd/src/shure-slxd-client-manager.ts` (added `getSnapshots()`)
+- Modified: `apps/web/src/lib/shure-rf-watcher.ts` (low-battery branch)
+- Modified: `apps/web/src/lib/atlas-priority-watcher.ts` (Shure correlation)
+- Modified: `apps/web/src/components/AtlasZoneControl.tsx` (mount panel)
+- Modified: `apps/web/src/components/AudioProcessorManager.tsx` (preflight UI)
+- Modified: `package-lock.json` (axios + 3 transitive bumps)
+- Modified: `CLAUDE.md` (new Standing Rule #10 — keep deps updated)
+
+`Checkpoint model: sonnet` — touches multiple watcher paths, schema-touching audit logic in priority watcher.
+
+---
+
 ### 2026-05-17 — v2.34.0 — Shure SLX-D wireless mic RF interference detection
 
 **What changed:**

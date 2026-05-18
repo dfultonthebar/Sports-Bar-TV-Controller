@@ -41,6 +41,7 @@ type ChannelCounters = {
   aboveCount: number
   belowCount: number
   lastEventAt: number // unix sec
+  lowBatteryActive: boolean // tracks rising-edge for TX_BATT_BARS ≤ 1
 }
 const counters = new Map<string, ChannelCounters>()
 
@@ -129,7 +130,40 @@ async function evaluateChannel(args: {
 }): Promise<void> {
   const { receiverId, receiverName, ipAddress, channel, state } = args
   const key = `${receiverId}:${channel}`
-  const c = counters.get(key) ?? { active: false, aboveCount: 0, belowCount: 0, lastEventAt: 0 }
+  const c = counters.get(key) ?? {
+    active: false,
+    aboveCount: 0,
+    belowCount: 0,
+    lastEventAt: 0,
+    lowBatteryActive: false,
+  }
+
+  // Low-battery rising edge — fires when txBattBars drops to ≤ 1 from
+  // a higher value, clears when it goes back above 1 (TX swapped or
+  // batteries replaced). 255 = unknown (alkaline TX), skip.
+  if (state.txBattBars !== undefined && state.txBattBars !== 255) {
+    const wasLow = c.lowBatteryActive
+    const isLow = state.txBattBars <= 1
+    if (isLow && !wasLow) {
+      c.lowBatteryActive = true
+      const mins = state.txBattRuntimeMin
+      const minsNote = mins !== undefined && mins < 65_000
+        ? ` (${mins} min remaining)`
+        : ''
+      await writeEvent({
+        receiverId, receiverName, ipAddress, channel,
+        eventType: 'low_battery',
+        rssiDbm: state.rssiDbm,
+        frequencyMhz: state.frequencyMhz,
+        txType: state.txType,
+        note: `TX battery at ${state.txBattBars} bar(s)${minsNote}`,
+        level: 'warn',
+      })
+    } else if (!isLow && wasLow) {
+      c.lowBatteryActive = false
+      logger.info(`[SHURE-RF-WATCHER] battery recovered on ${receiverName} ch${channel} (${state.txBattBars} bars)`)
+    }
+  }
 
   const rssi = state.rssiDbm
   const txOff = (state.txType ?? '').toUpperCase() === 'UNKNOWN'

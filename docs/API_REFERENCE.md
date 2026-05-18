@@ -419,6 +419,88 @@ client) crashed the zone with no command from this app.
 
 ---
 
+### Shure SLX-D Pre-Install Check
+
+**Endpoint:** `POST /api/shure-rf/preflight`
+
+Verifies an SLX-D receiver is ready for production use BEFORE the operator saves the row in Device Config. Catches the #1 install failure: the front-panel `Menu → Advanced → Network → Allow Third-Party Controls` gate being BLOCKED (default).
+
+**Body:**
+```json
+{ "ip": "192.168.x.y", "port": 2202 }
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "ready": true,
+  "checks": [
+    { "name": "tcpReachable", "passed": true, "detail": "TCP 192.168.x.y:2202 accepted connection" },
+    { "name": "thirdPartyControlsEnabled", "passed": true, "detail": "Receiver responded to commands — third-party controls enabled" },
+    { "name": "firmwareAtLeast110", "passed": true, "detail": "Firmware 2.1.5 (≥ 1.1.0 required for network control)" },
+    { "name": "modelDetected", "passed": true, "detail": "Model: SLXD4D (band G58)" }
+  ],
+  "receiver": { "model": "SLXD4D", "firmwareVersion": "2.1.5", "rfBand": "G58" },
+  "rawFrames": ["< REP 0 FW_VER {2.1.5} >", "< REP 0 MODEL SLXD4D >", "< REP 0 RF_BAND G58 >"]
+}
+```
+
+Uses a one-shot client (no manager registration, no metering, no heartbeat). ~3s wall time for a healthy receiver, ~5s for one with the third-party-controls gate disabled (full connection timeout).
+
+Wired to a "Run pre-flight" button in `AudioProcessorManager` shown only when `processorType='shure-slxd'`. Auto-fills the Model field from the receiver's MODEL reply on success.
+
+---
+
+### Shure SLX-D Live Status (bartender battery + RSSI tile)
+
+**Endpoint:** `GET /api/shure-rf/status`
+
+Live per-receiver per-channel snapshot from the managed `shureSlxdClientManager` cache. Powers the battery + RSSI tile on the bartender Audio tab (`ShureMicStatusPanel.tsx`). Returns cached state — no fresh GETs issued to the receiver. The cache is kept hot by REP-on-change pushes + SAMPLE pushes at the configured METER_RATE.
+
+**Response:**
+```json
+{
+  "success": true,
+  "count": 1,
+  "receivers": [
+    {
+      "receiverId": "uuid",
+      "receiverName": "Bar mics",
+      "ipAddress": "192.168.x.y",
+      "port": 2202,
+      "connected": true,
+      "model": "SLXD4D",
+      "firmwareVersion": "2.1.5",
+      "rfBand": "G58",
+      "deviceId": "Bar-RX1",
+      "channels": [
+        {
+          "channel": 1,
+          "channelName": "Mic 1",
+          "frequencyMhz": 537.125,
+          "rssiDbm": -67,
+          "audioPeakDbfs": -25,
+          "audioRmsDbfs": -33,
+          "audioGainDb": 12,
+          "txType": "SLXD2",
+          "txBattBars": 4,
+          "txBattRuntimeMin": 240,
+          "groupChannel": "06,06",
+          "lockStatus": "OFF",
+          "lastSampleAt": 1748549820,
+          "lastRepAt": 1748549810
+        }
+      ]
+    }
+  ]
+}
+```
+
+At locations without a Shure receiver configured, returns `{ "success": true, "count": 0, "receivers": [] }` — the UI component hides itself in that case.
+
+---
+
 ### Shure SLX-D RF Interference Events (read-only diagnostic)
 
 Returns rows from the `shure_rf_events` audit table. Populated by the

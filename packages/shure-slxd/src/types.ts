@@ -73,6 +73,25 @@ export interface ShureFrame {
 }
 
 /**
+ * Per-receiver snapshot shape returned by
+ * `shureSlxdClientManager.getSnapshots()`. Consumed by both the
+ * `/api/shure-rf/status` endpoint and the bartender battery+RSSI
+ * tile component — exported here so both stay in sync.
+ */
+export interface ShureReceiverSnapshot {
+  receiverId: string
+  receiverName: string
+  ipAddress: string
+  port: number
+  connected: boolean
+  model?: string
+  firmwareVersion?: string
+  rfBand?: string
+  deviceId?: string
+  channels: ShureChannelState[]
+}
+
+/**
  * Public events emitted by ShureSlxdClient.
  */
 export interface ShureClientEvents {
