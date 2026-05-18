@@ -186,6 +186,13 @@ async function evaluateChannel(args: {
     c.belowCount += 1
     c.aboveCount = 0
   } else {
+    // Hysteresis band — RSSI is between activate (-85) and deactivate
+    // (-95) thresholds. Hold current active/inactive state and reset
+    // both counters so a transient spike in the marginal zone doesn't
+    // count toward either edge. Operator-visible consequence: an
+    // active event with fluctuating RSSI in the marginal zone stays
+    // active until RSSI cleanly drops below -95 (intentional —
+    // prevents banner flapping while interference is still real).
     c.aboveCount = 0
     c.belowCount = 0
   }

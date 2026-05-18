@@ -88,10 +88,12 @@ Always on, no subscription. After `< GET 0 ALL >` floods the cache, any property
 ### Connection model
 
 - **TCP port 2202**, ASCII.
+- **Firmware ≥ 1.1.0** required for network control. The pre-flight check probes `FW_VER` and fails if older. Older receivers don't reply to `< GET 0 FW_VER >` at all so the gate is effectively self-enforcing too.
 - Multiple concurrent clients allowed (~3+ documented, design for graceful failure on 5th).
 - **Receiver SILENTLY DROPS** invalid/malformed/out-of-range commands. No `ERR`/`NAK` frame exists in the protocol. Validate via the matching REP echo if you need certainty.
 - 30s heartbeat with 60s deadline matches the production Bitfocus reference; the receiver-side idle timeout is undocumented.
 - Subscriptions (METER_RATE) do **NOT** survive reconnect — re-issue on every connect.
+- **METER_RATE choice (1000 ms in this codebase):** Bitfocus recommends a 5000 ms baseline because very low rates can lock the receiver's web UI. We use **1000 ms** for game-day RF interference detection — fast enough to catch a ghost-carrier signature within ~3 samples (3 s), slow enough not to lock the receiver's web admin UI per the Bitfocus HELP guidance. Spec range is 50-60000 ms.
 
 ### Front-panel gate (CRITICAL — first-install checklist)
 
@@ -172,6 +174,23 @@ Writes are mirrored through `@sports-bar/logger` so they still surface in `pm2 l
 Next.js App Router compiles each `apps/web/src/app/api/**/route.ts` into its own server bundle. A module-private `private static instance` field on `ShureSlxdClientManager` would yield ONE manager per bundle, each owning its own TCP socket to the receiver. Symptom: the bartender remote and admin Audio tab read different stale caches because their bundles' manager instances are listening on different sockets.
 
 Fix: hoist the singleton to `globalThis` via `Symbol.for('@sports-bar/shure-slxd/ShureSlxdClientManager.instance')`. Every bundle's lookup hits the same slot. Per-key in-flight `Promise` lock closes the race window between two concurrent `getClient(K)` calls passing the map.get check before either could insert. Same approach + same incident history as `@sports-bar/atlas` — see CLAUDE.md Gotcha #10.
+
+---
+
+## Related project docs
+
+- **Architecture / surface area:** `CLAUDE.md` §7a — how this package
+  plugs into the watcher + dedicated log file + Atlas-correlation +
+  bartender banner + admin tab.
+- **Per-version setup runbook:** `docs/VERSION_SETUP_GUIDE.md` — the
+  v2.34.0 entry has the operator's first-install checklist (VLAN,
+  front-panel gate, firmware, add via Device Config).
+- **API endpoints exposed:** `docs/API_REFERENCE.md` — `/api/shure-rf`
+  (history), `/api/shure-rf/status` (live snapshot),
+  `/api/shure-rf/preflight` (ADMIN-gated probe).
+- **Per-release notes:** `docs/LOCATION_UPDATE_NOTES.md` — entries from
+  v2.34.0 through v2.34.2 describe what shipped + what to verify
+  post-update.
 
 ---
 

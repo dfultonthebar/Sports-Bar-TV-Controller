@@ -189,8 +189,15 @@ export default function ShureWirelessMicAdmin() {
     return () => { clearInterval(statusId); clearInterval(historyId) }
   }, [fetchReceivers, fetchSnapshots, fetchHistory])
 
-  const runPreflight = async () => {
-    if (!form.ipAddress.trim()) {
+  // Run a pre-flight against an explicit ip/port. Pass the form
+  // button calls this with the form's current IP; the "re-test
+  // existing receiver" row buttons pass the receiver's IP directly.
+  // This avoids racing against React state updates — if we used
+  // `form.ipAddress` here and the caller had just set it via
+  // setForm(...), we'd read the stale closure value.
+  const runPreflightAgainst = async (ip: string, port: number) => {
+    const cleanIp = ip.trim()
+    if (!cleanIp) {
       setMessage({ type: 'error', text: 'IP address required for pre-flight' })
       return
     }
@@ -200,7 +207,7 @@ export default function ShureWirelessMicAdmin() {
       const r = await fetch('/api/shure-rf/preflight', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ip: form.ipAddress.trim(), port: form.tcpPort }),
+        body: JSON.stringify({ ip: cleanIp, port }),
       })
       const data = await r.json()
       if (!r.ok || !data.success) {
@@ -219,13 +226,18 @@ export default function ShureWirelessMicAdmin() {
     }
   }
 
+  // Form's "Run Pre-flight" button — uses the form's current IP/port.
+  const runPreflight = () => runPreflightAgainst(form.ipAddress, form.tcpPort)
+
+  // Per-row "Run Pre-flight" button — uses the row's stored IP/port
+  // directly to avoid the React-state-race that the old setTimeout
+  // path had (form.ipAddress would still be the previous value).
   const runPreflightForExisting = async (rec: ShureReceiverRow) => {
     setMessage(null)
     setPreflight(null)
     setForm({ ...EMPTY_FORM, ipAddress: rec.ipAddress, tcpPort: rec.tcpPort, name: rec.name })
     setShowForm(true)
-    // give the form a tick to mount, then auto-run
-    setTimeout(runPreflight, 0)
+    await runPreflightAgainst(rec.ipAddress, rec.tcpPort)
   }
 
   const submitForm = async (e: React.FormEvent) => {

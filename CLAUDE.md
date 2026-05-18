@@ -234,6 +234,8 @@ Wolf Pack matrix does NOT pass CEC + Spectrum disables CEC in firmware → all c
 #### 7a. Shure SLX-D Wireless Mic RF Interference Detection (v2.34.0+, Phase 2 in v2.34.1)
 `packages/shure-slxd/` — TCP 2202, Shure's ASCII `< VERB CHAN PROP VAL >` line protocol. Built for stadium-adjacent bars where ENG/mobile broadcast rigs step on the bar's wireless mic frequencies and false-trigger the Atlas priority bus. Receiver is monitored, not routed through — this package does NOT replace any Atlas/DBX/BSS DSP function.
 
+**Canonical operator home:** `/device-config` → **Audio** category → **Wireless Mics** tab (v2.34.2+). One place for setup, pre-flight test, live battery + RSSI + frequency tile per channel, event history, dedicated-log-file path, mock-receiver developer command. AudioProcessorManager still works as a backup add-path. **Full SME briefing on RF coordination + protocol details + reference list:** `packages/shure-slxd/README.md`.
+
 **Surface area (Phase 2 — v2.34.1):**
 - **Battery + RSSI tile on bartender Audio tab** — `ShureMicStatusPanel.tsx`, per-receiver / per-channel live status with color-coded battery bars + signal quality, polled every 3s via `GET /api/shure-rf/status`. Hidden when no receiver configured.
 - **Pre-install check** — `POST /api/shure-rf/preflight {ip, port}` one-shot probe returning checklist (TCP reachable, third-party-controls enabled, firmware ≥ 1.1.0, model). Wired to "Run pre-flight" button in Device Config → Audio Processors when type is shure-slxd. Catches the BLOCKED-gate install failure before save.
@@ -424,6 +426,8 @@ public static getInstance(): YourClass {
 **Race-condition addendum:** Even with the singleton fixed, concurrent `getClient(K)` calls for the same key can both pass a `map.get(key)` check before either inserts — creating duplicate clients. Use a per-key in-flight Promise lock (see `AtlasClientManager.getClient` for the pattern).
 
 **Apply this to:** any code where you wrote a "singleton" but a Next.js route bundle could load it. Notably: TCP/UDP socket managers, connection pools, in-memory caches that mirror external state, anything that binds an OS resource.
+
+Same fix applied to **`@sports-bar/shure-slxd`** in v2.34.0 (preemptive — same race, same singleton, before any stuck-cache symptom hit prod). The reconnect path was tightened in v2.37.2 to also use the in-flight Promise lock so concurrent `getClient()` calls on a disconnected client don't both call `connect()` and create duplicate sockets.
 
 ## Development Workflow
 

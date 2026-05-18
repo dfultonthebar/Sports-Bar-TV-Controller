@@ -58,7 +58,19 @@ class ShureSlxdClientManager {
       managed.refCount += 1
       managed.lastUsed = Date.now()
       if (!managed.client.isConnected()) {
-        await managed.client.connect()
+        // Same in-flight Promise lock around the RECONNECT path as
+        // around the CREATE path — without this, two concurrent
+        // getClient() calls on a disconnected client both call
+        // client.connect() concurrently. Atlas hit this exact race
+        // in v2.33.50 (duplicate TCP/UDP sockets per receiver).
+        const reconnectPending = this.inFlight.get(key)
+        if (reconnectPending) {
+          await reconnectPending
+        } else {
+          const reconnectPromise = managed.client.connect()
+          this.inFlight.set(key, reconnectPromise.finally(() => this.inFlight.delete(key)))
+          await reconnectPromise
+        }
       }
       return managed.client
     }

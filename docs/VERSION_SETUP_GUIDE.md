@@ -254,9 +254,18 @@ curl -s http://localhost:3001/api/shure-rf/status | jq '.success'
    ```
 
 4. **Add the receiver row in Device Config.** Browse to
-   `http://<controller>:3001/system-admin` → Audio Processors → Add
-   New → "Shure SLX-D Wireless Mic" → fill in IP, port 2202, channel
-   count, save.
+   `http://<controller>:3001/device-config` → **Audio** category →
+   **Wireless Mics** tab → "Add Receiver" → fill in IP, port 2202,
+   model. Click **Run Pre-flight** inline to verify the four checks
+   (TCP reachable, third-party-controls enabled, firmware ≥ 1.1.0,
+   model detected). Save only when pre-flight is green.
+
+   (The receiver can also be added via the legacy path
+   `/system-admin → Audio Processors` if you prefer, but the dedicated
+   **/device-config → Wireless Mics** tab is the canonical home and
+   gives you the live battery + RSSI + event history side-by-side.
+   Full SME briefing on RF coordination + protocol details:
+   `packages/shure-slxd/README.md`.)
 
 5. **Verify the watcher is monitoring it.** Wait 60-90 seconds after
    add (watcher discovery interval), then:
