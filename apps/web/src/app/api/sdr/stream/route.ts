@@ -88,6 +88,12 @@ export async function GET(request: NextRequest) {
           ORDER BY bucket_at ASC, freq_mhz ASC
           LIMIT 50000
         `)
+        // Bail if client disconnected during the seed query. Otherwise
+        // the timers below are created and orphaned — abort handler
+        // already fired before they existed, so cleanup never runs and
+        // they tick until the process restarts. Caught by code review
+        // on v2.45.0.
+        if (closed) { try { controller.close() } catch {} ; return }
         if (seed.length > 0) {
           // Group by bucket_at so the client can render bucket-by-bucket.
           const byBucket = new Map<number, { bins: number[]; dbms: number[] }>()
