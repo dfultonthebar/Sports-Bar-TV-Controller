@@ -215,6 +215,34 @@ export default function ShureWirelessMicAdmin() {
     }
   }, [historyFilter])
 
+  // Must be declared BEFORE the useEffect below that references it in
+  // the dependency array — otherwise the deps array reads
+  // `loadCachedDigest` during the first render before its `const`
+  // declaration line is reached, producing a TDZ ReferenceError
+  // ("Cannot access 'ec' before initialization" in minified prod
+  // builds). Holmgren 2026-05-18 full-page "Something went wrong"
+  // crash on /device-config came from exactly this — v2.39.0 added
+  // the call in the useEffect body but left the const definition
+  // ~140 lines later, after the other handlers.
+  const loadCachedDigest = useCallback(async () => {
+    try {
+      const r = await fetch('/api/shure-rf/pattern-digest')
+      if (!r.ok) return
+      const data = await r.json()
+      if (data.success && data.digest) {
+        setDigest({
+          text: data.digest,
+          eventCount: data.eventCount,
+          windowDays: data.windowDays,
+          generatedAt: data.generatedAt,
+          stale: !!data.stale,
+          stats: data.stats,
+          model: data.model,
+        })
+      }
+    } catch { /* cache miss or net error — silent */ }
+  }, [])
+
   useEffect(() => {
     fetchReceivers()
     fetchSnapshots()
@@ -348,25 +376,6 @@ export default function ShureWirelessMicAdmin() {
 
   const snapshotByReceiver = (id: string): ShureReceiverSnapshot | undefined =>
     snapshots.find((s) => s.receiverId === id)
-
-  const loadCachedDigest = useCallback(async () => {
-    try {
-      const r = await fetch('/api/shure-rf/pattern-digest')
-      if (!r.ok) return
-      const data = await r.json()
-      if (data.success && data.digest) {
-        setDigest({
-          text: data.digest,
-          eventCount: data.eventCount,
-          windowDays: data.windowDays,
-          generatedAt: data.generatedAt,
-          stale: !!data.stale,
-          stats: data.stats,
-          model: data.model,
-        })
-      }
-    } catch { /* cache miss or net error — silent */ }
-  }, [])
 
   const runDigest = async (force = false) => {
     setDigestRunning(true)
