@@ -16,14 +16,28 @@
  * Idempotent — re-running just refreshes the chunks for the targeted
  * files. Use --clear to wipe + rebuild from scratch.
  *
- * Usage:
+ * Usage (MUST run from apps/web/ cwd so the rag-data path matches
+ * what the Next.js API reads — auto-chdir on launch):
  *   npx tsx scripts/scan-rf-docs.ts
  *   npx tsx scripts/scan-rf-docs.ts --clear
+ *
+ * If you run from repo root the wrapper auto-chdirs into apps/web —
+ * see CWD bug 2026-05-18: writing to ./rag-data from repo root
+ * created a SECOND vector-store.json the API never read from.
  */
-
 import path from 'path'
+import { chdir, cwd } from 'process'
 import fs from 'fs/promises'
-import { scanDocuments, processDocuments } from '../apps/web/src/lib/rag-server/doc-processor'
+
+// CRITICAL chdir-before-import — see scan-system-docs.ts for the
+// full incident note. tsx CJS doesn't allow top-level await, so
+// use dynamic require() after the chdir call.
+const REPO_ROOT_FROM_SCRIPT = path.resolve(__dirname, '..')
+chdir(path.join(REPO_ROOT_FROM_SCRIPT, 'apps', 'web'))
+console.log('[scan-rf] chdir →', cwd())
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { scanDocuments, processDocuments } = require('../apps/web/src/lib/rag-server/doc-processor')
 import {
   clearVectorStore,
   addChunks,
