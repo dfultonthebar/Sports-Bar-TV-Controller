@@ -257,6 +257,34 @@ Wolf Pack matrix does NOT pass CEC + Spectrum disables CEC in firmware → all c
 - Front-panel gate `Menu → Advanced → Network → Allow Third-Party Controls → Enable` defaults to BLOCKED; without it, port 2202 accepts the TCP connection but silently drops every command. **First-install checklist must verify this gate.**
 - **Auto Scan is NOT available over the network** — only front-panel Group/Channel Scan, or WWB6 (different protocol). Software-side workaround is to maintain a candidate-frequency list and hop manually; causes audio click on every hop.
 
+#### 7b. SDR Spectrum Monitor — wide-band RF context (v2.41.0+)
+
+**Purpose:** complement the Shure receiver's narrow per-channel view with a wide-band RTL-SDR sweep so the system sees ALL activity in the band, not just on our tuned freqs. Provides cross-confirmation for Shure interference events + early warning when a new carrier appears in the band before it hits our channel.
+
+**Hardware:** NooElec NESDR Smart (RTL-SDR v3 derivative, ~$35) or any rtl-sdr-compatible dongle on USB. Coverage 25 MHz – 1.7 GHz, more than enough for G58 (470-514 MHz) plus H55 / J50A / J52A if the operator ever adds receivers in those bands.
+
+**One-time setup:** `sudo bash scripts/setup-sdr.sh` — apt installs rtl-sdr, writes `/etc/modprobe.d/blacklist-rtl.conf` (the #1 first-install failure is the kernel DVB-USB driver grabbing the dongle before user-space tools can), live-unloads any running DVB modules, appends `SDR_ENABLED=auto` to `.env`. Idempotent. After this, plugging in a dongle ANY time auto-starts the watcher within 5 min — no PM2 restart.
+
+**Watcher (`apps/web/src/lib/sdr-watcher.ts`):** spawns `rtl_power -f <start>M:<end>M:25k -i 1 -e 0 -g 25` as a long-lived child. Parses CSV output line-by-line, two paths per sample:
+- **Aggregator** — max/avg/count per (minute, freq) bucket in memory, flushed to `sdr_spectrum` at minute rollover. Storage budget ~290 MB/year.
+- **Carrier detection** — per freq bin, count consecutive samples ≥ `-85 dBm` threshold (CARRIER_DETECT_SAMPLES=3 → rising-edge `carrier_active` row; CARRIER_CLEAR_SAMPLES=5 → falling-edge `carrier_cleared` row). Heartbeat every 30s while active. Same hysteresis shape as the Shure and Atlas priority watchers.
+
+**`SDR_ENABLED` env modes:** `auto` (recommended — start only when dongle detected, probe every 5 min), `true` (force-start, error if no dongle), `false`/unset (off, no probes).
+
+**Auto band-tracking:** `SDR_BAND_PRESET=auto` (default) reads `shureSlxdClientManager.getSnapshots()` every 5 min, sweeps MIN-5 MHz to MAX+5 MHz across the actual Shure receiver freqs. Operator adds an H55 receiver → SDR sweep follows. Other presets: `uhf-wireless` (470-700 MHz fixed), `full-uhf` (470-960 MHz), `custom` (use SDR_BAND_START_MHZ/END_MHZ).
+
+**API endpoints:**
+- `GET /api/sdr/status` — liveness + active-carriers list (polled every 30s by the UI for header info)
+- `GET /api/sdr/history?minutesAgo=N` — pivoted 2D grid (time × freq) for waterfall, used for initial render
+- `GET /api/sdr/stream` — Server-Sent Events live push: `bucket` (per-minute spectrum row), `carrier` (active/cleared events), `heartbeat`. Replaces history polling for real-time waterfall updates
+- `GET /api/sdr/peak-stats?daysAgo=7&topN=20` — per-freq aggregates: max, avg, p95, hot-minutes count. Foundation for Stage 2 (recurring-pattern detector) and Stage 3 (frequency-suggestion engine)
+
+**Cross-confirmation with Shure:** when `shure-rf-watcher` fires `rf_interference`, it queries `sdr_carriers` within ±60s at the same freq (±50 kHz tolerance). If matched, the event's `note` gets `(SDR-confirmed, SDR peak X dBm)`. UI shows a purple "SDR-confirmed" badge on event-history rows. Ollama pattern digest is told to weight these higher when recommending mitigation.
+
+**UI surface:** `/device-config → Audio → Wireless Mics → RF Spectrum Monitor` — canvas waterfall (annotated with our Shure freqs as cyan vertical lines + Green Bay TV station edges WCWF/WLUK as dashed white lines), click any column to inspect 7-day peak-stats for that freq. Three render states: disabled (setup instructions), waiting-for-sweep (warn), live (waterfall + carriers).
+
+**Wrapped in SafeBoundary** — a render crash in the SDR panel only shows a tiny red inline card, doesn't escalate to the global "Something went wrong" page boundary.
+
 #### 8. Wolf Pack Multi-View Card Control
 `packages/multiview/` — HDTVSupply 4K60 Quad-View cards in Wolf Pack slots. RS-232 USB (115200 8N1), 8 display modes (single → quad), hex frame format. DB: `WolfpackMultiViewCard`. Full hex frames + mode table: `packages/multiview/README.md`.
 
