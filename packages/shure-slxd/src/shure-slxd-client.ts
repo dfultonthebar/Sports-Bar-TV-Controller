@@ -247,11 +247,20 @@ export class ShureSlxdClient extends EventEmitter {
   }
 
   /**
-   * Set the audio output gain trim for a channel (-32 to +32 dB on SLX-D
-   * per the spec). Silent drop if out of range.
+   * Set the audio output gain trim for a channel. Caller passes dB
+   * value in the valid range -18 to +42 (per SLX-D spec). On the
+   * wire AUDIO_GAIN is a raw 0-60 integer where `raw - 18 = dB`, so
+   * we add the +18 offset before sending.
+   *
+   * v2.39.0 BUG (fixed v2.39.1): writer was passing dB directly, no
+   * offset — sending +20 dB landed as +2 dB on the receiver, sending
+   * any negative dB was silently dropped (raw < 0 out of range, no
+   * ERR frame per protocol). Reader at applyRepToChannels line 456
+   * was already doing the correct `raw - 18` inverse.
    */
   async setAudioGain(channel: number, gainDb: number): Promise<void> {
-    this.sendRaw(`${SHURE_PROTOCOL.FRAME_OPEN}SET ${channel} AUDIO_GAIN ${Math.round(gainDb)}${SHURE_PROTOCOL.FRAME_CLOSE}`)
+    const raw = Math.round(gainDb) + 18
+    this.sendRaw(`${SHURE_PROTOCOL.FRAME_OPEN}SET ${channel} AUDIO_GAIN ${raw}${SHURE_PROTOCOL.FRAME_CLOSE}`)
   }
 
   /** Flash the receiver's front-panel LEDs for visual ID (~30s auto-off). */

@@ -44,7 +44,12 @@ const channelPatchSchema = z.object({
   channel: z.number().int().min(1).max(4),
   name: z.string().min(1).max(31).regex(/^[^<>{}]+$/).optional(),
   freqMhz: z.number().min(174).max(960).optional(),
-  audioGain: z.number().int().min(-32).max(32).optional(),
+  // SLX-D AUDIO_GAIN range is -18 to +42 dB (raw 0-60 with offset -18,
+  // per packages/shure-slxd/README.md). The previous -32..+32 range
+  // accepted values the receiver silently drops (anything < -18 is
+  // out of the raw 0-60 wire range) — caught by code review on v2.39.0
+  // before any operator hit the edit UI.
+  audioGain: z.number().int().min(-18).max(42).optional(),
 })
 
 export async function PATCH(request: NextRequest) {

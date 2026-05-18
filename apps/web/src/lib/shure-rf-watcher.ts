@@ -85,12 +85,21 @@ async function writeEvent(args: {
   receiverName: string
   ipAddress: string
   channel: number
-  eventType: 'rf_interference' | 'rf_interference_heartbeat' | 'rf_cleared' | 'tx_offline' | 'tx_online' | 'low_battery' | 'startup' | 'freq_changed'
+  eventType:
+    | 'rf_interference'
+    | 'rf_interference_heartbeat'
+    | 'rf_cleared'
+    | 'tx_offline'
+    | 'tx_online'
+    | 'low_battery'
+    | 'startup'
+    | 'freq_changed'
+    | 'baseline_sample'
   rssiDbm?: number
   frequencyMhz?: number
   txType?: string
   note?: string
-  level?: 'info' | 'warn' | 'error'
+  level?: 'info' | 'warn' | 'error' | 'debug'
 }): Promise<void> {
   const now = Math.floor(Date.now() / 1000)
   await db.run(sql`
