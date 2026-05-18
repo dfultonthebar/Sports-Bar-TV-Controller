@@ -44,11 +44,23 @@ const BSS_MODELS = [
   { value: 'BLU-806DA', label: 'BLU-806DA - Signal Processor + Dante/AES67', inputs: 16, outputs: 16, zones: 8, hasDante: true, hasCobraNet: false },
 ]
 
+// Shure SLX-D wireless mic receivers. "Zones" here is channel count
+// (1 or 2). Network-only, TCP 2202. NOT an audio routing processor —
+// these are monitored for RF interference detection only.
+const SHURE_SLXD_MODELS = [
+  { value: 'SLXD4', label: 'SLXD4 - Single Channel Receiver', zones: 1 },
+  { value: 'SLXD4D', label: 'SLXD4D - Dual Channel Receiver', zones: 2 },
+  { value: 'SLXD24', label: 'SLXD24 - Handheld Combo (single)', zones: 1 },
+  { value: 'SLXD24D', label: 'SLXD24D - Dual Handheld Combo', zones: 2 },
+  { value: 'SLXD14', label: 'SLXD14 - Bodypack Combo (single)', zones: 1 },
+  { value: 'SLXD14D', label: 'SLXD14D - Dual Bodypack Combo', zones: 2 },
+]
+
 interface AudioProcessor {
   id: string
   name: string
   model: string
-  processorType: 'atlas' | 'dbx-zonepro' | 'bss-blu'
+  processorType: 'atlas' | 'dbx-zonepro' | 'bss-blu' | 'shure-slxd'
   ipAddress: string
   port: number
   tcpPort: number
@@ -70,7 +82,7 @@ interface AudioProcessor {
 interface ProcessorFormData {
   id?: string
   name: string
-  processorType: 'atlas' | 'dbx-zonepro' | 'bss-blu'
+  processorType: 'atlas' | 'dbx-zonepro' | 'bss-blu' | 'shure-slxd'
   model: string
   ipAddress: string
   port: number
@@ -104,6 +116,13 @@ const defaultFormData: ProcessorFormData = {
   password: ''
 }
 
+interface PreflightCheck { name: string; passed: boolean; detail: string }
+interface PreflightResult {
+  ready: boolean
+  checks: PreflightCheck[]
+  receiver: { model: string | null; firmwareVersion: string | null; rfBand: string | null }
+}
+
 export default function AudioProcessorManager() {
   const [processors, setProcessors] = useState<AudioProcessor[]>([])
   const [loading, setLoading] = useState(true)
@@ -113,6 +132,8 @@ export default function AudioProcessorManager() {
   const [saving, setSaving] = useState(false)
   const [testing, setTesting] = useState<string | null>(null)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [preflightRunning, setPreflightRunning] = useState(false)
+  const [preflightResult, setPreflightResult] = useState<PreflightResult | null>(null)
 
   useEffect(() => {
     fetchProcessors()
@@ -134,10 +155,10 @@ export default function AudioProcessorManager() {
     }
   }
 
-  const handleProcessorTypeChange = (type: 'atlas' | 'dbx-zonepro' | 'bss-blu') => {
+  const handleProcessorTypeChange = (type: 'atlas' | 'dbx-zonepro' | 'bss-blu' | 'shure-slxd') => {
     let defaultModel: string
     let defaultTcpPort: number
-    let models: typeof ATLAS_MODELS | typeof DBX_MODELS | typeof BSS_MODELS
+    let models: typeof ATLAS_MODELS | typeof DBX_MODELS | typeof BSS_MODELS | typeof SHURE_SLXD_MODELS
 
     if (type === 'atlas') {
       defaultModel = 'AZM8'
@@ -147,11 +168,16 @@ export default function AudioProcessorManager() {
       defaultModel = 'ZonePRO 640m'
       defaultTcpPort = 3804
       models = DBX_MODELS
-    } else {
+    } else if (type === 'bss-blu') {
       // BSS BLU - HiQnet uses port 1023
       defaultModel = 'BLU-100'
       defaultTcpPort = 1023
       models = BSS_MODELS
+    } else {
+      // Shure SLX-D - ASCII line protocol on port 2202
+      defaultModel = 'SLXD24D'
+      defaultTcpPort = 2202
+      models = SHURE_SLXD_MODELS
     }
 
     const modelConfig = models.find(m => m.value === defaultModel)
@@ -165,26 +191,29 @@ export default function AudioProcessorManager() {
       zones: modelConfig?.zones || 4,
       inputs: bssModel?.inputs || prev.inputs,
       outputs: bssModel?.outputs || prev.outputs,
-      // BSS is always ethernet, dbx depends on model
+      // BSS, Atlas, Shure are always ethernet; dbx depends on model
       connectionType: type === 'dbx-zonepro' && !defaultModel.includes('m') ? 'rs232' : 'ethernet'
     }))
   }
 
   const handleModelChange = (model: string) => {
-    let models: typeof ATLAS_MODELS | typeof DBX_MODELS | typeof BSS_MODELS
+    let models: typeof ATLAS_MODELS | typeof DBX_MODELS | typeof BSS_MODELS | typeof SHURE_SLXD_MODELS
     if (formData.processorType === 'atlas') {
       models = ATLAS_MODELS
     } else if (formData.processorType === 'dbx-zonepro') {
       models = DBX_MODELS
-    } else {
+    } else if (formData.processorType === 'bss-blu') {
       models = BSS_MODELS
+    } else {
+      models = SHURE_SLXD_MODELS
     }
     const modelConfig = models.find(m => m.value === model)
 
-    // For dbx, check if model has ethernet (m suffix)
+    // For dbx, check if model has ethernet (m suffix). Atlas, BSS,
+    // Shure are always ethernet.
     const hasEthernet = formData.processorType === 'dbx-zonepro'
       ? DBX_MODELS.find(m => m.value === model)?.hasEthernet ?? true
-      : true // Atlas and BSS are always ethernet
+      : true
 
     // Get BSS-specific I/O counts
     const bssModel = formData.processorType === 'bss-blu'
@@ -199,6 +228,42 @@ export default function AudioProcessorManager() {
       outputs: bssModel?.outputs || prev.outputs,
       connectionType: hasEthernet ? 'ethernet' : 'rs232'
     }))
+  }
+
+  const runPreflight = async () => {
+    if (!formData.ipAddress.trim()) {
+      setMessage({ type: 'error', text: 'IP address required for pre-flight check' })
+      return
+    }
+    setPreflightRunning(true)
+    setPreflightResult(null)
+    try {
+      const r = await fetch('/api/shure-rf/preflight', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ip: formData.ipAddress.trim(), port: formData.tcpPort }),
+      })
+      const data = await r.json()
+      if (!r.ok || !data.success) {
+        setMessage({ type: 'error', text: data.error || 'Pre-flight check failed' })
+        return
+      }
+      setPreflightResult({
+        ready: data.ready,
+        checks: data.checks,
+        receiver: data.receiver,
+      })
+      // Auto-fill model from the receiver's MODEL reply so the operator
+      // doesn't have to pick from the dropdown when the actual hardware
+      // already told us what it is.
+      if (data.receiver?.model) {
+        setFormData(prev => ({ ...prev, model: data.receiver.model }))
+      }
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err.message || 'Pre-flight network error' })
+    } finally {
+      setPreflightRunning(false)
+    }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -322,7 +387,9 @@ export default function AudioProcessorManager() {
     ? ATLAS_MODELS
     : formData.processorType === 'dbx-zonepro'
       ? DBX_MODELS
-      : BSS_MODELS
+      : formData.processorType === 'bss-blu'
+        ? BSS_MODELS
+        : SHURE_SLXD_MODELS
   const selectedModel = models.find(m => m.value === formData.model)
   const selectedDbxModel = formData.processorType === 'dbx-zonepro'
     ? DBX_MODELS.find(m => m.value === formData.model)
@@ -332,6 +399,7 @@ export default function AudioProcessorManager() {
     : null
   const modelHasEthernet = selectedDbxModel?.hasEthernet ?? true
   const showConnectionTypeChoice = formData.processorType === 'dbx-zonepro' && modelHasEthernet
+  const isShure = formData.processorType === 'shure-slxd'
   const showSerialOptions = formData.processorType === 'dbx-zonepro' && formData.connectionType === 'rs232'
   const showCredentials = formData.processorType === 'atlas' || formData.processorType === 'bss-blu'
   const isBss = formData.processorType === 'bss-blu'
@@ -434,6 +502,21 @@ export default function AudioProcessorManager() {
                     className="text-purple-500"
                   />
                   <span className="text-slate-200">BSS Soundweb London</span>
+                </label>
+                <label className={`flex items-center space-x-2 p-3 rounded-lg border cursor-pointer transition-colors ${
+                  formData.processorType === 'shure-slxd'
+                    ? 'border-cyan-500 bg-cyan-500/10'
+                    : 'border-slate-600 hover:border-slate-500'
+                }`}>
+                  <input
+                    type="radio"
+                    name="processorType"
+                    value="shure-slxd"
+                    checked={formData.processorType === 'shure-slxd'}
+                    onChange={() => handleProcessorTypeChange('shure-slxd')}
+                    className="text-cyan-500"
+                  />
+                  <span className="text-slate-200">Shure SLX-D Wireless Mic</span>
                 </label>
               </div>
             </div>
@@ -576,6 +659,47 @@ export default function AudioProcessorManager() {
                 </p>
               </div>
             </div>
+
+            {/* Shure SLX-D pre-flight check */}
+            {isShure && (
+              <div className="p-4 bg-cyan-500/10 border border-cyan-500/30 rounded-lg space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-cyan-300">Pre-flight Check</p>
+                    <p className="text-xs text-cyan-300/70">
+                      Verify the receiver is reachable, third-party controls are enabled, and firmware is ≥ 1.1.0 BEFORE saving.
+                      The #1 install failure is the receiver's front-panel
+                      <span className="font-mono"> Menu → Advanced → Network → Allow Third-Party Controls</span> being BLOCKED (default).
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    onClick={runPreflight}
+                    disabled={preflightRunning || !formData.ipAddress.trim()}
+                    className="bg-cyan-600 hover:bg-cyan-700 text-white"
+                  >
+                    {preflightRunning ? (
+                      <span className="inline-flex items-center gap-2"><RefreshCw className="w-3 h-3 animate-spin" /> Running…</span>
+                    ) : 'Run pre-flight'}
+                  </Button>
+                </div>
+                {preflightResult && (
+                  <div className="space-y-1.5">
+                    <div className={`text-xs font-medium ${preflightResult.ready ? 'text-green-400' : 'text-amber-400'}`}>
+                      {preflightResult.ready ? '✓ Ready to save' : '⚠ Issues found — fix before saving'}
+                    </div>
+                    {preflightResult.checks.map((chk) => (
+                      <div key={chk.name} className="flex items-start gap-2 text-xs">
+                        <span className={chk.passed ? 'text-green-400' : 'text-red-400'}>
+                          {chk.passed ? '✓' : '✗'}
+                        </span>
+                        <span className={`flex-1 ${chk.passed ? 'text-slate-300' : 'text-red-300'}`}>{chk.detail}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* RS-232 Settings */}
             {showSerialOptions && (

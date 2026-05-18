@@ -23,6 +23,8 @@ import { Label } from '@/components/ui/label'
 import SportsBarLayout from '@/components/SportsBarLayout'
 import SportsBarHeader from '@/components/SportsBarHeader'
 import TVNetworkDiscovery from '@/components/tv-network/TVNetworkDiscovery'
+import ShureWirelessMicAdmin from '@/components/ShureWirelessMicAdmin'
+import DeviceConfigOverview from '@/components/device-config/DeviceConfigOverview'
 import { logger } from '@sports-bar/logger'
 import {
   Satellite,
@@ -39,10 +41,159 @@ import {
   Star,
   Cable,
   Lightbulb,
-  PlayCircle
+  PlayCircle,
+  Wifi,
+  Mic2,
+  Sun,
+  LayoutDashboard,
+  ChevronUp,
+  ChevronDown,
 } from 'lucide-react'
 import DMXControllerManager from '@/components/dmx/DMXControllerManager'
 import { CommercialLightingManager } from '@/components/commercial-lighting'
+
+/**
+ * Two-level tab navigation grouping. Each entry is one top-level
+ * category button. `tabs[]` is the sub-tab IDs (must match the value
+ * of the corresponding TabsTrigger / TabsContent below). The first
+ * tab in each group is the default landing when the operator picks
+ * that category.
+ *
+ * Adding a new tab: append its ID to the relevant group's `tabs[]`
+ * AND add a matching TabsTrigger + TabsContent below. The trigger's
+ * value must equal the ID; otherwise the sub-tab row filter will
+ * silently hide it.
+ *
+ * Adding a new category: add a new entry here + add it to GROUP_ORDER.
+ */
+const TAB_GROUPS: Record<string, { label: string; icon: React.ComponentType<{ className?: string }>; tabs: string[] }> = {
+  overview:  { label: 'Overview',  icon: LayoutDashboard, tabs: ['overview'] },
+  channels:  { label: 'Channels',  icon: Star,            tabs: ['channel-presets', 'sports-channels', 'channel-finder'] },
+  video:     { label: 'Video',     icon: Tv,              tabs: ['directv', 'firetv', 'everpass', 'cec-discovery', 'subscriptions'] },
+  audio:     { label: 'Audio',     icon: Music2,          tabs: ['soundtrack', 'shure-mics'] },
+  hardware:  { label: 'Hardware',  icon: Settings,        tabs: ['globalcache', 'ir', 'dmx', 'commercial-lighting'] },
+}
+const GROUP_ORDER = ['overview', 'channels', 'video', 'audio', 'hardware'] as const
+
+function groupForTab(tab: string): string {
+  for (const key of GROUP_ORDER) {
+    if (TAB_GROUPS[key].tabs.includes(tab)) return key
+  }
+  return 'overview'
+}
+
+/**
+ * Small helper rendered next to a CardTitle when AI Enhancements are
+ * enabled. Replaces 9 copy-paste occurrences of the same conditional
+ * Badge in this file.
+ */
+function AiHintBadge({ enabled }: { enabled: boolean }) {
+  if (!enabled) return null
+  return (
+    <Badge className="bg-purple-100 text-purple-800">
+      <Brain className="w-3 h-3 mr-1" />
+      AI Enhanced
+    </Badge>
+  )
+}
+
+/**
+ * Returns the AI-enhanced description if enabled, otherwise the
+ * fallback. Lets every CardDescription render as a single ternary
+ * instead of 4 lines of JSX.
+ */
+function describe(enabled: boolean, fallback: string, ai: string): string {
+  return enabled ? ai : fallback
+}
+
+/**
+ * Standardized tab section header. Every TabsContent in /device-config
+ * starts with one of these so the layout reads consistently —
+ * icon + title (+ optional AI badge) + description, with optional
+ * extra context rendered as CardContent children (info boxes,
+ * supported-hardware lists, bartender-remote toggles, etc.).
+ *
+ * Replaces ~120 lines of copy-paste Card/CardHeader boilerplate
+ * across the file. Three tabs that used to skip the header card
+ * entirely (Sports Channels, Channel Finder, TV Discovery) now also
+ * have a header so the visual rhythm of the page is uniform.
+ */
+function SectionHeader({
+  icon: Icon,
+  iconColor,
+  title,
+  description,
+  aiEnabled,
+  aiDescription,
+  children,
+}: {
+  icon: React.ComponentType<{ className?: string }>
+  iconColor: string
+  title: React.ReactNode
+  description: React.ReactNode
+  aiEnabled?: boolean
+  aiDescription?: React.ReactNode
+  children?: React.ReactNode
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Icon className={`w-5 h-5 ${iconColor}`} />
+          {title}
+          {aiEnabled !== undefined && <AiHintBadge enabled={!!aiEnabled} />}
+        </CardTitle>
+        <CardDescription>
+          {aiEnabled && aiDescription ? aiDescription : description}
+        </CardDescription>
+      </CardHeader>
+      {children && <CardContent>{children}</CardContent>}
+    </Card>
+  )
+}
+
+/**
+ * Reusable "Enable on Bartender Remote" toggle box. Was duplicated
+ * verbatim in the DMX and Commercial Lighting tabs.
+ */
+function BartenderRemoteToggle({
+  id,
+  controlName,
+  enabled,
+  loading,
+  onToggle,
+}: {
+  id: string
+  controlName: string
+  enabled: boolean
+  loading: boolean
+  onToggle: (checked: boolean) => void
+}) {
+  return (
+    <div className="mb-6 p-4 bg-green-900/30 rounded-lg border border-green-500/30">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Lightbulb className="w-5 h-5 text-green-400" />
+          <div>
+            <Label htmlFor={id} className="text-sm font-medium text-green-200">
+              Enable on Bartender Remote
+            </Label>
+            <p className="text-xs text-green-400">
+              When enabled, {controlName} controls will appear on the Bartender Remote page
+            </p>
+          </div>
+        </div>
+        <Switch
+          id={id}
+          checked={enabled}
+          disabled={loading}
+          onCheckedChange={onToggle}
+          className="data-[state=checked]:bg-green-600"
+        />
+      </div>
+    </div>
+  )
+}
 
 export default function DeviceConfigPage() {
   const [aiEnhancementsEnabled, setAiEnhancementsEnabled] = useState(false)
@@ -50,6 +201,14 @@ export default function DeviceConfigPage() {
   const [mounted, setMounted] = useState(false)
   const [aiActionLoading, setAiActionLoading] = useState<string | null>(null)
   const [aiActionResult, setAiActionResult] = useState<any>(null)
+  // Active tab is controlled so the Overview's alert rows can jump
+  // the operator to the relevant tab (e.g. "X Fire TVs offline →
+  // [View]" warps to the Fire TV tab).
+  const [activeTab, setActiveTab] = useState('overview')
+  // Quick Actions sidebar is opt-in expanded — too much vertical
+  // space when collapsed by default keeps the actual tab content
+  // above the fold.
+  const [quickActionsOpen, setQuickActionsOpen] = useState(false)
 
   // Lighting visibility settings
   const [dmxLightingEnabled, setDmxLightingEnabled] = useState(false)
@@ -180,7 +339,7 @@ export default function DeviceConfigPage() {
               <span className="text-sm font-medium text-slate-300">AI Enhancements</span>
             </div>
             <Button
-              variant={aiEnhancementsEnabled ? "default" : "outline-solid"}
+              variant={aiEnhancementsEnabled ? "default" : "outline"}
               size="sm"
               onClick={toggleAiEnhancements}
               className="flex items-center gap-2"
@@ -204,7 +363,7 @@ export default function DeviceConfigPage() {
       <div className="container mx-auto px-4 py-8 space-y-6">
         {/* AI Enhancement Notice */}
         {aiEnhancementsEnabled && (
-          <div className="card p-4 border-blue-600/50 bg-linear-to-r from-blue-900/40 to-purple-900/40">
+          <div className="card p-4 border-blue-600/50 bg-gradient-to-r from-blue-900/40 to-purple-900/40">
             <div className="flex items-center gap-3">
               <Brain className="w-6 h-6 text-blue-400" />
               <div>
@@ -234,120 +393,175 @@ export default function DeviceConfigPage() {
         </Badge>
       </div>
 
-      {/* Device Tabs */}
-      <Tabs defaultValue="channel-presets" className="space-y-6">
-        <TabsList className="grid w-full" style={{ gridTemplateColumns: 'repeat(13, minmax(0, 1fr))' }}>
-          <TabsTrigger value="channel-presets" className="flex items-center gap-2">
-            <Star className="w-4 h-4" />
-            Channel Presets
-          </TabsTrigger>
-          <TabsTrigger value="sports-channels" className="flex items-center gap-2">
-            <Tv className="w-4 h-4" />
-            Sports Channels
-          </TabsTrigger>
-          <TabsTrigger value="channel-finder" className="flex items-center gap-2">
-            <Cable className="w-4 h-4" />
-            Channel Finder
-          </TabsTrigger>
-          <TabsTrigger value="directv" className="flex items-center gap-2">
-            <Satellite className="w-4 h-4" />
-            DirecTV
-          </TabsTrigger>
-          <TabsTrigger value="firetv" className="flex items-center gap-2">
-            <MonitorPlay className="w-4 h-4" />
-            Fire TV
-          </TabsTrigger>
-          <TabsTrigger value="everpass" className="flex items-center gap-2">
-            <PlayCircle className="w-4 h-4" />
-            EverPass
-          </TabsTrigger>
-          <TabsTrigger value="globalcache" className="flex items-center gap-2">
-            <Radio className="w-4 h-4" />
-            Global Cache
-          </TabsTrigger>
-          <TabsTrigger value="ir" className="flex items-center gap-2">
-            <Radio className="w-4 h-4" />
-            IR Devices
-          </TabsTrigger>
-          <TabsTrigger value="dmx" className="flex items-center gap-2">
-            <Lightbulb className="w-4 h-4" />
-            DMX Lighting
-          </TabsTrigger>
-          <TabsTrigger value="commercial-lighting" className="flex items-center gap-2">
-            <Lightbulb className="w-4 h-4" />
-            Commercial
-          </TabsTrigger>
-          <TabsTrigger value="soundtrack" className="flex items-center gap-2">
-            <Music2 className="w-4 h-4" />
-            Soundtrack
-          </TabsTrigger>
-          <TabsTrigger value="cec-discovery" className="flex items-center gap-2">
-            <Tv className="w-4 h-4" />
-            TV Discovery
-          </TabsTrigger>
-          <TabsTrigger value="subscriptions" className="flex items-center gap-2">
-            <BarChart3 className="w-4 h-4" />
-            Subscriptions
-          </TabsTrigger>
-        </TabsList>
+      {/* Two-level tab navigation (v2.37+):
+       *   Row 1: 5 category buttons (Overview, Channels, Video, Audio,
+       *          Hardware). Click switches activeTab to the first
+       *          sub-tab of that category.
+       *   Row 2: the active category's sub-tabs (or nothing for
+       *          Overview, which is a single-tab category).
+       *   The Tabs `value` is still the individual sub-tab ID, so
+       *   existing bookmarks (e.g. operator pinned "DirecTV") still
+       *   land on the right content; the group selector is purely
+       *   derived from activeTab via groupForTab(). */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+        {/* Top row — category selector */}
+        <div className="flex w-full overflow-x-auto flex-nowrap gap-1 p-1 bg-slate-900/40 border border-slate-700/50 rounded-lg">
+          {GROUP_ORDER.map((key) => {
+            const meta = TAB_GROUPS[key]
+            const Icon = meta.icon
+            const isActive = groupForTab(activeTab) === key
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setActiveTab(meta.tabs[0])}
+                className={`flex items-center gap-2 flex-shrink-0 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                  isActive
+                    ? 'bg-cyan-500/15 text-cyan-300 border border-cyan-500/40'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 border border-transparent'
+                }`}
+              >
+                <Icon className="w-4 h-4" />
+                {meta.label}
+                {meta.tabs.length > 1 && (
+                  <span className={`text-[10px] font-mono px-1 rounded ${
+                    isActive ? 'bg-cyan-500/20 text-cyan-200' : 'bg-slate-800 text-slate-500'
+                  }`}>
+                    {meta.tabs.length}
+                  </span>
+                )}
+              </button>
+            )
+          })}
+        </div>
+
+        {/* Row 2 — sub-tabs for the active category. Hidden when the
+            active group has only one tab (Overview). */}
+        {TAB_GROUPS[groupForTab(activeTab)].tabs.length > 1 && (
+          <TabsList className="flex w-full overflow-x-auto flex-nowrap gap-1 p-1 justify-start">
+            {groupForTab(activeTab) === 'channels' && (
+              <>
+                <TabsTrigger value="channel-presets" className="flex items-center gap-2 flex-shrink-0">
+                  <Star className="w-4 h-4" />
+                  Channel Presets
+                </TabsTrigger>
+                <TabsTrigger value="sports-channels" className="flex items-center gap-2 flex-shrink-0">
+                  <Tv className="w-4 h-4" />
+                  Sports Channels
+                </TabsTrigger>
+                <TabsTrigger value="channel-finder" className="flex items-center gap-2 flex-shrink-0">
+                  <Cable className="w-4 h-4" />
+                  Channel Finder
+                </TabsTrigger>
+              </>
+            )}
+            {groupForTab(activeTab) === 'video' && (
+              <>
+                <TabsTrigger value="directv" className="flex items-center gap-2 flex-shrink-0">
+                  <Satellite className="w-4 h-4" />
+                  DirecTV
+                </TabsTrigger>
+                <TabsTrigger value="firetv" className="flex items-center gap-2 flex-shrink-0">
+                  <MonitorPlay className="w-4 h-4" />
+                  Fire TV
+                </TabsTrigger>
+                <TabsTrigger value="everpass" className="flex items-center gap-2 flex-shrink-0">
+                  <PlayCircle className="w-4 h-4" />
+                  EverPass
+                </TabsTrigger>
+                <TabsTrigger value="cec-discovery" className="flex items-center gap-2 flex-shrink-0">
+                  <Tv className="w-4 h-4" />
+                  TV Discovery
+                </TabsTrigger>
+                <TabsTrigger value="subscriptions" className="flex items-center gap-2 flex-shrink-0">
+                  <BarChart3 className="w-4 h-4" />
+                  Subscriptions
+                </TabsTrigger>
+              </>
+            )}
+            {groupForTab(activeTab) === 'audio' && (
+              <>
+                <TabsTrigger value="soundtrack" className="flex items-center gap-2 flex-shrink-0">
+                  <Music2 className="w-4 h-4" />
+                  Soundtrack
+                </TabsTrigger>
+                <TabsTrigger value="shure-mics" className="flex items-center gap-2 flex-shrink-0">
+                  <Mic2 className="w-4 h-4" />
+                  Wireless Mics
+                </TabsTrigger>
+              </>
+            )}
+            {groupForTab(activeTab) === 'hardware' && (
+              <>
+                <TabsTrigger value="globalcache" className="flex items-center gap-2 flex-shrink-0">
+                  <Wifi className="w-4 h-4" />
+                  Global Cache
+                </TabsTrigger>
+                <TabsTrigger value="ir" className="flex items-center gap-2 flex-shrink-0">
+                  <Zap className="w-4 h-4" />
+                  IR Devices
+                </TabsTrigger>
+                <TabsTrigger value="dmx" className="flex items-center gap-2 flex-shrink-0">
+                  <Lightbulb className="w-4 h-4" />
+                  DMX Lighting
+                </TabsTrigger>
+                <TabsTrigger value="commercial-lighting" className="flex items-center gap-2 flex-shrink-0">
+                  <Sun className="w-4 h-4" />
+                  Smart Lighting
+                </TabsTrigger>
+              </>
+            )}
+          </TabsList>
+        )}
+
+        <TabsContent value="overview" className="space-y-4">
+          <DeviceConfigOverview onJumpToTab={setActiveTab} />
+        </TabsContent>
 
         <TabsContent value="channel-presets" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Star className="w-5 h-5 text-yellow-400" />
-                Channel Presets Configuration
-                {aiEnhancementsEnabled && (
-                  <Badge className="bg-purple-100 text-purple-800">
-                    <Brain className="w-3 h-3 mr-1" />
-                    AI Enhanced
-                  </Badge>
-                )}
-              </CardTitle>
-              <CardDescription>
-                {aiEnhancementsEnabled
-                  ? "Configure quick-access channel presets for Cable Box and DirecTV with AI-powered usage analytics and smart reordering"
-                  : "Configure quick-access channel presets for Cable Box and DirecTV inputs"
-                }
-              </CardDescription>
-            </CardHeader>
-          </Card>
+          <SectionHeader
+            icon={Star}
+            iconColor="text-yellow-400"
+            title="Channel Presets Configuration"
+            description="Configure quick-access channel presets for Cable Box and DirecTV inputs"
+            aiEnabled={aiEnhancementsEnabled}
+            aiDescription="Configure quick-access channel presets for Cable Box and DirecTV with AI-powered usage analytics and smart reordering"
+          />
           <ChannelPresetsPanel />
         </TabsContent>
 
         <TabsContent value="sports-channels" className="space-y-4">
+          <SectionHeader
+            icon={Tv}
+            iconColor="text-blue-400"
+            title="Sports Channel Setup"
+            description="Map sport leagues to specific channel numbers for each input source"
+          />
           <SportsChannelSetup />
         </TabsContent>
 
         <TabsContent value="channel-finder" className="space-y-4">
+          <SectionHeader
+            icon={Cable}
+            iconColor="text-cyan-400"
+            title="DirecTV Channel Finder"
+            description="Look up DirecTV channel numbers by network name"
+          />
           <DirecTVChannelFinder />
         </TabsContent>
 
         <TabsContent value="directv" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Satellite className="w-5 h-5 text-blue-600" />
-                DirecTV Configuration
-                {aiEnhancementsEnabled && (
-                  <Badge className="bg-purple-100 text-purple-800">
-                    <Brain className="w-3 h-3 mr-1" />
-                    AI Enhanced
-                  </Badge>
-                )}
-              </CardTitle>
-              <CardDescription>
-                {aiEnhancementsEnabled 
-                  ? "Configure DirecTV receivers with intelligent channel suggestions, performance monitoring, and smart automation"
-                  : "Configure and control DirecTV receivers via IP"
-                }
-              </CardDescription>
-            </CardHeader>
-          </Card>
-          
+          <SectionHeader
+            icon={Satellite}
+            iconColor="text-blue-600"
+            title="DirecTV Configuration"
+            description="Configure and control DirecTV receivers via IP"
+            aiEnabled={aiEnhancementsEnabled}
+            aiDescription="Configure DirecTV receivers with intelligent channel suggestions, performance monitoring, and smart automation"
+          />
           {aiEnhancementsEnabled && selectedDevice ? (
-            <EnhancedDirecTVController 
-              device={selectedDevice} 
+            <EnhancedDirecTVController
+              device={selectedDevice}
               onDeviceUpdate={setSelectedDevice}
             />
           ) : (
@@ -356,333 +570,242 @@ export default function DeviceConfigPage() {
         </TabsContent>
 
         <TabsContent value="firetv" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <MonitorPlay className="w-5 h-5 text-orange-600" />
-                Fire TV Configuration
-                {aiEnhancementsEnabled && (
-                  <Badge className="bg-purple-100 text-purple-800">
-                    <Brain className="w-3 h-3 mr-1" />
-                    AI Enhanced
-                  </Badge>
-                )}
-              </CardTitle>
-              <CardDescription>
-                {aiEnhancementsEnabled 
-                  ? "Manage Fire TV devices with predictive app loading, performance optimization, and smart content recommendations"
-                  : "Configure and control Amazon Fire TV devices"
-                }
-              </CardDescription>
-            </CardHeader>
-          </Card>
+          <SectionHeader
+            icon={MonitorPlay}
+            iconColor="text-orange-600"
+            title="Fire TV Configuration"
+            description="Configure and control Amazon Fire TV devices"
+            aiEnabled={aiEnhancementsEnabled}
+            aiDescription="Manage Fire TV devices with predictive app loading, performance optimization, and smart content recommendations"
+          />
           <FireTVController />
         </TabsContent>
 
         <TabsContent value="everpass" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <PlayCircle className="w-5 h-5 text-blue-600" />
-                EverPass Configuration
-                {aiEnhancementsEnabled && (
-                  <Badge className="bg-purple-100 text-purple-800">
-                    <Brain className="w-3 h-3 mr-1" />
-                    AI Enhanced
-                  </Badge>
-                )}
-              </CardTitle>
-              <CardDescription>
-                {aiEnhancementsEnabled
-                  ? "Configure EverPass streaming devices with intelligent content scheduling and performance monitoring"
-                  : "Configure and control EverPass streaming boxes via HDMI-CEC"
-                }
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="mb-6 p-4 bg-blue-900/30 rounded-lg border border-blue-500/30">
-                <div className="flex items-start gap-3">
-                  <PlayCircle className="w-5 h-5 text-blue-400 mt-0.5 shrink-0" />
-                  <div className="space-y-2">
-                    <p className="text-sm text-blue-200 font-medium">
-                      CEC Control via Pulse-Eight USB Adapter
-                    </p>
-                    <p className="text-sm text-blue-300">
-                      EverPass devices are controlled via HDMI-CEC using Pulse-Eight USB adapters.
-                      Navigate the EverPass on-screen guide, control playback, and manage power.
-                    </p>
-                    <p className="text-xs text-blue-400 mt-2">
-                      Hardware Required: Pulse-Eight CEC USB Adapter connected to the same HDMI chain as EverPass
-                    </p>
-                  </div>
+          <SectionHeader
+            icon={PlayCircle}
+            iconColor="text-blue-600"
+            title="EverPass Configuration"
+            description="Configure and control EverPass streaming boxes via HDMI-CEC"
+            aiEnabled={aiEnhancementsEnabled}
+            aiDescription="Configure EverPass streaming devices with intelligent content scheduling and performance monitoring"
+          >
+            <div className="p-4 bg-blue-900/30 rounded-lg border border-blue-500/30">
+              <div className="flex items-start gap-3">
+                <PlayCircle className="w-5 h-5 text-blue-400 mt-0.5 flex-shrink-0" />
+                <div className="space-y-2">
+                  <p className="text-sm text-blue-200 font-medium">
+                    CEC Control via Pulse-Eight USB Adapter
+                  </p>
+                  <p className="text-sm text-blue-300">
+                    EverPass devices are controlled via HDMI-CEC using Pulse-Eight USB adapters.
+                    Navigate the EverPass on-screen guide, control playback, and manage power.
+                  </p>
+                  <p className="text-xs text-blue-400 mt-2">
+                    Hardware Required: Pulse-Eight CEC USB Adapter connected to the same HDMI chain as EverPass
+                  </p>
                 </div>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </SectionHeader>
           <EverPassController />
         </TabsContent>
 
         <TabsContent value="globalcache" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Radio className="w-5 h-5 text-purple-600" />
-                Global Cache IR Control
-                {aiEnhancementsEnabled && (
-                  <Badge className="bg-purple-100 text-purple-800">
-                    <Brain className="w-3 h-3 mr-1" />
-                    AI Enhanced
-                  </Badge>
-                )}
-              </CardTitle>
-              <CardDescription>
-                {aiEnhancementsEnabled 
-                  ? "Configure iTach devices with intelligent IR learning, signal optimization, and predictive maintenance"
-                  : "Manage Global Cache iTach devices for infrared control of cable boxes and other IR devices"
-                }
-              </CardDescription>
-            </CardHeader>
-          </Card>
+          <SectionHeader
+            icon={Wifi}
+            iconColor="text-purple-600"
+            title="Global Cache IR Control"
+            description="Manage Global Cache iTach devices for infrared control of cable boxes and other IR devices"
+            aiEnabled={aiEnhancementsEnabled}
+            aiDescription="Configure iTach devices with intelligent IR learning, signal optimization, and predictive maintenance"
+          />
           <GlobalCacheControl />
         </TabsContent>
 
         <TabsContent value="ir" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Radio className="w-5 h-5 text-green-600" />
-                IR Device Setup
-                {aiEnhancementsEnabled && (
-                  <Badge className="bg-purple-100 text-purple-800">
-                    <Brain className="w-3 h-3 mr-1" />
-                    AI Enhanced
-                  </Badge>
-                )}
-              </CardTitle>
-              <CardDescription>
-                {aiEnhancementsEnabled
-                  ? "Manage IR devices with intelligent command learning, failure prediction, and automatic positioning optimization"
-                  : "Configure IR-controlled devices (Cable boxes, AV receivers) and learn IR codes from physical remotes"
-                }
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="mb-6 p-4 bg-blue-900/30 rounded-lg border border-blue-500/30">
-                <div className="flex items-start gap-3">
-                  <Radio className="w-5 h-5 text-blue-400 mt-0.5 shrink-0" />
-                  <div className="space-y-2">
-                    <p className="text-sm text-blue-200 font-medium">
-                      IR Code Learning Available Per-Device
-                    </p>
-                    <p className="text-sm text-blue-300">
-                      To learn IR codes from your physical remote control, click the "Learn IR" button
-                      on individual devices below. Each device has a 27-button learning interface
-                      (Power, Digits 0-9, Navigation, Channel, DVR controls).
-                    </p>
-                    <p className="text-xs text-blue-400 mt-2">
-                      Hardware Required: Global Cache iTach IP2IR with IR receiver sensor
-                    </p>
-                  </div>
+          <SectionHeader
+            icon={Zap}
+            iconColor="text-green-600"
+            title="IR Device Setup"
+            description="Configure IR-controlled devices (Cable boxes, AV receivers) and learn IR codes from physical remotes"
+            aiEnabled={aiEnhancementsEnabled}
+            aiDescription="Manage IR devices with intelligent command learning, failure prediction, and automatic positioning optimization"
+          >
+            <div className="p-4 bg-blue-900/30 rounded-lg border border-blue-500/30">
+              <div className="flex items-start gap-3">
+                <Zap className="w-5 h-5 text-blue-400 mt-0.5 flex-shrink-0" />
+                <div className="space-y-2">
+                  <p className="text-sm text-blue-200 font-medium">
+                    IR Code Learning Available Per-Device
+                  </p>
+                  <p className="text-sm text-blue-300">
+                    To learn IR codes from your physical remote control, click the "Learn IR" button
+                    on individual devices below. Each device has a 27-button learning interface
+                    (Power, Digits 0-9, Navigation, Channel, DVR controls).
+                  </p>
+                  <p className="text-xs text-blue-400 mt-2">
+                    Hardware Required: Global Cache iTach IP2IR with IR receiver sensor
+                  </p>
                 </div>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </SectionHeader>
           <IRDeviceSetup />
         </TabsContent>
 
         <TabsContent value="dmx" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Lightbulb className="w-5 h-5 text-purple-600" />
-                DMX Lighting Control
-                {aiEnhancementsEnabled && (
-                  <Badge className="bg-purple-100 text-purple-800">
-                    <Brain className="w-3 h-3 mr-1" />
-                    AI Enhanced
-                  </Badge>
-                )}
-              </CardTitle>
-              <CardDescription>
-                {aiEnhancementsEnabled
-                  ? "Configure DMX lighting controllers with AI-powered scene recommendations and automatic game event triggers"
-                  : "Configure USB DMX adapters (Enttec, PKnight), Art-Net controllers, and Maestro DMX with preset access"
-                }
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {/* Enable Toggle for Bartender Remote Visibility */}
-              <div className="mb-6 p-4 bg-green-900/30 rounded-lg border border-green-500/30">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <Lightbulb className="w-5 h-5 text-green-400" />
-                    <div>
-                      <Label htmlFor="dmx-enabled" className="text-sm font-medium text-green-200">
-                        Enable on Bartender Remote
-                      </Label>
-                      <p className="text-xs text-green-400">
-                        When enabled, DMX Lighting controls will appear on the Bartender Remote page
-                      </p>
-                    </div>
-                  </div>
-                  <Switch
-                    id="dmx-enabled"
-                    checked={dmxLightingEnabled}
-                    disabled={lightingSettingsLoading}
-                    onCheckedChange={(checked) => updateLightingSetting('dmx', checked)}
-                    className="data-[state=checked]:bg-green-600"
-                  />
+          <SectionHeader
+            icon={Lightbulb}
+            iconColor="text-purple-600"
+            title="DMX Lighting Control"
+            description="Configure USB DMX adapters (Enttec, PKnight), Art-Net controllers, and Maestro DMX with preset access"
+            aiEnabled={aiEnhancementsEnabled}
+            aiDescription="Configure DMX lighting controllers with AI-powered scene recommendations and automatic game event triggers"
+          >
+            <BartenderRemoteToggle
+              id="dmx-enabled"
+              controlName="DMX Lighting"
+              enabled={dmxLightingEnabled}
+              loading={lightingSettingsLoading}
+              onToggle={(checked) => updateLightingSetting('dmx', checked)}
+            />
+            <div className="p-4 bg-purple-900/30 rounded-lg border border-purple-500/30">
+              <div className="flex items-start gap-3">
+                <Lightbulb className="w-5 h-5 text-purple-400 mt-0.5 flex-shrink-0" />
+                <div className="space-y-2">
+                  <p className="text-sm text-purple-200 font-medium">
+                    Supported DMX Hardware
+                  </p>
+                  <ul className="text-sm text-purple-300 list-disc list-inside space-y-1">
+                    <li><strong>USB:</strong> Enttec DMX USB Pro, Enttec Open DMX, PKnight CR011R</li>
+                    <li><strong>Art-Net:</strong> Enttec ODE, DMXking, Generic Art-Net devices</li>
+                    <li><strong>Maestro DMX:</strong> Built-in presets and function buttons via Art-Net</li>
+                  </ul>
+                  <p className="text-xs text-purple-400 mt-2">
+                    Multi-adapter support: Use multiple adapters to expand beyond 512 channels per universe
+                  </p>
                 </div>
               </div>
-
-              <div className="mb-6 p-4 bg-purple-900/30 rounded-lg border border-purple-500/30">
-                <div className="flex items-start gap-3">
-                  <Lightbulb className="w-5 h-5 text-purple-400 mt-0.5 shrink-0" />
-                  <div className="space-y-2">
-                    <p className="text-sm text-purple-200 font-medium">
-                      Supported DMX Hardware
-                    </p>
-                    <ul className="text-sm text-purple-300 list-disc list-inside space-y-1">
-                      <li><strong>USB:</strong> Enttec DMX USB Pro, Enttec Open DMX, PKnight CR011R</li>
-                      <li><strong>Art-Net:</strong> Enttec ODE, DMXking, Generic Art-Net devices</li>
-                      <li><strong>Maestro DMX:</strong> Built-in presets and function buttons via Art-Net</li>
-                    </ul>
-                    <p className="text-xs text-purple-400 mt-2">
-                      Multi-adapter support: Use multiple adapters to expand beyond 512 channels per universe
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+            </div>
+          </SectionHeader>
           <DMXControllerManager />
         </TabsContent>
 
         <TabsContent value="commercial-lighting" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Lightbulb className="w-5 h-5 text-amber-600" />
-                Commercial Lighting Control
-                {aiEnhancementsEnabled && (
-                  <Badge className="bg-purple-100 text-purple-800">
-                    <Brain className="w-3 h-3 mr-1" />
-                    AI Enhanced
-                  </Badge>
-                )}
-              </CardTitle>
-              <CardDescription>
-                {aiEnhancementsEnabled
-                  ? "Configure Lutron and Philips Hue systems with AI-powered scene recommendations and energy optimization"
-                  : "Configure commercial lighting systems: Lutron (RadioRA 2/3, Caseta, HomeWorks) and Philips Hue"
-                }
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {/* Enable Toggle for Bartender Remote Visibility */}
-              <div className="mb-6 p-4 bg-green-900/30 rounded-lg border border-green-500/30">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <Lightbulb className="w-5 h-5 text-green-400" />
-                    <div>
-                      <Label htmlFor="commercial-enabled" className="text-sm font-medium text-green-200">
-                        Enable on Bartender Remote
-                      </Label>
-                      <p className="text-xs text-green-400">
-                        When enabled, Commercial Lighting controls will appear on the Bartender Remote page
-                      </p>
-                    </div>
-                  </div>
-                  <Switch
-                    id="commercial-enabled"
-                    checked={commercialLightingEnabled}
-                    disabled={lightingSettingsLoading}
-                    onCheckedChange={(checked) => updateLightingSetting('commercial', checked)}
-                    className="data-[state=checked]:bg-green-600"
-                  />
+          <SectionHeader
+            icon={Sun}
+            iconColor="text-amber-600"
+            title="Smart Lighting Control"
+            description="Configure commercial lighting systems: Lutron (RadioRA 2/3, Caseta, HomeWorks) and Philips Hue"
+            aiEnabled={aiEnhancementsEnabled}
+            aiDescription="Configure Lutron and Philips Hue systems with AI-powered scene recommendations and energy optimization"
+          >
+            <BartenderRemoteToggle
+              id="commercial-enabled"
+              controlName="Smart Lighting"
+              enabled={commercialLightingEnabled}
+              loading={lightingSettingsLoading}
+              onToggle={(checked) => updateLightingSetting('commercial', checked)}
+            />
+            <div className="p-4 bg-amber-900/30 rounded-lg border border-amber-500/30">
+              <div className="flex items-start gap-3">
+                <Sun className="w-5 h-5 text-amber-400 mt-0.5 flex-shrink-0" />
+                <div className="space-y-2">
+                  <p className="text-sm text-amber-200 font-medium">
+                    Supported Smart Lighting Systems
+                  </p>
+                  <ul className="text-sm text-amber-300 list-disc list-inside space-y-1">
+                    <li><strong>Lutron RadioRA 2/3:</strong> Telnet (LIP) or LEAP API integration</li>
+                    <li><strong>Lutron HomeWorks QS:</strong> Telnet (LIP) integration</li>
+                    <li><strong>Lutron Caseta:</strong> LEAP API integration</li>
+                    <li><strong>Philips Hue:</strong> REST API v2 with local bridge discovery</li>
+                  </ul>
+                  <p className="text-xs text-amber-400 mt-2">
+                    Note: This is separate from DMX stage lighting. Use the DMX tab for entertainment lighting.
+                  </p>
                 </div>
               </div>
-
-              <div className="mb-6 p-4 bg-amber-900/30 rounded-lg border border-amber-500/30">
-                <div className="flex items-start gap-3">
-                  <Lightbulb className="w-5 h-5 text-amber-400 mt-0.5 shrink-0" />
-                  <div className="space-y-2">
-                    <p className="text-sm text-amber-200 font-medium">
-                      Supported Commercial Lighting Systems
-                    </p>
-                    <ul className="text-sm text-amber-300 list-disc list-inside space-y-1">
-                      <li><strong>Lutron RadioRA 2/3:</strong> Telnet (LIP) or LEAP API integration</li>
-                      <li><strong>Lutron HomeWorks QS:</strong> Telnet (LIP) integration</li>
-                      <li><strong>Lutron Caseta:</strong> LEAP API integration</li>
-                      <li><strong>Philips Hue:</strong> REST API v2 with local bridge discovery</li>
-                    </ul>
-                    <p className="text-xs text-amber-400 mt-2">
-                      Note: This is separate from DMX stage lighting. Use the DMX tab for entertainment lighting.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+            </div>
+          </SectionHeader>
           <CommercialLightingManager />
         </TabsContent>
 
         <TabsContent value="soundtrack" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Music2 className="w-5 h-5 text-purple-600" />
-                Soundtrack Your Brand
-              </CardTitle>
-              <CardDescription>
-                Configure API access and manage business music streaming
-              </CardDescription>
-            </CardHeader>
-          </Card>
+          <SectionHeader
+            icon={Music2}
+            iconColor="text-purple-600"
+            title="Soundtrack Your Brand"
+            description="Configure API access and manage business music streaming"
+          />
           <SoundtrackConfiguration />
         </TabsContent>
 
         <TabsContent value="cec-discovery" className="space-y-4">
+          <SectionHeader
+            icon={Tv}
+            iconColor="text-emerald-400"
+            title="TV Discovery"
+            description="Scan the LAN for network-controllable TVs (Samsung, LG, Sony, etc.) and import them"
+          />
           <TVNetworkDiscovery />
         </TabsContent>
 
         <TabsContent value="subscriptions" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <BarChart3 className="w-5 h-5 text-purple-600" />
-                Subscription Dashboard
-                {aiEnhancementsEnabled && (
-                  <Badge className="bg-purple-100 text-purple-800">
-                    <Brain className="w-3 h-3 mr-1" />
-                    AI Enhanced
-                  </Badge>
-                )}
-              </CardTitle>
-              <CardDescription>
-                {aiEnhancementsEnabled 
-                  ? "Monitor streaming and TV subscriptions with AI-powered cost optimization and usage analytics"
-                  : "View and manage streaming subscriptions across DirecTV and Fire TV devices"
-                }
-              </CardDescription>
-            </CardHeader>
-          </Card>
+          <SectionHeader
+            icon={BarChart3}
+            iconColor="text-purple-600"
+            title="Subscription Dashboard"
+            description="View and manage streaming subscriptions across DirecTV and Fire TV devices"
+            aiEnabled={aiEnhancementsEnabled}
+            aiDescription="Monitor streaming and TV subscriptions with AI-powered cost optimization and usage analytics"
+          />
           <SubscriptionDashboard />
+        </TabsContent>
+
+        <TabsContent value="shure-mics" className="space-y-4">
+          <SectionHeader
+            icon={Mic2}
+            iconColor="text-cyan-400"
+            title="Shure SLX-D Wireless Mics"
+            description={
+              <>
+                Set up, test, and monitor Shure wireless mic receivers. Pre-flight check
+                catches the BLOCKED third-party-controls gate before save. Live battery
+                + RSSI per channel. Event history of all RF interference + low-battery
+                events. Dedicated log at <code className="font-mono text-xs">/home/ubuntu/sports-bar-data/logs/shure-rf-*.log</code>.
+              </>
+            }
+          />
+          <ShureWirelessMicAdmin />
         </TabsContent>
       </Tabs>
 
-      {/* Quick Actions for AI Features */}
+      {/* Quick Actions for AI Features — collapsed by default so the
+          three buttons + the optional result card don't eat 2 screen
+          heights below the active tab. Click the header to expand. */}
       {aiEnhancementsEnabled && (
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Zap className="w-5 h-5 text-yellow-400" />
-              Quick AI Actions
+          <CardHeader
+            className="cursor-pointer select-none"
+            onClick={() => setQuickActionsOpen((p) => !p)}
+          >
+            <CardTitle className="flex items-center justify-between gap-2">
+              <span className="flex items-center gap-2">
+                <Zap className="w-5 h-5 text-yellow-400" />
+                Quick AI Actions
+              </span>
+              {quickActionsOpen
+                ? <ChevronUp className="w-4 h-4 text-slate-400" />
+                : <ChevronDown className="w-4 h-4 text-slate-400" />}
             </CardTitle>
             <CardDescription>
-              Real AI-powered operations using device performance data and sports context
+              {quickActionsOpen
+                ? 'Real AI-powered operations using device performance data and sports context'
+                : 'Click to expand — run full analysis, optimize devices, or view AI insights'}
             </CardDescription>
           </CardHeader>
+          {quickActionsOpen && (
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <Button
@@ -733,7 +856,7 @@ export default function DeviceConfigPage() {
 
             {/* AI Action Results */}
             {aiActionResult && aiActionResult.data.success && (
-              <div className="card p-4 border-blue-600/50 bg-linear-to-r from-blue-900/20 to-purple-900/20">
+              <div className="card p-4 border-blue-600/50 bg-gradient-to-r from-blue-900/20 to-purple-900/20">
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
                     <Brain className="w-5 h-5 text-blue-400" />
@@ -777,6 +900,7 @@ export default function DeviceConfigPage() {
               </div>
             )}
           </CardContent>
+          )}
         </Card>
       )}
       </div>

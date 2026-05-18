@@ -97,17 +97,51 @@ async function pollOnce(baseUrl: string) {
       // error stream; heartbeats while still active are routine and
       // should not flood the error log (operator audit caught 44
       // heartbeat lines in a single session at warn level).
+      //
+      // Atlas/Shure correlation (v2.34.1+): before inserting the
+      // mic_active row, look for a shure_rf_events row in a ±30s
+      // window. If found, the priority event is RF-induced — write
+      // it as 'rf_induced_mic_active' so the banner can distinguish
+      // ghost-override (RF) from a real page (operator on a working
+      // mic). Bartender stops chasing imaginary priority events.
       const writeEvent = async (reason: string, level_kind: 'warn' | 'info') => {
+        let eventType: string = 'mic_active'
+        let noteSuffix = ''
+        try {
+          const correlated = await db.all<{
+            receiver_name: string | null
+            channel: number
+            frequency_mhz: number | null
+            rssi_dbm: number | null
+          }>(sql`
+            SELECT receiver_name, channel, frequency_mhz, rssi_dbm
+            FROM shure_rf_events
+            WHERE detected_at BETWEEN ${now - 30} AND ${now + 5}
+              AND event_type IN ('rf_interference', 'rf_interference_heartbeat')
+            ORDER BY detected_at DESC
+            LIMIT 1
+          `)
+          if (correlated.length > 0) {
+            eventType = 'rf_induced_mic_active'
+            const corr = correlated[0]
+            const freqStr = corr.frequency_mhz !== null ? `, ${corr.frequency_mhz.toFixed(3)} MHz` : ''
+            const rssiStr = corr.rssi_dbm !== null ? `, ${corr.rssi_dbm.toFixed(0)} dBm` : ''
+            noteSuffix = ` (RF-induced: ${corr.receiver_name ?? 'unknown'} ch${corr.channel}${freqStr}${rssiStr})`
+          }
+        } catch {
+          // shure_rf_events table may not exist at locations without
+          // a Shure receiver — fall through to plain mic_active.
+        }
         await db.run(sql`
           INSERT INTO atlas_priority_events
             (id, processor_id, event_type, input_index, input_name, input_level_db, detected_at)
           VALUES (
-            ${randomUUID()}, ${p.id}, 'mic_active',
+            ${randomUUID()}, ${p.id}, ${eventType},
             ${meter.index}, ${meter.name}, ${level}, ${now}
           )
         `)
         state.lastHeartbeatSec = now
-        const msg = `[ATLAS-PRIORITY] ${reason}: "${meter.name}" (input ${meter.index}) at ${level.toFixed(1)} dB`
+        const msg = `[ATLAS-PRIORITY] ${reason}: "${meter.name}" (input ${meter.index}) at ${level.toFixed(1)} dB${noteSuffix}`
         if (level_kind === 'warn') logger.warn(msg)
         else logger.info(msg)
       }

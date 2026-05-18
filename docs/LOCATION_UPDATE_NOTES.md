@@ -46,6 +46,531 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-17 — v2.37.2 — Shure final-review fixes (preflight state race + reconnect race + doc consistency)
+
+**Code fixes from the final-review pass** (4 parallel review agents
+on the v2.34.0 → v2.37.1 arc):
+
+- **CRITICAL: `runPreflightForExisting` raced against React state.**
+  The "Run Pre-flight" button on each row in the Wireless Mics admin
+  called `setForm({ipAddress: rec.ipAddress})` then
+  `setTimeout(runPreflight, 0)`. `runPreflight` read `form.ipAddress`
+  from its closure, which was still the previous value (or empty) —
+  so the probe would target the wrong IP. Refactored to
+  `runPreflightAgainst(ip, port)` taking explicit args; per-row button
+  now passes `rec.ipAddress` / `rec.tcpPort` directly. No state-race.
+- **IMPORTANT: Reconnect path in `shureSlxdClientManager.getClient`
+  also had a race window.** If two concurrent callers found the same
+  client `!isConnected()`, both called `client.connect()` and created
+  duplicate sockets (same shape as the Atlas v2.33.50 bug). Wrapped
+  the reconnect `await client.connect()` in the same in-flight
+  Promise lock that the create path uses.
+- **`evaluateChannel` hysteresis band comment.** The marginal-zone
+  fall-through that resets both counters is intentional (hysteresis,
+  prevents flapping while interference is real) but the code looked
+  like a bug to the reviewer. Added explicit comment.
+
+**Doc fixes from the final-review pass:**
+
+- **VERSION_SETUP_GUIDE v2.34.0 step 4** updated to point at the
+  canonical Wireless Mics tab (`/device-config → Audio → Wireless
+  Mics`) instead of the legacy `/system-admin → Audio Processors`
+  path. Cross-links to `packages/shure-slxd/README.md` for the SME
+  briefing.
+- **CLAUDE.md §10** (Next.js per-bundle singleton gotcha) now
+  references `@sports-bar/shure-slxd` as the second example
+  alongside Atlas + notes the v2.37.2 reconnect-path tightening.
+- **CLAUDE.md §7a** adds a "Canonical operator home" line pointing
+  at `/device-config → Audio → Wireless Mics` + cross-link to the
+  package README.
+- **packages/shure-slxd/README.md** adds:
+  - Explicit "Firmware ≥ 1.1.0 required" under Connection model
+  - Rationale for the 1000 ms METER_RATE choice (vs the Bitfocus
+    5000 ms baseline) — game-day RF interference detection within ~3s
+  - "Related project docs" section linking back to CLAUDE.md §7a,
+    VERSION_SETUP_GUIDE, API_REFERENCE, LOCATION_UPDATE_NOTES
+
+**Verified post-fix:**
+- `npx tsx scripts/test-shure-parser.ts` — 6/6 scenarios PASS
+- Production watcher: clean boot, 8 startup rows in `shure_rf_events`,
+  dedicated log file writing
+- All 9 monitored endpoints return 200
+- Playwright UI audit: 8/8 device-config interactions PASS (Overview
+  landing, category switching, sub-tab filtering, iPad viewport, no
+  console errors)
+
+**What could break:** nothing — fixes + doc updates only.
+
+**Manual steps required:** none.
+
+**Affected files:**
+- Modified: `apps/web/src/components/ShureWirelessMicAdmin.tsx`
+  (runPreflightAgainst refactor)
+- Modified: `packages/shure-slxd/src/shure-slxd-client-manager.ts`
+  (reconnect path in-flight lock)
+- Modified: `apps/web/src/lib/shure-rf-watcher.ts` (hysteresis comment)
+- Modified: `CLAUDE.md` (§10 cross-reference, §7a canonical home + link)
+- Modified: `docs/VERSION_SETUP_GUIDE.md` (v2.34.0 step 4 URL update)
+- Modified: `packages/shure-slxd/README.md` (firmware min, METER_RATE
+  rationale, Related project docs section)
+
+`Checkpoint model: haiku` — small targeted fixes + doc polish.
+
+---
+
+### 2026-05-17 — v2.37.1 — /device-config: standardized card pattern across all tabs
+
+Every TabsContent in /device-config now starts with the same
+`<SectionHeader />` helper instead of copy-pasted Card/CardHeader
+blocks. The three tabs that previously skipped the header card
+entirely (Sports Channels, Channel Finder, TV Discovery) now have
+one too, so the visual rhythm down the page is uniform.
+
+**Net diff:** +278 / −279 lines (no net code growth despite ~120
+lines of dedup absorbed by the helpers, because three tabs that had
+no header now have ~30 lines each of new headers).
+
+**Two new helpers** (top of `apps/web/src/app/device-config/page.tsx`):
+- `<SectionHeader icon iconColor title description aiEnabled? aiDescription? children? />`
+  — wraps the title + AI badge + description in a Card. Optional
+  children render as CardContent (info boxes, supported-hardware
+  lists, etc.).
+- `<BartenderRemoteToggle id controlName enabled loading onToggle />`
+  — extracted the duplicated DMX + Smart Lighting toggle box (~25
+  LOC each). Now one component, two call sites.
+
+**Three tabs got new headers** (previously bare):
+- Sports Channels — title + description
+- DirecTV Channel Finder — title + description
+- TV Discovery — title + description
+
+**Renamed in this pass:** "Commercial Lighting Control" →
+"Smart Lighting Control" (matches the tab label since v2.35.0).
+"Supported Commercial Lighting Systems" → "Supported Smart Lighting
+Systems".
+
+**What could break:**
+- Nothing breaks — additive + refactor only. No behavior, no schema,
+  no API, no operator-facing copy other than the "Commercial → Smart"
+  rename to match the already-renamed tab label.
+
+**Manual steps required:** none.
+
+**Affected files:**
+- Modified: `apps/web/src/app/device-config/page.tsx` (SectionHeader +
+  BartenderRemoteToggle helpers added; all 14 TabsContent blocks
+  refactored to use them)
+
+`Checkpoint model: haiku` — pure cosmetic dedup.
+
+---
+
+### 2026-05-17 — v2.37.0 — /device-config: two-level tab navigation (5 category groups)
+
+**The big change:** 15 tabs in one horizontal row became 5 category
+buttons + an active-category sub-tab row. Operator no longer scrolls
+horizontally through a 15-wide list — they pick a category first
+(Overview / Channels / Video / Audio / Hardware), then see only that
+category's sub-tabs.
+
+**Grouping:**
+- **Overview** (1) — Overview
+- **Channels** (3) — Channel Presets · Sports Channels · Channel Finder
+- **Video** (5) — DirecTV · Fire TV · EverPass · TV Discovery · Subscriptions
+- **Audio** (2) — Soundtrack · Wireless Mics
+- **Hardware** (4) — Global Cache · IR Devices · DMX Lighting · Smart Lighting
+
+Each top-level button shows a small count badge for groups with > 1
+sub-tab so the operator knows what's nested. Overview is a single-tab
+group, so when selected the second-level row is hidden entirely — the
+overview content goes straight under the category buttons.
+
+**Backward-compat:** existing bookmarks like `?tab=directv` still
+work. The Tabs `value` is the individual sub-tab ID (unchanged from
+v2.36.0); the category buttons are derived from `groupForTab(activeTab)`.
+A bookmark to a specific sub-tab opens the right content AND the
+right category gets visually selected at the top.
+
+**Adding a new tab in the future** — append the new sub-tab ID to
+`TAB_GROUPS.<category>.tabs` in `apps/web/src/app/device-config/page.tsx`,
+then add a matching TabsTrigger + TabsContent. The trigger's `value`
+MUST match the ID (otherwise the sub-tab row's filter silently hides
+it). Adding a brand-new category needs an entry in `TAB_GROUPS` and
+its ID appended to `GROUP_ORDER`.
+
+**What could break:**
+- Nothing breaks — pure layout restructure on top of the existing
+  Tabs state machine. All TabsContent values + IDs are unchanged.
+- Visual: the Quick AI Actions card now appears under whatever
+  category is active (same as before — appears below the Tabs).
+
+**Manual steps required:** none.
+
+**Verification:**
+```bash
+# /device-config still renders 200, all sub-tabs reachable
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3001/device-config
+```
+
+**Affected files:**
+- Modified: `apps/web/src/app/device-config/page.tsx` (TAB_GROUPS
+  constant, GROUP_ORDER, groupForTab helper, two-row tab layout)
+
+`Checkpoint model: haiku` — pure UX, no behavior or schema change.
+
+---
+
+### 2026-05-17 — v2.36.0 — /device-config Overview tab + collapsible Quick Actions
+
+**The big change:** /device-config now lands on a new **Overview** tab
+instead of "Channel Presets" (which is a niche feature). Operators
+see system status first, configure-stuff second — closer to what
+they actually open this page to find out.
+
+**New OverviewPanel content** (auto-refreshes every 10s):
+- **Alerts strip** — only renders when there's something to flag. A
+  healthy bar shows a single green "All systems normal" pill. Alerts
+  include: silent Atlas zone drops, active Atlas priority, RF-induced
+  priority events (Shure-Atlas correlation), Shure RF interference,
+  Shure low-battery, offline Fire TVs / DirecTV receivers. Each
+  alert has a "View" button that warps the operator to the relevant
+  tab.
+- **Device count grid** — Audio Processors (online/total), Wireless
+  Mics (count + interference/battery summary), Fire TV (online/total),
+  DirecTV (online/total). Each card clickable → jumps to its tab.
+- **Recent Activity** — Atlas zone drops (silent), Atlas priority
+  events (with RF-induced highlight), Shure RF interference. Each
+  shows count + latest "Xm ago" timestamp + a one-line hint of
+  what the row means.
+- **Audio Processors detail** — per-processor row with online/offline
+  indicator, type tag, IP. Only renders if any are configured.
+- **System info footer** — version, uptime, build date.
+
+**Quick AI Actions made collapsible.** Previously the AI quick-action
+card was always-expanded at the bottom of /device-config when AI was
+enabled — ate 2 screen heights below the active tab content. Now
+defaults to collapsed (chevron in header to expand). Operator opens
+when they want to run an action, closes when they don't.
+
+**What could break:**
+- **Nothing breaks** — additive + the default tab change is muscle-
+  memory friendly (the tab they want is still in the list, just no
+  longer the default landing).
+- **Existing deep-links** to /device-config?tab=channel-presets still
+  work because the Tabs component still accepts that value. Operators
+  with browser bookmarks land where they expected.
+
+**Manual steps required:** none.
+
+**Verification:**
+```bash
+# Overview tab loads:
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3001/device-config
+
+# Endpoints the Overview consumes — all should return 200 + a JSON
+# payload (even if empty):
+for path in /api/audio-processor /api/firetv-devices /api/directv-devices \
+           /api/atlas-drops /api/atlas-priority /api/shure-rf /api/system/version; do
+  echo "$path $(curl -s -o /dev/null -w '%{http_code}' http://localhost:3001$path)"
+done
+# Expect: each prints "200"
+```
+
+**Affected files:**
+- New: `apps/web/src/components/device-config/DeviceConfigOverview.tsx` (~390 LOC)
+- Modified: `apps/web/src/app/device-config/page.tsx` (added Overview tab as
+  default, controlled-tab state for jump-to-tab from alerts, collapsible
+  Quick Actions card)
+
+`Checkpoint model: haiku` — additive UX, no schema, no API, no auth surface.
+
+---
+
+### 2026-05-17 — v2.35.0 — /device-config UX cleanup pass
+
+**Critical fix:** TabsList had `gridTemplateColumns: 'repeat(13, ...)'`
+hard-coded — when v2.34.2 added the Wireless Mics tab as the 14th, it
+broke out of the grid row at 1024px/iPad widths (last tab wrapped off
+screen). This is what an operator saw as "backend isn't loading
+correctly" on 2026-05-17. Replaced the fixed grid with a horizontally-
+scrollable flex layout that adapts to any number of tabs.
+
+**Other UX improvements:**
+- **Duplicate tab icons reassigned to unique ones.** Previously `Radio`
+  was used 3× (Global Cache, IR Devices, Wireless Mics) and `Lightbulb`
+  twice (DMX, Commercial). Now: `Wifi` for Global Cache (it's a
+  network gateway), `Zap` for IR Devices (fast IR signals), `Mic2`
+  for Wireless Mics (lucide's wireless mic glyph). DMX keeps
+  `Lightbulb`, Smart Lighting (renamed from "Commercial") uses `Sun`.
+- **Tab label clarity.** "Commercial" → "Smart Lighting" (the original
+  label was ambiguous; an operator wouldn't know it controls Lutron/Hue).
+- **AI badge extracted to `<AiHintBadge />` helper.** Replaced 9
+  copy-paste occurrences of the same `{aiEnhancementsEnabled && <Badge>...</Badge>}`
+  pattern. Net delta: ~50 lines of noise removed, every future tab now
+  uses one line instead of six.
+- **`describe(enabled, fallback, ai)` helper available** for the same
+  AI-aware CardDescription pattern that repeats throughout. Not yet
+  applied to existing call sites (leave as-is; the helper is in place
+  for future tabs).
+
+**What could break:**
+- **Nothing breaks** — additive + cosmetic only. Tab IDs unchanged, all
+  TabsContent values unchanged, no behavior moved.
+- The horizontal scroll on TabsList means at very narrow widths
+  (< ~640px) the user scrolls horizontally through tab triggers. This
+  is the intended responsive behavior on phones; iPad operators see
+  the full row.
+
+**Manual steps required:** none.
+
+**Verification:**
+```bash
+# Tabs render correctly at the operator viewport (1024px iPad)
+curl -s http://localhost:3001/device-config -o /tmp/dc.html
+grep -c "TabsTrigger\|tab-trigger" /tmp/dc.html
+# Expect: 14 (one per tab — was off-by-one with the old grid)
+```
+
+**Affected files:**
+- Modified: `apps/web/src/app/device-config/page.tsx` (TabsList
+  layout, icon imports, label, `AiHintBadge` extraction, `describe`
+  helper)
+
+`Checkpoint model: haiku` — pure UX cleanup, no behavior or schema change.
+
+---
+
+### 2026-05-17 — v2.34.2 — Shure RF watcher bind-fix + dedicated admin tab under Device Config
+
+**Critical fix:** Watcher silently failed to start at every restart since
+v2.34.0. Cause: `shure-rf-logger.ts` destructured `logger.info` /
+`logger.warn` / etc as `loggerFn` and called it with a lost `this`
+binding — `Logger.prototype.info` reads `this.logWithData(...)` and
+threw `TypeError: Cannot read properties of undefined (reading
+'logWithData')` on the very first `writeEvent`. Caught by surfacing
+the previously-swallowed Error via inline `error.message + stack` in
+instrumentation.ts (the second-arg-as-LogOptions dropped Error
+objects silently). Fixed by switch/case on entry.level calling
+`logger.info(msg)` / `logger.warn(msg)` etc directly on the instance.
+**Real symptom:** watcher never wrote follow-up events, no metering
+ever started, /api/shure-rf returned the startup row only. Locations
+that haven't deployed v2.34.0 yet: skip-to v2.34.2 directly.
+
+**New: Dedicated Shure admin tab under /device-config.**
+Replaces ad-hoc placement of Shure controls in AudioProcessorManager.
+One place for everything Shure:
+- Add receiver (with inline preflight)
+- List of configured receivers with live status (per-channel battery,
+  RSSI quality, frequency, TX type, runtime mins)
+- Per-receiver "Run Pre-flight" button — re-tests against the live
+  hardware without re-saving
+- Edit / Delete actions per receiver
+- Event history table (all / active / last-hour filters)
+- Docs panel pointing at dedicated log file path + mock-receiver
+  command for offline testing
+Tab icon: Radio, alongside the existing 14 tabs. AudioProcessorManager
+still supports Shure as a backup path (operators who go there can
+still add).
+
+**What could break:**
+- Nothing — additive. Locations without a Shure receiver see the new
+  tab with an empty state ("No Shure SLX-D receivers configured").
+- The instrumentation error log was previously silent + cosmetic; the
+  fix makes any future error VISIBLE in pm2 logs with full stack trace.
+
+**Manual steps required:** none.
+
+**Verification:**
+```bash
+# Watcher booted clean post-restart:
+pm2 logs sports-bar-tv-controller --lines 50 --nostream \
+  | grep -E "Shure RF watcher|SHURE-RF"
+# Expect: [INSTRUMENTATION] ✅ Shure RF watcher started
+# NOT:    [INSTRUMENTATION] ❌ Failed to start
+
+# Dedicated log file should exist + have a startup line:
+ls -lh /home/ubuntu/sports-bar-data/logs/shure-rf-$(date +%Y-%m-%d).log
+tail -3 /home/ubuntu/sports-bar-data/logs/shure-rf-$(date +%Y-%m-%d).log
+
+# New admin tab loads:
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3001/device-config
+```
+
+**Affected files:**
+- Modified: `apps/web/src/lib/shure-rf-logger.ts` (bind-fix in logShureRfEvent)
+- Modified: `apps/web/src/lib/shure-rf-watcher.ts` (clearer error logs in catch)
+- Modified: `apps/web/src/instrumentation.ts` (inline error.message + stack)
+- New: `apps/web/src/components/ShureWirelessMicAdmin.tsx`
+- Modified: `apps/web/src/app/device-config/page.tsx` (mount Shure tab)
+
+`Checkpoint model: sonnet` — watcher fix is critical, validate post-restart.
+
+---
+
+### 2026-05-17 — v2.34.1 — Shure SLX-D Phase 2: battery UI + preflight + Atlas correlation + low-battery + mock receiver
+
+**What changed:**
+- **Live battery + RSSI tile on bartender Audio tab** (`ShureMicStatusPanel.tsx`).
+  Per-receiver card, per-channel row showing channel name, frequency,
+  RSSI quality (Excellent/Good/Marginal/Poor color coded), TX type
+  (Handheld/Bodypack/Off), battery bars 0-5 with color tier, runtime
+  minutes when available, last-seen relative time. Polls
+  `/api/shure-rf/status` every 3s. Multi-receiver friendly. Hidden
+  entirely when no Shure receiver configured. Renders ABOVE the
+  Atlas priority banner.
+- **`POST /api/shure-rf/preflight`** — pre-install check endpoint.
+  Body `{ip, port}`, returns checklist: tcpReachable, third-party
+  controls enabled (inferred from REP-within-2s), firmware ≥ 1.1.0,
+  model detected. Catches the #1 install failure (BLOCKED gate)
+  before the operator saves the receiver row.
+- **Pre-flight UI button in `AudioProcessorManager`** — visible only
+  for `processorType='shure-slxd'`. Operator runs the check, gets
+  green/red checklist inline, auto-fills the Model field from the
+  receiver's MODEL reply.
+- **`GET /api/shure-rf/status`** — live per-receiver per-channel
+  snapshot from the managed client cache. Powers the battery tile.
+- **Atlas ↔ Shure correlation** — `atlas-priority-watcher` now queries
+  `shure_rf_events` for a ±30s match before inserting a `mic_active`
+  row. If correlated, writes `event_type='rf_induced_mic_active'` +
+  note containing receiver/freq/RSSI. Banner copy already gestures
+  at this; now the data row proves it. Operator stops chasing ghost
+  overrides.
+- **Low-battery watcher branch** — rising-edge event when
+  `TX_BATT_BARS <= 1` (also fires below; clears when back above).
+  Writes `event_type='low_battery'` with minutes-remaining note.
+- **Mock SLX-D receiver script** (`scripts/mock-shure-receiver.ts`) —
+  developer tool. Scriptable scenarios: `clean`,
+  `interference-rising`, `tx-battery-dying`, `coalesced-frames`,
+  `partial-frames`, `third-party-controls-disabled`. Per-session
+  partial-frame queue (single drain loop) so concurrent send() calls
+  can't interleave halves of different frames. Used by the
+  integration test below.
+- **Integration test** (`scripts/test-shure-parser.ts`) — spawns the
+  mock for each scenario, drives the real `@sports-bar/shure-slxd`
+  client, verifies the parser/cache/event surface. **6/6 scenarios
+  PASS** — parser is verified before any hardware lands.
+- **Dependency update** — `npm audit fix` applied. axios 1.15.0 →
+  1.16.1 (CVE auth-bypass-via-prototype-pollution fix). Total open
+  vulnerabilities: 17 → 13. Remaining 13 require breaking-major
+  upgrades (drizzle-kit, next-pwa transitives) — deferred to
+  dedicated PRs per new Standing Rule #10.
+
+**What could break at a location:**
+- **Locations without a Shure receiver** — battery tile renders
+  nothing, preflight endpoint unused, watcher idles. Safe.
+- **Locations with the existing Shure receiver added but the network
+  not yet ready** — preflight will warn "TCP unreachable". Operator
+  can defer enabling. No regression.
+- **Atlas priority banner copy CHANGES SLIGHTLY** when an RF event is
+  active — adds "(likely RF interference — see below)" suffix. Pure
+  cosmetic; no behavior change.
+
+**Manual steps required:**
+None. All additive. Existing v2.34.0 setup steps in
+`docs/VERSION_SETUP_GUIDE.md` still apply for the Shure receiver
+itself — this batch only adds capabilities on top.
+
+**Rollback notes:**
+- New files are deletable cleanly. The new `event_type='rf_induced_mic_active'`
+  value in `atlas_priority_events` will linger but is harmless —
+  /api/atlas-priority filters by event_type in its summary count but
+  doesn't choke on unknown values.
+- Lockfile dep bumps are safe; rolling back requires `git revert`
+  + `npm install`.
+
+**Affected files:**
+- New: `apps/web/src/app/api/shure-rf/status/route.ts`
+- New: `apps/web/src/app/api/shure-rf/preflight/route.ts`
+- New: `apps/web/src/components/ShureMicStatusPanel.tsx`
+- New: `scripts/mock-shure-receiver.ts`
+- New: `scripts/test-shure-parser.ts`
+- Modified: `packages/shure-slxd/src/shure-slxd-client-manager.ts` (added `getSnapshots()`)
+- Modified: `apps/web/src/lib/shure-rf-watcher.ts` (low-battery branch)
+- Modified: `apps/web/src/lib/atlas-priority-watcher.ts` (Shure correlation)
+- Modified: `apps/web/src/components/AtlasZoneControl.tsx` (mount panel)
+- Modified: `apps/web/src/components/AudioProcessorManager.tsx` (preflight UI)
+- Modified: `package-lock.json` (axios + 3 transitive bumps)
+- Modified: `CLAUDE.md` (new Standing Rule #10 — keep deps updated)
+
+`Checkpoint model: sonnet` — touches multiple watcher paths, schema-touching audit logic in priority watcher.
+
+---
+
+### 2026-05-17 — v2.34.0 — Shure SLX-D wireless mic RF interference detection
+
+**What changed:**
+- New `@sports-bar/shure-slxd` package: TypeScript TCP client for Shure
+  SLX-D wireless mic receivers (port 2202, ASCII line protocol).
+  Singleton hoisted to `globalThis` per Gotcha #10. Per-key in-flight
+  Promise lock to close the same race window we fixed on Atlas v2.33.52.
+- New watcher `apps/web/src/lib/shure-rf-watcher.ts` subscribes to RSSI
+  meter pushes at 1 Hz, detects the ghost-carrier signature
+  (`TX_TYPE=UNKNOWN` + `RSSI ≥ -85 dBm` for 3 consecutive samples),
+  writes to new `shure_rf_events` audit table.
+- New dedicated daily-rotating log file at
+  `/home/ubuntu/sports-bar-data/logs/shure-rf-YYYY-MM-DD.log` with 30-day
+  retention. Operator request to make RF history diffable across game
+  days without grepping the entire app log.
+- New `GET /api/shure-rf?active=true` endpoint drives a cyan
+  "RF Interference Detected" banner on the bartender remote Audio tab.
+  Appears ALONGSIDE the existing amber priority banner; when both fire
+  simultaneously the priority event is labeled as RF-induced.
+- New 'shure-slxd' processor type in Device Config UI (`AudioProcessorManager.tsx`).
+- Comprehensive README at `packages/shure-slxd/README.md` documenting
+  the full protocol, gotchas, RF coordination SME briefing.
+
+**What could break at a location:**
+- **Locations without a Shure SLX-D receiver** — watcher queries
+  `audioProcessors WHERE processorType='shure-slxd'`, finds none,
+  logs "no shure-slxd receivers configured — watcher idle", no-op.
+  Safe. No regression possible.
+- **Locations WITH a Shure receiver but VLAN/network not yet routed
+  to the controller** — connect attempts will warn-log and trigger
+  exponential-backoff reconnect (max 10 attempts before giving up).
+  Operator action: route the receiver onto the controller's VLAN
+  before adding the processor row in Device Config, or be ready to
+  ignore the warn logs until routing is done.
+- **First-install gotcha** — Shure receiver's front panel
+  `Menu → Advanced → Network → Allow Third-Party Controls → Enable`
+  MUST be on, or port 2202 accepts the TCP connection but silently
+  drops every command (no error reaches us). Symptom: connection
+  succeeds but state cache never populates.
+
+**Manual steps required:**
+
+| Step | Where | Required if |
+|---|---|---|
+| Route receiver onto controller VLAN | network switch | Adding a Shure receiver |
+| Enable "Allow Third-Party Controls" on receiver front panel | Menu → Advanced → Network | Adding a Shure receiver |
+| Confirm firmware ≥ 1.1.0 | Settings → About on receiver, OR `GET FW_VER` reply | Adding a Shure receiver |
+| Confirm channel names on receiver | Settings → Channel Setup | Optional — operator-set labels surface in bartender banner |
+| Add row to `audioProcessors` table via Device Config UI | http://controller:3001/system-admin → Audio Processors | Adding a Shure receiver |
+
+**No manual steps required at locations without a Shure receiver.**
+
+**Rollback notes:**
+- New audit table `shure_rf_events` and new package are additive — no
+  data lost on rollback. Roll back via `git revert <commit>` then
+  `pm2 restart`. Leftover table is harmless.
+- Cyan banner only renders when `/api/shure-rf?active=true` returns
+  `active: true` — at locations without a Shure receiver the endpoint
+  returns `active: false` and the banner never appears.
+
+**Affected files:**
+- New: `packages/shure-slxd/` (5 files + README)
+- New: `apps/web/src/lib/shure-rf-logger.ts`
+- New: `apps/web/src/lib/shure-rf-watcher.ts`
+- New: `apps/web/src/app/api/shure-rf/route.ts`
+- Modified: `apps/web/src/components/AtlasZoneControl.tsx` (added cyan banner)
+- Modified: `apps/web/src/components/AudioProcessorManager.tsx` (added 'shure-slxd' processor type)
+- Modified: `apps/web/src/instrumentation.ts` (started watcher)
+- Modified: `apps/web/package.json` (added `@sports-bar/shure-slxd` dep)
+
+`Checkpoint model: sonnet` — new package + new daily-rotating log file
+warrant deeper-than-Haiku reasoning during Checkpoint B.
+
+---
+
 ### 2026-05-17 — v2.33.46 through v2.33.55 — Atlas audio fix train (10 versions)
 
 **Risk:** GO at every location with an Atlas processor. Backwards-compatible.
