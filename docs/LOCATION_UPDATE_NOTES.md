@@ -46,6 +46,73 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-17 — v2.34.2 — Shure RF watcher bind-fix + dedicated admin tab under Device Config
+
+**Critical fix:** Watcher silently failed to start at every restart since
+v2.34.0. Cause: `shure-rf-logger.ts` destructured `logger.info` /
+`logger.warn` / etc as `loggerFn` and called it with a lost `this`
+binding — `Logger.prototype.info` reads `this.logWithData(...)` and
+threw `TypeError: Cannot read properties of undefined (reading
+'logWithData')` on the very first `writeEvent`. Caught by surfacing
+the previously-swallowed Error via inline `error.message + stack` in
+instrumentation.ts (the second-arg-as-LogOptions dropped Error
+objects silently). Fixed by switch/case on entry.level calling
+`logger.info(msg)` / `logger.warn(msg)` etc directly on the instance.
+**Real symptom:** watcher never wrote follow-up events, no metering
+ever started, /api/shure-rf returned the startup row only. Locations
+that haven't deployed v2.34.0 yet: skip-to v2.34.2 directly.
+
+**New: Dedicated Shure admin tab under /device-config.**
+Replaces ad-hoc placement of Shure controls in AudioProcessorManager.
+One place for everything Shure:
+- Add receiver (with inline preflight)
+- List of configured receivers with live status (per-channel battery,
+  RSSI quality, frequency, TX type, runtime mins)
+- Per-receiver "Run Pre-flight" button — re-tests against the live
+  hardware without re-saving
+- Edit / Delete actions per receiver
+- Event history table (all / active / last-hour filters)
+- Docs panel pointing at dedicated log file path + mock-receiver
+  command for offline testing
+Tab icon: Radio, alongside the existing 14 tabs. AudioProcessorManager
+still supports Shure as a backup path (operators who go there can
+still add).
+
+**What could break:**
+- Nothing — additive. Locations without a Shure receiver see the new
+  tab with an empty state ("No Shure SLX-D receivers configured").
+- The instrumentation error log was previously silent + cosmetic; the
+  fix makes any future error VISIBLE in pm2 logs with full stack trace.
+
+**Manual steps required:** none.
+
+**Verification:**
+```bash
+# Watcher booted clean post-restart:
+pm2 logs sports-bar-tv-controller --lines 50 --nostream \
+  | grep -E "Shure RF watcher|SHURE-RF"
+# Expect: [INSTRUMENTATION] ✅ Shure RF watcher started
+# NOT:    [INSTRUMENTATION] ❌ Failed to start
+
+# Dedicated log file should exist + have a startup line:
+ls -lh /home/ubuntu/sports-bar-data/logs/shure-rf-$(date +%Y-%m-%d).log
+tail -3 /home/ubuntu/sports-bar-data/logs/shure-rf-$(date +%Y-%m-%d).log
+
+# New admin tab loads:
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3001/device-config
+```
+
+**Affected files:**
+- Modified: `apps/web/src/lib/shure-rf-logger.ts` (bind-fix in logShureRfEvent)
+- Modified: `apps/web/src/lib/shure-rf-watcher.ts` (clearer error logs in catch)
+- Modified: `apps/web/src/instrumentation.ts` (inline error.message + stack)
+- New: `apps/web/src/components/ShureWirelessMicAdmin.tsx`
+- Modified: `apps/web/src/app/device-config/page.tsx` (mount Shure tab)
+
+`Checkpoint model: sonnet` — watcher fix is critical, validate post-restart.
+
+---
+
 ### 2026-05-17 — v2.34.1 — Shure SLX-D Phase 2: battery UI + preflight + Atlas correlation + low-battery + mock receiver
 
 **What changed:**

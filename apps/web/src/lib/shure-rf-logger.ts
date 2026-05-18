@@ -87,13 +87,23 @@ export async function logShureRfEvent(entry: ShureRfLogEntry): Promise<void> {
 
   // Mirror to PM2-visible logger so this still surfaces in normal
   // operator triage. Use matching level.
+  //
+  // IMPORTANT: `logger` from @sports-bar/logger is a Logger CLASS
+  // instance — destructuring its methods (`const fn = logger.info`)
+  // loses the `this` binding and throws "Cannot read properties of
+  // undefined (reading 'logWithData')" at call time. Always call
+  // methods on the instance directly. (Caught at Holmgren 2026-05-17
+  // post-v2.34.1 deploy — watcher silently failed to start.)
   const tag = `[SHURE-RF] ${entry.receiverId}${entry.channel ? `:ch${entry.channel}` : ''}`
   const summary = `${entry.event}${entry.rssiDbm !== undefined ? ` (${entry.rssiDbm.toFixed(1)}dBm)` : ''}${entry.note ? ` — ${entry.note}` : ''}`
-  const loggerFn = entry.level === 'error' ? logger.error
-    : entry.level === 'warn' ? logger.warn
-    : entry.level === 'debug' ? logger.debug
-    : logger.info
-  loggerFn(`${tag} ${summary}`)
+  const msg = `${tag} ${summary}`
+  switch (entry.level) {
+    case 'error': logger.error(msg); break
+    case 'warn':  logger.warn(msg);  break
+    case 'debug': logger.debug(msg); break
+    case 'info':
+    default:      logger.info(msg);  break
+  }
 
   if (!dirEnsured) return
   try {
