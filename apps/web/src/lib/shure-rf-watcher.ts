@@ -233,13 +233,41 @@ async function evaluateChannel(args: {
   if (!c.active && c.aboveCount >= INTERFERENCE_THRESHOLDS.ABOVE_SAMPLES_TO_ACTIVATE) {
     c.active = true
     c.lastEventAt = now
+    // Cross-confirm against SDR carriers at this freq within ±60s.
+    // If the wide-band SDR independently saw a carrier at the same
+    // frequency, the Shure detection is corroborated — surface as
+    // "sdr_confirmed" in the note so operator + pattern digest can
+    // distinguish strong signals from speculative ones. Hands-off
+    // graceful when the SDR pipeline isn't running (table missing
+    // or empty — wrapped in try/catch, just degrades to plain
+    // rf_interference).
+    let confirmationNote = ''
+    if (state.frequencyMhz !== undefined) {
+      try {
+        const sdrMatches = await db.all<{ peak_dbm: number | null; detected_at: number }>(sql`
+          SELECT peak_dbm, detected_at
+          FROM sdr_carriers
+          WHERE event_type IN ('carrier_active', 'carrier_heartbeat')
+            AND detected_at BETWEEN ${now - 60} AND ${now + 5}
+            AND ABS(freq_mhz - ${state.frequencyMhz}) < 0.05
+          ORDER BY detected_at DESC
+          LIMIT 1
+        `)
+        if (sdrMatches.length > 0) {
+          const peakStr = sdrMatches[0].peak_dbm !== null
+            ? `, SDR peak ${sdrMatches[0].peak_dbm.toFixed(0)} dBm`
+            : ''
+          confirmationNote = ` (SDR-confirmed${peakStr})`
+        }
+      } catch { /* sdr_carriers may not exist yet — silent */ }
+    }
     await writeEvent({
       receiverId, receiverName, ipAddress, channel,
       eventType: 'rf_interference',
       rssiDbm: rssi,
       frequencyMhz: state.frequencyMhz,
       txType: state.txType,
-      note: `rising edge: ${INTERFERENCE_THRESHOLDS.ABOVE_SAMPLES_TO_ACTIVATE} samples ≥ ${INTERFERENCE_THRESHOLDS.ACTIVATE_RSSI_DBM}dBm with TX off`,
+      note: `rising edge: ${INTERFERENCE_THRESHOLDS.ABOVE_SAMPLES_TO_ACTIVATE} samples ≥ ${INTERFERENCE_THRESHOLDS.ACTIVATE_RSSI_DBM}dBm with TX off${confirmationNote}`,
       level: 'warn',
     })
   } else if (c.active && c.belowCount >= INTERFERENCE_THRESHOLDS.BELOW_SAMPLES_TO_DEACTIVATE) {
