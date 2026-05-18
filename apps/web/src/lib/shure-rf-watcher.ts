@@ -247,6 +247,29 @@ async function evaluateChannel(args: {
  */
 const attachedReceivers = new Set<string>()
 
+async function setProcessorStatus(processorId: string, status: 'online' | 'offline'): Promise<void> {
+  try {
+    if (status === 'online') {
+      await db.run(sql`
+        UPDATE AudioProcessor
+           SET status = 'online',
+               lastSeen = strftime('%Y-%m-%dT%H:%M:%fZ','now'),
+               updatedAt = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+         WHERE id = ${processorId}
+      `)
+    } else {
+      await db.run(sql`
+        UPDATE AudioProcessor
+           SET status = 'offline',
+               updatedAt = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+         WHERE id = ${processorId}
+      `)
+    }
+  } catch (err) {
+    logger.debug(`[SHURE-RF-WATCHER] status sync failed for ${processorId}: ${(err as Error).message}`)
+  }
+}
+
 /**
  * Wire up one receiver: connect, attach stateChange handler that
  * runs the threshold evaluator, start metering at 1 Hz.
@@ -280,14 +303,28 @@ async function attachReceiver(processor: {
       }).catch((err) => logger.error(`[SHURE-RF-WATCHER] evaluate failed: ${(err as Error).message}`))
     })
 
+    // Keep AudioProcessor.status / lastSeen in sync with the live TCP
+    // state so every consumer (Wireless Mics admin, Audio Processors
+    // list, Overview tab counts) sees the same truth. Without this the
+    // DB column stays at whatever it was when the row was first
+    // inserted — operator complaint at Holmgren 2026-05-18.
+    client.on('connected', () => {
+      setProcessorStatus(processor.id, 'online').catch(() => {})
+    })
+    client.on('disconnected', () => {
+      setProcessorStatus(processor.id, 'offline').catch(() => {})
+    })
+
     // Use a faster metering rate than the BF default 5000ms so we
     // catch RF interference within ~3s. Spec allows 50-60000; we pick
     // 1000ms — fast enough for game-day responsiveness, slow enough
     // not to lock the receiver's web UI per Bitfocus HELP guidance.
     await client.startMetering(1_000)
     attachedReceivers.add(processor.id)
+    await setProcessorStatus(processor.id, 'online')
     logger.info(`[SHURE-RF-WATCHER] attached to ${receiverName} @ ${processor.ipAddress}:${processor.tcpPort ?? 2202}`)
   } catch (err) {
+    await setProcessorStatus(processor.id, 'offline')
     logger.warn(`[SHURE-RF-WATCHER] could not attach to ${receiverName} @ ${processor.ipAddress}: ${(err as Error).message}`)
   }
 }
