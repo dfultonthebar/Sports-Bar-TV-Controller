@@ -233,6 +233,27 @@ export class ShureSlxdClient extends EventEmitter {
     this.sendRaw(`${SHURE_PROTOCOL.FRAME_OPEN}SET ${channel} FREQUENCY ${raw}${SHURE_PROTOCOL.FRAME_CLOSE}`)
   }
 
+  /**
+   * Rename a channel. Shure pads the name to 31 chars internally — pass
+   * an unpadded string; receiver handles the padding. SET is fire-and-forget;
+   * the receiver echoes a REP CHAN_NAME which will arrive on the existing
+   * frame handler and update the cache.
+   *
+   * Silently dropped if name is empty or > 31 chars (no ERR frame in the
+   * protocol). Caller should validate before sending.
+   */
+  async setChannelName(channel: number, name: string): Promise<void> {
+    this.sendRaw(`${SHURE_PROTOCOL.FRAME_OPEN}SET ${channel} CHAN_NAME {${name}}${SHURE_PROTOCOL.FRAME_CLOSE}`)
+  }
+
+  /**
+   * Set the audio output gain trim for a channel (-32 to +32 dB on SLX-D
+   * per the spec). Silent drop if out of range.
+   */
+  async setAudioGain(channel: number, gainDb: number): Promise<void> {
+    this.sendRaw(`${SHURE_PROTOCOL.FRAME_OPEN}SET ${channel} AUDIO_GAIN ${Math.round(gainDb)}${SHURE_PROTOCOL.FRAME_CLOSE}`)
+  }
+
   /** Flash the receiver's front-panel LEDs for visual ID (~30s auto-off). */
   async flash(): Promise<void> {
     this.sendRaw(`${SHURE_PROTOCOL.FRAME_OPEN}SET 0 FLASH ON${SHURE_PROTOCOL.FRAME_CLOSE}`)
