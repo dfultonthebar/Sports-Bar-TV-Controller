@@ -24,6 +24,7 @@ import SportsBarLayout from '@/components/SportsBarLayout'
 import SportsBarHeader from '@/components/SportsBarHeader'
 import TVNetworkDiscovery from '@/components/tv-network/TVNetworkDiscovery'
 import ShureWirelessMicAdmin from '@/components/ShureWirelessMicAdmin'
+import DeviceConfigOverview from '@/components/device-config/DeviceConfigOverview'
 import { logger } from '@sports-bar/logger'
 import {
   Satellite,
@@ -43,7 +44,10 @@ import {
   PlayCircle,
   Wifi,
   Mic2,
-  Sun
+  Sun,
+  LayoutDashboard,
+  ChevronUp,
+  ChevronDown,
 } from 'lucide-react'
 import DMXControllerManager from '@/components/dmx/DMXControllerManager'
 import { CommercialLightingManager } from '@/components/commercial-lighting'
@@ -78,6 +82,14 @@ export default function DeviceConfigPage() {
   const [mounted, setMounted] = useState(false)
   const [aiActionLoading, setAiActionLoading] = useState<string | null>(null)
   const [aiActionResult, setAiActionResult] = useState<any>(null)
+  // Active tab is controlled so the Overview's alert rows can jump
+  // the operator to the relevant tab (e.g. "X Fire TVs offline →
+  // [View]" warps to the Fire TV tab).
+  const [activeTab, setActiveTab] = useState('overview')
+  // Quick Actions sidebar is opt-in expanded — too much vertical
+  // space when collapsed by default keeps the actual tab content
+  // above the fold.
+  const [quickActionsOpen, setQuickActionsOpen] = useState(false)
 
   // Lighting visibility settings
   const [dmxLightingEnabled, setDmxLightingEnabled] = useState(false)
@@ -271,8 +283,12 @@ export default function DeviceConfigPage() {
        *   Previously Radio appeared 3x and Lightbulb 2x; now: Wifi for
        *   Global Cache (network gateway), Zap for IR Devices (fast IR
        *   signals), Mic2 for Wireless Mics (vs general Radio). */}
-      <Tabs defaultValue="channel-presets" className="space-y-6">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
         <TabsList className="flex w-full overflow-x-auto flex-nowrap gap-1 p-1 justify-start">
+          <TabsTrigger value="overview" className="flex items-center gap-2 flex-shrink-0">
+            <LayoutDashboard className="w-4 h-4" />
+            Overview
+          </TabsTrigger>
           <TabsTrigger value="channel-presets" className="flex items-center gap-2 flex-shrink-0">
             <Star className="w-4 h-4" />
             Channel Presets
@@ -330,6 +346,10 @@ export default function DeviceConfigPage() {
             Wireless Mics
           </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="overview" className="space-y-4">
+          <DeviceConfigOverview onJumpToTab={setActiveTab} />
+        </TabsContent>
 
         <TabsContent value="channel-presets" className="space-y-4">
           <Card>
@@ -684,18 +704,31 @@ export default function DeviceConfigPage() {
         </TabsContent>
       </Tabs>
 
-      {/* Quick Actions for AI Features */}
+      {/* Quick Actions for AI Features — collapsed by default so the
+          three buttons + the optional result card don't eat 2 screen
+          heights below the active tab. Click the header to expand. */}
       {aiEnhancementsEnabled && (
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Zap className="w-5 h-5 text-yellow-400" />
-              Quick AI Actions
+          <CardHeader
+            className="cursor-pointer select-none"
+            onClick={() => setQuickActionsOpen((p) => !p)}
+          >
+            <CardTitle className="flex items-center justify-between gap-2">
+              <span className="flex items-center gap-2">
+                <Zap className="w-5 h-5 text-yellow-400" />
+                Quick AI Actions
+              </span>
+              {quickActionsOpen
+                ? <ChevronUp className="w-4 h-4 text-slate-400" />
+                : <ChevronDown className="w-4 h-4 text-slate-400" />}
             </CardTitle>
             <CardDescription>
-              Real AI-powered operations using device performance data and sports context
+              {quickActionsOpen
+                ? 'Real AI-powered operations using device performance data and sports context'
+                : 'Click to expand — run full analysis, optimize devices, or view AI insights'}
             </CardDescription>
           </CardHeader>
+          {quickActionsOpen && (
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <Button
@@ -790,6 +823,7 @@ export default function DeviceConfigPage() {
               </div>
             )}
           </CardContent>
+          )}
         </Card>
       )}
       </div>

@@ -46,6 +46,72 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-17 — v2.36.0 — /device-config Overview tab + collapsible Quick Actions
+
+**The big change:** /device-config now lands on a new **Overview** tab
+instead of "Channel Presets" (which is a niche feature). Operators
+see system status first, configure-stuff second — closer to what
+they actually open this page to find out.
+
+**New OverviewPanel content** (auto-refreshes every 10s):
+- **Alerts strip** — only renders when there's something to flag. A
+  healthy bar shows a single green "All systems normal" pill. Alerts
+  include: silent Atlas zone drops, active Atlas priority, RF-induced
+  priority events (Shure-Atlas correlation), Shure RF interference,
+  Shure low-battery, offline Fire TVs / DirecTV receivers. Each
+  alert has a "View" button that warps the operator to the relevant
+  tab.
+- **Device count grid** — Audio Processors (online/total), Wireless
+  Mics (count + interference/battery summary), Fire TV (online/total),
+  DirecTV (online/total). Each card clickable → jumps to its tab.
+- **Recent Activity** — Atlas zone drops (silent), Atlas priority
+  events (with RF-induced highlight), Shure RF interference. Each
+  shows count + latest "Xm ago" timestamp + a one-line hint of
+  what the row means.
+- **Audio Processors detail** — per-processor row with online/offline
+  indicator, type tag, IP. Only renders if any are configured.
+- **System info footer** — version, uptime, build date.
+
+**Quick AI Actions made collapsible.** Previously the AI quick-action
+card was always-expanded at the bottom of /device-config when AI was
+enabled — ate 2 screen heights below the active tab content. Now
+defaults to collapsed (chevron in header to expand). Operator opens
+when they want to run an action, closes when they don't.
+
+**What could break:**
+- **Nothing breaks** — additive + the default tab change is muscle-
+  memory friendly (the tab they want is still in the list, just no
+  longer the default landing).
+- **Existing deep-links** to /device-config?tab=channel-presets still
+  work because the Tabs component still accepts that value. Operators
+  with browser bookmarks land where they expected.
+
+**Manual steps required:** none.
+
+**Verification:**
+```bash
+# Overview tab loads:
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3001/device-config
+
+# Endpoints the Overview consumes — all should return 200 + a JSON
+# payload (even if empty):
+for path in /api/audio-processor /api/firetv-devices /api/directv-devices \
+           /api/atlas-drops /api/atlas-priority /api/shure-rf /api/system/version; do
+  echo "$path $(curl -s -o /dev/null -w '%{http_code}' http://localhost:3001$path)"
+done
+# Expect: each prints "200"
+```
+
+**Affected files:**
+- New: `apps/web/src/components/device-config/DeviceConfigOverview.tsx` (~390 LOC)
+- Modified: `apps/web/src/app/device-config/page.tsx` (added Overview tab as
+  default, controlled-tab state for jump-to-tab from alerts, collapsible
+  Quick Actions card)
+
+`Checkpoint model: haiku` — additive UX, no schema, no API, no auth surface.
+
+---
+
 ### 2026-05-17 — v2.35.0 — /device-config UX cleanup pass
 
 **Critical fix:** TabsList had `gridTemplateColumns: 'repeat(13, ...)'`
