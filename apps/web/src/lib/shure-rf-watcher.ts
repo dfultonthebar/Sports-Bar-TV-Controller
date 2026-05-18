@@ -166,7 +166,17 @@ async function evaluateChannel(args: {
   }
 
   const rssi = state.rssiDbm
-  const txOff = (state.txType ?? '').toUpperCase() === 'UNKNOWN'
+  // TX-presence signal: battery bars first (pushed in every SAMPLE
+  // frame), txType second (slow REP-on-change, may not arrive promptly
+  // — Holmgren 2026-05-18 observation). 255 = sentinel "no TX seen".
+  // Treating undefined-txType as txOff was a false positive against
+  // the receiver's actual carrier-detect state.
+  const hasBattery = state.txBattBars !== undefined && state.txBattBars !== 255
+  const txTypeKnownPresent =
+    state.txType !== undefined &&
+    state.txType !== '' &&
+    state.txType.toUpperCase() !== 'UNKNOWN'
+  const txOff = !hasBattery && !txTypeKnownPresent
 
   if (rssi === undefined) {
     counters.set(key, c)

@@ -205,7 +205,15 @@ export default function ShureMicStatusPanel() {
               <div className="text-xs text-slate-500">Waiting for first sample…</div>
             )}
             {rcv.channels.map((ch) => {
-              const txOff = (ch.txType ?? '').toUpperCase() === 'UNKNOWN' || !ch.txType
+              // Use battery bars (in every SAMPLE frame) as the TX-present
+              // signal, not txType (slow-changing REP-on-change property).
+              // Holmgren 2026-05-18: receiver had bars=4 RSSI=-61dBm
+              // audio active, but txType was still undefined because no
+              // TX_TYPE REP had arrived since connect — tile dimmed and
+              // showed "off" while the TX was clearly live.
+              const hasBattery = ch.txBattBars !== undefined && ch.txBattBars !== 255
+              const hasAudio = (ch.audioPeakDbfs ?? -120) > -95
+              const txOff = !hasBattery && !hasAudio
               const rTier = rssiTier(ch.rssiDbm, txOff)
               const bTier = batteryTier(ch.txBattBars, txOff)
               const muted = txOff
