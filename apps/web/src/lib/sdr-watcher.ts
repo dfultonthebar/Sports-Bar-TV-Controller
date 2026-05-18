@@ -115,8 +115,14 @@ type CarrierState = {
 const carriers = new Map<number, CarrierState>() // key = freqMhz
 
 let childProcess: ReturnType<typeof spawn> | null = null
+let childReadline: readline.Interface | null = null
 let backoffMs = RESTART_BACKOFF_INITIAL_MS
 let stopRequested = false
+// Flag set by the band re-evaluation interval BEFORE killing the
+// child, so the exit handler can tell "operator-driven retune"
+// (immediate respawn at base interval) from "subprocess crashed"
+// (exponential backoff).
+let retuneInProgress = false
 
 async function ensureTables(): Promise<void> {
   await db.run(sql`
@@ -294,8 +300,10 @@ function handleSweepLine(line: string): void {
     }
   }
 
-  // Periodically flush minute buckets that have rolled over.
-  flushAggregator(false)
+  // Per-line aggregator flush removed in v2.45.1 — at 1Hz sweep rate
+  // with ~1760 bins this fired flushAggregator() ~1760 times/second,
+  // iterating the entire Map on each call. The 30s interval in
+  // startSdrWatcher already handles minute-boundary flushing.
 }
 
 async function computeBand(): Promise<{ startMhz: number; endMhz: number }> {
@@ -341,8 +349,8 @@ function spawnRtlPower(): void {
   logger.info(`[SDR-WATCHER] spawning rtl_power ${args.join(' ')}`)
   childProcess = spawn('rtl_power', args, { stdio: ['ignore', 'pipe', 'pipe'] })
 
-  const rl = readline.createInterface({ input: childProcess.stdout! })
-  rl.on('line', handleSweepLine)
+  childReadline = readline.createInterface({ input: childProcess.stdout! })
+  childReadline.on('line', handleSweepLine)
   childProcess.stderr?.on('data', (chunk) => {
     const s = chunk.toString().trim()
     if (s && !s.toLowerCase().includes('tuner gain')) {
@@ -350,11 +358,24 @@ function spawnRtlPower(): void {
     }
   })
   childProcess.on('exit', (code, signal) => {
+    // Close readline first so the old stdout pipe is freed and the
+    // event-loop ref count drops. Without this, the readline stayed
+    // alive holding the dead process's stdout pipe.
+    childReadline?.close()
+    childReadline = null
     childProcess = null
     if (stopRequested) return
-    logger.warn(`[SDR-WATCHER] rtl_power exited (code=${code}, signal=${signal}); restart in ${backoffMs / 1000}s`)
-    setTimeout(spawnRtlPower, backoffMs)
-    backoffMs = Math.min(backoffMs * 2, RESTART_BACKOFF_MAX_MS)
+    // Operator-driven retune (band change) — restart at base
+    // interval, don't apply backoff. Without this flag the exit
+    // handler doubled backoffMs immediately after the band-reeval
+    // interval reset it, defeating the "skip backoff" intent.
+    const restartIn = retuneInProgress ? RESTART_BACKOFF_INITIAL_MS : backoffMs
+    retuneInProgress = false
+    logger.warn(`[SDR-WATCHER] rtl_power exited (code=${code}, signal=${signal}); restart in ${restartIn / 1000}s`)
+    setTimeout(spawnRtlPower, restartIn)
+    if (!retuneInProgress) {
+      backoffMs = Math.min(backoffMs * 2, RESTART_BACKOFF_MAX_MS)
+    }
   })
 
   // Reset backoff after a successful 60s run.
@@ -408,9 +429,12 @@ export async function startSdrWatcher(): Promise<void> {
       currentBandStartMhz = next.startMhz
       currentBandEndMhz = next.endMhz
       // Kill current subprocess; the 'exit' handler will respawn with
-      // the new args.
+      // the new args. The retuneInProgress flag tells the exit handler
+      // "this is a band change, restart immediately at base interval"
+      // — the prior approach (set backoffMs before SIGTERM) was racy
+      // because the exit handler then re-doubled backoffMs.
       if (childProcess && !childProcess.killed) {
-        backoffMs = RESTART_BACKOFF_INITIAL_MS // skip backoff for an operator-driven retune
+        retuneInProgress = true
         childProcess.kill('SIGTERM')
       }
     }
@@ -419,6 +443,8 @@ export async function startSdrWatcher(): Promise<void> {
 
 export function stopSdrWatcher(): void {
   stopRequested = true
+  childReadline?.close()
+  childReadline = null
   if (childProcess && !childProcess.killed) childProcess.kill('SIGTERM')
   flushAggregator(true)
 }

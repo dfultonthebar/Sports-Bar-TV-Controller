@@ -18,7 +18,16 @@ export async function GET(request: NextRequest) {
   if (!rateLimit.allowed) return rateLimit.response
 
   try {
-    const enabled = process.env.SDR_ENABLED === 'true'
+    // Must mirror sdr-watcher.ts's SDR_ENABLED_MODE parsing — both
+    // 'true' (force-start) and 'auto' (start when dongle detected) are
+    // "enabled" from the UI's perspective. Previously this only
+    // matched 'true', so when the operator used the recommended
+    // SDR_ENABLED=auto mode the status response always reported
+    // enabled=false and the UI showed the "SDR disabled" explainer
+    // even with the watcher actively writing data. Caught by code
+    // review on v2.45.0.
+    const mode = (process.env.SDR_ENABLED ?? 'false').toLowerCase()
+    const enabled = mode === 'true' || mode === 'auto'
     const nowSec = Math.floor(Date.now() / 1000)
     let lastBucketAt = 0
     let totalRows = 0

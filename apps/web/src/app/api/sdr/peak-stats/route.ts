@@ -99,23 +99,40 @@ export async function GET(request: NextRequest) {
       LIMIT ${topN}
     `)
 
-    // Compute p95 per freq from a follow-up query — separate so the
-    // main aggregation stays fast. For the topN noisiest freqs only.
-    const enriched: Row[] = []
-    for (const r of rows) {
-      try {
-        const samples = await db.all<{ max_dbm: number }>(sql`
-          SELECT max_dbm FROM sdr_spectrum
-          WHERE freq_mhz = ${r.freq_mhz}
-            AND bucket_at >= ${cutoff}
-          ORDER BY max_dbm
-        `)
-        if (samples.length > 0) {
-          const idx = Math.min(Math.floor(samples.length * 0.95), samples.length - 1)
-          r.p95_dbm = samples[idx].max_dbm
-        }
-      } catch { /* ignore */ }
-      enriched.push(r)
+    // P95 in a SINGLE bulk query, not N round-trips. The prior
+    // implementation issued one SELECT per result row with NO LIMIT,
+    // so at topN=200 over a 7-day window that's 200 sequential
+    // queries fetching ~2M rows total — would block the SQLite
+    // writer for tens of seconds under load. Caught by code review
+    // on v2.45.0. Now: one query, GROUP_CONCAT per freq, p95
+    // computed in JS. Capped at 1000 samples per freq to bound the
+    // GROUP_CONCAT payload (more than enough for a stable p95).
+    const freqList = rows.map((r) => r.freq_mhz)
+    const enriched: Row[] = rows
+    if (freqList.length > 0) {
+      const bulk = await db.all<{ freq_mhz: number; max_concat: string }>(sql`
+        SELECT freq_mhz, GROUP_CONCAT(max_dbm) AS max_concat
+        FROM (
+          SELECT freq_mhz, max_dbm
+          FROM sdr_spectrum
+          WHERE bucket_at >= ${cutoff}
+            AND freq_mhz IN (${sql.join(freqList, sql`, `)})
+          ORDER BY freq_mhz, max_dbm
+          LIMIT 200000
+        )
+        GROUP BY freq_mhz
+      `)
+      const p95ByFreq = new Map<number, number>()
+      for (const b of bulk) {
+        const sorted = (b.max_concat || '').split(',').map(Number).filter((n) => !isNaN(n))
+        if (sorted.length === 0) continue
+        const idx = Math.min(Math.floor(sorted.length * 0.95), sorted.length - 1)
+        p95ByFreq.set(b.freq_mhz, sorted[idx])
+      }
+      for (const r of enriched) {
+        const p = p95ByFreq.get(r.freq_mhz)
+        if (p !== undefined) r.p95_dbm = p
+      }
     }
 
     return NextResponse.json({
