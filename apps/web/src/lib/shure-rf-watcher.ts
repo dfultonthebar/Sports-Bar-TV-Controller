@@ -402,4 +402,62 @@ export async function startShureRfWatcher(): Promise<void> {
   setInterval(() => {
     discoverAndAttach().catch((err) => logger.debug(`[SHURE-RF-WATCHER] re-scan failed: ${(err as Error)?.message ?? err}`))
   }, 5 * 60 * 1000)
+
+  // Baseline RF environment snapshot — one row per channel capturing
+  // current RSSI + frequency even when no interference is firing.
+  // Sampled every 10 minutes during the May-August 2026 bootstrap
+  // window. The SLX-D receiver streams SAMPLE frames continuously
+  // (every 1s); we DON'T persist all of them (would be ~170K rows/day),
+  // but we DO want enough samples to build a "what does the bar's
+  // RF environment look like over time" picture before the August
+  // preseason brings real game-day traffic.
+  //
+  // After enough baseline data is gathered (~3-4 weeks) the interval
+  // can be relaxed to 30-60 min — bumped to BASELINE_INTERVAL_MS env
+  // var so we can tune without redeploying.
+  //
+  // Storage budget at 10 min: 2 ch × 144 samples/day × 365 days
+  //   ≈ 105K rows/year. SQLite handles that easily, indexed by
+  //   (detected_at) for digest queries.
+  const baselineIntervalMs = parseInt(
+    process.env.SHURE_BASELINE_INTERVAL_MS ?? `${10 * 60 * 1000}`, 10,
+  )
+  setTimeout(() => {
+    writeBaselineSnapshot().catch((err) => logger.debug(`[SHURE-RF-WATCHER] baseline snapshot failed: ${(err as Error)?.message ?? err}`))
+  }, 90_000)
+  setInterval(() => {
+    writeBaselineSnapshot().catch((err) => logger.debug(`[SHURE-RF-WATCHER] baseline snapshot failed: ${(err as Error)?.message ?? err}`))
+  }, baselineIntervalMs)
+}
+
+/**
+ * Capture an hourly RSSI/frequency snapshot from every connected
+ * receiver. event_type='baseline_sample' — clearly distinct from
+ * real interference events so the digest can filter/include as
+ * needed. No-op if no receivers are attached.
+ */
+async function writeBaselineSnapshot(): Promise<void> {
+  const { shureSlxdClientManager } = await import('@sports-bar/shure-slxd')
+  const snapshots = shureSlxdClientManager.getSnapshots()
+  if (snapshots.length === 0) return
+  for (const rcv of snapshots) {
+    if (!rcv.connected) continue
+    for (const ch of rcv.channels) {
+      if (ch.rssiDbm === undefined) continue
+      const hasBattery = ch.txBattBars !== undefined && ch.txBattBars !== 255
+      const txState = hasBattery ? 'tx_on' : 'tx_off'
+      await writeEvent({
+        receiverId: rcv.receiverId,
+        receiverName: rcv.receiverName,
+        ipAddress: rcv.ipAddress,
+        channel: ch.channel,
+        eventType: 'baseline_sample',
+        rssiDbm: ch.rssiDbm,
+        frequencyMhz: ch.frequencyMhz,
+        txType: ch.txType,
+        note: txState,
+        level: 'debug',
+      })
+    }
+  }
 }

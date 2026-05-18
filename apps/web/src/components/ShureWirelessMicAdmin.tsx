@@ -34,6 +34,7 @@ import {
   FileText,
   X,
   AlertTriangle,
+  Sparkles,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { logger } from '@sports-bar/logger'
@@ -136,6 +137,20 @@ export default function ShureWirelessMicAdmin() {
   })
   const [editSaving, setEditSaving] = useState(false)
   const [editError, setEditError] = useState<string | null>(null)
+  // Pattern-digest (Stage 1 AI) — Ollama summary of recurring
+  // interference patterns. On-demand via "Analyze" button, server
+  // caches for 1h (POST is gated by ADMIN auth + AI rate limit).
+  const [digest, setDigest] = useState<{
+    text: string
+    eventCount: number
+    windowDays: number
+    generatedAt: number
+    stale: boolean
+    stats?: any
+    model?: string
+  } | null>(null)
+  const [digestRunning, setDigestRunning] = useState(false)
+  const [digestError, setDigestError] = useState<string | null>(null)
 
   const fetchReceivers = useCallback(async () => {
     try {
@@ -193,10 +208,11 @@ export default function ShureWirelessMicAdmin() {
     fetchReceivers()
     fetchSnapshots()
     fetchHistory()
+    loadCachedDigest()
     const statusId = setInterval(fetchSnapshots, 3_000)
     const historyId = setInterval(fetchHistory, 10_000)
     return () => { clearInterval(statusId); clearInterval(historyId) }
-  }, [fetchReceivers, fetchSnapshots, fetchHistory])
+  }, [fetchReceivers, fetchSnapshots, fetchHistory, loadCachedDigest])
 
   // Run a pre-flight against an explicit ip/port. Pass the form
   // button calls this with the form's current IP; the "re-test
@@ -321,6 +337,55 @@ export default function ShureWirelessMicAdmin() {
 
   const snapshotByReceiver = (id: string): ShureReceiverSnapshot | undefined =>
     snapshots.find((s) => s.receiverId === id)
+
+  const loadCachedDigest = useCallback(async () => {
+    try {
+      const r = await fetch('/api/shure-rf/pattern-digest')
+      if (!r.ok) return
+      const data = await r.json()
+      if (data.success && data.digest) {
+        setDigest({
+          text: data.digest,
+          eventCount: data.eventCount,
+          windowDays: data.windowDays,
+          generatedAt: data.generatedAt,
+          stale: !!data.stale,
+          stats: data.stats,
+          model: data.model,
+        })
+      }
+    } catch { /* cache miss or net error — silent */ }
+  }, [])
+
+  const runDigest = async (force = false) => {
+    setDigestRunning(true)
+    setDigestError(null)
+    try {
+      const r = await fetch(`/api/shure-rf/pattern-digest${force ? '?force=true' : ''}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ windowDays: 30 }),
+      })
+      const data = await r.json()
+      if (!r.ok || !data.success) {
+        setDigestError(data.error || `Analysis failed (${r.status})`)
+        return
+      }
+      setDigest({
+        text: data.digest,
+        eventCount: data.eventCount,
+        windowDays: data.windowDays,
+        generatedAt: data.generatedAt,
+        stale: false,
+        stats: data.stats,
+        model: data.model,
+      })
+    } catch (err) {
+      setDigestError((err as Error).message || 'Network error')
+    } finally {
+      setDigestRunning(false)
+    }
+  }
 
   const openChannelEdit = (receiverId: string, ch: ShureChannelState) => {
     setEditError(null)
@@ -752,6 +817,67 @@ export default function ShureWirelessMicAdmin() {
           })}
         </div>
       )}
+
+      <div className="rounded-xl border border-cyan-700/40 bg-cyan-950/20 p-4">
+        <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-cyan-400" />
+            <h4 className="text-sm font-medium text-white">Interference Patterns (AI)</h4>
+            {digest && (
+              <span className="text-xs text-slate-400">
+                {digest.eventCount} events · last {digest.windowDays}d ·{' '}
+                {(() => {
+                  const ageSec = Math.max(0, Math.floor(Date.now() / 1000) - digest.generatedAt)
+                  if (ageSec < 60) return `${ageSec}s ago`
+                  if (ageSec < 3600) return `${Math.floor(ageSec / 60)}m ago`
+                  return `${Math.floor(ageSec / 3600)}h ago`
+                })()}
+                {digest.stale && <span className="ml-1 text-amber-400">(stale)</span>}
+              </span>
+            )}
+          </div>
+          <Button
+            type="button"
+            onClick={() => runDigest(true)}
+            disabled={digestRunning}
+            className="bg-cyan-500 hover:bg-cyan-600 text-white h-8"
+            title="Re-run Ollama analysis against the last 30 days of events"
+          >
+            {digestRunning ? (
+              <><RefreshCw className="w-3.5 h-3.5 mr-1 animate-spin" /> Analyzing…</>
+            ) : (
+              <><Sparkles className="w-3.5 h-3.5 mr-1" /> {digest ? 'Re-analyze' : 'Analyze'}</>
+            )}
+          </Button>
+        </div>
+        {digestError && (
+          <div className="mb-2 px-3 py-2 rounded border border-red-500/40 bg-red-950/30 text-xs text-red-300 flex items-center gap-2">
+            <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" /> {digestError}
+          </div>
+        )}
+        {!digest && !digestRunning && !digestError && (
+          <div className="text-xs text-slate-400 italic">
+            Click <span className="text-cyan-400 font-medium">Analyze</span> to run Ollama on the last
+            30 days of RF events. Looks for recurring interference patterns by frequency, time-of-day,
+            and day-of-week. ~60-180s on the iGPU.
+          </div>
+        )}
+        {digestRunning && !digest && (
+          <div className="text-xs text-slate-400 italic">
+            Running Ollama analysis — this takes 60-180s on the Intel iGPU. Stay on the page.
+          </div>
+        )}
+        {digest && (
+          <div className="space-y-2">
+            <div className="text-sm text-slate-200 whitespace-pre-wrap leading-relaxed">
+              {digest.text}
+            </div>
+            <div className="text-[10px] text-slate-500 font-mono pt-1 border-t border-slate-700/50">
+              model: {digest.model ?? 'llama3.1:8b'} · cache TTL: 1h
+            </div>
+          </div>
+        )}
+      </div>
 
       <div className="rounded-xl border border-slate-700 bg-slate-800/50 p-4">
         <div className="flex items-center justify-between mb-3">
