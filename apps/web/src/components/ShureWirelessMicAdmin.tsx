@@ -127,6 +127,15 @@ export default function ShureWirelessMicAdmin() {
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [historyFilter, setHistoryFilter] = useState<'all' | 'active' | 'last-hour'>('all')
+  // Inline-edit state for per-channel name/freq/gain. One channel at a
+  // time across the whole page. Replaces the front-panel-menu workflow
+  // operators used pre-v2.37.10 — see /api/shure-rf/channel route.
+  const [editChannel, setEditChannel] = useState<{ receiverId: string; channel: number } | null>(null)
+  const [editForm, setEditForm] = useState<{ name: string; freqMhz: string; audioGain: string }>({
+    name: '', freqMhz: '', audioGain: '',
+  })
+  const [editSaving, setEditSaving] = useState(false)
+  const [editError, setEditError] = useState<string | null>(null)
 
   const fetchReceivers = useCallback(async () => {
     try {
@@ -312,6 +321,73 @@ export default function ShureWirelessMicAdmin() {
 
   const snapshotByReceiver = (id: string): ShureReceiverSnapshot | undefined =>
     snapshots.find((s) => s.receiverId === id)
+
+  const openChannelEdit = (receiverId: string, ch: ShureChannelState) => {
+    setEditError(null)
+    setEditChannel({ receiverId, channel: ch.channel })
+    setEditForm({
+      name: ch.channelName ?? '',
+      freqMhz: ch.frequencyMhz !== undefined ? ch.frequencyMhz.toFixed(3) : '',
+      audioGain: ch.audioGainDb !== undefined ? String(ch.audioGainDb) : '',
+    })
+  }
+
+  const closeChannelEdit = () => {
+    setEditChannel(null)
+    setEditError(null)
+  }
+
+  const submitChannelEdit = async (origCh: ShureChannelState) => {
+    if (!editChannel) return
+    setEditSaving(true)
+    setEditError(null)
+    try {
+      // Only send fields the operator actually changed — keeps the
+      // receiver's GROUP_CHAN intact when only the name changed
+      // (SET FREQUENCY resets GROUP_CHAN to Manual).
+      const body: Record<string, unknown> = {
+        receiverId: editChannel.receiverId,
+        channel: editChannel.channel,
+      }
+      const newName = editForm.name.trim()
+      if (newName && newName !== (origCh.channelName ?? '')) body.name = newName
+      const newFreq = parseFloat(editForm.freqMhz)
+      if (
+        Number.isFinite(newFreq) && newFreq > 0 &&
+        Math.abs(newFreq - (origCh.frequencyMhz ?? -1)) > 0.0005
+      ) body.freqMhz = newFreq
+      const newGain = parseInt(editForm.audioGain, 10)
+      if (Number.isFinite(newGain) && newGain !== (origCh.audioGainDb ?? 0)) body.audioGain = newGain
+
+      if (Object.keys(body).length === 2) {
+        // Only receiverId+channel, no real diff.
+        closeChannelEdit()
+        return
+      }
+
+      const r = await fetch('/api/shure-rf/channel', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const data = await r.json()
+      if (!r.ok || !data.success) {
+        setEditError(data.error || `Edit failed (${r.status})`)
+        return
+      }
+      if (data.warnings?.length) {
+        setMessage({ type: 'success', text: `Saved. ⚠ ${data.warnings.join(' / ')}` })
+      } else {
+        setMessage({ type: 'success', text: 'Channel updated.' })
+      }
+      closeChannelEdit()
+      fetchSnapshots()
+    } catch (err) {
+      setEditError((err as Error).message || 'Network error')
+    } finally {
+      setEditSaving(false)
+    }
+  }
 
   if (loading) {
     return (
@@ -543,6 +619,7 @@ export default function ShureWirelessMicAdmin() {
                       const batt = batteryDisplay(ch.txBattBars, txOff)
                       const BIcon = batt.Icon
                       const RIcon = txOff ? MicOff : Mic
+                      const isEditing = editChannel?.receiverId === rec.id && editChannel?.channel === ch.channel
                       return (
                         <div key={ch.channel} className={`rounded-lg border p-3 ${txOff ? 'border-slate-800 bg-slate-900/50' : 'border-slate-700 bg-slate-800/80'}`}>
                           <div className="flex items-center justify-between mb-2">
@@ -553,6 +630,17 @@ export default function ShureWirelessMicAdmin() {
                               </span>
                               <span className="text-[10px] text-slate-500 font-mono">ch {ch.channel}</span>
                             </div>
+                            {!isEditing && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                onClick={() => openChannelEdit(rec.id, ch)}
+                                className="h-7 px-2 text-slate-400 hover:text-cyan-400 hover:bg-cyan-500/10"
+                                title="Edit channel name / frequency / gain"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </Button>
+                            )}
                           </div>
                           <div className="grid grid-cols-3 gap-2 text-xs">
                             <div>
@@ -578,6 +666,78 @@ export default function ShureWirelessMicAdmin() {
                               </div>
                             </div>
                           </div>
+                          {isEditing && (
+                            <div className="mt-3 pt-3 border-t border-slate-700 space-y-2">
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
+                                <label className="block">
+                                  <span className="text-[10px] uppercase tracking-wide text-slate-400">Channel name</span>
+                                  <input
+                                    type="text"
+                                    value={editForm.name}
+                                    maxLength={31}
+                                    onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                                    className="mt-0.5 w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-slate-200 focus:border-cyan-500 focus:outline-none"
+                                    placeholder="e.g. Mic 1"
+                                  />
+                                </label>
+                                <label className="block">
+                                  <span className="text-[10px] uppercase tracking-wide text-slate-400">Frequency (MHz)</span>
+                                  <input
+                                    type="number"
+                                    value={editForm.freqMhz}
+                                    step="0.025"
+                                    onChange={(e) => setEditForm({ ...editForm, freqMhz: e.target.value })}
+                                    className="mt-0.5 w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-slate-200 font-mono focus:border-cyan-500 focus:outline-none"
+                                    placeholder="e.g. 537.125"
+                                  />
+                                </label>
+                                <label className="block">
+                                  <span className="text-[10px] uppercase tracking-wide text-slate-400">Audio gain (dB)</span>
+                                  <input
+                                    type="number"
+                                    value={editForm.audioGain}
+                                    step="1"
+                                    min="-32"
+                                    max="32"
+                                    onChange={(e) => setEditForm({ ...editForm, audioGain: e.target.value })}
+                                    className="mt-0.5 w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-slate-200 font-mono focus:border-cyan-500 focus:outline-none"
+                                  />
+                                </label>
+                              </div>
+                              <div className="text-[11px] text-amber-400/80">
+                                ⚠ Changing the frequency resets GROUP/CHAN to Manual and requires re-SYNCing the TX
+                                via IR (Menu → SYNC on the receiver).
+                              </div>
+                              {editError && (
+                                <div className="text-xs text-red-400 flex items-center gap-1">
+                                  <AlertCircle className="w-3.5 h-3.5" /> {editError}
+                                </div>
+                              )}
+                              <div className="flex items-center gap-2 pt-1">
+                                <Button
+                                  type="button"
+                                  onClick={() => submitChannelEdit(ch)}
+                                  disabled={editSaving}
+                                  className="bg-cyan-500 hover:bg-cyan-600 text-white h-8"
+                                >
+                                  {editSaving ? (
+                                    <><RefreshCw className="w-3.5 h-3.5 mr-1 animate-spin" /> Saving…</>
+                                  ) : (
+                                    <><CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Save</>
+                                  )}
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  onClick={closeChannelEdit}
+                                  disabled={editSaving}
+                                  className="text-slate-400 hover:text-slate-200 h-8"
+                                >
+                                  <X className="w-3.5 h-3.5 mr-1" /> Cancel
+                                </Button>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )
                     })}
