@@ -123,10 +123,21 @@ export async function POST(request: NextRequest) {
   }
 
   const startFreq = stateBefore?.frequencyMhz
+  const startGainDb = stateBefore?.audioGainDb ?? 0
   logger.info(
     `[SHURE-FIND-CLEAN-FREQ] ${processor.name} ch${channel} sweep across ${candidates.length} freqs ` +
-      `(dwell ${dwellMs}ms, start ${startFreq ?? '?'} MHz)`,
+      `(dwell ${dwellMs}ms, start ${startFreq ?? '?'} MHz, gain ${startGainDb} dB)`,
   )
+
+  // Safety: drop audio gain to minimum (-18 dB) before the sweep so
+  // that if we land on a freq where another Shure-compatible TX is
+  // active (and the receiver successfully demodulates someone else's
+  // audio), the bar speakers don't get blown out. SLX-D auto-mutes
+  // when TX_MODEL=UNKNOWN so this is belt-and-suspenders for the rare
+  // case of another SLXD2-compatible carrier on a swept freq. Restore
+  // on completion.
+  await client.setAudioGain(channel, -18)
+  await new Promise((r) => setTimeout(r, 300))
 
   const samples: Record<number, number[]> = {}
   const listener = (ch: number, state: { rssiDbm?: number; frequencyMhz?: number }) => {
@@ -148,6 +159,9 @@ export async function POST(request: NextRequest) {
     }
   } finally {
     client.off('stateChange', listener)
+    // Restore the channel's original audio gain. Frequency stays on
+    // the last swept value — caller PATCHes to the final pick.
+    await client.setAudioGain(channel, startGainDb)
   }
 
   // Build ranked results — drop the first sample at each freq (retune

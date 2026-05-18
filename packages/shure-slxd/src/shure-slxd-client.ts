@@ -469,7 +469,17 @@ export class ShureSlxdClient extends EventEmitter {
           setStr('audioOutSwitch', frame.values.join(' '))
           break
         }
-        case 'TX_TYPE': {
+        // Per the official SLX-D Command Strings spec v2 (2020-G), the
+        // transmitter-model property is `TX_MODEL`, not `TX_TYPE`.
+        // Probed live on Holmgren SLXD4D firmware 1.4.7.0 (2026-05-18):
+        //   < GET 1 TX_MODEL > → < REP 1 TX_MODEL UNKNOWN >  ✓
+        //   < GET 1 TX_TYPE >  → < REP ERR >                 ✗
+        // Our earlier code listened for TX_TYPE — so the receiver-side
+        // state cache's `txType` field never populated for real
+        // hardware. Now matches the spec. We keep the TS field name
+        // `txType` for back-compat with all UI/watcher references;
+        // only the wire-protocol property name changes here.
+        case 'TX_MODEL': {
           setStr('txType', frame.values.join(' '))
           break
         }
@@ -487,7 +497,11 @@ export class ShureSlxdClient extends EventEmitter {
           setStr('channelName', frame.values.join(' '))
           break
         }
-        case 'GROUP_CHAN': {
+        // Spec name is GROUP_CHANNEL (not GROUP_CHAN). Confirmed live
+        // on SLXD4D 1.4.7.0: receiver emits < REP 2 GROUP_CHANNEL {--,--} >
+        // as the immediate REP after a SET FREQUENCY (front-panel Manual
+        // mode). Earlier code listened for GROUP_CHAN — never matched.
+        case 'GROUP_CHANNEL': {
           setStr('groupChannel', frame.values.join(' '))
           break
         }
