@@ -161,7 +161,13 @@ async function runPreflight(ip: string, port: number): Promise<PreflightOutcome>
 }
 
 export async function POST(request: NextRequest) {
-  const rateLimit = await withRateLimit(request, RateLimitConfigs.DEFAULT)
+  // HARDWARE bucket — preflight is a hardware probe the operator
+  // invokes from the Wireless Mics admin tab. The page is already
+  // polling /api/shure-rf/status + /api/shure-rf on HARDWARE; sharing
+  // that identifier means a few preflight clicks while the page is
+  // open don't trip the budget. DEFAULT (30/min) was tripping
+  // immediately because the polling consumed the budget first.
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
   if (!rateLimit.allowed) return rateLimit.response
 
   // ADMIN-gated: this endpoint opens an outbound TCP socket to an
