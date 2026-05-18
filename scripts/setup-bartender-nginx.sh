@@ -139,6 +139,9 @@ server {
     # state returned 403.
     location /api/shure-rf       { proxy_pass http://127.0.0.1:3001; proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; }
     location /api/shure-rf/      { proxy_pass http://127.0.0.1:3001; proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; }
+    # SDR spectrum monitoring (v2.41.0+) — RTL-SDR / NESDR Smart wide-band
+    # G58 sweep. Read-only telemetry, safe for bartender access.
+    location /api/sdr/           { proxy_pass http://127.0.0.1:3001; proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; }
 
     location /api/htd/             { proxy_pass http://127.0.0.1:3001; proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; }
     # exact-match version avoids 301 redirect to /api/htd/
