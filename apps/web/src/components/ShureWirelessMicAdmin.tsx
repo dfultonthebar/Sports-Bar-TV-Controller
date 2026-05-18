@@ -40,6 +40,7 @@ import { Button } from '@/components/ui/button'
 import { logger } from '@sports-bar/logger'
 import type { ShureChannelState, ShureReceiverSnapshot } from '@sports-bar/shure-slxd'
 import ShureSdrSpectrumPanel from './ShureSdrSpectrumPanel'
+import SafeBoundary from './SafeBoundary'
 
 interface ShureReceiverRow {
   id: string
@@ -982,19 +983,27 @@ export default function ShureWirelessMicAdmin() {
 
       {/* Wide-band SDR spectrum monitor — auto-hides into a setup
           explainer when SDR_ENABLED is unset. Frequencies passed
-          through so the waterfall annotates our tuned freqs. */}
-      <ShureSdrSpectrumPanel
-        ourFrequencies={
-          snapshots.flatMap((r) =>
-            r.channels
-              .filter((c) => typeof c.frequencyMhz === 'number')
-              .map((c) => ({
-                freqMhz: c.frequencyMhz!,
-                label: c.channelName?.trim() || `Ch${c.channel}`,
-              })),
-          )
-        }
-      />
+          through so the waterfall annotates our tuned freqs. Wrapped
+          in SafeBoundary so a render crash here is contained to the
+          section instead of taking down the whole Wireless Mics
+          admin tab (Holmgren 2026-05-18: full page "Something went
+          wrong" after v2.42.0 SDR mount — boundary isolates the
+          fault so the surrounding admin remains usable while we
+          diagnose). */}
+      <SafeBoundary label="SDR Spectrum Monitor">
+        <ShureSdrSpectrumPanel
+          ourFrequencies={
+            (snapshots || []).flatMap((r) =>
+              (r?.channels || [])
+                .filter((c) => typeof c?.frequencyMhz === 'number')
+                .map((c) => ({
+                  freqMhz: c.frequencyMhz!,
+                  label: c.channelName?.trim() || `Ch${c.channel}`,
+                })),
+            )
+          }
+        />
+      </SafeBoundary>
 
       <div className="rounded-xl border border-slate-700 bg-slate-800/50 p-4">
         <div className="flex items-center justify-between mb-3">
