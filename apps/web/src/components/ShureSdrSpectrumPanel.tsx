@@ -19,17 +19,24 @@
  *   - SDR enabled but no recent sweep: warning + last-seen
  */
 
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { Activity, Radio, AlertCircle, RefreshCw, Wifi, WifiOff } from 'lucide-react'
 
-const STATUS_POLL_MS = 5_000
-const HISTORY_POLL_MS = 15_000
+// v2.44.0: replaced polling fetchHistory/fetchStatus with SSE consumer
+// on /api/sdr/stream — sub-second waterfall updates instead of 15-sec
+// polled redraws. STATUS_POLL_MS retained at slower rate just for the
+// liveness header (lastSweepAt, totalAggregatedRows).
+const STATUS_POLL_MS = 30_000
 const WATERFALL_WINDOW_MIN = 10
+const WATERFALL_WINDOW_SEC = WATERFALL_WINDOW_MIN * 60
 const G58_BAND_MARKERS = [
   { freq: 476.000, label: 'WCWF↑' },   // CW 14 upper edge
   { freq: 500.000, label: 'WLUK↓' },   // Fox 11 lower edge
   { freq: 506.000, label: 'WLUK↑' },   // Fox 11 upper edge
 ]
+
+type SseBucket = { bucketAt: number; bins: number[]; dbms: number[] }
+type SseCarrier = { freqMhz: number; eventType: string; peakDbm: number | null; durationSec: number | null; detectedAt: number }
 
 type StatusResp = {
   enabled: boolean
@@ -67,8 +74,13 @@ interface Props {
 
 export default function ShureSdrSpectrumPanel({ ourFrequencies = [] }: Props) {
   const [status, setStatus] = useState<StatusResp | null>(null)
-  const [history, setHistory] = useState<HistoryResp | null>(null)
+  // Rolling buffer of recent buckets, accumulated from SSE bucket
+  // events. Evicted when older than WATERFALL_WINDOW_SEC. The
+  // waterfall canvas re-renders any time this changes.
+  const [buckets, setBuckets] = useState<SseBucket[]>([])
+  const [sseStatus, setSseStatus] = useState<'idle' | 'connecting' | 'connected' | 'reconnecting'>('idle')
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const sseRef = useRef<EventSource | null>(null)
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -79,22 +91,112 @@ export default function ShureSdrSpectrumPanel({ ourFrequencies = [] }: Props) {
     } catch { /* silent */ }
   }, [])
 
-  const fetchHistory = useCallback(async () => {
-    try {
-      const r = await fetch(`/api/sdr/history?minutesAgo=${WATERFALL_WINDOW_MIN}`)
-      if (!r.ok) return
-      const d = await r.json()
-      if (d.success) setHistory(d)
-    } catch { /* silent */ }
-  }, [])
-
+  // Status header (lastSweepAt, totalAggregatedRows, active carriers)
+  // still polled — these are fine at 30-sec cadence and avoid having
+  // to mirror the watcher's carrier-detection state machine in JS.
   useEffect(() => {
     fetchStatus()
-    fetchHistory()
-    const a = setInterval(fetchStatus, STATUS_POLL_MS)
-    const b = setInterval(fetchHistory, HISTORY_POLL_MS)
-    return () => { clearInterval(a); clearInterval(b) }
-  }, [fetchStatus, fetchHistory])
+    const id = setInterval(fetchStatus, STATUS_POLL_MS)
+    return () => clearInterval(id)
+  }, [fetchStatus])
+
+  // SSE subscriber — replaces /api/sdr/history polling.
+  // EventSource auto-reconnects with exponential backoff built into
+  // the browser; we just track the state for the badge.
+  useEffect(() => {
+    if (!status?.enabled) return
+    let cancelled = false
+
+    const connect = () => {
+      if (cancelled) return
+      setSseStatus('connecting')
+      const es = new EventSource('/api/sdr/stream')
+      sseRef.current = es
+
+      es.addEventListener('hello', () => setSseStatus('connected'))
+
+      es.addEventListener('bucket', (e: MessageEvent) => {
+        try {
+          const b: SseBucket = JSON.parse(e.data)
+          const cutoff = Math.floor(Date.now() / 1000) - WATERFALL_WINDOW_SEC
+          setBuckets((prev) => {
+            // Insert in ascending order; evict any beyond the rolling
+            // window so memory stays bounded across long sessions.
+            const next = prev.filter((p) => p.bucketAt >= cutoff)
+            // Skip duplicates (server may resend on reconnect seed).
+            if (!next.some((p) => p.bucketAt === b.bucketAt)) next.push(b)
+            next.sort((a, b) => a.bucketAt - b.bucketAt)
+            return next
+          })
+        } catch { /* malformed event — silent */ }
+      })
+
+      es.addEventListener('carrier', (e: MessageEvent) => {
+        try {
+          const c: SseCarrier = JSON.parse(e.data)
+          // Surface live carriers to the existing status object so the
+          // bottom panel updates without waiting for the 30s status
+          // poll. carrier_active / carrier_heartbeat add or refresh;
+          // carrier_cleared removes.
+          setStatus((s) => {
+            if (!s) return s
+            const others = s.activeCarriers.filter((x) => Math.abs(x.freqMhz - c.freqMhz) > 0.013)
+            if (c.eventType === 'carrier_cleared') {
+              return { ...s, activeCarriers: others }
+            }
+            return {
+              ...s,
+              activeCarriers: [
+                ...others,
+                { freqMhz: c.freqMhz, peakDbm: c.peakDbm, lastSeenSec: 0 },
+              ],
+            }
+          })
+        } catch { /* malformed event — silent */ }
+      })
+
+      es.addEventListener('heartbeat', () => { /* keep-alive only */ })
+
+      es.onerror = () => {
+        // EventSource auto-reconnects; just reflect the state. If the
+        // server has been redeployed, the connection drops and the
+        // browser reconnects on its own.
+        setSseStatus('reconnecting')
+      }
+    }
+
+    connect()
+    return () => {
+      cancelled = true
+      sseRef.current?.close()
+      sseRef.current = null
+      setSseStatus('idle')
+    }
+  }, [status?.enabled])
+
+  // Build the canvas-friendly grid from the rolling bucket buffer.
+  // Memoized so we don't recompute on every render — only when
+  // buckets change. Returns bins[] (sorted unique frequencies) and
+  // grid[time_idx][freq_idx] = power dBm (-120 sentinel for missing).
+  const history = useMemo<HistoryResp | null>(() => {
+    if (buckets.length === 0) return null
+    const binSet = new Set<number>()
+    for (const b of buckets) for (const f of b.bins) binSet.add(f)
+    const bins = Array.from(binSet).sort((a, b) => a - b)
+    const binIdx = new Map(bins.map((f, i) => [f, i]))
+    const times = buckets.map((b) => b.bucketAt)
+    const grid: number[][] = Array.from({ length: times.length }, () =>
+      Array(bins.length).fill(-120),
+    )
+    for (let ti = 0; ti < buckets.length; ti++) {
+      const b = buckets[ti]
+      for (let i = 0; i < b.bins.length; i++) {
+        const fi = binIdx.get(b.bins[i])
+        if (fi !== undefined) grid[ti][fi] = b.dbms[i]
+      }
+    }
+    return { success: true, bins, times, grid }
+  }, [buckets])
 
   // Render waterfall whenever new history arrives.
   useEffect(() => {
@@ -168,9 +270,25 @@ export default function ShureSdrSpectrumPanel({ ourFrequencies = [] }: Props) {
           <Activity className={`w-4 h-4 ${status.healthy ? 'text-purple-400' : 'text-slate-500'}`} />
           <h4 className="text-sm font-medium text-white">RF Spectrum Monitor (SDR)</h4>
           {status.enabled && (
-            <span className={`text-[10px] font-bold uppercase tracking-wide ${status.healthy ? 'text-emerald-400' : 'text-amber-400'}`}>
-              {status.healthy ? 'Live' : 'Waiting for sweep'}
-            </span>
+            <>
+              <span className={`text-[10px] font-bold uppercase tracking-wide ${status.healthy ? 'text-emerald-400' : 'text-amber-400'}`}>
+                {status.healthy ? 'Live' : 'Waiting for sweep'}
+              </span>
+              {/* SSE connection state — distinct from "data is fresh"
+                  (status.healthy). SSE down means waterfall stops
+                  updating in real time; status poll still works. */}
+              <span
+                title={`Server-Sent Events stream: ${sseStatus}`}
+                className={`text-[10px] font-mono uppercase ${
+                  sseStatus === 'connected' ? 'text-emerald-400/70' :
+                  sseStatus === 'connecting' ? 'text-cyan-400/70' :
+                  sseStatus === 'reconnecting' ? 'text-amber-400/70' :
+                  'text-slate-500'
+                }`}
+              >
+                • SSE {sseStatus}
+              </span>
+            </>
           )}
         </div>
         {status.enabled && status.lastSweepAt && (

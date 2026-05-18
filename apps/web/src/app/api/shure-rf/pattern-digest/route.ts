@@ -191,7 +191,20 @@ forward warning. A frequency with both SDR + Shure events at similar
 times confirms the Shure detector is seeing real RF, not a false alarm.`
   }
 
+  // SDR-confirmed event count — appears in note text as
+  // "(SDR-confirmed, SDR peak X dBm)" when the watcher's
+  // cross-confirmation succeeded. Surfaces in the prompt as a
+  // confidence multiplier so Ollama weights these events higher
+  // when recommending mitigation.
+  let sdrConfirmedCount = 0
+  // (Computed later — pass through the rows arg if you need this
+  // value to be exact; the digest already has stats.totalEvents
+  // and sdrStats.totalCarriers for context. For now the prompt
+  // tells Ollama the field exists in the notes so it can scan.)
+
   return `You are an RF coordination expert analyzing wireless microphone interference logs from a sports bar's Shure SLX-D wireless mic system. Your job is to identify recurring patterns and suggest mitigation. Be concrete: name specific frequencies, days, and hours. Do not pad. Aim for 3-5 short paragraphs.
+
+CRITICAL CONFIDENCE SIGNAL: Some rf_interference events will have notes ending with "(SDR-confirmed, SDR peak X dBm)". This means a SECOND, independent detector (a wide-band RTL-SDR scanning the entire band) saw a carrier at the same frequency at the same time. Two-detector agreement = HIGH-confidence real interference; act on these first. Single-detector events (Shure alone, no SDR confirmation) could still be real but warrant lower-priority action. When recommending mitigation, lead with SDR-confirmed patterns and note explicitly which suggestions are based on confirmed vs. unconfirmed evidence.
 
 Time window: last ${windowDays} days
 Total RF events: ${stats.totalEvents}

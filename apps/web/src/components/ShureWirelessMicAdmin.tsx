@@ -35,6 +35,7 @@ import {
   X,
   AlertTriangle,
   Sparkles,
+  Activity,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { logger } from '@sports-bar/logger'
@@ -1058,6 +1059,14 @@ export default function ShureWirelessMicAdmin() {
                 {history.slice(0, 100).map((e) => {
                   const isInterference = e.event_type === 'rf_interference' || e.event_type === 'rf_interference_heartbeat'
                   const isWarn = isInterference || e.event_type === 'low_battery'
+                  // SDR-confirmed badge — the Shure watcher appends
+                  // "(SDR-confirmed, SDR peak X dBm)" to the note when
+                  // the wide-band SDR independently saw a carrier at
+                  // the same frequency. Surfaces a small purple chip
+                  // so the operator sees at a glance which events
+                  // have two-channel confirmation vs. single-detector
+                  // reports.
+                  const sdrConfirmed = (e.note ?? '').toLowerCase().includes('sdr-confirmed')
                   return (
                     <tr key={e.id} className="border-t border-slate-700/50">
                       <td className="py-1.5 pr-3 font-mono text-slate-400">{new Date(e.detected_at * 1000).toLocaleTimeString()}</td>
@@ -1066,6 +1075,14 @@ export default function ShureWirelessMicAdmin() {
                       <td className={`py-1.5 pr-3 font-medium ${isWarn ? 'text-amber-400' : 'text-slate-300'}`}>
                         {isWarn && <AlertTriangle className="inline w-3 h-3 mr-1" />}
                         {e.event_type}
+                        {sdrConfirmed && (
+                          <span
+                            className="ml-1.5 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border border-purple-500/40 bg-purple-500/15 text-purple-300 text-[10px] font-bold uppercase tracking-wide"
+                            title="The wide-band SDR independently saw a carrier at this frequency within ±60 sec — two-detector confirmation, this is real RF."
+                          >
+                            <Activity className="w-2.5 h-2.5" /> SDR-confirmed
+                          </span>
+                        )}
                       </td>
                       <td className="py-1.5 pr-3 font-mono text-slate-400">{e.rssi_dbm !== null ? `${e.rssi_dbm.toFixed(0)} dBm` : '—'}</td>
                       <td className="py-1.5 pr-3 font-mono text-slate-400">{e.frequency_mhz !== null ? `${e.frequency_mhz.toFixed(3)}` : '—'}</td>
