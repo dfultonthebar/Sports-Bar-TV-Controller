@@ -187,6 +187,124 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 
 ## Current entries
 
+### v2.34.1 — Shure SLX-D Phase 2 (battery UI, preflight, correlation, low-battery, mock)
+
+**No required manual steps.** All additive on top of v2.34.0.
+
+**New developer tools** (no production impact):
+- `scripts/mock-shure-receiver.ts` — TCP server simulating an SLX-D
+  receiver. Scenarios: `clean`, `interference-rising`,
+  `tx-battery-dying`, `coalesced-frames`, `partial-frames`,
+  `third-party-controls-disabled`. Run with
+  `npx tsx scripts/mock-shure-receiver.ts --port=2202 --scenario=interference-rising`.
+- `scripts/test-shure-parser.ts` — integration test runner. Spawns
+  the mock for each scenario, drives the real client, verifies all
+  6 scenarios pass. Run with `npx tsx scripts/test-shure-parser.ts`.
+
+**New operator UX:**
+- Bartender Audio tab now shows a per-channel battery + RSSI tile
+  (one card per Shure receiver, one row per channel). Renders only
+  when a Shure receiver is configured; otherwise hidden.
+- Device Config → Audio Processors → Shure SLX-D type → "Run
+  pre-flight" button. Use BEFORE saving the receiver row — catches
+  third-party-controls-disabled, firmware too old, network unreachable.
+
+**Dependency note:** axios bumped 1.15.0 → 1.16.1 (CVE
+GHSA-w9j2-pvgh-6h63, prototype-pollution auth bypass). 4 vulns
+closed, 13 remain (all require breaking-major upgrades — separate PRs).
+
+**Verification post-update (any location):**
+```bash
+sqlite3 /home/ubuntu/sports-bar-data/production.db ".tables shure_rf_events"
+# Table still exists from v2.34.0; v2.34.1 didn't touch its schema.
+
+# Status endpoint should respond:
+curl -s http://localhost:3001/api/shure-rf/status | jq '.success'
+# Expect: true
+```
+
+---
+
+### v2.34.0 — Shure SLX-D wireless mic RF interference detection
+
+**Required Manual Steps (per location, only if you HAVE a Shure SLX-D receiver):**
+
+1. **VLAN routing.** Route the Shure receiver onto the controller's
+   network so the controller can reach it on TCP port 2202. Verify:
+   ```bash
+   nc -zv <shure-ip> 2202 && echo "ok"
+   ```
+
+2. **Enable "Allow Third-Party Controls" on the receiver front panel.**
+   Menu path: `Menu → Advanced → Network → Allow Third-Party Controls →
+   Enable`. This setting defaults to BLOCKED on new units and **can
+   reset to BLOCKED after a firmware update**. Without it, port 2202
+   accepts the TCP connection but silently drops every command — looks
+   like a network problem but isn't.
+
+   **Symptom of forgetting this step:** connection logs say "Connected"
+   but `shure_rf_events` table never gets non-startup rows, even with
+   the mic on.
+
+3. **Confirm firmware ≥ 1.1.0.** Front panel: Settings → About. Or after
+   connecting, query the receiver:
+   ```
+   echo "< GET 0 FW_VER >" | nc <shure-ip> 2202
+   # Expect: < REP 0 FW_VER {2.1.5} >  (or similar 1.1+ / 2.x version)
+   ```
+
+4. **Add the receiver row in Device Config.** Browse to
+   `http://<controller>:3001/device-config` → **Audio** category →
+   **Wireless Mics** tab → "Add Receiver" → fill in IP, port 2202,
+   model. Click **Run Pre-flight** inline to verify the four checks
+   (TCP reachable, third-party-controls enabled, firmware ≥ 1.1.0,
+   model detected). Save only when pre-flight is green.
+
+   (The receiver can also be added via the legacy path
+   `/system-admin → Audio Processors` if you prefer, but the dedicated
+   **/device-config → Wireless Mics** tab is the canonical home and
+   gives you the live battery + RSSI + event history side-by-side.
+   Full SME briefing on RF coordination + protocol details:
+   `packages/shure-slxd/README.md`.)
+
+5. **Verify the watcher is monitoring it.** Wait 60-90 seconds after
+   add (watcher discovery interval), then:
+   ```bash
+   sqlite3 /home/ubuntu/sports-bar-data/production.db \
+     "SELECT * FROM shure_rf_events WHERE event_type='startup' ORDER BY detected_at DESC LIMIT 3;"
+   # Also check the dedicated log file:
+   ls -lh /home/ubuntu/sports-bar-data/logs/shure-rf-*.log
+   tail -20 /home/ubuntu/sports-bar-data/logs/shure-rf-$(date +%Y-%m-%d).log
+   ```
+
+**Locations WITHOUT a Shure SLX-D receiver:** **No setup required.**
+The watcher discovers via `audioProcessors WHERE processorType='shure-slxd'`,
+finds none, logs `no shure-slxd receivers configured — watcher idle`,
+no-op. The endpoint `/api/shure-rf` returns `active: false` and the
+cyan banner never renders.
+
+**Verification on any location post-update** (proves the watcher booted):
+```bash
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  ".tables shure_rf_events"
+# Should print: shure_rf_events
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "SELECT receiver_id, event_type, note FROM shure_rf_events WHERE event_type='startup' LIMIT 1;"
+# Should return one row: receiver_id='', event_type='startup', note='pid=NNNN'
+```
+
+If the table doesn't exist, the `ensureTable()` call in
+`apps/web/src/lib/shure-rf-watcher.ts` didn't run — check
+`pm2 logs sports-bar-tv-controller | grep SHURE-RF` for the boot line
+`[INSTRUMENTATION] ✅ Shure RF watcher started`.
+
+**Log file path is fixed** (`/home/ubuntu/sports-bar-data/logs/shure-rf-*.log`)
+but configurable via `SHURE_RF_LOG_DIR` env var if needed. Default
+directory is created with `mkdir -p` on first event — no manual chown
+required.
+
+---
+
 ### v2.33.46 – v2.33.55 — Atlas audio fix train + audit tables (single batch)
 **Released:** 2026-05-17
 
