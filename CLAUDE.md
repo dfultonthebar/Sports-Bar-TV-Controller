@@ -225,11 +225,36 @@ Wolf Pack matrix does NOT pass CEC + Spectrum disables CEC in firmware → all c
 `packages/crestron/` — DM/HD-MD/DMPS/NVX series, Telnet/CTP/CIP. **Output slot offset gotcha:** DM 8x8/16x16 outputs start at 17, 32x32 at 33, 64x64 at 65 — add the offset before issuing routing commands. Full models, ports, command list, API routes: `packages/crestron/README.md`.
 
 #### 7. Audio Processor Control
-`packages/bss-blu/` (HiQnet TCP 1023), `packages/dbx-zonepro/` (TCP 3804 preferred — **NO F0/64/00 prefix or checksum** over TCP, fire-and-forget; **CRITICAL** auto-recall Scene 1 on connect to escape failsafe-mode source-shift), `packages/atlas/` (AtlasIED). UI: Device Config → Audio Processors. Per-package READMEs hold full model lists, SV IDs, and protocol detail.
+`packages/bss-blu/` (HiQnet TCP 1023), `packages/dbx-zonepro/` (TCP 3804 preferred — **NO F0/64/00 prefix or checksum** over TCP, fire-and-forget; **CRITICAL** auto-recall Scene 1 on connect to escape failsafe-mode source-shift), `packages/atlas/` (AtlasIED), `packages/shure-slxd/` (Shure SLX-D wireless mic receivers, RF interference monitoring only — see §7a). UI: Device Config → Audio Processors. Per-package READMEs hold full model lists, SV IDs, and protocol detail.
 
 **Atlas (AZMP4/8) TCP+UDP architecture (v2.33.50+):** ONE persistent `ExtendedAtlasClient` per processor IP:port via the `atlasClientManager` singleton (hoisted to `globalThis` per Gotcha #10). TCP port 5321 for JSON-RPC commands; UDP port 3131 for subscribed meter pushes (`SourceMeter_N`, `ZoneMeter_N`, `GroupMeter_N` in dB). All control paths — meter manager, drop watcher, priority watcher, `executeAtlasCommand` — share that one client. Adding new Atlas code: route through `getAtlasClient(processorId, config)`; never `new AtlasTCPClient(...)` directly (TCP leak + breaks the singleton).
 
 **Atlas audit tables (v2.33.47/49):** `atlas_drop_events` (zone gain crashes — drop watcher polls every 30s, fires on ≥15-point drop landing ≤10) and `atlas_priority_events` (mic/page/jukebox/priority-input activity + unexpected source overrides — priority watcher polls input meters every 5s, fires when any input matching `/\b(mic|juke|page|intercom|priority)\b/i` crosses −45 dB). Both watchers write `event_type='startup'` rows on boot so the table proves they're alive even with no real events. Banner at top of bartender remote audio tab while a priority event is active. Endpoints: `GET /api/atlas-drops`, `GET /api/atlas-priority?active=true`. **Atlas firmware exposes no queryable "priority active" parameter** (60+ candidate param names probed 2026-05-17, all returned `-32604`); priority is inferred from MIC-pattern input levels + unexpected `ZoneSource_X` changes.
+
+#### 7a. Shure SLX-D Wireless Mic RF Interference Detection (v2.34.0+, Phase 2 in v2.34.1)
+`packages/shure-slxd/` — TCP 2202, Shure's ASCII `< VERB CHAN PROP VAL >` line protocol. Built for stadium-adjacent bars where ENG/mobile broadcast rigs step on the bar's wireless mic frequencies and false-trigger the Atlas priority bus. Receiver is monitored, not routed through — this package does NOT replace any Atlas/DBX/BSS DSP function.
+
+**Canonical operator home:** `/device-config` → **Audio** category → **Wireless Mics** tab (v2.34.2+). One place for setup, pre-flight test, live battery + RSSI + frequency tile per channel, event history, dedicated-log-file path, mock-receiver developer command. AudioProcessorManager still works as a backup add-path. **Full SME briefing on RF coordination + protocol details + reference list:** `packages/shure-slxd/README.md`.
+
+**Surface area (Phase 2 — v2.34.1):**
+- **Battery + RSSI tile on bartender Audio tab** — `ShureMicStatusPanel.tsx`, per-receiver / per-channel live status with color-coded battery bars + signal quality, polled every 3s via `GET /api/shure-rf/status`. Hidden when no receiver configured.
+- **Pre-install check** — `POST /api/shure-rf/preflight {ip, port}` one-shot probe returning checklist (TCP reachable, third-party-controls enabled, firmware ≥ 1.1.0, model). Wired to "Run pre-flight" button in Device Config → Audio Processors when type is shure-slxd. Catches the BLOCKED-gate install failure before save.
+- **Atlas ↔ Shure correlation** — `atlas-priority-watcher` queries `shure_rf_events` ±30s before inserting `mic_active`; if matched, writes `event_type='rf_induced_mic_active'` so the operator distinguishes ghost-override from real page. Banner copy adapts.
+- **Low-battery detection** — watcher fires `event_type='low_battery'` rising-edge when `TX_BATT_BARS ≤ 1` (255 = unknown / alkaline TX, skipped).
+- **Mock receiver + integration test** — `scripts/mock-shure-receiver.ts` simulates the protocol with 6 scenarios (clean, interference-rising, tx-battery-dying, coalesced-frames, partial-frames, third-party-controls-disabled). `scripts/test-shure-parser.ts` spawns it for each scenario and asserts the real client's parser/cache behavior. **6/6 PASS verifies the parser against real-world frame patterns BEFORE hardware ships.**
+
+**Architecture:** Persistent TCP socket per receiver via `shureSlxdClientManager` singleton (`globalThis` + `Symbol.for()` per Gotcha #10, plus per-key in-flight Promise lock to close the race window). Subscribes to SAMPLE pushes (METER_RATE 1000 ms). Watcher (`apps/web/src/lib/shure-rf-watcher.ts`) writes `shure_rf_events` rows on the ghost-carrier signature: `TX_TYPE='UNKNOWN'` AND `RSSI ≥ -85 dBm` sustained 3 consecutive samples (hysteresis: clear at ≤ -95 dBm × 3). Heartbeat every 20s while active so the banner's 30-s active-window query stays fresh. Endpoint `GET /api/shure-rf?active=true` drives a cyan banner on the bartender Audio tab that appears alongside the amber Atlas priority banner — when BOTH fire simultaneously the priority event is RF-induced (operator stops chasing ghost overrides).
+
+**Dedicated log file:** `/home/ubuntu/sports-bar-data/logs/shure-rf-YYYY-MM-DD.log` (daily rotation, 30-day retention, format `ISO_TS | LEVEL | receiverId | ch | event | rssi_dbm | freq_mhz | tx_type | note`). Also mirrors through `@sports-bar/logger` for PM2 visibility.
+
+**Protocol gotchas (all in `packages/shure-slxd/README.md` — read before extending):**
+- Property is `TX_TYPE` (not `TX_MODEL`); `GROUP_CHAN` (not `GROUP_CHANNEL`). String values wrapped in `{…}` curly braces (CHAN_NAME, DEVICE_ID, FW_VER, GROUP_CHAN).
+- FREQUENCY is 6-digit kHz (e.g. `537125` = 537.125 MHz), not 7-digit kHz×100.
+- RSSI on SLX-D is COMBINED (no per-antenna A/B split) and SAMPLE-only — no `< REP x RSSI ... >` push. Don't carry ULX/QLX/AD patterns over.
+- METER_RATE range 50-60000 ms. Bitfocus recommends ≥5000 ms baseline; we use 1000 ms for game-day RF detection (faster than baseline, slower than receiver-web-UI-lockup threshold).
+- Receiver SILENTLY DROPS malformed/out-of-range commands — no `ERR`/`NAK` frame exists in the protocol. Validate post-SET via REP echo if certainty needed.
+- Front-panel gate `Menu → Advanced → Network → Allow Third-Party Controls → Enable` defaults to BLOCKED; without it, port 2202 accepts the TCP connection but silently drops every command. **First-install checklist must verify this gate.**
+- **Auto Scan is NOT available over the network** — only front-panel Group/Channel Scan, or WWB6 (different protocol). Software-side workaround is to maintain a candidate-frequency list and hop manually; causes audio click on every hop.
 
 #### 8. Wolf Pack Multi-View Card Control
 `packages/multiview/` — HDTVSupply 4K60 Quad-View cards in Wolf Pack slots. RS-232 USB (115200 8N1), 8 display modes (single → quad), hex frame format. DB: `WolfpackMultiViewCard`. Full hex frames + mode table: `packages/multiview/README.md`.
@@ -402,6 +427,8 @@ public static getInstance(): YourClass {
 
 **Apply this to:** any code where you wrote a "singleton" but a Next.js route bundle could load it. Notably: TCP/UDP socket managers, connection pools, in-memory caches that mirror external state, anything that binds an OS resource.
 
+Same fix applied to **`@sports-bar/shure-slxd`** in v2.34.0 (preemptive — same race, same singleton, before any stuck-cache symptom hit prod). The reconnect path was tightened in v2.37.2 to also use the in-flight Promise lock so concurrent `getClient()` calls on a disconnected client don't both call `connect()` and create duplicate sockets.
+
 ## Development Workflow
 
 ### Standing Rules (MUST follow in every session)
@@ -423,6 +450,8 @@ public static getInstance(): YourClass {
 8. **Read + CONTRIBUTE to `docs/VERSION_SETUP_GUIDE.md` every update.** At auto-update read target version's Required Manual Steps + execute (or flag). Bumping → write new entry in the same commit. Fixing location error → append to Known Errors & Fixes. Details: `docs/CLAUDE_VERSIONING_GUIDE.md` → Standing Rule 8.
 
 9. **CLAUDE.md is main-only.** Never commit to `CLAUDE.md` from a location branch — it is shared documentation, edits made on a location branch will conflict with main on the next auto-update merge. New rules/gotchas/architecture notes go to `main` first, then propagate via the normal merge. Auto-update's conflict resolver takes main's version of `CLAUDE.md` (since v2.32.26) so any stray location-branch edit will be silently lost on the next merge — do not rely on it surviving.
+
+10. **Keep dependencies updated continuously (v2.34.1+).** Every feature batch on main MUST include a `npm audit fix` (NO `--force`) and bump the lockfile in the same commit. Defer breaking-major upgrades (drizzle-kit, @anthropic-ai/sdk, @types/node major) to dedicated PRs with verification — never mix them with feature work. After every audit fix: run `npm run build` + the relevant integration tests; if green, commit. Document the dep changes one-line in the LOCATION_UPDATE_NOTES entry (what bumped, vulns closed, vulns remaining). Once-monthly: also run `npm outdated` and survey breaking-majors for explicit-PR candidates. Rationale: prevents vuln drift, prevents the user from having to ask.
 
 ### Version Bumping (REQUIRED — every commit to main)
 Every commit to `main` MUST include a `package.json` version bump (same commit or same push). Code-change-without-bump → locations report matching versions for mismatched code → undebuggable. Minor for features/migrations; patch for bug fixes/docs. Details: `docs/CLAUDE_VERSIONING_GUIDE.md`.
