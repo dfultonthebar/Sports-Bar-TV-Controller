@@ -346,5 +346,19 @@ export async function register() {
     } catch (error) {
       logger.error('[INSTRUMENTATION] ❌ Failed to start Atlas priority watcher:', error)
     }
+
+    try {
+      // Shure SLX-D RF interference watcher. Connects to each configured
+      // Shure receiver, subscribes to RSSI meter pushes, and writes to
+      // shure_rf_events whenever the ghost-carrier signature (high RSSI
+      // with TX off) is sustained. No-op if no shure-slxd processor
+      // configured in AudioProcessor table. Writes to a dedicated daily
+      // log file at /home/ubuntu/sports-bar-data/logs/shure-rf-*.log.
+      const { startShureRfWatcher } = await import('./lib/shure-rf-watcher')
+      await startShureRfWatcher()
+      logger.info('[INSTRUMENTATION] ✅ Shure RF watcher started (1Hz meter polling per receiver)')
+    } catch (error) {
+      logger.error('[INSTRUMENTATION] ❌ Failed to start Shure RF watcher:', error)
+    }
   }
 }

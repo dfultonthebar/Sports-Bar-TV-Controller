@@ -44,11 +44,23 @@ const BSS_MODELS = [
   { value: 'BLU-806DA', label: 'BLU-806DA - Signal Processor + Dante/AES67', inputs: 16, outputs: 16, zones: 8, hasDante: true, hasCobraNet: false },
 ]
 
+// Shure SLX-D wireless mic receivers. "Zones" here is channel count
+// (1 or 2). Network-only, TCP 2202. NOT an audio routing processor —
+// these are monitored for RF interference detection only.
+const SHURE_SLXD_MODELS = [
+  { value: 'SLXD4', label: 'SLXD4 - Single Channel Receiver', zones: 1 },
+  { value: 'SLXD4D', label: 'SLXD4D - Dual Channel Receiver', zones: 2 },
+  { value: 'SLXD24', label: 'SLXD24 - Handheld Combo (single)', zones: 1 },
+  { value: 'SLXD24D', label: 'SLXD24D - Dual Handheld Combo', zones: 2 },
+  { value: 'SLXD14', label: 'SLXD14 - Bodypack Combo (single)', zones: 1 },
+  { value: 'SLXD14D', label: 'SLXD14D - Dual Bodypack Combo', zones: 2 },
+]
+
 interface AudioProcessor {
   id: string
   name: string
   model: string
-  processorType: 'atlas' | 'dbx-zonepro' | 'bss-blu'
+  processorType: 'atlas' | 'dbx-zonepro' | 'bss-blu' | 'shure-slxd'
   ipAddress: string
   port: number
   tcpPort: number
@@ -70,7 +82,7 @@ interface AudioProcessor {
 interface ProcessorFormData {
   id?: string
   name: string
-  processorType: 'atlas' | 'dbx-zonepro' | 'bss-blu'
+  processorType: 'atlas' | 'dbx-zonepro' | 'bss-blu' | 'shure-slxd'
   model: string
   ipAddress: string
   port: number
@@ -134,10 +146,10 @@ export default function AudioProcessorManager() {
     }
   }
 
-  const handleProcessorTypeChange = (type: 'atlas' | 'dbx-zonepro' | 'bss-blu') => {
+  const handleProcessorTypeChange = (type: 'atlas' | 'dbx-zonepro' | 'bss-blu' | 'shure-slxd') => {
     let defaultModel: string
     let defaultTcpPort: number
-    let models: typeof ATLAS_MODELS | typeof DBX_MODELS | typeof BSS_MODELS
+    let models: typeof ATLAS_MODELS | typeof DBX_MODELS | typeof BSS_MODELS | typeof SHURE_SLXD_MODELS
 
     if (type === 'atlas') {
       defaultModel = 'AZM8'
@@ -147,11 +159,16 @@ export default function AudioProcessorManager() {
       defaultModel = 'ZonePRO 640m'
       defaultTcpPort = 3804
       models = DBX_MODELS
-    } else {
+    } else if (type === 'bss-blu') {
       // BSS BLU - HiQnet uses port 1023
       defaultModel = 'BLU-100'
       defaultTcpPort = 1023
       models = BSS_MODELS
+    } else {
+      // Shure SLX-D - ASCII line protocol on port 2202
+      defaultModel = 'SLXD24D'
+      defaultTcpPort = 2202
+      models = SHURE_SLXD_MODELS
     }
 
     const modelConfig = models.find(m => m.value === defaultModel)
@@ -165,26 +182,29 @@ export default function AudioProcessorManager() {
       zones: modelConfig?.zones || 4,
       inputs: bssModel?.inputs || prev.inputs,
       outputs: bssModel?.outputs || prev.outputs,
-      // BSS is always ethernet, dbx depends on model
+      // BSS, Atlas, Shure are always ethernet; dbx depends on model
       connectionType: type === 'dbx-zonepro' && !defaultModel.includes('m') ? 'rs232' : 'ethernet'
     }))
   }
 
   const handleModelChange = (model: string) => {
-    let models: typeof ATLAS_MODELS | typeof DBX_MODELS | typeof BSS_MODELS
+    let models: typeof ATLAS_MODELS | typeof DBX_MODELS | typeof BSS_MODELS | typeof SHURE_SLXD_MODELS
     if (formData.processorType === 'atlas') {
       models = ATLAS_MODELS
     } else if (formData.processorType === 'dbx-zonepro') {
       models = DBX_MODELS
-    } else {
+    } else if (formData.processorType === 'bss-blu') {
       models = BSS_MODELS
+    } else {
+      models = SHURE_SLXD_MODELS
     }
     const modelConfig = models.find(m => m.value === model)
 
-    // For dbx, check if model has ethernet (m suffix)
+    // For dbx, check if model has ethernet (m suffix). Atlas, BSS,
+    // Shure are always ethernet.
     const hasEthernet = formData.processorType === 'dbx-zonepro'
       ? DBX_MODELS.find(m => m.value === model)?.hasEthernet ?? true
-      : true // Atlas and BSS are always ethernet
+      : true
 
     // Get BSS-specific I/O counts
     const bssModel = formData.processorType === 'bss-blu'
@@ -322,7 +342,9 @@ export default function AudioProcessorManager() {
     ? ATLAS_MODELS
     : formData.processorType === 'dbx-zonepro'
       ? DBX_MODELS
-      : BSS_MODELS
+      : formData.processorType === 'bss-blu'
+        ? BSS_MODELS
+        : SHURE_SLXD_MODELS
   const selectedModel = models.find(m => m.value === formData.model)
   const selectedDbxModel = formData.processorType === 'dbx-zonepro'
     ? DBX_MODELS.find(m => m.value === formData.model)
@@ -434,6 +456,21 @@ export default function AudioProcessorManager() {
                     className="text-purple-500"
                   />
                   <span className="text-slate-200">BSS Soundweb London</span>
+                </label>
+                <label className={`flex items-center space-x-2 p-3 rounded-lg border cursor-pointer transition-colors ${
+                  formData.processorType === 'shure-slxd'
+                    ? 'border-cyan-500 bg-cyan-500/10'
+                    : 'border-slate-600 hover:border-slate-500'
+                }`}>
+                  <input
+                    type="radio"
+                    name="processorType"
+                    value="shure-slxd"
+                    checked={formData.processorType === 'shure-slxd'}
+                    onChange={() => handleProcessorTypeChange('shure-slxd')}
+                    className="text-cyan-500"
+                  />
+                  <span className="text-slate-200">Shure SLX-D Wireless Mic</span>
                 </label>
               </div>
             </div>
