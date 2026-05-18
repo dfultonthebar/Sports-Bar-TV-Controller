@@ -762,8 +762,8 @@ export default function ShureWirelessMicAdmin() {
                                     type="number"
                                     value={editForm.audioGain}
                                     step="1"
-                                    min="-32"
-                                    max="32"
+                                    min="-18"
+                                    max="42"
                                     onChange={(e) => setEditForm({ ...editForm, audioGain: e.target.value })}
                                     className="mt-0.5 w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-slate-200 font-mono focus:border-cyan-500 focus:outline-none"
                                   />
