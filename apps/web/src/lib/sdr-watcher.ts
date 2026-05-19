@@ -448,11 +448,19 @@ function spawnRtlPower(): void {
     // interval, don't apply backoff. Without this flag the exit
     // handler doubled backoffMs immediately after the band-reeval
     // interval reset it, defeating the "skip backoff" intent.
-    const restartIn = retuneInProgress ? RESTART_BACKOFF_INITIAL_MS : backoffMs
+    // v2.52.19 fix (audit C1): capture the retune flag BEFORE clearing it
+    // so the backoff guard below sees the right value. Pre-v2.52.19 we
+    // cleared `retuneInProgress = false` on line 452 and then checked
+    // `!retuneInProgress` on line 455 — always true, so backoff doubled
+    // EVERY exit including intentional band-change retunes. After a few
+    // band re-evals the backoff maxed at 5 min, so the next real crash
+    // waited 5 min instead of 5 sec.
+    const wasRetune = retuneInProgress
     retuneInProgress = false
+    const restartIn = wasRetune ? RESTART_BACKOFF_INITIAL_MS : backoffMs
     logger.warn(`[SDR-WATCHER] rtl_power exited (code=${code}, signal=${signal}); restart in ${restartIn / 1000}s`)
     setTimeout(spawnRtlPower, restartIn)
-    if (!retuneInProgress) {
+    if (!wasRetune) {
       backoffMs = Math.min(backoffMs * 2, RESTART_BACKOFF_MAX_MS)
     }
   })

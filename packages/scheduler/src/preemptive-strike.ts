@@ -244,6 +244,11 @@ export async function runPreemptiveStrike(
       suggestions = await suggestCleanFreqs([...freqs, ...currentShureFreqs])
       cleanFreqsCache.set(excludeKey, suggestions)
     }
+    // v2.52.19 fix (audit H4): shallow-copy on assignment so a downstream
+    // mutation of candidate.suggestedCleanFreqs (push/splice/sort) doesn't
+    // propagate into the cache entry shared by other candidates with the
+    // same exclusion set. Cheap (3-5 elements typical) and prevents a
+    // subtle action-at-a-distance bug.
     candidates.push({
       neighborhoodEventId: r.ne_id,
       artistNormalized: r.artist_normalized,
@@ -258,7 +263,7 @@ export async function runPreemptiveStrike(
       avgSeverityDbm: r.avg_severity_dbm,
       totalGigs: r.total_gigs,
       gigsWithInterference: r.gigs_with_interference,
-      suggestedCleanFreqs: suggestions,
+      suggestedCleanFreqs: [...suggestions], // copy to insulate cache (audit H4)
     })
   }
 

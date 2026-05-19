@@ -187,13 +187,18 @@ export async function GET(request: NextRequest) {
       // sweep to this SSE connection as a 'sweep' event. The UI uses
       // these for the FFT panadapter — sub-second freshness instead of
       // waiting for the per-minute aggregator flush.
+      //
+      // v2.52.19 fix (audit H1): register the abort handler IMMEDIATELY,
+      // synchronously, after subscribing the sweep listener. Pre-fix
+      // had a race window — if request.signal aborted between the
+      // emitter.on(...) line and the abort listener registration, the
+      // sweep listener leaked forever (EventEmitter held a ref to a
+      // closure that referenced the now-dead controller). Order: hook
+      // abort cleanup first, then subscribe.
       const sweepListener = (ev: SweepEvent) => {
         if (closed) return
         enqueue('sweep', { t: ev.t, bins: ev.bins, dbms: ev.dbms, startMhz: ev.startMhz, endMhz: ev.endMhz })
       }
-      getSdrSweepEmitter().on('sweep', sweepListener)
-
-      // Cleanup when the client disconnects.
       request.signal.addEventListener('abort', () => {
         closed = true
         clearInterval(bucketTimer)
@@ -202,6 +207,7 @@ export async function GET(request: NextRequest) {
         getSdrSweepEmitter().off('sweep', sweepListener)
         try { controller.close() } catch { /* already closed */ }
       })
+      getSdrSweepEmitter().on('sweep', sweepListener)
     },
   })
 

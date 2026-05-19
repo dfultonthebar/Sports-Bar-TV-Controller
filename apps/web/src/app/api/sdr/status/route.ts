@@ -92,8 +92,17 @@ export async function GET(request: NextRequest) {
       new Map(recentCarriers.map((c) => [c.freq_mhz, c])).values(),
     ).sort((a, b) => a.freq_mhz - b.freq_mhz)
 
+    // v2.52.19 fix (audit C2): track lastFreqMhz (cluster's right edge)
+    // instead of computing it from `last.freqMhz + last.widthKhz / 2000`.
+    // Pre-fix used /2000 (wrong — that's half a kHz-per-bin, not a bin
+    // width in MHz), AND re-centered last.freqMhz to the strongest bin
+    // which detached the right-edge calculation from the actual rightmost
+    // bin seen. For 6 MHz WCWF TV broadcasts (~240 bins) this caused the
+    // gap check to be off by ~3 MHz, splitting clusters prematurely.
+    // Now we track the real rightmost bin in the cluster explicitly.
     type Coalesced = {
-      freqMhz: number
+      freqMhz: number       // strongest-peak freq (for display)
+      lastFreqMhz: number   // rightmost-bin freq (for next-bin gap calc)
       peakDbm: number | null
       lastSeenSec: number
       widthKhz: number
@@ -102,18 +111,20 @@ export async function GET(request: NextRequest) {
     const coalesced: Coalesced[] = []
     for (const c of dedupedByFreq) {
       const last = coalesced[coalesced.length - 1]
-      if (last && c.freq_mhz - (last.freqMhz + last.widthKhz / 2000) <= COALESCE_GAP_MHZ) {
+      if (last && c.freq_mhz - last.lastFreqMhz <= COALESCE_GAP_MHZ) {
         // Extend the existing cluster
         if (c.peak_dbm !== null && (last.peakDbm === null || c.peak_dbm > last.peakDbm)) {
           last.peakDbm = c.peak_dbm
-          last.freqMhz = c.freq_mhz // re-center on the strongest bin
+          last.freqMhz = c.freq_mhz // display-center on the strongest bin
         }
+        last.lastFreqMhz = c.freq_mhz
         last.binCount += 1
         last.widthKhz = (last.binCount) * 25 // 25 kHz per bin (RESOLUTION_KHZ)
         last.lastSeenSec = Math.min(last.lastSeenSec, nowSec - c.detected_at)
       } else {
         coalesced.push({
           freqMhz: c.freq_mhz,
+          lastFreqMhz: c.freq_mhz,
           peakDbm: c.peak_dbm,
           lastSeenSec: nowSec - c.detected_at,
           widthKhz: 25,
