@@ -392,6 +392,27 @@ The answer to "what's the transmitter model property name?" is
 the docs are warning against. Same pattern applies to GROUP_CHANNEL
 (NOT GROUP_CHAN), audio gain offset (+18 NOT raw dB), etc.
 
+### Product-line anti-confusion rule (CRITICAL — 2026-05-18 operator failure):
+Shure makes BOTH **SLX** (analog, discontinued) and **SLX-D** (digital,
+current). The two have DIFFERENT scan + sync procedures despite the
+similar name. **Our system uses SLX-D.** When a user asks "how do I
+scan with my Shure SLX" or "my Shure SLX wireless mic", they mean
+**SLX-D** — that's all we own. Don't fall back to training-data SLX
+(analog) procedures (TX-side encoder, "Menu" on the handheld, Sync
+button on receiver matching TX). The actual SLX-D procedure lives in
+docs/runbooks/SHURE_FREQUENCY_SCAN.md + packages/shure-slxd/README.md:
+
+  > SLX-D scans run on the RECEIVER's front panel (Utilities → Group Scan),
+  > NOT on the transmitter. After the receiver picks a clean frequency, you
+  > IR-sync the handheld TX to it (battery compartment IR window held ~6
+  > inches from receiver IR sensor + press Sync). Network-side scan does
+  > NOT exist over TCP 2202 in firmware 1.4.7.0 — front panel or bust.
+
+Same product-line trap applies to other Shure lines (QLX-D, ULX-D, AD,
+Axient). When in doubt that the docs cover the user's specific product,
+say so explicitly — don't substitute training-data knowledge of a
+similar-named product.
+
 ### Table extraction rule (CRITICAL — Q3 fail mode):
 Our docs often use markdown tables for per-location reference data.
 Example from CLAUDE.md §4:
