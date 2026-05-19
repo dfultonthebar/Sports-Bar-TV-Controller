@@ -419,6 +419,155 @@ client) crashed the zone with no command from this app.
 
 ---
 
+### Shure SLX-D Pre-Install Check
+
+**Endpoint:** `POST /api/shure-rf/preflight`
+
+Verifies an SLX-D receiver is ready for production use BEFORE the operator saves the row in Device Config. Catches the #1 install failure: the front-panel `Menu → Advanced → Network → Allow Third-Party Controls` gate being BLOCKED (default).
+
+**Body:**
+```json
+{ "ip": "192.168.x.y", "port": 2202 }
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "ready": true,
+  "checks": [
+    { "name": "tcpReachable", "passed": true, "detail": "TCP 192.168.x.y:2202 accepted connection" },
+    { "name": "thirdPartyControlsEnabled", "passed": true, "detail": "Receiver responded to commands — third-party controls enabled" },
+    { "name": "firmwareAtLeast110", "passed": true, "detail": "Firmware 2.1.5 (≥ 1.1.0 required for network control)" },
+    { "name": "modelDetected", "passed": true, "detail": "Model: SLXD4D (band G58)" }
+  ],
+  "receiver": { "model": "SLXD4D", "firmwareVersion": "2.1.5", "rfBand": "G58" },
+  "rawFrames": ["< REP 0 FW_VER {2.1.5} >", "< REP 0 MODEL SLXD4D >", "< REP 0 RF_BAND G58 >"]
+}
+```
+
+Uses a one-shot client (no manager registration, no metering, no heartbeat). ~3s wall time for a healthy receiver, ~5s for one with the third-party-controls gate disabled (full connection timeout).
+
+Wired to a "Run pre-flight" button in `AudioProcessorManager` shown only when `processorType='shure-slxd'`. Auto-fills the Model field from the receiver's MODEL reply on success.
+
+---
+
+### Shure SLX-D Live Status (bartender battery + RSSI tile)
+
+**Endpoint:** `GET /api/shure-rf/status`
+
+Live per-receiver per-channel snapshot from the managed `shureSlxdClientManager` cache. Powers the battery + RSSI tile on the bartender Audio tab (`ShureMicStatusPanel.tsx`). Returns cached state — no fresh GETs issued to the receiver. The cache is kept hot by REP-on-change pushes + SAMPLE pushes at the configured METER_RATE.
+
+**Response:**
+```json
+{
+  "success": true,
+  "count": 1,
+  "receivers": [
+    {
+      "receiverId": "uuid",
+      "receiverName": "Bar mics",
+      "ipAddress": "192.168.x.y",
+      "port": 2202,
+      "connected": true,
+      "model": "SLXD4D",
+      "firmwareVersion": "2.1.5",
+      "rfBand": "G58",
+      "deviceId": "Bar-RX1",
+      "channels": [
+        {
+          "channel": 1,
+          "channelName": "Mic 1",
+          "frequencyMhz": 537.125,
+          "rssiDbm": -67,
+          "audioPeakDbfs": -25,
+          "audioRmsDbfs": -33,
+          "audioGainDb": 12,
+          "txType": "SLXD2",
+          "txBattBars": 4,
+          "txBattRuntimeMin": 240,
+          "groupChannel": "06,06",
+          "lockStatus": "OFF",
+          "lastSampleAt": 1748549820,
+          "lastRepAt": 1748549810
+        }
+      ]
+    }
+  ]
+}
+```
+
+At locations without a Shure receiver configured, returns `{ "success": true, "count": 0, "receivers": [] }` — the UI component hides itself in that case.
+
+---
+
+### Shure SLX-D RF Interference Events (read-only diagnostic)
+
+Returns rows from the `shure_rf_events` audit table. Populated by the
+Shure RF watcher (`apps/web/src/lib/shure-rf-watcher.ts`) which
+subscribes to RSSI meter pushes from each configured Shure SLX-D
+receiver (one entry per `audioProcessors` row with `processorType='shure-slxd'`).
+
+Events fired on:
+- **`rf_interference`** (rising edge) — `TX_TYPE='UNKNOWN'` AND `RSSI ≥ -85 dBm` sustained 3 consecutive samples
+- **`rf_interference_heartbeat`** — re-fired every 20s while interference persists, so the banner's 30-s active-window query stays fresh
+- **`rf_cleared`** — 3 consecutive samples below the -95 dBm hysteresis floor or TX returns
+- **`startup`** — synthetic row written on watcher boot, proves the watcher booted even with no real events
+- **`freq_changed`** — operator (or external client) changed the receiver's tuned frequency
+
+Drives the cyan "RF Interference Detected on Wireless Mic" banner on the bartender remote Audio tab. Appears alongside the amber Atlas Priority banner; when both fire simultaneously, the Priority event is labeled as RF-induced ("likely RF interference — see below").
+
+Mirrored to a dedicated daily log file at `/home/ubuntu/sports-bar-data/logs/shure-rf-YYYY-MM-DD.log` (30-day retention).
+
+**Endpoint:** `GET /api/shure-rf`
+
+**Query Parameters:**
+- `active` (boolean, optional) — set `true` to return only events in the last 30s + summary fields for the banner
+- `limit` (number, optional, default 50, max 500)
+- `receiver` (string, optional) — filter to one receiver_id
+- `channel` (number, optional) — filter to one channel (1-based)
+
+**Response:**
+```json
+{
+  "success": true,
+  "active": true,
+  "activeChannels": [
+    {
+      "receiverId": "uuid",
+      "receiverName": "Bar mics",
+      "channel": 1,
+      "frequencyMhz": 537.125,
+      "rssiDbm": -78.0,
+      "secondsAgo": 4
+    }
+  ],
+  "windowSeconds": 30,
+  "count": 12,
+  "events": [
+    {
+      "id": "uuid",
+      "receiver_id": "...",
+      "receiver_name": "Bar mics",
+      "ip_address": "192.168.x.y",
+      "channel": 1,
+      "event_type": "rf_interference",
+      "rssi_dbm": -78,
+      "frequency_mhz": 537.125,
+      "tx_type": "UNKNOWN",
+      "note": "rising edge: 3 samples ≥ -85dBm with TX off",
+      "detected_at": 1748549820,
+      "detected_at_iso": "2026-05-17T22:17:00.000Z",
+      "seconds_ago": 4
+    }
+  ]
+}
+```
+
+Rate limit: `RateLimitConfigs.DEFAULT`. Auth: none (matches the existing `/api/atlas-priority` and `/api/atlas-drops` pattern — these are read-only diagnostic endpoints consumed by the bartender remote's polling banner).
+
+---
+
 ### Atlas Priority/Override Events (read-only diagnostic)
 
 Returns rows from the `atlas_priority_events` audit table. Populated by:

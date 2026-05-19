@@ -148,9 +148,19 @@ database_backups/
 # Claude Code session-local settings (per-user, never ship on main)
 .claude/settings.local.json
 
-# Playwright screenshots (regenerated during testing)
+# Playwright dev artifacts (one-shot test scripts, runtime output,
+# screenshots). Agents that drive playwright commonly drop these at
+# repo root or in test-results/ during ad-hoc UI verification.
 playwright-screenshots/
 .playwright-mcp/
+test-results/
+playwright-report/
+/test-*.ts
+/test-*.mjs
+/test-*.js
+/screenshot-*.ts
+/screenshot-*.mjs
+/screenshot-*.js
 
 # Turborepo
 .turbo

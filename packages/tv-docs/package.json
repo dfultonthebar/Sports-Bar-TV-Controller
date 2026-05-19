@@ -8,7 +8,7 @@
     "test": "echo \"No tests configured for tv-docs\""
   },
   "dependencies": {
-    "pdf-parse": "^1.1.1"
+    "pdf-parse": "^2.4.5"
   },
   "peerDependencies": {
     "@sports-bar/logger": "*"

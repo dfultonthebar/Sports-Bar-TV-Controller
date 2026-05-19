@@ -225,11 +225,65 @@ Wolf Pack matrix does NOT pass CEC + Spectrum disables CEC in firmware → all c
 `packages/crestron/` — DM/HD-MD/DMPS/NVX series, Telnet/CTP/CIP. **Output slot offset gotcha:** DM 8x8/16x16 outputs start at 17, 32x32 at 33, 64x64 at 65 — add the offset before issuing routing commands. Full models, ports, command list, API routes: `packages/crestron/README.md`.
 
 #### 7. Audio Processor Control
-`packages/bss-blu/` (HiQnet TCP 1023), `packages/dbx-zonepro/` (TCP 3804 preferred — **NO F0/64/00 prefix or checksum** over TCP, fire-and-forget; **CRITICAL** auto-recall Scene 1 on connect to escape failsafe-mode source-shift), `packages/atlas/` (AtlasIED). UI: Device Config → Audio Processors. Per-package READMEs hold full model lists, SV IDs, and protocol detail.
+`packages/bss-blu/` (HiQnet TCP 1023), `packages/dbx-zonepro/` (TCP 3804 preferred — **NO F0/64/00 prefix or checksum** over TCP, fire-and-forget; **CRITICAL** auto-recall Scene 1 on connect to escape failsafe-mode source-shift), `packages/atlas/` (AtlasIED), `packages/shure-slxd/` (Shure SLX-D wireless mic receivers, RF interference monitoring only — see §7a). UI: Device Config → Audio Processors. Per-package READMEs hold full model lists, SV IDs, and protocol detail.
 
 **Atlas (AZMP4/8) TCP+UDP architecture (v2.33.50+):** ONE persistent `ExtendedAtlasClient` per processor IP:port via the `atlasClientManager` singleton (hoisted to `globalThis` per Gotcha #10). TCP port 5321 for JSON-RPC commands; UDP port 3131 for subscribed meter pushes (`SourceMeter_N`, `ZoneMeter_N`, `GroupMeter_N` in dB). All control paths — meter manager, drop watcher, priority watcher, `executeAtlasCommand` — share that one client. Adding new Atlas code: route through `getAtlasClient(processorId, config)`; never `new AtlasTCPClient(...)` directly (TCP leak + breaks the singleton).
 
 **Atlas audit tables (v2.33.47/49):** `atlas_drop_events` (zone gain crashes — drop watcher polls every 30s, fires on ≥15-point drop landing ≤10) and `atlas_priority_events` (mic/page/jukebox/priority-input activity + unexpected source overrides — priority watcher polls input meters every 5s, fires when any input matching `/\b(mic|juke|page|intercom|priority)\b/i` crosses −45 dB). Both watchers write `event_type='startup'` rows on boot so the table proves they're alive even with no real events. Banner at top of bartender remote audio tab while a priority event is active. Endpoints: `GET /api/atlas-drops`, `GET /api/atlas-priority?active=true`. **Atlas firmware exposes no queryable "priority active" parameter** (60+ candidate param names probed 2026-05-17, all returned `-32604`); priority is inferred from MIC-pattern input levels + unexpected `ZoneSource_X` changes.
+
+#### 7a. Shure SLX-D Wireless Mic RF Interference Detection (v2.34.0+, Phase 2 in v2.34.1)
+`packages/shure-slxd/` — TCP 2202, Shure's ASCII `< VERB CHAN PROP VAL >` line protocol. Built for stadium-adjacent bars where ENG/mobile broadcast rigs step on the bar's wireless mic frequencies and false-trigger the Atlas priority bus. Receiver is monitored, not routed through — this package does NOT replace any Atlas/DBX/BSS DSP function.
+
+**Canonical operator home:** `/device-config` → **Audio** category → **Wireless Mics** tab (v2.34.2+). One place for setup, pre-flight test, live battery + RSSI + frequency tile per channel, event history, dedicated-log-file path, mock-receiver developer command. AudioProcessorManager still works as a backup add-path. **Full SME briefing on RF coordination + protocol details + reference list:** `packages/shure-slxd/README.md`.
+
+**Surface area (Phase 2 — v2.34.1):**
+- **Battery + RSSI tile on bartender Audio tab** — `ShureMicStatusPanel.tsx`, per-receiver / per-channel live status with color-coded battery bars + signal quality, polled every 3s via `GET /api/shure-rf/status`. Hidden when no receiver configured.
+- **Pre-install check** — `POST /api/shure-rf/preflight {ip, port}` one-shot probe returning checklist (TCP reachable, third-party-controls enabled, firmware ≥ 1.1.0, model). Wired to "Run pre-flight" button in Device Config → Audio Processors when type is shure-slxd. Catches the BLOCKED-gate install failure before save.
+- **Atlas ↔ Shure correlation** — `atlas-priority-watcher` queries `shure_rf_events` ±30s before inserting `mic_active`; if matched, writes `event_type='rf_induced_mic_active'` so the operator distinguishes ghost-override from real page. Banner copy adapts.
+- **Low-battery detection** — watcher fires `event_type='low_battery'` rising-edge when `TX_BATT_BARS ≤ 1` (255 = unknown / alkaline TX, skipped).
+- **Mock receiver + integration test** — `scripts/mock-shure-receiver.ts` simulates the protocol with 6 scenarios (clean, interference-rising, tx-battery-dying, coalesced-frames, partial-frames, third-party-controls-disabled). `scripts/test-shure-parser.ts` spawns it for each scenario and asserts the real client's parser/cache behavior. **6/6 PASS verifies the parser against real-world frame patterns BEFORE hardware ships.**
+
+**Architecture:** Persistent TCP socket per receiver via `shureSlxdClientManager` singleton (`globalThis` + `Symbol.for()` per Gotcha #10, plus per-key in-flight Promise lock to close the race window). Subscribes to SAMPLE pushes (METER_RATE 1000 ms). Watcher (`apps/web/src/lib/shure-rf-watcher.ts`) writes `shure_rf_events` rows on the ghost-carrier signature: `TX_TYPE='UNKNOWN'` AND `RSSI ≥ -85 dBm` sustained 3 consecutive samples (hysteresis: clear at ≤ -95 dBm × 3). Heartbeat every 20s while active so the banner's 30-s active-window query stays fresh. Endpoint `GET /api/shure-rf?active=true` drives a cyan banner on the bartender Audio tab that appears alongside the amber Atlas priority banner — when BOTH fire simultaneously the priority event is RF-induced (operator stops chasing ghost overrides).
+
+**Dedicated log file:** `/home/ubuntu/sports-bar-data/logs/shure-rf-YYYY-MM-DD.log` (daily rotation, 30-day retention, format `ISO_TS | LEVEL | receiverId | ch | event | rssi_dbm | freq_mhz | tx_type | note`). Also mirrors through `@sports-bar/logger` for PM2 visibility.
+
+**Protocol gotchas (all in `packages/shure-slxd/README.md` — read before extending):**
+- Wire-protocol property names per Shure's "SLX-D Command Strings v2 (2020-G)" spec — confirmed live on Holmgren SLXD4D firmware 1.4.7.0 (2026-05-18): **`TX_MODEL`** (NOT `TX_TYPE`); **`GROUP_CHANNEL`** (NOT `GROUP_CHAN`). Earlier note here said the opposite — our client never matched the REP frames, so TX type + group/channel never populated on real hardware until v2.40.1 fixed both. The TypeScript field names `state.txType` / `state.groupChannel` are kept for back-compat; only the wire-protocol case-statements changed. String values still wrapped in `{…}` curly braces (CHAN_NAME, DEVICE_ID, FW_VER, GROUP_CHANNEL).
+- Network-side scan: **does NOT exist** in SLX-D firmware 1.4.7.0. Verified by (1) probing 16 candidate command variants live, all returned `< REP ERR >`; (2) Shure's official SLX-D Command Strings spec v2 — full property set enumerated, no SCAN/GROUP_SCAN/CHANNEL_SCAN/FREQ_SCAN/SPECTRUM/SWEEP commands as GET/SET/REP; (3) WWB6 KB explicitly lists SLX-D as monitor/control-only (scan-capable list is Axient Digital, ULX-D, QLX-D, UHF-R, PSM1000). Front-panel Group Scan or our software equivalent (`POST /api/shure-rf/find-clean-freq`, v2.40.0+) are the only options. Don't waste cycles re-probing for SCAN verbs against this firmware.
+- FREQUENCY is 6-digit kHz (e.g. `537125` = 537.125 MHz), not 7-digit kHz×100.
+- RSSI on SLX-D is COMBINED (no per-antenna A/B split) and SAMPLE-only — no `< REP x RSSI ... >` push. Don't carry ULX/QLX/AD patterns over.
+- METER_RATE range 50-60000 ms. Bitfocus recommends ≥5000 ms baseline; we use 1000 ms for game-day RF detection (faster than baseline, slower than receiver-web-UI-lockup threshold).
+- Receiver SILENTLY DROPS malformed/out-of-range commands — no `ERR`/`NAK` frame exists in the protocol. Validate post-SET via REP echo if certainty needed.
+- Front-panel gate `Menu → Advanced → Network → Allow Third-Party Controls → Enable` defaults to BLOCKED; without it, port 2202 accepts the TCP connection but silently drops every command. **First-install checklist must verify this gate.**
+- **Auto Scan is NOT available over the network** — only front-panel Group/Channel Scan, or WWB6 (different protocol). Software-side workaround is to maintain a candidate-frequency list and hop manually; causes audio click on every hop.
+
+#### 7b. SDR Spectrum Monitor — wide-band RF context (v2.41.0+)
+
+**Purpose:** complement the Shure receiver's narrow per-channel view with a wide-band RTL-SDR sweep so the system sees ALL activity in the band, not just on our tuned freqs. Provides cross-confirmation for Shure interference events + early warning when a new carrier appears in the band before it hits our channel.
+
+**Hardware:** NooElec NESDR Smart (RTL-SDR v3 derivative, ~$35) or any rtl-sdr-compatible dongle on USB. Coverage 25 MHz – 1.7 GHz, more than enough for G58 (470-514 MHz) plus H55 / J50A / J52A if the operator ever adds receivers in those bands.
+
+**One-time setup:** `sudo bash scripts/setup-sdr.sh` — apt installs rtl-sdr, writes `/etc/modprobe.d/blacklist-rtl.conf` (the #1 first-install failure is the kernel DVB-USB driver grabbing the dongle before user-space tools can), live-unloads any running DVB modules, appends `SDR_ENABLED=auto` to `.env`. Idempotent. After this, plugging in a dongle ANY time auto-starts the watcher within 5 min — no PM2 restart.
+
+**Watcher (`apps/web/src/lib/sdr-watcher.ts`):** spawns `rtl_power -f <start>M:<end>M:25k -i 1 -e 0 -g 25` as a long-lived child. Parses CSV output line-by-line, two paths per sample:
+- **Aggregator** — max/avg/count per (minute, freq) bucket in memory, flushed to `sdr_spectrum` at minute rollover. Storage budget ~290 MB/year.
+- **Carrier detection** — per freq bin, count consecutive samples ≥ `-85 dBm` threshold (CARRIER_DETECT_SAMPLES=3 → rising-edge `carrier_active` row; CARRIER_CLEAR_SAMPLES=5 → falling-edge `carrier_cleared` row). Heartbeat every 30s while active. Same hysteresis shape as the Shure and Atlas priority watchers.
+
+**`SDR_ENABLED` env modes:** `auto` (recommended — start only when dongle detected, probe every 5 min), `true` (force-start, error if no dongle), `false`/unset (off, no probes).
+
+**Auto band-tracking:** `SDR_BAND_PRESET=auto` (default) reads `shureSlxdClientManager.getSnapshots()` every 5 min, sweeps MIN-5 MHz to MAX+5 MHz across the actual Shure receiver freqs. Operator adds an H55 receiver → SDR sweep follows. Other presets: `uhf-wireless` (470-700 MHz fixed), `full-uhf` (470-960 MHz), `custom` (use SDR_BAND_START_MHZ/END_MHZ).
+
+**API endpoints:**
+- `GET /api/sdr/status` — liveness + active-carriers list (polled every 30s by the UI for header info)
+- `GET /api/sdr/history?minutesAgo=N` — pivoted 2D grid (time × freq) for waterfall, used for initial render
+- `GET /api/sdr/stream` — Server-Sent Events live push: `bucket` (per-minute spectrum row), `carrier` (active/cleared events), `heartbeat`. Replaces history polling for real-time waterfall updates
+- `GET /api/sdr/peak-stats?daysAgo=7&topN=20` — per-freq aggregates: max, avg, p95, hot-minutes count. Foundation for Stage 2 (recurring-pattern detector) and Stage 3 (frequency-suggestion engine)
+
+**Cross-confirmation with Shure:** when `shure-rf-watcher` fires `rf_interference`, it queries `sdr_carriers` within ±60s at the same freq (±50 kHz tolerance). If matched, the event's `note` gets `(SDR-confirmed, SDR peak X dBm)`. UI shows a purple "SDR-confirmed" badge on event-history rows. Ollama pattern digest is told to weight these higher when recommending mitigation.
+
+**UI surface:** `/device-config → Audio → Wireless Mics → RF Spectrum Monitor` — canvas waterfall (annotated with our Shure freqs as cyan vertical lines + Green Bay TV station edges WCWF/WLUK as dashed white lines), click any column to inspect 7-day peak-stats for that freq. Three render states: disabled (setup instructions), waiting-for-sweep (warn), live (waterfall + carriers).
+
+**Wrapped in SafeBoundary** — a render crash in the SDR panel only shows a tiny red inline card, doesn't escalate to the global "Something went wrong" page boundary.
 
 #### 8. Wolf Pack Multi-View Card Control
 `packages/multiview/` — HDTVSupply 4K60 Quad-View cards in Wolf Pack slots. RS-232 USB (115200 8N1), 8 display modes (single → quad), hex frame format. DB: `WolfpackMultiViewCard`. Full hex frames + mode table: `packages/multiview/README.md`.
@@ -402,6 +456,8 @@ public static getInstance(): YourClass {
 
 **Apply this to:** any code where you wrote a "singleton" but a Next.js route bundle could load it. Notably: TCP/UDP socket managers, connection pools, in-memory caches that mirror external state, anything that binds an OS resource.
 
+Same fix applied to **`@sports-bar/shure-slxd`** in v2.34.0 (preemptive — same race, same singleton, before any stuck-cache symptom hit prod). The reconnect path was tightened in v2.37.2 to also use the in-flight Promise lock so concurrent `getClient()` calls on a disconnected client don't both call `connect()` and create duplicate sockets.
+
 ## Development Workflow
 
 ### Standing Rules (MUST follow in every session)
@@ -423,6 +479,22 @@ public static getInstance(): YourClass {
 8. **Read + CONTRIBUTE to `docs/VERSION_SETUP_GUIDE.md` every update.** At auto-update read target version's Required Manual Steps + execute (or flag). Bumping → write new entry in the same commit. Fixing location error → append to Known Errors & Fixes. Details: `docs/CLAUDE_VERSIONING_GUIDE.md` → Standing Rule 8.
 
 9. **CLAUDE.md is main-only.** Never commit to `CLAUDE.md` from a location branch — it is shared documentation, edits made on a location branch will conflict with main on the next auto-update merge. New rules/gotchas/architecture notes go to `main` first, then propagate via the normal merge. Auto-update's conflict resolver takes main's version of `CLAUDE.md` (since v2.32.26) so any stray location-branch edit will be silently lost on the next merge — do not rely on it surviving.
+
+10. **EVERYTHING stays on latest version (v2.46.3+ — STRENGTHENED 2026-05-18).** Operator rule: every npm dep, OS package, AND local AI model MUST stay on the latest available version, "at any costs." Bump breaking-majors in the working PR and fix the breakage (no longer "defer to dedicated PR"). Specifically:
+    - **npm:** every feature batch runs `npm audit fix` AND `npm update`. Once weekly run `npm outdated` and bump every non-pinned dep including breaking-majors — fix breakage in the same PR.
+    - **OS:** every fleet box on the latest Ubuntu LTS (currently 24.04 noble — see `docs/FLEET_STATUS.md` + `docs/OS_UPGRADE_RUNBOOK.md`). Monthly check.
+    - **Local AI models:** weekly check `ollama list` vs ollama.ai. Pull newer tags for `llama3.1:8b`, `nomic-embed-text`, `qwen2.5:14b`. When a model major-version releases (e.g. `llama3.2:8b`), pull, verify on the RAG grill suite, switch default in `apps/web/src/app/api/chat/route.ts` (~line 52 OLLAMA_MODEL). Re-embed the RAG store after embedding-model majors.
+    - **Hardware firmware:** track latest stable for Atlas / Shure / Wolf Pack / Crestron / DirecTV; include current minimums in `docs/NEW_LOCATION_SETUP.md` pre-flight.
+    - **Every bump → entry in `docs/VERSION_SETUP_GUIDE.md`** Required Manual Steps so other locations replicate it. Document dep changes one-line in LOCATION_UPDATE_NOTES (what bumped, vulns closed, vulns remaining).
+
+    Rationale: lagging = vuln drift + missing perf/AI capability + crippling catch-up tax later. Operator does not want the system ever falling behind.
+
+11. **Every fix/doc → RAG re-scan (v2.49.10+ — Standing Rule 2026-05-18).** Every commit that touches `CLAUDE.md`, `docs/**/*.md`, `.claude/locations/*.md`, `packages/*/README.md`, memory files at `~/.claude/projects/.../memory/`, drizzle SQL, or anything else indexed by `scripts/scan-system-docs.ts` / `scripts/scan-code-docs.ts` MUST end with a RAG re-scan. Documentation without rescan is invisible to the AI Hub chat — operators ask about the thing we just fixed and the AI doesn't know. Apply at three levels:
+    1. **Live session** — after committing a doc fix on main, kick off `nohup npx tsx scripts/scan-system-docs.ts > /tmp/rag-rescan.log 2>&1 &` so it's done by the time the operator next opens the AI Hub. Don't block on completion (~25-40 min) — just queue it.
+    2. **Auto-update path** — `scripts/auto-update.sh` should trigger an incremental scan on every successful merge that touched RAG-indexed paths. Operators at every location benefit without manual action. See `scripts/rag-rescan-if-needed.sh` for the path-aware trigger helper (v2.49.10+).
+    3. **Weekly cron** — `0 3 * * 0 cd /home/ubuntu/Sports-Bar-TV-Controller && npx tsx scripts/scan-system-docs.ts` as a backstop in case 1+2 miss anything.
+
+    The principle: committing a doc fix without rescanning RAG is like fixing a bug in a service but not restarting it. The fix exists in the repo but the system isn't running the new version.
 
 ### Version Bumping (REQUIRED — every commit to main)
 Every commit to `main` MUST include a `package.json` version bump (same commit or same push). Code-change-without-bump → locations report matching versions for mismatched code → undebuggable. Minor for features/migrations; patch for bug fixes/docs. Details: `docs/CLAUDE_VERSIONING_GUIDE.md`.
