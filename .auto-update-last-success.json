@@ -1,11 +1,11 @@
 {
-  "version": "2.52.4",
+  "version": "2.52.5",
   "branch": "location/stoneyard-greenville",
-  "commitSha": "bf5ca8e408ea41f6808d274d45658196e4cad15a",
-  "successAt": "2026-05-19T12:01:19Z",
-  "successAtUnix": 1779192079,
-  "runId": "auto-update-2026-05-19-06-59",
-  "verifyInstall": {"status":"PASS","passed":7,"total":7,"durationSecs":3,"failed":[],"layers":[{"name":"pm2_online","passed":true,"detail":"status=online restart_time=62"},{"name":"health_http","passed":true,"detail":"status=healthy"},{"name":"metrics_http","passed":true,"detail":"cores=20"},{"name":"bartender_proxy","passed":true,"detail":"http=302"},{"name":"critical_tables","passed":true,"detail":"presets=123 aliases=45 directv=0 firetv=3"},{"name":"matrix_config","passed":true,"detail":"multi-card WP-36X36 offset=0"},{"name":"crash_logs","passed":true,"detail":"clean"}]},
+  "commitSha": "0cfb43b775dbcbaccbdaad3a99ecef57bc549840",
+  "successAt": "2026-05-19T18:40:59Z",
+  "successAtUnix": 1779216059,
+  "runId": "auto-update-2026-05-19-13-39",
+  "verifyInstall": {"status":"PASS","passed":7,"total":7,"durationSecs":2,"failed":[],"layers":[{"name":"pm2_online","passed":true,"detail":"status=online restart_time=63"},{"name":"health_http","passed":true,"detail":"status=healthy"},{"name":"metrics_http","passed":true,"detail":"cores=20"},{"name":"bartender_proxy","passed":true,"detail":"http=302"},{"name":"critical_tables","passed":true,"detail":"presets=123 aliases=45 directv=0 firetv=3"},{"name":"matrix_config","passed":true,"detail":"multi-card WP-36X36 offset=0"},{"name":"crash_logs","passed":true,"detail":"clean"}]},
   "os": { "codename": "noble", "version": "24.04", "kernel": "6.8.0-111-generic" },
   "configChecksums": {
     ".env": "d609030fbff4742f",
