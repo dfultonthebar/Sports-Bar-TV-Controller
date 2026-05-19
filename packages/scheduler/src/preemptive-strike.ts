@@ -156,26 +156,11 @@ async function suggestCleanFreqs(
   return top
 }
 
-/**
- * Pull currently-tuned Shure freqs via the globalThis client manager.
- * Same pattern as interference-correlator's getOurShureFreqsForCorrelation.
- */
-async function getCurrentShureFreqs(): Promise<number[]> {
-  try {
-    const mgrMod: any = await import('@sports-bar/shure-slxd').catch(() => null)
-    if (!mgrMod || typeof mgrMod.shureSlxdClientManager?.getSnapshots !== 'function') return []
-    const snaps = mgrMod.shureSlxdClientManager.getSnapshots()
-    const freqs = new Set<number>()
-    for (const s of snaps) {
-      for (const ch of s.channels ?? []) {
-        if (typeof ch.frequencyMhz === 'number' && ch.frequencyMhz > 0) freqs.add(ch.frequencyMhz)
-      }
-    }
-    return Array.from(freqs)
-  } catch {
-    return []
-  }
-}
+// v2.52.21: getCurrentShureFreqs was inlined here; now consolidated
+// in shure-freq-utils as getShureFreqsMhz. Re-exported under the local
+// name for any other module that might import it (none currently).
+import { getShureFreqsMhz } from './shure-freq-utils'
+const getCurrentShureFreqs = getShureFreqsMhz
 
 export async function runPreemptiveStrike(
   opts: PreemptiveStrikeOptions,

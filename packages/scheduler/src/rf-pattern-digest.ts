@@ -23,6 +23,9 @@
 
 import { db, sql, schema } from '@sports-bar/database'
 import { logger } from '@sports-bar/logger'
+// v2.52.21: shared helpers (was inlined in gatherRawCounts; same code as
+// interference-correlator + preemptive-strike — now one source).
+import { getShureFreqsMhz, buildFreqBandClauses, SHURE_FREQ_MATCH_MHZ } from './shure-freq-utils'
 
 // v2.52.20 fix (audit M1): create rf_pattern_digest at runtime if it
 // doesn't already exist. Pre-fix relied entirely on `drizzle-kit push`
@@ -123,19 +126,9 @@ async function gatherRawCounts(locationId: string): Promise<RawCounts> {
   const nowSec = Math.floor(Date.now() / 1000)
   const periodStart = nowSec - PERIOD_HOURS * 3600
 
-  // Our currently-tuned Shure freqs (for context in the prompt)
-  let ourShureFreqs: number[] = []
-  try {
-    const mgrMod: any = await import('@sports-bar/shure-slxd').catch(() => null)
-    if (mgrMod?.shureSlxdClientManager?.getSnapshots) {
-      const snaps = mgrMod.shureSlxdClientManager.getSnapshots()
-      for (const s of snaps) {
-        for (const ch of s.channels ?? []) {
-          if (typeof ch.frequencyMhz === 'number' && ch.frequencyMhz > 0) ourShureFreqs.push(ch.frequencyMhz)
-        }
-      }
-    }
-  } catch { /* no shure-slxd */ }
+  // v2.52.21: shared util (was duplicate of interference-correlator's
+  // getOurShureFreqsForCorrelation + preemptive-strike's getCurrentShureFreqs).
+  const ourShureFreqs = await getShureFreqsMhz()
 
   // 24h Shure RF event count
   let shureEvents24h = 0
@@ -162,14 +155,15 @@ async function gatherRawCounts(locationId: string): Promise<RawCounts> {
   let sdrCarriersOnOurFreqs24h = 0
   if (ourShureFreqs.length > 0) {
     try {
-      const freqClauses = ourShureFreqs.map(
-        (f) => sql`(freq_mhz BETWEEN ${f - 0.1} AND ${f + 0.1})`,
-      )
+      // v2.52.21: shared buildFreqBandClauses + canonical tolerance
+      // constant (was hardcoded 0.1 here — risk of drift if the
+      // correlator's tolerance changed).
+      const freqBandClause = buildFreqBandClauses(ourShureFreqs, SHURE_FREQ_MATCH_MHZ)!
       const r = await db.all<{ n: number }>(sql`
         SELECT COUNT(*) AS n FROM sdr_carriers
         WHERE detected_at >= ${periodStart}
           AND event_type = 'carrier_active'
-          AND (${sql.join(freqClauses, sql` OR `)})
+          AND (${freqBandClause})
       `)
       sdrCarriersOnOurFreqs24h = r[0]?.n ?? 0
     } catch { /* table missing */ }
