@@ -1,3 +1,12 @@
+// v2.48.5 (2026-05-18): 11 unused table definitions removed:
+//   tvLayouts, matrixConfigs, audioMessages, audioScenes, bartenderRemotes,
+//   deviceMappings, trainingDocuments, aiTvAvailability, aiGamePlanExecutions,
+//   schedulingPreferences, aiScheduleSuggestions
+// All had 0 code references (verified across apps/web/src + packages + scripts +
+// tests). Actual SQLite tables in production.db are left intact per Standing
+// Rule 3 (never drop DB in same pass as code). If you want the columns gone,
+// add an explicit migration that runs DROP TABLE for each.
+
 import { sqliteTable, text, integer, real, index, uniqueIndex } from 'drizzle-orm/sqlite-core'
 import { sql } from 'drizzle-orm'
 
@@ -239,27 +248,7 @@ export const teamNameMatches = sqliteTable('TeamNameMatch', {
 }))
 
 // TV Layout Model
-export const tvLayouts = sqliteTable('TVLayout', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  name: text('name').notNull(),
-  description: text('description'),
-  layoutData: text('layoutData').notNull(),
-  isActive: integer('isActive', { mode: 'boolean' }).notNull().default(false),
-  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
-  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
-})
-
 // Matrix Config Model
-export const matrixConfigs = sqliteTable('MatrixConfig', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  name: text('name').notNull(),
-  description: text('description'),
-  config: text('config').notNull(),
-  isActive: integer('isActive', { mode: 'boolean' }).notNull().default(false),
-  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
-  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
-})
-
 // Matrix Configuration Model
 export const matrixConfigurations = sqliteTable('MatrixConfiguration', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -325,31 +314,7 @@ export const matrixOutputs = sqliteTable('MatrixOutput', {
 }))
 
 // Bartender Remote Model
-export const bartenderRemotes = sqliteTable('BartenderRemote', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  name: text('name').notNull(),
-  ipAddress: text('ipAddress').notNull().unique(),
-  port: integer('port').notNull().default(80),
-  description: text('description'),
-  status: text('status').notNull().default('offline'),
-  lastSeen: timestamp('lastSeen'),
-  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
-  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
-})
-
 // Device Mapping Model
-export const deviceMappings = sqliteTable('DeviceMapping', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  tvNumber: integer('tvNumber').notNull().unique(),
-  fireTvDeviceId: text('fireTvDeviceId'),
-  fireTvName: text('fireTvName'),
-  audioZoneId: text('audioZoneId'),
-  audioZoneName: text('audioZoneName'),
-  description: text('description'),
-  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
-  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
-})
-
 // System Settings Model
 export const systemSettings = sqliteTable('SystemSettings', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -427,27 +392,7 @@ export const audioGroups = sqliteTable('AudioGroup', {
 }))
 
 // Audio Scene Model
-export const audioScenes = sqliteTable('AudioScene', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  processorId: text('processorId').notNull().references(() => audioProcessors.id, { onDelete: 'cascade' }),
-  name: text('name').notNull(),
-  description: text('description'),
-  sceneData: text('sceneData').notNull(),
-  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
-  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
-})
-
 // Audio Message Model
-export const audioMessages = sqliteTable('AudioMessage', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  processorId: text('processorId').notNull().references(() => audioProcessors.id, { onDelete: 'cascade' }),
-  name: text('name').notNull(),
-  audioFile: text('audioFile').notNull(),
-  duration: integer('duration'),
-  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
-  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
-})
-
 // Audio Input Meter Model
 export const audioInputMeters = sqliteTable('AudioInputMeter', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -650,30 +595,6 @@ export const qaEntries = sqliteTable('QAEntry', {
 }))
 
 // Training Document Model (Enhanced)
-export const trainingDocuments = sqliteTable('TrainingDocument', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  title: text('title').notNull(),
-  content: text('content').notNull(),
-  fileType: text('fileType').notNull(),
-  fileName: text('fileName').notNull(),
-  filePath: text('filePath').notNull(), // Full path to file
-  fileSize: integer('fileSize').notNull(),
-  category: text('category'),
-  tags: text('tags'), // JSON array of tags
-  description: text('description'), // User-provided description
-  metadata: text('metadata'), // JSON metadata
-  processedAt: timestamp('processedAt'), // When document was processed for AI
-  viewCount: integer('viewCount').notNull().default(0),
-  lastViewed: timestamp('lastViewed'),
-  isActive: integer('isActive', { mode: 'boolean' }).notNull().default(true),
-  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
-  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
-}, (table) => ({
-  fileTypeIdx: index('TrainingDocument_fileType_idx').on(table.fileType),
-  isActiveIdx: index('TrainingDocument_isActive_idx').on(table.isActive),
-  categoryIdx: index('TrainingDocument_category_idx').on(table.category),
-}))
-
 // Scheduled Command Sequence Model
 export const scheduledCommands = sqliteTable('ScheduledCommand', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -1757,68 +1678,7 @@ export const aiVenueProfiles = sqliteTable('ai_venue_profiles', {
 })
 
 // AI TV Availability - Track which TVs/inputs are available for AI scheduling
-export const aiTvAvailability = sqliteTable('ai_tv_availability', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-
-  // References
-  matrixOutputId: text('matrixOutputId'), // Reference to MatrixOutput (TV)
-  matrixInputId: text('matrixInputId'), // Reference to MatrixInput (source)
-
-  // Display Info
-  tvName: text('tvName').notNull(), // "Bar TV 1", "Patio TV"
-  inputLabel: text('inputLabel'), // "DirecTV 1", "Cable Box 2"
-  deviceType: text('deviceType'), // 'directv', 'cable', 'firetv', 'roku'
-
-  // Availability
-  availableForAI: integer('availableForAI', { mode: 'boolean' }).default(true),
-  priorityRank: integer('priorityRank').default(50), // 1-100, higher = use first
-
-  // Zone/Group
-  tvZone: text('tvZone'), // "Bar", "Patio", "Private Room"
-  tvGroup: text('tvGroup'), // For grouping TVs that should show same content
-
-  // Restrictions
-  allowedLeagues: text('allowedLeagues'), // JSON array of allowed leagues, null = all
-  blockedLeagues: text('blockedLeagues'), // JSON array of blocked leagues
-  sportsOnly: integer('sportsOnly', { mode: 'boolean' }).default(true),
-
-  // Notes
-  notes: text('notes'), // Admin notes about this TV
-
-  // Metadata
-  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
-  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
-}, (table) => ({
-  matrixOutputIdx: index('AiTvAvailability_matrixOutputId_idx').on(table.matrixOutputId),
-  availableForAIIdx: index('AiTvAvailability_availableForAI_idx').on(table.availableForAI),
-  tvZoneIdx: index('AiTvAvailability_tvZone_idx').on(table.tvZone),
-}))
-
 // AI Game Plan Executions - Track plan executions for history/debugging
-export const aiGamePlanExecutions = sqliteTable('ai_game_plan_executions', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-
-  // Execution Info
-  executedAt: timestamp('executedAt').notNull().default(timestampNow()),
-  executedBy: text('executedBy'), // 'auto', 'manual', user ID
-
-  // Plan Summary
-  gamesScheduled: integer('gamesScheduled').default(0),
-  tvsControlled: integer('tvsControlled').default(0),
-  homeTeamGamesFound: integer('homeTeamGamesFound').default(0),
-
-  // Full Plan Data
-  planData: text('planData'), // JSON with full plan details
-
-  // Execution Results
-  success: integer('success', { mode: 'boolean' }).default(true),
-  errors: text('errors'), // JSON array of any errors during execution
-
-  // Timing
-  generationTimeMs: integer('generationTimeMs'), // How long to generate plan
-  executionTimeMs: integer('executionTimeMs'), // How long to execute on TVs
-})
-
 // Bartender Overrides - Track manual TV changes to prevent AI from overriding
 // CRITICAL: This protects bartender decisions - never let AI flip a game the bartender chose
 export const bartenderOverrides = sqliteTable('bartender_overrides', {
@@ -2538,59 +2398,6 @@ export const atlasLearningEvents = sqliteTable('AtlasLearningEvent', {
 // ============================================================================
 // AI Scheduling Intelligence Tables
 // ============================================================================
-
-export const schedulingPreferences = sqliteTable('scheduling_preferences', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  preferenceType: text('preference_type').notNull(),
-  teamId: text('team_id').references(() => homeTeams.id, { onDelete: 'cascade' }),
-  teamName: text('team_name'),
-  league: text('league'),
-  preferenceData: text('preference_data').notNull(),
-  weight: integer('weight').notNull().default(50),
-  confidence: real('confidence').notNull().default(0.5),
-  source: text('source').notNull().default('learned'),
-  isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
-  createdAt: integer('created_at').notNull().default(sql`(strftime('%s', 'now'))`),
-  updatedAt: integer('updated_at').notNull().default(sql`(strftime('%s', 'now'))`),
-}, (table) => ({
-  preferenceTypeIdx: index('SchedulingPreference_preferenceType_idx').on(table.preferenceType),
-  teamIdIdx: index('SchedulingPreference_teamId_idx').on(table.teamId),
-  leagueIdx: index('SchedulingPreference_league_idx').on(table.league),
-  isActiveIdx: index('SchedulingPreference_isActive_idx').on(table.isActive),
-  typeTeamIdx: index('SchedulingPreference_type_team_idx').on(table.preferenceType, table.teamId),
-}))
-
-export const aiScheduleSuggestions = sqliteTable('ai_schedule_suggestions', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  batchId: text('batch_id').notNull(),
-  gameScheduleId: text('game_schedule_id').notNull().references(() => gameSchedules.id, { onDelete: 'cascade' }),
-  suggestedInputSourceId: text('suggested_input_source_id').references(() => inputSources.id, { onDelete: 'set null' }),
-  suggestedChannelNumber: text('suggested_channel_number'),
-  suggestedAppName: text('suggested_app_name'),
-  suggestedTvOutputIds: text('suggested_tv_output_ids'),
-  suggestedTvCount: integer('suggested_tv_count').default(0),
-  confidenceScore: real('confidence_score').notNull().default(0.5),
-  reasoning: text('reasoning').notNull(),
-  reasoningFactors: text('reasoning_factors'),
-  gamePriorityScore: integer('game_priority_score').default(0),
-  conflictsDetected: text('conflicts_detected'),
-  status: text('status').notNull().default('suggested'),
-  reviewedBy: text('reviewed_by'),
-  reviewedAt: integer('reviewed_at'),
-  reviewNotes: text('review_notes'),
-  modifiedInputSourceId: text('modified_input_source_id'),
-  modifiedChannelNumber: text('modified_channel_number'),
-  modifiedTvOutputIds: text('modified_tv_output_ids'),
-  appliedAllocationId: text('applied_allocation_id').references(() => inputSourceAllocations.id, { onDelete: 'set null' }),
-  createdAt: integer('created_at').notNull().default(sql`(strftime('%s', 'now'))`),
-  updatedAt: integer('updated_at').notNull().default(sql`(strftime('%s', 'now'))`),
-  expiresAt: integer('expires_at'),
-}, (table) => ({
-  batchIdIdx: index('AIScheduleSuggestion_batchId_idx').on(table.batchId),
-  gameScheduleIdIdx: index('AIScheduleSuggestion_gameScheduleId_idx').on(table.gameScheduleId),
-  statusIdx: index('AIScheduleSuggestion_status_idx').on(table.status),
-  statusCreatedIdx: index('AIScheduleSuggestion_status_createdAt_idx').on(table.status, table.createdAt),
-}))
 
 export const schedulingPatterns = sqliteTable('scheduling_patterns', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),

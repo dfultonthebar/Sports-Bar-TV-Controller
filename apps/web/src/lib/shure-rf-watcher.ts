@@ -85,12 +85,21 @@ async function writeEvent(args: {
   receiverName: string
   ipAddress: string
   channel: number
-  eventType: 'rf_interference' | 'rf_interference_heartbeat' | 'rf_cleared' | 'tx_offline' | 'tx_online' | 'low_battery' | 'startup' | 'freq_changed'
+  eventType:
+    | 'rf_interference'
+    | 'rf_interference_heartbeat'
+    | 'rf_cleared'
+    | 'tx_offline'
+    | 'tx_online'
+    | 'low_battery'
+    | 'startup'
+    | 'freq_changed'
+    | 'baseline_sample'
   rssiDbm?: number
   frequencyMhz?: number
   txType?: string
   note?: string
-  level?: 'info' | 'warn' | 'error'
+  level?: 'info' | 'warn' | 'error' | 'debug'
 }): Promise<void> {
   const now = Math.floor(Date.now() / 1000)
   await db.run(sql`
@@ -166,7 +175,29 @@ async function evaluateChannel(args: {
   }
 
   const rssi = state.rssiDbm
-  const txOff = (state.txType ?? '').toUpperCase() === 'UNKNOWN'
+  // TX-presence signal — must be robust against the TX-power-on
+  // transient where the receiver detects an RF carrier (RSSI jumps
+  // up) BEFORE the TX_BATT_BARS / TX_TYPE REP messages have arrived
+  // (REP-on-change can lag 1-3 sec behind SAMPLE). Without the
+  // audio-silence guard, this window fired a false rf_interference
+  // event every time the operator powered the mic on at Holmgren
+  // 2026-05-18.
+  //
+  // Real interference signature:
+  //   - bars sentinel (255 or undefined) AND
+  //   - tx_type not a known model AND
+  //   - receiver audio output is at digital silence (no decoded carrier)
+  // TX-power-on transient differs on the audio criterion: the
+  // receiver locks the digital signal within ~100ms of carrier
+  // detection, so audio is already above the noise floor by the
+  // time we'd otherwise count interference samples.
+  const hasBattery = state.txBattBars !== undefined && state.txBattBars !== 255
+  const txTypeKnownPresent =
+    state.txType !== undefined &&
+    state.txType !== '' &&
+    state.txType.toUpperCase() !== 'UNKNOWN'
+  const audioSilent = (state.audioPeakDbfs ?? -120) <= -100
+  const txOff = !hasBattery && !txTypeKnownPresent && audioSilent
 
   if (rssi === undefined) {
     counters.set(key, c)
@@ -202,13 +233,41 @@ async function evaluateChannel(args: {
   if (!c.active && c.aboveCount >= INTERFERENCE_THRESHOLDS.ABOVE_SAMPLES_TO_ACTIVATE) {
     c.active = true
     c.lastEventAt = now
+    // Cross-confirm against SDR carriers at this freq within ±60s.
+    // If the wide-band SDR independently saw a carrier at the same
+    // frequency, the Shure detection is corroborated — surface as
+    // "sdr_confirmed" in the note so operator + pattern digest can
+    // distinguish strong signals from speculative ones. Hands-off
+    // graceful when the SDR pipeline isn't running (table missing
+    // or empty — wrapped in try/catch, just degrades to plain
+    // rf_interference).
+    let confirmationNote = ''
+    if (state.frequencyMhz !== undefined) {
+      try {
+        const sdrMatches = await db.all<{ peak_dbm: number | null; detected_at: number }>(sql`
+          SELECT peak_dbm, detected_at
+          FROM sdr_carriers
+          WHERE event_type IN ('carrier_active', 'carrier_heartbeat')
+            AND detected_at BETWEEN ${now - 60} AND ${now + 5}
+            AND ABS(freq_mhz - ${state.frequencyMhz}) < 0.05
+          ORDER BY detected_at DESC
+          LIMIT 1
+        `)
+        if (sdrMatches.length > 0) {
+          const peakStr = sdrMatches[0].peak_dbm !== null
+            ? `, SDR peak ${sdrMatches[0].peak_dbm.toFixed(0)} dBm`
+            : ''
+          confirmationNote = ` (SDR-confirmed${peakStr})`
+        }
+      } catch { /* sdr_carriers may not exist yet — silent */ }
+    }
     await writeEvent({
       receiverId, receiverName, ipAddress, channel,
       eventType: 'rf_interference',
       rssiDbm: rssi,
       frequencyMhz: state.frequencyMhz,
       txType: state.txType,
-      note: `rising edge: ${INTERFERENCE_THRESHOLDS.ABOVE_SAMPLES_TO_ACTIVATE} samples ≥ ${INTERFERENCE_THRESHOLDS.ACTIVATE_RSSI_DBM}dBm with TX off`,
+      note: `rising edge: ${INTERFERENCE_THRESHOLDS.ABOVE_SAMPLES_TO_ACTIVATE} samples ≥ ${INTERFERENCE_THRESHOLDS.ACTIVATE_RSSI_DBM}dBm with TX off${confirmationNote}`,
       level: 'warn',
     })
   } else if (c.active && c.belowCount >= INTERFERENCE_THRESHOLDS.BELOW_SAMPLES_TO_DEACTIVATE) {
@@ -247,6 +306,29 @@ async function evaluateChannel(args: {
  */
 const attachedReceivers = new Set<string>()
 
+async function setProcessorStatus(processorId: string, status: 'online' | 'offline'): Promise<void> {
+  try {
+    if (status === 'online') {
+      await db.run(sql`
+        UPDATE AudioProcessor
+           SET status = 'online',
+               lastSeen = strftime('%Y-%m-%dT%H:%M:%fZ','now'),
+               updatedAt = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+         WHERE id = ${processorId}
+      `)
+    } else {
+      await db.run(sql`
+        UPDATE AudioProcessor
+           SET status = 'offline',
+               updatedAt = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+         WHERE id = ${processorId}
+      `)
+    }
+  } catch (err) {
+    logger.debug(`[SHURE-RF-WATCHER] status sync failed for ${processorId}: ${(err as Error).message}`)
+  }
+}
+
 /**
  * Wire up one receiver: connect, attach stateChange handler that
  * runs the threshold evaluator, start metering at 1 Hz.
@@ -280,14 +362,28 @@ async function attachReceiver(processor: {
       }).catch((err) => logger.error(`[SHURE-RF-WATCHER] evaluate failed: ${(err as Error).message}`))
     })
 
+    // Keep AudioProcessor.status / lastSeen in sync with the live TCP
+    // state so every consumer (Wireless Mics admin, Audio Processors
+    // list, Overview tab counts) sees the same truth. Without this the
+    // DB column stays at whatever it was when the row was first
+    // inserted — operator complaint at Holmgren 2026-05-18.
+    client.on('connected', () => {
+      setProcessorStatus(processor.id, 'online').catch(() => {})
+    })
+    client.on('disconnected', () => {
+      setProcessorStatus(processor.id, 'offline').catch(() => {})
+    })
+
     // Use a faster metering rate than the BF default 5000ms so we
     // catch RF interference within ~3s. Spec allows 50-60000; we pick
     // 1000ms — fast enough for game-day responsiveness, slow enough
     // not to lock the receiver's web UI per Bitfocus HELP guidance.
     await client.startMetering(1_000)
     attachedReceivers.add(processor.id)
+    await setProcessorStatus(processor.id, 'online')
     logger.info(`[SHURE-RF-WATCHER] attached to ${receiverName} @ ${processor.ipAddress}:${processor.tcpPort ?? 2202}`)
   } catch (err) {
+    await setProcessorStatus(processor.id, 'offline')
     logger.warn(`[SHURE-RF-WATCHER] could not attach to ${receiverName} @ ${processor.ipAddress}: ${(err as Error).message}`)
   }
 }
@@ -343,4 +439,62 @@ export async function startShureRfWatcher(): Promise<void> {
   setInterval(() => {
     discoverAndAttach().catch((err) => logger.debug(`[SHURE-RF-WATCHER] re-scan failed: ${(err as Error)?.message ?? err}`))
   }, 5 * 60 * 1000)
+
+  // Baseline RF environment snapshot — one row per channel capturing
+  // current RSSI + frequency even when no interference is firing.
+  // Sampled every 10 minutes during the May-August 2026 bootstrap
+  // window. The SLX-D receiver streams SAMPLE frames continuously
+  // (every 1s); we DON'T persist all of them (would be ~170K rows/day),
+  // but we DO want enough samples to build a "what does the bar's
+  // RF environment look like over time" picture before the August
+  // preseason brings real game-day traffic.
+  //
+  // After enough baseline data is gathered (~3-4 weeks) the interval
+  // can be relaxed to 30-60 min — bumped to BASELINE_INTERVAL_MS env
+  // var so we can tune without redeploying.
+  //
+  // Storage budget at 10 min: 2 ch × 144 samples/day × 365 days
+  //   ≈ 105K rows/year. SQLite handles that easily, indexed by
+  //   (detected_at) for digest queries.
+  const baselineIntervalMs = parseInt(
+    process.env.SHURE_BASELINE_INTERVAL_MS ?? `${10 * 60 * 1000}`, 10,
+  )
+  setTimeout(() => {
+    writeBaselineSnapshot().catch((err) => logger.debug(`[SHURE-RF-WATCHER] baseline snapshot failed: ${(err as Error)?.message ?? err}`))
+  }, 90_000)
+  setInterval(() => {
+    writeBaselineSnapshot().catch((err) => logger.debug(`[SHURE-RF-WATCHER] baseline snapshot failed: ${(err as Error)?.message ?? err}`))
+  }, baselineIntervalMs)
+}
+
+/**
+ * Capture an hourly RSSI/frequency snapshot from every connected
+ * receiver. event_type='baseline_sample' — clearly distinct from
+ * real interference events so the digest can filter/include as
+ * needed. No-op if no receivers are attached.
+ */
+async function writeBaselineSnapshot(): Promise<void> {
+  const { shureSlxdClientManager } = await import('@sports-bar/shure-slxd')
+  const snapshots = shureSlxdClientManager.getSnapshots()
+  if (snapshots.length === 0) return
+  for (const rcv of snapshots) {
+    if (!rcv.connected) continue
+    for (const ch of rcv.channels) {
+      if (ch.rssiDbm === undefined) continue
+      const hasBattery = ch.txBattBars !== undefined && ch.txBattBars !== 255
+      const txState = hasBattery ? 'tx_on' : 'tx_off'
+      await writeEvent({
+        receiverId: rcv.receiverId,
+        receiverName: rcv.receiverName,
+        ipAddress: rcv.ipAddress,
+        channel: ch.channel,
+        eventType: 'baseline_sample',
+        rssiDbm: ch.rssiDbm,
+        frequencyMhz: ch.frequencyMhz,
+        txType: ch.txType,
+        note: txState,
+        level: 'debug',
+      })
+    }
+  }
 }

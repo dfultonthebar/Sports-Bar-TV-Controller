@@ -158,6 +158,9 @@ playwright-report/
 /test-*.ts
 /test-*.mjs
 /test-*.js
+/screenshot-*.ts
+/screenshot-*.mjs
+/screenshot-*.js
 
 # Turborepo
 .turbo

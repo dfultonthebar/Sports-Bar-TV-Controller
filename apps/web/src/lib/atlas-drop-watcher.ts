@@ -38,9 +38,20 @@ const DROP_LOW_FLOOR = 10
 // drop's cause. Bartender writes hit the log table within ~1s of the
 // Atlas accepting them; 10s is comfortable headroom.
 const CORRELATION_WINDOW_SEC = 10
+// After firing a drop event for a zone, refuse to fire another for
+// that zone until the volume has RECOVERED above DROP_LOW_FLOOR OR
+// this cooldown elapses. Prevents the post-firmware-update spam at
+// Holmgren 2026-05-18 where one real drop (volume 45 → 5 at 10:22)
+// got re-fired every 30 seconds for the next 28 minutes because the
+// volume stayed at 5 the entire time, sliding 50 identical rows
+// into the audit table.
+const DROP_COOLDOWN_SEC = 5 * 60
 
 type ZoneState = { volume: number; source: number; muted: boolean; observedAt: number }
 const lastSeen = new Map<string, ZoneState>()
+// Per-zone cooldown timestamps — unix sec when each zone last fired
+// a drop event. Reset when volume recovers above the floor.
+const dropCooldown = new Map<string, number>()
 
 async function ensureTable() {
   await db.run(sql`
@@ -159,39 +170,69 @@ async function pollOnce() {
         const prev = lastSeen.get(key)
         const now = Math.floor(Date.now() / 1000)
 
+        // Reset cooldown when volume recovers above the floor — a real
+        // subsequent drop after the zone came back up is worth firing.
+        const cooldownAt = dropCooldown.get(key)
+        if (cooldownAt && volume > DROP_LOW_FLOOR) dropCooldown.delete(key)
+
         if (prev) {
           const delta = prev.volume - volume
           if (delta >= DROP_DELTA_THRESHOLD && volume <= DROP_LOW_FLOOR) {
-            // audio_volume_logs.zone_number is 1-based (Atlas zone), while
-            // schema.audioZones.zoneNumber is 0-based (DB index).
-            const atlasZone = zone.zoneNumber + 1
-            const corr = await db.all<{ cnt: number }>(sql`
-              SELECT COUNT(*) AS cnt FROM audio_volume_logs
-              WHERE processor_id = ${p.id}
-                AND zone_number = ${atlasZone}
-                AND created_at >= ${now - CORRELATION_WINDOW_SEC}
-            `)
-            const explained = (corr[0]?.cnt ?? 0) > 0 ? 1 : 0
+            // Cooldown check — suppress duplicate fires for the same
+            // sustained-low state. Holmgren 2026-05-18 hit this when
+            // Atlas firmware 4.5 introduced Custom Priority Volume that
+            // pins zone gain to a fixed low level while priority is
+            // active. The drop watcher saw "volume keeps being 5" every
+            // poll vs cached prev=45 and re-fired the same event 50+
+            // times. Cooldown clears when volume recovers above the
+            // floor, OR after DROP_COOLDOWN_SEC, whichever first.
+            const recentlyFired = cooldownAt && (now - cooldownAt) < DROP_COOLDOWN_SEC
+            if (!recentlyFired) {
+              // audio_volume_logs.zone_number is 1-based (Atlas zone), while
+              // schema.audioZones.zoneNumber is 0-based (DB index).
+              const atlasZone = zone.zoneNumber + 1
+              const corr = await db.all<{ cnt: number }>(sql`
+                SELECT COUNT(*) AS cnt FROM audio_volume_logs
+                WHERE processor_id = ${p.id}
+                  AND zone_number = ${atlasZone}
+                  AND created_at >= ${now - CORRELATION_WINDOW_SEC}
+              `)
+              const explained = (corr[0]?.cnt ?? 0) > 0 ? 1 : 0
 
-            await db.run(sql`
-              INSERT INTO atlas_drop_events
-                (id, processor_id, zone_number, zone_name,
-                 previous_volume, new_volume, delta,
-                 source_at_drop, muted_at_drop, gap_seconds,
-                 explained, detected_at)
-              VALUES (
-                ${randomUUID()}, ${p.id}, ${atlasZone}, ${zone.name},
-                ${prev.volume}, ${volume}, ${delta},
-                ${source}, ${muted ? 1 : 0}, ${now - prev.observedAt},
-                ${explained}, ${now}
-              )
-            `)
+              await db.run(sql`
+                INSERT INTO atlas_drop_events
+                  (id, processor_id, zone_number, zone_name,
+                   previous_volume, new_volume, delta,
+                   source_at_drop, muted_at_drop, gap_seconds,
+                   explained, detected_at)
+                VALUES (
+                  ${randomUUID()}, ${p.id}, ${atlasZone}, ${zone.name},
+                  ${prev.volume}, ${volume}, ${delta},
+                  ${source}, ${muted ? 1 : 0}, ${now - prev.observedAt},
+                  ${explained}, ${now}
+                )
+              `)
+              dropCooldown.set(key, now)
 
-            const tag = explained ? 'EXPLAINED' : 'SILENT'
-            const fn = explained ? logger.info : logger.warn
-            fn(`[ATLAS-DROP] ${tag} drop on "${zone.name}" (Atlas zone ${atlasZone}): ${prev.volume} → ${volume} (Δ${delta}, gap ${now - prev.observedAt}s, src=${source}, muted=${muted})`)
+              const tag = explained ? 'EXPLAINED' : 'SILENT'
+              const fn = explained ? logger.info : logger.warn
+              fn(`[ATLAS-DROP] ${tag} drop on "${zone.name}" (Atlas zone ${atlasZone}): ${prev.volume} → ${volume} (Δ${delta}, gap ${now - prev.observedAt}s, src=${source}, muted=${muted})`)
+            }
           }
         }
+
+        // CRITICAL: update lastSeen IMMEDIATELY after a successful read,
+        // before any other operations that could throw. Holmgren 2026-05-18
+        // root cause: when source-override INSERT threw inside the
+        // try/catch (per-zone catch at line 270 swallows everything),
+        // the lastSeen.set at the end never ran, so prev.observedAt
+        // stayed frozen at the FIRST poll's time and gap_seconds
+        // increased monotonically across 50+ false-positive replays.
+        // Moving the cache update here means partial-failure paths
+        // (db write fails, etc.) still leave the watcher with a
+        // current baseline — at worst they miss one event, not
+        // re-fire the same event forever.
+        lastSeen.set(key, { volume, source, muted, observedAt: now })
 
         // Source override detection: if the source changed between
         // polls AND the new value doesn't match anything we commanded
@@ -214,8 +255,6 @@ async function pollOnce() {
           }
         }
 
-        lastSeen.set(key, { volume, source, muted, observedAt: now })
-
         // Sync audioZones cache with truth from Atlas so the bartender
         // slider doesn't render a multi-day-stale volume on next load.
         // Only write when something changed to keep DB churn low.
@@ -234,7 +273,13 @@ async function pollOnce() {
             .where(eq(schema.audioZones.id, zone.id))
         }
       } catch (err) {
-        logger.debug(`[ATLAS-DROP-WATCHER] Zone ${zone.zoneNumber} (${zone.name}) query failed: ${(err as Error).message}`)
+        // Log full error context (message + stack) instead of just
+        // .message — debug-level errors that lost stacks made it
+        // impossible to diagnose the Holmgren spam without an external
+        // research agent + manual analysis. Same lesson as the
+        // shure-rf-watcher logger.error gotcha (v2.34.2).
+        const e = err as Error
+        logger.debug(`[ATLAS-DROP-WATCHER] Zone ${zone.zoneNumber} (${zone.name}) query failed: ${e?.message ?? err}\n${e?.stack ?? ''}`)
       }
     }
   }

@@ -365,5 +365,19 @@ export async function register() {
       const err = error as Error
       logger.error(`[INSTRUMENTATION] ❌ Failed to start Shure RF watcher: ${err?.message ?? error}\n${err?.stack ?? ''}`)
     }
+
+    try {
+      // SDR spectrum watcher — wide-band RF monitoring via rtl_power
+      // (NooElec NESDR Smart / RTL-SDR). No-op when SDR_ENABLED is
+      // unset/false. Self-retries every 5 min if rtl-sdr package isn't
+      // installed yet or no dongle is plugged in, so the operator can
+      // plug the dongle in later without restarting the app.
+      const { startSdrWatcher } = await import('./lib/sdr-watcher')
+      await startSdrWatcher()
+      logger.info('[INSTRUMENTATION] ✅ SDR spectrum watcher started (or idling — see SDR_ENABLED env)')
+    } catch (error) {
+      const err = error as Error
+      logger.error(`[INSTRUMENTATION] ❌ Failed to start SDR watcher: ${err?.message ?? error}\n${err?.stack ?? ''}`)
+    }
   }
 }

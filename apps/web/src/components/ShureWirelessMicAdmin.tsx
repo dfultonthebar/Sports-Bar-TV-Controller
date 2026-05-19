@@ -34,10 +34,14 @@ import {
   FileText,
   X,
   AlertTriangle,
+  Sparkles,
+  Activity,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { logger } from '@sports-bar/logger'
 import type { ShureChannelState, ShureReceiverSnapshot } from '@sports-bar/shure-slxd'
+import ShureSdrSpectrumPanel from './ShureSdrSpectrumPanel'
+import SafeBoundary from './SafeBoundary'
 
 interface ShureReceiverRow {
   id: string
@@ -127,6 +131,38 @@ export default function ShureWirelessMicAdmin() {
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [historyFilter, setHistoryFilter] = useState<'all' | 'active' | 'last-hour'>('all')
+  // Inline-edit state for per-channel name/freq/gain. One channel at a
+  // time across the whole page. Replaces the front-panel-menu workflow
+  // operators used pre-v2.37.10 — see /api/shure-rf/channel route.
+  const [editChannel, setEditChannel] = useState<{ receiverId: string; channel: number } | null>(null)
+  const [editForm, setEditForm] = useState<{ name: string; freqMhz: string; audioGain: string }>({
+    name: '', freqMhz: '', audioGain: '',
+  })
+  const [editSaving, setEditSaving] = useState(false)
+  const [editError, setEditError] = useState<string | null>(null)
+  // "Find clean freq" sweep state — software equivalent of receiver's
+  // front-panel Group Scan, since SLX-D firmware 1.4.7.0 doesn't expose
+  // scan via TCP 2202 (probed live, 16 candidate commands all returned
+  // < REP ERR >). Sweeps ~12 G58 freqs, dwell 2.5s each.
+  const [sweepRunning, setSweepRunning] = useState(false)
+  const [sweepResults, setSweepResults] = useState<Array<{
+    freq: number; samples: number; avgRssi: number; maxRssi: number; verdict: string
+  }> | null>(null)
+  const [sweepError, setSweepError] = useState<string | null>(null)
+  // Pattern-digest (Stage 1 AI) — Ollama summary of recurring
+  // interference patterns. On-demand via "Analyze" button, server
+  // caches for 1h (POST is gated by ADMIN auth + AI rate limit).
+  const [digest, setDigest] = useState<{
+    text: string
+    eventCount: number
+    windowDays: number
+    generatedAt: number
+    stale: boolean
+    stats?: any
+    model?: string
+  } | null>(null)
+  const [digestRunning, setDigestRunning] = useState(false)
+  const [digestError, setDigestError] = useState<string | null>(null)
 
   const fetchReceivers = useCallback(async () => {
     try {
@@ -180,14 +216,43 @@ export default function ShureWirelessMicAdmin() {
     }
   }, [historyFilter])
 
+  // Must be declared BEFORE the useEffect below that references it in
+  // the dependency array — otherwise the deps array reads
+  // `loadCachedDigest` during the first render before its `const`
+  // declaration line is reached, producing a TDZ ReferenceError
+  // ("Cannot access 'ec' before initialization" in minified prod
+  // builds). Holmgren 2026-05-18 full-page "Something went wrong"
+  // crash on /device-config came from exactly this — v2.39.0 added
+  // the call in the useEffect body but left the const definition
+  // ~140 lines later, after the other handlers.
+  const loadCachedDigest = useCallback(async () => {
+    try {
+      const r = await fetch('/api/shure-rf/pattern-digest')
+      if (!r.ok) return
+      const data = await r.json()
+      if (data.success && data.digest) {
+        setDigest({
+          text: data.digest,
+          eventCount: data.eventCount,
+          windowDays: data.windowDays,
+          generatedAt: data.generatedAt,
+          stale: !!data.stale,
+          stats: data.stats,
+          model: data.model,
+        })
+      }
+    } catch { /* cache miss or net error — silent */ }
+  }, [])
+
   useEffect(() => {
     fetchReceivers()
     fetchSnapshots()
     fetchHistory()
+    loadCachedDigest()
     const statusId = setInterval(fetchSnapshots, 3_000)
     const historyId = setInterval(fetchHistory, 10_000)
     return () => { clearInterval(statusId); clearInterval(historyId) }
-  }, [fetchReceivers, fetchSnapshots, fetchHistory])
+  }, [fetchReceivers, fetchSnapshots, fetchHistory, loadCachedDigest])
 
   // Run a pre-flight against an explicit ip/port. Pass the form
   // button calls this with the form's current IP; the "re-test
@@ -312,6 +377,143 @@ export default function ShureWirelessMicAdmin() {
 
   const snapshotByReceiver = (id: string): ShureReceiverSnapshot | undefined =>
     snapshots.find((s) => s.receiverId === id)
+
+  const runDigest = async (force = false) => {
+    setDigestRunning(true)
+    setDigestError(null)
+    try {
+      const r = await fetch(`/api/shure-rf/pattern-digest${force ? '?force=true' : ''}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ windowDays: 30 }),
+      })
+      const data = await r.json()
+      if (!r.ok || !data.success) {
+        setDigestError(data.error || `Analysis failed (${r.status})`)
+        return
+      }
+      setDigest({
+        text: data.digest,
+        eventCount: data.eventCount,
+        windowDays: data.windowDays,
+        generatedAt: data.generatedAt,
+        stale: false,
+        stats: data.stats,
+        model: data.model,
+      })
+    } catch (err) {
+      setDigestError((err as Error).message || 'Network error')
+    } finally {
+      setDigestRunning(false)
+    }
+  }
+
+  const runFindCleanFreq = async (receiverId: string, channel: number) => {
+    if (sweepRunning) return
+    const ok = window.confirm(
+      'Find Clean Frequency will tune Channel ' + channel + ' through ~12 candidate ' +
+      'frequencies, dwelling 2.5s at each.\n\n' +
+      'Effects:\n' +
+      '• Channel unusable for ~30 seconds\n' +
+      '• One audio click per hop (audible if mic is routed to speakers)\n' +
+      '• Channel will end up on the last swept freq — re-PATCH to the best one\n' +
+      '• TX handheld must NOT be powered on (will refuse if paired)\n' +
+      '• Handheld will need re-SYNC after applying the new freq\n\n' +
+      'Continue?',
+    )
+    if (!ok) return
+    setSweepRunning(true)
+    setSweepError(null)
+    setSweepResults(null)
+    try {
+      const r = await fetch('/api/shure-rf/find-clean-freq', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ receiverId, channel }),
+      })
+      const data = await r.json()
+      if (!r.ok || !data.success) {
+        setSweepError(data.error || `Sweep failed (${r.status})`)
+        return
+      }
+      setSweepResults(data.results)
+      setMessage({
+        type: 'success',
+        text: `Sweep complete. Suggested: ${data.best?.freqMhz?.toFixed(3) ?? '?'} MHz (${data.best?.verdict ?? '?'}).`,
+      })
+    } catch (err) {
+      setSweepError((err as Error).message || 'Network error')
+    } finally {
+      setSweepRunning(false)
+    }
+  }
+
+  const openChannelEdit = (receiverId: string, ch: ShureChannelState) => {
+    setEditError(null)
+    setEditChannel({ receiverId, channel: ch.channel })
+    setEditForm({
+      name: ch.channelName ?? '',
+      freqMhz: ch.frequencyMhz !== undefined ? ch.frequencyMhz.toFixed(3) : '',
+      audioGain: ch.audioGainDb !== undefined ? String(ch.audioGainDb) : '',
+    })
+  }
+
+  const closeChannelEdit = () => {
+    setEditChannel(null)
+    setEditError(null)
+  }
+
+  const submitChannelEdit = async (origCh: ShureChannelState) => {
+    if (!editChannel) return
+    setEditSaving(true)
+    setEditError(null)
+    try {
+      // Only send fields the operator actually changed — keeps the
+      // receiver's GROUP_CHAN intact when only the name changed
+      // (SET FREQUENCY resets GROUP_CHAN to Manual).
+      const body: Record<string, unknown> = {
+        receiverId: editChannel.receiverId,
+        channel: editChannel.channel,
+      }
+      const newName = editForm.name.trim()
+      if (newName && newName !== (origCh.channelName ?? '')) body.name = newName
+      const newFreq = parseFloat(editForm.freqMhz)
+      if (
+        Number.isFinite(newFreq) && newFreq > 0 &&
+        Math.abs(newFreq - (origCh.frequencyMhz ?? -1)) > 0.0005
+      ) body.freqMhz = newFreq
+      const newGain = parseInt(editForm.audioGain, 10)
+      if (Number.isFinite(newGain) && newGain !== (origCh.audioGainDb ?? 0)) body.audioGain = newGain
+
+      if (Object.keys(body).length === 2) {
+        // Only receiverId+channel, no real diff.
+        closeChannelEdit()
+        return
+      }
+
+      const r = await fetch('/api/shure-rf/channel', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const data = await r.json()
+      if (!r.ok || !data.success) {
+        setEditError(data.error || `Edit failed (${r.status})`)
+        return
+      }
+      if (data.warnings?.length) {
+        setMessage({ type: 'success', text: `Saved. ⚠ ${data.warnings.join(' / ')}` })
+      } else {
+        setMessage({ type: 'success', text: 'Channel updated.' })
+      }
+      closeChannelEdit()
+      fetchSnapshots()
+    } catch (err) {
+      setEditError((err as Error).message || 'Network error')
+    } finally {
+      setEditSaving(false)
+    }
+  }
 
   if (loading) {
     return (
@@ -532,10 +734,18 @@ export default function ShureWirelessMicAdmin() {
                 {snap && snap.channels.length > 0 ? (
                   <div className="space-y-2">
                     {snap.channels.map((ch: ShureChannelState) => {
-                      const txOff = (ch.txType ?? '').toUpperCase() === 'UNKNOWN' || !ch.txType
+                      // TX-presence signal: battery bars + audio peak.
+                      // Same fix as ShureMicStatusPanel v2.37.6 — txType
+                      // is REP-on-change and may not arrive promptly;
+                      // battery bars + audio peak are SAMPLE-frame fields
+                      // pushed every second and are the real truth.
+                      const hasBattery = ch.txBattBars !== undefined && ch.txBattBars !== 255
+                      const hasAudio = (ch.audioPeakDbfs ?? -120) > -95
+                      const txOff = !hasBattery && !hasAudio
                       const batt = batteryDisplay(ch.txBattBars, txOff)
                       const BIcon = batt.Icon
                       const RIcon = txOff ? MicOff : Mic
+                      const isEditing = editChannel?.receiverId === rec.id && editChannel?.channel === ch.channel
                       return (
                         <div key={ch.channel} className={`rounded-lg border p-3 ${txOff ? 'border-slate-800 bg-slate-900/50' : 'border-slate-700 bg-slate-800/80'}`}>
                           <div className="flex items-center justify-between mb-2">
@@ -546,6 +756,17 @@ export default function ShureWirelessMicAdmin() {
                               </span>
                               <span className="text-[10px] text-slate-500 font-mono">ch {ch.channel}</span>
                             </div>
+                            {!isEditing && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                onClick={() => openChannelEdit(rec.id, ch)}
+                                className="h-7 px-2 text-slate-400 hover:text-cyan-400 hover:bg-cyan-500/10"
+                                title="Edit channel name / frequency / gain"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </Button>
+                            )}
                           </div>
                           <div className="grid grid-cols-3 gap-2 text-xs">
                             <div>
@@ -571,6 +792,129 @@ export default function ShureWirelessMicAdmin() {
                               </div>
                             </div>
                           </div>
+                          {isEditing && (
+                            <div className="mt-3 pt-3 border-t border-slate-700 space-y-2">
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
+                                <label className="block">
+                                  <span className="text-[10px] uppercase tracking-wide text-slate-400">Channel name</span>
+                                  <input
+                                    type="text"
+                                    value={editForm.name}
+                                    maxLength={31}
+                                    onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                                    className="mt-0.5 w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-slate-200 focus:border-cyan-500 focus:outline-none"
+                                    placeholder="e.g. Mic 1"
+                                  />
+                                </label>
+                                <label className="block">
+                                  <span className="text-[10px] uppercase tracking-wide text-slate-400">Frequency (MHz)</span>
+                                  <input
+                                    type="number"
+                                    value={editForm.freqMhz}
+                                    step="0.025"
+                                    onChange={(e) => setEditForm({ ...editForm, freqMhz: e.target.value })}
+                                    className="mt-0.5 w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-slate-200 font-mono focus:border-cyan-500 focus:outline-none"
+                                    placeholder="e.g. 537.125"
+                                  />
+                                </label>
+                                <label className="block">
+                                  <span className="text-[10px] uppercase tracking-wide text-slate-400">Audio gain (dB)</span>
+                                  <input
+                                    type="number"
+                                    value={editForm.audioGain}
+                                    step="1"
+                                    min="-18"
+                                    max="42"
+                                    onChange={(e) => setEditForm({ ...editForm, audioGain: e.target.value })}
+                                    className="mt-0.5 w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-slate-200 font-mono focus:border-cyan-500 focus:outline-none"
+                                  />
+                                </label>
+                              </div>
+                              <div className="text-[11px] text-amber-400/80">
+                                ⚠ Changing the frequency resets GROUP/CHAN to Manual and requires re-SYNCing the TX
+                                via IR (Menu → SYNC on the receiver).
+                              </div>
+                              <div className="flex items-center gap-2 pt-1">
+                                <Button
+                                  type="button"
+                                  onClick={() => runFindCleanFreq(rec.id, ch.channel)}
+                                  disabled={sweepRunning || editSaving}
+                                  variant="ghost"
+                                  className="text-cyan-400 hover:bg-cyan-500/10 h-7 text-xs"
+                                  title="Software equivalent of receiver's Group Scan — tunes through G58 candidate freqs and ranks by ambient RSSI"
+                                >
+                                  {sweepRunning ? (
+                                    <><RefreshCw className="w-3 h-3 mr-1 animate-spin" /> Sweeping (~30s)…</>
+                                  ) : (
+                                    <><PlayCircle className="w-3 h-3 mr-1" /> Find clean freq</>
+                                  )}
+                                </Button>
+                              </div>
+                              {sweepError && (
+                                <div className="text-[11px] text-red-400 flex items-center gap-1">
+                                  <AlertCircle className="w-3 h-3" /> {sweepError}
+                                </div>
+                              )}
+                              {sweepResults && sweepResults.length > 0 && (
+                                <div className="pt-1 space-y-0.5">
+                                  <div className="text-[10px] uppercase tracking-wide text-slate-400">Sweep results (quietest first)</div>
+                                  <div className="rounded border border-slate-700 bg-slate-900/50 max-h-40 overflow-y-auto">
+                                    {sweepResults.slice(0, 8).map((res) => {
+                                      const verdictColor =
+                                        res.verdict === 'clean' ? 'text-emerald-400' :
+                                        res.verdict === 'quiet' ? 'text-cyan-300' :
+                                        res.verdict === 'moderate' ? 'text-amber-400' : 'text-red-400'
+                                      return (
+                                        <button
+                                          key={res.freq}
+                                          type="button"
+                                          onClick={() => setEditForm({ ...editForm, freqMhz: res.freq.toFixed(3) })}
+                                          className="w-full flex items-center justify-between px-2 py-1 text-xs hover:bg-slate-800/60 border-b border-slate-700/40 last:border-b-0"
+                                          title="Click to use this frequency"
+                                        >
+                                          <span className="font-mono text-slate-200">{res.freq.toFixed(3)} MHz</span>
+                                          <span className={`font-mono ${verdictColor}`}>
+                                            {res.avgRssi.toFixed(0)} dBm · {res.verdict}
+                                          </span>
+                                        </button>
+                                      )
+                                    })}
+                                  </div>
+                                  <div className="text-[10px] text-slate-500">
+                                    Click a row to set frequency, then Save.
+                                  </div>
+                                </div>
+                              )}
+                              {editError && (
+                                <div className="text-xs text-red-400 flex items-center gap-1">
+                                  <AlertCircle className="w-3.5 h-3.5" /> {editError}
+                                </div>
+                              )}
+                              <div className="flex items-center gap-2 pt-1">
+                                <Button
+                                  type="button"
+                                  onClick={() => submitChannelEdit(ch)}
+                                  disabled={editSaving}
+                                  className="bg-cyan-500 hover:bg-cyan-600 text-white h-8"
+                                >
+                                  {editSaving ? (
+                                    <><RefreshCw className="w-3.5 h-3.5 mr-1 animate-spin" /> Saving…</>
+                                  ) : (
+                                    <><CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Save</>
+                                  )}
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  onClick={closeChannelEdit}
+                                  disabled={editSaving}
+                                  className="text-slate-400 hover:text-slate-200 h-8"
+                                >
+                                  <X className="w-3.5 h-3.5 mr-1" /> Cancel
+                                </Button>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )
                     })}
@@ -585,6 +929,91 @@ export default function ShureWirelessMicAdmin() {
           })}
         </div>
       )}
+
+      <div className="rounded-xl border border-cyan-700/40 bg-cyan-950/20 p-4">
+        <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-cyan-400" />
+            <h4 className="text-sm font-medium text-white">Interference Patterns (AI)</h4>
+            {digest && (
+              <span className="text-xs text-slate-400">
+                {digest.eventCount} events · last {digest.windowDays}d ·{' '}
+                {(() => {
+                  const ageSec = Math.max(0, Math.floor(Date.now() / 1000) - digest.generatedAt)
+                  if (ageSec < 60) return `${ageSec}s ago`
+                  if (ageSec < 3600) return `${Math.floor(ageSec / 60)}m ago`
+                  return `${Math.floor(ageSec / 3600)}h ago`
+                })()}
+                {digest.stale && <span className="ml-1 text-amber-400">(stale)</span>}
+              </span>
+            )}
+          </div>
+          <Button
+            type="button"
+            onClick={() => runDigest(true)}
+            disabled={digestRunning}
+            className="bg-cyan-500 hover:bg-cyan-600 text-white h-8"
+            title="Re-run Ollama analysis against the last 30 days of events"
+          >
+            {digestRunning ? (
+              <><RefreshCw className="w-3.5 h-3.5 mr-1 animate-spin" /> Analyzing…</>
+            ) : (
+              <><Sparkles className="w-3.5 h-3.5 mr-1" /> {digest ? 'Re-analyze' : 'Analyze'}</>
+            )}
+          </Button>
+        </div>
+        {digestError && (
+          <div className="mb-2 px-3 py-2 rounded border border-red-500/40 bg-red-950/30 text-xs text-red-300 flex items-center gap-2">
+            <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" /> {digestError}
+          </div>
+        )}
+        {!digest && !digestRunning && !digestError && (
+          <div className="text-xs text-slate-400 italic">
+            Click <span className="text-cyan-400 font-medium">Analyze</span> to run Ollama on the last
+            30 days of RF events. Looks for recurring interference patterns by frequency, time-of-day,
+            and day-of-week. ~60-180s on the iGPU.
+          </div>
+        )}
+        {digestRunning && !digest && (
+          <div className="text-xs text-slate-400 italic">
+            Running Ollama analysis — this takes 60-180s on the Intel iGPU. Stay on the page.
+          </div>
+        )}
+        {digest && (
+          <div className="space-y-2">
+            <div className="text-sm text-slate-200 whitespace-pre-wrap leading-relaxed">
+              {digest.text}
+            </div>
+            <div className="text-[10px] text-slate-500 font-mono pt-1 border-t border-slate-700/50">
+              model: {digest.model ?? 'llama3.1:8b'} · cache TTL: 1h
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Wide-band SDR spectrum monitor — auto-hides into a setup
+          explainer when SDR_ENABLED is unset. Frequencies passed
+          through so the waterfall annotates our tuned freqs. Wrapped
+          in SafeBoundary so a render crash here is contained to the
+          section instead of taking down the whole Wireless Mics
+          admin tab (Holmgren 2026-05-18: full page "Something went
+          wrong" after v2.42.0 SDR mount — boundary isolates the
+          fault so the surrounding admin remains usable while we
+          diagnose). */}
+      <SafeBoundary label="SDR Spectrum Monitor">
+        <ShureSdrSpectrumPanel
+          ourFrequencies={
+            (snapshots || []).flatMap((r) =>
+              (r?.channels || [])
+                .filter((c) => typeof c?.frequencyMhz === 'number')
+                .map((c) => ({
+                  freqMhz: c.frequencyMhz!,
+                  label: c.channelName?.trim() || `Ch${c.channel}`,
+                })),
+            )
+          }
+        />
+      </SafeBoundary>
 
       <div className="rounded-xl border border-slate-700 bg-slate-800/50 p-4">
         <div className="flex items-center justify-between mb-3">
@@ -630,6 +1059,14 @@ export default function ShureWirelessMicAdmin() {
                 {history.slice(0, 100).map((e) => {
                   const isInterference = e.event_type === 'rf_interference' || e.event_type === 'rf_interference_heartbeat'
                   const isWarn = isInterference || e.event_type === 'low_battery'
+                  // SDR-confirmed badge — the Shure watcher appends
+                  // "(SDR-confirmed, SDR peak X dBm)" to the note when
+                  // the wide-band SDR independently saw a carrier at
+                  // the same frequency. Surfaces a small purple chip
+                  // so the operator sees at a glance which events
+                  // have two-channel confirmation vs. single-detector
+                  // reports.
+                  const sdrConfirmed = (e.note ?? '').toLowerCase().includes('sdr-confirmed')
                   return (
                     <tr key={e.id} className="border-t border-slate-700/50">
                       <td className="py-1.5 pr-3 font-mono text-slate-400">{new Date(e.detected_at * 1000).toLocaleTimeString()}</td>
@@ -638,6 +1075,14 @@ export default function ShureWirelessMicAdmin() {
                       <td className={`py-1.5 pr-3 font-medium ${isWarn ? 'text-amber-400' : 'text-slate-300'}`}>
                         {isWarn && <AlertTriangle className="inline w-3 h-3 mr-1" />}
                         {e.event_type}
+                        {sdrConfirmed && (
+                          <span
+                            className="ml-1.5 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border border-purple-500/40 bg-purple-500/15 text-purple-300 text-[10px] font-bold uppercase tracking-wide"
+                            title="The wide-band SDR independently saw a carrier at this frequency within ±60 sec — two-detector confirmation, this is real RF."
+                          >
+                            <Activity className="w-2.5 h-2.5" /> SDR-confirmed
+                          </span>
+                        )}
                       </td>
                       <td className="py-1.5 pr-3 font-mono text-slate-400">{e.rssi_dbm !== null ? `${e.rssi_dbm.toFixed(0)} dBm` : '—'}</td>
                       <td className="py-1.5 pr-3 font-mono text-slate-400">{e.frequency_mhz !== null ? `${e.frequency_mhz.toFixed(3)}` : '—'}</td>

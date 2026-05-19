@@ -46,6 +46,471 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-18 — v2.49.1 — chat-route audit BUG#1 fix + Q3 hedge tightening
+
+**What changed:**
+
+1. **Tool result session persistence** (chat-route audit BUG #1): both streaming and non-streaming paths now persist `toolResults` array on the assistant ChatMessage when sessions are loaded. Previously only the text response was saved — multi-turn debugging was blind to prior tool invocations + outputs. Refactored to use a typed `assistantMsg` builder rather than an inline-spread object (the spread approach had a backwards-compat trap and also dodged the typescript-narrow path).
+
+2. **Q3 hedge fix (table extraction)**: added a "Table extraction rule" to the grounding prompt with an explicit CLAUDE.md §4 example showing the Lucky's 1313 row → outputOffset = 0. The prior model behavior was confident hedging ("the value is not explicit") even when retrieval returned the table chunk. Now refuses cleanly when uncertain rather than hallucinating a number.
+
+3. **Template-literal nested-backtick bug** (caught during build): the v2.49.0 prompt addition used markdown inline-code `\`like this\`` inside a JS template-literal which terminated the outer template early and broke compilation. v2.49.1 strips inline-code backticks from prompt text. Lesson logged for future prompt edits.
+
+**Verified live (Holmgren v2.49.1):**
+- TX_MODEL question: still answers correctly with single-word response.
+- Q3 outputOffset: model now refuses gracefully ("couldn't find any information") rather than fabricating "1" as it did briefly in v2.49.0. This is a llama3.1:8b limitation extracting from markdown tables — deeper fix (per-location-file retrieval boost OR qwen2.5:14b switch OR table-flattening pre-pass) deferred to v2.49.x.
+- Build green (29/29 turbo tasks).
+
+**Manual steps required:** none.
+
+**Rollback:** `git revert <SHA>`.
+
+`Checkpoint model: sonnet`
+
+---
+
+### 2026-05-18 — v2.49.0 — AI Hub game-changer pass (streaming UI + source cites + sessions + grounding fix)
+
+**What changed (driven by 4-agent deep audit 2026-05-18):**
+
+Massive AI Hub overhaul fixing 5 BROKEN + 3 design concerns identified by the agent audit:
+
+**Backend (`apps/web/src/app/api/chat/route.ts`):**
+
+1. **Source citations in BOTH paths.** Streaming emits new `sources` SSE event with `[{name, score, excerpt}]` after RAG retrieval. Non-streaming returns `sources` + `model` in the JSON response. Closes UX BROKEN-#3 (no source attribution).
+2. **Grounding rules moved to absolute END of system prompt** (LLM recency — instruction at the end weights highest). Was previously mid-prompt; now last 30 lines.
+3. **Anti-inversion rule** added: docs use "X (NOT Y)" pattern frequently (TX_MODEL not TX_TYPE, GROUP_CHANNEL not GROUP_CHAN, +18 offset NOT raw dB). Explicit example in prompt warns the LLM not to invert. **Verified fix:** TX_MODEL question now answers correctly (previous Q1 in fact-checker was hallucinating TX_TYPE).
+4. **Extraction rule** softened: was "I don't see that" on any uncertainty → now "extract what's there and note the gap." Fixes Q3-style evasion (Lucky's outputOffset answer hedged despite being explicit in docs).
+5. **Chunk size 1000→600 chars** for context-budget headroom (8 chunks × 1000 + persona + tools + history was approaching llama3.1:8b's 8K context window).
+6. **operationLogger regex broadened** from narrow keyword match to "any non-trivial query (≥6 chars)" — fixes audit's "what happened last night?" miss.
+
+**Frontend (`apps/web/src/app/ai-hub/page.tsx`):**
+
+1. **Streaming SSE chat** — replaces `stream: false` with full SSE parser (frame-buffered, progressive token render, blinking cursor). Closes UX BROKEN-#1 (silent hangs).
+2. **Session persistence** — sessionId is a UUID stored in localStorage, sent with every request. The chat-route persists messages keyed on this UUID via the `chatSessions` table, so the operator's debugging conversation survives page reloads. Includes a "New Session" button. Closes UX BROKEN-#2.
+3. **Source citation UI** — every assistant message has a collapsible `<details>` panel showing the {name, score, excerpt} list of sources used. Click to expand. Closes UX BROKEN-#3 viewer side.
+4. **Textarea input** (was single-line `<input>`) with Shift+Enter for newline + Enter for send. Operators can now paste multi-line logs/errors. Closes UX MISSING-OBVIOUS-#10.
+5. **Elapsed-time indicator** — "Searching documentation… (4s)" while in-flight. Closes UX MISSING-OBVIOUS-#7.
+6. **Model badge** in source panel — shows actual model (`llama3.1:8b`) per message, not the wrong `phi3:mini` from old error text. Closes UX BROKEN-#5.
+7. **Status panel** with summary of what RAG has indexed + chunk count visible at idle.
+
+**What could break:** zero — net additive plus a wholesale streaming switchover. Backwards-compatible: non-streaming response still includes `response` field (old shape) PLUS new `sources` + `model` fields.
+
+**Manual steps required:** none beyond auto-update + the standing RAG re-scan from v2.48.x.
+
+**Rollback:** `git revert <SHA>` restores v2.48.5 chat. The `chatSessions` table rows from new sessions stay (no orphan side effects).
+
+**Verified live (Holmgren v2.49.0 smoke test):**
+- TX_MODEL question: answered correctly with verbatim quote + source citation `SLX-D_Command_Strings_v2_2020-G.md` at 0.70 relevance (was hallucinating TX_TYPE).
+- Streaming SSE parser handles frame buffering, sources event, content tokens, model event, error frame.
+- Sessionid UUID generated on first visit + reused on reload.
+
+`Checkpoint model: sonnet`
+
+---
+
+### 2026-05-18 — v2.48.5 — schema.ts cleanup: 11 unused tables removed (defs only — DB tables intact)
+
+**What changed:**
+
+Removed 11 unused `sqliteTable(...)` definitions from `packages/database/src/schema.ts` (191 lines deleted). All 11 were verified to have ZERO code references across `apps/web/src` + `packages/` + `scripts/` + `tests/` (the only hits were compiled `dist/` artifacts of the same schema file).
+
+**Removed:** `tvLayouts`, `matrixConfigs`, `audioMessages`, `audioScenes`, `bartenderRemotes`, `deviceMappings`, `trainingDocuments`, `aiTvAvailability`, `aiGamePlanExecutions`, `schedulingPreferences`, `aiScheduleSuggestions`.
+
+**CRITICAL — actual SQLite tables in `production.db` are NOT dropped.** Per Standing Rule 3, DB changes never ride alongside code changes. If a future commit wants to reclaim the disk space, it'd need to be a dedicated migration PR with explicit `DROP TABLE` statements + per-location verification + backup. The tables continue to exist in `/home/ubuntu/sports-bar-data/production.db` — they just can no longer be referenced from TypeScript.
+
+**Why this matters for the AI Hub:** the schema is RAG-indexed (it's THE single source of truth for the data model per CLAUDE.md). Before this cleanup, the AI would see 11 phantom tables and hallucinate about features that don't exist. Now it sees only the live schema.
+
+**Manual steps required:** none.
+
+**Rollback:** `git revert <SHA>` restores all 11 table definitions.
+
+`Checkpoint model: sonnet`
+
+---
+
+### 2026-05-18 — v2.48.4 — .npmrc cleanup (removed two pnpm-only options npm doesn't understand)
+
+**What changed:**
+
+Removed two lines from `.npmrc` that were producing the "Unknown project config" warnings on EVERY npm invocation:
+- `strict-peer-dependencies=true` (pnpm-only)
+- `dedupe=true` (pnpm-only)
+
+The remaining `legacy-peer-deps=false` is sufficient for the "single React instance" goal (npm 7+ installs peer deps automatically and dedupes by default).
+
+**What could break:** zero. These two flags were no-ops in npm.
+
+**Manual steps required:** none.
+
+**Rollback:** `git revert <SHA>` — but no functional change to revert.
+
+`Checkpoint model: sonnet`
+
+---
+
+### 2026-05-18 — v2.48.3 — RAG indexes React component source (.tsx) too
+
+**What changed:**
+
+Extended `scripts/scan-code-docs.ts` to also collect:
+- `apps/web/src/components/**/*.tsx` (135 component files)
+- `apps/web/src/app/**/page.tsx` + `**/layout.tsx` (26 route entry files)
+
+Total ~161 new `.tsx` files indexed = +2,500-3,500 RAG chunks expected (UI-layer code is denser than docs).
+
+**Why:** AI Hub previously couldn't answer UI-layer questions ("where is the bartender remote rendered?", "what component owns the Atlas zone slider?"). Now it can. Closes the last big RAG coverage gap from the v2.48.0 audit.
+
+**Manual steps required (per location):** after auto-update, re-run the code scanner to pick up the new file types:
+```bash
+cd /home/ubuntu/Sports-Bar-TV-Controller
+npx tsx scripts/scan-code-docs.ts
+# ~25-40 min on iGPU; adds ~2,500-3,500 chunks
+```
+Expected after BOTH scans (v2.48.0 doc rescan + v2.48.3 code rescan) complete: total chunks ~7,500-8,500.
+
+**Risk:** zero — additive change to the scanner; doesn't touch any runtime path. Build green (no actual app code changed).
+
+**Rollback:** `git revert <SHA>` — but no functional change to revert. Just edits a script that operators choose to run.
+
+`Checkpoint model: sonnet`
+
+---
+
+### 2026-05-18 — v2.48.2 — full-sweep dead-routes pass (13 more, all 3-pass verified)
+
+**What changed:**
+
+Continued from v2.48.1 — instead of trusting the audit agent's 58-route sample, enumerated ALL 378 route.ts files and ran the same 3-pass verifier. Filtered to 18 high-confidence DEAD candidates, then hand-grep verified each: 5 kept (had hits the verifier missed: api/scheduled-commands could be external, api/wolfpack/ai-learning has 2 callers, api/file-system/manage has 42, api/commercial-lighting/{hue,systems}/discover have 15 each). 13 deleted.
+
+**Deleted 13 more verified-dead routes:**
+- `api/atlas-processors` (orphaned — active path is `/api/audio-processor/*`)
+- `api/enhanced-chat` (predecessor to current /api/chat, replaced in v2.46.3 Option B)
+- `api/rag/auto-index` (auto-indexer UI never built)
+- `api/streaming-subscriptions`
+- `api/generate-script`
+- `api/tv-discovery/probe-models`
+- `api/tv-discovery/probe-lg-models`
+- `api/firestick-scout/can-show`
+- `api/ir-devices/model-codes`
+- `api/ir-devices/search-codes`
+- `api/matrix/outputs-schedule`
+- `api/firetv-devices/guide-data`
+- `api/dmx/maestro/recall-preset`
+
+**Cumulative dead-route cleanup across v2.48.1 + v2.48.2: 27 routes removed.**
+
+**What could break:** zero — each verified 0 hits across literal `/api/<path>`, distinctive tail token, and full-path substring searches.
+
+**Manual steps required:** none.
+
+**Rollback:** `git revert <SHA>` restores all 13 routes.
+
+`Checkpoint model: sonnet`
+
+---
+
+### 2026-05-18 — v2.48.1 — verified 14 truly-dead API routes deleted
+
+**What changed:**
+
+Continued the dead-routes cleanup from v2.48.0 with proper per-route verification (the earlier agent's 155-route list was unreliable — e.g. it claimed `/api/audio-processor/zones` was dead, but it IS called by 3 components). Built a 3-pass verification script: (1) literal `/api/<path>` callers, (2) tail-token search (e.g. `zones-status`), (3) hand-grep of the full path-fragment. Only deleted routes that returned 0 in ALL 3 passes.
+
+**Deleted 14 verified-dead routes:**
+- `api/ai-assistant/search-code`
+- `api/audio-processor/[id]/adjustment-history`
+- `api/audio-processor/[id]/ai-gain-control`
+- `api/audio-processor/[id]/ai-monitoring`
+- `api/audio-processor/input-levels`
+- `api/audio-processor/matrix-routing`
+- `api/directv-devices/guide-data`
+- `api/directv-logs`
+- `api/directv/probe-tuned`
+- `api/firestick-scout/tree-dump`
+- `api/firetv-devices/connection-status`
+- `api/atlas/ai-learning`
+- `api/atlas/meter-monitoring`
+- `api/documents/reprocess`
+
+**What could break:** zero — every one of these was verified to have zero literal-path callers AND zero distinctive-tail-token references in components, pages, lib, packages, scripts, tests, instrumentation, or scheduler-service. Build green (29/29 turbo tasks).
+
+**Manual steps required:** none.
+
+**Rollback:** `git revert <SHA>` restores all 14 routes.
+
+**Affected files:** 14 route.ts files deleted (and their parent directories if empty).
+
+`Checkpoint model: sonnet`
+
+---
+
+### 2026-05-18 — v2.48.0 — system audit cleanup (4 agents) + RAG coverage gap-fill
+
+**What changed (driven by 4 parallel audit agents + 1 RAG-gap agent):**
+
+- **Removed 5 unused npm deps** (~15-20 MB total):
+  - `baseline-browser-mapping` (root devDep) — zero references anywhere
+  - `vitest` + `@vitest/coverage-v8` + `@vitest/ui` (apps/web) — entire framework installed, never used (project uses Jest)
+  - `node-mocks-http` (apps/web) — supertest is used for HTTP test mocking instead
+- **Deleted 12 dead bridge files** in `apps/web/src/lib/` (all pure re-exports, 0 callers verified): atlas-ai-analyzer.ts, atlas-ai-training-data.ts, atlasControlService.ts, atlas-http-client.ts, atlas-realtime-meter-service.ts, file-lock.ts, gracenote-service.ts, scheduler-service.ts, spectrum-business-api.ts, sports-guide-ollama-helper.ts, unified-tv-guide-service.ts, wolfpack-ai-training-data.ts
+- **Deleted 9 dead one-off scripts** in `scripts/`: cleanup-duplicate-qa, cleanup-planning-qa, create-test-layout, create-test-layout-image, generate-qa-with-claude, insert-critical-rules-qa, regenerate-professional-layout, seed-shure-test-events, test-validation-runtime
+- **Extended `scan-system-docs.ts`** to fill RAG coverage gaps. Now also indexes:
+  - Build/runtime config files (`next.config.js`, `ecosystem.config.js`, `turbo.json`, `apps/web/drizzle.config.ts`, `apps/web/jest.config.js`)
+  - Drizzle migration `.sql` files under `apps/web/drizzle/` — captures schema EVOLUTION not just current state
+  - Operator-facing shell scripts (`setup-iris-ollama.sh`, `setup-sdr.sh`, `setup-bartender-nginx.sh`, `bootstrap-new-location.sh`, `auto-update.sh`, `verify-install.sh`, `install.sh`)
+  - Supported extensions expanded to `.sql, .sh, .json, .js, .ts` for these targeted picks
+
+**Deferred to follow-up PRs (high risk, agent findings unreliable):**
+
+- **155 "dead" API routes** flagged by the dead-routes agent — sample verification showed `/api/audio-processor/zones` IS called by 3 components (DJControlPanel, AtlasZoneControl, DbxZoneControl). Will tier by risk + verify each cluster.
+- **11 dead DB tables** flagged by the data-audit agent (tvLayouts, matrixConfigs, audioMessages, audioScenes, bartenderRemotes, deviceMappings, trainingDocuments, aiTvAvailability, aiGamePlanExecutions, schedulingPreferences, aiScheduleSuggestions) — Standing Rule 3 forbids DB drops in same pass as code.
+
+**Manual steps required (per-location):** after auto-update, re-run the system doc scanner to pick up the new file types:
+```bash
+cd /home/ubuntu/Sports-Bar-TV-Controller
+npx tsx scripts/scan-system-docs.ts --clear
+```
+Expected: total chunks jumps from ~4,500 to ~5,500+ (config files + drizzle migrations + scripts add ~1,000 chunks).
+
+**What could break:** zero expected runtime impact. Build verified green (35/35 turbo tasks).
+
+**Rollback:** `git revert <SHA>` undoes the deletions. If you want a specific deleted file back: `git checkout HEAD~1 -- apps/web/src/lib/<file>.ts`.
+
+`Checkpoint model: sonnet`
+
+---
+
+### 2026-05-18 — v2.47.1 — eslint 9→10 + pdf-parse 1→2 migrations (continued Rule 10 pass)
+
+**What changed:**
+
+- **`pdf-parse` 1.1.1 → 2.4.5** across all workspaces (root, apps/web, utils, tv-docs, rag-server). v2 replaced the v1 default-callable with a `PDFParse` class:
+  - v1: `const data = await pdfParse(buffer); data.text / data.numpages`
+  - v2: `const p = new PDFParse({ data: buffer }); const r = await p.getText(); r.text / r.total`
+  - Migrated call sites: `packages/rag-server/src/doc-processor.ts:131`, `packages/utils/src/text-extractor.ts:30`
+  - **v2 `TextResult` no longer exposes `.info`** — only `{ pages, text, total }`. If PDF metadata is needed in the future, call `parser.getMetadata()` separately.
+- **`eslint` 9 → 10** (apps/web devDep). Required full migration:
+  - Removed `apps/web/.eslintrc.json` + root `.eslintrc.json` (ESLint 10 removed legacy `.eslintrc.*` support entirely per release notes — `feat!: remove eslintrc support`).
+  - Added `apps/web/eslint.config.js` (flat config) using `eslint-config-next/core-web-vitals` + `/typescript` + `typescript-eslint.configs.recommended/recommendedTypeChecked`.
+  - Removed deprecated `--ext .ts,.tsx,.js,.jsx` flag from `lint` + `lint:fix` scripts (eslint 10 infers extensions from `files` patterns in flat config).
+
+**What could break:**
+
+- **`npm run lint` itself crashes** with `react/display-name: contextOrFilename.getFilename is not a function` — `eslint-config-next@16.2.6` ships a nested `eslint-plugin-react` that's not yet ESLint-10-compatible. **Build, type-check, unit tests, integration tests, and runtime are unaffected** — lint is a developer-only script not gated by any workflow. Tracked upstream; remove this caveat when `eslint-config-next` ships its compat update.
+- **PDF ingestion** (RAG document scanning + utils text-extractor) now uses the v2 API. If any custom script imports pdf-parse with the v1 callable pattern, it must be migrated.
+
+**Manual steps required:** none for code; auto-update handles `npm ci` + rebuild + restart.
+
+**Rollback:** `git revert <SHA>` undoes everything. If you want to keep pdf-parse v2 but roll back eslint, revert `apps/web/eslint.config.js`, restore the two `.eslintrc.json` files, and re-pin `eslint@^9` in `apps/web/package.json`.
+
+**Affected files:**
+- `package.json` (version)
+- `package-lock.json`
+- `apps/web/package.json` (eslint ^10, pdf-parse ^2, scripts cleaned)
+- `apps/web/eslint.config.js` (NEW — flat config)
+- `apps/web/.eslintrc.json` (DELETED)
+- `.eslintrc.json` (DELETED)
+- `packages/rag-server/src/doc-processor.ts` (pdf-parse v2 migration)
+- `packages/rag-server/package.json` (pdf-parse ^2.4.5 — already was)
+- `packages/utils/src/text-extractor.ts` (pdf-parse v2 migration)
+- `packages/utils/package.json`, `packages/tv-docs/package.json` (pdf-parse ^2)
+
+`Checkpoint model: sonnet`
+
+---
+
+### 2026-05-18 — v2.47.0 — breaking-major dep bumps per new Standing Rule 10
+
+**What changed:**
+
+- **`@anthropic-ai/sdk` 0.71.2 → 0.96.0** (breaking-major; only one call site: `packages/services/src/qa-generator-processor.ts:444` uses `anthropic.messages.create()` — stable API, no code change needed).
+- **`@types/node` (apps/web devDep) → ^25** (breaking-major in version number only — runtime impact zero; types only).
+- **`@types/supertest` (apps/web devDep) → ^7** (breaking-major; test types only).
+- **Skipped this pass** (worth their own verification cycle):
+  - `eslint` 9 → 10 (rule deprecations may cascade)
+  - `pdf-parse` 1.1 → 2.4 (rag-server uses dynamic `pdfParse.default(buffer).text` — needs API verification at major bump)
+  - `npm audit fix --force` for the workbox/serialize-javascript chain — `--force` would DOWNGRADE `next-pwa` to 2.0.2 which violates Rule 10's "latest version" mandate. The serialize-javascript vuln is build-time only (no runtime exposure to attacker input), accepted until next-pwa ships a fix on top of workbox 7.
+
+**What could break:** zero expected runtime impact. Build passes. The SDK 0.71→0.96 call surface (`messages.create({ model, max_tokens, temperature, messages })`) is unchanged.
+
+**Manual steps required:** none for code; per-location auto-update handles `npm ci`.
+
+**Rollback:** `git revert <SHA>` undoes the package.json + lockfile changes; rebuild + restart.
+
+**Affected files:**
+- `package.json` (version)
+- `apps/web/package.json` (@anthropic-ai/sdk + @types/node + @types/supertest bumps)
+- `packages/services/package.json` (@anthropic-ai/sdk bump)
+- `package-lock.json`
+
+`Checkpoint model: sonnet`
+
+---
+
+### 2026-05-18 — v2.46.3 — AI Hub Option B unification (RAG-grounded /api/chat) + tightened grounding + NEW Standing Rule 10 (always-latest)
+
+**What changed:**
+
+1. **AI Hub /api/chat now reads from the RAG vector store** (3,250 chunks across CLAUDE.md + docs/ + packages/*/README.md + .claude/locations/*.md + memory + vendor specs) instead of the separate older `enhanced-document-search`. AI Hub chat is now grounded in the same SME corpus the pattern-digest uses. Adapter `searchDocsViaRag()` falls back to `enhanced-document-search` if RAG is empty (fresh-install safety).
+2. **Tightened grounding** based on fact-checker re-grill 2026-05-18 (4/14 PASS originally → expected significant improvement):
+   - `topK` 5 → 8 (more concrete excerpts crowd out the LLM's training-set priors)
+   - `temperature` 0.7 → 0.3 (lowers paraphrase rate)
+   - Default model `phi3:mini` → `llama3.1:8b` (iGPU-accelerated, better grounding fidelity)
+   - System prompt now includes CRITICAL rule: "quote verbatim when docs contain specific names/ports/properties; refuse rather than fabricate"
+3. **NEW Standing Rule 10 — STRENGTHENED:** every npm dep, OS package, AND local AI model must stay on the latest available version "at any costs." Bump breaking-majors in the working PR + fix the breakage. See CLAUDE.md §"Standing Rules" #10 + `memory/feedback_always_latest_versions.md`.
+4. **New `scripts/scan-code-docs.ts`** — adds TypeScript source files (route handlers + lib services + package source + DB schema, ~828 files) to the RAG store so the AI Hub can answer implementation-level questions ("show me the function that polls UDP meters"). Runs alongside `scan-system-docs.ts` (doesn't replace). ~25 min embedding pass on iGPU.
+
+**What could break:**
+
+- **Holmgren / any updated location:** AI Hub chat now uses RAG → if the location hasn't run `scripts/scan-system-docs.ts`, RAG is empty and chat falls back to `enhanced-document-search` (zero-risk, same behavior as before this version).
+- **OLLAMA_MODEL env var:** previous default `phi3:mini` is faster but worse-grounded. If a location explicitly relied on phi3 for speed, override via `OLLAMA_MODEL=phi3:mini` in `.env`.
+
+**Manual steps required:**
+
+- Per Rule 10: after this update, run `npm update && npm audit fix` on every location, commit lockfile, push.
+- Per Rule 10: re-pull Ollama models (`ollama pull llama3.1:8b nomic-embed-text qwen2.5:14b`) on every location.
+- (Optional) Run `npx tsx scripts/scan-code-docs.ts` on every location after the doc-scan to add source-code grounding to the AI Hub.
+
+**Rollback:** `git revert <SHA>` reverts the chat-route changes; RAG store untouched (no schema migration).
+
+**Affected files:**
+- `apps/web/src/app/api/chat/route.ts` — new `searchDocsViaRag()` adapter, swapped both call sites, tightened prompt + temp + model
+- `scripts/scan-code-docs.ts` — NEW
+- `CLAUDE.md` — Standing Rule 10 strengthened
+- `memory/feedback_always_latest_versions.md` — NEW
+
+`Checkpoint model: sonnet`
+
+---
+
+### 2026-05-18 — v2.38.0 → v2.45.1 — Shure channel-edit UI + LiveMicChips + SDR foundation + Day-4/5 polish + 7 critical fixes
+
+**Big multi-version push covering Shure operator-edit features, SDR
+spectrum monitoring foundation, and a stack of bug fixes caught by
+live debugging + code-reviewer agent. Spans 16 commits.**
+
+What changed (in order):
+
+- **v2.38.0** — Per-channel edit UI in `/device-config → Audio →
+  Wireless Mics`: rename channel, retune frequency, adjust audio
+  gain. PATCH `/api/shure-rf/channel` (ADMIN, HARDWARE bucket).
+  PLUS new `LiveMicChips` strip on bartender Audio tab showing
+  "Mic 1 Live / Mic 2 Off" + battery as a persistent indicator
+  independent of the speech-triggered priority banner.
+
+- **v2.39.0/2.39.1** — Stage 1 AI pattern digest: POST
+  `/api/shure-rf/pattern-digest` runs Ollama (llama3.1:8b on iGPU,
+  ~40-180s) on the last 30 days of `shure_rf_events`, returns a
+  natural-language summary identifying recurring patterns by
+  channel/freq/time-of-day/day-of-week with mitigation suggestions.
+  ADMIN-gated, AI rate-limit bucket, 1-hour cache. Plus baseline
+  RSSI sampling every 10 min so the digest has data even during
+  the May-August data-scarce window before preseason.
+  v2.39.1 fixed an AUDIO_GAIN wire-protocol offset bug found by
+  code review (was sending raw dB; receiver expects raw 0-60 with
+  -18 offset).
+
+- **v2.40.0/2.40.1/2.40.2** — Find Clean Freq (software equivalent
+  of Shure's front-panel Group Scan, since SLX-D firmware 1.4.7.0
+  does NOT expose scan over TCP — probed 16 candidate command
+  variants, all returned `< REP ERR >`). Sweeps 12 G58 candidates,
+  dwells 2.5s each, ranks by RSSI, drops gain to -18 dB during
+  sweep for audio safety. v2.40.1 fixed wire-protocol property
+  names (`TX_MODEL` not `TX_TYPE`, `GROUP_CHANNEL` not
+  `GROUP_CHAN`) — CLAUDE.md §7a had them backwards, real receiver
+  state never populated until v2.40.1. v2.40.2 added
+  `/api/atlas-priority`, `/api/atlas-drops`, `/api/shure-rf` routes
+  to the bartender nginx allow-list.
+
+- **v2.41.0 — v2.45.1** — SDR spectrum monitoring foundation:
+  `apps/web/src/lib/sdr-watcher.ts` spawns `rtl_power` subprocess,
+  parses CSV, aggregates per-minute into `sdr_spectrum`, runs
+  carrier-detection state machine writing `sdr_carriers`. NEW
+  endpoints: `/api/sdr/status`, `/api/sdr/history`, `/api/sdr/stream`
+  (Server-Sent Events), `/api/sdr/peak-stats`. NEW UI panel
+  `ShureSdrSpectrumPanel` with canvas waterfall, click-on-column
+  inspect, SSE live updates. `scripts/setup-sdr.sh` for one-time
+  install (apt + DVB blacklist). `SDR_ENABLED=auto` mode means
+  plug-and-play after the one-time setup. Cross-confirms with Shure
+  RF events (purple "SDR-confirmed" badge on event history rows).
+  Hardware (NESDR Smart) in transit; pipeline runs against tables
+  whether dongle is present or not. v2.43.1 added SafeBoundary
+  isolation for the panel. v2.43.2 fixed a TDZ ReferenceError that
+  blew up `/device-config` (TDZ on `loadCachedDigest` referenced in
+  useEffect deps before its declaration). v2.45.1 fixed 6 issues
+  caught by code-reviewer agent (SSE timer leak, readline zombie,
+  backoff race, flushAggregator over-call, status not honoring
+  'auto', peak-stats N+1).
+
+- **v2.42.1** — Atlas drop watcher cooldown fix. Holmgren operator
+  hit 50 false-positive drop events in 28 min after the Atlas
+  firmware update — one real drop (volume 45 → 5 at 10:22) got
+  re-fired every 30 sec for 28 min because `lastSeen.set` was at
+  the END of the per-zone try block, after an INSERT that could
+  throw and skip the cache update. Plus the Atlas 4.5 firmware's
+  new "Custom Priority Volume" feature pins zone gain to a fixed
+  low level while priority is active — looks identical to the drop
+  signature. Fix: per-zone 5-min cooldown + move `lastSeen.set` to
+  immediately after the read.
+
+What could break at a location:
+
+- **CRITICAL — nginx allow-list re-run REQUIRED for v2.40.2+**
+  features to work on the bartender remote. Run
+  `sudo bash scripts/setup-bartender-nginx.sh` once per location
+  after auto-update completes. Symptom if skipped: priority banner
+  + LiveMicChips + Shure RF events show empty on the iPad even
+  though backend is healthy (the polled endpoints return 403).
+  Already done at Holmgren but new locations MUST run it.
+
+- **NESDR Smart hardware not yet shipped to any location** — SDR
+  pipeline runs idle (`SDR_ENABLED` defaults to `false`). No
+  operator-visible effect at locations without a dongle. When
+  hardware arrives, run `sudo bash scripts/setup-sdr.sh` for the
+  one-time apt+DVB-blacklist install, set `SDR_ENABLED=auto` in
+  .env, restart PM2. Watcher then auto-starts within 5 min of
+  plugging in.
+
+- **Atlas firmware ≥ 4.5 introduces Custom Priority Volume.**
+  Operators who notice unexplained zone-gain drops should check
+  the Atlas GUI → Sources → Priority for the new "Custom Volume"
+  field on each priority-tagged input. If set low, it overrides
+  zone volume during priority events. Our drop watcher's cooldown
+  prevents alert spam but the underlying behavior is intentional
+  Atlas firmware behavior, not a bug.
+
+Manual steps required:
+
+1. **Bartender nginx re-run** (Holmgren done; other locations TODO
+   when they get a Shure receiver):
+   ```
+   sudo bash /home/ubuntu/Sports-Bar-TV-Controller/scripts/setup-bartender-nginx.sh
+   ```
+2. **SDR install** (when NESDR Smart arrives):
+   ```
+   sudo bash /home/ubuntu/Sports-Bar-TV-Controller/scripts/setup-sdr.sh
+   pm2 restart sports-bar-tv-controller --update-env
+   ```
+3. **No DB migrations needed** — all new tables (`sdr_spectrum`,
+   `sdr_carriers`, `sdr_rf_pattern_cache`, `shure_rf_events`) are
+   lazy-created by their watchers on first run.
+
+Rollback notes: revert to v2.37.2 if any of the above causes
+operator-visible failure. The DB tables are additive — no schema
+deletion required.
+
+Affected files:
+- `apps/web/src/lib/sdr-watcher.ts` (new)
+- `apps/web/src/lib/shure-rf-watcher.ts` (cross-confirmation)
+- `apps/web/src/lib/atlas-drop-watcher.ts` (cooldown fix)
+- `apps/web/src/app/api/shure-rf/{channel,pattern-digest,find-clean-freq}/route.ts`
+- `apps/web/src/app/api/sdr/{status,history,stream,peak-stats}/route.ts`
+- `apps/web/src/components/{ShureWirelessMicAdmin,ShureSdrSpectrumPanel,LiveMicChips,SafeBoundary}.tsx`
+- `packages/shure-slxd/src/shure-slxd-client.ts` (TX_MODEL fix, AUDIO_GAIN offset, setChannelName, setAudioGain)
+- `scripts/setup-sdr.sh` (new)
+- `scripts/setup-bartender-nginx.sh` (allow-list additions)
+- `CLAUDE.md` §7a (corrected) + §7b (new SDR section)
+
 ### 2026-05-17 — v2.37.2 — Shure final-review fixes (preflight state race + reconnect race + doc consistency)
 
 **Code fixes from the final-review pass** (4 parallel review agents
