@@ -49,6 +49,12 @@
 
 import path from 'path'
 import { chdir, cwd } from 'process'
+
+// v2.50.7: load .env BEFORE chdir so ANTHROPIC_API_KEY (at repo root)
+// reaches the Anthropic teacher path. dotenv is already a transitive
+// dep via next.js — no new install needed.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+require('dotenv').config({ path: path.resolve(__dirname, '..', '.env') })
 import fs from 'fs/promises'
 
 // CRITICAL chdir-before-rag-server-import — see scan-system-docs.ts
@@ -79,6 +85,7 @@ interface CliArgs {
   resume: boolean
   filterTag: string | null
   includeCode: boolean
+  teacher: 'ollama' | 'anthropic' // v2.50.7
 }
 
 function parseArgs(): CliArgs {
@@ -89,6 +96,7 @@ function parseArgs(): CliArgs {
     resume: false,
     filterTag: null,
     includeCode: false,
+    teacher: 'ollama',
   }
   for (const a of argv) {
     if (a.startsWith('--limit=')) out.limit = parseInt(a.split('=')[1], 10)
@@ -96,11 +104,17 @@ function parseArgs(): CliArgs {
     else if (a === '--resume') out.resume = true
     else if (a.startsWith('--filter-tag=')) out.filterTag = a.split('=')[1]
     else if (a === '--include-code') out.includeCode = true
+    else if (a === '--anthropic') {
+      out.teacher = 'anthropic'
+      // Switch default model to Haiku when using Anthropic
+      if (out.model === 'qwen2.5:14b') out.model = 'claude-haiku-4-5-20251001'
+    }
     else if (a === '--help' || a === '-h') {
       process.stdout.write(
         'Usage: npx tsx scripts/generate-qa-dataset.ts [flags]\n' +
         '  --limit=N            max chunks this run (default 100)\n' +
-        '  --model=NAME         Ollama model id (default qwen2.5:14b)\n' +
+        '  --model=NAME         model id (default qwen2.5:14b or claude-haiku-4-5)\n' +
+        '  --anthropic          use Anthropic API as teacher (needs ANTHROPIC_API_KEY)\n' +
         '  --resume             skip chunks recorded in seen.json\n' +
         '  --filter-tag=TAG     only process chunks whose techTags include TAG\n' +
         '  --include-code       don\'t skip code-heavy chunks\n'
@@ -239,6 +253,56 @@ async function callOllama(model: string, prompt: string): Promise<string> {
   }
 }
 
+// v2.50.7: Anthropic teacher path. Uses the @anthropic-ai/sdk package
+// already in workspace deps (0.96.0). Reads ANTHROPIC_API_KEY from env.
+// Token usage logged so we can track spend in real time.
+let _anthropicClient: any = null
+let _anthropicTokensIn = 0
+let _anthropicTokensOut = 0
+
+async function getAnthropicClient(): Promise<any> {
+  if (_anthropicClient) return _anthropicClient
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const Anthropic = require('@anthropic-ai/sdk').default
+  if (!process.env.ANTHROPIC_API_KEY) {
+    throw new Error('ANTHROPIC_API_KEY not set in env — needed for --anthropic teacher mode')
+  }
+  _anthropicClient = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+  return _anthropicClient
+}
+
+async function callAnthropic(model: string, prompt: string): Promise<string> {
+  const client = await getAnthropicClient()
+  const message = await client.messages.create({
+    model,
+    max_tokens: 1024,
+    temperature: 0.2,
+    messages: [{ role: 'user', content: prompt }],
+  })
+  // Track usage for real-time cost monitoring
+  if (message.usage) {
+    _anthropicTokensIn += message.usage.input_tokens || 0
+    _anthropicTokensOut += message.usage.output_tokens || 0
+  }
+  // Response is content[0].text for plain message responses
+  const block = message.content?.[0]
+  if (block?.type === 'text') return block.text
+  return ''
+}
+
+export function getAnthropicUsage(): { in: number; out: number; estCostUsd: number } {
+  // Haiku 4.5 pricing: $1/M in, $5/M out
+  const cost = (_anthropicTokensIn / 1_000_000) * 1 + (_anthropicTokensOut / 1_000_000) * 5
+  return { in: _anthropicTokensIn, out: _anthropicTokensOut, estCostUsd: cost }
+}
+
+async function callTeacher(args: CliArgs, prompt: string): Promise<string> {
+  if (args.teacher === 'anthropic') {
+    return callAnthropic(args.model, prompt)
+  }
+  return callOllama(args.model, prompt)
+}
+
 /**
  * Pull a JSON array out of the model output. qwen2.5 sometimes wraps
  * its JSON in ```json fences or appends a "Note:" — peel the first
@@ -339,21 +403,29 @@ async function main(): Promise<void> {
     `includeCode=${args.includeCode}\n`,
   )
 
-  // Sanity-check Ollama is up + model is pulled
-  try {
-    const r = await fetch(`${OLLAMA_URL}/api/tags`)
-    if (!r.ok) throw new Error(`HTTP ${r.status}`)
-    const tags = (await r.json()) as { models?: Array<{ name: string }> }
-    const have = (tags.models || []).map((m) => m.name)
-    if (!have.some((n) => n === args.model || n.startsWith(args.model + ':'))) {
-      process.stderr.write(
-        `[qa-gen] WARNING: model "${args.model}" not in ollama list (have: ${have.join(', ')}). ` +
-        `Pull it first: ollama pull ${args.model}\n`,
-      )
+  // Sanity-check teacher is reachable
+  if (args.teacher === 'anthropic') {
+    if (!process.env.ANTHROPIC_API_KEY) {
+      process.stderr.write('[qa-gen] FATAL: ANTHROPIC_API_KEY not in env (.env or shell). Cannot use --anthropic mode.\n')
+      process.exit(1)
     }
-  } catch (e) {
-    process.stderr.write(`[qa-gen] FATAL: Ollama unreachable at ${OLLAMA_URL}: ${(e as Error).message}\n`)
-    process.exit(1)
+    process.stderr.write(`[qa-gen] teacher=anthropic model=${args.model} (key loaded, len=${process.env.ANTHROPIC_API_KEY.length})\n`)
+  } else {
+    try {
+      const r = await fetch(`${OLLAMA_URL}/api/tags`)
+      if (!r.ok) throw new Error(`HTTP ${r.status}`)
+      const tags = (await r.json()) as { models?: Array<{ name: string }> }
+      const have = (tags.models || []).map((m) => m.name)
+      if (!have.some((n) => n === args.model || n.startsWith(args.model + ':'))) {
+        process.stderr.write(
+          `[qa-gen] WARNING: model "${args.model}" not in ollama list (have: ${have.join(', ')}). ` +
+          `Pull it first: ollama pull ${args.model}\n`,
+        )
+      }
+    } catch (e) {
+      process.stderr.write(`[qa-gen] FATAL: Ollama unreachable at ${OLLAMA_URL}: ${(e as Error).message}\n`)
+      process.exit(1)
+    }
   }
 
   await fs.mkdir(OUT_DIR, { recursive: true })
@@ -416,7 +488,7 @@ async function main(): Promise<void> {
       const t0 = Date.now()
       try {
         const prompt = buildPrompt(chunk.content, chunk.metadata.filename)
-        const raw = await callOllama(args.model, prompt)
+        const raw = await callTeacher(args, prompt)
         const parsed = extractJsonArray(raw)
         const pairs = validatePairs(parsed)
         if (pairs.length === 0) {
