@@ -5,7 +5,7 @@
  */
 
 import { logger } from '@sports-bar/logger';
-import { searchVectorStore, SearchResult } from './vector-store';
+import { searchVectorStore, searchHybrid, SearchResult } from './vector-store';
 import { queryLLM, LLMResponse } from './llm-client';
 import { RAGConfig } from './config';
 
@@ -57,7 +57,7 @@ export async function queryDocs(options: QueryOptions): Promise<QueryResult> {
     const techFilter = tech ? (Array.isArray(tech) ? tech : [tech]) : undefined;
 
     // Search vector store for relevant chunks
-    const searchResults = await searchVectorStore(query, topK, techFilter);
+    const searchResults = await searchHybrid(query, topK, techFilter);
 
     if (searchResults.length === 0) {
       logger.warn('No relevant documents found', { data: { query, tech }
@@ -165,7 +165,7 @@ export async function* queryDocsStream(
     const techFilter = tech ? (Array.isArray(tech) ? tech : [tech]) : undefined;
 
     // Search vector store
-    const searchResults = await searchVectorStore(query, topK, techFilter);
+    const searchResults = await searchHybrid(query, topK, techFilter);
 
     // Yield context information
     yield {
@@ -234,6 +234,9 @@ export async function findRelatedDocs(
   heading?: string;
 }[]> {
   try {
+    // v2.50.4: keep findRelatedDocs on plain vector search — it's a
+    // "find similar documents to this one" feature, not a Q&A query.
+    // Hybrid + BM25 doesn't help here (no literal-identifier signal).
     const results = await searchVectorStore(query, topK, techFilter);
 
     // Group by document
@@ -302,7 +305,9 @@ export async function retrieveContext(
   const startTime = Date.now();
 
   try {
-    const results = await searchVectorStore(query, topK, techFilter);
+    // v2.50.4: retrieveContext is what the /api/chat adapter calls — switch
+    // it to hybrid so chat queries benefit from BM25 sparse retrieval too.
+    const results = await searchHybrid(query, topK, techFilter);
 
     const chunks = results.map(result => ({
       content: result.chunk.content,

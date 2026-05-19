@@ -1,7 +1,9 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Volume2, VolumeX, Minus, Plus, Mic, AlertTriangle } from 'lucide-react'
+import { Volume2, VolumeX, Minus, Plus, Mic, AlertTriangle, Radio } from 'lucide-react'
+import ShureMicStatusPanel from './ShureMicStatusPanel'
+import LiveMicChips from './LiveMicChips'
 import { logger } from '@sports-bar/logger'
 
 interface AtlasZone {
@@ -130,6 +132,41 @@ export default function AtlasZoneControl({
     return () => { cancelled = true; clearInterval(id) }
   }, [])
 
+  // Shure SLX-D RF interference indicator. Polled separately from the
+  // Atlas priority banner so the two can coexist — when both fire at
+  // the same time it means the priority event is RF-induced (the
+  // operator's "ghost override" diagnosis). Mirrors the priority
+  // poller's silent-fail UX.
+  type ShureActiveChannel = {
+    receiverId: string
+    receiverName: string | null
+    channel: number
+    frequencyMhz: number | null
+    rssiDbm: number | null
+    secondsAgo: number
+  }
+  const [rfActive, setRfActive] = useState(false)
+  const [activeRfChannels, setActiveRfChannels] = useState<ShureActiveChannel[]>([])
+
+  useEffect(() => {
+    let cancelled = false
+    const poll = async () => {
+      try {
+        const r = await fetch('/api/shure-rf?active=true')
+        if (!r.ok || cancelled) return
+        const j = await r.json()
+        setRfActive(!!j.active)
+        setActiveRfChannels(j.activeChannels || [])
+      } catch {
+        // Silent — UI badge is non-critical, and a 404 means no Shure
+        // receiver configured (route still exists, no events yet).
+      }
+    }
+    poll()
+    const id = setInterval(poll, 5_000)
+    return () => { cancelled = true; clearInterval(id) }
+  }, [])
+
   const handleVolumeChange = (zoneNumber: number, newVolume: number) => {
     const clamped = Math.max(0, Math.min(100, newVolume))
     pendingVolumeRef.current.set(zoneNumber, clamped)
@@ -248,11 +285,28 @@ export default function AtlasZoneControl({
 
   return (
     <div className="space-y-3">
+      {/* Compact persistent strip — one chip per wireless mic channel
+          showing live/off + battery. Sits above the priority banner so
+          the bartender can see at a glance whether Mic 1/Mic 2 are
+          hot before they go live, not only when someone is speaking
+          loud enough to cross the Atlas priority threshold. */}
+      <LiveMicChips />
+      {/* Shure wireless mic status tile — full per-channel detail
+          (RSSI dBm, runtime, frequency). Renders nothing if no Shure
+          receiver configured. */}
+      <ShureMicStatusPanel />
       {priorityActive && (
         <div className="rounded-xl border border-amber-500/40 bg-amber-950/30 px-4 py-3 flex items-center gap-3">
           <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0" />
           <div className="flex-1 min-w-0">
-            <div className="text-sm font-semibold text-amber-200">Priority Override Active</div>
+            <div className="text-sm font-semibold text-amber-200">
+              Priority Override Active
+              {rfActive && (
+                <span className="ml-2 text-xs font-normal text-cyan-300/90">
+                  (likely RF interference — see below)
+                </span>
+              )}
+            </div>
             <div className="text-xs text-amber-300/80 mt-0.5 truncate">
               {activeMics.length > 0 && (
                 <span className="inline-flex items-center gap-1 mr-3">
@@ -266,6 +320,29 @@ export default function AtlasZoneControl({
               {activeMics.length === 0 && overriddenZones.length === 0 && (
                 <span>Atlas is overriding zone control</span>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+      {rfActive && activeRfChannels.length > 0 && (
+        <div className="rounded-xl border border-cyan-500/40 bg-cyan-950/30 px-4 py-3 flex items-start gap-3">
+          <Radio className="w-5 h-5 text-cyan-400 flex-shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-semibold text-cyan-200">
+              RF Interference Detected on Wireless Mic
+            </div>
+            <div className="text-xs text-cyan-300/80 mt-0.5 space-y-0.5">
+              {activeRfChannels.map((c) => (
+                <div key={`${c.receiverId}-${c.channel}`} className="truncate">
+                  <span className="font-medium">{c.receiverName || c.receiverId} · ch {c.channel}</span>
+                  {c.frequencyMhz !== null && <span> · {c.frequencyMhz.toFixed(3)} MHz</span>}
+                  {c.rssiDbm !== null && <span> · {c.rssiDbm.toFixed(0)} dBm</span>}
+                </div>
+              ))}
+            </div>
+            <div className="text-[10px] text-cyan-400/60 mt-1">
+              Likely cause: external transmitter on or near this frequency.
+              Front-panel <span className="font-mono">Channel Scan</span> + IR Sync to recover.
             </div>
           </div>
         </div>

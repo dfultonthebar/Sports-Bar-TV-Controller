@@ -35,6 +35,271 @@ is the archive.
 
 ---
 
+## v2.50.x — AI Hub game-changer batch (the big one) — multi-version 2026-05-18/19
+
+**Versions covered:** v2.46.3 → v2.50.7 (~50 commits across 2026-05-18 + 2026-05-19)
+**Branch landed:** main
+**Fleet target:** all 6 locations upgrade from v2.32.94 → v2.50.7 (~80-version jump)
+
+This is the largest single-batch upgrade in fleet history. The work is grouped:
+
+- v2.46.x: AI Hub Option B (RAG-grounded chat) + Rule 10 strengthened
+- v2.47.x: breaking-major dep bumps (@anthropic-ai/sdk 0.71→0.96, pdf-parse 1→2, eslint removed entirely)
+- v2.48.x: system audit cleanup (5 unused deps, 12 dead bridges, 27 dead routes, 11 schema tables removed) + AI_HUB_ROADMAP_v2.50.md
+- v2.49.x: 11 new operational + bartender-help docs, register-aware chat, vendor + location retrieval boosts, ChatSession upsert fix, Rule 11 (rescan-after-fix)
+- v2.50.x: 4 quick-win optimizations (keep_alive=-1, batch embed, native tool_calls, qwen2.5:14b for tools) + hybrid BM25+vector RRF retrieval + contextual retrieval prep + Anthropic Q-A generator (Path B foundation)
+
+### Recommended rollout order (canary → fleet)
+
+1. **leg-lamp** (canary — designated in `scripts/canary-config.json`; single-card matrix; small install) — FIRST. After leg-lamp passes verify-install, the `.canary-blessed.json` sidecar greenlights everyone else.
+2. **lucky-s-1313** (also single-card; small; same matrix profile as leg-lamp)
+3. **graystone** (multi-card, well-documented per `.claude/locations/graystone.md`)
+4. **stoneyard-appleton** (multi-card, fleet-best AI Suggest timing — good baseline to verify perf didn't regress)
+5. **stoneyard-greenville** (multi-card, historically most-neglected — needs extra eyes after rollout)
+6. **holmgren-way** is already on v2.50.7 throughout this session (reference deployment)
+
+### Required Manual Steps (per-location, IN ORDER):
+
+```bash
+# 1. SSH to the location via Tailscale
+ssh ubuntu@<location-tailscale-hostname>
+cd /home/ubuntu/Sports-Bar-TV-Controller
+
+# 2. Snapshot for rollback safety
+git log --oneline -3      # note current SHA
+sqlite3 /home/ubuntu/sports-bar-data/production.db ".backup /home/ubuntu/sports-bar-data/production.db.pre-v2.50.bak"
+
+# 3. Run auto-update (handles the merge, npm ci, drizzle push, build, PM2 restart, verify-install)
+bash scripts/auto-update.sh --triggered-by=manual_cli
+# This will take ~5-10 min for the big jump (a lot of npm packages changed, esp. @anthropic-ai/sdk + pdf-parse v2 + eslint removed)
+
+# 4. Per Standing Rule 10 (always-latest) — refresh local AI models
+sg ollama -c 'ollama pull llama3.1:8b nomic-embed-text qwen2.5:14b'
+# qwen2.5:14b is required for v2.50.0+ tool routes (8B can't tool reliably)
+
+# 5. CRITICAL — per-location matrix-config check (varies by location, see CLAUDE.md §4):
+# - Single-card locations (leg-lamp, lucky-s-1313): VERIFY `MATRIX_SINGLE_CARD=true` in .env
+#   If absent → verify-install will NOT enforce outputOffset=0 → silent misrouting risk
+# - Multi-card locations (graystone, both stoneyards, holmgren): VERIFY no MATRIX_SINGLE_CARD flag set
+grep MATRIX_SINGLE_CARD .env || echo "(no flag set — correct for multi-card)"
+
+# 6. Per Standing Rule 11 — trigger a full RAG re-scan to pick up the new docs
+#    (700+ new lines: bartender-help/, runbooks/, SHURE_FREQUENCY_SCAN.md, AI_HUB_ROADMAP, etc.)
+nohup npx tsx scripts/scan-system-docs.ts --clear > /tmp/scan-system-post-v2.50.log 2>&1 &
+# Runs ~15-25 min (with v2.50.1 batched embed — 10-50× faster than v2.49.x serial)
+
+# 7. Wait for scan-system-docs to finish, THEN run scan-code-docs.ts
+#    (rag-rescan-if-needed.sh enforces this serially since v2.50.2 to avoid concurrent-write corruption)
+nohup npx tsx scripts/scan-code-docs.ts > /tmp/scan-code-post-v2.50.log 2>&1 &
+# Adds ~3-5K source-code chunks. Runs ~10-15 min.
+
+# 8. Verify RAG store landed correctly
+curl -sS http://localhost:3001/api/rag/stats | python3 -m json.tool
+# Expected: totalChunks > 6500 (was ~4500 pre-scan; bartender-help + runbooks + roadmap + source = ~2k more)
+
+# 9. Verify Hybrid Search BM25 index populated (new in v2.50.4)
+sqlite3 apps/web/rag-data/bm25.db "SELECT COUNT(*) FROM chunks_meta;"
+# Expected: same count as RAG totalChunks. If empty, run:
+#   npx tsx scripts/rebuild-bm25-from-vector.ts
+
+# 10. Smoke test chat (bartender phrasing should hit bartender-help docs)
+curl -sS -X POST http://localhost:3001/api/chat \
+  -H 'Content-Type: application/json' \
+  -d '{"message":"the wireless mic isnt working what do i do","stream":false,"enableTools":false}' \
+  | python3 -c "import sys,json; d=json.load(sys.stdin); print((d.get('response') or '')[:400]); print(); print('sources:'); [print(f\"  {s.get('score',0):.3f}  {s.get('name','?')}\") for s in d.get('sources',[])[:5]]"
+# Expected: top sources include MIC_NOT_WORKING.md, plain-English answer about checking battery/sync/etc.
+
+# 11. Verify v2.50.0 keep_alive optimization is live (warm call should be much faster than first)
+# Do a second curl with a different message — should return in 30-60s instead of 100-170s
+# This means the Ollama model stayed resident (was unloading after 5 min in pre-v2.50.0).
+
+# 12. Update fleet status doc to reflect the new version
+# Edit docs/FLEET_STATUS.md row for this location → v2.50.7
+```
+
+### Per-Location Specifics
+
+| Location | Single/Multi-card | MATRIX_SINGLE_CARD env? | Special pre-flight | Special post-flight |
+|---|---|---|---|---|
+| leg-lamp | Single | MUST be `true` | Canary — confirm `scripts/canary-config.json` opt-in BEFORE update | After successful verify-install, confirm `.canary-blessed.json` was written + pushed to GitHub. Other locations gate on this file. |
+| lucky-s-1313 | Single | MUST be `true` | Verify dbx ZonePRO 1260m @ 192.168.10.50 still reachable (audio routes through it, not matrix) | Scene 1 auto-recall confirmed on dbx connect |
+| graystone | Multi (with +32 audio card offset) | Must NOT be set | Verify `apps/web/data/wolfpack-devices.json` per-card offsets unchanged | Test routing on outputs 33-36 (audio card outputs) |
+| stoneyard-greenville | Multi | Must NOT be set | Verify outputDefaults / roomDefaults / HomeTeam table state (was empty as of 2026-04-10) | Run scheduler-fixes verification per `docs/SCHEDULER_FIXES_APRIL_2026.md` |
+| stoneyard-appleton | Multi | Must NOT be set | Power-cycle quirk noted in NEW_LOCATION_CLAUDE_PROMPT.md — confirm box hasn't power-cycled recently | AI Suggest cold-run should still be ≤80s (fleet-best baseline; if it slips, perf regression bug) |
+| holmgren-way | Multi (Wolf Pack 48-port; outputs 37-40 audio-only) | Must NOT be set | Already updated throughout the session — verify-install is the gate | Re-confirm Atlas firmware 4.5.18 still in place; rf-watcher + atlas-priority-watcher logs healthy |
+
+### Verification gates (must PASS before promoting next location)
+
+- `pm2 status` → `sports-bar-tv-controller` online with `restart_time` increment of exactly 1 since update
+- `curl localhost:3001/api/health` → 200 OK
+- `curl localhost:3001/api/version` → reports `2.50.7`
+- `curl localhost:3001/api/rag/stats | jq .data.vectorStore.totalChunks` → ≥ 6500
+- `sqlite3 .../production.db "SELECT COUNT(*) FROM ChatSession;"` → ≥ 0 (sessions persist now per v2.49.6 upsert fix)
+- Chat smoke test answer cites at least one bartender-help / runbook source (proves new docs reached RAG)
+
+### Rollback
+
+```bash
+# If verify-install FAILS or smoke tests regress, auto-update.sh ALREADY rolled back to pre-update commit.
+# Sanity-check we're back where we started:
+git log --oneline -3
+# Should match the SHA you noted in step 2.
+
+# Restore production.db from backup if anything looks weird
+cp /home/ubuntu/sports-bar-data/production.db.pre-v2.50.bak /home/ubuntu/sports-bar-data/production.db
+
+# PM2 restart with the rolled-back code
+pm2 restart sports-bar-tv-controller --update-env
+```
+
+### Known regressions / acceptable side-effects
+
+- **`npm run lint` crashes** with `react/display-name: contextOrFilename.getFilename is not a function` — known issue, ESLint was removed entirely in v2.47.3. Lint is no longer wired into build or CI.
+- **First chat call after restart is slow (~80-100s)** — Ollama model cold-load. Subsequent calls 30-60s thanks to v2.50.0 `keep_alive=-1`.
+- **chat answer about Wolf Pack outputOffset for a specific location** may need the per-location ref to be enriched (we did this for lucky-s-1313, graystone is already documented, the stoneyards + leg-lamp got enriched in v2.49.9) — if a location ref is still a stub at update time, enrich it BEFORE the rescan or chat will not have facts to cite.
+- **`sportsbar-expert:8b` model not yet available** — the Q-A generation pipeline is in flight (running overnight at Holmgren as of v2.50.7); once shipped via Ollama Modelfile to all locations, switch `OLLAMA_MODEL=sportsbar-expert:8b` in each `.env`.
+
+---
+
+## v2.48.x — system audit cleanup + RAG SME upgrade (multi-version)
+
+**Versions covered:** v2.48.0 → v2.48.5 (six commits on 2026-05-18)
+**Branch landed:** main
+
+**Big-picture changes:**
+
+- Removed ESLint entirely (v2.47.3) + 5 unused npm deps + 12 dead bridge files + 9 dead scripts + 27 dead API routes + 11 dead schema table defs. Net: -250+ lines, ~30 MB smaller `node_modules`, fewer things to bump weekly per Rule 10.
+- AI Hub RAG store extended with config files, drizzle migrations, operator shell scripts, AND React `.tsx` components/pages. Expected post-rescan total: ~7,500-8,500 chunks (was 4,536).
+
+**Required Manual Steps (per-location, IN ORDER):**
+
+1. **Run auto-update:**
+   ```bash
+   bash scripts/auto-update.sh --triggered-by=manual_cli
+   ```
+   This pulls v2.48.x, runs `npm ci`, rebuilds, restarts PM2. Schema cleanup is code-only — no DB migration runs.
+
+2. **Re-scan RAG to pick up the new file types:**
+   ```bash
+   cd /home/ubuntu/Sports-Bar-TV-Controller
+   npx tsx scripts/scan-system-docs.ts --clear     # picks up config, drizzle SQL, shell scripts
+   npx tsx scripts/scan-code-docs.ts               # picks up the 161 .tsx components/pages
+   ```
+   **Why `--clear` first:** removes stale chunks from deleted dead routes / bridge files (otherwise the AI would still cite them). Then the code-scan adds source + components on top.
+
+   **Time budget:** scan-system-docs.ts is ~25-40 min; scan-code-docs.ts is ~45-60 min (the .tsx additions are large). Run them sequentially — concurrent runs would saturate Ollama's embedding endpoint.
+
+3. **Verify RAG growth:**
+   ```bash
+   curl -sS http://localhost:3001/api/rag/stats | python3 -m json.tool
+   ```
+   Expected: `totalChunks` between 7,500 and 8,500. If significantly lower, the scan was interrupted — re-run.
+
+4. **Spot-test AI Hub grounding:**
+   ```bash
+   curl -X POST http://localhost:3001/api/chat \
+     -H 'Content-Type: application/json' \
+     -d '{"message":"What is the TX_MODEL property in our Shure SLX-D parser?","stream":false}'
+   ```
+   Expected: answer quotes `TX_MODEL` verbatim from indexed Shure docs. If it says "I don't have access to documentation", the RAG store didn't load — restart PM2 (`pm2 restart sports-bar-tv-controller`).
+
+**Operator timing:** RAG rescans take ~90 min total but run unattended. Schedule during off-peak. No service downtime — Pattern Digest and AI Hub continue working on the old index until the rescan finishes.
+
+---
+
+## v2.47.1 — eslint 9→10 + pdf-parse 1→2 (continued Rule 10 pass)
+
+**Released:** 2026-05-18
+**Branch landed:** main
+
+**Required Manual Steps:** none — `bash scripts/auto-update.sh` handles `npm ci` + rebuild + restart automatically.
+
+**Known issue:** `npm run lint` will crash with `react/display-name: contextOrFilename.getFilename is not a function` until `eslint-config-next` ships ESLint 10 compat for the bundled `eslint-plugin-react`. Build + type-check + tests are unaffected; lint is a developer-only script.
+
+**Verification:**
+
+```bash
+# Confirm pdf-parse v2 and eslint 10 are installed
+node -e "console.log('pdf-parse:', require('pdf-parse/package.json').version)"
+node -e "console.log('eslint:', require('eslint/package.json').version)"
+# Expected: pdf-parse: 2.4.5  /  eslint: 10.x
+
+# Verify build still passes
+cd /home/ubuntu/Sports-Bar-TV-Controller
+npm run build 2>&1 | tail -3
+# Expected: Tasks: 29 successful, 29 total
+```
+
+---
+
+## v2.47.0 — breaking-major npm dep bumps (first pass per Rule 10)
+
+**Released:** 2026-05-18
+**Branch landed:** main
+
+**Required Manual Steps:** none — `bash scripts/auto-update.sh` handles `npm ci` + rebuild + restart automatically. Verify with:
+
+```bash
+cd /home/ubuntu/Sports-Bar-TV-Controller
+node -e "console.log(require('@anthropic-ai/sdk/package.json').version)"
+# Expected: 0.96.0 or later
+```
+
+**Why this matters:** first execution of the strengthened Rule 10 ("everything stays on latest"). Bumps the Anthropic SDK + Node types + supertest types. Build verified green; runtime API surface unchanged.
+
+---
+
+## v2.46.3 — AI Hub Option B unification + Standing Rule 10 strengthened
+
+**Released:** 2026-05-18
+**Branch landed:** main
+
+**Required Manual Steps (per-location, IN ORDER):**
+
+1. **Pull latest code + auto-update:**
+   ```bash
+   bash scripts/auto-update.sh --triggered-by=manual_cli
+   ```
+
+2. **Per NEW Standing Rule 10 — refresh local AI models:**
+   ```bash
+   ollama pull llama3.1:8b
+   ollama pull nomic-embed-text
+   ollama pull qwen2.5:14b
+   ```
+   **Verification:** `ollama list` shows recent `MODIFIED` timestamp on all three.
+   **Gotcha:** if running IPEX-LLM Ollama (most fleet boxes), pulls may require `sudo` because models live under `/usr/share/ollama/.ollama/models/` (root-owned). Run `sudo -u ollama ollama pull <model>` OR `sudo chmod -R g+w /usr/share/ollama/.ollama/models/` then add your user to the `ollama` group.
+
+3. **Per NEW Standing Rule 10 — npm dep refresh:**
+   ```bash
+   cd /home/ubuntu/Sports-Bar-TV-Controller
+   npm audit fix
+   npm update
+   git add package.json package-lock.json
+   git commit -m "chore: weekly npm refresh per Standing Rule 10"
+   git push
+   ```
+   **Verification:** `npm outdated` shows fewer entries than before.
+
+4. **(Optional but recommended) Add source code to RAG store** so the AI Hub can answer implementation-level questions:
+   ```bash
+   cd /home/ubuntu/Sports-Bar-TV-Controller
+   npx tsx scripts/scan-code-docs.ts
+   ```
+   **Expected:** ~828 files indexed, ~5000 chunks added, run-time ~25 min on iGPU.
+   **Verification:** `curl localhost:3001/api/rag/stats | python3 -m json.tool` shows `totalChunks > 7000`.
+
+5. **Re-run the system doc scanner** if any of the above touched documentation:
+   ```bash
+   npx tsx scripts/scan-system-docs.ts
+   ```
+
+**Why this matters:** AI Hub chat at `/ai-hub` now grounds answers in our actual documentation instead of generic training data. Without the model refresh + code scan, AI Hub will work but won't have the full SME context.
+
+**Operator timing:** can be done during normal hours. The model pull is the biggest time sink (~10 min over good connection); npm refresh + code scan run in background.
+
+---
+
 ## OPERATOR HEADS-UP — 2026-04-17 batch (v2.18.0 through v2.22.x)
 
 **Applies to every location auto-updating tonight.** 14 versions shipped
@@ -186,6 +451,185 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 ---
 
 ## Current entries
+
+### v2.45.x — SDR spectrum monitoring (NESDR Smart / RTL-SDR)
+
+**Required Manual Step — when an RTL-SDR dongle arrives at a
+location.** Skip entirely at locations without an SDR dongle (the
+watcher defaults to disabled and is a no-op).
+
+```bash
+# One-time install: apt rtl-sdr + DVB blacklist + .env default
+sudo bash /home/ubuntu/Sports-Bar-TV-Controller/scripts/setup-sdr.sh
+
+# Restart PM2 to pick up SDR_ENABLED=auto from .env
+pm2 restart sports-bar-tv-controller --update-env
+
+# Verify (immediate, while dongle is plugged in or not):
+curl -sS http://localhost:3001/api/sdr/status
+# Expected: {"success":true, "enabled":true, "healthy":<true if dongle plugged>, ...}
+```
+
+After the one-time setup, plugging or unplugging the dongle is
+plug-and-play — the watcher auto-detects within 5 min, no PM2
+restart needed.
+
+**Idempotent.** Re-running the setup script is safe — `apt install
+rtl-sdr` no-ops if already installed, the blacklist file is
+rewritten in-place, and the `.env` is only modified if
+`SDR_ENABLED` is missing.
+
+**Verification command after dongle is plugged in:**
+
+```bash
+# Should report "Found 1 device" (or more)
+rtl_test -t
+
+# Live stream test (should emit 'hello' event within 1s):
+timeout 3 curl -sS -N http://localhost:3001/api/sdr/status | head -5
+```
+
+**Per-location values** (none — pure software install, no
+per-location config):
+
+| Location | SDR hardware status | SDR_ENABLED |
+|---|---|---|
+| Holmgren Way | Pending (NESDR Smart in transit) | `auto` (set by setup-sdr.sh) |
+| All others | Not yet rolled out | `false` (default — no-op) |
+
+**Auto-band-tracking:** the watcher reads connected Shure receiver
+frequencies and sweeps MIN-5 MHz to MAX+5 MHz. Override via
+`SDR_BAND_PRESET=uhf-wireless` (470-700 MHz) or `full-uhf`
+(470-960 MHz) in `.env` if you want broader coverage; default
+'auto' is fine for game-day monitoring.
+
+**If something goes wrong:**
+- Symptom: `rtl_test -t` says "Failed to open rtlsdr device / usb_claim_interface error -6"
+  → DVB module still attached. Run `sudo rmmod dvb_usb_rtl28xxu` then `rtl_test -t` again.
+  If it persists, reboot once so the blacklist takes effect for the kernel.
+- Symptom: `/api/sdr/status` says `enabled: false` even after setup
+  → Check `.env` has `SDR_ENABLED=auto` (or `true`). Restart PM2 with `--update-env`.
+- Symptom: `/api/sdr/status` says `enabled: true, healthy: false`
+  → Dongle not detected. Check USB connection, try a different port
+  (avoid USB 3 — emits RFI in the UHF band). Watcher will retry every 5 min.
+
+### v2.34.1 — Shure SLX-D Phase 2 (battery UI, preflight, correlation, low-battery, mock)
+
+**No required manual steps.** All additive on top of v2.34.0.
+
+**New developer tools** (no production impact):
+- `scripts/mock-shure-receiver.ts` — TCP server simulating an SLX-D
+  receiver. Scenarios: `clean`, `interference-rising`,
+  `tx-battery-dying`, `coalesced-frames`, `partial-frames`,
+  `third-party-controls-disabled`. Run with
+  `npx tsx scripts/mock-shure-receiver.ts --port=2202 --scenario=interference-rising`.
+- `scripts/test-shure-parser.ts` — integration test runner. Spawns
+  the mock for each scenario, drives the real client, verifies all
+  6 scenarios pass. Run with `npx tsx scripts/test-shure-parser.ts`.
+
+**New operator UX:**
+- Bartender Audio tab now shows a per-channel battery + RSSI tile
+  (one card per Shure receiver, one row per channel). Renders only
+  when a Shure receiver is configured; otherwise hidden.
+- Device Config → Audio Processors → Shure SLX-D type → "Run
+  pre-flight" button. Use BEFORE saving the receiver row — catches
+  third-party-controls-disabled, firmware too old, network unreachable.
+
+**Dependency note:** axios bumped 1.15.0 → 1.16.1 (CVE
+GHSA-w9j2-pvgh-6h63, prototype-pollution auth bypass). 4 vulns
+closed, 13 remain (all require breaking-major upgrades — separate PRs).
+
+**Verification post-update (any location):**
+```bash
+sqlite3 /home/ubuntu/sports-bar-data/production.db ".tables shure_rf_events"
+# Table still exists from v2.34.0; v2.34.1 didn't touch its schema.
+
+# Status endpoint should respond:
+curl -s http://localhost:3001/api/shure-rf/status | jq '.success'
+# Expect: true
+```
+
+---
+
+### v2.34.0 — Shure SLX-D wireless mic RF interference detection
+
+**Required Manual Steps (per location, only if you HAVE a Shure SLX-D receiver):**
+
+1. **VLAN routing.** Route the Shure receiver onto the controller's
+   network so the controller can reach it on TCP port 2202. Verify:
+   ```bash
+   nc -zv <shure-ip> 2202 && echo "ok"
+   ```
+
+2. **Enable "Allow Third-Party Controls" on the receiver front panel.**
+   Menu path: `Menu → Advanced → Network → Allow Third-Party Controls →
+   Enable`. This setting defaults to BLOCKED on new units and **can
+   reset to BLOCKED after a firmware update**. Without it, port 2202
+   accepts the TCP connection but silently drops every command — looks
+   like a network problem but isn't.
+
+   **Symptom of forgetting this step:** connection logs say "Connected"
+   but `shure_rf_events` table never gets non-startup rows, even with
+   the mic on.
+
+3. **Confirm firmware ≥ 1.1.0.** Front panel: Settings → About. Or after
+   connecting, query the receiver:
+   ```
+   echo "< GET 0 FW_VER >" | nc <shure-ip> 2202
+   # Expect: < REP 0 FW_VER {2.1.5} >  (or similar 1.1+ / 2.x version)
+   ```
+
+4. **Add the receiver row in Device Config.** Browse to
+   `http://<controller>:3001/device-config` → **Audio** category →
+   **Wireless Mics** tab → "Add Receiver" → fill in IP, port 2202,
+   model. Click **Run Pre-flight** inline to verify the four checks
+   (TCP reachable, third-party-controls enabled, firmware ≥ 1.1.0,
+   model detected). Save only when pre-flight is green.
+
+   (The receiver can also be added via the legacy path
+   `/system-admin → Audio Processors` if you prefer, but the dedicated
+   **/device-config → Wireless Mics** tab is the canonical home and
+   gives you the live battery + RSSI + event history side-by-side.
+   Full SME briefing on RF coordination + protocol details:
+   `packages/shure-slxd/README.md`.)
+
+5. **Verify the watcher is monitoring it.** Wait 60-90 seconds after
+   add (watcher discovery interval), then:
+   ```bash
+   sqlite3 /home/ubuntu/sports-bar-data/production.db \
+     "SELECT * FROM shure_rf_events WHERE event_type='startup' ORDER BY detected_at DESC LIMIT 3;"
+   # Also check the dedicated log file:
+   ls -lh /home/ubuntu/sports-bar-data/logs/shure-rf-*.log
+   tail -20 /home/ubuntu/sports-bar-data/logs/shure-rf-$(date +%Y-%m-%d).log
+   ```
+
+**Locations WITHOUT a Shure SLX-D receiver:** **No setup required.**
+The watcher discovers via `audioProcessors WHERE processorType='shure-slxd'`,
+finds none, logs `no shure-slxd receivers configured — watcher idle`,
+no-op. The endpoint `/api/shure-rf` returns `active: false` and the
+cyan banner never renders.
+
+**Verification on any location post-update** (proves the watcher booted):
+```bash
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  ".tables shure_rf_events"
+# Should print: shure_rf_events
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "SELECT receiver_id, event_type, note FROM shure_rf_events WHERE event_type='startup' LIMIT 1;"
+# Should return one row: receiver_id='', event_type='startup', note='pid=NNNN'
+```
+
+If the table doesn't exist, the `ensureTable()` call in
+`apps/web/src/lib/shure-rf-watcher.ts` didn't run — check
+`pm2 logs sports-bar-tv-controller | grep SHURE-RF` for the boot line
+`[INSTRUMENTATION] ✅ Shure RF watcher started`.
+
+**Log file path is fixed** (`/home/ubuntu/sports-bar-data/logs/shure-rf-*.log`)
+but configurable via `SHURE_RF_LOG_DIR` env var if needed. Default
+directory is created with `mkdir -p` on first event — no manual chown
+required.
+
+---
 
 ### v2.33.46 – v2.33.55 — Atlas audio fix train + audit tables (single batch)
 **Released:** 2026-05-17

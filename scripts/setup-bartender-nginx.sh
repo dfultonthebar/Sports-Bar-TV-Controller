@@ -125,6 +125,23 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
     }
+    # Atlas priority watcher banner — SEPARATE route from /api/atlas/*
+    # (location prefix matching is greedy but the trailing slash on
+    # /api/atlas/ means /api/atlas-priority doesn't match it). Powers
+    # the amber priority-override banner on bartender Audio tab.
+    location /api/atlas-priority { proxy_pass http://127.0.0.1:3001; proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; }
+    # Atlas drop watcher banner — same shape as atlas-priority.
+    location /api/atlas-drops    { proxy_pass http://127.0.0.1:3001; proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; }
+    # Shure SLX-D wireless mic status — powers bartender LiveMicChips
+    # (v2.38.0), ShureMicStatusPanel, cyan RF interference banner
+    # (v2.34.0+). Holmgren 2026-05-18 install caught: missing from
+    # the allow-list, so /remote loaded but every poll for shure-rf
+    # state returned 403.
+    location /api/shure-rf       { proxy_pass http://127.0.0.1:3001; proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; }
+    location /api/shure-rf/      { proxy_pass http://127.0.0.1:3001; proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; }
+    # SDR spectrum monitoring (v2.41.0+) — RTL-SDR / NESDR Smart wide-band
+    # G58 sweep. Read-only telemetry, safe for bartender access.
+    location /api/sdr/           { proxy_pass http://127.0.0.1:3001; proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; }
 
     location /api/htd/             { proxy_pass http://127.0.0.1:3001; proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; }
     # exact-match version avoids 301 redirect to /api/htd/
