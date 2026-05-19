@@ -379,6 +379,23 @@ The answer to "what's the transmitter model property name?" is
 the docs are warning against. Same pattern applies to GROUP_CHANNEL
 (NOT GROUP_CHAN), audio gain offset (+18 NOT raw dB), etc.
 
+### Table extraction rule (CRITICAL — Q3 fail mode):
+Our docs often use markdown tables for per-location reference data.
+Example from CLAUDE.md §4:
+
+  > | Location | Model | Layout | outputOffset | audioOutputCount | Notes |
+  > | Lucky's 1313 | Wolf Pack WP-36X36 | Single-card | 0 (enforced) | 0 | ... |
+
+When the user asks "what's Lucky's 1313 outputOffset?", READ THE ROW
+FROM THE TABLE and answer "**0**" (or "**0 (enforced)**"). Do NOT say
+"the table is not explicit" or "I couldn't find the value" — the value
+IS in the row. Tables are first-class data: extract the cell that
+matches the user's question, even if the answer is a single number.
+
+The same applies to per-location hardware tables in .claude/locations/*.md,
+per-version manual-steps tables in docs/VERSION_SETUP_GUIDE.md, and
+status tables in docs/FLEET_STATUS.md. Always extract; never hedge.
+
 ### Extraction rule:
 If the documentation explicitly contains the detail being asked but
 appears partial or unclear, EXTRACT what's there and note the gap —
@@ -471,16 +488,22 @@ what's there.`,
       }
     }
 
+    // v2.49.1: capture tool results so we can include them when
+    // persisting the assistant message — chat-route audit BUG #1
+    // (multi-turn sessions used to lose the tool-call/result history).
+    let persistedToolResults: ToolResult[] = []
+
     // Check for tool calls in the response
     if (enableTools && fullResponse.includes('TOOL_CALL:')) {
       await sendSSE({ type: 'status', message: 'Executing tools...' })
       const toolResults = await handleToolCalls(fullResponse)
-      
+      persistedToolResults = toolResults
+
       if (toolResults.length > 0) {
         // Send tool results
-        await sendSSE({ 
-          type: 'tool_results', 
-          results: toolResults 
+        await sendSSE({
+          type: 'tool_results',
+          results: toolResults
         })
 
         // Get follow-up response with tool results
@@ -491,21 +514,24 @@ what's there.`,
           toolResults
         )
 
-        await sendSSE({ 
-          type: 'content', 
+        await sendSSE({
+          type: 'content',
           content: followUpResponse,
-          done: true 
+          done: true
         })
 
         fullResponse += '\n\n' + followUpResponse
       }
     }
 
-    // Save conversation
-    messages.push({
-      role: 'assistant',
-      content: fullResponse,
-    })
+    // Save conversation — v2.49.1: persist tool results too so reloaded
+    // sessions have full context (previously only the text was saved,
+    // making multi-turn debugging blind to prior tool outputs).
+    const assistantMsg: ChatMessage = { role: 'assistant', content: fullResponse }
+    if (persistedToolResults.length > 0) {
+      assistantMsg.toolResults = persistedToolResults
+    }
+    messages.push(assistantMsg)
 
     if (sessionId) {
       await update('chatSessions', eq(schema.chatSessions.id, sessionId), {
@@ -617,10 +643,12 @@ NONE of the snippets address the question. Do not refuse on uncertainty.`,
   const data = await response.json()
   let aiResponse = data.message?.content || ''
 
-  // Handle tool calls
+  // Handle tool calls (v2.49.1: capture results for session persistence)
+  let nsPersistedToolResults: ToolResult[] = []
   if (enableTools && aiResponse.includes('TOOL_CALL:')) {
     const toolResults = await handleToolCalls(aiResponse)
-    
+    nsPersistedToolResults = toolResults
+
     if (toolResults.length > 0) {
       const followUp = await getFollowUpResponse(
         systemMessage,
@@ -632,7 +660,11 @@ NONE of the snippets address the question. Do not refuse on uncertainty.`,
     }
   }
 
-  messages.push({ role: 'assistant', content: aiResponse })
+  const nsAssistantMsg: ChatMessage = { role: 'assistant', content: aiResponse }
+  if (nsPersistedToolResults.length > 0) {
+    nsAssistantMsg.toolResults = nsPersistedToolResults
+  }
+  messages.push(nsAssistantMsg)
 
   if (sessionId) {
     await update('chatSessions', eq(schema.chatSessions.id, sessionId), {
