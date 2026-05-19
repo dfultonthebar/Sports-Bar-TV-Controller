@@ -46,6 +46,34 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-18 — v2.48.3 — RAG indexes React component source (.tsx) too
+
+**What changed:**
+
+Extended `scripts/scan-code-docs.ts` to also collect:
+- `apps/web/src/components/**/*.tsx` (135 component files)
+- `apps/web/src/app/**/page.tsx` + `**/layout.tsx` (26 route entry files)
+
+Total ~161 new `.tsx` files indexed = +2,500-3,500 RAG chunks expected (UI-layer code is denser than docs).
+
+**Why:** AI Hub previously couldn't answer UI-layer questions ("where is the bartender remote rendered?", "what component owns the Atlas zone slider?"). Now it can. Closes the last big RAG coverage gap from the v2.48.0 audit.
+
+**Manual steps required (per location):** after auto-update, re-run the code scanner to pick up the new file types:
+```bash
+cd /home/ubuntu/Sports-Bar-TV-Controller
+npx tsx scripts/scan-code-docs.ts
+# ~25-40 min on iGPU; adds ~2,500-3,500 chunks
+```
+Expected after BOTH scans (v2.48.0 doc rescan + v2.48.3 code rescan) complete: total chunks ~7,500-8,500.
+
+**Risk:** zero — additive change to the scanner; doesn't touch any runtime path. Build green (no actual app code changed).
+
+**Rollback:** `git revert <SHA>` — but no functional change to revert. Just edits a script that operators choose to run.
+
+`Checkpoint model: sonnet`
+
+---
+
 ### 2026-05-18 — v2.48.2 — full-sweep dead-routes pass (13 more, all 3-pass verified)
 
 **What changed:**

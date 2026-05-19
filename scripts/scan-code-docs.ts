@@ -175,6 +175,34 @@ async function collectFiles(): Promise<{ files: string[]; byCategory: Record<str
     byCategory['package source'] = pkgFileCount
   }
 
+  // 5. (v2.48.3) React component source — .tsx files under
+  //    apps/web/src/components/ AND page.tsx + layout.tsx under
+  //    apps/web/src/app/. Lets the AI Hub answer UI-layer questions
+  //    like "where is the bartender remote rendered?" or "what
+  //    component owns the Atlas zone slider?". Risk: large volume
+  //    (~150 files) and lower information density than .ts service
+  //    files, but RAG retrieval is similarity-scored so dilution is
+  //    minor.
+  byCategory['components (.tsx)'] = 0
+  const componentsDir = path.join(REPO_ROOT, 'apps/web/src/components')
+  if (await fileExists(componentsDir)) {
+    // Allow .tsx alongside .ts in walkDir (it already does — the
+    // filter at the bottom of walkDir accepts both extensions).
+    const tsxFiles = await walkDir(componentsDir)
+    tsxFiles.forEach((f) => collected.add(f))
+    byCategory['components (.tsx)'] += tsxFiles.length
+  }
+  // page.tsx + layout.tsx — entry points for each route group
+  const appDir = path.join(REPO_ROOT, 'apps/web/src/app')
+  if (await fileExists(appDir)) {
+    const allAppFiles = await walkDir(appDir)
+    const pages = allAppFiles.filter((f) =>
+      f.endsWith('/page.tsx') || f.endsWith('/layout.tsx'),
+    )
+    pages.forEach((f) => collected.add(f))
+    byCategory['components (.tsx)'] += pages.length
+  }
+
   return { files: Array.from(collected).sort(), byCategory }
 }
 
