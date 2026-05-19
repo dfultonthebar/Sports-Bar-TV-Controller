@@ -22,7 +22,16 @@ You don't have to install it, check on it, or feed it. It runs itself. The only 
 
 When you look at the **Audio** tab on the iPad, sometimes a colored banner shows up at the top. Here's what each one means.
 
-### Yellow banner — "Atlas priority active"
+### Quick reference card — yellow vs cyan (they are NOT the same)
+
+| Color | Means | Triggered by | What to do |
+|---|---|---|---|
+| **Yellow** | Atlas priority active — somebody is on a mic / page / intercom right now | Atlas audio processor detects a priority input above −45 dB | Nothing. Music ducks automatically, comes back when the mic stops. |
+| **Cyan** | Wireless mic RF interference detected | Shure wireless-mic receiver sees a foreign radio signal on our mic frequency | Watch the karaoke mic; if it acts up, follow "When the karaoke mic cuts out" below. |
+
+The yellow banner is about **audio inputs being used inside the bar.** The cyan banner is about **radio interference coming from outside the bar.** Two different problems. Two different banners. Don't confuse them.
+
+### Yellow banner — "Atlas priority active" (mic, page, or intercom is on)
 
 **What it means in English:** Someone is on a microphone or the paging system right now. The music has been automatically turned down so the talking comes through clearly.
 
@@ -30,7 +39,7 @@ When you look at the **Audio** tab on the iPad, sometimes a colored banner shows
 
 **When to worry:** If the yellow banner is up and **nobody is actually talking on a mic** anywhere in the bar. That probably means something is fake-triggering the mic system. Read the next section — there might be a cyan banner too.
 
-### Cyan banner — "Wireless mic interference detected"
+### Cyan banner — "Wireless mic RF interference detected" (radio waves from outside the bar)
 
 **What it means in English:** Our system noticed something is broadcasting on the same radio waves the karaoke mic uses. Could be a band next door warming up, could be a TV news truck for a Packers game, could be just a quick blip.
 
