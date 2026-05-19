@@ -46,6 +46,40 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-18 — v2.48.1 — verified 14 truly-dead API routes deleted
+
+**What changed:**
+
+Continued the dead-routes cleanup from v2.48.0 with proper per-route verification (the earlier agent's 155-route list was unreliable — e.g. it claimed `/api/audio-processor/zones` was dead, but it IS called by 3 components). Built a 3-pass verification script: (1) literal `/api/<path>` callers, (2) tail-token search (e.g. `zones-status`), (3) hand-grep of the full path-fragment. Only deleted routes that returned 0 in ALL 3 passes.
+
+**Deleted 14 verified-dead routes:**
+- `api/ai-assistant/search-code`
+- `api/audio-processor/[id]/adjustment-history`
+- `api/audio-processor/[id]/ai-gain-control`
+- `api/audio-processor/[id]/ai-monitoring`
+- `api/audio-processor/input-levels`
+- `api/audio-processor/matrix-routing`
+- `api/directv-devices/guide-data`
+- `api/directv-logs`
+- `api/directv/probe-tuned`
+- `api/firestick-scout/tree-dump`
+- `api/firetv-devices/connection-status`
+- `api/atlas/ai-learning`
+- `api/atlas/meter-monitoring`
+- `api/documents/reprocess`
+
+**What could break:** zero — every one of these was verified to have zero literal-path callers AND zero distinctive-tail-token references in components, pages, lib, packages, scripts, tests, instrumentation, or scheduler-service. Build green (29/29 turbo tasks).
+
+**Manual steps required:** none.
+
+**Rollback:** `git revert <SHA>` restores all 14 routes.
+
+**Affected files:** 14 route.ts files deleted (and their parent directories if empty).
+
+`Checkpoint model: sonnet`
+
+---
+
 ### 2026-05-18 — v2.48.0 — system audit cleanup (4 agents) + RAG coverage gap-fill
 
 **What changed (driven by 4 parallel audit agents + 1 RAG-gap agent):**
