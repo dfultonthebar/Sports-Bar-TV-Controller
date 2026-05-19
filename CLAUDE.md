@@ -458,6 +458,21 @@ public static getInstance(): YourClass {
 
 Same fix applied to **`@sports-bar/shure-slxd`** in v2.34.0 (preemptive — same race, same singleton, before any stuck-cache symptom hit prod). The reconnect path was tightened in v2.37.2 to also use the in-flight Promise lock so concurrent `getClient()` calls on a disconnected client don't both call `connect()` and create duplicate sockets.
 
+### 11. Auto-update silently stalls — 3 install-time gaps that look like "the timer just stopped firing"
+
+The auto-update timer is a **systemd user unit** at `~/.config/systemd/user/sports-bar-autoupdate.timer` (NOT a system cron entry). `systemctl list-timers` doesn't show it — use `systemctl --user list-timers`. Three install-time gaps make it look like auto-update is broken when it's really just blocked from running:
+
+1. **`Linger=no` on the ubuntu user.** User-scoped systemd units only run while the user has an active login session. Without `sudo loginctl enable-linger ubuntu` (one-time, root), the timer dies when the operator's SSH session ends. Greenville sat 38 hours without an update at v2.50.x because linger was off and nobody had SSH'd since the last manual touch.
+2. **modify/delete merge conflict** when main deletes a file that the location branch happened to touch (the v2.48.x verified-dead-route sweeps trigger this). `auto-update.sh`'s auto-resolver tries `git checkout --theirs` which fails when there IS no "theirs" version. Trap fires, full rollback. Fix manually: `git rm <path> && git commit -m "chore: accept main deletion of X" && git push origin location/<branch>`, then re-trigger. The rollback tag (`rollback-YYYY-MM-DD-HH-MM`) is your safety net.
+3. **NVM-installed node not in `/usr/local/bin`** — `npx`/`npm` not in PATH for non-login systemd-fired scripts (`rag-rescan-if-needed.sh`, etc). PM2 keeps working because it inherits PATH from the login session that started it; new subprocesses fail. Fix: `sudo ln -sfv /home/ubuntu/.nvm/versions/node/v20.20.0/bin/{node,npm,npx} /usr/local/bin/`.
+4. **IPEX-LLM ollama models dir is `ollama:ollama` but daemon runs as `ubuntu`** — `ollama pull` fails part-way with `permission denied` on partial-blob writes. Fix: `sudo usermod -aG ollama ubuntu && sudo chgrp -R ollama /usr/share/ollama/.ollama/models/ && sudo chmod -R g+w /usr/share/ollama/.ollama/models/ && sudo systemctl restart ollama-ipex`. Affects models pulled AFTER initial provisioning (the install script seeds the first set as the ollama user).
+
+**Audit recipe for a stuck location:**
+```bash
+ssh ubuntu@<host> "systemctl --user list-timers sports-bar-autoupdate.timer; loginctl show-user ubuntu | grep Linger; ls -lat /home/ubuntu/sports-bar-data/update-logs/ | head -3; grep -E 'ROLLBACK|CONFLICT|FAIL' \$(ls -t /home/ubuntu/sports-bar-data/update-logs/*.log | head -1) | head -10"
+```
+If linger=no → fix it. If ROLLBACK present → resolve the conflict. If `npx: command not found` in a `rag-rescan-*.log` → symlink fix. If `ollama pull` errored with permission denied → group fix. Apply all four checks at install time via `docs/NEW_LOCATION_SETUP.md` §7b.
+
 ## Development Workflow
 
 ### Standing Rules (MUST follow in every session)
