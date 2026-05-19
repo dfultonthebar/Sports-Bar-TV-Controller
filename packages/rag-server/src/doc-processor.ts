@@ -129,17 +129,18 @@ function htmlToMarkdown(html: string): string {
  */
 async function extractTextFromPDF(filepath: string): Promise<string> {
   try {
-    // Use pdf-parse if available
-    const pdfParse = await import('pdf-parse').catch(() => null);
-    if (pdfParse) {
-      const dataBuffer = await fs.readFile(filepath);
-      const data = await pdfParse.default(dataBuffer);
-      return data.text;
+    // pdf-parse v2 (Sep 2025): { PDFParse } class replaces the v1
+    // default-callable. See packages/utils/src/text-extractor.ts for
+    // the same migration.
+    const mod = await import('pdf-parse').catch(() => null);
+    if (!mod?.PDFParse) {
+      logger.warn('pdf-parse not available, skipping PDF', { data: { filepath } });
+      return '';
     }
-
-    // Fallback: skip PDF processing
-    logger.warn('pdf-parse not available, skipping PDF', { data: { filepath } });
-    return '';
+    const dataBuffer = await fs.readFile(filepath);
+    const parser = new mod.PDFParse({ data: dataBuffer });
+    const result = await parser.getText();
+    return result.text;
   } catch (error) {
     logger.error('Error extracting PDF text', { data: { error, filepath } });
     return '';

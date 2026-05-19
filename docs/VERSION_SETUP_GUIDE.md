@@ -35,6 +35,31 @@ is the archive.
 
 ---
 
+## v2.47.1 — eslint 9→10 + pdf-parse 1→2 (continued Rule 10 pass)
+
+**Released:** 2026-05-18
+**Branch landed:** main
+
+**Required Manual Steps:** none — `bash scripts/auto-update.sh` handles `npm ci` + rebuild + restart automatically.
+
+**Known issue:** `npm run lint` will crash with `react/display-name: contextOrFilename.getFilename is not a function` until `eslint-config-next` ships ESLint 10 compat for the bundled `eslint-plugin-react`. Build + type-check + tests are unaffected; lint is a developer-only script.
+
+**Verification:**
+
+```bash
+# Confirm pdf-parse v2 and eslint 10 are installed
+node -e "console.log('pdf-parse:', require('pdf-parse/package.json').version)"
+node -e "console.log('eslint:', require('eslint/package.json').version)"
+# Expected: pdf-parse: 2.4.5  /  eslint: 10.x
+
+# Verify build still passes
+cd /home/ubuntu/Sports-Bar-TV-Controller
+npm run build 2>&1 | tail -3
+# Expected: Tasks: 29 successful, 29 total
+```
+
+---
+
 ## v2.47.0 — breaking-major npm dep bumps (first pass per Rule 10)
 
 **Released:** 2026-05-18

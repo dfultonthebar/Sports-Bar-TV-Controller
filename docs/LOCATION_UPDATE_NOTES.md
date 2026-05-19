@@ -46,6 +46,45 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-18 — v2.47.1 — eslint 9→10 + pdf-parse 1→2 migrations (continued Rule 10 pass)
+
+**What changed:**
+
+- **`pdf-parse` 1.1.1 → 2.4.5** across all workspaces (root, apps/web, utils, tv-docs, rag-server). v2 replaced the v1 default-callable with a `PDFParse` class:
+  - v1: `const data = await pdfParse(buffer); data.text / data.numpages`
+  - v2: `const p = new PDFParse({ data: buffer }); const r = await p.getText(); r.text / r.total`
+  - Migrated call sites: `packages/rag-server/src/doc-processor.ts:131`, `packages/utils/src/text-extractor.ts:30`
+  - **v2 `TextResult` no longer exposes `.info`** — only `{ pages, text, total }`. If PDF metadata is needed in the future, call `parser.getMetadata()` separately.
+- **`eslint` 9 → 10** (apps/web devDep). Required full migration:
+  - Removed `apps/web/.eslintrc.json` + root `.eslintrc.json` (ESLint 10 removed legacy `.eslintrc.*` support entirely per release notes — `feat!: remove eslintrc support`).
+  - Added `apps/web/eslint.config.js` (flat config) using `eslint-config-next/core-web-vitals` + `/typescript` + `typescript-eslint.configs.recommended/recommendedTypeChecked`.
+  - Removed deprecated `--ext .ts,.tsx,.js,.jsx` flag from `lint` + `lint:fix` scripts (eslint 10 infers extensions from `files` patterns in flat config).
+
+**What could break:**
+
+- **`npm run lint` itself crashes** with `react/display-name: contextOrFilename.getFilename is not a function` — `eslint-config-next@16.2.6` ships a nested `eslint-plugin-react` that's not yet ESLint-10-compatible. **Build, type-check, unit tests, integration tests, and runtime are unaffected** — lint is a developer-only script not gated by any workflow. Tracked upstream; remove this caveat when `eslint-config-next` ships its compat update.
+- **PDF ingestion** (RAG document scanning + utils text-extractor) now uses the v2 API. If any custom script imports pdf-parse with the v1 callable pattern, it must be migrated.
+
+**Manual steps required:** none for code; auto-update handles `npm ci` + rebuild + restart.
+
+**Rollback:** `git revert <SHA>` undoes everything. If you want to keep pdf-parse v2 but roll back eslint, revert `apps/web/eslint.config.js`, restore the two `.eslintrc.json` files, and re-pin `eslint@^9` in `apps/web/package.json`.
+
+**Affected files:**
+- `package.json` (version)
+- `package-lock.json`
+- `apps/web/package.json` (eslint ^10, pdf-parse ^2, scripts cleaned)
+- `apps/web/eslint.config.js` (NEW — flat config)
+- `apps/web/.eslintrc.json` (DELETED)
+- `.eslintrc.json` (DELETED)
+- `packages/rag-server/src/doc-processor.ts` (pdf-parse v2 migration)
+- `packages/rag-server/package.json` (pdf-parse ^2.4.5 — already was)
+- `packages/utils/src/text-extractor.ts` (pdf-parse v2 migration)
+- `packages/utils/package.json`, `packages/tv-docs/package.json` (pdf-parse ^2)
+
+`Checkpoint model: sonnet`
+
+---
+
 ### 2026-05-18 — v2.47.0 — breaking-major dep bumps per new Standing Rule 10
 
 **What changed:**

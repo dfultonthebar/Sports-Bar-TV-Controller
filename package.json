@@ -1,6 +1,6 @@
 {
   "name": "sports-bar-tv-controller",
-  "version": "2.47.0",
+  "version": "2.47.2",
   "private": true,
   "packageManager": "npm@10.8.2",
   "workspaces": [
@@ -31,6 +31,6 @@
   },
   "dependencies": {
     "@radix-ui/react-collapsible": "^1.1.12",
-    "pdf-parse": "^1.1.1"
+    "pdf-parse": "^2.4.5"
   }
 }
