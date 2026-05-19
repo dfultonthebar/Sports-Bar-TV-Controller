@@ -189,8 +189,11 @@ export {
   type RebuildProfilesResult,
 } from './artist-profile-builder'
 
+// v2.52.13: + SDR-aware findCleanFreqs for Tier 2 + Tier 4 freq suggestions
 export {
   runPreemptiveStrike,
+  findCleanFreqs,
   type PreemptiveStrikeOptions,
   type PreemptiveStrikeCandidate,
+  type CleanFreqSuggestion,
 } from './preemptive-strike'
