@@ -35,6 +35,57 @@ is the archive.
 
 ---
 
+## v2.46.3 — AI Hub Option B unification + Standing Rule 10 strengthened
+
+**Released:** 2026-05-18
+**Branch landed:** main
+
+**Required Manual Steps (per-location, IN ORDER):**
+
+1. **Pull latest code + auto-update:**
+   ```bash
+   bash scripts/auto-update.sh --triggered-by=manual_cli
+   ```
+
+2. **Per NEW Standing Rule 10 — refresh local AI models:**
+   ```bash
+   ollama pull llama3.1:8b
+   ollama pull nomic-embed-text
+   ollama pull qwen2.5:14b
+   ```
+   **Verification:** `ollama list` shows recent `MODIFIED` timestamp on all three.
+   **Gotcha:** if running IPEX-LLM Ollama (most fleet boxes), pulls may require `sudo` because models live under `/usr/share/ollama/.ollama/models/` (root-owned). Run `sudo -u ollama ollama pull <model>` OR `sudo chmod -R g+w /usr/share/ollama/.ollama/models/` then add your user to the `ollama` group.
+
+3. **Per NEW Standing Rule 10 — npm dep refresh:**
+   ```bash
+   cd /home/ubuntu/Sports-Bar-TV-Controller
+   npm audit fix
+   npm update
+   git add package.json package-lock.json
+   git commit -m "chore: weekly npm refresh per Standing Rule 10"
+   git push
+   ```
+   **Verification:** `npm outdated` shows fewer entries than before.
+
+4. **(Optional but recommended) Add source code to RAG store** so the AI Hub can answer implementation-level questions:
+   ```bash
+   cd /home/ubuntu/Sports-Bar-TV-Controller
+   npx tsx scripts/scan-code-docs.ts
+   ```
+   **Expected:** ~828 files indexed, ~5000 chunks added, run-time ~25 min on iGPU.
+   **Verification:** `curl localhost:3001/api/rag/stats | python3 -m json.tool` shows `totalChunks > 7000`.
+
+5. **Re-run the system doc scanner** if any of the above touched documentation:
+   ```bash
+   npx tsx scripts/scan-system-docs.ts
+   ```
+
+**Why this matters:** AI Hub chat at `/ai-hub` now grounds answers in our actual documentation instead of generic training data. Without the model refresh + code scan, AI Hub will work but won't have the full SME context.
+
+**Operator timing:** can be done during normal hours. The model pull is the biggest time sink (~10 min over good connection); npm refresh + code scan run in background.
+
+---
+
 ## OPERATOR HEADS-UP — 2026-04-17 batch (v2.18.0 through v2.22.x)
 
 **Applies to every location auto-updating tonight.** 14 versions shipped

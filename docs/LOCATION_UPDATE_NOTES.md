@@ -46,6 +46,42 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-18 — v2.46.3 — AI Hub Option B unification (RAG-grounded /api/chat) + tightened grounding + NEW Standing Rule 10 (always-latest)
+
+**What changed:**
+
+1. **AI Hub /api/chat now reads from the RAG vector store** (3,250 chunks across CLAUDE.md + docs/ + packages/*/README.md + .claude/locations/*.md + memory + vendor specs) instead of the separate older `enhanced-document-search`. AI Hub chat is now grounded in the same SME corpus the pattern-digest uses. Adapter `searchDocsViaRag()` falls back to `enhanced-document-search` if RAG is empty (fresh-install safety).
+2. **Tightened grounding** based on fact-checker re-grill 2026-05-18 (4/14 PASS originally → expected significant improvement):
+   - `topK` 5 → 8 (more concrete excerpts crowd out the LLM's training-set priors)
+   - `temperature` 0.7 → 0.3 (lowers paraphrase rate)
+   - Default model `phi3:mini` → `llama3.1:8b` (iGPU-accelerated, better grounding fidelity)
+   - System prompt now includes CRITICAL rule: "quote verbatim when docs contain specific names/ports/properties; refuse rather than fabricate"
+3. **NEW Standing Rule 10 — STRENGTHENED:** every npm dep, OS package, AND local AI model must stay on the latest available version "at any costs." Bump breaking-majors in the working PR + fix the breakage. See CLAUDE.md §"Standing Rules" #10 + `memory/feedback_always_latest_versions.md`.
+4. **New `scripts/scan-code-docs.ts`** — adds TypeScript source files (route handlers + lib services + package source + DB schema, ~828 files) to the RAG store so the AI Hub can answer implementation-level questions ("show me the function that polls UDP meters"). Runs alongside `scan-system-docs.ts` (doesn't replace). ~25 min embedding pass on iGPU.
+
+**What could break:**
+
+- **Holmgren / any updated location:** AI Hub chat now uses RAG → if the location hasn't run `scripts/scan-system-docs.ts`, RAG is empty and chat falls back to `enhanced-document-search` (zero-risk, same behavior as before this version).
+- **OLLAMA_MODEL env var:** previous default `phi3:mini` is faster but worse-grounded. If a location explicitly relied on phi3 for speed, override via `OLLAMA_MODEL=phi3:mini` in `.env`.
+
+**Manual steps required:**
+
+- Per Rule 10: after this update, run `npm update && npm audit fix` on every location, commit lockfile, push.
+- Per Rule 10: re-pull Ollama models (`ollama pull llama3.1:8b nomic-embed-text qwen2.5:14b`) on every location.
+- (Optional) Run `npx tsx scripts/scan-code-docs.ts` on every location after the doc-scan to add source-code grounding to the AI Hub.
+
+**Rollback:** `git revert <SHA>` reverts the chat-route changes; RAG store untouched (no schema migration).
+
+**Affected files:**
+- `apps/web/src/app/api/chat/route.ts` — new `searchDocsViaRag()` adapter, swapped both call sites, tightened prompt + temp + model
+- `scripts/scan-code-docs.ts` — NEW
+- `CLAUDE.md` — Standing Rule 10 strengthened
+- `memory/feedback_always_latest_versions.md` — NEW
+
+`Checkpoint model: sonnet`
+
+---
+
 ### 2026-05-18 — v2.38.0 → v2.45.1 — Shure channel-edit UI + LiveMicChips + SDR foundation + Day-4/5 polish + 7 critical fixes
 
 **Big multi-version push covering Shure operator-edit features, SDR
