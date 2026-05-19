@@ -1176,33 +1176,61 @@ else
       log "WARNING: ensure-schema.sh had errors — some new tables/columns may be missing"
     fi
   elif grep -qE "Interactive prompts require a TTY terminal" "$SCHEMA_PUSH_LOG"; then
-    # Case B — extract which tables drizzle wanted to drop
+    # Case B — drizzle-kit hit some kind of interactive prompt in non-TTY
+    # mode and bailed. There are TWO known sub-cases:
+    #   B1. "data-loss" — would drop tables/columns with rows (drizzle prints
+    #       "delete X table with N items"). Allowlist of safe-to-flag tables
+    #       (mostly watcher/audit ones declared in schema.ts as of v2.50.12).
+    #   B2. "column conflict" — drizzle's diff is ambiguous about whether
+    #       new columns are renames of removed columns. Prints
+    #       "promptColumnsConflicts" in stack. v2.51.4 fix: when we hit this
+    #       prompt AND ensure-schema.sh succeeds, treat as benign — the live
+    #       DB state matches schema.ts (we applied via ALTER TABLE), drizzle
+    #       just couldn't auto-confirm. Trust ensure-schema.sh's outcome.
     DROPPED_TABLES=$(grep -E "delete .* table with [0-9]+ items" "$SCHEMA_PUSH_LOG" | sed -E "s/.*delete ([a-z_]+) table.*/\1/" | sort -u | tr '\n' ' ')
-    log "WARNING: drizzle-kit hit data-loss prompt in non-TTY mode for tables: $DROPPED_TABLES"
-    # Allowlist: watcher tables that ARE supposed to live in the DB even though
-    # they're managed via raw CREATE TABLE IF NOT EXISTS in watcher startup code.
-    # Declared in schema.ts as of v2.50.12 to prevent this; allowlist remains
-    # as belt-and-suspenders in case a new watcher table gets added later
-    # without a matching schema.ts entry.
-    SAFE_TABLES_REGEX="^(atlas_drop_events|atlas_priority_events|shure_rf_events|scheduling_preferences|sdr_spectrum|sdr_carriers|sdr_state|chat_messages|ChatSession|ChatMessage|chat_feedback|chat_qa_training|ai_indexing_log)$"
-    UNSAFE_TABLES=""
-    for T in $DROPPED_TABLES; do
-      if ! [[ "$T" =~ $SAFE_TABLES_REGEX ]]; then
-        UNSAFE_TABLES="$UNSAFE_TABLES $T"
+    IS_COLUMN_CONFLICT=$(grep -cE "promptColumnsConflicts|columnsResolver" "$SCHEMA_PUSH_LOG" 2>/dev/null || echo 0)
+
+    if [ -n "$DROPPED_TABLES" ]; then
+      # Sub-case B1: data-loss table drop
+      log "WARNING: drizzle-kit hit data-loss prompt in non-TTY mode for tables: $DROPPED_TABLES"
+      SAFE_TABLES_REGEX="^(atlas_drop_events|atlas_priority_events|shure_rf_events|scheduling_preferences|sdr_spectrum|sdr_carriers|sdr_state|chat_messages|ChatSession|ChatMessage|chat_feedback|chat_qa_training|ai_indexing_log)$"
+      UNSAFE_TABLES=""
+      for T in $DROPPED_TABLES; do
+        if ! [[ "$T" =~ $SAFE_TABLES_REGEX ]]; then
+          UNSAFE_TABLES="$UNSAFE_TABLES $T"
+        fi
+      done
+      if [ -z "$UNSAFE_TABLES" ]; then
+        log "  All flagged tables are on the known-safe watcher/audit allowlist — continuing."
+        log "  (TO ROOT-FIX: add the table to packages/database/src/schema.ts so drizzle stops flagging it.)"
+        if bash "$REPO_ROOT/scripts/ensure-schema.sh" "$DB_PATH" 2>&1 | tee -a "$LOG_FILE"; then
+          log "ensure-schema.sh fallback completed successfully"
+        else
+          log "WARNING: ensure-schema.sh had errors — some new tables/columns may be missing"
+        fi
+      else
+        fail "drizzle-kit data-loss prompt for non-allowlisted tables:$UNSAFE_TABLES — manual review required. Either declare the table in schema.ts (preferred) or add to the allowlist in scripts/auto-update.sh schema_push step. See $SCHEMA_PUSH_LOG for full output." 4
       fi
-    done
-    if [ -z "$UNSAFE_TABLES" ]; then
-      log "  All flagged tables are on the known-safe watcher/audit allowlist — continuing."
-      log "  (TO ROOT-FIX: add the table to packages/database/src/schema.ts so drizzle stops flagging it.)"
-      # Run ensure-schema.sh in case there's a legit new column/table that
-      # also needed creating but got blocked by the prompt error.
+    elif [ "$IS_COLUMN_CONFLICT" != "0" ]; then
+      # Sub-case B2: column-conflict prompt (v2.51.4+). drizzle can't tell
+      # if a new column is a rename of a removed one. Fall through to
+      # ensure-schema.sh — if it succeeds, the live DB is in sync with
+      # schema.ts and drizzle's diff was wrong.
+      log "WARNING: drizzle-kit hit column-conflict prompt in non-TTY mode (rename detection ambiguity)"
+      log "  Falling through to ensure-schema.sh — if it succeeds, live DB matches schema.ts"
+      if bash "$REPO_ROOT/scripts/ensure-schema.sh" "$DB_PATH" 2>&1 | tee -a "$LOG_FILE"; then
+        log "ensure-schema.sh fallback completed successfully — column changes safely applied"
+      else
+        fail "drizzle-kit column-conflict + ensure-schema.sh also failed — manual review required. See $SCHEMA_PUSH_LOG." 4
+      fi
+    else
+      log "WARNING: drizzle-kit hit unrecognized TTY prompt in non-TTY mode"
+      log "  Falling through to ensure-schema.sh as last-resort"
       if bash "$REPO_ROOT/scripts/ensure-schema.sh" "$DB_PATH" 2>&1 | tee -a "$LOG_FILE"; then
         log "ensure-schema.sh fallback completed successfully"
       else
-        log "WARNING: ensure-schema.sh had errors — some new tables/columns may be missing"
+        fail "drizzle-kit unknown TTY prompt + ensure-schema.sh also failed — manual review required. See $SCHEMA_PUSH_LOG." 4
       fi
-    else
-      fail "drizzle-kit data-loss prompt for non-allowlisted tables:$UNSAFE_TABLES — manual review required. Either declare the table in schema.ts (preferred) or add to the allowlist in scripts/auto-update.sh schema_push step. See $SCHEMA_PUSH_LOG for full output." 4
     fi
   else
     cat "$SCHEMA_PUSH_LOG" >> "$LOG_FILE"
