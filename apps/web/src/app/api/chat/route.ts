@@ -207,7 +207,21 @@ async function processStreamingChat(
     logger.info('[STREAMING] Calling documentSearch.searchDocuments...')
     const relevantDocs = await searchDocsViaRag(message, 8)
     logger.info('[STREAMING] Document search completed', { data: { found: relevantDocs.length } })
-    
+
+    // v2.49.0: emit source citations so the UI can render "answer based
+    // on docs X/Y/Z" — closes UX-audit BROKEN-#3 (no source attribution).
+    // Shape per doc: filename, relevance score, first 200 chars excerpt.
+    if (relevantDocs.length > 0) {
+      await sendSSE({
+        type: 'sources',
+        sources: relevantDocs.map((d) => ({
+          name: d.originalName,
+          score: d.relevanceScore,
+          excerpt: d.content.substring(0, 200),
+        })),
+      })
+    }
+
     // Get recent operation logs for context
     logger.info('[STREAMING] Getting recent operations...')
     const recentOperations = await operationLogger.getRecentOperations(24)
@@ -215,22 +229,32 @@ async function processStreamingChat(
     logger.info('[STREAMING] Getting operation summary...')
     const operationSummary = await operationLogger.getOperationSummary(24)
     logger.info('[STREAMING] Operation summary retrieved')
-    
+
     // Build enhanced context
     let context = ''
-    
+
     if (relevantDocs.length > 0) {
       context += `\n\n=== RELEVANT DOCUMENTATION ===\n`
       relevantDocs.forEach((doc, index) => {
         context += `\nDocument ${index + 1}: ${doc.originalName} (Relevance: ${doc.relevanceScore})\n`
         context += `Matched terms: ${doc.matchedTerms.join(', ')}\n`
-        context += `Content excerpt: ${doc.content.substring(0, 1000)}...\n`
+        // v2.49.0: tightened from 1000 → 600 chars per chunk. Chat-route
+        // audit flagged context-budget risk: 8 chunks × 1000 + persona +
+        // tools + chat-history was approaching llama3.1:8b's 8K context
+        // window. 600 × 8 = 4.8KB keeps comfortable headroom.
+        context += `Content excerpt: ${doc.content.substring(0, 600)}...\n`
         context += `---\n`
       })
     }
-    
-    // Add operational context if the query seems related to system status or troubleshooting
-    const isOperationalQuery = /status|error|problem|issue|trouble|working|broken|log|recent|activity/i.test(message)
+
+    // v2.49.0: broadened — chat-route audit flagged the old regex
+    // (`status|error|problem|issue|trouble|working|broken|log|recent|activity`)
+    // missed queries like "what happened last night?" or "why is the
+    // kitchen zone quiet?". Now include 24h activity context for ANY
+    // non-trivially-short query (≥6 chars), since the operator is
+    // usually asking about the system. Tradeoff: ~400 bytes per request
+    // on RAG-only queries that don't need it — acceptable.
+    const isOperationalQuery = message.trim().length >= 6
     if (isOperationalQuery && (recentOperations.length > 0 || operationSummary.errorCount > 0)) {
       context += `\n\n=== RECENT SYSTEM ACTIVITY ===\n`
       context += `Operations in last 24h: ${operationSummary.totalOperations}\n`
@@ -313,8 +337,6 @@ async function processStreamingChat(
 
 ${toolsPrompt}
 
-${context}
-
 ## Tool Usage:
 When you need to access files, execute code, or perform system operations, use the available tools by responding in this format:
 
@@ -333,16 +355,41 @@ Available tools: ${availableTools.map(t => t.name).join(', ')}
 - Use tools when they can provide better information
 - Always explain what you're doing when using tools
 
-## CRITICAL — Grounding rules (v2.46.3):
-When the RELEVANT DOCUMENTATION section contains a specific name, port,
-property, IP, file path, version, command flag, or wire-protocol token
-that answers the question, **QUOTE IT VERBATIM from the documentation**.
-Do not paraphrase or substitute with a generic term you remember from
-training data — our docs are authoritative on every detail of this
-system. If the docs disagree with what you remember, the docs win.
-If the documentation does NOT contain the specific detail being asked,
-say "I don't see that in the indexed documentation" rather than
-fabricating an answer.`,
+${context}
+
+## CRITICAL — Grounding rules (v2.49.0 — placed AT END for LLM recency):
+When the RELEVANT DOCUMENTATION section above contains a specific name,
+port, property, IP, file path, version, command flag, or wire-protocol
+token that answers the question, **QUOTE IT VERBATIM from the
+documentation**. Do not paraphrase or substitute with a generic term
+you remember from training data — our docs are authoritative on every
+detail of this system. If the docs disagree with what you remember,
+the docs win.
+
+### Anti-inversion rule (CRITICAL — fact-checker 2026-05-18 fail mode):
+Our docs frequently use the pattern "**X (NOT Y)**" to call out a
+specific value AND warn against the wrong one. When you see that
+pattern, the correct answer is **X**, not Y. Example from the Shure
+docs:
+
+  > Wire-protocol property names per Shure's spec — **TX_MODEL (NOT TX_TYPE)**
+
+The answer to "what's the transmitter model property name?" is
+**TX_MODEL**. Do NOT answer TX_TYPE — that's the explicitly-wrong value
+the docs are warning against. Same pattern applies to GROUP_CHANNEL
+(NOT GROUP_CHAN), audio gain offset (+18 NOT raw dB), etc.
+
+### Extraction rule:
+If the documentation explicitly contains the detail being asked but
+appears partial or unclear, EXTRACT what's there and note the gap —
+don't refuse outright. The operator wants the best answer the docs
+support, not a refusal because the answer isn't a perfect verbatim
+match.
+
+Only respond with "I don't see that in the indexed documentation" when
+you have genuinely checked all RELEVANT DOCUMENTATION snippets and
+NONE address the question. Do not refuse on uncertainty — extract from
+what's there.`,
     }
 
     // Add user message
@@ -503,8 +550,9 @@ async function handleNonStreamingChat(
   if (relevantDocs.length > 0) {
     context += `\n\n=== RELEVANT DOCUMENTATION ===\n`
     relevantDocs.forEach((doc, index) => {
-      context += `\nDocument ${index + 1}: ${doc.originalName}\n`
-      context += `Content: ${doc.content.substring(0, 1000)}...\n`
+      context += `\nDocument ${index + 1}: ${doc.originalName} (Relevance: ${doc.relevanceScore})\n`
+      // v2.49.0: 600-char chunks (was 1000) — context-budget safety
+      context += `Content: ${doc.content.substring(0, 600)}...\n`
     })
   }
 
@@ -528,15 +576,21 @@ async function handleNonStreamingChat(
     role: 'system',
     content: `You are a Sports Bar AI Assistant with access to documentation and tools.
 
-CRITICAL: When the RELEVANT DOCUMENTATION section contains a specific
-name, port, property, IP, path, or wire-protocol token that answers the
-question, QUOTE IT VERBATIM from the documentation. Do not paraphrase
-or substitute with a generic term from training data — our docs are
-authoritative. If the docs don't contain the specific detail, say so
-rather than fabricating an answer.
-
 ${toolsPrompt}
-${context}`,
+${context}
+
+## CRITICAL — Grounding rules (v2.49.0 — placed AT END for LLM recency):
+When the RELEVANT DOCUMENTATION section above contains a specific name,
+port, property, IP, file path, version, command flag, or wire-protocol
+token that answers the question, **QUOTE IT VERBATIM from the
+documentation**. Do not paraphrase or substitute with a generic term
+you remember from training data — our docs are authoritative.
+
+If the documentation contains the detail but appears partial, EXTRACT
+what's there and note the gap — don't refuse outright.
+
+Only respond with "I don't see that in the indexed documentation" when
+NONE of the snippets address the question. Do not refuse on uncertainty.`,
   }
 
   messages.push({ role: 'user', content: message })
@@ -590,6 +644,14 @@ ${context}`,
   return NextResponse.json({
     response: aiResponse,
     sessionId: sessionId || 'new',
+    // v2.49.0: source citations so the UI can render "answer based on
+    // docs X/Y/Z" — closes UX-audit BROKEN-#3 (no source attribution).
+    sources: relevantDocs.map((d) => ({
+      name: d.originalName,
+      score: d.relevanceScore,
+      excerpt: d.content.substring(0, 200),
+    })),
+    model: OLLAMA_MODEL, // v2.49.0: surface model for UI badge + better error messages
   })
 }
 
