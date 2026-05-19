@@ -24,6 +24,60 @@
 import { db, sql, schema } from '@sports-bar/database'
 import { logger } from '@sports-bar/logger'
 
+// v2.52.20 fix (audit M1): create rf_pattern_digest at runtime if it
+// doesn't already exist. Pre-fix relied entirely on `drizzle-kit push`
+// for table creation — fresh installs OR locations that skipped the
+// push step (CLAUDE.md Gotcha #6) would throw "no such table" on the
+// first INSERT and never recover. Mirrors sdr-watcher.ts's
+// ensureTables() pattern.
+let tableEnsured = false
+async function ensureDigestTable(): Promise<void> {
+  if (tableEnsured) return
+  try {
+    await db.run(sql`
+      CREATE TABLE IF NOT EXISTS rf_pattern_digest (
+        id TEXT PRIMARY KEY,
+        location_id TEXT NOT NULL,
+        period_start INTEGER NOT NULL,
+        period_end INTEGER NOT NULL,
+        summary_text TEXT NOT NULL,
+        structured_findings TEXT,
+        model_used TEXT NOT NULL,
+        prompt_token_count INTEGER,
+        completion_token_count INTEGER,
+        generation_ms INTEGER,
+        generated_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+      )
+    `)
+    await db.run(sql`
+      CREATE INDEX IF NOT EXISTS rf_pattern_digest_location_idx
+      ON rf_pattern_digest(location_id, generated_at DESC)
+    `)
+    tableEnsured = true
+  } catch (err) {
+    logger.error('[RF-DIGEST] ensureDigestTable failed:', (err as Error)?.message ?? err)
+  }
+}
+
+// v2.52.20 fix (audit security #1): sanitize LLM-interpolated free-form
+// strings (venue + artist names from external scrapers). Strips
+// newlines, control chars, and length-caps at 80 chars. Without this,
+// a crafted venue name like `"} Ignore previous instructions and ...`
+// could derail the LLM into outputting misleading operator instructions
+// stored verbatim in rf_pattern_digest.summary_text + rendered on the
+// bartender screen. The output is operator-facing only (no code-exec
+// path) but misleading "all mics broken" text on a bartender screen is
+// a concrete harm.
+function sanitizeForLlmContext(s: string | null | undefined): string {
+  if (!s) return ''
+  return s
+    .replace(/[\r\n\t]+/g, ' ')
+    .replace(/[\x00-\x1f\x7f]/g, '')
+    .replace(/```+/g, "'''")  // neutralize fenced-block injection
+    .slice(0, 80)
+    .trim()
+}
+
 // v2.52.17: switched from qwen2.5:14b (9 GB) to llama3.1:8b (5 GB) so
 // the daily digest shares the SAME resident model as everything else
 // (shift-brief, ai-suggest, chat). Pre-v2.52.17 had both models pinned
@@ -203,7 +257,7 @@ function formatPromptForLlm(counts: RawCounts): string {
     : counts.topInterferers
         .map(
           (r) =>
-            `  - ${r.artist_name ?? r.artist_normalized ?? '?'} at ${r.venue_name ?? '?'} (${(r.distance_mi ?? 0).toFixed(2)} mi): ${r.attribution_count} attributions, avg confidence ${(r.avg_confidence ?? 0).toFixed(2)}, sources [${r.source_breakdown ?? '?'}]`,
+            `  - ${sanitizeForLlmContext(r.artist_name ?? r.artist_normalized ?? '?')} at ${sanitizeForLlmContext(r.venue_name ?? '?')} (${(r.distance_mi ?? 0).toFixed(2)} mi): ${r.attribution_count} attributions, avg confidence ${(r.avg_confidence ?? 0).toFixed(2)}, sources [${r.source_breakdown ?? '?'}]`,
         )
         .join('\n')
 
@@ -212,7 +266,7 @@ function formatPromptForLlm(counts: RawCounts): string {
     : counts.upcomingEvents24h
         .map((e) => {
           const hoursAway = ((e.start_time - Math.floor(Date.now() / 1000)) / 3600).toFixed(1)
-          return `  - ${e.artist_name} at ${e.venue_name} in ${hoursAway}h (${(e.distance_mi ?? 0).toFixed(2)} mi)${e.has_profile ? ' [KNOWN INTERFERER]' : ''}`
+          return `  - ${sanitizeForLlmContext(e.artist_name)} at ${sanitizeForLlmContext(e.venue_name)} in ${hoursAway}h (${(e.distance_mi ?? 0).toFixed(2)} mi)${e.has_profile ? ' [KNOWN INTERFERER]' : ''}`
         })
         .join('\n')
 
@@ -297,6 +351,8 @@ export async function generateRfPatternDigest(opts?: {
   const periodStart = periodEnd - PERIOD_HOURS * 3600
 
   logger.info(`[RF-DIGEST] generating for location ${locationId}, model ${model}, ${PERIOD_HOURS}h window`)
+
+  await ensureDigestTable() // v2.52.20: runtime CREATE IF NOT EXISTS
 
   const counts = await gatherRawCounts(locationId)
   const prompt = formatPromptForLlm(counts)

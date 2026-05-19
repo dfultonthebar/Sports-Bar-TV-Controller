@@ -142,16 +142,21 @@ export async function correlateInterference(
 
       // Upsert via the unique (rf_event_id, neighborhood_event_id) index.
       // Re-running adjusts confidence / time_delta only.
+      // v2.52.20 fix (audit M2): include source='shure' explicitly
+      // rather than relying on the column default. The default keeps
+      // working but if the schema is ever recreated without a default
+      // (re-migration, fresh install glitch) this silently failed.
+      // Explicit is defensive + matches the SDR pass on line 316.
       await db.run(sql`
         INSERT INTO InterferenceAttribution (
           id, rf_event_id, neighborhood_event_id,
           time_delta_seconds, distance_mi, confidence,
-          attribution_method, created_at
+          attribution_method, source, created_at
         )
         VALUES (
           ${crypto.randomUUID()}, ${rf.id}, ${ne.id},
           ${dt}, ${dist}, ${confidence},
-          'correlation_v1', ${nowSec}
+          'correlation_v1', 'shure', ${nowSec}
         )
         ON CONFLICT(rf_event_id, neighborhood_event_id) DO UPDATE SET
           confidence = excluded.confidence,

@@ -7,6 +7,23 @@ import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { HARDWARE_CONFIG } from '@/lib/hardware-config'
 
+// v2.52.20 (audit security #2): sanitize free-form scraper-sourced
+// strings before LLM interpolation. Bananas Entertainment + venue
+// discovery feed artist + venue names into NeighborhoodEvent; those
+// could in principle contain newlines or instruction-shaped text that
+// derails the LLM into outputting misleading operator instructions.
+// Output is operator-facing only (no code-exec) but a "Heads up: all
+// mics broken" line on the bartender screen is a real harm path.
+function sanitizeForLlmContext(s: string | null | undefined): string {
+  if (!s) return ''
+  return s
+    .replace(/[\r\n\t]+/g, ' ')
+    .replace(/[\x00-\x1f\x7f]/g, '')
+    .replace(/```+/g, "'''")
+    .slice(0, 80)
+    .trim()
+}
+
 // Pre-shift brief. When a bartender opens their remote or the manager
 // opens the Sports Guide admin, this endpoint synthesizes:
 //   - games starting in the next 12 hours, flagged home-team or not
@@ -357,7 +374,7 @@ function buildPrompt(ctx: any): string {
     ? ctx.upcomingMicRisks.map((r: any) => {
         const distance = r.distanceMi != null ? ` (${r.distanceMi.toFixed(1)} mi away)` : ''
         const flag = r.known ? ' — KNOWN INTERFERER from past gigs' : ''
-        return `- ${r.artistName} at ${r.venueName} at ${r.startLocal}${distance}${flag}`
+        return `- ${sanitizeForLlmContext(r.artistName)} at ${sanitizeForLlmContext(r.venueName)} at ${r.startLocal}${distance}${flag}`
       }).join('\n')
     : '- (no nearby gigs in the next 12 hours)'
 
@@ -453,7 +470,7 @@ function fallbackBrief(ctx: any): string {
     )
     for (const r of relevant) {
       const flag = r.known ? ' (known interferer from past gigs)' : ''
-      lines.push(`Heads up: ${r.artistName} at ${r.venueName} at ${r.startLocal} might cause mic interference${flag}.`)
+      lines.push(`Heads up: ${sanitizeForLlmContext(r.artistName)} at ${sanitizeForLlmContext(r.venueName)} at ${r.startLocal} might cause mic interference${flag}.`)
     }
   }
   return lines.join('\n')

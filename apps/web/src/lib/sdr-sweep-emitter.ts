@@ -53,7 +53,13 @@ export function getSdrSweepEmitter(): EventEmitter {
     // Bump max listeners — the SSE route can have multiple open
     // clients (operator's browser, fleet dashboard scraper, etc.).
     // Default is 10 which is too low for a long-lived process.
-    ee.setMaxListeners(50)
+    // v2.52.20: bumped 50 → 0 (unlimited). The SSE route's abort
+    // handler in /api/sdr/stream/route.ts is the correct leak guard
+    // (audit H1 fix in v2.52.19 hardened the registration order so
+    // there's no race window). With unlimited the operator never sees
+    // the noisy "possible EventEmitter memory leak" warning even if a
+    // dozen tabs are open at once.
+    ee.setMaxListeners(0)
     g[KEY] = ee
   }
   return g[KEY] as EventEmitter
