@@ -1079,6 +1079,59 @@ if [ "$MERGE_EXIT" -ne 0 ]; then
   # .claude/locations/stoneyard-appleton.md when v2.32.23 added a stub on
   # main and the location had its own pre-existing version.
   CONFLICT_RE='^(UU|AA|DU|UD)'
+
+  # v2.52.5 fix (task #155, Mode 1 of auto-update-failure-modes memory):
+  # modify/delete (UD) auto-resolver with caller-grep. Pre-v2.52.5, the
+  # resolver tried `git checkout --theirs` on UD conflicts, which fails
+  # silently because main has NO "theirs" version when it deleted the
+  # file. Trap then aborted the merge — graystone hit this 2026-05-19
+  # when v2.48.x verified-dead-route sweeps merged into a location that
+  # had whitespace mods on those routes.
+  #
+  # Strategy: a UD conflict (deleted by them=main, modified by us=location)
+  # means main intentionally removed the file. If our caller-grep proves
+  # there are no live references to it in apps/web/src/ (the live code
+  # paths), we accept the deletion via `git rm`. If references DO exist,
+  # the deletion would break runtime — STOP for human review.
+  #
+  # Symmetric DU (deleted by us=location, modified by them=main) is the
+  # rarer case where the location deleted a file that main edited. We
+  # currently treat that the same way (caller-grep → rm or STOP) since
+  # the location's intent was clearly "remove this file."
+  resolve_modify_delete() {
+    local conflicts
+    conflicts=$(git status --porcelain | grep -E '^(UD|DU) ' || true)
+    [ -z "$conflicts" ] && return 0
+    while IFS= read -r line; do
+      [ -z "$line" ] && continue
+      local conflict_path="${line:3}"
+      local status_code="${line:0:2}"
+      local basename_part
+      basename_part=$(basename "$conflict_path" | sed -E 's/\.(ts|tsx|js|jsx|md|sql|json)$//')
+      # Caller-grep: scan apps/web/src for imports/refs to this file's
+      # basename. Multiple variants to catch each style of import.
+      local refs=0
+      if [ -d "$REPO_ROOT/apps/web/src" ]; then
+        refs=$(grep -rlE "(['\"\`]).*${basename_part}\\1|/${basename_part}\\b" \
+          "$REPO_ROOT/apps/web/src" "$REPO_ROOT/packages" 2>/dev/null | \
+          grep -v "$conflict_path" | wc -l)
+      fi
+      if [ "$refs" -eq 0 ]; then
+        log "  modify/delete ($status_code): accepting deletion of $conflict_path (0 live refs to basename '$basename_part')"
+        git rm -f "$conflict_path" 2>&1 | tee -a "$LOG_FILE" || true
+      else
+        log "  modify/delete ($status_code): $conflict_path has $refs live refs — STOP for human review"
+        git status --porcelain "$conflict_path" | tee -a "$LOG_FILE"
+        return 1  # signal that auto-resolve can't handle this
+      fi
+    done <<<"$conflicts"
+    return 0
+  }
+  if ! resolve_modify_delete; then
+    git merge --abort 2>/dev/null || true
+    fail "modify/delete conflict on file with live callers — needs human review" 3
+  fi
+
   for path in "${LOCATION_PATHS_OURS[@]}"; do
     # If the path is a directory, the status query lists every conflicted
     # file inside it; resolve each one individually.
