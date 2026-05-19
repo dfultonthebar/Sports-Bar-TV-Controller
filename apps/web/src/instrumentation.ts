@@ -80,8 +80,13 @@ export async function register() {
     }
 
     try {
-      // Import and start the scheduler service for continuous game monitoring
-      const { schedulerService } = await import('./lib/scheduler-service')
+      // Import and start the scheduler service for continuous game monitoring.
+      // v2.50.15: was importing './lib/scheduler-service' which doesn't exist —
+      // the module relocated to @sports-bar/scheduler in the V2 monorepo split.
+      // The try/catch swallowed MODULE_NOT_FOUND so the failure was silent and
+      // the 60-second tick stopped running across the entire fleet (AI Game
+      // Monitor schedule executions broke). Same import pattern as line 132.
+      const { schedulerService } = await import('@sports-bar/scheduler')
 
       // Start the scheduler service (checks every minute for schedules to execute)
       schedulerService.start()
