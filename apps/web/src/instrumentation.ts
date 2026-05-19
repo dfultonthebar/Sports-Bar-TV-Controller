@@ -2,10 +2,45 @@ import { logger } from '@sports-bar/logger'
 
 /**
  * Next.js Instrumentation File
- * 
+ *
  * This file runs once when the Next.js server starts.
  * Use it to initialize services that should run continuously.
  */
+
+// ---------------------------------------------------------------------------
+// Timer registry (v2.52.3 — BG-process audit Finding #4)
+// ---------------------------------------------------------------------------
+// Pre-v2.52.3, each `setInterval`/`setTimeout` returned a handle that was
+// discarded. PM2 reload, Next.js HMR, or any instrumentation re-invocation
+// could not clear the prior timers — parallel ESPN syncs, Atlas learning
+// cycles, etc. accumulated each restart. Per `scheduler-service.ts`'s
+// `polls` Map pattern (the exemplary case the audit cited), collect every
+// handle in a Set and expose `shutdownInstrumentation()` so the process
+// can stop them on SIGTERM if a graceful shutdown hook ever lands.
+const instrumentationTimers = new Set<NodeJS.Timeout>()
+
+function registerInterval(fn: () => void, ms: number): NodeJS.Timeout {
+  const h = setInterval(fn, ms)
+  instrumentationTimers.add(h)
+  return h
+}
+
+function registerTimeout(fn: () => void, ms: number): NodeJS.Timeout {
+  const h = setTimeout(() => {
+    instrumentationTimers.delete(h)
+    fn()
+  }, ms)
+  instrumentationTimers.add(h)
+  return h
+}
+
+export function shutdownInstrumentation(): void {
+  for (const h of instrumentationTimers) {
+    clearInterval(h)
+    clearTimeout(h)
+  }
+  instrumentationTimers.clear()
+}
 
 export async function register() {
   // Only run on server side
@@ -112,14 +147,14 @@ export async function register() {
       const { runLearningCycle } = await import('@sports-bar/wolfpack')
 
       // Run initial cycle after 60s warm-up delay
-      setTimeout(() => {
+      registerTimeout(() => {
         runLearningCycle().catch((err: unknown) => {
           logger.error('[INSTRUMENTATION] Initial learning cycle failed:', err)
         })
       }, 60_000)
 
       // Schedule recurring cycle every 6 hours
-      setInterval(() => {
+      registerInterval(() => {
         runLearningCycle().catch((err: unknown) => {
           logger.error('[INSTRUMENTATION] Learning cycle failed:', err)
         })
@@ -202,7 +237,7 @@ export async function register() {
       }
 
       // Initial sync after 30s warm-up delay (lets DB/other services settle)
-      setTimeout(() => {
+      registerTimeout(() => {
         runEspnSyncAll().catch((err: unknown) => {
           logger.error('[INSTRUMENTATION] Initial ESPN sync failed:', err)
         })
@@ -210,7 +245,7 @@ export async function register() {
 
       // Recurring sync every 10 minutes — fast enough to detect game completion
       // for the auto-reallocator to revert cable boxes to default channels
-      setInterval(() => {
+      registerInterval(() => {
         runEspnSyncAll().catch((err: unknown) => {
           logger.error('[INSTRUMENTATION] Recurring ESPN sync failed:', err)
         })
@@ -239,8 +274,8 @@ export async function register() {
         }
       }
 
-      setTimeout(runSamsungProbe, 45_000)
-      setInterval(runSamsungProbe, 4 * 60 * 60 * 1000)
+      registerTimeout(runSamsungProbe, 45_000)
+      registerInterval(runSamsungProbe, 4 * 60 * 60 * 1000)
 
       logger.info('[INSTRUMENTATION] ✅ Samsung TV model probe scheduled (every 4 hours)')
     } catch (error) {
@@ -267,8 +302,8 @@ export async function register() {
         }
       }
 
-      setTimeout(runLGProbe, 60_000)
-      setInterval(runLGProbe, 4 * 60 * 60 * 1000)
+      registerTimeout(runLGProbe, 60_000)
+      registerInterval(runLGProbe, 4 * 60 * 60 * 1000)
 
       logger.info('[INSTRUMENTATION] ✅ LG TV model probe scheduled (every 4 hours)')
     } catch (error) {
@@ -280,14 +315,14 @@ export async function register() {
       const { runAtlasLearningCycle } = await import('@sports-bar/atlas')
 
       // Run initial cycle after 90s warm-up delay (staggered from wolfpack's 60s)
-      setTimeout(() => {
+      registerTimeout(() => {
         runAtlasLearningCycle().catch((err: unknown) => {
           logger.error('[INSTRUMENTATION] Initial Atlas learning cycle failed:', err)
         })
       }, 90_000)
 
       // Schedule recurring cycle every 6 hours
-      setInterval(() => {
+      registerInterval(() => {
         runAtlasLearningCycle().catch((err: unknown) => {
           logger.error('[INSTRUMENTATION] Atlas learning cycle failed:', err)
         })
@@ -320,9 +355,9 @@ export async function register() {
       }
 
       // Initial sync after 75s (staggered so we don't hammer the network on boot)
-      setTimeout(runNfhsSync, 75_000)
+      registerTimeout(runNfhsSync, 75_000)
       // Recurring: hourly
-      setInterval(runNfhsSync, 60 * 60 * 1000)
+      registerInterval(runNfhsSync, 60 * 60 * 1000)
 
       logger.info('[INSTRUMENTATION] ✅ NFHS Network sync scheduled (hourly)')
     } catch (error) {

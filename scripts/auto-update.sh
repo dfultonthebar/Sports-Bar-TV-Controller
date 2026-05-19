@@ -413,11 +413,23 @@ PY
 # ---------------------------------------------------------------------------
 cleanup_on_error() {
   local exit_code=$?
-  rm -f "$PID_FILE" 2>/dev/null || true
   if [ "$exit_code" -eq 0 ]; then
+    rm -f "$PID_FILE" 2>/dev/null || true
+    exec 200>&- 2>/dev/null || true
     return
   fi
   log "Trap fired: exit code=$exit_code, step=$CURRENT_STEP"
+  # v2.52.3 fix (AP-4 audit Finding #1): do NOT rm PID_FILE here. Rollback
+  # children (rollback.sh + its child spawns) inherit FD 200 on the lock
+  # file via this script's `exec 200>"$LOCK_FILE"`. If we drop the PID
+  # file NOW but those children keep FD 200 open, a concurrent cron tick
+  # sees (lock + no PID file) and the v2.52.2 sweep mis-classifies the
+  # state as orphan (the rollback children aren't named "auto-update.sh"
+  # so pgrep misses them). Result: lock gets swept WHILE rollback is
+  # still running — a real concurrency hazard.
+  #
+  # Defer PID removal + FD release until after rollback completes at end
+  # of this function. cleanup_on_error_finalize() handles both.
 
   # Only trigger rollback if we got past the merge step (state has changed).
   case "$CURRENT_STEP" in
@@ -428,6 +440,9 @@ cleanup_on_error() {
       fi
       state_update "fail" "Aborted at $CURRENT_STEP"
       write_summary_json "fail" "Aborted at $CURRENT_STEP before state change"
+      # v2.52.3: no rollback children to inherit FD 200 → safe to release now
+      rm -f "$PID_FILE" 2>/dev/null || true
+      exec 200>&- 2>/dev/null || true
       return
       ;;
   esac
@@ -437,6 +452,9 @@ cleanup_on_error() {
     state_update "fail" "CRITICAL: no rollback tag, step=$CURRENT_STEP"
     [ -n "$HISTORY_ID" ] && history_update_result "fail" "CRITICAL: no rollback tag"
     write_summary_json "fail" "CRITICAL: no rollback tag, step=$CURRENT_STEP"
+    # v2.52.3: no rollback ran → safe to release
+    rm -f "$PID_FILE" 2>/dev/null || true
+    exec 200>&- 2>/dev/null || true
     return
   fi
 
@@ -452,8 +470,16 @@ cleanup_on_error() {
     state_update "fail" "Rollback failed at step: $CURRENT_STEP (rollback exit $rc)"
     [ -n "$HISTORY_ID" ] && history_update_result "fail" "Rollback failed: exit $rc"
     write_summary_json "fail" "Rollback failed at step: $CURRENT_STEP (rollback exit $rc)"
+    # v2.52.3: still release lock+PID before exit 99 — rollback already
+    # finished, no children to inherit FD 200.
+    rm -f "$PID_FILE" 2>/dev/null || true
+    exec 200>&- 2>/dev/null || true
     exit 99
   fi
+  # v2.52.3: NOW it is safe to release the lock — rollback children have
+  # finished, any FD 200 inheritors have exited.
+  rm -f "$PID_FILE" 2>/dev/null || true
+  exec 200>&- 2>/dev/null || true
 }
 trap cleanup_on_error EXIT
 
@@ -1258,7 +1284,12 @@ else
     #       prompt AND ensure-schema.sh succeeds, treat as benign — the live
     #       DB state matches schema.ts (we applied via ALTER TABLE), drizzle
     #       just couldn't auto-confirm. Trust ensure-schema.sh's outcome.
-    DROPPED_TABLES=$(grep -E "delete .* table with [0-9]+ items" "$SCHEMA_PUSH_LOG" | sed -E "s/.*delete ([a-z_]+) table.*/\1/" | sort -u | tr '\n' ' ')
+    # v2.52.3 fix (code-reviewer audit Finding #4): regex was `[a-z_]+`
+    # which silently EXCLUDED PascalCase tables like ChatSession + ChatMessage
+    # from UNSAFE_TABLES — drizzle-kit IS dropping them per its log but our
+    # parser pretends it didn't see them, so the schema-drop safety check
+    # was a no-op for half the tables in our schema. Expand to [A-Za-z_].
+    DROPPED_TABLES=$(grep -E "delete .* table with [0-9]+ items" "$SCHEMA_PUSH_LOG" | sed -E "s/.*delete ([A-Za-z_]+) table.*/\1/" | sort -u | tr '\n' ' ')
     IS_COLUMN_CONFLICT=$(grep -cE "promptColumnsConflicts|columnsResolver" "$SCHEMA_PUSH_LOG" 2>/dev/null || echo 0)
 
     if [ -n "$DROPPED_TABLES" ]; then
@@ -1437,10 +1468,11 @@ if [ "${PIPESTATUS[0]}" -ne 0 ]; then
   if [ "$BUILD_RECOVERY" = "full_rollback" ]; then
     fail "npm run build failed and degraded-up was unsafe — falling back to full rollback" 4
   else
-    # Skip the cleanup trap's rollback — exit cleanly with exit 2.
-    # cleanup_on_error() at line 343 keys on $? != 0 to fire rollback;
-    # work around by explicitly clearing the trap before exit.
-    trap - EXIT
+    # v2.52.3 fix (code-reviewer audit Finding #3): `trap - EXIT` disarmed
+    # ALL signals — a SIGTERM between the trap clear and the exit would
+    # skip cleanup entirely. Replace with an explicit cleanup-only trap
+    # that still runs PID+FD release but skips rollback.
+    trap 'rm -f "$PID_FILE" 2>/dev/null || true; exec 200>&- 2>/dev/null || true' EXIT
     exit 2
   fi
 fi
