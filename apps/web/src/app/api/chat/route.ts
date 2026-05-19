@@ -56,6 +56,24 @@ const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || HARDWARE_CONFIG.ollama.ba
 // OLLAMA_MODEL env if you want the faster/dumber phi3:mini.
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'llama3.1:8b'
 
+// v2.50.0 Quick win #4 from docs/AI_HUB_ROADMAP_v2.50.md: tool-heavy
+// routes need a 14B+ model per BFCL benchmark. 8B is below the
+// practical multi-tool floor (~70% reliability); qwen2.5:14b hits
+// ~94%. Already iGPU-resident per FLEET_STATUS. Plain chat stays on
+// llama3.1:8b (~2× faster, fine for non-tool answers).
+const OLLAMA_TOOLS_MODEL = process.env.OLLAMA_TOOLS_MODEL || 'qwen2.5:14b'
+function pickModel(enableTools: boolean): string {
+  return enableTools ? OLLAMA_TOOLS_MODEL : OLLAMA_MODEL
+}
+
+// v2.50.0 Quick win #1: keep the model resident permanently so the
+// prefix KV cache survives across requests. Default Ollama unloads
+// at 5 min idle which forces a 30-100s cold reload on the next call
+// — that's why Graystone times 170s vs Appleton's 67s on identical
+// queries. Per-request keep_alive overrides server default; no env
+// change needed at any location. -1 = never unload.
+const OLLAMA_KEEP_ALIVE = -1
+
 // Option B unification (v2.46.3): the AI Hub /api/chat reads from the
 // RAG vector store (3000+ chunks: CLAUDE.md, docs/, packages/*/README.md,
 // .claude/locations/*.md, memory files, vendor protocol specs) instead
@@ -315,7 +333,11 @@ async function processStreamingChat(
     // assistant. Repeated 3 times (prompt-engineering best practice) so
     // the model can't drift into ChatGPT-style "I'm just an LLM" speak.
     const locationName = process.env.LOCATION_NAME || 'this Sports Bar TV Controller installation'
-    const enhancedDocCount = relevantDocs.length
+    // v2.50.0 #1: removed enhancedDocCount from the cacheable prefix.
+    // It was interpolated near the top of the system prompt, breaking
+    // KV cache prefix matching on every request (different count = new
+    // prefix = recompute everything). The chunk count is logged
+    // separately for debugging; the model doesn't need to see it.
     const systemMessage: ChatMessage = {
       role: 'system',
       content: `You are the AI Hub for the Sports Bar TV Controller system at ${locationName}. You are NOT a generic large language model. You are NOT ChatGPT. You ARE the operator-facing AI of a specific running installation with real hardware and real data.
@@ -371,7 +393,7 @@ who's behind the bar dealing with a live problem:
   overwhelming a bartender with jargon makes them stop using the
   chat entirely.
 
-## What you know about (just retrieved ${enhancedDocCount} relevant chunks for this query):
+## What you know about (your indexed knowledge — RAG-grounded):
 - ${locationName} is one of 6 bar locations running this stack
 - Hardware integrations: Atlas Atmosphere audio processors (AZM4/AZM8), Shure SLX-D wireless mics, Wolf Pack HDMI matrix switchers, Crestron DM matrix, BSS Soundweb London + dbx ZonePRO audio DSPs, DirecTV Genie receivers, Amazon Fire TV Cubes, Global Cache iTach IP2IR IR blasters, Pulse-Eight CEC adapters, NESDR Smart RTL-SDR
 - Software stack: Next.js 16 + Turborepo + npm workspaces, Drizzle ORM + SQLite at /home/ubuntu/sports-bar-data/production.db, PM2 + Nginx (port 3001 admin, 3002 bartender remote on iPad), IPEX-LLM Ollama with llama3.1:8b on Intel Iris Xe iGPU
@@ -500,15 +522,18 @@ what's there.`,
     
     logger.info('[STREAMING] Calling Ollama API at:', { data: OLLAMA_BASE_URL })
     logger.info('[STREAMING] Using model:', { data: OLLAMA_MODEL })
+    const streamModel = pickModel(enableTools)
     logger.info('[STREAMING] Message count:', { data: [systemMessage, ...messages].length })
-    
+    logger.info('[STREAMING] Picked model:', { data: streamModel })
+
     const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: OLLAMA_MODEL,
+        model: streamModel,
         messages: [systemMessage, ...messages],
         stream: true, // Enable streaming from Ollama
+        keep_alive: OLLAMA_KEEP_ALIVE, // v2.50.0 #1: stay resident → warm prefix cache
         options: {
           temperature: 0.3, // v2.46.3: lowered from 0.7 for RAG fidelity
           top_p: 0.9,
@@ -717,13 +742,15 @@ NONE of the snippets address the question. Do not refuse on uncertainty.`,
   messages.push({ role: 'user', content: message })
 
   // Call Ollama without streaming
+  const nsModel = pickModel(enableTools)
   const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: OLLAMA_MODEL,
+      model: nsModel,
       messages: [systemMessage, ...messages],
       stream: false,
+      keep_alive: OLLAMA_KEEP_ALIVE, // v2.50.0 #1: stay resident → warm prefix cache
       options: {
         temperature: 0.3, // v2.46.3: match streaming-path fidelity setting
         top_p: 0.9,
@@ -792,7 +819,7 @@ NONE of the snippets address the question. Do not refuse on uncertainty.`,
       score: d.relevanceScore,
       excerpt: d.content.substring(0, 200),
     })),
-    model: OLLAMA_MODEL, // v2.49.0: surface model for UI badge + better error messages
+    model: nsModel, // v2.50.0: report the actual model picked (varies with enableTools)
   })
 }
 
@@ -882,13 +909,16 @@ async function getFollowUpResponse(
     },
   ]
 
+  // v2.50.0: follow-up after tool execution always uses the tools model
+  // (we got here because the prior call used tools). Same keep_alive.
   const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: OLLAMA_MODEL,
+      model: pickModel(true),
       messages: followUpMessages,
       stream: false,
+      keep_alive: OLLAMA_KEEP_ALIVE,
     }),
   })
 
