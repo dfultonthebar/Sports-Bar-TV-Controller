@@ -1296,6 +1296,13 @@ fi
 # PHASE: PM2 RESTART
 # ===========================================================================
 step "pm2_restart"
+# v2.50.14: record exact pm2_restart moment so Checkpoint C's PM2 crash-pattern
+# detector can filter out stale crashes from BEFORE this restart. Without this,
+# any unrelated crash in the last 80 PM2 log lines trips the deterministic STOP
+# (Holmgren hit this 2026-05-19 with a 5-min-old JSON parse error from a
+# chat/RAG race). Export so checkpoint-deterministic.sh's awk filter sees it.
+export PM2_RESTART_EPOCH=$(date +%s)
+log "PM2_RESTART_EPOCH=$PM2_RESTART_EPOCH (Checkpoint C crash scan will ignore older log lines)"
 log "pm2 restart sports-bar-tv-controller --update-env"
 pm2 restart sports-bar-tv-controller --update-env 2>&1 | tee -a "$LOG_FILE"
 if [ "${PIPESTATUS[0]}" -ne 0 ]; then

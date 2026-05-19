@@ -315,7 +315,94 @@ Growing size + recent mtime = actively working. Mtime older than your trigger ti
 
 ---
 
-## Failure mode 12: stale Q-A or RAG-related processes burning CPU/RAM for hours
+## Failure mode 12: Checkpoint A false-positive — "critical script deleted in pending diff"
+
+**Symptom:** Checkpoint A returns `STOP - critical script deleted in pending diff` at a location that hasn't been updated in a while, even though the pending commits only ADD/MODIFY scripts (no deletions).
+
+**Real-world hit:** **leglamp-tvcontroller, 2026-05-19** — v2.50.13 push (which only added `docs/CLAUDE_CLI_RAG_ACCESS.md` and modified `package.json` + `scripts/auto-update.sh`). Checkpoint A flagged it because the location's `.auto-update-last-success.json` (a per-location heartbeat file that exists on leglamp but doesn't exist on `main`) appears as `D .auto-update-last-success.json` in `git diff HEAD..origin/main`. The old detector OR'd "any critical script touched" with "any file deleted" — both true, so STOP fired even though the deleted file wasn't a critical script.
+
+**Why:** the deterministic Checkpoint A scan in `scripts/checkpoint-deterministic.sh` had:
+```bash
+if echo "$diff" | grep -qE '^diff --git a/scripts/(auto-update|verify-install|rollback)\.sh' && \
+   echo "$diff" | grep -qE '^deleted file mode'; then
+  emit STOP "critical script deleted in pending diff"
+fi
+```
+The two greps were independent — one fired on script CHANGE, the other on ANY file delete. They didn't have to be the SAME file.
+
+**Fix (v2.50.14):** narrowed the check to extract the per-file diff section for each critical script and confirm THAT file specifically has `deleted file mode`. Now an unrelated heartbeat-file delete plus a critical-script modification no longer false-positives.
+
+**Workaround on a stuck location (pre-v2.50.14):**
+```bash
+# manually mark the run as approved + skip checkpoint A (NOT a real flag, just rebuild)
+# OR delete the heartbeat file on the location branch so it doesn't appear "deleted":
+ssh ubuntu@<host>
+cd ~/Sports-Bar-TV-Controller
+git rm .auto-update-last-success.json  # location-only, gets recreated on next successful run
+git commit -m "chore: remove stale heartbeat to unblock checkpoint A"
+git push origin location/<name>
+bash scripts/auto-update.sh --triggered-by=manual_cli
+```
+
+---
+
+## Failure mode 13: Checkpoint C false-positive — stale PM2 crash from BEFORE pm2_restart
+
+**Symptom:** Checkpoint C returns `STOP - fresh crash pattern in PM2 logs post-restart` and rolls back, but the cited crash timestamp is BEFORE the auto-update's `pm2_restart` step in the same log.
+
+**Real-world hit:** **Holmgren, 2026-05-19 02:38:29** — Checkpoint C cited a `SyntaxError: Unterminated string in JSON at position 13617698` crash at 02:33:44 (5 min before the run's pm2_restart at 02:38:06). The crash was real — likely caused by the chat API trying to read `vector-store.json` while the rag-rescan was rewriting it (race condition). But it predated the current run's restart by 5 minutes, so it was leftover noise, not a regression introduced by the merge.
+
+**Why:** the deterministic Checkpoint C scan grabs `pm2 logs --lines 80 --nostream` and greps for crash patterns. With no timestamp filter, any pre-existing crash in those 80 lines (which can span 30+ minutes during low-traffic periods) is treated as fresh.
+
+**Fix (v2.50.14):** `auto-update.sh` now exports `PM2_RESTART_EPOCH=$(date +%s)` immediately before invoking `pm2 restart`. Checkpoint C's awk filter parses each PM2 log line's timestamp, converts to epoch, and skips any crash older than the restart. Pre-restart noise no longer trips STOP.
+
+**Workaround on a stuck location (pre-v2.50.14):**
+```bash
+# Confirm the cited crash is genuinely from before pm2_restart in your run's log:
+ssh ubuntu@<host>
+grep -E 'PM2 crash pattern hit|STEP: pm2_restart' \
+  $(ls -t ~/sports-bar-data/update-logs/auto-update-*.log | head -1)
+# If the crash timestamp is older than pm2_restart, the rollback was a false-positive.
+# Re-fire after a few minutes (so the stale crash scrolls out of PM2's last 80 lines):
+bash scripts/auto-update.sh --triggered-by=manual_cli
+```
+
+If the crash IS post-restart, it's a real regression — investigate the v2.X.Y diff for what could have caused it.
+
+---
+
+## Failure mode 14: stale flock held by orphaned child processes — "Another auto-update run is in progress (lock held)"
+
+**Symptom:** every `bash scripts/auto-update.sh --triggered-by=manual_cli` exits within 1 second with log: `Another auto-update run is in progress (lock held). Exiting cleanly.` BUT `pgrep -af auto-update.sh` shows no actual auto-update process. The 104-byte log file from the "lock held" exit accumulates.
+
+**Real-world hit:** **Holmgren, 2026-05-19 02:50** — needed to fire v2.50.14 after greenville+luckys+graystone+appleton landed but every retry exited at 1 second with "lock held". `pgrep` showed no auto-update.sh running. `lsof /tmp/sports-bar-auto-update.lock` revealed 4 orphan processes holding FD 200 on the lock: bash 632052, npm 632054, sh 632078, node 632079 — leftovers from a backgrounded SSH/build that the script exited but the children never died.
+
+**Why:** `auto-update.sh` uses `exec 200>"$LOCK_FILE"; flock -n 200` for mutual exclusion. The lock is automatically released when the FD is closed — normally that happens at process exit. But if the script `setsid -f`'s itself into the background AND a child npm/build subprocess inherits FD 200 AND that child outlives the script (e.g. detached via nohup or session-killed parent leaves zombies), the kernel keeps the flock held against the orphan FD. The next auto-update.sh's `flock -n 200` correctly fails because the lock IS held — just not by the process the operator thinks.
+
+**Detection:**
+```bash
+# Confirm the lock file exists but no auto-update.sh is running
+ls -la /tmp/sports-bar-auto-update.lock
+pgrep -af 'scripts/auto-update.sh' | head -3       # should return nothing or just your grep
+# Identify the orphan holder
+sudo lsof /tmp/sports-bar-auto-update.lock         # lists PIDs holding FD 200 on the lock
+ps -p <PID> -o pid,etime,stat,wchan:25,comm        # check if it's really orphaned
+```
+
+**Fix (one line, idempotent):**
+```bash
+rm -f /tmp/sports-bar-auto-update.lock
+# OR if orphan processes need to die too (lsof showed real-looking children):
+# sudo kill <PID>...  for each orphan
+# then rm the lock
+bash scripts/auto-update.sh --triggered-by=manual_cli    # should now proceed past the lock check
+```
+
+**Prevention (planned):** auto-update.sh's flock acquisition should also write its OWN PID to a sidecar file at lock acquisition, and `flock -n 200` failure should check whether that PID is alive via `kill -0`. If the recorded PID is dead, treat the lock as stale, remove the file, and retry. Current behavior trusts flock unconditionally, which gets it wrong for orphan-FD cases.
+
+---
+
+## Failure mode 15: stale Q-A or RAG-related processes burning CPU/RAM for hours
 
 **Symptom:** `ps aux | grep node` shows long-running processes (multi-hour elapsed) with 0% CPU, in `ep_poll` state. Their output files are empty or never created.
 
