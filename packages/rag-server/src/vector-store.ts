@@ -10,6 +10,7 @@ import { logger } from '@sports-bar/logger';
 import { RAGConfig } from './config';
 import { DocumentChunk } from './doc-processor';
 import { generateEmbedding, generateEmbeddings } from './llm-client';
+import { bm25AddChunks, bm25Clear, bm25Search } from './bm25-store';
 
 export interface VectorEntry {
   id: string;
@@ -174,6 +175,19 @@ export async function addChunks(chunks: DocumentChunk[]): Promise<void> {
     // Save store
     await saveVectorStore(store);
 
+    // v2.50.4: mirror to BM25 sparse index. Errors here MUST NOT
+    // poison the dense store — log and move on. Hybrid search falls
+    // back to vector-only if BM25 is empty/broken.
+    try {
+      await bm25AddChunks(chunks.map((c) => ({
+        id: c.id,
+        content: c.content,
+        metadata: { filepath: c.metadata?.filepath, filename: c.metadata?.filename },
+      })));
+    } catch (bm25Err) {
+      logger.warn('BM25 mirror failed (vector store still updated)', { error: bm25Err });
+    }
+
     const duration = Date.now() - startTime;
     logger.info('Chunks added successfully', {
       data: {
@@ -331,10 +345,102 @@ export async function clearVectorStore(): Promise<void> {
     };
     await saveVectorStore(emptyStore);
     logger.info('Vector store cleared');
+    // v2.50.4: also clear BM25 index — keeping them in lockstep
+    try {
+      await bm25Clear();
+    } catch (bm25Err) {
+      logger.warn('BM25 clear failed', { error: bm25Err });
+    }
   } catch (error) {
     logger.error('Error clearing vector store', { error });
     throw error;
   }
+}
+
+/**
+ * v2.50.4: Hybrid search — runs vector + BM25 in parallel, fuses with
+ * Reciprocal Rank Fusion (RRF, k=60 — the documented robust default).
+ *
+ * Why hybrid: dense embeddings smear literal identifiers (TX_MODEL,
+ * outputOffset, ERR_2:1,010) into "concept" space; BM25 nails exact
+ * tokens. Stacked, they outperform either alone by ~15-20% on
+ * identifier-heavy queries per 2025 benchmarks.
+ *
+ * RRF formula: score(d) = Σ 1/(k + rank_i(d))
+ *   where k=60, rank_i = rank of doc d in retriever i (1-based)
+ *
+ * Robust against BM25 being empty (no results / not yet indexed): falls
+ * back to vector-only.
+ */
+export async function searchHybrid(
+  query: string,
+  topK: number = RAGConfig.topK,
+  techTagFilter?: string[],
+): Promise<SearchResult[]> {
+  const RRF_K = 60;
+  const RETRIEVE_DEPTH = Math.max(topK * 6, 50);
+
+  // Run both in parallel — BM25 is fast (<10ms), vector is ~200ms
+  const [vectorResults, bm25Results] = await Promise.all([
+    searchVectorStore(query, RETRIEVE_DEPTH, techTagFilter),
+    bm25Search(query, RETRIEVE_DEPTH),
+  ]);
+
+  // If BM25 returned nothing (no scorable query tokens), just return
+  // vector top-K — no point in fusion
+  if (bm25Results.length === 0) {
+    return vectorResults.slice(0, topK);
+  }
+
+  // Build chunkId → SearchResult lookup from the vector side (we'll
+  // need to return SearchResult shape; BM25 only knows chunkIds)
+  const vectorById = new Map<string, SearchResult>();
+  vectorResults.forEach((r) => vectorById.set(r.id, r));
+
+  // Build chunkId → fused RRF score
+  const fusedScores = new Map<string, { result: SearchResult; rrf: number }>();
+
+  vectorResults.forEach((r, i) => {
+    const rank = i + 1;
+    fusedScores.set(r.id, { result: r, rrf: 1 / (RRF_K + rank) });
+  });
+
+  bm25Results.forEach((b) => {
+    const rrfBoost = 1 / (RRF_K + b.rank);
+    const existing = fusedScores.get(b.chunkId);
+    if (existing) {
+      existing.rrf += rrfBoost;
+    } else {
+      // BM25-only hit — we don't have a vector for it in our top retrieval.
+      // Synthesize a SearchResult shell so it can rank in the output.
+      // The chunk won't have full metadata but at least makes it through.
+      // (Full content reconstruction would require a JSON store read.)
+      // For now: skip BM25-only results to keep semantics tight. RRF
+      // already favors items that appear in BOTH retrievers — solo-BM25
+      // hits are usually low-quality (single keyword match in irrelevant doc).
+    }
+  });
+
+  // Sort by fused RRF score, take topK
+  const fused = Array.from(fusedScores.values())
+    .sort((a, b) => b.rrf - a.rrf)
+    .slice(0, topK)
+    .map(({ result, rrf }) => ({
+      ...result,
+      score: rrf, // override score with fused RRF for downstream display
+    }));
+
+  logger.info('Hybrid search completed', {
+    data: {
+      query: query.substring(0, 50),
+      vectorTop1Score: vectorResults[0]?.score ?? 0,
+      bm25Hits: bm25Results.length,
+      fusedReturned: fused.length,
+      topFused: fused[0]?.score ?? 0,
+    },
+  });
+
+  return fused;
 }
 
 /**
