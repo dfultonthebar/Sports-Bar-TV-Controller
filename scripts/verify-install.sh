@@ -366,6 +366,30 @@ check_crash_logs() {
     local matches
     matches=$(echo "$logs" | grep -E '(^|^\[[^]]*\][[:space:]]+|^[A-Za-z]+:[[:space:]]+)(Error:|FATAL|UnhandledPromiseRejection|MODULE_NOT_FOUND)' || true)
 
+    # v2.52.0 — filter matches to those AFTER PM2_RESTART_EPOCH. Mirrors
+    # the v2.50.14 fix to checkpoint-deterministic.sh that we missed
+    # propagating here (audit discovery, docs/AUTO_UPDATE_DESIGN_RULES.md
+    # AP-5). Without this filter, a stale crash from BEFORE the rollback
+    # pm2_restart can false-positive verify-install during the rollback
+    # itself — rollback.sh:174-180 re-runs verify-install --quiet.
+    if [ -n "$matches" ] && [ -n "${PM2_RESTART_EPOCH:-}" ]; then
+        local filtered
+        filtered=$(echo "$matches" | awk -v re="$PM2_RESTART_EPOCH" '
+            {
+                match($0, /[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}/)
+                if (RLENGTH > 0) {
+                    ts = substr($0, RSTART, RLENGTH)
+                    cmd = "date +%s -d \"" ts "\" 2>/dev/null"
+                    cmd | getline epoch; close(cmd)
+                    if (epoch + 0 >= re + 0) print
+                } else {
+                    # Cannot parse timestamp — include for safety
+                    print
+                }
+            }')
+        matches="$filtered"
+    fi
+
     if [ -n "$matches" ]; then
         local count
         count=$(echo "$matches" | wc -l)

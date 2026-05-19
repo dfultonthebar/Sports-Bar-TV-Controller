@@ -205,19 +205,60 @@ sql_escape() {
 }
 
 # ---------------------------------------------------------------------------
-# Mutual exclusion via flock
+# Mutual exclusion via flock + PID-staleness sweep
 # ---------------------------------------------------------------------------
 # `flock -n` fails immediately if another run holds the lock. The lock is
 # released automatically when the shell exits (including on SIGKILL) because
 # file descriptors are closed by the kernel.
-exec 200>"$LOCK_FILE"
-if ! flock -n 200; then
-  log "Another auto-update run is in progress (lock held). Exiting cleanly."
-  exit 0
-fi
-
-# Write PID file for the Sync tab status API
-echo $$ > "$PID_FILE"
+#
+# v2.52.0 — added PID-staleness check + exit code 75 semantics.
+#
+# WHY: pre-v2.52.0 flock would correctly say "lock held" but the lock could
+# be held by ORPHAN child processes (npm/build/node) that inherited FD 200
+# from a parent script that already exited. `pgrep -af auto-update.sh`
+# would return nothing yet the lock would persist (Mode 14 — Holmgren
+# 2026-05-19 02:50). Operator had to manually `rm /tmp/sports-bar-auto-update.lock`.
+#
+# Now: on lock-failed, check the PID file. If the recorded PID is dead,
+# remove the lock + PID file, retry once. If still held by alive PID,
+# exit 75 — distinct from real failure exit codes, so cron/systemd can
+# retry sooner. Per AP-4 in docs/AUTO_UPDATE_DESIGN_RULES.md + Helm/ArgoCD
+# inspired patterns.
+acquire_lock_or_sweep_stale() {
+  exec 200>"$LOCK_FILE"
+  if flock -n 200; then
+    echo $$ > "$PID_FILE"
+    return 0
+  fi
+  # Lock held. Read PID, check if it's alive.
+  if [ -f "$PID_FILE" ]; then
+    local pid
+    pid=$(cat "$PID_FILE" 2>/dev/null | tr -d '[:space:]')
+    if [ -n "$pid" ] && [ "$pid" -gt 0 ] 2>/dev/null; then
+      if ! kill -0 "$pid" 2>/dev/null; then
+        log "Stale lock detected — recorded PID $pid is dead. Clearing lock + retrying."
+        # Close our FD-200 first so the rm doesn't affect a brand-new flock
+        # we're about to acquire.
+        exec 200>&-
+        rm -f "$LOCK_FILE" "$PID_FILE"
+        exec 200>"$LOCK_FILE"
+        if flock -n 200; then
+          echo $$ > "$PID_FILE"
+          return 0
+        fi
+        log "Lock still unavailable after stale-PID sweep — another run started concurrently."
+      else
+        log "Lock held by ALIVE PID $pid — legit concurrent run, exiting cleanly (exit 75 = 'retry later')."
+      fi
+    else
+      log "Lock held but PID file empty/unreadable — possibly mid-acquisition by concurrent run. Exiting clean (exit 75)."
+    fi
+  else
+    log "Lock held but no PID file — orphan lock from setsid-detached child. Exit 75."
+  fi
+  exit 75
+}
+acquire_lock_or_sweep_stale
 
 # ---------------------------------------------------------------------------
 # History row helpers
@@ -1315,9 +1356,63 @@ fi
 
 log "npm run build (--force to bypass Turbo cache for package changes)"
 rm -rf "$REPO_ROOT/.turbo" "$REPO_ROOT/node_modules/.cache"
+# Save the pre-build .next as .next.bak so degraded-up recovery (below) can
+# restore it if the new build fails. v2.32.x already did this for the
+# rollback path; v2.52.0 promotes .next.bak from "input to rollback.sh" to
+# "primary in-place recovery artifact" so we don't need a full git reset
+# for compile-only failures.
+if [ -d "$REPO_ROOT/apps/web/.next" ] && [ ! -d "$REPO_ROOT/apps/web/.next.bak" ]; then
+  cp -al "$REPO_ROOT/apps/web/.next" "$REPO_ROOT/apps/web/.next.bak" 2>/dev/null || cp -a "$REPO_ROOT/apps/web/.next" "$REPO_ROOT/apps/web/.next.bak"
+fi
 npx turbo run build --force 2>&1 | tee -a "$LOG_FILE"
 if [ "${PIPESTATUS[0]}" -ne 0 ]; then
-  fail "npm run build failed" 4
+  # v2.52.0 — DEGRADED-UP recovery instead of full rollback.
+  #
+  # Pre-v2.52.0: any build failure called `fail "npm run build failed" 4`
+  # which triggered the cleanup trap → rollback.sh → git reset --hard →
+  # PM2 restart on rolled-back code → ~5 min service interruption × 6
+  # boxes simultaneously when main has a bad commit (2026-05-19 geocoder TS).
+  #
+  # Now: leave the merge commit in place, restore the prior .next/ artifact
+  # so PM2 serves the previous-good build, reload PM2 to drop any stale
+  # module caches, mark history result 'fail_build_kept_old', exit 2.
+  # The next cron picks up either (a) a fix on main → succeeds, or (b)
+  # the same broken main → exits 2 again with no churn.
+  #
+  # SAFETY GATE: this works only for pure-code build failures. If the
+  # merge included a schema change or a package-major bump, the previous
+  # build CAN'T safely serve the new state. Detection: did schema.ts or
+  # drizzle/*.sql or package-lock.json *.major* change? If so, fall back
+  # to the v2.32.x rollback path. Otherwise, degraded-up.
+  log "❌ Build failed. Evaluating recovery strategy (degraded-up vs full rollback)..."
+  BUILD_RECOVERY="degraded_up"
+  if git -C "$REPO_ROOT" diff --name-only "$PRE_MERGE_SHA" "$POST_MERGE_SHA" 2>/dev/null | grep -qE "packages/database/src/schema\.ts|drizzle/[0-9]+_.*\.sql$"; then
+    log "  Merge includes schema changes — previous build may not handle new schema. Falling back to full rollback."
+    BUILD_RECOVERY="full_rollback"
+  fi
+  if [ "$BUILD_RECOVERY" = "degraded_up" ] && [ -d "$REPO_ROOT/apps/web/.next.bak" ]; then
+    log "  → DEGRADED-UP: restoring .next from .next.bak, leaving merge applied, reloading PM2"
+    rm -rf "$REPO_ROOT/apps/web/.next"
+    mv "$REPO_ROOT/apps/web/.next.bak" "$REPO_ROOT/apps/web/.next"
+    pm2 reload sports-bar-tv-controller --update-env 2>&1 | tee -a "$LOG_FILE" || true
+    sleep 5
+    if curl -sf -m 5 http://localhost:3001/api/health >/dev/null 2>&1; then
+      log "  ✓ Bar still serving on previous-good build. Next cron will retry."
+      log "  History row recorded with result='fail_build_kept_old' (exit 2 — different from rollback exit 4)."
+    else
+      log "  ⚠ Health check failed after PM2 reload — degraded-up didn't help. Falling back to full rollback."
+      BUILD_RECOVERY="full_rollback"
+    fi
+  fi
+  if [ "$BUILD_RECOVERY" = "full_rollback" ]; then
+    fail "npm run build failed and degraded-up was unsafe — falling back to full rollback" 4
+  else
+    # Skip the cleanup trap's rollback — exit cleanly with exit 2.
+    # cleanup_on_error() at line 343 keys on $? != 0 to fire rollback;
+    # work around by explicitly clearing the trap before exit.
+    trap - EXIT
+    exit 2
+  fi
 fi
 
 # ===========================================================================
