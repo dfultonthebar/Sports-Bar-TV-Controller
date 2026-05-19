@@ -5,8 +5,7 @@
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "scripts": {
-    "build": "echo 'Build handled by consuming apps'",
-    "lint": "eslint src/"
+    "build": "echo 'Build handled by consuming apps'"
   },
   "dependencies": {
     "@sports-bar/logger": "*"
