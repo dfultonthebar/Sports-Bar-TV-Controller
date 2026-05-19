@@ -258,9 +258,15 @@ interface DigestResult {
 
 async function callOllama(prompt: string, model: string): Promise<{ text: string; promptTokens: number | null; completionTokens: number | null; ms: number }> {
   const start = Date.now()
+  // v2.52.19 fix (audit H3): add AbortSignal.timeout. Pre-fix had NO
+  // timeout, so if Ollama was busy loading another model into VRAM the
+  // fetch hung indefinitely. POST /api/sdr/digest would never return,
+  // leaving the operator on a spinner until PM2 keep-alive killed it.
+  // shift-brief had this timeout from day one; this matches.
   const res = await fetch(`${OLLAMA_URL}/api/generate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    signal: AbortSignal.timeout(120_000),
     body: JSON.stringify({
       model,
       prompt,
