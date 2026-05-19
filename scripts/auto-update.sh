@@ -658,6 +658,23 @@ if [ -f "$REPO_ROOT/.env" ]; then
   set +a
 fi
 
+# 0b. Ensure NEXT_SERVER_ACTIONS_ENCRYPTION_KEY is persisted in .env
+# BEFORE the build runs (task #149, v2.52.6). Without a persistent key
+# Next.js generates a random one per build → Server Action references
+# in stale client bundles fail with "Failed to find Server Action 'X'"
+# after every PM2 restart. Holmgren logged exactly that 2026-05-19 05:52
+# after the v2.52.1 PM2 restart. Idempotent: skips if key already set.
+if [ -x "$REPO_ROOT/scripts/ensure-server-actions-key.sh" ]; then
+  bash "$REPO_ROOT/scripts/ensure-server-actions-key.sh" 2>&1 | tee -a "$LOG_FILE" || log "WARN: ensure-server-actions-key failed (non-fatal)"
+  # Re-source so subsequent shell sees the new key
+  if [ -f "$REPO_ROOT/.env" ]; then
+    set -a
+    # shellcheck disable=SC1091
+    source "$REPO_ROOT/.env"
+    set +a
+  fi
+fi
+
 # 0. Confirm we're in a clean git repo on a location branch
 cd "$REPO_ROOT" || fail "cannot cd to $REPO_ROOT" 2
 BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
