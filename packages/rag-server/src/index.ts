@@ -45,6 +45,7 @@ export {
   saveVectorStore,
   addChunks,
   searchVectorStore,
+  searchHybrid, // v2.50.4
   clearVectorStore,
   getVectorStoreStats,
   removeDocument,
@@ -70,3 +71,13 @@ export {
   stopAutoIndexer,
 } from './auto-indexer';
 export type { AutoIndexerOptions } from './auto-indexer';
+// v2.50.4: BM25 sparse-retrieval store for hybrid search
+export {
+  getBM25Db,
+  bm25AddChunks,
+  bm25Clear,
+  bm25Search,
+  bm25Stats,
+} from './bm25-store';
+export type { BM25SearchResult } from './bm25-store';
+
