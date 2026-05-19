@@ -2763,3 +2763,149 @@ export const schedulingPreferences = sqliteTable('scheduling_preferences', {
   leagueIdx: index('SchedulingPreference_league_idx').on(table.league),
   isActiveIdx: index('SchedulingPreference_isActive_idx').on(table.isActive),
 }))
+
+// ============================================================================
+// NEIGHBORHOOD RF INTERFERENCE PREDICTION (v2.51.0+)
+// ============================================================================
+// AI-powered system that polls nearby venue event calendars (Bandsintown,
+// Bananas Entertainment scrape, manual operator entry, per-venue scrapers
+// for Anduzi's / Stadium View / etc.) and correlates with our own Shure
+// SLX-D RF interference detections. Builds an artist-level confidence
+// profile so when a known-interferer band/DJ is booked at a nearby venue
+// tomorrow, the scheduler can pre-emptively retune our wireless mics to
+// clean frequencies BEFORE they set up.
+//
+// Distance + time-window correlation: an artist gig within 0.5 mi of our
+// venue + within ±30 min of an rf_interference event is a candidate
+// attribution. After 3+ attributions across multiple gigs, the artist
+// gets a profile row with predicted_freqs_affected and a textual
+// recommendation. The scheduler tick reads this daily at 6 AM.
+//
+// Lambeau Field + Resch Center are the dominant interference sources at
+// Holmgren Way (~0.3 mi away). Broadcast wireless rigs for Packers home
+// games + concerts span the entire UHF band. Game/concert dates are
+// public + predictable — operators want pre-emptive scans 4+ hours
+// before kickoff.
+//
+// See docs/NEIGHBORHOOD_RF_PREDICTION.md for the full architecture +
+// operational runbook (correlation tuning, blacklist threshold, manual
+// override workflow).
+// ============================================================================
+
+export const neighborhoodVenues = sqliteTable('NeighborhoodVenue', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  name: text('name').notNull(),
+  category: text('category').notNull(),                          // 'bar' | 'concert_hall' | 'stadium' | 'restaurant' | 'agency' | 'other'
+  latitude: real('latitude').notNull(),
+  longitude: real('longitude').notNull(),
+  // Distance from our LOCATION's bar — denormalized so we don't recompute
+  // the haversine on every correlation lookup. Updated whenever a fleet
+  // location moves or a new venue is added.
+  distanceMi: real('distance_mi'),
+  // Canonical URL to scrape/fetch events from. May be a venue website,
+  // a Facebook page, a Bandsintown venue page, or — in the case of
+  // Bananas Entertainment — the agency's calendar page that lists where
+  // their DJs/bands play.
+  sourceUrl: text('source_url'),
+  bandsintownVenueId: text('bandsintown_venue_id'),
+  facebookEventUrl: text('facebook_event_url'),
+  notes: text('notes'),
+  isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
+  createdAt: integer('created_at').notNull().$defaultFn(() => Math.floor(Date.now() / 1000)),
+  updatedAt: integer('updated_at').notNull().$defaultFn(() => Math.floor(Date.now() / 1000)),
+}, (table) => ({
+  categoryIdx: index('NeighborhoodVenue_category_idx').on(table.category),
+  distanceIdx: index('NeighborhoodVenue_distance_idx').on(table.distanceMi),
+  isActiveIdx: index('NeighborhoodVenue_isActive_idx').on(table.isActive),
+  // Allow same venue name across categories (e.g. "The Bar" could be a
+  // restaurant and a sports bar in different cities, unlikely but possible)
+  // but not duplicate same-name same-category rows.
+  uniqueNameCat: uniqueIndex('NeighborhoodVenue_name_category_unique').on(table.name, table.category),
+}))
+
+export const neighborhoodEvents = sqliteTable('NeighborhoodEvent', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  venueId: text('venue_id').notNull().references(() => neighborhoodVenues.id, { onDelete: 'cascade' }),
+  artistName: text('artist_name').notNull(),                     // 'DJ Marco' | 'Cover Band X' | 'Green Bay Packers vs Lions'
+  // Lowercased + trimmed + collapsed-whitespace for joins to
+  // ArtistInterferenceProfile and dedup across sources.
+  artistNormalized: text('artist_normalized').notNull(),
+  startTime: integer('start_time').notNull(),                    // unix epoch seconds
+  endTime: integer('end_time'),                                  // nullable when source omits it (defaults to start+4h for bars, +3h for shows)
+  eventType: text('event_type'),                                 // 'band' | 'dj' | 'karaoke' | 'trivia' | 'sports' | 'concert' | 'other'
+  // Source provenance — multiple sources may report the same event;
+  // dedup via (source, source_event_id) uniqueness so re-ingestion is
+  // idempotent. Examples: source='bandsintown' source_event_id='12345678',
+  // source='bananas' source_event_id='2026-05-30-andre-anduzis',
+  // source='manual' source_event_id=null (UI-entered).
+  source: text('source').notNull(),
+  sourceUrl: text('source_url'),
+  sourceEventId: text('source_event_id'),
+  // Original JSON payload from the source — useful for debugging parse
+  // errors and rebuilding when Ollama HTML-parsing logic changes.
+  rawPayload: text('raw_payload'),
+  ingestedAt: integer('ingested_at').notNull().$defaultFn(() => Math.floor(Date.now() / 1000)),
+  createdAt: integer('created_at').notNull().$defaultFn(() => Math.floor(Date.now() / 1000)),
+}, (table) => ({
+  venueIdx: index('NeighborhoodEvent_venue_idx').on(table.venueId),
+  startTimeIdx: index('NeighborhoodEvent_startTime_idx').on(table.startTime),
+  artistNormalizedIdx: index('NeighborhoodEvent_artistNormalized_idx').on(table.artistNormalized),
+  // Idempotent re-ingestion: same source + same source-side ID = same row.
+  // Null source_event_id (manual entries) bypasses this constraint, which
+  // is correct — manual entries should always insert as new rows.
+  uniqueSourceEvent: uniqueIndex('NeighborhoodEvent_source_sourceEventId_unique').on(table.source, table.sourceEventId),
+}))
+
+export const interferenceAttributions = sqliteTable('InterferenceAttribution', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  rfEventId: text('rf_event_id').notNull().references(() => shureRfEvents.id, { onDelete: 'cascade' }),
+  neighborhoodEventId: text('neighborhood_event_id').notNull().references(() => neighborhoodEvents.id, { onDelete: 'cascade' }),
+  timeDeltaSeconds: integer('time_delta_seconds').notNull(),     // abs(rf_event.detected_at - neighborhood_event.start_time)
+  distanceMi: real('distance_mi').notNull(),                     // distance from our bar to event venue (copied from venue.distance_mi at attribution time)
+  // Confidence 0.0–1.0. Tighter time + closer distance + matched freq
+  // signature = higher confidence. Computed by correlation engine.
+  confidence: real('confidence').notNull(),
+  // 'correlation_v1' = the algorithmic time+distance match. 'manual' =
+  // operator marked it. Future: 'ml_v2' if we add a learned model.
+  attributionMethod: text('attribution_method').notNull().default('correlation_v1'),
+  createdAt: integer('created_at').notNull().$defaultFn(() => Math.floor(Date.now() / 1000)),
+}, (table) => ({
+  rfEventIdx: index('InterferenceAttribution_rfEvent_idx').on(table.rfEventId),
+  neighborhoodEventIdx: index('InterferenceAttribution_neighborhoodEvent_idx').on(table.neighborhoodEventId),
+  // One attribution per (rf_event, neighborhood_event) pair — re-running
+  // the correlation engine is idempotent.
+  uniqueAttribution: uniqueIndex('InterferenceAttribution_rfEvent_neighborhoodEvent_unique').on(table.rfEventId, table.neighborhoodEventId),
+}))
+
+export const artistInterferenceProfiles = sqliteTable('ArtistInterferenceProfile', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  artistNormalized: text('artist_normalized').notNull(),
+  // Our LOCATION_ID — profiles are per-bar because the same DJ at the
+  // same nearby venue might affect Holmgren (closest) differently than
+  // Anduzi's-adjacent operators 1 mile further out.
+  locationId: text('location_id').notNull(),
+  totalGigs: integer('total_gigs').notNull().default(0),
+  gigsWithInterference: integer('gigs_with_interference').notNull().default(0),
+  avgSeverityDbm: real('avg_severity_dbm'),
+  // JSON array of MHz values where this artist has caused interference.
+  // E.g. '[510.9, 487.0, 502.3]' — read by the preemptive-strike
+  // workflow to choose which of our channels to retune.
+  predictedFreqsAffected: text('predicted_freqs_affected'),
+  firstObserved: integer('first_observed'),
+  lastObserved: integer('last_observed'),
+  // Human-readable recommendation generated by Ollama llama3.1:8b from
+  // the underlying attributions. Updated when totalGigs or
+  // gigsWithInterference materially change.
+  recommendation: text('recommendation'),
+  // 0.0–1.0. gigsWithInterference / totalGigs scaled by sample size.
+  // < 3 gigs = 0.0 (insufficient data, never act on it).
+  confidence: real('confidence').notNull().default(0),
+  updatedAt: integer('updated_at').notNull().$defaultFn(() => Math.floor(Date.now() / 1000)),
+}, (table) => ({
+  artistIdx: index('ArtistInterferenceProfile_artist_idx').on(table.artistNormalized),
+  locationIdx: index('ArtistInterferenceProfile_location_idx').on(table.locationId),
+  confidenceIdx: index('ArtistInterferenceProfile_confidence_idx').on(table.confidence),
+  // One profile per (artist, location) — running the profile builder
+  // multiple times is idempotent.
+  uniqueArtistLocation: uniqueIndex('ArtistInterferenceProfile_artist_location_unique').on(table.artistNormalized, table.locationId),
+}))

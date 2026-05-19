@@ -11,6 +11,7 @@ import { schedulerLogger } from './scheduler-logger'
 import { probeAllDirecTVTuned } from './directv-probe'
 import { runFiretvAppSyncSweep } from './firetv-app-sync'
 import { runFiretvCatalogWalk } from './firetv-catalog-walker'
+import { runBananasIngestion } from './bananas-ingestion'
 
 // Get API port from environment or default to 3001
 const API_PORT = process.env.PORT || 3001
@@ -122,6 +123,31 @@ class SchedulerService {
     this.registerPoll('maybeRunCatalogWalk', () => this.maybeRunCatalogWalk(), 300000, 300000);
     this.registerPoll('pollFiretvCurrentApp', () => this.pollFiretvCurrentApp(), 60000, 45000);
 
+    // v2.51.0 — Bananas Entertainment ingestion for the Neighborhood RF
+    // Interference Prediction subsystem. Pulls the agency's public
+    // schedule page and upserts events into NeighborhoodEvent. Bananas's
+    // calendar changes a couple times a week at most, so 6-hour cadence
+    // is plenty; initial delay 2 min so we don't pile onto first-boot
+    // load (DB seeding, ESPN sync, etc.).
+    this.registerPoll('runBananasIngestion', () => this.runBananasIngestionSafe(), 21600000, 120000);
+
+    // v2.51.0 — Neighborhood RF interference prediction pipeline:
+    //   correlator       → joins fresh rf_interference rows with nearby
+    //                      venue events, writes InterferenceAttribution
+    //                      rows (every 10 min, +3 min initial delay).
+    //   profileBuilder   → aggregates attributions per artist, generates
+    //                      Ollama recommendation for high-confidence
+    //                      artists (every 6h, +10 min initial delay —
+    //                      expensive due to Ollama).
+    //   preemptiveStrike → 1h forward scan; logs [PREEMPTIVE] warnings
+    //                      for upcoming nearby bookings by known
+    //                      interferers. Stage 1 — does NOT retune mics.
+    // All three wrappers catch errors so a failure in one doesn't break
+    // the others (or the scheduler tick).
+    this.registerPoll('correlateInterference', () => this.runCorrelateInterferenceSafe(), 600000, 180000);
+    this.registerPoll('rebuildArtistProfiles', () => this.runRebuildArtistProfilesSafe(), 21600000, 600000);
+    this.registerPoll('runPreemptiveStrike', () => this.runPreemptiveStrikeSafe(), 3600000, 900000);
+
     schedulerLogger.info(
       'scheduler-service',
       'startup',
@@ -155,6 +181,74 @@ class SchedulerService {
       await runFiretvAppSyncSweep();
     } catch (error: any) {
       logger.error('[FIRETV-APP-SYNC] Unexpected sweep failure:', { error });
+    }
+  }
+
+  /**
+   * Run a single Bananas Entertainment ingestion sweep. Wrapper around
+   * runBananasIngestion() with a top-level catch so a fetch/parse failure
+   * never crashes the scheduler tick. The ingestion module already has
+   * per-event try/catch + returns stats rather than throwing on the happy
+   * path; this guards the unexpected (DB unavailable, module import error).
+   */
+  private async runBananasIngestionSafe() {
+    try {
+      await runBananasIngestion();
+    } catch (error: any) {
+      logger.error('[BANANAS-INGEST] Unexpected ingestion failure:', { error });
+    }
+  }
+
+  /**
+   * v2.51.0 — Run the Shure↔neighborhood correlation pass. Errors are
+   * caught so the scheduler doesn't die when (e.g.) the DB is briefly
+   * unavailable, and so a failure here does NOT prevent the artist
+   * profile builder or the preemptive-strike pass from running.
+   */
+  private async runCorrelateInterferenceSafe() {
+    try {
+      const { correlateInterference } = await import('./interference-correlator');
+      await correlateInterference();
+    } catch (error: any) {
+      logger.error('[CORRELATOR] Unexpected correlation failure:', { error });
+    }
+  }
+
+  /**
+   * v2.51.0 — Rebuild per-artist interference profiles. Requires
+   * LOCATION_ID — skipped with a warn if absent (locations without
+   * LOCATION_ID set haven't completed bootstrap).
+   */
+  private async runRebuildArtistProfilesSafe() {
+    const locationId = process.env.LOCATION_ID;
+    if (!locationId) {
+      logger.warn('[ARTIST-PROFILE] Skipping rebuild: LOCATION_ID env not set');
+      return;
+    }
+    try {
+      const { rebuildArtistProfiles } = await import('./artist-profile-builder');
+      await rebuildArtistProfiles({ locationId });
+    } catch (error: any) {
+      logger.error('[ARTIST-PROFILE] Unexpected profile rebuild failure:', { error });
+    }
+  }
+
+  /**
+   * v2.51.0 — 1h forward scan for upcoming nearby bookings by
+   * known-interferer artists. Logs [PREEMPTIVE] warnings. Stage 1 only;
+   * does NOT retune mics.
+   */
+  private async runPreemptiveStrikeSafe() {
+    const locationId = process.env.LOCATION_ID;
+    if (!locationId) {
+      logger.warn('[PREEMPTIVE] Skipping strike pass: LOCATION_ID env not set');
+      return;
+    }
+    try {
+      const { runPreemptiveStrike } = await import('./preemptive-strike');
+      await runPreemptiveStrike({ locationId });
+    } catch (error: any) {
+      logger.error('[PREEMPTIVE] Unexpected strike pass failure:', { error });
     }
   }
 
