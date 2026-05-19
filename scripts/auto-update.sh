@@ -1148,6 +1148,24 @@ SCHEMA_PUSH_LOG="$LOG_DIR/drizzle-push-$(date +%s).log"
 if script -qfc "yes 2>/dev/null | NODE_ENV=development npx drizzle-kit push" /dev/null 2>&1 | tee "$SCHEMA_PUSH_LOG" | tee -a "$LOG_FILE"; then
   log "drizzle-kit push completed cleanly"
 else
+  # v2.50.12: detect TWO benign cases and fall through safely; only hard-fail
+  # on genuinely-unrecognized errors.
+  #
+  # Case A — pre-existing objects: drizzle-kit tracks schema by literal
+  # CREATE statements; a hotfix-created index/table trips it but the DB is
+  # already in the desired state.
+  #
+  # Case B (NEW) — data-loss prompt in non-TTY mode: drizzle-kit errors out
+  # with "Interactive prompts require a TTY terminal" when its diff would
+  # drop a table/column that still has rows. Greenville hit this on
+  # 2026-05-19 with atlas_priority_events (6 rows) + shure_rf_events (2 rows)
+  # + scheduling_preferences (1 row) — all watcher-managed audit tables
+  # that don't belong to the Drizzle schema. The yes|script pipe trick
+  # doesn't help because drizzle-kit detects isTTY=false on its stdin
+  # BEFORE reading. Root fix is declaring those tables in schema.ts
+  # (v2.50.12 did this for the 4 known watcher tables). Defensive fallback
+  # here: if the only error IS the data-loss prompt AND the to-be-dropped
+  # tables match a known-safe allowlist, treat as benign and continue.
   if grep -qE "(index|table|column) [\`\"]?[A-Za-z_][A-Za-z0-9_]*[\`\"]? already exists|already exists" "$SCHEMA_PUSH_LOG"; then
     log "WARNING: drizzle-kit push reported pre-existing objects (benign — see $SCHEMA_PUSH_LOG)"
     log "WARNING: this means the DB already had untracked tables/indexes from a prior manual hotfix."
@@ -1156,6 +1174,35 @@ else
       log "ensure-schema.sh fallback completed successfully"
     else
       log "WARNING: ensure-schema.sh had errors — some new tables/columns may be missing"
+    fi
+  elif grep -qE "Interactive prompts require a TTY terminal" "$SCHEMA_PUSH_LOG"; then
+    # Case B — extract which tables drizzle wanted to drop
+    DROPPED_TABLES=$(grep -E "delete .* table with [0-9]+ items" "$SCHEMA_PUSH_LOG" | sed -E "s/.*delete ([a-z_]+) table.*/\1/" | sort -u | tr '\n' ' ')
+    log "WARNING: drizzle-kit hit data-loss prompt in non-TTY mode for tables: $DROPPED_TABLES"
+    # Allowlist: watcher tables that ARE supposed to live in the DB even though
+    # they're managed via raw CREATE TABLE IF NOT EXISTS in watcher startup code.
+    # Declared in schema.ts as of v2.50.12 to prevent this; allowlist remains
+    # as belt-and-suspenders in case a new watcher table gets added later
+    # without a matching schema.ts entry.
+    SAFE_TABLES_REGEX="^(atlas_drop_events|atlas_priority_events|shure_rf_events|scheduling_preferences|sdr_spectrum|sdr_carriers|sdr_state|chat_messages|ChatSession|ChatMessage|chat_feedback|chat_qa_training|ai_indexing_log)$"
+    UNSAFE_TABLES=""
+    for T in $DROPPED_TABLES; do
+      if ! [[ "$T" =~ $SAFE_TABLES_REGEX ]]; then
+        UNSAFE_TABLES="$UNSAFE_TABLES $T"
+      fi
+    done
+    if [ -z "$UNSAFE_TABLES" ]; then
+      log "  All flagged tables are on the known-safe watcher/audit allowlist — continuing."
+      log "  (TO ROOT-FIX: add the table to packages/database/src/schema.ts so drizzle stops flagging it.)"
+      # Run ensure-schema.sh in case there's a legit new column/table that
+      # also needed creating but got blocked by the prompt error.
+      if bash "$REPO_ROOT/scripts/ensure-schema.sh" "$DB_PATH" 2>&1 | tee -a "$LOG_FILE"; then
+        log "ensure-schema.sh fallback completed successfully"
+      else
+        log "WARNING: ensure-schema.sh had errors — some new tables/columns may be missing"
+      fi
+    else
+      fail "drizzle-kit data-loss prompt for non-allowlisted tables:$UNSAFE_TABLES — manual review required. Either declare the table in schema.ts (preferred) or add to the allowlist in scripts/auto-update.sh schema_push step. See $SCHEMA_PUSH_LOG for full output." 4
     fi
   else
     cat "$SCHEMA_PUSH_LOG" >> "$LOG_FILE"
@@ -1409,6 +1456,24 @@ if [ -f "$REPO_ROOT/scripts/canary-config.json" ]; then
       git -C "$REPO_ROOT" commit -q -m "chore(canary): bless commit ${POST_MERGE_SHA:-unknown} ($(date +%Y-%m-%d-%H-%M))" 2>/dev/null || true
       log "Canary bless file committed (other locations will gate on this)"
     fi
+  fi
+fi
+
+# v2.50.11 — Fleet auto-update stagger. If scripts/fleet-schedule.json
+# exists, re-run install-auto-update-timer.sh so this location's systemd
+# timer reflects the (possibly updated) stagger slot. install-auto-update-timer.sh
+# is idempotent — when nothing changed it just re-writes the same unit
+# files and reloads systemd (~1s). When the slot moved (operator edited
+# fleet-schedule.json and pushed, OR a new entry pushed this location
+# to a different slot), the timer updates without an operator touching
+# the box. Non-fatal: errors here are logged and ignored, so the
+# auto-update success status isn't affected.
+if [ -f "$REPO_ROOT/scripts/fleet-schedule.json" ] && [ -x "$REPO_ROOT/scripts/install-auto-update-timer.sh" ]; then
+  if bash "$REPO_ROOT/scripts/install-auto-update-timer.sh" >/tmp/fleet-stagger-sync.log 2>&1; then
+    SYNCED_SLOT=$(grep -E "OnCalendar:" /tmp/fleet-stagger-sync.log | tail -1 | sed -E 's/.*OnCalendar: //')
+    log "Fleet stagger: re-synced timer to $SYNCED_SLOT"
+  else
+    log "⚠ Fleet stagger: install-auto-update-timer.sh failed (continuing — see /tmp/fleet-stagger-sync.log)"
   fi
 fi
 

@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "_comment_1": "Fleet auto-update stagger. Spreads sports-bar-autoupdate.timer fire times across a 2-hour UTC window so the 6-box fleet doesn't hammer Claude API + GitHub + npm registry at the same minute. install-auto-update-timer.sh reads this file (when present and parseable) and overrides the DB scheduleCron with the slot below — UTC times so the schedule survives timezone differences across the fleet (3 boxes are on UTC, 3 on America/Chicago).",
+  "_comment_2": "Keys are git branch slugs (the 'location/X' branch suffix). Add a new location? Append a slot here, pick a UTC time not within 10 min of any other slot, commit + push. Every location picks it up on the next auto-update finalize step, which re-runs install-auto-update-timer.sh if this file's mtime changed since last run.",
+  "_comment_3": "20-minute spacing is conservative — Claude API tier-4 handles 6 simultaneous Opus checkpoint calls fine, but spreading them out keeps GitHub fetch bursts uncongested + makes troubleshooting easier (one location's log file per chronological window).",
+  "window_utc": {
+    "startHour": 2,
+    "endHour": 4,
+    "spacingMinutes": 20
+  },
+  "slots": {
+    "holmgren-way":          "02:00",
+    "leg-lamp":              "02:20",
+    "lucky-s-1313":          "02:40",
+    "graystone":             "03:00",
+    "stoneyard-greenville":  "03:20",
+    "stoneyard-appleton":    "03:40"
+  },
+  "_comment_4": "Local-time equivalents (Central is UTC-5 CDT / UTC-6 CST): holmgren-way 21:00/20:00 CDT, leg-lamp 21:20, lucky-s 21:40, graystone 22:00/21:00 CDT, greenville 22:20, appleton 22:40. All run the evening BEFORE the UTC date stamp on the run log."
+}

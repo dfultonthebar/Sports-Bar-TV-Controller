@@ -256,6 +256,44 @@ non-Intel hardware (AMD/Nvidia) — the fleet-standard path doesn't apply
 and the location stays on upstream Ollama. Document the hardware in the
 location-specific notes under `.claude/locations/<branch>.md`.
 
+## 7b. Verify the non-login automation paths
+
+`verify-install.sh` only checks the runtime (PM2 / HTTP / DB). It does NOT
+exercise the paths that systemd-fired scripts use — node/npm/npx
+resolution and ollama write capability. Three checks here prevent the
+"timer fires but the script silently dies" failure mode (Holmgren caught
+all three at v2.50.x rollout — see CLAUDE.md Gotcha #11):
+
+```bash
+# Check 1: NVM-installed node visible to non-login shells
+which node npm npx                       # all three under /usr/local/bin
+# If any "not found": symlink them once with sudo:
+sudo ln -sfv /home/ubuntu/.nvm/versions/node/v20.20.0/bin/node /usr/local/bin/node
+sudo ln -sfv /home/ubuntu/.nvm/versions/node/v20.20.0/bin/npm  /usr/local/bin/npm
+sudo ln -sfv /home/ubuntu/.nvm/versions/node/v20.20.0/bin/npx  /usr/local/bin/npx
+
+# Check 2: ubuntu can write to the ollama models dir (IPEX daemon runs as ubuntu)
+groups ubuntu | grep -q ollama && echo OK || \
+  sudo usermod -aG ollama ubuntu
+test -w /usr/share/ollama/.ollama/models/ && echo OK || { \
+  sudo chgrp -R ollama /usr/share/ollama/.ollama/models/ && \
+  sudo chmod -R g+w   /usr/share/ollama/.ollama/models/ && \
+  sudo systemctl restart ollama-ipex ; }
+
+# Check 3: linger enabled so the user timer survives without an SSH session
+loginctl show-user ubuntu | grep -q Linger=yes && echo OK || \
+  sudo loginctl enable-linger ubuntu
+
+# End-to-end proof: rag-rescan-if-needed.sh exits cleanly (it exercises all 3)
+bash scripts/rag-rescan-if-needed.sh
+```
+
+If `bash scripts/rag-rescan-if-needed.sh` ends with `done — scan running
+in background. Tail: tail -f /tmp/rag-rescan-*.log` (instead of
+`npx: command not found` or `Ollama not available`), all three paths are
+green. The actual scan takes ~25-40 min but the script returns
+immediately — you don't need to wait.
+
 ## 8. Point a browser at the host
 
 From a laptop or tablet on the same LAN:

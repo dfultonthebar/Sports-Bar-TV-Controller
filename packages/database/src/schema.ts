@@ -2677,3 +2677,89 @@ export const discoveredPpvChannels = sqliteTable('discovered_ppv_channels', {
     .on(table.directvDeviceId, table.channelMajor),
   lastSeenIdx: index('discovered_ppv_channels_lastSeen_idx').on(table.lastSeenAt),
 }))
+
+// ============================================================================
+// WATCHER AUDIT TABLES (v2.33-v2.45) — declared here so drizzle-kit push
+// stops asking to delete them. These are created by raw `CREATE TABLE IF
+// NOT EXISTS` in the watcher startup paths (atlas-drop-watcher.ts,
+// atlas-priority-watcher.ts, shure-rf-watcher.ts) because they predate the
+// Drizzle schema. Runtime code uses raw `sql\`INSERT INTO ...\`` against
+// them; the only reason to declare them here is so drizzle-kit's diff
+// against the live DB doesn't flag "table not in schema, want to drop"
+// and roll back every auto-update at locations that have populated rows.
+//
+// Greenville hit this on 2026-05-19 v2.50.11 push — drizzle-kit refused to
+// drop 6 atlas_priority_events / 2 shure_rf_events rows in non-interactive
+// mode and the entire upgrade rolled back. See CLAUDE.md §7 (Atlas) and
+// §7a (Shure SLX-D) for the operational role of these tables. Schema
+// definitions below mirror the live DB exactly — DO NOT edit columns or
+// add new ones here unless you also update the watcher's CREATE TABLE SQL.
+// ============================================================================
+
+export const atlasDropEvents = sqliteTable('atlas_drop_events', {
+  id: text('id').primaryKey(),
+  processorId: text('processor_id').notNull(),
+  zoneNumber: integer('zone_number').notNull(),
+  zoneName: text('zone_name'),
+  previousVolume: integer('previous_volume').notNull(),
+  newVolume: integer('new_volume').notNull(),
+  delta: integer('delta').notNull(),
+  sourceAtDrop: integer('source_at_drop'),
+  mutedAtDrop: integer('muted_at_drop', { mode: 'boolean' }).notNull().default(false),
+  eventType: text('event_type').notNull().default('drop'),
+  detectedAt: integer('detected_at').notNull().$defaultFn(() => Math.floor(Date.now() / 1000)),
+})
+
+export const atlasPriorityEvents = sqliteTable('atlas_priority_events', {
+  id: text('id').primaryKey(),
+  processorId: text('processor_id').notNull(),
+  eventType: text('event_type').notNull(),
+  zoneNumber: integer('zone_number'),
+  zoneName: text('zone_name'),
+  previousSource: integer('previous_source'),
+  newSource: integer('new_source'),
+  inputIndex: integer('input_index'),
+  inputName: text('input_name'),
+  inputLevelDb: real('input_level_db'),
+  detectedAt: integer('detected_at').notNull().$defaultFn(() => Math.floor(Date.now() / 1000)),
+}, (table) => ({
+  detectedAtIdx: index('atlas_priority_events_detected_at_idx').on(table.detectedAt),
+  processorTypeIdx: index('atlas_priority_events_processor_type_idx').on(table.processorId, table.eventType, table.detectedAt),
+}))
+
+export const shureRfEvents = sqliteTable('shure_rf_events', {
+  id: text('id').primaryKey(),
+  receiverId: text('receiver_id').notNull(),
+  receiverName: text('receiver_name'),
+  ipAddress: text('ip_address'),
+  channel: integer('channel').notNull().default(0),
+  eventType: text('event_type').notNull(),
+  rssiDbm: real('rssi_dbm'),
+  frequencyMhz: real('frequency_mhz'),
+  txType: text('tx_type'),
+  note: text('note'),
+  detectedAt: integer('detected_at').notNull().$defaultFn(() => Math.floor(Date.now() / 1000)),
+}, (table) => ({
+  detectedAtIdx: index('shure_rf_events_detected_at_idx').on(table.detectedAt),
+  receiverIdx: index('shure_rf_events_receiver_idx').on(table.receiverId, table.channel, table.detectedAt),
+}))
+
+export const schedulingPreferences = sqliteTable('scheduling_preferences', {
+  id: text('id').primaryKey(),
+  preferenceType: text('preference_type').notNull(),
+  teamId: text('team_id'),
+  teamName: text('team_name'),
+  league: text('league'),
+  preferenceData: text('preference_data').notNull(),
+  weight: integer('weight').notNull().default(50),
+  confidence: real('confidence').notNull().default(0.5),
+  source: text('source').notNull().default('learned'),
+  isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
+  createdAt: integer('created_at').notNull().$defaultFn(() => Math.floor(Date.now() / 1000)),
+  updatedAt: integer('updated_at').notNull().$defaultFn(() => Math.floor(Date.now() / 1000)),
+}, (table) => ({
+  preferenceTypeIdx: index('SchedulingPreference_preferenceType_idx').on(table.preferenceType),
+  teamIdIdx: index('SchedulingPreference_teamId_idx').on(table.teamId),
+  leagueIdx: index('SchedulingPreference_league_idx').on(table.league),
+  isActiveIdx: index('SchedulingPreference_isActive_idx').on(table.isActive),
+}))
