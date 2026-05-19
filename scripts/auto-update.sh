@@ -254,7 +254,37 @@ acquire_lock_or_sweep_stale() {
       log "Lock held but PID file empty/unreadable — possibly mid-acquisition by concurrent run. Exiting clean (exit 75)."
     fi
   else
-    log "Lock held but no PID file — orphan lock from setsid-detached child. Exit 75."
+    # v2.52.2 fix: lock file exists but NO PID file companion. Pre-v2.52.2
+    # this branch immediately exited 75 — but in practice this state means
+    # one of:
+    #   (a) the previous parent crashed AFTER cleanup_on_error rm'd the PID
+    #       file but BEFORE its FD-200 was released, then a setsid-detached
+    #       child kept the lock open
+    #   (b) the very first parent never got to write the PID file (race
+    #       between mkdir/flock acquisition and the echo $$ write)
+    #
+    # All 4 location boxes hit (a) on the 2026-05-19 v2.52.1 rollout,
+    # blocking the auto-update until I manually `rm /tmp/sports-bar-auto-update.lock`.
+    # Same root cause as the v2.52.0 PID-staleness sweep — we just hadn't
+    # covered the no-PID-file variant.
+    #
+    # Liveness check via pgrep (not PID file): if no auto-update.sh process
+    # is running anywhere on the system, the lock is truly orphan → sweep.
+    local live_count
+    live_count=$(pgrep -af "[a]uto-update\.sh" 2>/dev/null | grep -v "$$" | wc -l)
+    if [ "$live_count" -eq 0 ]; then
+      log "Lock held but no PID file AND no auto-update.sh process running — orphan lock, sweeping."
+      exec 200>&-
+      rm -f "$LOCK_FILE" "$PID_FILE"
+      exec 200>"$LOCK_FILE"
+      if flock -n 200; then
+        echo $$ > "$PID_FILE"
+        return 0
+      fi
+      log "Lock still unavailable after orphan-sweep — race with a concurrent run."
+    else
+      log "Lock held but no PID file — auto-update.sh process(es) running ($live_count), legit concurrent run. Exit 75."
+    fi
   fi
   exit 75
 }
