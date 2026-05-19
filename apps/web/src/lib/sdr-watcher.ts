@@ -85,7 +85,27 @@ let currentBandEndMhz = BAND_END_MHZ
 const RESOLUTION_KHZ = parseFloat(process.env.SDR_RESOLUTION_KHZ ?? '25')
 const SWEEP_INTERVAL_SEC = parseInt(process.env.SDR_SWEEP_INTERVAL_SEC ?? '1', 10)
 const GAIN_DB = process.env.SDR_GAIN_DB ?? '25'
-const CARRIER_THRESHOLD_DBM = parseFloat(process.env.SDR_CARRIER_THRESHOLD_DBM ?? '-85')
+// v2.52.10: software calibration offset for rtl_power's uncalibrated
+// dBFS output (keenerd/rtl_power.c emits raw 10·log10(FFT bin power)
+// with no antenna-port or gain reference). Default -55 dB shifts
+// readings into the textbook -110 → 0 dBm wireless-mic register so
+// the colormap, carrier threshold (-85 dBm), and Shure ↔ SDR cross-
+// confirmation in shure-rf-watcher all line up. Per the research
+// digest in v2.52.10 commit: SDR# defaults -40, empirical UHF
+// corrections cluster at -50 to -65, we pick -55 as the midpoint.
+// Per-location override via SDR_DBM_OFFSET env if your dongle/antenna
+// chain reads differently — calibrate with a signal generator once,
+// document in .claude/locations/<name>.md.
+const DBM_OFFSET = parseFloat(process.env.SDR_DBM_OFFSET ?? '-55')
+// v2.52.11: threshold raised from -85 to -70 dBm. After v2.52.10's
+// software calibration offset normalized rtl_power output into proper
+// dBm register, the -85 threshold was catching broadcast-TV intermod
+// sidebands, USB power-supply noise, and adjacent-bin ADC leakage as
+// "carriers." Operator at Holmgren saw 20 active carriers all from
+// one WCWF UHF14 broadcast. -70 dBm catches genuine wireless mics
+// (typical 10-50 mW transmitter at 100-300 ft) + broadcast TV peaks,
+// and rejects the noise floor.
+const CARRIER_THRESHOLD_DBM = parseFloat(process.env.SDR_CARRIER_THRESHOLD_DBM ?? '-70')
 const CARRIER_DETECT_SAMPLES = parseInt(process.env.SDR_CARRIER_DETECT_SAMPLES ?? '3', 10)
 const CARRIER_CLEAR_SAMPLES = parseInt(process.env.SDR_CARRIER_CLEAR_SAMPLES ?? '5', 10)
 const RESTART_BACKOFF_INITIAL_MS = 5_000
@@ -97,6 +117,45 @@ const RESTART_BACKOFF_MAX_MS = 5 * 60 * 1000
 // 1760 bins × 60 sec = 105K entries max, ~5 MB RAM.
 type AggBucket = { max: number; sum: number; count: number; minute: number; freq: number }
 const aggregator = new Map<string, AggBucket>()
+
+// v2.52.10: per-sweep emitter buffer. rtl_power chunks each full band
+// scan into multiple CSV lines (~2.6 MHz per chunk at default rate).
+// Accumulate all chunks for the current timestamp into one Map, then
+// emit a complete sweep snapshot when the timestamp rolls. The FFT
+// panadapter consumes these via SSE — sub-second update cadence
+// instead of waiting for the per-minute aggregator flush.
+//
+// Memory bounded: ~1500 bins per sweep × 16 bytes per Map entry ≈
+// 24 KB at peak before each emit. Cleared on every emit.
+import { getSdrSweepEmitter } from './sdr-sweep-emitter'
+const sweepInProgress = new Map<number, number>() // freqMhz → dbm
+let sweepTimestamp = '' // 'YYYY-MM-DD HH:MM:SS' from rtl_power
+let sweepStartMhz = 0
+let sweepEndMhz = 0
+
+function emitSweep(): void {
+  if (sweepInProgress.size < 10) {
+    // Probably incomplete (rtl_power restarting or one stray chunk).
+    sweepInProgress.clear()
+    return
+  }
+  const bins = Array.from(sweepInProgress.keys()).sort((a, b) => a - b)
+  const dbms = bins.map((f) => sweepInProgress.get(f) ?? -120)
+  try {
+    getSdrSweepEmitter().emit('sweep', {
+      t: Math.floor(Date.now() / 1000),
+      bins,
+      dbms,
+      startMhz: sweepStartMhz || bins[0],
+      endMhz: sweepEndMhz || bins[bins.length - 1],
+    })
+  } catch (err) {
+    // Emitter failures are non-fatal; the per-minute aggregator path
+    // still writes to DB and the UI still gets bucket events.
+    logger.debug(`[SDR-WATCHER] sweep emit failed: ${(err as Error)?.message ?? err}`)
+  }
+  sweepInProgress.clear()
+}
 
 // Carrier-detection state machine — per freq bin. Tracks consecutive
 // above-threshold samples for rising-edge, consecutive below for
@@ -239,12 +298,32 @@ function handleSweepLine(line: string): void {
   const now = Math.floor(Date.now() / 1000)
   const minuteBucket = Math.floor(now / 60) * 60
 
+  // v2.52.10: detect sweep boundary (timestamp roll) and emit the
+  // assembled previous sweep to SSE subscribers. rtl_power emits the
+  // SAME date/time string for every chunk within one band scan, then
+  // increments for the next scan. Switching timestamps = one full
+  // sweep is done.
+  const ts = `${parts[0]} ${parts[1]}`
+  if (sweepTimestamp && ts !== sweepTimestamp && sweepInProgress.size > 0) {
+    emitSweep()
+  }
+  sweepTimestamp = ts
+  if (sweepStartMhz === 0 || hzLow / 1_000_000 < sweepStartMhz) sweepStartMhz = hzLow / 1_000_000
+  if (hzHigh / 1_000_000 > sweepEndMhz) sweepEndMhz = hzHigh / 1_000_000
+
   for (let i = 0; i < dbValues.length; i++) {
-    const power = dbValues[i]
-    if (!Number.isFinite(power)) continue
+    const rawPower = dbValues[i]
+    if (!Number.isFinite(rawPower)) continue
+    // v2.52.10: apply software calibration offset to rtl_power's
+    // uncalibrated dBFS so downstream code (aggregator, carrier
+    // detector, SSE consumers, UI) all see roughly true antenna-port
+    // dBm. All thresholds below (-85 dBm carrier_active etc.) are in
+    // post-offset register.
+    const power = rawPower + DBM_OFFSET
     // Bin center freq in MHz, rounded to 4 decimal places for stable key.
     const freqHz = hzLow + (i + 0.5) * hzStep
     const freqMhz = Math.round(freqHz / 100) / 10_000 // = freqHz / 1_000_000 with .0001 rounding
+    sweepInProgress.set(freqMhz, power) // v2.52.10: assemble for per-sweep emit
     const key = `${minuteBucket}:${freqMhz.toFixed(4)}`
 
     // Aggregator

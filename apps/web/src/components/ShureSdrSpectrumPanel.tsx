@@ -54,17 +54,57 @@ type HistoryResp = {
   grid: number[][]
 }
 
+// Classic SDR-spectrum-analyzer colormap. Mimics SDR# / GQRX / HDSDR's
+// black → blue → cyan → green → yellow → red → white thermal gradient.
+//
+// v2.52.10: reverted to textbook -110 → 0 dBm range because the watcher
+// now applies a -55 dB software calibration offset at ingest (per the
+// rtl_power-is-uncalibrated-dBFS research digest). With offset applied:
+//   ~ -110 dBm = black            (sub-thermal floor)
+//   ~  -90 dBm = dark blue        (true noise floor — matches Shure RSSI)
+//   ~  -70 dBm = cyan/green       (textbook wireless mic signal)
+//   ~  -50 dBm = yellow           (loud mic at close range)
+//   ~  -30 dBm = orange/red       (broadcast TV nearby)
+//   ~    0 dBm = white            (transmitter blast / ADC clip)
+const COLORMAP: Array<{ dbm: number; r: number; g: number; b: number }> = [
+  { dbm: -110, r: 0,   g: 0,   b: 0   }, // black
+  { dbm: -100, r: 0,   g: 0,   b: 48  }, // deep navy
+  { dbm: -90,  r: 0,   g: 0,   b: 128 }, // dark blue — noise floor
+  { dbm: -80,  r: 0,   g: 64,  b: 255 }, // blue
+  { dbm: -70,  r: 0,   g: 200, b: 255 }, // cyan
+  { dbm: -60,  r: 0,   g: 220, b: 0   }, // green — moderate signal
+  { dbm: -50,  r: 180, g: 240, b: 0   }, // yellow-green
+  { dbm: -40,  r: 255, g: 230, b: 0   }, // yellow
+  { dbm: -30,  r: 255, g: 140, b: 0   }, // orange
+  { dbm: -20,  r: 255, g: 0,   b: 0   }, // red — broadcast TV
+  { dbm: -10,  r: 255, g: 80,  b: 80  }, // bright red
+  { dbm:   0,  r: 255, g: 255, b: 255 }, // white
+]
+
 function colorForPower(dbm: number): string {
-  // Color gradient matching operator-intuitive RF mental model.
-  if (dbm <= -100) return '#0a1929' // deep blue — noise floor
-  if (dbm <= -90)  return '#1e3a5f'
-  if (dbm <= -85)  return '#22577a'
-  if (dbm <= -80)  return '#1b9aaa' // teal — threshold
-  if (dbm <= -70)  return '#06b6d4' // cyan — moderate
-  if (dbm <= -60)  return '#a3e635' // lime — strong
-  if (dbm <= -50)  return '#facc15' // yellow — very strong
-  if (dbm <= -40)  return '#fb923c' // orange
-  return '#ef4444' // red — loud
+  // Clamp out-of-range to the endpoints
+  if (dbm <= COLORMAP[0].dbm) {
+    const c = COLORMAP[0]
+    return `rgb(${c.r},${c.g},${c.b})`
+  }
+  if (dbm >= COLORMAP[COLORMAP.length - 1].dbm) {
+    const c = COLORMAP[COLORMAP.length - 1]
+    return `rgb(${c.r},${c.g},${c.b})`
+  }
+  // Find the two control points bracketing dbm, then linearly interpolate.
+  for (let i = 0; i < COLORMAP.length - 1; i++) {
+    const lo = COLORMAP[i]
+    const hi = COLORMAP[i + 1]
+    if (dbm >= lo.dbm && dbm <= hi.dbm) {
+      const t = (dbm - lo.dbm) / (hi.dbm - lo.dbm)
+      const r = Math.round(lo.r + (hi.r - lo.r) * t)
+      const g = Math.round(lo.g + (hi.g - lo.g) * t)
+      const b = Math.round(lo.b + (hi.b - lo.b) * t)
+      return `rgb(${r},${g},${b})`
+    }
+  }
+  // Defensive fallback (unreachable in practice — clamps above cover it)
+  return 'rgb(0,0,0)'
 }
 
 interface Props {
@@ -81,6 +121,23 @@ type InspectStat = {
   lastHotAt: number | null
 }
 
+// v2.52.9: shared X-mapping used by both FFT + waterfall canvases.
+// Hoisted out of the per-render closure so the two render effects use
+// identical math (was duplicated inline in v2.52.8).
+function xForFreq(freq: number, minF: number, maxF: number, W: number): number {
+  if (maxF === minF) return 0
+  return ((freq - minF) / (maxF - minF)) * W
+}
+
+// v2.52.10: textbook -110 → 0 dBm range. The watcher's -55 dB
+// calibration offset (sdr-watcher.ts SDR_DBM_OFFSET) now puts
+// rtl_power's uncalibrated dBFS into proper antenna-port dBm
+// register: noise floor ~-90, wireless mics -70 to -50, broadcast
+// TV -30 to -10.
+const FFT_DBM_MIN = -110
+const FFT_DBM_MAX = 0
+const FFT_GRID_DBM = [-110, -90, -70, -50, -30, -10]
+
 export default function ShureSdrSpectrumPanel({ ourFrequencies = [] }: Props) {
   const [status, setStatus] = useState<StatusResp | null>(null)
   // Rolling buffer of recent buckets, accumulated from SSE bucket
@@ -93,7 +150,18 @@ export default function ShureSdrSpectrumPanel({ ourFrequencies = [] }: Props) {
   // freq + show recent stats for the bin. Click outside / click X
   // closes.
   const [inspect, setInspect] = useState<{ freqMhz: number; stats: InspectStat | null; loading: boolean } | null>(null)
+  // v2.52.9: hover tooltip state — shared by both FFT and waterfall.
+  // null when not hovering. Pos is relative to the canvas wrapper div.
+  const [hoverInfo, setHoverInfo] = useState<{ freqMhz: number; dbm: number; xPct: number; yPx: number } | null>(null)
+  // v2.52.10: live per-sweep snapshot pushed via SSE 'sweep' events.
+  // When set, this overrides fftSnapshot (which derives from the
+  // slower per-minute buckets). Null until the first sweep arrives.
+  const [liveSweep, setLiveSweep] = useState<{ bins: number[]; dbms: number[]; t: number } | null>(null)
+  // v2.52.9: client-side ticking age counter so the "last sweep Xs ago"
+  // header feels live between the 30s status polls (was static otherwise).
+  const [tickSec, setTickSec] = useState(0)
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const fftCanvasRef = useRef<HTMLCanvasElement>(null)
   const sseRef = useRef<EventSource | null>(null)
 
   const fetchStatus = useCallback(async () => {
@@ -171,6 +239,20 @@ export default function ShureSdrSpectrumPanel({ ourFrequencies = [] }: Props) {
 
       es.addEventListener('heartbeat', () => { /* keep-alive only */ })
 
+      // v2.52.10: per-sweep snapshots for the FFT panadapter.
+      // The watcher emits one `sweep` event per rtl_power band scan
+      // (~1 sec cadence), giving the FFT line graph sub-second
+      // freshness. The waterfall still uses per-minute `bucket`
+      // events (long-term history view). Operator-reported 14:44:
+      // "refresh is way too slow" — the bucket-derived FFT
+      // refreshed once per minute, missing brief mic bursts.
+      es.addEventListener('sweep', (e: MessageEvent) => {
+        try {
+          const sw: { t: number; bins: number[]; dbms: number[] } = JSON.parse(e.data)
+          setLiveSweep({ bins: sw.bins, dbms: sw.dbms, t: sw.t })
+        } catch { /* malformed event — silent */ }
+      })
+
       es.onerror = () => {
         // EventSource auto-reconnects; just reflect the state. If the
         // server has been redeployed, the connection drops and the
@@ -237,13 +319,12 @@ export default function ShureSdrSpectrumPanel({ ourFrequencies = [] }: Props) {
     // Annotations: vertical lines at our tuned freqs + TV station boundaries
     const minF = history.bins[0]
     const maxF = history.bins[history.bins.length - 1]
-    const xForFreq = (f: number) => ((f - minF) / (maxF - minF)) * W
 
     ctx.lineWidth = 1
     ctx.font = '10px ui-monospace, monospace'
     for (const m of G58_BAND_MARKERS) {
       if (m.freq < minF || m.freq > maxF) continue
-      const x = xForFreq(m.freq)
+      const x = xForFreq(m.freq, minF, maxF, W)
       ctx.strokeStyle = 'rgba(255,255,255,0.25)'
       ctx.setLineDash([2, 2])
       ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke()
@@ -252,7 +333,7 @@ export default function ShureSdrSpectrumPanel({ ourFrequencies = [] }: Props) {
     }
     for (const o of ourFrequencies) {
       if (o.freqMhz < minF || o.freqMhz > maxF) continue
-      const x = xForFreq(o.freqMhz)
+      const x = xForFreq(o.freqMhz, minF, maxF, W)
       ctx.strokeStyle = 'rgba(6,182,212,0.95)' // cyan
       ctx.setLineDash([])
       ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke()
@@ -260,6 +341,166 @@ export default function ShureSdrSpectrumPanel({ ourFrequencies = [] }: Props) {
       ctx.fillText(o.label, x + 2, H - 4)
     }
   }, [history, ourFrequencies])
+
+  // v2.52.9: FFT panadapter — derive a current-snapshot line graph from
+  // the latest bucket in the rolling buffer. Real spectrum-analyzer
+  // look (SDR# / GQRX / HDSDR): lime-green line over a grid of dBm
+  // gridlines, semi-transparent fill underneath, Shure freq overlays.
+  const fftSnapshot = useMemo(() => {
+    // v2.52.10: prefer the live per-sweep snapshot (1-sec freshness)
+    // over the per-minute bucket-derived fallback. liveSweep updates
+    // whenever the watcher emits a 'sweep' SSE event; buckets only
+    // refresh on minute boundaries.
+    if (liveSweep && liveSweep.bins.length > 0) {
+      return { bins: liveSweep.bins, dbms: liveSweep.dbms, bucketAt: liveSweep.t }
+    }
+    if (buckets.length === 0) return null
+    const latest = buckets[buckets.length - 1]
+    if (latest.bins.length === 0) return null
+    return { bins: latest.bins, dbms: latest.dbms, bucketAt: latest.bucketAt }
+  }, [liveSweep, buckets])
+
+  useEffect(() => {
+    if (!fftSnapshot) return
+    const canvas = fftCanvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    const W = canvas.width
+    const H = canvas.height
+    const minF = fftSnapshot.bins[0]
+    const maxF = fftSnapshot.bins[fftSnapshot.bins.length - 1]
+
+    ctx.clearRect(0, 0, W, H)
+
+    // dBm grid lines (horizontal)
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)'
+    ctx.setLineDash([2, 4])
+    ctx.lineWidth = 1
+    for (const dbm of FFT_GRID_DBM) {
+      const y = H - ((dbm - FFT_DBM_MIN) / (FFT_DBM_MAX - FFT_DBM_MIN)) * H
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke()
+    }
+    ctx.setLineDash([])
+
+    // FFT line + fill under
+    ctx.beginPath()
+    for (let i = 0; i < fftSnapshot.bins.length; i++) {
+      const x = xForFreq(fftSnapshot.bins[i], minF, maxF, W)
+      const dbmClamped = Math.max(FFT_DBM_MIN, Math.min(FFT_DBM_MAX, fftSnapshot.dbms[i]))
+      const y = H - ((dbmClamped - FFT_DBM_MIN) / (FFT_DBM_MAX - FFT_DBM_MIN)) * H
+      if (i === 0) ctx.moveTo(x, y)
+      else ctx.lineTo(x, y)
+    }
+    // Close path down to baseline for fill
+    const lastX = xForFreq(fftSnapshot.bins[fftSnapshot.bins.length - 1], minF, maxF, W)
+    const firstX = xForFreq(fftSnapshot.bins[0], minF, maxF, W)
+    ctx.lineTo(lastX, H)
+    ctx.lineTo(firstX, H)
+    ctx.closePath()
+    ctx.fillStyle = 'rgba(74,222,128,0.12)' // lime, semi-transparent
+    ctx.fill()
+    // Re-stroke the line on top of the fill (path was closed, redraw)
+    ctx.beginPath()
+    for (let i = 0; i < fftSnapshot.bins.length; i++) {
+      const x = xForFreq(fftSnapshot.bins[i], minF, maxF, W)
+      const dbmClamped = Math.max(FFT_DBM_MIN, Math.min(FFT_DBM_MAX, fftSnapshot.dbms[i]))
+      const y = H - ((dbmClamped - FFT_DBM_MIN) / (FFT_DBM_MAX - FFT_DBM_MIN)) * H
+      if (i === 0) ctx.moveTo(x, y)
+      else ctx.lineTo(x, y)
+    }
+    ctx.strokeStyle = '#4ade80' // lime-400 — SDR# signature color
+    ctx.lineWidth = 1.25
+    ctx.stroke()
+
+    // Shure freq overlays + TV markers (same as waterfall, shared X-axis)
+    ctx.lineWidth = 1
+    for (const o of ourFrequencies) {
+      if (o.freqMhz < minF || o.freqMhz > maxF) continue
+      const x = xForFreq(o.freqMhz, minF, maxF, W)
+      ctx.strokeStyle = 'rgba(6,182,212,0.7)'
+      ctx.setLineDash([])
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke()
+    }
+    for (const m of G58_BAND_MARKERS) {
+      if (m.freq < minF || m.freq > maxF) continue
+      const x = xForFreq(m.freq, minF, maxF, W)
+      ctx.strokeStyle = 'rgba(255,255,255,0.18)'
+      ctx.setLineDash([2, 2])
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke()
+    }
+    ctx.setLineDash([])
+  }, [fftSnapshot, ourFrequencies])
+
+  // v2.52.9: 1-second tick to make the "last sweep Xs ago" feel live.
+  // Increments tickSec; the display computes (status.ageSecs + tickSec)
+  // minus tick at last poll. Simpler: just force a re-render every sec.
+  useEffect(() => {
+    const id = setInterval(() => setTickSec((t) => t + 1), 1000)
+    return () => clearInterval(id)
+  }, [])
+
+  // v2.52.9: shared click + hover handlers for both FFT and waterfall.
+  // Both panels share the same X-axis math, so clicking either yields
+  // the same freq inspect. Hover shows freq + current dBm — bartender-
+  // grade copy ("(click to inspect)").
+  const handleSpectrumClick = useCallback(
+    async (e: React.MouseEvent<HTMLCanvasElement>, h: HistoryResp) => {
+      if (h.bins.length === 0) return
+      const rect = e.currentTarget.getBoundingClientRect()
+      const xFrac = (e.clientX - rect.left) / rect.width
+      const minF = h.bins[0]
+      const maxF = h.bins[h.bins.length - 1]
+      const clickedFreq = minF + xFrac * (maxF - minF)
+      const freqMhz = Math.round(clickedFreq * 40) / 40
+      setInspect({ freqMhz, stats: null, loading: true })
+      try {
+        const r = await fetch(
+          `/api/sdr/peak-stats?daysAgo=7&freqStart=${(freqMhz - 0.05).toFixed(3)}&freqEnd=${(freqMhz + 0.05).toFixed(3)}&topN=1`,
+        )
+        if (!r.ok) {
+          setInspect({ freqMhz, stats: null, loading: false })
+          return
+        }
+        const d = await r.json()
+        setInspect({ freqMhz, stats: d.stats?.[0] ?? null, loading: false })
+      } catch {
+        setInspect({ freqMhz, stats: null, loading: false })
+      }
+    },
+    [],
+  )
+
+  const handleSpectrumHover = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement>, h: HistoryResp, panel: 'fft' | 'waterfall') => {
+      if (h.bins.length === 0 || !fftSnapshot) return
+      const rect = e.currentTarget.getBoundingClientRect()
+      const xFrac = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
+      const yPx = e.clientY - rect.top
+      const minF = h.bins[0]
+      const maxF = h.bins[h.bins.length - 1]
+      const freqMhz = minF + xFrac * (maxF - minF)
+      // Find closest bin in latest FFT snapshot to read dBm.
+      let bestIdx = 0
+      let bestDelta = Infinity
+      for (let i = 0; i < fftSnapshot.bins.length; i++) {
+        const d = Math.abs(fftSnapshot.bins[i] - freqMhz)
+        if (d < bestDelta) {
+          bestDelta = d
+          bestIdx = i
+        }
+      }
+      const dbm = fftSnapshot.dbms[bestIdx] ?? -120
+      // Position tooltip near the cursor but offset for the panel
+      // (FFT canvas height=56, waterfall=140; we report yPx relative
+      // to the parent wrapper so it positions correctly regardless of
+      // which panel was hovered).
+      const wrapperY = panel === 'fft' ? yPx : yPx + 56 + 12 // +12 for shared X-axis
+      setHoverInfo({ freqMhz, dbm, xPct: xFrac * 100, yPx: wrapperY })
+    },
+    [fftSnapshot],
+  )
 
   if (!status) {
     return (
@@ -307,7 +548,12 @@ export default function ShureSdrSpectrumPanel({ ourFrequencies = [] }: Props) {
         </div>
         {status.enabled && status.lastSweepAt && (
           <span className="text-[10px] text-slate-400 font-mono">
-            last sweep {status.ageSecs}s ago · {status.totalAggregatedRows.toLocaleString()} rows
+            {/* v2.52.9: compute live age from lastSweepAt + Date.now()
+                so it ticks every second (re-render driven by tickSec),
+                not just on each 30s status poll. */}
+            last sweep {Math.max(0, Math.floor(Date.now() / 1000 - status.lastSweepAt))}s ago
+            {' · '}{status.totalAggregatedRows.toLocaleString()} rows
+            {tickSec >= 0 ? '' : ''}
           </span>
         )}
       </div>
@@ -350,42 +596,102 @@ export default function ShureSdrSpectrumPanel({ ourFrequencies = [] }: Props) {
         <div className="space-y-3">
           {history && history.bins.length > 0 && (
             <div>
-              <div className="text-[10px] uppercase tracking-wide text-slate-400 mb-1">
-                Last {WATERFALL_WINDOW_MIN} min · {history.bins[0].toFixed(1)}–{history.bins[history.bins.length - 1].toFixed(1)} MHz
+              <div className="flex items-center justify-between text-[10px] uppercase tracking-wide text-slate-400 mb-1">
+                <span>
+                  Live spectrum · {history.bins[0].toFixed(1)}–{history.bins[history.bins.length - 1].toFixed(1)} MHz
+                </span>
+                <span className="text-slate-500 normal-case tracking-normal">
+                  FFT (now) over waterfall (last {WATERFALL_WINDOW_MIN} min · {history.times.length} snapshots)
+                </span>
               </div>
-              <canvas
-                ref={canvasRef}
-                width={1100}
-                height={180}
-                className="w-full rounded border border-slate-700 bg-slate-950 cursor-crosshair"
-                style={{ imageRendering: 'pixelated' }}
-                onClick={async (e) => {
-                  if (!history || history.bins.length === 0) return
-                  const canvas = e.currentTarget
-                  const rect = canvas.getBoundingClientRect()
-                  const xFrac = (e.clientX - rect.left) / rect.width
-                  const minF = history.bins[0]
-                  const maxF = history.bins[history.bins.length - 1]
-                  const clickedFreq = minF + xFrac * (maxF - minF)
-                  // Round to nearest 25 kHz step.
-                  const freqMhz = Math.round(clickedFreq * 40) / 40
-                  setInspect({ freqMhz, stats: null, loading: true })
-                  try {
-                    const r = await fetch(`/api/sdr/peak-stats?daysAgo=7&freqStart=${(freqMhz - 0.05).toFixed(3)}&freqEnd=${(freqMhz + 0.05).toFixed(3)}&topN=1`)
-                    if (!r.ok) { setInspect({ freqMhz, stats: null, loading: false }); return }
-                    const d = await r.json()
-                    setInspect({ freqMhz, stats: d.stats?.[0] ?? null, loading: false })
-                  } catch {
-                    setInspect({ freqMhz, stats: null, loading: false })
-                  }
-                }}
-              />
-              <div className="flex items-center gap-3 mt-1 text-[10px] text-slate-500">
-                <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 inline-block" style={{ background: '#0a1929' }} /> floor (≤−100)</span>
-                <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 inline-block" style={{ background: '#1b9aaa' }} /> threshold (−80)</span>
-                <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 inline-block" style={{ background: '#facc15' }} /> strong (−50)</span>
-                <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 inline-block" style={{ background: '#ef4444' }} /> loud (≥−40)</span>
-                <span className="ml-auto text-slate-600">click any column to inspect · cyan vertical line = your mic freq</span>
+
+              {/* v2.52.9: stacked FFT + waterfall with shared X-axis.
+                  Both canvases use the same xForFreq math so a freq at
+                  X-pixel-N on the FFT lines up with the same X-pixel-N
+                  on the waterfall column. */}
+              <div className="relative">
+                {/* FFT panadapter — current snapshot, lime line graph */}
+                <div className="relative">
+                  <div className="absolute left-1 top-0 h-full flex flex-col justify-between text-[8px] text-slate-500 font-mono pointer-events-none select-none z-10">
+                    <span>0</span>
+                    <span>−40</span>
+                    <span>−75</span>
+                    <span>−110</span>
+                  </div>
+                  {/* v2.52.9 (operator preference): FFT is the primary
+                      view, expanded to 160px. Waterfall demoted to a
+                      thin 50px strip below for "what changed recently"
+                      context. */}
+                  <canvas
+                    ref={fftCanvasRef}
+                    width={1100}
+                    height={160}
+                    className="w-full rounded-t border border-b-0 border-slate-700 bg-slate-950 cursor-crosshair"
+                    style={{ imageRendering: 'pixelated' }}
+                    onClick={(e) => handleSpectrumClick(e, history)}
+                    onMouseMove={(e) => handleSpectrumHover(e, history, 'fft')}
+                    onMouseLeave={() => setHoverInfo(null)}
+                  />
+                </div>
+
+                {/* Shared X-axis — freq labels rendered as real DOM text */}
+                <div className="relative h-3 bg-slate-900 border-x border-slate-700">
+                  {(() => {
+                    const minF = history.bins[0]
+                    const maxF = history.bins[history.bins.length - 1]
+                    const labels: number[] = []
+                    const step = Math.max(1, Math.ceil((maxF - minF) / 6))
+                    for (let f = Math.ceil(minF); f <= Math.floor(maxF); f += step) labels.push(f)
+                    return labels.map((f) => {
+                      const pct = ((f - minF) / (maxF - minF)) * 100
+                      return (
+                        <span
+                          key={f}
+                          className="absolute top-0 text-[9px] text-slate-500 font-mono -translate-x-1/2"
+                          style={{ left: `${pct}%` }}
+                        >
+                          {f}
+                        </span>
+                      )
+                    })
+                  })()}
+                </div>
+
+                {/* Waterfall — thin strip below FFT for "what changed
+                    in the last 10 min" context. Demoted from primary
+                    in v2.52.9 per operator preference (FFT is what
+                    they want to see). */}
+                <canvas
+                  ref={canvasRef}
+                  width={1100}
+                  height={50}
+                  className="w-full rounded-b border border-t-0 border-slate-700 bg-slate-950 cursor-crosshair"
+                  style={{ imageRendering: 'pixelated' }}
+                  onClick={(e) => handleSpectrumClick(e, history)}
+                  onMouseMove={(e) => handleSpectrumHover(e, history, 'waterfall')}
+                  onMouseLeave={() => setHoverInfo(null)}
+                />
+
+                {/* Hover tooltip (v2.52.9) — bartender-grade copy */}
+                {hoverInfo && (
+                  <div
+                    className="absolute pointer-events-none z-20 px-2 py-1 rounded text-[10px] font-mono bg-slate-900/95 border border-cyan-500/40 text-cyan-100 shadow-lg whitespace-nowrap"
+                    style={{
+                      left: `${hoverInfo.xPct}%`,
+                      top: hoverInfo.yPx,
+                      transform: 'translate(8px, -100%)',
+                    }}
+                  >
+                    {hoverInfo.freqMhz.toFixed(3)} MHz · {hoverInfo.dbm.toFixed(0)} dBm
+                    <span className="text-slate-400 ml-1">(click to inspect)</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Color legend — updated for the smooth thermal colormap */}
+              <div className="flex items-center gap-2 mt-1 text-[10px] text-slate-500 flex-wrap">
+                <span className="inline-flex items-center gap-1"><span className="w-3 h-2 inline-block rounded-sm" style={{ background: 'linear-gradient(to right, rgb(0,0,0), rgb(0,0,128), rgb(0,200,255), rgb(0,220,0), rgb(255,230,0), rgb(255,0,0), rgb(255,255,255))' }} /> −60 dBm (cold) → 0 dBm (hot, rtl_power scale)</span>
+                <span className="ml-auto text-slate-600">click any column to inspect · cyan vertical line = your mic freq · white dashes = TV station edges</span>
               </div>
               {inspect && (
                 <div className="mt-2 rounded border border-cyan-500/40 bg-cyan-950/30 p-3 text-xs">
