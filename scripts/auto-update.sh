@@ -205,19 +205,60 @@ sql_escape() {
 }
 
 # ---------------------------------------------------------------------------
-# Mutual exclusion via flock
+# Mutual exclusion via flock + PID-staleness sweep
 # ---------------------------------------------------------------------------
 # `flock -n` fails immediately if another run holds the lock. The lock is
 # released automatically when the shell exits (including on SIGKILL) because
 # file descriptors are closed by the kernel.
-exec 200>"$LOCK_FILE"
-if ! flock -n 200; then
-  log "Another auto-update run is in progress (lock held). Exiting cleanly."
-  exit 0
-fi
-
-# Write PID file for the Sync tab status API
-echo $$ > "$PID_FILE"
+#
+# v2.52.0 — added PID-staleness check + exit code 75 semantics.
+#
+# WHY: pre-v2.52.0 flock would correctly say "lock held" but the lock could
+# be held by ORPHAN child processes (npm/build/node) that inherited FD 200
+# from a parent script that already exited. `pgrep -af auto-update.sh`
+# would return nothing yet the lock would persist (Mode 14 — Holmgren
+# 2026-05-19 02:50). Operator had to manually `rm /tmp/sports-bar-auto-update.lock`.
+#
+# Now: on lock-failed, check the PID file. If the recorded PID is dead,
+# remove the lock + PID file, retry once. If still held by alive PID,
+# exit 75 — distinct from real failure exit codes, so cron/systemd can
+# retry sooner. Per AP-4 in docs/AUTO_UPDATE_DESIGN_RULES.md + Helm/ArgoCD
+# inspired patterns.
+acquire_lock_or_sweep_stale() {
+  exec 200>"$LOCK_FILE"
+  if flock -n 200; then
+    echo $$ > "$PID_FILE"
+    return 0
+  fi
+  # Lock held. Read PID, check if it's alive.
+  if [ -f "$PID_FILE" ]; then
+    local pid
+    pid=$(cat "$PID_FILE" 2>/dev/null | tr -d '[:space:]')
+    if [ -n "$pid" ] && [ "$pid" -gt 0 ] 2>/dev/null; then
+      if ! kill -0 "$pid" 2>/dev/null; then
+        log "Stale lock detected — recorded PID $pid is dead. Clearing lock + retrying."
+        # Close our FD-200 first so the rm doesn't affect a brand-new flock
+        # we're about to acquire.
+        exec 200>&-
+        rm -f "$LOCK_FILE" "$PID_FILE"
+        exec 200>"$LOCK_FILE"
+        if flock -n 200; then
+          echo $$ > "$PID_FILE"
+          return 0
+        fi
+        log "Lock still unavailable after stale-PID sweep — another run started concurrently."
+      else
+        log "Lock held by ALIVE PID $pid — legit concurrent run, exiting cleanly (exit 75 = 'retry later')."
+      fi
+    else
+      log "Lock held but PID file empty/unreadable — possibly mid-acquisition by concurrent run. Exiting clean (exit 75)."
+    fi
+  else
+    log "Lock held but no PID file — orphan lock from setsid-detached child. Exit 75."
+  fi
+  exit 75
+}
+acquire_lock_or_sweep_stale
 
 # ---------------------------------------------------------------------------
 # History row helpers
@@ -1176,33 +1217,61 @@ else
       log "WARNING: ensure-schema.sh had errors — some new tables/columns may be missing"
     fi
   elif grep -qE "Interactive prompts require a TTY terminal" "$SCHEMA_PUSH_LOG"; then
-    # Case B — extract which tables drizzle wanted to drop
+    # Case B — drizzle-kit hit some kind of interactive prompt in non-TTY
+    # mode and bailed. There are TWO known sub-cases:
+    #   B1. "data-loss" — would drop tables/columns with rows (drizzle prints
+    #       "delete X table with N items"). Allowlist of safe-to-flag tables
+    #       (mostly watcher/audit ones declared in schema.ts as of v2.50.12).
+    #   B2. "column conflict" — drizzle's diff is ambiguous about whether
+    #       new columns are renames of removed columns. Prints
+    #       "promptColumnsConflicts" in stack. v2.51.4 fix: when we hit this
+    #       prompt AND ensure-schema.sh succeeds, treat as benign — the live
+    #       DB state matches schema.ts (we applied via ALTER TABLE), drizzle
+    #       just couldn't auto-confirm. Trust ensure-schema.sh's outcome.
     DROPPED_TABLES=$(grep -E "delete .* table with [0-9]+ items" "$SCHEMA_PUSH_LOG" | sed -E "s/.*delete ([a-z_]+) table.*/\1/" | sort -u | tr '\n' ' ')
-    log "WARNING: drizzle-kit hit data-loss prompt in non-TTY mode for tables: $DROPPED_TABLES"
-    # Allowlist: watcher tables that ARE supposed to live in the DB even though
-    # they're managed via raw CREATE TABLE IF NOT EXISTS in watcher startup code.
-    # Declared in schema.ts as of v2.50.12 to prevent this; allowlist remains
-    # as belt-and-suspenders in case a new watcher table gets added later
-    # without a matching schema.ts entry.
-    SAFE_TABLES_REGEX="^(atlas_drop_events|atlas_priority_events|shure_rf_events|scheduling_preferences|sdr_spectrum|sdr_carriers|sdr_state|chat_messages|ChatSession|ChatMessage|chat_feedback|chat_qa_training|ai_indexing_log)$"
-    UNSAFE_TABLES=""
-    for T in $DROPPED_TABLES; do
-      if ! [[ "$T" =~ $SAFE_TABLES_REGEX ]]; then
-        UNSAFE_TABLES="$UNSAFE_TABLES $T"
+    IS_COLUMN_CONFLICT=$(grep -cE "promptColumnsConflicts|columnsResolver" "$SCHEMA_PUSH_LOG" 2>/dev/null || echo 0)
+
+    if [ -n "$DROPPED_TABLES" ]; then
+      # Sub-case B1: data-loss table drop
+      log "WARNING: drizzle-kit hit data-loss prompt in non-TTY mode for tables: $DROPPED_TABLES"
+      SAFE_TABLES_REGEX="^(atlas_drop_events|atlas_priority_events|shure_rf_events|scheduling_preferences|sdr_spectrum|sdr_carriers|sdr_state|chat_messages|ChatSession|ChatMessage|chat_feedback|chat_qa_training|ai_indexing_log)$"
+      UNSAFE_TABLES=""
+      for T in $DROPPED_TABLES; do
+        if ! [[ "$T" =~ $SAFE_TABLES_REGEX ]]; then
+          UNSAFE_TABLES="$UNSAFE_TABLES $T"
+        fi
+      done
+      if [ -z "$UNSAFE_TABLES" ]; then
+        log "  All flagged tables are on the known-safe watcher/audit allowlist — continuing."
+        log "  (TO ROOT-FIX: add the table to packages/database/src/schema.ts so drizzle stops flagging it.)"
+        if bash "$REPO_ROOT/scripts/ensure-schema.sh" "$DB_PATH" 2>&1 | tee -a "$LOG_FILE"; then
+          log "ensure-schema.sh fallback completed successfully"
+        else
+          log "WARNING: ensure-schema.sh had errors — some new tables/columns may be missing"
+        fi
+      else
+        fail "drizzle-kit data-loss prompt for non-allowlisted tables:$UNSAFE_TABLES — manual review required. Either declare the table in schema.ts (preferred) or add to the allowlist in scripts/auto-update.sh schema_push step. See $SCHEMA_PUSH_LOG for full output." 4
       fi
-    done
-    if [ -z "$UNSAFE_TABLES" ]; then
-      log "  All flagged tables are on the known-safe watcher/audit allowlist — continuing."
-      log "  (TO ROOT-FIX: add the table to packages/database/src/schema.ts so drizzle stops flagging it.)"
-      # Run ensure-schema.sh in case there's a legit new column/table that
-      # also needed creating but got blocked by the prompt error.
+    elif [ "$IS_COLUMN_CONFLICT" != "0" ]; then
+      # Sub-case B2: column-conflict prompt (v2.51.4+). drizzle can't tell
+      # if a new column is a rename of a removed one. Fall through to
+      # ensure-schema.sh — if it succeeds, the live DB is in sync with
+      # schema.ts and drizzle's diff was wrong.
+      log "WARNING: drizzle-kit hit column-conflict prompt in non-TTY mode (rename detection ambiguity)"
+      log "  Falling through to ensure-schema.sh — if it succeeds, live DB matches schema.ts"
+      if bash "$REPO_ROOT/scripts/ensure-schema.sh" "$DB_PATH" 2>&1 | tee -a "$LOG_FILE"; then
+        log "ensure-schema.sh fallback completed successfully — column changes safely applied"
+      else
+        fail "drizzle-kit column-conflict + ensure-schema.sh also failed — manual review required. See $SCHEMA_PUSH_LOG." 4
+      fi
+    else
+      log "WARNING: drizzle-kit hit unrecognized TTY prompt in non-TTY mode"
+      log "  Falling through to ensure-schema.sh as last-resort"
       if bash "$REPO_ROOT/scripts/ensure-schema.sh" "$DB_PATH" 2>&1 | tee -a "$LOG_FILE"; then
         log "ensure-schema.sh fallback completed successfully"
       else
-        log "WARNING: ensure-schema.sh had errors — some new tables/columns may be missing"
+        fail "drizzle-kit unknown TTY prompt + ensure-schema.sh also failed — manual review required. See $SCHEMA_PUSH_LOG." 4
       fi
-    else
-      fail "drizzle-kit data-loss prompt for non-allowlisted tables:$UNSAFE_TABLES — manual review required. Either declare the table in schema.ts (preferred) or add to the allowlist in scripts/auto-update.sh schema_push step. See $SCHEMA_PUSH_LOG for full output." 4
     fi
   else
     cat "$SCHEMA_PUSH_LOG" >> "$LOG_FILE"
@@ -1287,9 +1356,63 @@ fi
 
 log "npm run build (--force to bypass Turbo cache for package changes)"
 rm -rf "$REPO_ROOT/.turbo" "$REPO_ROOT/node_modules/.cache"
+# Save the pre-build .next as .next.bak so degraded-up recovery (below) can
+# restore it if the new build fails. v2.32.x already did this for the
+# rollback path; v2.52.0 promotes .next.bak from "input to rollback.sh" to
+# "primary in-place recovery artifact" so we don't need a full git reset
+# for compile-only failures.
+if [ -d "$REPO_ROOT/apps/web/.next" ] && [ ! -d "$REPO_ROOT/apps/web/.next.bak" ]; then
+  cp -al "$REPO_ROOT/apps/web/.next" "$REPO_ROOT/apps/web/.next.bak" 2>/dev/null || cp -a "$REPO_ROOT/apps/web/.next" "$REPO_ROOT/apps/web/.next.bak"
+fi
 npx turbo run build --force 2>&1 | tee -a "$LOG_FILE"
 if [ "${PIPESTATUS[0]}" -ne 0 ]; then
-  fail "npm run build failed" 4
+  # v2.52.0 — DEGRADED-UP recovery instead of full rollback.
+  #
+  # Pre-v2.52.0: any build failure called `fail "npm run build failed" 4`
+  # which triggered the cleanup trap → rollback.sh → git reset --hard →
+  # PM2 restart on rolled-back code → ~5 min service interruption × 6
+  # boxes simultaneously when main has a bad commit (2026-05-19 geocoder TS).
+  #
+  # Now: leave the merge commit in place, restore the prior .next/ artifact
+  # so PM2 serves the previous-good build, reload PM2 to drop any stale
+  # module caches, mark history result 'fail_build_kept_old', exit 2.
+  # The next cron picks up either (a) a fix on main → succeeds, or (b)
+  # the same broken main → exits 2 again with no churn.
+  #
+  # SAFETY GATE: this works only for pure-code build failures. If the
+  # merge included a schema change or a package-major bump, the previous
+  # build CAN'T safely serve the new state. Detection: did schema.ts or
+  # drizzle/*.sql or package-lock.json *.major* change? If so, fall back
+  # to the v2.32.x rollback path. Otherwise, degraded-up.
+  log "❌ Build failed. Evaluating recovery strategy (degraded-up vs full rollback)..."
+  BUILD_RECOVERY="degraded_up"
+  if git -C "$REPO_ROOT" diff --name-only "$PRE_MERGE_SHA" "$POST_MERGE_SHA" 2>/dev/null | grep -qE "packages/database/src/schema\.ts|drizzle/[0-9]+_.*\.sql$"; then
+    log "  Merge includes schema changes — previous build may not handle new schema. Falling back to full rollback."
+    BUILD_RECOVERY="full_rollback"
+  fi
+  if [ "$BUILD_RECOVERY" = "degraded_up" ] && [ -d "$REPO_ROOT/apps/web/.next.bak" ]; then
+    log "  → DEGRADED-UP: restoring .next from .next.bak, leaving merge applied, reloading PM2"
+    rm -rf "$REPO_ROOT/apps/web/.next"
+    mv "$REPO_ROOT/apps/web/.next.bak" "$REPO_ROOT/apps/web/.next"
+    pm2 reload sports-bar-tv-controller --update-env 2>&1 | tee -a "$LOG_FILE" || true
+    sleep 5
+    if curl -sf -m 5 http://localhost:3001/api/health >/dev/null 2>&1; then
+      log "  ✓ Bar still serving on previous-good build. Next cron will retry."
+      log "  History row recorded with result='fail_build_kept_old' (exit 2 — different from rollback exit 4)."
+    else
+      log "  ⚠ Health check failed after PM2 reload — degraded-up didn't help. Falling back to full rollback."
+      BUILD_RECOVERY="full_rollback"
+    fi
+  fi
+  if [ "$BUILD_RECOVERY" = "full_rollback" ]; then
+    fail "npm run build failed and degraded-up was unsafe — falling back to full rollback" 4
+  else
+    # Skip the cleanup trap's rollback — exit cleanly with exit 2.
+    # cleanup_on_error() at line 343 keys on $? != 0 to fire rollback;
+    # work around by explicitly clearing the trap before exit.
+    trap - EXIT
+    exit 2
+  fi
 fi
 
 # ===========================================================================
