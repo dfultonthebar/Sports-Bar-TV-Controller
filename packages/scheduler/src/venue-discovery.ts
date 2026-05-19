@@ -56,9 +56,29 @@ export async function runVenueDiscovery(opts: DiscoveryOpts): Promise<DiscoveryR
     const child = spawn('npx', args, { cwd: REPO_ROOT, env: process.env })
     let out = ''
     let err = ''
+    let resolved = false
+    // v2.52.4 fix (BG-process audit Finding #6): 20-min hard timeout.
+    // Pre-v2.52.4 had no timeout — Ollama hang during LLM-filter step
+    // (qwen2.5:14b OOM on Graystone per `project_graystone_ram_constraint`
+    // memory) blocked the spawn indefinitely → scheduler tick never
+    // returned → other registered polls in the same Map kept firing on
+    // their own intervals, but runScheduledVenueDiscoverySafe held its
+    // slot forever. SIGTERM first; if child ignores it (rare for Node
+    // children), SIGKILL after 10s.
+    const TIMEOUT_MS = 20 * 60 * 1000
+    const timeoutHandle = setTimeout(() => {
+      if (resolved) return
+      logger.warn(`[VENUE-DISCOVERY] script timeout after ${TIMEOUT_MS / 1000}s — sending SIGTERM`)
+      child.kill('SIGTERM')
+      // Escalate to SIGKILL if still alive after 10s
+      setTimeout(() => { if (!child.killed) child.kill('SIGKILL') }, 10_000)
+    }, TIMEOUT_MS)
     child.stdout?.on('data', (d) => { out += d.toString() })
     child.stderr?.on('data', (d) => { err += d.toString() })
     child.on('close', (code) => {
+      clearTimeout(timeoutHandle)
+      if (resolved) return
+      resolved = true
       const combined = out + (err ? '\n' + err : '')
       // Parse the SUMMARY line: "SUMMARY: X new, Y updated, Z skipped (...)"
       const m = combined.match(/SUMMARY:\s*(\d+)\s*new,\s*(\d+)\s*updated,\s*(\d+)\s*skipped/i)
@@ -74,6 +94,9 @@ export async function runVenueDiscovery(opts: DiscoveryOpts): Promise<DiscoveryR
       resolve({ newCount, updatedCount, skippedCount, errored, rawLog: combined })
     })
     child.on('error', (e) => {
+      clearTimeout(timeoutHandle)
+      if (resolved) return
+      resolved = true
       logger.error('[VENUE-DISCOVERY] spawn error', { data: { error: e.message } })
       resolve({ newCount: 0, updatedCount: 0, skippedCount: 0, errored: true, rawLog: e.message })
     })
