@@ -142,6 +142,85 @@ async function gatherShiftContext() {
     .limit(5)
     .all()
 
+  // v2.52.16 — mic status + upcoming neighborhood RF risks.
+  // Gives the bartender a 1-liner on mic health + a heads-up on bands
+  // playing nearby today that might step on the bar's wireless mics.
+  // Operator example: "Johnny Wadd at Anduzzi's at 3pm might have mic
+  // interference."
+  let micStatusLine: string | null = null
+  let upcomingMicRisks: Array<{ artistName: string; venueName: string; startLocal: string; confidence: number; distanceMi: number | null; known: boolean }> = []
+  try {
+    const sixtyMinAgo = nowUnix - 60 * 60
+    const shureRecent = await db.all<{ n: number }>(sql`
+      SELECT COUNT(*) AS n FROM shure_rf_events
+      WHERE event_type = 'rf_interference' AND detected_at >= ${sixtyMinAgo}
+    `)
+    const shureCount = shureRecent[0]?.n ?? 0
+
+    const watcherLive = await db.all<{ n: number }>(sql`
+      SELECT COUNT(*) AS n FROM shure_rf_events
+      WHERE detected_at >= ${nowUnix - 5 * 60}
+    `)
+    const watcherFresh = (watcherLive[0]?.n ?? 0) > 0
+
+    if (!watcherFresh && shureCount === 0) {
+      // Either no Shure receivers configured or watcher quiet. Either way: no alarm.
+      micStatusLine = 'Mic status: nothing to report.'
+    } else if (shureCount === 0) {
+      micStatusLine = 'Mic status: good (no interference in the last hour).'
+    } else if (shureCount < 5) {
+      micStatusLine = `Mic status: ${shureCount} brief signal hiccup${shureCount > 1 ? 's' : ''} in the last hour. Probably fine — check the receivers if you hear dropouts.`
+    } else {
+      micStatusLine = `Mic status: ${shureCount} interference events in the last hour — wireless mic environment is busy. Worth a Shure receiver check before the rush.`
+    }
+  } catch {
+    // shure_rf_events table missing — no Shure setup. Skip mic line.
+  }
+
+  // Upcoming neighborhood gigs in next 12h. Join to
+  // ArtistInterferenceProfile to mark known interferers.
+  try {
+    const upcomingRisks = await db.all<{
+      artist_name: string
+      venue_name: string
+      start_time: number
+      distance_mi: number | null
+      confidence: number | null
+    }>(sql`
+      SELECT
+        ne.artist_name,
+        nv.name AS venue_name,
+        ne.start_time,
+        nv.distance_mi,
+        aip.confidence
+      FROM NeighborhoodEvent ne
+      INNER JOIN NeighborhoodVenue nv ON nv.id = ne.venue_id
+      LEFT JOIN ArtistInterferenceProfile aip
+        ON aip.artist_normalized = ne.artist_normalized
+        AND aip.location_id = ${process.env.LOCATION_ID ?? 'default-location'}
+      WHERE ne.start_time > ${nowUnix}
+        AND ne.start_time < ${twelveHoursLater}
+        AND nv.is_active = 1
+        AND (nv.distance_mi IS NULL OR nv.distance_mi <= 1.0)
+        AND (nv.is_self = 0 OR nv.is_self IS NULL)
+      ORDER BY ne.start_time ASC
+      LIMIT 8
+    `)
+    upcomingMicRisks = upcomingRisks.map((r) => ({
+      artistName: r.artist_name,
+      venueName: r.venue_name,
+      startLocal: new Date(r.start_time * 1000).toLocaleString('en-US', {
+        timeZone: HARDWARE_CONFIG.venue.timezone,
+        hour: 'numeric', minute: '2-digit', hour12: true,
+      }),
+      confidence: r.confidence ?? 0,
+      distanceMi: r.distance_mi,
+      known: (r.confidence ?? 0) >= 0.6,
+    }))
+  } catch {
+    // NeighborhoodEvent table missing — feature off. Skip.
+  }
+
   // v2.32.25 — fleet-stale alerts. Bartender at any location can see when
   // sister locations are stuck so they can ping the operator. Soft-fail:
   // if the fleet API is down, we just skip this section.
@@ -196,6 +275,9 @@ async function gatherShiftContext() {
     recentFailures: recentFailureClusters.map(r => r.message),
     newRecommendations: newOverrideRecs.map(r => r.message),
     fleetAlerts,
+    // v2.52.16 — mic status + neighborhood RF risk for the brief
+    micStatusLine,
+    upcomingMicRisks,
   }
 }
 
@@ -240,7 +322,17 @@ function buildPrompt(ctx: any): string {
     ? ctx.fleetAlerts.map((m: string) => `- ${m}`).join('\n')
     : '- (sister locations all healthy)'
 
-  return `You are the shift manager at ${ctx.venueName}, a sports bar. Write a VERY concise (under 130 words) pre-shift brief for the bartender coming on. Current time: ${ctx.now}.
+  // v2.52.16 — mic status + neighborhood RF risk
+  const micLine = ctx.micStatusLine ?? '(no mic data — Shure receiver not configured)'
+  const upcomingRisks = (ctx.upcomingMicRisks || []).length > 0
+    ? ctx.upcomingMicRisks.map((r: any) => {
+        const distance = r.distanceMi != null ? ` (${r.distanceMi.toFixed(1)} mi away)` : ''
+        const flag = r.known ? ' — KNOWN INTERFERER from past gigs' : ''
+        return `- ${r.artistName} at ${r.venueName} at ${r.startLocal}${distance}${flag}`
+      }).join('\n')
+    : '- (no nearby gigs in the next 12 hours)'
+
+  return `You are the shift manager at ${ctx.venueName}, a sports bar. Write a VERY concise (under 150 words) pre-shift brief for the bartender coming on. Current time: ${ctx.now}.
 
 Upcoming games (next 12 hours):
 ${games}
@@ -257,10 +349,20 @@ ${recs}
 Sister-location health (TELL THE OWNER if any are stuck):
 ${fleet}
 
+Wireless mic status — include this line VERBATIM as one bullet, do NOT
+prefix with "Mic status:" or "Wireless mic status:" since the sentence
+already starts that way:
+${micLine}
+
+Nearby bands/DJs in the next 12 hours that could step on our wireless mics:
+${upcomingRisks}
+
 Format:
 - Start with a one-line headline for the biggest game tonight.
 - Call out home-team games (Brewers, Bucks, Badgers) first.
 - Mention any recent failures the bartender should pre-test.
+- Include the wireless mic status line VERBATIM as one of the bullets (don't reword it).
+- If there are nearby bands/DJs in the next 12h, add a line like "Heads up: <artist> at <venue> at <time> might cause mic interference" — but only for KNOWN INTERFERER entries OR entries within 0.5 mi. Skip distant unknowns to avoid noise.
 - If sister-location health shows STUCK locations, add ONE line: "TELL OWNER: <names> stuck on auto-update".
 - Use plain text, bullets OK, no markdown headings. Be direct — no hedging phrases like "you might want to consider". The bartender is experienced.
 
@@ -299,6 +401,20 @@ function fallbackBrief(ctx: any): string {
   if (ctx.fleetAlerts && ctx.fleetAlerts.length > 0) {
     lines.push(`TELL OWNER — sister locations stuck:`)
     for (const m of ctx.fleetAlerts) lines.push(`  ${m}`)
+    lines.push('')
+  }
+  // v2.52.16 — mic status + neighborhood RF risk in the fallback
+  if (ctx.micStatusLine) {
+    lines.push(ctx.micStatusLine)
+  }
+  if ((ctx.upcomingMicRisks ?? []).length > 0) {
+    const relevant = ctx.upcomingMicRisks.filter(
+      (r: any) => r.known || (r.distanceMi != null && r.distanceMi <= 0.5),
+    )
+    for (const r of relevant) {
+      const flag = r.known ? ' (known interferer from past gigs)' : ''
+      lines.push(`Heads up: ${r.artistName} at ${r.venueName} at ${r.startLocal} might cause mic interference${flag}.`)
+    }
   }
   return lines.join('\n')
 }
