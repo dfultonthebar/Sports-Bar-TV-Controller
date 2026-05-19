@@ -489,6 +489,13 @@ Same fix applied to **`@sports-bar/shure-slxd`** in v2.34.0 (preemptive — same
 
     Rationale: lagging = vuln drift + missing perf/AI capability + crippling catch-up tax later. Operator does not want the system ever falling behind.
 
+11. **Every fix/doc → RAG re-scan (v2.49.10+ — Standing Rule 2026-05-18).** Every commit that touches `CLAUDE.md`, `docs/**/*.md`, `.claude/locations/*.md`, `packages/*/README.md`, memory files at `~/.claude/projects/.../memory/`, drizzle SQL, or anything else indexed by `scripts/scan-system-docs.ts` / `scripts/scan-code-docs.ts` MUST end with a RAG re-scan. Documentation without rescan is invisible to the AI Hub chat — operators ask about the thing we just fixed and the AI doesn't know. Apply at three levels:
+    1. **Live session** — after committing a doc fix on main, kick off `nohup npx tsx scripts/scan-system-docs.ts > /tmp/rag-rescan.log 2>&1 &` so it's done by the time the operator next opens the AI Hub. Don't block on completion (~25-40 min) — just queue it.
+    2. **Auto-update path** — `scripts/auto-update.sh` should trigger an incremental scan on every successful merge that touched RAG-indexed paths. Operators at every location benefit without manual action. See `scripts/rag-rescan-if-needed.sh` for the path-aware trigger helper (v2.49.10+).
+    3. **Weekly cron** — `0 3 * * 0 cd /home/ubuntu/Sports-Bar-TV-Controller && npx tsx scripts/scan-system-docs.ts` as a backstop in case 1+2 miss anything.
+
+    The principle: committing a doc fix without rescanning RAG is like fixing a bug in a service but not restarting it. The fix exists in the repo but the system isn't running the new version.
+
 ### Version Bumping (REQUIRED — every commit to main)
 Every commit to `main` MUST include a `package.json` version bump (same commit or same push). Code-change-without-bump → locations report matching versions for mismatched code → undebuggable. Minor for features/migrations; patch for bug fixes/docs. Details: `docs/CLAUDE_VERSIONING_GUIDE.md`.
 
