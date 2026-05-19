@@ -18,7 +18,7 @@
  */
 
 import { db, schema } from '@sports-bar/database'
-import { sql } from 'drizzle-orm'
+import { sql, eq } from 'drizzle-orm'
 import { logger } from '@sports-bar/logger'
 import { fetchBananasSchedule, type BananasParsedEvent } from '@sports-bar/sports-apis'
 
@@ -104,20 +104,36 @@ interface VenueLookupRow {
 }
 
 /**
- * Look up a venue by name. Strategy:
- *   1. Exact match on normalized name
+ * Look up a venue by name. Strategy (v2.51.3+):
+ *   0. **Alias table** lookup via NeighborhoodVenueAlias (exact normalized
+ *      match) — O(1), seeded with known Bananas spellings + auto-added
+ *      when a fuzzy match resolves so future runs short-circuit.
+ *   1. Exact match on normalized canonical venue.name
  *   2. Substring match (the parsed venue contains a known venue or vice
  *      versa — handles "Stoneyard Greenville" vs "Stoneyard - Greenville")
  *   3. Levenshtein ≤ 3 on normalized names
  *
- * Returns the venue ID or null.
+ * The alias check is the most important addition: Bananas writes venue
+ * names in ALL CAPS without punctuation ("ANDUZZIS - HOLMGREN WAY" vs our
+ * "Anduzzi's Sports Club - Holmgren Way") — a 14-char delta the
+ * Levenshtein-≤3 threshold correctly rejects. Aliases cover this gap
+ * deterministically without weakening the fuzzy threshold (which would
+ * cause false matches in the other direction).
+ *
+ * Returns the venue ID or null. Method 'alias' is recorded when the
+ * alias-table path hit; caller logs that for ingest-stats visibility.
  */
 function findVenueId(
   parsedName: string,
   venues: VenueLookupRow[],
-): { id: string; name: string; method: 'exact' | 'substring' | 'fuzzy'; distance?: number } | null {
+  aliasMap: Map<string, { id: string; name: string }>,
+): { id: string; name: string; method: 'alias' | 'exact' | 'substring' | 'fuzzy'; distance?: number } | null {
   const target = normalizeVenueName(parsedName)
   if (!target) return null
+
+  // (0) alias table (v2.51.3+)
+  const aliasHit = aliasMap.get(target)
+  if (aliasHit) return { id: aliasHit.id, name: aliasHit.name, method: 'alias' }
 
   // (1) exact
   const exact = venues.find((v) => v.normalized === target)
@@ -234,11 +250,38 @@ export async function runBananasIngestion(): Promise<BananasIngestionStats> {
     stats.warnings.push(warn)
   }
 
+  // v2.51.3 — Load alias table for fast O(1) lookup of known upstream
+  // spellings (e.g. Bananas's "ANDUZZIS - HOLMGREN WAY" → our canonical
+  // "Anduzzi's Sports Club - Holmgren Way"). Map keyed by alias_normalized.
+  const aliasMap = new Map<string, { id: string; name: string }>()
+  try {
+    const aliasRows = await db
+      .select({
+        aliasNormalized: schema.neighborhoodVenueAliases.aliasNormalized,
+        venueId: schema.neighborhoodVenueAliases.venueId,
+        venueName: schema.neighborhoodVenues.name,
+      })
+      .from(schema.neighborhoodVenueAliases)
+      .leftJoin(schema.neighborhoodVenues, eq(schema.neighborhoodVenueAliases.venueId, schema.neighborhoodVenues.id))
+      .all()
+    for (const r of aliasRows) {
+      if (r.aliasNormalized && r.venueId && r.venueName) {
+        aliasMap.set(r.aliasNormalized, { id: r.venueId, name: r.venueName })
+      }
+    }
+    if (aliasMap.size > 0) {
+      logger.info(`[BANANAS-INGEST] loaded ${aliasMap.size} venue aliases`)
+    }
+  } catch (err: any) {
+    // Non-fatal: alias table may not exist on pre-v2.51.3 boxes mid-rollout.
+    logger.warn(`[BANANAS-INGEST] alias table query failed (continuing with name-match only): ${err.message}`)
+  }
+
   const nowSec = Math.floor(Date.now() / 1000)
 
   for (const ev of events) {
     try {
-      const match = findVenueId(ev.venue, venues)
+      const match = findVenueId(ev.venue, venues, aliasMap)
       if (!match) {
         stats.skippedNoVenue++
         const warn = `[BANANAS-INGEST] no venue match for "${ev.venue}" (artist=${ev.artist}, start=${ev.startTimeISO})`

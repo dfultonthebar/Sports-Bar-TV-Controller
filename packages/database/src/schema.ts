@@ -2843,6 +2843,21 @@ export const neighborhoodVenues = sqliteTable('NeighborhoodVenue', {
   // entertainment. 0.0–1.0. Used to filter the operator-review list
   // (e.g. only show ≥ 0.4 to reduce noise).
   bookingConfidence: real('booking_confidence'),
+  // v2.51.3: TRUE if this venue row represents OUR OWN bar (the fleet
+  // location's own physical building). Bookings AT our bar still
+  // matter for interference prediction — bands bring their OWN
+  // wireless rigs even at our venue, and that rig is now physically
+  // INSIDE the same room as our Shure receiver. Highest possible
+  // interference risk. So:
+  //   - correlator DOES attribute rf_interference events to is_self
+  //     bookings (distance=0.0 mi → confidence multiplier = 1.0)
+  //   - preemptive-strike workflow uses a LOWER confidence threshold
+  //     (≥ 0.3 instead of ≥ 0.6) for is_self bookings, since the
+  //     band is literally in our building — even an unknown artist
+  //     warrants a pre-scan
+  //   - UI surfaces is_self events prominently ("tonight AT YOUR
+  //     bar:" header) so the operator sees them first
+  isSelf: integer('is_self', { mode: 'boolean' }).notNull().default(false),
   createdAt: integer('created_at').notNull().$defaultFn(() => Math.floor(Date.now() / 1000)),
   updatedAt: integer('updated_at').notNull().$defaultFn(() => Math.floor(Date.now() / 1000)),
 }, (table) => ({
@@ -2850,10 +2865,44 @@ export const neighborhoodVenues = sqliteTable('NeighborhoodVenue', {
   distanceIdx: index('NeighborhoodVenue_distance_idx').on(table.distanceMi),
   isActiveIdx: index('NeighborhoodVenue_isActive_idx').on(table.isActive),
   reviewStatusIdx: index('NeighborhoodVenue_reviewStatus_idx').on(table.reviewStatus),
+  isSelfIdx: index('NeighborhoodVenue_isSelf_idx').on(table.isSelf),
   // Allow same venue name across categories (e.g. "The Bar" could be a
   // restaurant and a sports bar in different cities, unlikely but possible)
   // but not duplicate same-name same-category rows.
   uniqueNameCat: uniqueIndex('NeighborhoodVenue_name_category_unique').on(table.name, table.category),
+}))
+
+// v2.51.3 — Alias table for venue-name normalization across ingestion sources.
+//
+// Bananas Entertainment writes venue names in ALL CAPS and strips
+// punctuation: "ANDUZZIS - HOLMGREN WAY" for our seeded "Anduzzi's
+// Sports Club - Holmgren Way". The bananas-ingestion fuzzy matcher's
+// Levenshtein-≤3 threshold rejected the 14-char delta, dropping 80+
+// events per scrape on the floor.
+//
+// Now: ingestion checks NeighborhoodVenueAlias first (exact match on
+// alias_normalized) → falls back to exact match on venue.name →
+// falls back to existing fuzzy match. Aliases can be seeded
+// (apps/web/scripts/seed-neighborhood-venue-aliases.ts) or created on
+// the fly when an operator approves a fuzzy match in the admin UI.
+//
+// alias_normalized is the input string after: lowercase, trim, collapse
+// whitespace, strip everything except [a-z0-9 -]. Bananas's
+// "ANDUZZIS - HOLMGREN WAY" normalizes to "anduzzis - holmgren way".
+export const neighborhoodVenueAliases = sqliteTable('NeighborhoodVenueAlias', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  venueId: text('venue_id').notNull().references(() => neighborhoodVenues.id, { onDelete: 'cascade' }),
+  aliasText: text('alias_text').notNull(),
+  aliasNormalized: text('alias_normalized').notNull(),
+  // 'manual' = operator added via UI/seed. 'auto' = bananas-ingestion
+  // saw a fuzzy match + auto-recorded the alias so future runs are
+  // O(1) lookups. 'bananas' / 'bandsintown' / etc. = source-specific
+  // alias from upstream data.
+  source: text('source').notNull().default('manual'),
+  createdAt: integer('created_at').notNull().$defaultFn(() => Math.floor(Date.now() / 1000)),
+}, (table) => ({
+  venueIdx: index('NeighborhoodVenueAlias_venue_idx').on(table.venueId),
+  uniqueAlias: uniqueIndex('NeighborhoodVenueAlias_normalized_unique').on(table.aliasNormalized),
 }))
 
 export const neighborhoodEvents = sqliteTable('NeighborhoodEvent', {
