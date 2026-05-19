@@ -44,7 +44,16 @@ type StatusResp = {
   lastSweepAt: number | null
   ageSecs: number | null
   totalAggregatedRows: number
-  activeCarriers: Array<{ freqMhz: number; peakDbm: number | null; lastSeenSec: number }>
+  // v2.52.15: optional coalesced fields populated by /api/sdr/status
+  // when carriers got bin-coalesced (200kHz wide TV broadcast → 1 entry
+  // instead of 8 adjacent 25kHz bins).
+  activeCarriers: Array<{
+    freqMhz: number
+    peakDbm: number | null
+    lastSeenSec: number
+    widthKhz?: number
+    binCount?: number
+  }>
 }
 
 type HistoryResp = {
@@ -751,17 +760,41 @@ export default function ShureSdrSpectrumPanel({ ourFrequencies = [] }: Props) {
               <div className="text-xs text-slate-500 italic">No carriers above threshold right now. RF environment quiet.</div>
             ) : (
               <div className="space-y-1">
-                {status.activeCarriers.map((c) => (
-                  <div key={c.freqMhz} className="flex items-center justify-between px-2 py-1 rounded bg-slate-900/60 border border-slate-700/50">
-                    <span className="inline-flex items-center gap-2">
-                      <Radio className="w-3 h-3 text-amber-400" />
-                      <span className="font-mono text-xs text-slate-200">{c.freqMhz.toFixed(3)} MHz</span>
-                    </span>
-                    <span className="text-[10px] text-slate-400 font-mono">
-                      peak {c.peakDbm?.toFixed(0) ?? '?'} dBm · {c.lastSeenSec}s ago
-                    </span>
-                  </div>
-                ))}
+                {status.activeCarriers.map((c) => {
+                  // v2.52.15: classify by coalesced width — broadcast TV
+                  // spans MHz, wireless mics typically 100-300 kHz, narrow
+                  // spurious < 100 kHz.
+                  const widthKhz = c.widthKhz ?? 25
+                  let widthLabel = ''
+                  let widthBadge = ''
+                  if (widthKhz >= 1000) {
+                    widthLabel = `${(widthKhz / 1000).toFixed(1)} MHz wide`
+                    widthBadge = 'bg-red-500/15 text-red-300 border-red-500/30'
+                  } else if (widthKhz >= 300) {
+                    widthLabel = `${widthKhz} kHz wide`
+                    widthBadge = 'bg-orange-500/15 text-orange-300 border-orange-500/30'
+                  } else if (widthKhz >= 100) {
+                    widthLabel = `${widthKhz} kHz (mic-width)`
+                    widthBadge = 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                  } else {
+                    widthLabel = `${widthKhz} kHz`
+                    widthBadge = 'bg-slate-600/20 text-slate-400 border-slate-600/30'
+                  }
+                  return (
+                    <div key={`${c.freqMhz}-${widthKhz}`} className="flex items-center justify-between px-2 py-1 rounded bg-slate-900/60 border border-slate-700/50 gap-2 flex-wrap">
+                      <span className="inline-flex items-center gap-2">
+                        <Radio className="w-3 h-3 text-amber-400" />
+                        <span className="font-mono text-xs text-slate-200">{c.freqMhz.toFixed(3)} MHz</span>
+                        <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded border ${widthBadge}`}>
+                          {widthLabel}
+                        </span>
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-mono">
+                        peak {c.peakDbm?.toFixed(0) ?? '?'} dBm · {c.lastSeenSec}s ago
+                      </span>
+                    </div>
+                  )
+                })}
               </div>
             )}
           </div>
