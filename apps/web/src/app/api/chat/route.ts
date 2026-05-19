@@ -6,6 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { documentSearch } from '@/lib/enhanced-document-search'
+import { retrieveContext } from '@/lib/rag-server/query-engine'
 import { operationLogger } from '@/lib/operation-logger'
 import { findUnique, update } from '@/lib/db-helpers'
 import { schema } from '@/db'
@@ -49,7 +50,48 @@ interface AIResponse {
 
 // Local Ollama configuration
 const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || HARDWARE_CONFIG.ollama.baseUrl
-const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'phi3:mini' // OPTIMIZED: Faster model
+// v2.46.3: defaulted to llama3.1:8b — iGPU-accelerated via IPEX-LLM
+// (~14 tok/s, same as pattern-digest). phi3:mini ground worse against
+// RAG snippets per fact-checker grilling 2026-05-18. Override via
+// OLLAMA_MODEL env if you want the faster/dumber phi3:mini.
+const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'llama3.1:8b'
+
+// Option B unification (v2.46.3): the AI Hub /api/chat reads from the
+// RAG vector store (3000+ chunks: CLAUDE.md, docs/, packages/*/README.md,
+// .claude/locations/*.md, memory files, vendor protocol specs) instead
+// of the older enhanced-document-search. AI Hub chat is now grounded
+// in the same SME corpus the pattern-digest uses.
+//
+// Adapter preserves the DocumentSearchResult shape so downstream
+// context-formatting (line ~180 + ~441) is unchanged. Falls back to
+// enhanced-document-search if RAG is empty (fresh location install
+// before scan-system-docs.ts has run) so chat keeps working.
+async function searchDocsViaRag(
+  query: string,
+  topK: number,
+): Promise<Array<{ id: string; originalName: string; content: string; relevanceScore: number; matchedTerms: string[] }>> {
+  try {
+    const result = await retrieveContext(query, topK)
+    if (!result.chunks || result.chunks.length === 0) {
+      return documentSearch.searchDocuments(query, topK)
+    }
+    const terms = query
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((t) => t.length > 3)
+      .slice(0, 5)
+    return result.chunks.map((c, i) => ({
+      id: `rag-${i}`,
+      originalName: c.source ?? `chunk_${i}`,
+      content: c.content,
+      relevanceScore: c.score ?? 0,
+      matchedTerms: terms,
+    }))
+  } catch (err) {
+    logger.warn(`[AI-HUB-CHAT] RAG retrieval failed, falling back: ${(err as Error)?.message ?? err}`)
+    return documentSearch.searchDocuments(query, topK)
+  }
+}
 
 export async function POST(request: NextRequest) {
   // Input validation
@@ -163,7 +205,7 @@ async function processStreamingChat(
     logger.info('[STREAMING] Sending status: Searching documentation...')
     await sendSSE({ type: 'status', message: 'Searching documentation...' })
     logger.info('[STREAMING] Calling documentSearch.searchDocuments...')
-    const relevantDocs = await documentSearch.searchDocuments(message, 5)
+    const relevantDocs = await searchDocsViaRag(message, 8)
     logger.info('[STREAMING] Document search completed', { data: { found: relevantDocs.length } })
     
     // Get recent operation logs for context
@@ -289,7 +331,18 @@ Available tools: ${availableTools.map(t => t.name).join(', ')}
 - Reference specific documentation when available
 - Suggest preventive measures
 - Use tools when they can provide better information
-- Always explain what you're doing when using tools`,
+- Always explain what you're doing when using tools
+
+## CRITICAL — Grounding rules (v2.46.3):
+When the RELEVANT DOCUMENTATION section contains a specific name, port,
+property, IP, file path, version, command flag, or wire-protocol token
+that answers the question, **QUOTE IT VERBATIM from the documentation**.
+Do not paraphrase or substitute with a generic term you remember from
+training data — our docs are authoritative on every detail of this
+system. If the docs disagree with what you remember, the docs win.
+If the documentation does NOT contain the specific detail being asked,
+say "I don't see that in the indexed documentation" rather than
+fabricating an answer.`,
     }
 
     // Add user message
@@ -314,7 +367,7 @@ Available tools: ${availableTools.map(t => t.name).join(', ')}
         messages: [systemMessage, ...messages],
         stream: true, // Enable streaming from Ollama
         options: {
-          temperature: 0.7,
+          temperature: 0.3, // v2.46.3: lowered from 0.7 for RAG fidelity
           top_p: 0.9,
         },
       }),
@@ -437,8 +490,8 @@ async function handleNonStreamingChat(
   sessionId: string | undefined,
   enableTools: boolean
 ): Promise<NextResponse> {
-  // Enhanced document search
-  const relevantDocs = await documentSearch.searchDocuments(message, 5)
+  // v2.46.3: topK 5→8 — see fact-checker re-grill 2026-05-18
+  const relevantDocs = await searchDocsViaRag(message, 8)
   
   // Get recent operation logs
   const recentOperations = await operationLogger.getRecentOperations(24)
@@ -475,6 +528,13 @@ async function handleNonStreamingChat(
     role: 'system',
     content: `You are a Sports Bar AI Assistant with access to documentation and tools.
 
+CRITICAL: When the RELEVANT DOCUMENTATION section contains a specific
+name, port, property, IP, path, or wire-protocol token that answers the
+question, QUOTE IT VERBATIM from the documentation. Do not paraphrase
+or substitute with a generic term from training data — our docs are
+authoritative. If the docs don't contain the specific detail, say so
+rather than fabricating an answer.
+
 ${toolsPrompt}
 ${context}`,
   }
@@ -489,6 +549,10 @@ ${context}`,
       model: OLLAMA_MODEL,
       messages: [systemMessage, ...messages],
       stream: false,
+      options: {
+        temperature: 0.3, // v2.46.3: match streaming-path fidelity setting
+        top_p: 0.9,
+      },
     }),
   })
 
