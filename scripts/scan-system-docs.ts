@@ -89,6 +89,15 @@ const EXCLUDE_PATTERNS = [
   '/logs/',
 ]
 
+// v2.48.0: extend supported extensions for the gap-fill pass — config
+// files (.js / .json / .ts), drizzle SQL (.sql), shell scripts (.sh).
+// These get the same chunking treatment as .md (the readDocument()
+// fallback reads any extension as UTF-8).
+const ORIGINAL_EXTS = require('../apps/web/src/lib/rag-server/config').RAGConfig.supportedExtensions
+require('../apps/web/src/lib/rag-server/config').RAGConfig.supportedExtensions = [
+  ...ORIGINAL_EXTS, '.sql', '.sh', '.json', '.js', '.ts',
+]
+
 // PDF duplicates of .md files — if we have foo.md AND foo.pdf, skip
 // the PDF. We keep PDFs that don't have a sibling .md.
 async function isPdfDuplicate(pdfPath: string): Promise<boolean> {
@@ -177,7 +186,45 @@ async function collectFiles(): Promise<string[]> {
     }
   }
 
-  // 8. Each package may have docs/ or additional *.md beyond README.
+  // 8a. (v2.48.0) Build / runtime / deploy config files at repo root.
+  //     These are short but answer "how is the build set up?" questions
+  //     that operators ask the AI Hub. Worth their weight in chunks.
+  for (const f of ['next.config.js', 'ecosystem.config.js', 'turbo.json',
+                   'apps/web/drizzle.config.ts', 'apps/web/next.config.js',
+                   'apps/web/jest.config.js', '.npmrc', '.gitignore']) {
+    const full = path.join(REPO_ROOT, f)
+    if (await fileExists(full)) collected.add(full)
+  }
+
+  // 8b. (v2.48.0) Drizzle migration SQL — captures schema EVOLUTION,
+  //     not just current state. Lets the AI explain "when did column X
+  //     appear / why does table Y have these constraints."
+  const drizzleDir = path.join(REPO_ROOT, 'apps/web/drizzle')
+  if (await fileExists(drizzleDir)) {
+    try {
+      const sqls = await fs.readdir(drizzleDir)
+      for (const f of sqls) {
+        if (f.endsWith('.sql') || f.endsWith('.json')) {
+          collected.add(path.join(drizzleDir, f))
+        }
+      }
+    } catch { /* skip */ }
+  }
+
+  // 8c. (v2.48.0) Operator-facing shell scripts — install/setup/health
+  //     check / one-time bootstrap. Encode procedural knowledge the AI
+  //     should be able to walk an operator through. Selective list to
+  //     keep noise out (not /scripts/*.ts which are dev tools).
+  for (const f of ['scripts/setup-iris-ollama.sh', 'scripts/setup-sdr.sh',
+                   'scripts/setup-bartender-nginx.sh',
+                   'scripts/bootstrap-new-location.sh',
+                   'scripts/auto-update.sh', 'scripts/verify-install.sh',
+                   'install.sh', 'DEPLOY_REMOTE_FIX.sh']) {
+    const full = path.join(REPO_ROOT, f)
+    if (await fileExists(full)) collected.add(full)
+  }
+
+  // 9. Each package may have docs/ or additional *.md beyond README.
   //    Walk packages/*/docs and packages/*/*.md (non-recursively past
   //    the package root so we don't pick up sub-package source).
   const pkgsDir = path.join(REPO_ROOT, 'packages')
