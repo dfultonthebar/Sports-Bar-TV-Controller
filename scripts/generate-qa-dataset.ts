@@ -550,7 +550,14 @@ async function main(): Promise<void> {
   )
 }
 
-main().catch((e) => {
-  process.stderr.write(`[qa-gen] FATAL: ${(e as Error).stack || e}\n`)
-  process.exit(1)
-})
+// v2.52.3: explicit exit(0) — Anthropic SDK client is module-cached
+// (line ~270 _anthropicClient), Ollama keep_alive open in ollamaFilter,
+// fs.FileHandle in finally. Without exit, completed run hangs forever.
+// CURRENTLY RUNNING (PID 653741) will NOT pick up this fix — needs
+// manual kill after it logs completion at ~13:00.
+main()
+  .then(() => process.exit(0))
+  .catch((e) => {
+    process.stderr.write(`[qa-gen] FATAL: ${(e as Error).stack || e}\n`)
+    process.exit(1)
+  })
