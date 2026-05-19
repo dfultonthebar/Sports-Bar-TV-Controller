@@ -2811,12 +2811,34 @@ export const neighborhoodVenues = sqliteTable('NeighborhoodVenue', {
   facebookEventUrl: text('facebook_event_url'),
   notes: text('notes'),
   isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
+  // v2.51.1: review_status tracks the auto-discovery → operator-approval
+  // lifecycle. 'manual' = hand-seeded by operator (Holmgren's initial 16);
+  // 'pending_review' = auto-discovered by Overpass+Ollama, awaiting
+  // operator approval; 'approved' = operator approved an auto-discovered
+  // row; 'declined' = operator rejected (won't re-appear on re-discovery).
+  // Correlation engine + scraper only USE rows where review_status IN
+  // ('manual', 'approved') AND is_active=true.
+  reviewStatus: text('review_status').notNull().default('manual'),
+  // v2.51.1: source of this venue row. 'manual' | 'overpass_osm' |
+  // 'bandsintown' | 'google_places'. Tracks where we found it so
+  // re-discovery doesn't duplicate or so we can re-query the same
+  // source for updates (e.g. an OSM tag changed).
+  discoverySource: text('discovery_source').notNull().default('manual'),
+  // v2.51.1: OSM tags as JSON for auto-discovered rows. Useful for the
+  // Ollama "books live music?" filter to re-evaluate. Null for manually
+  // seeded rows.
+  osmTags: text('osm_tags'),
+  // v2.51.1: Ollama-assigned confidence that this venue books live
+  // entertainment. 0.0–1.0. Used to filter the operator-review list
+  // (e.g. only show ≥ 0.4 to reduce noise).
+  bookingConfidence: real('booking_confidence'),
   createdAt: integer('created_at').notNull().$defaultFn(() => Math.floor(Date.now() / 1000)),
   updatedAt: integer('updated_at').notNull().$defaultFn(() => Math.floor(Date.now() / 1000)),
 }, (table) => ({
   categoryIdx: index('NeighborhoodVenue_category_idx').on(table.category),
   distanceIdx: index('NeighborhoodVenue_distance_idx').on(table.distanceMi),
   isActiveIdx: index('NeighborhoodVenue_isActive_idx').on(table.isActive),
+  reviewStatusIdx: index('NeighborhoodVenue_reviewStatus_idx').on(table.reviewStatus),
   // Allow same venue name across categories (e.g. "The Bar" could be a
   // restaurant and a sports bar in different cities, unlikely but possible)
   // but not duplicate same-name same-category rows.

@@ -125,11 +125,19 @@ class SchedulerService {
 
     // v2.51.0 — Bananas Entertainment ingestion for the Neighborhood RF
     // Interference Prediction subsystem. Pulls the agency's public
-    // schedule page and upserts events into NeighborhoodEvent. Bananas's
-    // calendar changes a couple times a week at most, so 6-hour cadence
-    // is plenty; initial delay 2 min so we don't pile onto first-boot
-    // load (DB seeding, ESPN sync, etc.).
-    this.registerPoll('runBananasIngestion', () => this.runBananasIngestionSafe(), 21600000, 120000);
+    // schedule page and upserts events into NeighborhoodEvent. Bananas
+    // adds new events daily-ish; v2.51.1 changed cadence from 6h to 24h
+    // since intra-day scrapes pulled identical payloads. Initial delay
+    // 2 min so we don't pile onto first-boot load.
+    this.registerPoll('runBananasIngestion', () => this.runBananasIngestionSafe(), 86400000, 120000);
+
+    // v2.51.1 — Weekly Overpass+Ollama venue re-discovery. Catches new
+    // bars/clubs opening near the bar over time without operator
+    // intervention. Writes pending_review rows; correlation engine
+    // ignores them until operator approves via admin UI. Reads LOCATION_LAT
+    // / LOCATION_LON from env; gracefully skips if unset. 7-day cadence
+    // + 30-min initial delay (lets daily Bananas ingest land first).
+    this.registerPoll('runVenueDiscovery', () => this.runScheduledVenueDiscoverySafe(), 604800000, 1800000);
 
     // v2.51.0 — Neighborhood RF interference prediction pipeline:
     //   correlator       → joins fresh rf_interference rows with nearby
@@ -196,6 +204,22 @@ class SchedulerService {
       await runBananasIngestion();
     } catch (error: any) {
       logger.error('[BANANAS-INGEST] Unexpected ingestion failure:', { error });
+    }
+  }
+
+  /**
+   * v2.51.1 — Weekly Overpass+Ollama venue re-discovery, wrapped for
+   * scheduler safety. Reads LOCATION_LAT / LOCATION_LON from env;
+   * gracefully no-ops if unset (logs the skip but doesn't error).
+   * The discovery script runs as a child process so a hung Ollama
+   * call can't block the main tick.
+   */
+  private async runScheduledVenueDiscoverySafe() {
+    try {
+      const { runScheduledVenueDiscovery } = await import('./venue-discovery');
+      await runScheduledVenueDiscovery();
+    } catch (error: any) {
+      logger.error('[VENUE-DISCOVERY] Unexpected discovery failure:', { error });
     }
   }
 

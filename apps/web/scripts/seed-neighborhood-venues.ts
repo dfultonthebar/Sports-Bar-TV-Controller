@@ -234,6 +234,26 @@ const VENUES: VenueRow[] = [
       "address pending verification). Coordinates are a Lambeau-adjacent " +
       "placeholder; correct via SQL or re-run after editing this file.",
   },
+  {
+    // Titletown District outdoor event lawn — Ariens Hill / Titletown Plaza.
+    // 1100 block of Marlee Ln, Ashwaubenon WI 54304. Hosts outdoor
+    // concerts, movie nights, ice rink events, Packers tailgate
+    // gatherings. Outdoor stages = aggressive pro wireless rigs at full
+    // power. This is one of the highest-RF-impact venues on the
+    // Holmgren-adjacent list. Indoor Titletown venues (1919, Lodge
+    // Kohler) are seeded separately above.
+    name: 'Titletown District (Ariens Hill / Plaza)',
+    category: 'concert_hall',
+    latitude: 44.5025,
+    longitude: -88.0598,
+    sourceUrl: 'https://www.titletown.com/events',
+    notes:
+      "Outdoor concert + event space at the Lambeau Field complex. " +
+      "Tubing/sledding in winter, concerts + movies + community events " +
+      "in summer. Outdoor stages mean wide-band pro wireless rigs at " +
+      "elevated power — major Holmgren-side interference candidate. " +
+      "Track their public events calendar at titletown.com/events.",
+  },
 
   // ─── AGENCY (booking-source pointer, not a venue) ───
   {
