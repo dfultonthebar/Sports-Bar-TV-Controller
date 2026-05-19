@@ -89,13 +89,22 @@ echo "[rag-rescan] (scan runs ~25-40 min; this script does NOT block)"
 # Fix: launch the actual scan process directly, capture $! (its real
 # PID), write that to the lock. The trap on EXIT in the subshell still
 # cleans up.
+#
+# v2.52.3 fix (BG-process audit Finding #1, CRITICAL): wrap each scan in
+# `timeout 45m` and add `trap 'rm -f "$LOCK"' EXIT` inside the subshell.
+# Without these, today's 4 hung scan-system-docs.ts processes from
+# 02:08/02:41/02:53/05:06 accumulated burning 22 min of CPU each, holding
+# Ollama embeddings model in RAM, with the lock file held indefinitely.
+# 45 min is generous — a clean cold start finishes in ~30 min; warm in
+# ~5; if it's still running after 45 something is wrong. SIGTERM first,
+# then SIGKILL 10s later (timeout's defaults).
 (
-  npx tsx scripts/scan-system-docs.ts >> "$LOGFILE" 2>&1
+  trap 'rm -f "$LOCK"' EXIT
+  timeout --kill-after=10s 45m npx tsx scripts/scan-system-docs.ts >> "$LOGFILE" 2>&1
   if printf '%s\n' "${CHANGED[@]}" | grep -qE '\.(ts|tsx)$'; then
     echo "[rag-rescan] TypeScript paths changed — running scan-code-docs.ts now" >> "$LOGFILE"
-    npx tsx scripts/scan-code-docs.ts >> "$LOGFILE" 2>&1
+    timeout --kill-after=10s 45m npx tsx scripts/scan-code-docs.ts >> "$LOGFILE" 2>&1
   fi
-  rm -f "$LOCK"
 ) >> "$LOGFILE" 2>&1 &
 SCAN_PID=$!
 echo "$SCAN_PID" > "$LOCK"
