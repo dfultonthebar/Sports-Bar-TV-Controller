@@ -35,6 +35,23 @@ is the archive.
 
 ---
 
+## v2.47.0 — breaking-major npm dep bumps (first pass per Rule 10)
+
+**Released:** 2026-05-18
+**Branch landed:** main
+
+**Required Manual Steps:** none — `bash scripts/auto-update.sh` handles `npm ci` + rebuild + restart automatically. Verify with:
+
+```bash
+cd /home/ubuntu/Sports-Bar-TV-Controller
+node -e "console.log(require('@anthropic-ai/sdk/package.json').version)"
+# Expected: 0.96.0 or later
+```
+
+**Why this matters:** first execution of the strengthened Rule 10 ("everything stays on latest"). Bumps the Anthropic SDK + Node types + supertest types. Build verified green; runtime API surface unchanged.
+
+---
+
 ## v2.46.3 — AI Hub Option B unification + Standing Rule 10 strengthened
 
 **Released:** 2026-05-18

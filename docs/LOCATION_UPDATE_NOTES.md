@@ -46,6 +46,34 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-18 — v2.47.0 — breaking-major dep bumps per new Standing Rule 10
+
+**What changed:**
+
+- **`@anthropic-ai/sdk` 0.71.2 → 0.96.0** (breaking-major; only one call site: `packages/services/src/qa-generator-processor.ts:444` uses `anthropic.messages.create()` — stable API, no code change needed).
+- **`@types/node` (apps/web devDep) → ^25** (breaking-major in version number only — runtime impact zero; types only).
+- **`@types/supertest` (apps/web devDep) → ^7** (breaking-major; test types only).
+- **Skipped this pass** (worth their own verification cycle):
+  - `eslint` 9 → 10 (rule deprecations may cascade)
+  - `pdf-parse` 1.1 → 2.4 (rag-server uses dynamic `pdfParse.default(buffer).text` — needs API verification at major bump)
+  - `npm audit fix --force` for the workbox/serialize-javascript chain — `--force` would DOWNGRADE `next-pwa` to 2.0.2 which violates Rule 10's "latest version" mandate. The serialize-javascript vuln is build-time only (no runtime exposure to attacker input), accepted until next-pwa ships a fix on top of workbox 7.
+
+**What could break:** zero expected runtime impact. Build passes. The SDK 0.71→0.96 call surface (`messages.create({ model, max_tokens, temperature, messages })`) is unchanged.
+
+**Manual steps required:** none for code; per-location auto-update handles `npm ci`.
+
+**Rollback:** `git revert <SHA>` undoes the package.json + lockfile changes; rebuild + restart.
+
+**Affected files:**
+- `package.json` (version)
+- `apps/web/package.json` (@anthropic-ai/sdk + @types/node + @types/supertest bumps)
+- `packages/services/package.json` (@anthropic-ai/sdk bump)
+- `package-lock.json`
+
+`Checkpoint model: sonnet`
+
+---
+
 ### 2026-05-18 — v2.46.3 — AI Hub Option B unification (RAG-grounded /api/chat) + tightened grounding + NEW Standing Rule 10 (always-latest)
 
 **What changed:**
