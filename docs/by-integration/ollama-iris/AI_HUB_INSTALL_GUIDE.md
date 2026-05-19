@@ -103,17 +103,29 @@ this, Ollama can only fall back on its generic training data.
 npx tsx scripts/scan-system-docs.ts --clear
 ```
 
-What this indexes:
+What this indexes (as of v2.48.5):
+
+**Docs (via `scan-system-docs.ts`):**
 - `CLAUDE.md` (master architecture + standing rules)
 - All `docs/**/*.md` and `docs/**/*.pdf`
-- All `packages/*/README.md` (per-package SME briefings)
+- All `packages/*/README.md` + `packages/*/docs/*.md` (per-package SME briefings)
 - All `.claude/locations/*.md` (per-bar hardware refs)
 - All `ai-assistant/*.md`
 - All auto-memory feedback + project files
 - Root-level `*.md` (INSTALLATION, DEPLOYMENT, etc.)
+- **(v2.48.0)** Build config: `next.config.js`, `ecosystem.config.js`, `turbo.json`, `drizzle.config.ts`, `jest.config.js`
+- **(v2.48.0)** All `apps/web/drizzle/*.sql` migration files (schema evolution)
+- **(v2.48.0)** Curated operator shell scripts: `setup-iris-ollama.sh`, `setup-sdr.sh`, `setup-bartender-nginx.sh`, `bootstrap-new-location.sh`, `auto-update.sh`, `verify-install.sh`, `install.sh`
 
-Result: ~3000–4000 chunks across ~650+ docs, stored at
-`apps/web/rag-data/vector-store.json`.
+**Source code (via `scan-code-docs.ts`):**
+- `apps/web/src/app/api/**/route.ts` — all API route handlers
+- `apps/web/src/lib/*.ts` — service layer
+- `apps/web/src/db/schema.ts` — DB schema
+- `packages/*/src/*.ts` — shared package source (~250+ files)
+- **(v2.48.3)** `apps/web/src/components/**/*.tsx` — 135 React components
+- **(v2.48.3)** `apps/web/src/app/**/{page,layout}.tsx` — 26 route entry files
+
+**Total after both scans (v2.48.5):** ~7,500-8,500 chunks across ~900+ files. Stored at `apps/web/rag-data/vector-store.json`.
 
 Verify the index landed:
 

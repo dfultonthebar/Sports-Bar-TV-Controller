@@ -46,6 +46,46 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-18 — v2.48.5 — schema.ts cleanup: 11 unused tables removed (defs only — DB tables intact)
+
+**What changed:**
+
+Removed 11 unused `sqliteTable(...)` definitions from `packages/database/src/schema.ts` (191 lines deleted). All 11 were verified to have ZERO code references across `apps/web/src` + `packages/` + `scripts/` + `tests/` (the only hits were compiled `dist/` artifacts of the same schema file).
+
+**Removed:** `tvLayouts`, `matrixConfigs`, `audioMessages`, `audioScenes`, `bartenderRemotes`, `deviceMappings`, `trainingDocuments`, `aiTvAvailability`, `aiGamePlanExecutions`, `schedulingPreferences`, `aiScheduleSuggestions`.
+
+**CRITICAL — actual SQLite tables in `production.db` are NOT dropped.** Per Standing Rule 3, DB changes never ride alongside code changes. If a future commit wants to reclaim the disk space, it'd need to be a dedicated migration PR with explicit `DROP TABLE` statements + per-location verification + backup. The tables continue to exist in `/home/ubuntu/sports-bar-data/production.db` — they just can no longer be referenced from TypeScript.
+
+**Why this matters for the AI Hub:** the schema is RAG-indexed (it's THE single source of truth for the data model per CLAUDE.md). Before this cleanup, the AI would see 11 phantom tables and hallucinate about features that don't exist. Now it sees only the live schema.
+
+**Manual steps required:** none.
+
+**Rollback:** `git revert <SHA>` restores all 11 table definitions.
+
+`Checkpoint model: sonnet`
+
+---
+
+### 2026-05-18 — v2.48.4 — .npmrc cleanup (removed two pnpm-only options npm doesn't understand)
+
+**What changed:**
+
+Removed two lines from `.npmrc` that were producing the "Unknown project config" warnings on EVERY npm invocation:
+- `strict-peer-dependencies=true` (pnpm-only)
+- `dedupe=true` (pnpm-only)
+
+The remaining `legacy-peer-deps=false` is sufficient for the "single React instance" goal (npm 7+ installs peer deps automatically and dedupes by default).
+
+**What could break:** zero. These two flags were no-ops in npm.
+
+**Manual steps required:** none.
+
+**Rollback:** `git revert <SHA>` — but no functional change to revert.
+
+`Checkpoint model: sonnet`
+
+---
+
 ### 2026-05-18 — v2.48.3 — RAG indexes React component source (.tsx) too
 
 **What changed:**
