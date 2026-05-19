@@ -249,16 +249,34 @@ export async function searchVectorStore(
       .filter(([re]) => re.test(queryLower))
       .map(([, slug]) => slug);
 
-    // Calculate similarities (with optional location-file boost)
+    // v2.49.12: audience-aware boost. When the query reads like a
+    // bartender ("the mic isn't working", "no sound", "won't come up",
+    // "I pressed something"), boost docs/bartender-help/ chunks by
+    // +0.12 so they crowd out operator-grade runbooks that have
+    // higher cosine similarity but the wrong vocabulary.
+    //
+    // Motivating example (v2.49.10 broken answer): "the wireless mic
+    // isnt working what do i do" returned IR-cable-box learning docs
+    // because "what do i do" matched generic recovery chunks better
+    // than the new MIC_NOT_WORKING.md bartender doc. Boost forces
+    // the bartender doc into top-k when register markers fire.
+    const BARTENDER_MARKERS = /\b(isn'?t working|not working|won'?t (come up|turn on|play|work)|no (sound|signal|video|audio|music|picture)|the (tv|mic|music|sound)|stopped|broken|stuck|frozen|i (pressed|tried|just|don'?t know)|how do i|what do i do|help)\b/;
+    const isBartenderRegister = BARTENDER_MARKERS.test(queryLower);
+
+    // Calculate similarities (with optional location-file boost +
+    // audience boost)
     const results: SearchResult[] = entries.map(entry => {
       const baseScore = cosineSimilarity(queryEmbedding, entry.embedding);
       let boost = 0;
+      const filepath = entry.chunk.metadata.filepath || '';
+      if (isBartenderRegister && filepath.includes('/bartender-help/')) {
+        boost = Math.max(boost, 0.12);
+      }
       if (locationMatches.length > 0) {
-        const filepath = entry.chunk.metadata.filepath || '';
         for (const slug of locationMatches) {
           if (filepath.includes(`/locations/${slug}.md`) ||
               filepath.includes(`/locations/${slug}/`)) {
-            boost = 0.10;
+            boost = Math.max(boost, 0.10);
             break;
           }
         }
