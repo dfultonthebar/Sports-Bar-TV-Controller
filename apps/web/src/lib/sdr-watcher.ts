@@ -388,7 +388,26 @@ function spawnRtlPower(): void {
  * Entry point — called from instrumentation.ts on app boot. Returns
  * quickly; the watcher runs as a background subprocess + handlers.
  */
+// v2.52.4 fix (BG-process audit Finding #3): wire SIGTERM/SIGINT handlers
+// so a graceful shutdown stops the rtl_power child process. Without this,
+// when Next.js exits the spawned rtl_power child gets reparented to init
+// and runs forever, holding the USB SDR dongle open + blocking the next
+// PM2 start from acquiring it. Guard against multiple registrations
+// (startSdrWatcher() can be called more than once via AUTO_MODE retry).
+let signalHandlersRegistered = false
+function registerSignalHandlers(): void {
+  if (signalHandlersRegistered) return
+  signalHandlersRegistered = true
+  const shutdown = (sig: NodeJS.Signals) => {
+    logger.info(`[SDR-WATCHER] ${sig} received — stopping rtl_power gracefully`)
+    stopSdrWatcher()
+  }
+  process.on('SIGTERM', shutdown)
+  process.on('SIGINT', shutdown)
+}
+
 export async function startSdrWatcher(): Promise<void> {
+  registerSignalHandlers()
   // Always create the tables even when disabled — keeps /api/sdr/history
   // and /api/sdr/status responses clean (empty grid vs. "no such table"
   // error). Cheap: CREATE TABLE IF NOT EXISTS is a no-op after first run.

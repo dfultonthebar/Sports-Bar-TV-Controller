@@ -403,6 +403,13 @@ PY
   if ! git -C "$REPO_ROOT" diff --cached --quiet -- ".auto-update-last-success.json" 2>/dev/null; then
     git -C "$REPO_ROOT" commit -q \
       -m "chore(heartbeat): refresh os fields on no-op auto-update ($(date +%Y-%m-%d-%H-%M))" 2>/dev/null || true
+    # v2.52.4 fix (code-reviewer audit Finding #6): rebase before push to
+    # avoid silent no-op pushes when a concurrent run (manual + cron
+    # overlap) already pushed a different heartbeat. The original code's
+    # `|| true` swallowed non-fast-forward errors, so the loser's run
+    # logged "Heartbeat refreshed" but actually wrote nothing to remote.
+    git -C "$REPO_ROOT" fetch -q origin "$BRANCH" 2>/dev/null || true
+    git -C "$REPO_ROOT" pull -q --rebase origin "$BRANCH" 2>/dev/null || true
     git -C "$REPO_ROOT" push -q origin "$BRANCH" 2>/dev/null || true
     log "Heartbeat os.* refreshed (kernel=$kernel)"
   fi
@@ -1718,6 +1725,11 @@ if git rev-parse --abbrev-ref HEAD >/dev/null 2>&1; then
     log "WARNING: detached HEAD — skipping push"
   else
     log "Pushing $CURRENT_BRANCH to origin (fleet-dashboard signal)"
+    # v2.52.4 fix (code-reviewer audit Finding #6): rebase before push so
+    # a concurrent heartbeat from a manual run doesn't cause silent
+    # non-fast-forward rejection.
+    git -C "$REPO_ROOT" fetch -q origin "$CURRENT_BRANCH" 2>&1 | tee -a "$LOG_FILE" || true
+    git -C "$REPO_ROOT" pull --rebase origin "$CURRENT_BRANCH" 2>&1 | tee -a "$LOG_FILE" || true
     if git -C "$REPO_ROOT" push origin "$CURRENT_BRANCH" 2>&1 | tee -a "$LOG_FILE"; then
       log "Push succeeded — Fleet Dashboard will reflect this update within 5 min (cache TTL)"
     else

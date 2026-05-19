@@ -333,6 +333,17 @@ async function setProcessorStatus(processorId: string, status: 'online' | 'offli
  * Wire up one receiver: connect, attach stateChange handler that
  * runs the threshold evaluator, start metering at 1 Hz.
  */
+// v2.52.4 fix (BG-process audit Finding #5): per-receiver failure tracking.
+// Pre-v2.52.4: if a receiver had a wrong IP or was unreachable, every
+// 5-min discoverAndAttach() retried attachReceiver(), each attempt
+// logging a warn line. 6 misconfigured receivers → 72 noise warns/hour
+// forever. After this fix: after N consecutive failures, mark the
+// receiver as `disabled-for-session` and skip until next process restart
+// (operator restart resets the counter).
+const MAX_CONSECUTIVE_FAILURES = 5
+const receiverFailures = new Map<string, { count: number; firstFailAt: number; lastErrorMsg: string }>()
+const disabledReceivers = new Set<string>()
+
 async function attachReceiver(processor: {
   id: string
   name: string | null
@@ -342,6 +353,7 @@ async function attachReceiver(processor: {
 }): Promise<void> {
   if (!processor.ipAddress) return
   if (attachedReceivers.has(processor.id)) return
+  if (disabledReceivers.has(processor.id)) return  // v2.52.4 — skip permanently-failing receivers
   const receiverName = processor.name || processor.ipAddress
   try {
     const client = await getShureSlxdClient(processor.id, {
@@ -380,11 +392,29 @@ async function attachReceiver(processor: {
     // not to lock the receiver's web UI per Bitfocus HELP guidance.
     await client.startMetering(1_000)
     attachedReceivers.add(processor.id)
+    receiverFailures.delete(processor.id)  // v2.52.4 — reset counter on success
     await setProcessorStatus(processor.id, 'online')
     logger.info(`[SHURE-RF-WATCHER] attached to ${receiverName} @ ${processor.ipAddress}:${processor.tcpPort ?? 2202}`)
   } catch (err) {
+    const errMsg = (err as Error).message
     await setProcessorStatus(processor.id, 'offline')
-    logger.warn(`[SHURE-RF-WATCHER] could not attach to ${receiverName} @ ${processor.ipAddress}: ${(err as Error).message}`)
+    // v2.52.4 — track consecutive failures and disable after threshold.
+    const prior = receiverFailures.get(processor.id)
+    const failCount = (prior?.count ?? 0) + 1
+    receiverFailures.set(processor.id, {
+      count: failCount,
+      firstFailAt: prior?.firstFailAt ?? Date.now(),
+      lastErrorMsg: errMsg,
+    })
+    if (failCount >= MAX_CONSECUTIVE_FAILURES) {
+      disabledReceivers.add(processor.id)
+      logger.warn(
+        `[SHURE-RF-WATCHER] disabling ${receiverName} @ ${processor.ipAddress} after ${failCount} consecutive ` +
+        `failures (last err: ${errMsg}). Operator: fix the IP/network then restart sports-bar-tv-controller.`,
+      )
+    } else {
+      logger.warn(`[SHURE-RF-WATCHER] could not attach to ${receiverName} @ ${processor.ipAddress} (${failCount}/${MAX_CONSECUTIVE_FAILURES}): ${errMsg}`)
+    }
   }
 }
 
