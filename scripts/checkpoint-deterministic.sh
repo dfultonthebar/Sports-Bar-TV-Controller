@@ -60,9 +60,19 @@ run_a() {
   diag "$pending_count pending commits"
 
   # 1. Hard secret-leak pattern scan in the pending diff.
+  # v2.52.4 fix (code-reviewer audit Finding #2, AP-1 spirit): scope to
+  # non-docs/non-test paths via git pathspec. Pre-v2.52.4 grepped the
+  # full diff, including markdown + test fixtures, which can legitimately
+  # contain example AKIA... strings or commented-out api_key patterns —
+  # causing false STOP. Scoped diff excludes docs/, README.md anywhere,
+  # *.md, *.test.* files, anywhere with /tests/.
   local diff
   diff=$(git diff HEAD..origin/main 2>/dev/null)
-  if echo "$diff" | grep -qE '^\+.*(AKIA[0-9A-Z]{16}|"sk-[A-Za-z0-9]{32,}|api[-_]?key["'\'' ]*[:=]["'\'' ]*[A-Za-z0-9]{30,})'; then
+  local scoped_diff
+  scoped_diff=$(git diff HEAD..origin/main -- \
+    ':!docs/' ':!**/*.md' ':!**/tests/**' ':!**/*.test.*' ':!**/__tests__/**' \
+    2>/dev/null)
+  if echo "$scoped_diff" | grep -qE '^\+.*(AKIA[0-9A-Z]{16}|"sk-[A-Za-z0-9]{32,}|api[-_]?key["'\'' ]*[:=]["'\'' ]*[A-Za-z0-9]{30,})'; then
     emit STOP "leaked-secret pattern in pending diff"
   fi
 
@@ -89,13 +99,34 @@ run_a() {
   fi
 
   # 3. NOT NULL column without default in any added schema field.
-  # Heuristic: each new "fieldName: <type>(...)" line that has notNull() but
-  # no .default(...) on the same line. Only fires for additions (+).
+  # v2.52.4 fix (Guardian audit M1): pre-v2.52.4 only checked same-line
+  # `.default(`. Multi-line schemas like
+  #     fieldName: integer('field_name')
+  #       .notNull()
+  #       .default(0)
+  # would false-fire UNDETERMINED on the .notNull() line. New approach:
+  # use grep with -B0 -A3 context window so .default() on the next 3 lines
+  # also counts as paired. Only emit UNDETERMINED if NO .default() appears
+  # within that window for at least one offending line.
   local bad_schema
-  bad_schema=$(echo "$diff" | grep -E '^\+' | grep -E '\.notNull\(\)' | grep -v '\.default(' | grep -v '^\+\+\+' | head -3)
+  bad_schema=$(echo "$diff" | grep -nE '^\+' | grep -E '\.notNull\(\)' | grep -v '^\+\+\+' | grep -v '\.default(' | head -5)
   if [ -n "$bad_schema" ]; then
-    diag "NOT NULL without default candidates: $bad_schema"
-    emit UNDETERMINED "schema adds NOT NULL column without default — needs AI review"
+    # For each candidate, look 3 lines ahead in the diff for .default(
+    local still_bad=""
+    while IFS= read -r line; do
+      [ -z "$line" ] && continue
+      local lineno
+      lineno=$(echo "$line" | cut -d: -f1)
+      # Check 4 lines starting from this one for .default(
+      if ! echo "$diff" | sed -n "${lineno},$((lineno+3))p" | grep -q '\.default('; then
+        still_bad="$still_bad
+$line"
+      fi
+    done <<<"$bad_schema"
+    if [ -n "$still_bad" ]; then
+      diag "NOT NULL without default (3-line window) candidates: $(echo "$still_bad" | head -3)"
+      emit UNDETERMINED "schema adds NOT NULL column without default — needs AI review"
+    fi
   fi
 
   # 4. LOCATION_UPDATE_NOTES.md scan for STOP/CAUTION on pending SHAs.
@@ -124,10 +155,15 @@ run_a() {
     maj_change=$(echo "$diff" | grep -E '^[+-].*"(next|react|drizzle-orm|drizzle-kit)":' | head -2)
     diag "dep change: $maj_change"
     # Only CAUTION if a major version digit changed; skip patch/minor.
+    # v2.52.4 fix (Guardian audit M2): pre-v2.52.4 awk left `old` empty
+    # when the diff has only a `+` line (new dep added, no prior `-`
+    # line). `old != new` then evaluates "" != "X" = true, falsely
+    # triggering CAUTION on every NEW dep. Require BOTH values present
+    # before comparing.
     if echo "$maj_change" | awk -F'"' '
       /^-/ { for(i=1;i<=NF;i++) if($i ~ /^\^?[0-9]+\./) { split($i,a,"."); old=a[1]; gsub(/\^/,"",old) } }
       /^\+/ { for(i=1;i<=NF;i++) if($i ~ /^\^?[0-9]+\./) { split($i,a,"."); new=a[1]; gsub(/\^/,"",new) } }
-      END { exit (old != new) ? 0 : 1 }
+      END { if (old == "" || new == "") exit 1; exit (old != new) ? 0 : 1 }
     '; then
       emit CAUTION "major version bump in core dep (next/react/drizzle)"
     fi
