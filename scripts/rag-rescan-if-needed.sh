@@ -57,25 +57,43 @@ for f in "${CHANGED[@]:0:10}"; do echo "  - $f"; done
 [[ ${#CHANGED[@]} -gt 10 ]] && echo "  ... and $((${#CHANGED[@]} - 10)) more"
 
 LOGFILE="/tmp/rag-rescan-$(date +%s).log"
+# v2.50.2: enforce single-scan-at-a-time. Concurrent scans race on
+# vector-store.json (load → modify → save in addChunks), losing most
+# writes. Caught 2026-05-19 — two concurrent scans of 750+ files each
+# left the store with only 290 entries (would have been ~6000).
+#
+# File lock: if another scan is running, skip. The next operator action
+# or weekly cron will re-trigger. Better to skip a scan than corrupt
+# the store.
+LOCK="/tmp/rag-rescan.lock"
+if [[ -f "$LOCK" ]]; then
+  LOCK_PID=$(cat "$LOCK" 2>/dev/null)
+  if [[ -n "$LOCK_PID" ]] && kill -0 "$LOCK_PID" 2>/dev/null; then
+    echo "[rag-rescan] another scan already running (PID $LOCK_PID) — skipping to avoid concurrent-write corruption"
+    exit 0
+  else
+    echo "[rag-rescan] stale lock found (PID $LOCK_PID dead) — removing"
+    rm -f "$LOCK"
+  fi
+fi
+
 echo "[rag-rescan] kicking off background scan → $LOGFILE"
 echo "[rag-rescan] (scan runs ~25-40 min; this script does NOT block)"
 
-# Run in background so auto-update.sh can return promptly
-nohup npx tsx scripts/scan-system-docs.ts > "$LOGFILE" 2>&1 &
-SCAN_PID=$!
-echo "[rag-rescan] scan PID: $SCAN_PID"
+# Run in background so auto-update.sh can return promptly. Write our
+# PID to the lock IMMEDIATELY so concurrent calls back off.
+(
+  echo $$ > "$LOCK"
+  trap "rm -f '$LOCK'" EXIT
+  npx tsx scripts/scan-system-docs.ts >> "$LOGFILE" 2>&1
+  # Code scan, IN SERIES, only after doc scan exits cleanly
+  if printf '%s\n' "${CHANGED[@]}" | grep -qE '\.(ts|tsx)$'; then
+    echo "[rag-rescan] TypeScript paths changed — running scan-code-docs.ts now" >> "$LOGFILE"
+    npx tsx scripts/scan-code-docs.ts >> "$LOGFILE" 2>&1
+  fi
+) > "$LOGFILE" 2>&1 &
 
-# If code paths changed too, also queue the code scan (in series — Ollama
-# embedding endpoint can't handle parallel scans).
-if printf '%s\n' "${CHANGED[@]}" | grep -qE '\.(ts|tsx)$'; then
-  echo "[rag-rescan] TypeScript paths changed — queuing scan-code-docs.ts after doc scan"
-  (
-    # Wait for doc scan to finish (poll PID), then start code scan
-    while kill -0 "$SCAN_PID" 2>/dev/null; do sleep 60; done
-    nohup npx tsx scripts/scan-code-docs.ts >> "$LOGFILE" 2>&1 &
-    echo "[rag-rescan] code scan PID: $!" >> "$LOGFILE"
-  ) &
-fi
-
+echo "[rag-rescan] background scan group PID: $!"
+echo "[rag-rescan] lock file: $LOCK"
 echo "[rag-rescan] done — scan running in background. Tail: tail -f $LOGFILE"
 exit 0
