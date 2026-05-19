@@ -245,10 +245,34 @@ async function gatherShiftContext() {
     logger.debug('[SHIFT-BRIEF] fleet status check skipped', { err: e.message })
   }
 
+  // v2.52.17 — cap the games list. Pre-v2.52.17 fed ALL ~25 upcoming games
+  // to the LLM, which (a) inflated the prompt to ~2000 tokens (= ~30s gen
+  // on llama3.1:8b) and (b) caused hallucination — LLM put "Cavs @ Knicks"
+  // under "Home-team games" because it lost track of which entries had
+  // the [HOME TEAM] flag. Filter to: ALL home-team games + top-N
+  // network-priority non-home games. Total <= 8.
+  const NETWORK_PRIORITY = ['ESPN', 'ABC', 'FOX', 'TNT', 'CBS', 'NBC', 'MLB Network', 'NBA TV']
+  const networkRank = (n: string | null) => {
+    if (!n) return 99
+    const idx = NETWORK_PRIORITY.findIndex((p) => n.toUpperCase().includes(p.toUpperCase()))
+    return idx >= 0 ? idx : 99
+  }
+  const homeGames = upcomingGames.filter((g) => homeTeamSet.has(g.home) || homeTeamSet.has(g.away))
+  const otherGames = upcomingGames
+    .filter((g) => !(homeTeamSet.has(g.home) || homeTeamSet.has(g.away)))
+    .sort((a, b) => {
+      const r = networkRank(a.network) - networkRank(b.network)
+      if (r !== 0) return r
+      return (a.start ?? 0) - (b.start ?? 0)
+    })
+  const TOP_OTHER_GAMES = 4
+  const filteredUpcomingGames = [...homeGames, ...otherGames.slice(0, TOP_OTHER_GAMES)]
+
   return {
     venueName: HARDWARE_CONFIG.venue.name,
     now: new Date().toLocaleString('en-US', { timeZone: HARDWARE_CONFIG.venue.timezone }),
-    upcomingGames: upcomingGames.map(g => ({
+    homeTeamNames: Array.from(homeTeamSet),
+    upcomingGames: filteredUpcomingGames.map(g => ({
       matchup: `${g.away} @ ${g.home}`,
       league: g.league,
       startLocal: new Date(g.start * 1000).toLocaleString('en-US', {
@@ -292,7 +316,12 @@ async function generateBriefViaOllama(ctx: any): Promise<string> {
       model: HARDWARE_CONFIG.ollama.model,
       prompt,
       stream: false,
-      options: { temperature: 0.3, num_predict: 220 },
+      // v2.52.17: keep_alive=-1 mirrors v2.50.0 — keeps the model
+      // resident in RAM/VRAM between requests so the second + later
+      // briefs feel snappy. num_predict=200 lets the full bullet list
+      // finish (150 was truncating the TELL OWNER fleet-alert line).
+      keep_alive: -1,
+      options: { temperature: 0.2, num_predict: 200 },
     }),
     signal: AbortSignal.timeout(90_000),
   })
@@ -332,7 +361,16 @@ function buildPrompt(ctx: any): string {
       }).join('\n')
     : '- (no nearby gigs in the next 12 hours)'
 
-  return `You are the shift manager at ${ctx.venueName}, a sports bar. Write a VERY concise (under 150 words) pre-shift brief for the bartender coming on. Current time: ${ctx.now}.
+  // v2.52.17: explicit home-team list in the prompt + strict rule
+  // about not inventing/relabeling teams. The home-team list is the
+  // ONLY source of truth for whether a game is "our team."
+  const homeTeamList = (ctx.homeTeamNames || []).length > 0
+    ? (ctx.homeTeamNames || []).join(', ')
+    : '(no home teams configured for this bar)'
+
+  return `You are the shift manager at ${ctx.venueName}, a sports bar. Write a VERY concise (under 130 words) pre-shift brief for the bartender coming on. Current time: ${ctx.now}.
+
+Our home teams (for THIS bar — anything not in this list is NOT a home-team game): ${homeTeamList}
 
 Upcoming games (next 12 hours):
 ${games}
@@ -358,8 +396,10 @@ Nearby bands/DJs in the next 12 hours that could step on our wireless mics:
 ${upcomingRisks}
 
 Format:
-- Start with a one-line headline for the biggest game tonight.
-- Call out home-team games (Brewers, Bucks, Badgers) first.
+- Start with a one-line headline for the biggest game tonight. If a home-team game (one with [HOME TEAM] flag in the games list above) is tonight, headline that. Otherwise pick the biggest networks game (ESPN/ABC/FOX/etc.).
+- Under "Home-team games tonight:", list ONLY games marked [HOME TEAM] above. Do NOT put non-home-team games under that heading. If there are zero [HOME TEAM] games, write "Home-team games tonight: none."
+- Under "Other games:", list any non-home games from the list above (up to 4).
+- Use the matchup string VERBATIM as provided (do not invent teams or change "Away @ Home" order).
 - Mention any recent failures the bartender should pre-test.
 - Include the wireless mic status line VERBATIM as one of the bullets (don't reword it).
 - If there are nearby bands/DJs in the next 12h, add a line like "Heads up: <artist> at <venue> at <time> might cause mic interference" — but only for KNOWN INTERFERER entries OR entries within 0.5 mi. Skip distant unknowns to avoid noise.
