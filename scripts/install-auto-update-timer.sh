@@ -50,31 +50,84 @@ command -v systemctl >/dev/null 2>&1 || die "systemctl not available"
 [ -x "$AUTO_UPDATE_SCRIPT" ] || die "auto-update.sh not found or not executable at $AUTO_UPDATE_SCRIPT"
 
 # ---------------------------------------------------------------------------
-# Read schedule from DB
+# Schedule resolution: fleet-schedule.json (UTC, stagger-aware) takes
+# precedence over the DB scheduleCron. The fleet file is the source of
+# truth — committed to main, replicated to every location via auto-update
+# merges. The DB cron is the fallback (used when a location isn't yet
+# registered in fleet-schedule.json, e.g. fresh installs).
 # ---------------------------------------------------------------------------
-SCHEDULE_CRON=$(sqlite3 "$DB_PATH" "SELECT schedule_cron FROM auto_update_state WHERE id=1;" 2>/dev/null || echo "")
-[ -z "$SCHEDULE_CRON" ] && die "auto_update_state.schedule_cron is empty — enable auto-update in the Sync tab first"
+FLEET_SCHEDULE_FILE="$REPO_ROOT/scripts/fleet-schedule.json"
+FLEET_SLOT=""
+SCHEDULE_SOURCE="db"
+TIMEZONE_SUFFIX=""
 
-info "Current DB schedule: $SCHEDULE_CRON"
+if [ -f "$FLEET_SCHEDULE_FILE" ]; then
+  # Derive branch slug — strip the "location/" prefix git uses for
+  # per-location branches. When the current branch is "main" (e.g. on
+  # the canary/dev box between auto-update runs, or installer invoked
+  # manually outside of auto-update.sh), fall back to the canonical
+  # branch recorded in /home/ubuntu/sports-bar-data/.auto-update-last-success.json
+  # (the gitignored sidecar written by every successful auto-update,
+  # per v2.32.82). This makes the installer work consistently regardless
+  # of which branch happens to be checked out.
+  BRANCH=$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+  BRANCH_SLUG="${BRANCH#location/}"
+  if [ "$BRANCH_SLUG" = "$BRANCH" ]; then
+    # Not on a location/* branch — try the sidecar
+    SIDECAR="/home/ubuntu/sports-bar-data/.auto-update-last-success.json"
+    if [ -f "$SIDECAR" ] && command -v jq >/dev/null 2>&1; then
+      CANONICAL=$(jq -er '.branch // empty' "$SIDECAR" 2>/dev/null || echo "")
+      if [ -n "$CANONICAL" ]; then
+        BRANCH="$CANONICAL"
+        BRANCH_SLUG="${BRANCH#location/}"
+        info "Current branch is non-location ($(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null)); using canonical branch from sidecar: $BRANCH"
+      fi
+    fi
+  fi
+  if [ "$BRANCH_SLUG" != "$BRANCH" ] && command -v jq >/dev/null 2>&1; then
+    FLEET_SLOT=$(jq -er ".slots[\"$BRANCH_SLUG\"] // empty" "$FLEET_SCHEDULE_FILE" 2>/dev/null || echo "")
+    if [ -n "$FLEET_SLOT" ]; then
+      info "fleet-schedule.json slot for $BRANCH_SLUG: $FLEET_SLOT UTC"
+      # Slot is "HH:MM" UTC — split and apply, then add explicit UTC
+      # suffix to OnCalendar so systemd doesn't reinterpret it as local.
+      HR="${FLEET_SLOT%%:*}"
+      MIN="${FLEET_SLOT##*:}"
+      HR=$((10#$HR))    # strip any leading zero ambiguity
+      MIN=$((10#$MIN))
+      SCHEDULE_SOURCE="fleet"
+      TIMEZONE_SUFFIX=" UTC"
+    else
+      info "fleet-schedule.json present but no slot for $BRANCH_SLUG — falling back to DB schedule"
+    fi
+  fi
+fi
 
-# Parse the cron string as 5 fields: min hour dom mon dow
-# This installer only handles the simple "M H * * *" daily pattern. Weekly
-# and more exotic patterns are out of scope for v1 — the DB lets you store
-# any cron string, but the timer generator requires a plain daily one.
-read -r MIN HR DOM MON DOW <<<"$SCHEDULE_CRON"
-if ! [[ "$MIN" =~ ^[0-9]+$ ]] || ! [[ "$HR" =~ ^[0-9]+$ ]]; then
-  die "schedule_cron '$SCHEDULE_CRON' does not start with numeric min/hour — only 'M H * * *' daily schedules are supported"
+if [ "$SCHEDULE_SOURCE" = "db" ]; then
+  SCHEDULE_CRON=$(sqlite3 "$DB_PATH" "SELECT schedule_cron FROM auto_update_state WHERE id=1;" 2>/dev/null || echo "")
+  [ -z "$SCHEDULE_CRON" ] && die "auto_update_state.schedule_cron is empty AND no fleet-schedule.json slot — enable auto-update in the Sync tab first"
+
+  info "Current DB schedule: $SCHEDULE_CRON"
+
+  # Parse the cron string as 5 fields: min hour dom mon dow
+  # This installer only handles the simple "M H * * *" daily pattern. Weekly
+  # and more exotic patterns are out of scope for v1 — the DB lets you store
+  # any cron string, but the timer generator requires a plain daily one.
+  read -r MIN HR DOM MON DOW <<<"$SCHEDULE_CRON"
+  if ! [[ "$MIN" =~ ^[0-9]+$ ]] || ! [[ "$HR" =~ ^[0-9]+$ ]]; then
+    die "schedule_cron '$SCHEDULE_CRON' does not start with numeric min/hour — only 'M H * * *' daily schedules are supported"
+  fi
+  if [ "$DOM" != "*" ] || [ "$MON" != "*" ] || [ "$DOW" != "*" ]; then
+    die "schedule_cron '$SCHEDULE_CRON' is not a plain daily schedule (dom/mon/dow must all be *)"
+  fi
 fi
-if [ "$DOM" != "*" ] || [ "$MON" != "*" ] || [ "$DOW" != "*" ]; then
-  die "schedule_cron '$SCHEDULE_CRON' is not a plain daily schedule (dom/mon/dow must all be *)"
-fi
+
 if [ "$MIN" -ge 60 ] || [ "$HR" -ge 24 ]; then
-  die "schedule_cron '$SCHEDULE_CRON' has out-of-range min/hour"
+  die "schedule has out-of-range min/hour (HR=$HR MIN=$MIN, source=$SCHEDULE_SOURCE)"
 fi
 
-# Format for systemd OnCalendar: "*-*-* HH:MM:00"
-printf -v ON_CALENDAR '*-*-* %02d:%02d:00' "$HR" "$MIN"
-info "systemd OnCalendar: $ON_CALENDAR (local time)"
+# Format for systemd OnCalendar: "*-*-* HH:MM:00[ UTC]"
+printf -v ON_CALENDAR '*-*-* %02d:%02d:00%s' "$HR" "$MIN" "$TIMEZONE_SUFFIX"
+info "systemd OnCalendar: $ON_CALENDAR (source=$SCHEDULE_SOURCE)"
 
 # ---------------------------------------------------------------------------
 # Generate service unit
