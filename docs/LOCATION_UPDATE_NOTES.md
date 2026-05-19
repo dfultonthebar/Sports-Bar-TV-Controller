@@ -46,6 +46,39 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-18 — v2.48.2 — full-sweep dead-routes pass (13 more, all 3-pass verified)
+
+**What changed:**
+
+Continued from v2.48.1 — instead of trusting the audit agent's 58-route sample, enumerated ALL 378 route.ts files and ran the same 3-pass verifier. Filtered to 18 high-confidence DEAD candidates, then hand-grep verified each: 5 kept (had hits the verifier missed: api/scheduled-commands could be external, api/wolfpack/ai-learning has 2 callers, api/file-system/manage has 42, api/commercial-lighting/{hue,systems}/discover have 15 each). 13 deleted.
+
+**Deleted 13 more verified-dead routes:**
+- `api/atlas-processors` (orphaned — active path is `/api/audio-processor/*`)
+- `api/enhanced-chat` (predecessor to current /api/chat, replaced in v2.46.3 Option B)
+- `api/rag/auto-index` (auto-indexer UI never built)
+- `api/streaming-subscriptions`
+- `api/generate-script`
+- `api/tv-discovery/probe-models`
+- `api/tv-discovery/probe-lg-models`
+- `api/firestick-scout/can-show`
+- `api/ir-devices/model-codes`
+- `api/ir-devices/search-codes`
+- `api/matrix/outputs-schedule`
+- `api/firetv-devices/guide-data`
+- `api/dmx/maestro/recall-preset`
+
+**Cumulative dead-route cleanup across v2.48.1 + v2.48.2: 27 routes removed.**
+
+**What could break:** zero — each verified 0 hits across literal `/api/<path>`, distinctive tail token, and full-path substring searches.
+
+**Manual steps required:** none.
+
+**Rollback:** `git revert <SHA>` restores all 13 routes.
+
+`Checkpoint model: sonnet`
+
+---
+
 ### 2026-05-18 — v2.48.1 — verified 14 truly-dead API routes deleted
 
 **What changed:**
