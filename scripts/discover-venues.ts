@@ -294,4 +294,9 @@ async function main() {
   if (args.dryRun) console.log(`[discover-venues] DRY RUN — no DB writes.`)
 }
 
-main().catch((e) => { console.error('[discover-venues] FATAL:', e); process.exit(1) })
+// v2.52.3: explicit exit(0) — Ollama keep_alive + @sports-bar/database
+// module-level sqlite hold the event loop. Without this the script logs
+// "SUMMARY" but never returns to shell.
+main()
+  .then(() => process.exit(0))
+  .catch((e) => { console.error('[discover-venues] FATAL:', e); process.exit(1) })

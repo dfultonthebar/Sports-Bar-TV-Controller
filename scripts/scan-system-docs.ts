@@ -350,7 +350,15 @@ async function main() {
   console.log('')
 }
 
-main().catch((e) => {
-  console.error('Fatal:', e)
-  process.exit(1)
-})
+// v2.52.3: explicit process.exit(0) on success path. Without this, Ollama
+// keep_alive=-1 (v2.50.0) holds embedding-model HTTP keepalive sockets +
+// module-level sqlite handle in packages/database keeps the event loop
+// alive, so main() resolves but the process hangs forever. 4 zombies
+// accumulated 2026-05-19 burning 22 CPU-min total + 1.4 GB RSS.
+// See docs/AUTO_UPDATE_DESIGN_RULES.md.
+main()
+  .then(() => process.exit(0))
+  .catch((e) => {
+    console.error('Fatal:', e)
+    process.exit(1)
+  })
