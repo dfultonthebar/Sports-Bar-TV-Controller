@@ -37,3 +37,10 @@ export {
   type SportsGuideResponse,
   type SportsGuideApiConfig
 } from './sports-guide-api'
+
+// Bananas Entertainment Scraper (v2.51.0 Neighborhood RF Prediction)
+export {
+  fetchBananasSchedule,
+  normalizeArtistName,
+  type BananasParsedEvent
+} from './bananas-scraper'
