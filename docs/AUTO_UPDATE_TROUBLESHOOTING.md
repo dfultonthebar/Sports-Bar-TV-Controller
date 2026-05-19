@@ -371,7 +371,38 @@ If the crash IS post-restart, it's a real regression — investigate the v2.X.Y 
 
 ---
 
-## Failure mode 14: stale Q-A or RAG-related processes burning CPU/RAM for hours
+## Failure mode 14: stale flock held by orphaned child processes — "Another auto-update run is in progress (lock held)"
+
+**Symptom:** every `bash scripts/auto-update.sh --triggered-by=manual_cli` exits within 1 second with log: `Another auto-update run is in progress (lock held). Exiting cleanly.` BUT `pgrep -af auto-update.sh` shows no actual auto-update process. The 104-byte log file from the "lock held" exit accumulates.
+
+**Real-world hit:** **Holmgren, 2026-05-19 02:50** — needed to fire v2.50.14 after greenville+luckys+graystone+appleton landed but every retry exited at 1 second with "lock held". `pgrep` showed no auto-update.sh running. `lsof /tmp/sports-bar-auto-update.lock` revealed 4 orphan processes holding FD 200 on the lock: bash 632052, npm 632054, sh 632078, node 632079 — leftovers from a backgrounded SSH/build that the script exited but the children never died.
+
+**Why:** `auto-update.sh` uses `exec 200>"$LOCK_FILE"; flock -n 200` for mutual exclusion. The lock is automatically released when the FD is closed — normally that happens at process exit. But if the script `setsid -f`'s itself into the background AND a child npm/build subprocess inherits FD 200 AND that child outlives the script (e.g. detached via nohup or session-killed parent leaves zombies), the kernel keeps the flock held against the orphan FD. The next auto-update.sh's `flock -n 200` correctly fails because the lock IS held — just not by the process the operator thinks.
+
+**Detection:**
+```bash
+# Confirm the lock file exists but no auto-update.sh is running
+ls -la /tmp/sports-bar-auto-update.lock
+pgrep -af 'scripts/auto-update.sh' | head -3       # should return nothing or just your grep
+# Identify the orphan holder
+sudo lsof /tmp/sports-bar-auto-update.lock         # lists PIDs holding FD 200 on the lock
+ps -p <PID> -o pid,etime,stat,wchan:25,comm        # check if it's really orphaned
+```
+
+**Fix (one line, idempotent):**
+```bash
+rm -f /tmp/sports-bar-auto-update.lock
+# OR if orphan processes need to die too (lsof showed real-looking children):
+# sudo kill <PID>...  for each orphan
+# then rm the lock
+bash scripts/auto-update.sh --triggered-by=manual_cli    # should now proceed past the lock check
+```
+
+**Prevention (planned):** auto-update.sh's flock acquisition should also write its OWN PID to a sidecar file at lock acquisition, and `flock -n 200` failure should check whether that PID is alive via `kill -0`. If the recorded PID is dead, treat the lock as stale, remove the file, and retry. Current behavior trusts flock unconditionally, which gets it wrong for orphan-FD cases.
+
+---
+
+## Failure mode 15: stale Q-A or RAG-related processes burning CPU/RAM for hours
 
 **Symptom:** `ps aux | grep node` shows long-running processes (multi-hour elapsed) with 0% CPU, in `ep_poll` state. Their output files are empty or never created.
 
