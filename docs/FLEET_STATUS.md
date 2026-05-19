@@ -1,6 +1,6 @@
 # Fleet Status
 
-**Last updated:** 2026-05-08 (ESPN search-by-title autoplay shipped v2.32.94 — Watch button on niche/specific ESPN games now reaches PlayerActivity instead of stopping at ESPN's home tab. Walker writes per-tile `?q=<title>` deep links; adb-client navigates ESPN's in-app Search rail and types the title. Verified live on Cube 3. Full fleet at v2.32.94.)
+**Last updated:** 2026-05-19 (Holmgren on v2.50.7; rest of fleet still on v2.32.94. Big v2.50.x AI-Hub batch staged for rollout — see `docs/VERSION_SETUP_GUIDE.md` v2.50.x section for the per-location runbook. Rollout order: leg-lamp canary → lucky-s-1313 → graystone → stoneyard-appleton → stoneyard-greenville. **Graystone scheduled last in canary-bless order because the box is slower hardware** — RAG re-scan + npm rebuild will take 1.5-2× longer than the rest.)
 
 A snapshot of where each location stands. Update this file after every fleet-wide change so future operators (and Claude) have a single place to see the truth.
 
@@ -10,12 +10,12 @@ A snapshot of where each location stands. Update this file after every fleet-wid
 
 | Location | Branch | OS | Software ver | Bartender proxy | AI Suggest backend | iGPU acceleration | Notes |
 |---|---|---|---|---|---|---|---|
-| holmgren-way | `location/holmgren-way` | noble (24.04) | **v2.32.94** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | Reference deployment; first to receive drift-recovery fix |
-| graystone | `location/graystone` | noble (24.04) | **v2.32.94** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | |
-| greenville | `location/stoneyard-greenville` | noble (24.04) | **v2.32.94** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | OS upgraded 2026-05-08; AI Suggest 119s on iGPU. |
-| leglamp | `location/leg-lamp` | noble (24.04) | **v2.32.94** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | |
-| lucky-s-1313 | `location/lucky-s-1313` | noble (24.04) | **v2.32.94** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | |
-| stoneyard-appleton | `location/stoneyard-appleton` | noble (24.04) | **v2.32.94** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | AI Suggest 67.3s on iGPU (fleet best) |
+| holmgren-way | `location/holmgren-way` | noble (24.04) | **v2.50.7** | Nginx | IPEX-LLM Ollama (Iris Xe, qwen2.5:14b loaded for tools) | ✅ active | Reference deployment; on the big v2.50.x AI-Hub batch since 2026-05-19. Q-A training corpus gen running overnight via Anthropic Haiku |
+| graystone | `location/graystone` | noble (24.04) | **v2.32.94** (target v2.50.7) | Nginx | IPEX-LLM Ollama (Iris Xe) | ⏳ rollout-pending | **SLOWEST in fleet** — different hardware (AI Suggest 170s vs Appleton 67s). RAG re-scan + npm rebuild will take 1.5-2× longer. Schedule LAST in the rollout; allow 90-120 min wall-clock for full update including post-update rescan |
+| greenville | `location/stoneyard-greenville` | noble (24.04) | **v2.32.94** (target v2.50.7) | Nginx | IPEX-LLM Ollama (Iris Xe) | ⏳ rollout-pending | OS upgraded 2026-05-08; AI Suggest 119s on iGPU. Historically most-neglected — needs extra eyes after rollout (outputDefaults / HomeTeam table state per SCHEDULER_FIXES_APRIL_2026.md). 60-75 min wall-clock for full update |
+| leglamp | `location/leg-lamp` | noble (24.04) | **v2.32.94** (target v2.50.7) | Nginx | IPEX-LLM Ollama (Iris Xe) | ⏳ canary-first | **CANARY — push v2.50.7 FIRST.** Single-card matrix, smallest install; if it passes verify-install + smoke chat, the `.canary-blessed.json` sidecar greenlights everyone else. 30-45 min wall-clock |
+| lucky-s-1313 | `location/lucky-s-1313` | noble (24.04) | **v2.32.94** (target v2.50.7) | Nginx | IPEX-LLM Ollama (Iris Xe) | ⏳ rollout-pending | Single-card matrix (same profile as leg-lamp). Schedule 2nd after canary blessing. 45-60 min wall-clock |
+| stoneyard-appleton | `location/stoneyard-appleton` | noble (24.04) | **v2.32.94** (target v2.50.7) | Nginx | IPEX-LLM Ollama (Iris Xe) | ⏳ rollout-pending | AI Suggest 67.3s on iGPU (fleet best — perf baseline). If post-update timing slips >80s, perf regression bug. 50-70 min wall-clock |
 
 **Aggregate health (2026-05-08 18:00 UTC):**
 - 6/6: bartender remote on Nginx ✓
