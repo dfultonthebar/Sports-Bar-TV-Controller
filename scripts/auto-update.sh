@@ -1477,6 +1477,31 @@ if [ -f "$REPO_ROOT/scripts/fleet-schedule.json" ] && [ -x "$REPO_ROOT/scripts/i
   fi
 fi
 
+# v2.50.13 — Standing Rule 11: RAG rescan after every successful auto-update.
+# Path-aware via scripts/rag-rescan-if-needed.sh — it diffs PRE vs POST
+# commit SHAs, checks if any RAG-indexed paths changed (CLAUDE.md, docs/**,
+# .claude/locations/*.md, packages/*/README.md, memory/*.md, drizzle SQL),
+# and only kicks off the actual scan if so. Returns immediately (the scan
+# runs as a detached background job, 25-40 min on iGPU). Non-fatal —
+# failure here doesn't roll back the auto-update; the operator can re-run
+# the script manually if it errored.
+#
+# Why this matters: docs/AUTO_UPDATE_TROUBLESHOOTING.md and the bartender
+# runbooks aren't useful to operators (or to the Claude CLI at checkpoints)
+# until they're embedded in the local RAG store. Without this hook, every
+# location's RAG drifts further out of date with every doc-touching update,
+# and the AI Hub chat answers stale questions. Wiring this here means every
+# location's RAG self-heals on every update — no manual operator action
+# needed at any of the 6 fleet boxes.
+if [ -x "$REPO_ROOT/scripts/rag-rescan-if-needed.sh" ]; then
+  RESCAN_SINCE="${PRE_MERGE_SHA:-HEAD~5}"
+  if bash "$REPO_ROOT/scripts/rag-rescan-if-needed.sh" --since "$RESCAN_SINCE" >/tmp/auto-update-rag-rescan.log 2>&1; then
+    log "RAG rescan: $(tail -1 /tmp/auto-update-rag-rescan.log)"
+  else
+    log "⚠ RAG rescan: returned non-zero (continuing — see /tmp/auto-update-rag-rescan.log)"
+  fi
+fi
+
 # Push the merge commit back to origin so the Fleet Dashboard (v2.24.0+)
 # sees this location's current version. Before v2.24.6, auto-update.sh
 # merged main locally, built, verified, restarted — but never pushed. The
