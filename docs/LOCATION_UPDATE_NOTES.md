@@ -46,6 +46,42 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-18 — v2.48.0 — system audit cleanup (4 agents) + RAG coverage gap-fill
+
+**What changed (driven by 4 parallel audit agents + 1 RAG-gap agent):**
+
+- **Removed 5 unused npm deps** (~15-20 MB total):
+  - `baseline-browser-mapping` (root devDep) — zero references anywhere
+  - `vitest` + `@vitest/coverage-v8` + `@vitest/ui` (apps/web) — entire framework installed, never used (project uses Jest)
+  - `node-mocks-http` (apps/web) — supertest is used for HTTP test mocking instead
+- **Deleted 12 dead bridge files** in `apps/web/src/lib/` (all pure re-exports, 0 callers verified): atlas-ai-analyzer.ts, atlas-ai-training-data.ts, atlasControlService.ts, atlas-http-client.ts, atlas-realtime-meter-service.ts, file-lock.ts, gracenote-service.ts, scheduler-service.ts, spectrum-business-api.ts, sports-guide-ollama-helper.ts, unified-tv-guide-service.ts, wolfpack-ai-training-data.ts
+- **Deleted 9 dead one-off scripts** in `scripts/`: cleanup-duplicate-qa, cleanup-planning-qa, create-test-layout, create-test-layout-image, generate-qa-with-claude, insert-critical-rules-qa, regenerate-professional-layout, seed-shure-test-events, test-validation-runtime
+- **Extended `scan-system-docs.ts`** to fill RAG coverage gaps. Now also indexes:
+  - Build/runtime config files (`next.config.js`, `ecosystem.config.js`, `turbo.json`, `apps/web/drizzle.config.ts`, `apps/web/jest.config.js`)
+  - Drizzle migration `.sql` files under `apps/web/drizzle/` — captures schema EVOLUTION not just current state
+  - Operator-facing shell scripts (`setup-iris-ollama.sh`, `setup-sdr.sh`, `setup-bartender-nginx.sh`, `bootstrap-new-location.sh`, `auto-update.sh`, `verify-install.sh`, `install.sh`)
+  - Supported extensions expanded to `.sql, .sh, .json, .js, .ts` for these targeted picks
+
+**Deferred to follow-up PRs (high risk, agent findings unreliable):**
+
+- **155 "dead" API routes** flagged by the dead-routes agent — sample verification showed `/api/audio-processor/zones` IS called by 3 components (DJControlPanel, AtlasZoneControl, DbxZoneControl). Will tier by risk + verify each cluster.
+- **11 dead DB tables** flagged by the data-audit agent (tvLayouts, matrixConfigs, audioMessages, audioScenes, bartenderRemotes, deviceMappings, trainingDocuments, aiTvAvailability, aiGamePlanExecutions, schedulingPreferences, aiScheduleSuggestions) — Standing Rule 3 forbids DB drops in same pass as code.
+
+**Manual steps required (per-location):** after auto-update, re-run the system doc scanner to pick up the new file types:
+```bash
+cd /home/ubuntu/Sports-Bar-TV-Controller
+npx tsx scripts/scan-system-docs.ts --clear
+```
+Expected: total chunks jumps from ~4,500 to ~5,500+ (config files + drizzle migrations + scripts add ~1,000 chunks).
+
+**What could break:** zero expected runtime impact. Build verified green (35/35 turbo tasks).
+
+**Rollback:** `git revert <SHA>` undoes the deletions. If you want a specific deleted file back: `git checkout HEAD~1 -- apps/web/src/lib/<file>.ts`.
+
+`Checkpoint model: sonnet`
+
+---
+
 ### 2026-05-18 — v2.47.1 — eslint 9→10 + pdf-parse 1→2 migrations (continued Rule 10 pass)
 
 **What changed:**
