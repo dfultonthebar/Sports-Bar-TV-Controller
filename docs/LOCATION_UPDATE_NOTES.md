@@ -46,6 +46,107 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-18 — v2.48.5 — schema.ts cleanup: 11 unused tables removed (defs only — DB tables intact)
+
+**What changed:**
+
+Removed 11 unused `sqliteTable(...)` definitions from `packages/database/src/schema.ts` (191 lines deleted). All 11 were verified to have ZERO code references across `apps/web/src` + `packages/` + `scripts/` + `tests/` (the only hits were compiled `dist/` artifacts of the same schema file).
+
+**Removed:** `tvLayouts`, `matrixConfigs`, `audioMessages`, `audioScenes`, `bartenderRemotes`, `deviceMappings`, `trainingDocuments`, `aiTvAvailability`, `aiGamePlanExecutions`, `schedulingPreferences`, `aiScheduleSuggestions`.
+
+**CRITICAL — actual SQLite tables in `production.db` are NOT dropped.** Per Standing Rule 3, DB changes never ride alongside code changes. If a future commit wants to reclaim the disk space, it'd need to be a dedicated migration PR with explicit `DROP TABLE` statements + per-location verification + backup. The tables continue to exist in `/home/ubuntu/sports-bar-data/production.db` — they just can no longer be referenced from TypeScript.
+
+**Why this matters for the AI Hub:** the schema is RAG-indexed (it's THE single source of truth for the data model per CLAUDE.md). Before this cleanup, the AI would see 11 phantom tables and hallucinate about features that don't exist. Now it sees only the live schema.
+
+**Manual steps required:** none.
+
+**Rollback:** `git revert <SHA>` restores all 11 table definitions.
+
+`Checkpoint model: sonnet`
+
+---
+
+### 2026-05-18 — v2.48.4 — .npmrc cleanup (removed two pnpm-only options npm doesn't understand)
+
+**What changed:**
+
+Removed two lines from `.npmrc` that were producing the "Unknown project config" warnings on EVERY npm invocation:
+- `strict-peer-dependencies=true` (pnpm-only)
+- `dedupe=true` (pnpm-only)
+
+The remaining `legacy-peer-deps=false` is sufficient for the "single React instance" goal (npm 7+ installs peer deps automatically and dedupes by default).
+
+**What could break:** zero. These two flags were no-ops in npm.
+
+**Manual steps required:** none.
+
+**Rollback:** `git revert <SHA>` — but no functional change to revert.
+
+`Checkpoint model: sonnet`
+
+---
+
+### 2026-05-18 — v2.48.3 — RAG indexes React component source (.tsx) too
+
+**What changed:**
+
+Extended `scripts/scan-code-docs.ts` to also collect:
+- `apps/web/src/components/**/*.tsx` (135 component files)
+- `apps/web/src/app/**/page.tsx` + `**/layout.tsx` (26 route entry files)
+
+Total ~161 new `.tsx` files indexed = +2,500-3,500 RAG chunks expected (UI-layer code is denser than docs).
+
+**Why:** AI Hub previously couldn't answer UI-layer questions ("where is the bartender remote rendered?", "what component owns the Atlas zone slider?"). Now it can. Closes the last big RAG coverage gap from the v2.48.0 audit.
+
+**Manual steps required (per location):** after auto-update, re-run the code scanner to pick up the new file types:
+```bash
+cd /home/ubuntu/Sports-Bar-TV-Controller
+npx tsx scripts/scan-code-docs.ts
+# ~25-40 min on iGPU; adds ~2,500-3,500 chunks
+```
+Expected after BOTH scans (v2.48.0 doc rescan + v2.48.3 code rescan) complete: total chunks ~7,500-8,500.
+
+**Risk:** zero — additive change to the scanner; doesn't touch any runtime path. Build green (no actual app code changed).
+
+**Rollback:** `git revert <SHA>` — but no functional change to revert. Just edits a script that operators choose to run.
+
+`Checkpoint model: sonnet`
+
+---
+
+### 2026-05-18 — v2.48.2 — full-sweep dead-routes pass (13 more, all 3-pass verified)
+
+**What changed:**
+
+Continued from v2.48.1 — instead of trusting the audit agent's 58-route sample, enumerated ALL 378 route.ts files and ran the same 3-pass verifier. Filtered to 18 high-confidence DEAD candidates, then hand-grep verified each: 5 kept (had hits the verifier missed: api/scheduled-commands could be external, api/wolfpack/ai-learning has 2 callers, api/file-system/manage has 42, api/commercial-lighting/{hue,systems}/discover have 15 each). 13 deleted.
+
+**Deleted 13 more verified-dead routes:**
+- `api/atlas-processors` (orphaned — active path is `/api/audio-processor/*`)
+- `api/enhanced-chat` (predecessor to current /api/chat, replaced in v2.46.3 Option B)
+- `api/rag/auto-index` (auto-indexer UI never built)
+- `api/streaming-subscriptions`
+- `api/generate-script`
+- `api/tv-discovery/probe-models`
+- `api/tv-discovery/probe-lg-models`
+- `api/firestick-scout/can-show`
+- `api/ir-devices/model-codes`
+- `api/ir-devices/search-codes`
+- `api/matrix/outputs-schedule`
+- `api/firetv-devices/guide-data`
+- `api/dmx/maestro/recall-preset`
+
+**Cumulative dead-route cleanup across v2.48.1 + v2.48.2: 27 routes removed.**
+
+**What could break:** zero — each verified 0 hits across literal `/api/<path>`, distinctive tail token, and full-path substring searches.
+
+**Manual steps required:** none.
+
+**Rollback:** `git revert <SHA>` restores all 13 routes.
+
+`Checkpoint model: sonnet`
+
+---
+
 ### 2026-05-18 — v2.48.1 — verified 14 truly-dead API routes deleted
 
 **What changed:**

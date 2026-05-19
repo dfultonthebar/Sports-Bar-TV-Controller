@@ -35,6 +35,52 @@ is the archive.
 
 ---
 
+## v2.48.x — system audit cleanup + RAG SME upgrade (multi-version)
+
+**Versions covered:** v2.48.0 → v2.48.5 (six commits on 2026-05-18)
+**Branch landed:** main
+
+**Big-picture changes:**
+
+- Removed ESLint entirely (v2.47.3) + 5 unused npm deps + 12 dead bridge files + 9 dead scripts + 27 dead API routes + 11 dead schema table defs. Net: -250+ lines, ~30 MB smaller `node_modules`, fewer things to bump weekly per Rule 10.
+- AI Hub RAG store extended with config files, drizzle migrations, operator shell scripts, AND React `.tsx` components/pages. Expected post-rescan total: ~7,500-8,500 chunks (was 4,536).
+
+**Required Manual Steps (per-location, IN ORDER):**
+
+1. **Run auto-update:**
+   ```bash
+   bash scripts/auto-update.sh --triggered-by=manual_cli
+   ```
+   This pulls v2.48.x, runs `npm ci`, rebuilds, restarts PM2. Schema cleanup is code-only — no DB migration runs.
+
+2. **Re-scan RAG to pick up the new file types:**
+   ```bash
+   cd /home/ubuntu/Sports-Bar-TV-Controller
+   npx tsx scripts/scan-system-docs.ts --clear     # picks up config, drizzle SQL, shell scripts
+   npx tsx scripts/scan-code-docs.ts               # picks up the 161 .tsx components/pages
+   ```
+   **Why `--clear` first:** removes stale chunks from deleted dead routes / bridge files (otherwise the AI would still cite them). Then the code-scan adds source + components on top.
+
+   **Time budget:** scan-system-docs.ts is ~25-40 min; scan-code-docs.ts is ~45-60 min (the .tsx additions are large). Run them sequentially — concurrent runs would saturate Ollama's embedding endpoint.
+
+3. **Verify RAG growth:**
+   ```bash
+   curl -sS http://localhost:3001/api/rag/stats | python3 -m json.tool
+   ```
+   Expected: `totalChunks` between 7,500 and 8,500. If significantly lower, the scan was interrupted — re-run.
+
+4. **Spot-test AI Hub grounding:**
+   ```bash
+   curl -X POST http://localhost:3001/api/chat \
+     -H 'Content-Type: application/json' \
+     -d '{"message":"What is the TX_MODEL property in our Shure SLX-D parser?","stream":false}'
+   ```
+   Expected: answer quotes `TX_MODEL` verbatim from indexed Shure docs. If it says "I don't have access to documentation", the RAG store didn't load — restart PM2 (`pm2 restart sports-bar-tv-controller`).
+
+**Operator timing:** RAG rescans take ~90 min total but run unattended. Schedule during off-peak. No service downtime — Pattern Digest and AI Hub continue working on the old index until the rescan finishes.
+
+---
+
 ## v2.47.1 — eslint 9→10 + pdf-parse 1→2 (continued Rule 10 pass)
 
 **Released:** 2026-05-18
