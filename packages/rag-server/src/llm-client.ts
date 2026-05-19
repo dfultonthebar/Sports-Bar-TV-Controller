@@ -27,64 +27,118 @@ export interface EmbeddingResponse {
 }
 
 /**
- * Generate embeddings using Ollama
+ * Generate embeddings using Ollama's /api/embed (batch-capable, Ollama 0.2+).
+ *
+ * v2.50.1 Quick Win #2: switched from the legacy /api/embeddings endpoint
+ * (one-text-per-call) to the newer /api/embed (accepts `input: [...]` array).
+ * For batch scans (scan-system-docs.ts), this is 10-50× faster because the
+ * model stays warm and one HTTP round-trip handles many chunks instead of
+ * N round-trips. Single-text callers route through the same batch path with
+ * a length-1 array for code unity.
+ *
+ * Both paths set `keep_alive: -1` so the embedding model never unloads —
+ * pairs with the chat-route v2.50.0 #1 change for the same reason.
+ *
+ * Backwards-compatible: if Ollama is too old to support /api/embed (returns
+ * 404), falls back to serial /api/embeddings calls.
  */
+
+async function embedBatchViaNewApi(texts: string[]): Promise<number[][] | null> {
+  // Returns null on 404 so the caller can fall back. Throws on other errors.
+  const response = await fetch(`${RAGConfig.ollamaUrl}/api/embed`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: RAGConfig.embeddingModel,
+      input: texts,
+      keep_alive: -1,
+    }),
+  });
+  if (response.status === 404) return null; // old Ollama, fall back
+  if (!response.ok) {
+    throw new Error(`Ollama /api/embed error: ${response.status} ${response.statusText}`);
+  }
+  const data = await response.json();
+  // Response shape: { model, embeddings: [[...], [...], ...], total_duration, ... }
+  if (!Array.isArray(data.embeddings) || data.embeddings.length !== texts.length) {
+    throw new Error(
+      `Ollama /api/embed returned malformed result: expected ${texts.length} embeddings, got ${data.embeddings?.length ?? 0}`,
+    );
+  }
+  return data.embeddings as number[][];
+}
+
+async function embedSingleViaLegacyApi(text: string): Promise<number[]> {
+  const response = await fetch(`${RAGConfig.ollamaUrl}/api/embeddings`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: RAGConfig.embeddingModel,
+      prompt: text,
+      keep_alive: -1, // v2.50.1: keep embedding model resident across scans
+    }),
+  });
+  if (!response.ok) {
+    throw new Error(`Ollama /api/embeddings error: ${response.status} ${response.statusText}`);
+  }
+  const data = await response.json();
+  return data.embedding || [];
+}
+
 export async function generateEmbedding(text: string): Promise<number[]> {
   const startTime = Date.now();
-
   try {
-    const response = await fetch(`${RAGConfig.ollamaUrl}/api/embeddings`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: RAGConfig.embeddingModel,
-        prompt: text,
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Ollama API error: ${response.status} ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    const duration = Date.now() - startTime;
-
+    const batched = await embedBatchViaNewApi([text]);
+    const embedding = batched ? batched[0] : await embedSingleViaLegacyApi(text);
     logger.debug('Generated embedding', {
       data: {
         model: RAGConfig.embeddingModel,
         textLength: text.length,
-        embeddingDim: data.embedding?.length || 0,
-        duration,
-      }
+        embeddingDim: embedding.length,
+        duration: Date.now() - startTime,
+        via: batched ? 'embed-batch' : 'embeddings-legacy',
+      },
     });
-
-    return data.embedding || [];
+    return embedding;
   } catch (error) {
-    logger.error('Error generating embedding', { data: { error, text: text.substring(0, 100) }
-      });
+    logger.error('Error generating embedding', { data: { error, text: text.substring(0, 100) } });
     throw error;
   }
 }
 
-/**
- * Generate embeddings for multiple texts in batch
- */
 export async function generateEmbeddings(texts: string[]): Promise<number[][]> {
-  const embeddings: number[][] = [];
-
-  for (const text of texts) {
-    try {
-      const embedding = await generateEmbedding(text);
-      embeddings.push(embedding);
-    } catch (error) {
-      logger.error('Error in batch embedding', { error });
-      embeddings.push([]);
+  if (texts.length === 0) return [];
+  const startTime = Date.now();
+  try {
+    const batched = await embedBatchViaNewApi(texts);
+    if (batched) {
+      logger.debug('Generated embeddings (batch)', {
+        data: {
+          model: RAGConfig.embeddingModel,
+          count: texts.length,
+          duration: Date.now() - startTime,
+        },
+      });
+      return batched;
     }
+    // Fallback: legacy serial loop (only when /api/embed returns 404)
+    logger.warn('Ollama /api/embed not supported; falling back to serial /api/embeddings', {
+      data: { count: texts.length },
+    });
+    const embeddings: number[][] = [];
+    for (const text of texts) {
+      try {
+        embeddings.push(await embedSingleViaLegacyApi(text));
+      } catch (e) {
+        logger.error('Error in batch embedding fallback', { error: e });
+        embeddings.push([]);
+      }
+    }
+    return embeddings;
+  } catch (error) {
+    logger.error('Error generating embeddings batch', { data: { error, count: texts.length } });
+    throw error;
   }
-
-  return embeddings;
 }
 
 /**

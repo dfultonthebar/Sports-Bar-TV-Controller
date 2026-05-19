@@ -291,6 +291,24 @@ export default function AIHubPage() {
     }
   }
 
+  // v2.49.3: regenerate — re-send the user message that produced the last
+  // assistant response, popping the prior assistant turn first so the model
+  // gets a fresh try. Closes UX MISSING-OBVIOUS-#9 (no "rerun" lever).
+  const handleRegenerateLast = () => {
+    if (isChatting || chatHistory.length < 2) return
+    // Find the last user message before the last assistant message
+    let lastUserIdx = -1
+    for (let i = chatHistory.length - 1; i >= 0; i--) {
+      if (chatHistory[i].role === 'user') { lastUserIdx = i; break }
+    }
+    if (lastUserIdx === -1) return
+    const userMsg = chatHistory[lastUserIdx].content
+    // Pop everything from the last user message onward, then re-send
+    setChatHistory(prev => prev.slice(0, lastUserIdx))
+    setChatMessage(userMsg)
+    setTimeout(() => handleSendMessage(), 50)
+  }
+
   // v2.49.0: clear conversation + start a fresh session
   const handleNewSession = () => {
     const newId = (typeof crypto !== 'undefined' && crypto.randomUUID)
@@ -442,7 +460,16 @@ export default function AIHubPage() {
                 <div className="flex items-center justify-between mb-6">
                   <div className="flex items-center space-x-3">
                     <Database className="w-6 h-6 text-blue-400" />
-                    <h2 className="text-xl font-bold text-slate-100">Codebase Index</h2>
+                    <div>
+                      <h2 className="text-xl font-bold text-slate-100">Codebase Index</h2>
+                      {/* v2.49.3: sticky last-indexed timestamp — operators can see at a glance
+                          how stale the AI's knowledge is. Closes UX MISSING-OBVIOUS-#13. */}
+                      {codebaseStats?.lastIndexed && (
+                        <p className="text-xs text-slate-400 mt-0.5">
+                          Last indexed: {new Date(codebaseStats.lastIndexed).toLocaleString()}
+                        </p>
+                      )}
+                    </div>
                   </div>
                   <button
                     onClick={handleIndexCodebase}
@@ -583,15 +610,38 @@ export default function AIHubPage() {
                   className="mb-4 h-96 md:h-[28rem] overflow-y-auto bg-slate-800/50 rounded-lg p-4 space-y-4"
                 >
                   {chatHistory.length === 0 && !isChatting ? (
-                    <div className="text-center text-slate-400 py-8">
-                      <p className="font-medium">Ask me anything about the system</p>
-                      <p className="text-sm mt-2">I have access to:</p>
-                      <ul className="text-xs mt-1 space-y-0.5 text-slate-500">
-                        <li>• Every API route, lib service, and package source</li>
-                        <li>• All vendor docs (Atlas, Shure, Wolf Pack, dbx, BSS, DirecTV, Fire TV)</li>
-                        <li>• Per-location hardware refs + operator memory + setup scripts</li>
-                      </ul>
-                      <p className="text-xs mt-3 text-slate-500">Paste a log or error message — I&apos;ll quote the relevant doc lines.</p>
+                    <div className="text-center text-slate-400 py-6">
+                      <p className="font-medium mb-1">Ask me anything about the system</p>
+                      <p className="text-xs mb-4 text-slate-500">
+                        I&apos;m grounded in every doc, source file, vendor manual, and operator memory we have. Paste a log or error — I&apos;ll quote the relevant lines.
+                      </p>
+                      {/* v2.49.3: starter prompts — one-tap common ops/setup questions.
+                          Operationally-focused per the "feed the AI ops + setup" pivot 2026-05-18. */}
+                      <div className="mt-2">
+                        <p className="text-xs text-slate-400 mb-2 font-medium">Quick-start questions:</p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-w-2xl mx-auto">
+                          {[
+                            'How do I restart a stuck Atlas processor?',
+                            'How do I learn a new IR code on a cable box?',
+                            'A Fire TV is offline — what do I check?',
+                            'How do I bootstrap a new location?',
+                            'How do I rebuild the RAG vector store?',
+                            'What does the Atlas drop watcher detect?',
+                          ].map((q) => (
+                            <button
+                              key={q}
+                              onClick={() => {
+                                setChatMessage(q)
+                                // small delay to let state propagate, then send
+                                setTimeout(() => handleSendMessage(), 50)
+                              }}
+                              className="text-left text-xs px-3 py-2 bg-slate-800/60 hover:bg-slate-700 rounded border border-slate-700 text-slate-300 hover:text-slate-100 transition-colors"
+                            >
+                              {q}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                     </div>
                   ) : (
                     chatHistory.map((msg, idx) => (
@@ -602,30 +652,47 @@ export default function AIHubPage() {
                             : 'bg-slate-700 text-slate-100'
                         }`}>
                           <div className="text-sm whitespace-pre-wrap">{msg.content}</div>
-                          {msg.role === 'assistant' && msg.sources && msg.sources.length > 0 && (
-                            <details className="mt-3 pt-3 border-t border-slate-600/50">
-                              <summary className="text-xs text-slate-300 cursor-pointer hover:text-slate-100 flex items-center gap-1.5">
-                                <FileText className="w-3 h-3" />
-                                Grounded in {msg.sources.length} {msg.sources.length === 1 ? 'source' : 'sources'}
-                                {msg.elapsedMs ? ` · ${(msg.elapsedMs / 1000).toFixed(1)}s` : ''}
-                                {msg.model ? ` · ${msg.model}` : ''}
-                              </summary>
-                              <div className="mt-2 space-y-1.5">
-                                {msg.sources.map((s, i) => (
-                                  <div key={i} className="text-xs bg-slate-800/60 rounded px-2 py-1.5">
-                                    <div className="flex items-center justify-between text-slate-300">
-                                      <span className="font-mono truncate">{s.name}</span>
-                                      <span className="text-slate-500 ml-2">score {(s.score ?? 0).toFixed(2)}</span>
-                                    </div>
-                                    {s.excerpt && (
-                                      <div className="text-slate-500 mt-1 truncate" title={s.excerpt}>
-                                        {s.excerpt.replace(/\s+/g, ' ').slice(0, 120)}…
+                          {msg.role === 'assistant' && (
+                            <div className="mt-3 pt-3 border-t border-slate-600/50 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                              {msg.sources && msg.sources.length > 0 && (
+                                <details className="text-xs text-slate-300 flex-1 min-w-[200px]">
+                                  <summary className="cursor-pointer hover:text-slate-100 flex items-center gap-1.5">
+                                    <FileText className="w-3 h-3" />
+                                    Grounded in {msg.sources.length} {msg.sources.length === 1 ? 'source' : 'sources'}
+                                    {msg.elapsedMs ? ` · ${(msg.elapsedMs / 1000).toFixed(1)}s` : ''}
+                                    {msg.model ? ` · ${msg.model}` : ''}
+                                  </summary>
+                                  <div className="mt-2 space-y-1.5">
+                                    {msg.sources.map((s, i) => (
+                                      <div key={i} className="text-xs bg-slate-800/60 rounded px-2 py-1.5">
+                                        <div className="flex items-center justify-between text-slate-300">
+                                          <span className="font-mono truncate">{s.name}</span>
+                                          <span className="text-slate-500 ml-2">score {(s.score ?? 0).toFixed(2)}</span>
+                                        </div>
+                                        {s.excerpt && (
+                                          <div className="text-slate-500 mt-1 truncate" title={s.excerpt}>
+                                            {s.excerpt.replace(/\s+/g, ' ').slice(0, 120)}…
+                                          </div>
+                                        )}
                                       </div>
-                                    )}
+                                    ))}
                                   </div>
-                                ))}
-                              </div>
-                            </details>
+                                </details>
+                              )}
+                              {/* v2.49.3: regenerate button — re-run the last user query with a fresh
+                                  RAG retrieval + LLM call. Only shown on the latest assistant msg
+                                  so older ones stay immutable. */}
+                              {idx === chatHistory.length - 1 && !isChatting && (
+                                <button
+                                  onClick={handleRegenerateLast}
+                                  className="text-xs text-slate-400 hover:text-slate-200 flex items-center gap-1 ml-auto"
+                                  title="Re-run with a fresh RAG retrieval"
+                                >
+                                  <RefreshCw className="w-3 h-3" />
+                                  Regenerate
+                                </button>
+                              )}
+                            </div>
                           )}
                         </div>
                       </div>

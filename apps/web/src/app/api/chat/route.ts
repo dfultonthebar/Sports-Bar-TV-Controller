@@ -8,7 +8,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { documentSearch } from '@/lib/enhanced-document-search'
 import { retrieveContext } from '@/lib/rag-server/query-engine'
 import { operationLogger } from '@/lib/operation-logger'
-import { findUnique, update } from '@/lib/db-helpers'
+import { findUnique, update, upsert } from '@/lib/db-helpers'
 import { schema } from '@/db'
 import { eq } from 'drizzle-orm'
 import { logger } from '@sports-bar/logger'
@@ -55,6 +55,63 @@ const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || HARDWARE_CONFIG.ollama.ba
 // RAG snippets per fact-checker grilling 2026-05-18. Override via
 // OLLAMA_MODEL env if you want the faster/dumber phi3:mini.
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'llama3.1:8b'
+
+// v2.50.0 Quick win #4 from docs/AI_HUB_ROADMAP_v2.50.md: tool-heavy
+// routes need a 14B+ model per BFCL benchmark. 8B is below the
+// practical multi-tool floor (~70% reliability); qwen2.5:14b hits
+// ~94%. Already iGPU-resident per FLEET_STATUS. Plain chat stays on
+// llama3.1:8b (~2× faster, fine for non-tool answers).
+const OLLAMA_TOOLS_MODEL = process.env.OLLAMA_TOOLS_MODEL || 'qwen2.5:14b'
+function pickModel(enableTools: boolean): string {
+  return enableTools ? OLLAMA_TOOLS_MODEL : OLLAMA_MODEL
+}
+
+// v2.50.0 Quick win #1: keep the model resident permanently so the
+// prefix KV cache survives across requests. Default Ollama unloads
+// at 5 min idle which forces a 30-100s cold reload on the next call
+// — that's why Graystone times 170s vs Appleton's 67s on identical
+// queries. Per-request keep_alive overrides server default; no env
+// change needed at any location. -1 = never unload.
+const OLLAMA_KEEP_ALIVE = -1
+
+// v2.50.3 Quick Win #3: Convert our ToolDefinition shape to Ollama's
+// JSON-Schema "tools" parameter (OpenAI-compatible, supported by
+// llama3.1:8b + qwen2.5:14b natively since Ollama 0.3, Jul 2024).
+// This replaces the brittle TOOL_CALL regex parser that the model
+// sometimes formatted wrong. Native API: 94-98% reliability per BFCL.
+//
+// Ollama returns tool_calls as a separate structured field in the
+// response — no regex needed, no malformed-block failure mode.
+function convertToOllamaToolsFormat(tools: ToolDefinition[]): Array<{
+  type: 'function'
+  function: {
+    name: string
+    description: string
+    parameters: {
+      type: 'object'
+      properties: Record<string, { type: string; description: string; enum?: string[] }>
+      required: string[]
+    }
+  }
+}> {
+  return tools.map((t) => {
+    const properties: Record<string, { type: string; description: string; enum?: string[] }> = {}
+    const required: string[] = []
+    for (const p of t.parameters) {
+      properties[p.name] = { type: p.type, description: p.description }
+      if (p.enum) properties[p.name].enum = p.enum
+      if (p.required) required.push(p.name)
+    }
+    return {
+      type: 'function',
+      function: {
+        name: t.name,
+        description: t.description,
+        parameters: { type: 'object', properties, required },
+      },
+    }
+  })
+}
 
 // Option B unification (v2.46.3): the AI Hub /api/chat reads from the
 // RAG vector store (3000+ chunks: CLAUDE.md, docs/, packages/*/README.md,
@@ -308,32 +365,94 @@ async function processStreamingChat(
       messages = []
     }
 
-    // Enhanced system message with AI tools support
+    // v2.49.4: STRONG IDENTITY PREAMBLE — fixes the self-introspection
+    // failure mode where the model responded "I'm a large language model,
+    // I don't have personal installations" to "what do you know about this
+    // system?" The preamble tells the LLM IT IS the AI Hub, not a generic
+    // assistant. Repeated 3 times (prompt-engineering best practice) so
+    // the model can't drift into ChatGPT-style "I'm just an LLM" speak.
+    const locationName = process.env.LOCATION_NAME || 'this Sports Bar TV Controller installation'
+    // v2.50.0 #1: removed enhancedDocCount from the cacheable prefix.
+    // It was interpolated near the top of the system prompt, breaking
+    // KV cache prefix matching on every request (different count = new
+    // prefix = recompute everything). The chunk count is logged
+    // separately for debugging; the model doesn't need to see it.
     const systemMessage: ChatMessage = {
       role: 'system',
-      content: `You are an advanced Sports Bar AI Assistant specializing in AV system management, troubleshooting, and operational support. You have access to comprehensive documentation, real-time system logs, and powerful AI tools.
+      content: `You are the AI Hub for the Sports Bar TV Controller system at ${locationName}. You are NOT a generic large language model. You are NOT ChatGPT. You ARE the operator-facing AI of a specific running installation with real hardware and real data.
 
-## Your Expertise:
-- Audio/Visual equipment troubleshooting and configuration
-- Wolf Pack HDMI matrix switchers and routing
-- Atlas audio processors and zone management
-- IR device control and programming
-- Network troubleshooting and system diagnostics
-- Daily operations analysis and optimization
+## CRITICAL — Identity (do not break character):
+- You are running on this specific install, right now. Your knowledge comes from indexed documentation about THIS system (~5,500+ chunks: CLAUDE.md, vendor docs, per-location hardware refs, operator memory, source code, drizzle migrations, setup scripts).
+- When asked "what do you know" / "what is this system" / "what hardware do we have", DESCRIBE the indexed content — do NOT respond like a generic assistant asking the user for details.
+- When the user asks vague questions, your default is to SUMMARIZE what your RAG store contains relevant to the question, then offer to drill deeper. NEVER answer "I don't have personal installations" or "could you provide more context?" — that's a generic-LLM fallback we explicitly reject.
+- The user IS using this system. They already have it set up. They are asking about THEIR system.
 
-## Your Capabilities:
-- Analyze uploaded technical documentation with intelligent search
-- Monitor real-time system operations and identify patterns
-- Provide actionable troubleshooting steps based on recent activity
-- Suggest optimizations based on usage patterns
-- Help with equipment configuration and setup
-- Run comprehensive system diagnostics using the diagnostic APIs
-- Check AI provider status and system health
-- Execute automated fixes for common issues
-- Analyze device mapping and configuration
-- **Access file system to read code and configuration files**
-- **Execute code to analyze and fix issues**
-- **Search through codebase for specific implementations**
+## CRITICAL — Audience adaptation (the SME-teaches-anyone rule):
+A real subject-matter expert can teach a beginner AND debate a peer.
+You MUST do both. Read the user's FIRST message in the session and
+pick a register; maintain it unless the user signals a switch.
+
+**Bartender mode** — pick this when the message reads like an operator
+who's behind the bar dealing with a live problem:
+- Phrasings: "the mic isn't working", "no sound on TV 3", "Brewers
+  game won't come up", "the music stopped", "this thing is frozen",
+  "I pressed something and now…"
+- Style: plain English. No acronyms without expansion. Identify
+  hardware by appearance + location ("the silver box with the antenna
+  on the top rack" not "the SLX-D receiver"). One action per numbered
+  step. Add recovery paths inline ("if the display says X instead of
+  Y, that means you accidentally pressed Z — here's how to get back").
+  Confidence-building: "you can't break it by trying this." End with
+  an escalation path: "if none of these worked, take a photo of the
+  display and text [manager] — describe what you tried in order."
+- When relevant, prefer docs from docs/bartender-help/ over
+  docs/runbooks/ (bartender-help docs are written for this audience).
+- NEVER give a technical command like "POST /api/shure-rf/find-clean-freq"
+  to bartender mode — give them a button to press or a person to call.
+
+**Operator mode** — pick this when the message is technical:
+- Phrasings: "trigger Group Scan on RX2", "check outputOffset for
+  matrix 3", "show me chatSessions table", uses code identifiers,
+  hardware model names, port numbers, command flags.
+- Style: technical, terse, citation-heavy. Quote API endpoints, file
+  paths, SQL queries verbatim. Reference CLAUDE.md sections,
+  runbook filenames, source line numbers. Trust the reader's
+  background.
+- Prefer docs from docs/runbooks/, packages/*/README.md, CLAUDE.md.
+
+**Register switching mid-session:**
+- If a bartender-mode user asks a technical follow-up, answer at
+  operator level for that one exchange but explicitly offer to drop
+  back: "happy to explain that in plainer terms — want me to?"
+- If an operator-mode user pivots to a bartender-style question
+  ("what does this mean for the bar tonight?"), drop to bartender
+  mode for that exchange.
+- When in doubt, default to BARTENDER mode. Underwhelming an operator
+  with too-simple language is recoverable ("can you go more technical?");
+  overwhelming a bartender with jargon makes them stop using the
+  chat entirely.
+
+## What you know about (your indexed knowledge — RAG-grounded):
+- ${locationName} is one of 6 bar locations running this stack
+- Hardware integrations: Atlas Atmosphere audio processors (AZM4/AZM8), Shure SLX-D wireless mics, Wolf Pack HDMI matrix switchers, Crestron DM matrix, BSS Soundweb London + dbx ZonePRO audio DSPs, DirecTV Genie receivers, Amazon Fire TV Cubes, Global Cache iTach IP2IR IR blasters, Pulse-Eight CEC adapters, NESDR Smart RTL-SDR
+- Software stack: Next.js 16 + Turborepo + npm workspaces, Drizzle ORM + SQLite at /home/ubuntu/sports-bar-data/production.db, PM2 + Nginx (port 3001 admin, 3002 bartender remote on iPad), IPEX-LLM Ollama with llama3.1:8b on Intel Iris Xe iGPU
+- Operational concepts: auto-update via scripts/auto-update.sh, Atlas drop+priority watchers, SDR cross-confirmation of Shure RF events, per-location commit strategy (main → location branches)
+- Documentation: CLAUDE.md (architecture + standing rules + gotchas), docs/OPERATIONS_RECOVERY_PLAYBOOK.md (how to fix stuck X), docs/EQUIPMENT_SETUP_PLAYBOOK.md (how to bring up new equipment), per-vendor packages/*/README.md, per-location .claude/locations/*.md, 50+ operator memory files
+
+## Your expertise (deep, system-specific):
+- AV equipment troubleshooting + configuration for the hardware listed above
+- Wolf Pack HDMI matrix routing (including the CRITICAL outputOffset gotcha — single-card vs multi-card chassis)
+- Atlas audio processor zone management + the firmware 4.5 Custom Priority Volume gotcha
+- IR device control via iTach (Spectrum cable boxes are IR-only — CEC is dead, do not extend)
+- Shure SLX-D RF coordination + 3-detector cross-confirmation pipeline (Shure narrow + SDR wide + Atlas mic-level)
+- Network troubleshooting + system diagnostics for this multi-location fleet
+- Daily operations + auto-update + per-location bootstrap
+
+## Your capabilities:
+- Search and quote from indexed documentation with citation
+- Walk the operator through step-by-step recovery + setup procedures
+- Cite specific source files (CLAUDE.md §N, docs/X.md, packages/Y/README.md, .claude/locations/Z.md) for every claim
+- Identify when a question is outside what your docs cover, and say so explicitly
 
 ${toolsPrompt}
 
@@ -379,6 +498,27 @@ The answer to "what's the transmitter model property name?" is
 the docs are warning against. Same pattern applies to GROUP_CHANNEL
 (NOT GROUP_CHAN), audio gain offset (+18 NOT raw dB), etc.
 
+### Product-line anti-confusion rule (CRITICAL — 2026-05-18 operator failure):
+Shure makes BOTH **SLX** (analog, discontinued) and **SLX-D** (digital,
+current). The two have DIFFERENT scan + sync procedures despite the
+similar name. **Our system uses SLX-D.** When a user asks "how do I
+scan with my Shure SLX" or "my Shure SLX wireless mic", they mean
+**SLX-D** — that's all we own. Don't fall back to training-data SLX
+(analog) procedures (TX-side encoder, "Menu" on the handheld, Sync
+button on receiver matching TX). The actual SLX-D procedure lives in
+docs/runbooks/SHURE_FREQUENCY_SCAN.md + packages/shure-slxd/README.md:
+
+  > SLX-D scans run on the RECEIVER's front panel (Utilities → Group Scan),
+  > NOT on the transmitter. After the receiver picks a clean frequency, you
+  > IR-sync the handheld TX to it (battery compartment IR window held ~6
+  > inches from receiver IR sensor + press Sync). Network-side scan does
+  > NOT exist over TCP 2202 in firmware 1.4.7.0 — front panel or bust.
+
+Same product-line trap applies to other Shure lines (QLX-D, ULX-D, AD,
+Axient). When in doubt that the docs cover the user's specific product,
+say so explicitly — don't substitute training-data knowledge of a
+similar-named product.
+
 ### Table extraction rule (CRITICAL — Q3 fail mode):
 Our docs often use markdown tables for per-location reference data.
 Example from CLAUDE.md §4:
@@ -421,15 +561,26 @@ what's there.`,
     
     logger.info('[STREAMING] Calling Ollama API at:', { data: OLLAMA_BASE_URL })
     logger.info('[STREAMING] Using model:', { data: OLLAMA_MODEL })
+    const streamModel = pickModel(enableTools)
     logger.info('[STREAMING] Message count:', { data: [systemMessage, ...messages].length })
-    
+    logger.info('[STREAMING] Picked model:', { data: streamModel })
+
+    // v2.50.3: pass tools as structured JSON-Schema parameter (Ollama
+    // native API since 0.3). Model returns tool_calls as a separate
+    // field — no regex parsing of the response text.
+    const ollamaTools = enableTools && availableTools.length > 0
+      ? convertToOllamaToolsFormat(availableTools)
+      : undefined
+
     const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: OLLAMA_MODEL,
+        model: streamModel,
         messages: [systemMessage, ...messages],
         stream: true, // Enable streaming from Ollama
+        keep_alive: OLLAMA_KEEP_ALIVE, // v2.50.0 #1: stay resident → warm prefix cache
+        ...(ollamaTools ? { tools: ollamaTools } : {}), // v2.50.3
         options: {
           temperature: 0.3, // v2.46.3: lowered from 0.7 for RAG fidelity
           top_p: 0.9,
@@ -451,6 +602,12 @@ what's there.`,
 
     logger.info('[STREAMING] Starting to read stream...')
     let fullResponse = ''
+    // v2.50.3: collect native tool_calls from the stream. Ollama emits
+    // them in a per-chunk message.tool_calls field — usually in the
+    // final chunk (with done=true) for tool-trained models. We accumulate
+    // any tool_calls seen at any point in the stream.
+    type NativeToolCall = { function: { name: string; arguments: Record<string, unknown> } }
+    const collectedToolCalls: NativeToolCall[] = []
     const decoder = new TextDecoder()
 
     while (true) {
@@ -466,17 +623,24 @@ what's there.`,
       for (const line of lines) {
         try {
           const data = JSON.parse(line)
-          
+
           if (data.message?.content) {
             const content = data.message.content
             fullResponse += content
-            
+
             // Send content chunk to client
-            await sendSSE({ 
-              type: 'content', 
+            await sendSSE({
+              type: 'content',
               content,
-              done: false 
+              done: false
             })
+          }
+
+          // v2.50.3: native tool_calls — structured, no regex needed
+          if (Array.isArray(data.message?.tool_calls) && data.message.tool_calls.length > 0) {
+            for (const tc of data.message.tool_calls) {
+              if (tc?.function?.name) collectedToolCalls.push(tc)
+            }
           }
 
           if (data.done) {
@@ -493,8 +657,72 @@ what's there.`,
     // (multi-turn sessions used to lose the tool-call/result history).
     let persistedToolResults: ToolResult[] = []
 
-    // Check for tool calls in the response
-    if (enableTools && fullResponse.includes('TOOL_CALL:')) {
+    // v2.50.3: prefer native tool_calls over the legacy TOOL_CALL: regex.
+    // The regex path remains as fallback for non-tool-trained models that
+    // emit text-based TOOL_CALL: blocks (phi3:mini, llama3.2:3b). Skip
+    // the legacy parser entirely when native tool_calls were collected.
+    if (enableTools && collectedToolCalls.length > 0) {
+      await sendSSE({ type: 'status', message: `Executing ${collectedToolCalls.length} native tool call(s)...` })
+      const ctx = createDefaultContext()
+      const nativeResults: ToolResult[] = []
+      for (const tc of collectedToolCalls) {
+        try {
+          // Ollama may pass arguments as already-parsed object or a JSON string
+          let args = tc.function.arguments as any
+          if (typeof args === 'string') {
+            try { args = JSON.parse(args) } catch { args = {} }
+          }
+          const r = await executeTool(tc.function.name, args || {}, ctx)
+          nativeResults.push({
+            id: tc.function.name + '-' + Date.now(),
+            name: tc.function.name,
+            result: r,
+            success: !!r?.success,
+            error: r?.error,
+          })
+        } catch (err) {
+          nativeResults.push({
+            id: tc.function.name + '-err',
+            name: tc.function.name,
+            result: null,
+            success: false,
+            error: err instanceof Error ? err.message : 'Unknown error',
+          })
+        }
+      }
+      persistedToolResults = nativeResults
+
+      await sendSSE({ type: 'tool_results', results: nativeResults })
+
+      // Re-call Ollama with tool messages appended for the final answer.
+      // No tools param this time — we want a plain summarization, not
+      // another round of tool calls.
+      const toolMessages = nativeResults.map((r) => ({
+        role: 'tool' as const,
+        content: `Tool ${r.name} returned: ${JSON.stringify(r.result)}`,
+      }))
+      const followUp = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: streamModel,
+          messages: [systemMessage, ...messages, { role: 'assistant', content: fullResponse }, ...toolMessages],
+          stream: false,
+          keep_alive: OLLAMA_KEEP_ALIVE,
+        }),
+      })
+      if (followUp.ok) {
+        const followUpData = await followUp.json()
+        const followUpContent = followUpData.message?.content || ''
+        await sendSSE({ type: 'content', content: followUpContent, done: true })
+        fullResponse += '\n\n' + followUpContent
+      }
+    }
+
+    // Check for tool calls in the response (LEGACY REGEX PATH — runs only
+    // when native tool_calls path didn't fire, e.g. for non-tool-trained
+    // models that emit text-based TOOL_CALL: blocks)
+    if (enableTools && collectedToolCalls.length === 0 && fullResponse.includes('TOOL_CALL:')) {
       await sendSSE({ type: 'status', message: 'Executing tools...' })
       const toolResults = await handleToolCalls(fullResponse)
       persistedToolResults = toolResults
@@ -534,14 +762,30 @@ what's there.`,
     messages.push(assistantMsg)
 
     if (sessionId) {
-      await update('chatSessions', eq(schema.chatSessions.id, sessionId), {
-        messages: JSON.stringify(messages),
-        updatedAt: new Date(),
-      })
+      // v2.49.6: was update() — silently no-op'd when the sessionId row
+      // didn't exist yet, so 0 chat sessions ever persisted despite the
+      // UI sending UUIDs. upsert() correctly creates on first message.
+      const nowIso = new Date().toISOString()
+      const titleGuess = (messages.find((m: ChatMessage) => m.role === 'user')?.content || 'New chat').slice(0, 80)
+      await upsert(
+        'chatSessions',
+        eq(schema.chatSessions.id, sessionId),
+        {
+          id: sessionId,
+          title: titleGuess,
+          messages: JSON.stringify(messages),
+          createdAt: nowIso,
+          updatedAt: nowIso,
+        },
+        {
+          messages: JSON.stringify(messages),
+          updatedAt: nowIso,
+        },
+      )
     }
 
     // Send completion
-    await sendSSE({ 
+    await sendSSE({
       type: 'done',
       sessionId: sessionId || 'new'
     })
@@ -622,13 +866,20 @@ NONE of the snippets address the question. Do not refuse on uncertainty.`,
   messages.push({ role: 'user', content: message })
 
   // Call Ollama without streaming
+  const nsModel = pickModel(enableTools)
+  // v2.50.3: native tools (Ollama 0.3+)
+  const nsOllamaTools = enableTools && availableTools.length > 0
+    ? convertToOllamaToolsFormat(availableTools)
+    : undefined
   const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: OLLAMA_MODEL,
+      model: nsModel,
       messages: [systemMessage, ...messages],
       stream: false,
+      keep_alive: OLLAMA_KEEP_ALIVE, // v2.50.0 #1: stay resident → warm prefix cache
+      ...(nsOllamaTools ? { tools: nsOllamaTools } : {}), // v2.50.3
       options: {
         temperature: 0.3, // v2.46.3: match streaming-path fidelity setting
         top_p: 0.9,
@@ -643,9 +894,60 @@ NONE of the snippets address the question. Do not refuse on uncertainty.`,
   const data = await response.json()
   let aiResponse = data.message?.content || ''
 
-  // Handle tool calls (v2.49.1: capture results for session persistence)
+  // v2.50.3: native tool_calls path (preferred). Ollama returns a
+  // structured tool_calls array in the message — no regex parsing.
   let nsPersistedToolResults: ToolResult[] = []
-  if (enableTools && aiResponse.includes('TOOL_CALL:')) {
+  const nsNativeToolCalls = Array.isArray(data.message?.tool_calls) ? data.message.tool_calls : []
+  if (enableTools && nsNativeToolCalls.length > 0) {
+    const ctx = createDefaultContext()
+    const results: ToolResult[] = []
+    for (const tc of nsNativeToolCalls) {
+      try {
+        let args = tc.function?.arguments as any
+        if (typeof args === 'string') {
+          try { args = JSON.parse(args) } catch { args = {} }
+        }
+        const r = await executeTool(tc.function.name, args || {}, ctx)
+        results.push({
+          id: tc.function.name + '-' + Date.now(),
+          name: tc.function.name,
+          result: r,
+          success: !!r?.success,
+          error: r?.error,
+        })
+      } catch (err) {
+        results.push({
+          id: tc.function?.name + '-err',
+          name: tc.function?.name || 'unknown',
+          result: null,
+          success: false,
+          error: err instanceof Error ? err.message : 'Unknown error',
+        })
+      }
+    }
+    nsPersistedToolResults = results
+
+    // Re-call Ollama with tool results for the final summary
+    const toolMessages = results.map((r) => ({
+      role: 'tool' as const,
+      content: `Tool ${r.name} returned: ${JSON.stringify(r.result)}`,
+    }))
+    const followUp = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: nsModel,
+        messages: [systemMessage, ...messages, { role: 'assistant', content: aiResponse }, ...toolMessages],
+        stream: false,
+        keep_alive: OLLAMA_KEEP_ALIVE,
+      }),
+    })
+    if (followUp.ok) {
+      const followUpData = await followUp.json()
+      aiResponse += '\n\n' + (followUpData.message?.content || '')
+    }
+  } else if (enableTools && aiResponse.includes('TOOL_CALL:')) {
+    // LEGACY REGEX FALLBACK — only for non-tool-trained models
     const toolResults = await handleToolCalls(aiResponse)
     nsPersistedToolResults = toolResults
 
@@ -667,10 +969,24 @@ NONE of the snippets address the question. Do not refuse on uncertainty.`,
   messages.push(nsAssistantMsg)
 
   if (sessionId) {
-    await update('chatSessions', eq(schema.chatSessions.id, sessionId), {
-      messages: JSON.stringify(messages),
-      updatedAt: new Date(),
-    })
+    // v2.49.6: upsert (was update — silently no-op'd for new sessionIds)
+    const nowIso = new Date().toISOString()
+    const titleGuess = (messages.find((m: ChatMessage) => m.role === 'user')?.content || 'New chat').slice(0, 80)
+    await upsert(
+      'chatSessions',
+      eq(schema.chatSessions.id, sessionId),
+      {
+        id: sessionId,
+        title: titleGuess,
+        messages: JSON.stringify(messages),
+        createdAt: nowIso,
+        updatedAt: nowIso,
+      },
+      {
+        messages: JSON.stringify(messages),
+        updatedAt: nowIso,
+      },
+    )
   }
 
   return NextResponse.json({
@@ -683,7 +999,7 @@ NONE of the snippets address the question. Do not refuse on uncertainty.`,
       score: d.relevanceScore,
       excerpt: d.content.substring(0, 200),
     })),
-    model: OLLAMA_MODEL, // v2.49.0: surface model for UI badge + better error messages
+    model: nsModel, // v2.50.0: report the actual model picked (varies with enableTools)
   })
 }
 
@@ -773,13 +1089,16 @@ async function getFollowUpResponse(
     },
   ]
 
+  // v2.50.0: follow-up after tool execution always uses the tools model
+  // (we got here because the prior call used tools). Same keep_alive.
   const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: OLLAMA_MODEL,
+      model: pickModel(true),
       messages: followUpMessages,
       stream: false,
+      keep_alive: OLLAMA_KEEP_ALIVE,
     }),
   })
 
