@@ -24,7 +24,15 @@
 import { db, sql, schema } from '@sports-bar/database'
 import { logger } from '@sports-bar/logger'
 
-const DEFAULT_MODEL = process.env.RF_DIGEST_MODEL ?? 'qwen2.5:14b'
+// v2.52.17: switched from qwen2.5:14b (9 GB) to llama3.1:8b (5 GB) so
+// the daily digest shares the SAME resident model as everything else
+// (shift-brief, ai-suggest, chat). Pre-v2.52.17 had both models pinned
+// via keep_alive=-1, totaling 14 GB resident — pushed Holmgren into
+// 7.8/8 GB swap thrash, which slowed every Ollama call to 30+ sec.
+// llama3.1:8b's output quality is plenty for the bartender-grade
+// summary; qwen2.5:14b's extra capacity was wasted on this prompt.
+// Operator can override via env if a location has more RAM headroom.
+const DEFAULT_MODEL = process.env.RF_DIGEST_MODEL ?? 'llama3.1:8b'
 const OLLAMA_URL = process.env.OLLAMA_URL ?? 'http://localhost:11434'
 const PERIOD_HOURS = 24
 
