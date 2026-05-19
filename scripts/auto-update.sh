@@ -1412,6 +1412,24 @@ if [ -f "$REPO_ROOT/scripts/canary-config.json" ]; then
   fi
 fi
 
+# v2.50.11 — Fleet auto-update stagger. If scripts/fleet-schedule.json
+# exists, re-run install-auto-update-timer.sh so this location's systemd
+# timer reflects the (possibly updated) stagger slot. install-auto-update-timer.sh
+# is idempotent — when nothing changed it just re-writes the same unit
+# files and reloads systemd (~1s). When the slot moved (operator edited
+# fleet-schedule.json and pushed, OR a new entry pushed this location
+# to a different slot), the timer updates without an operator touching
+# the box. Non-fatal: errors here are logged and ignored, so the
+# auto-update success status isn't affected.
+if [ -f "$REPO_ROOT/scripts/fleet-schedule.json" ] && [ -x "$REPO_ROOT/scripts/install-auto-update-timer.sh" ]; then
+  if bash "$REPO_ROOT/scripts/install-auto-update-timer.sh" >/tmp/fleet-stagger-sync.log 2>&1; then
+    SYNCED_SLOT=$(grep -E "OnCalendar:" /tmp/fleet-stagger-sync.log | tail -1 | sed -E 's/.*OnCalendar: //')
+    log "Fleet stagger: re-synced timer to $SYNCED_SLOT"
+  else
+    log "⚠ Fleet stagger: install-auto-update-timer.sh failed (continuing — see /tmp/fleet-stagger-sync.log)"
+  fi
+fi
+
 # Push the merge commit back to origin so the Fleet Dashboard (v2.24.0+)
 # sees this location's current version. Before v2.24.6, auto-update.sh
 # merged main locally, built, verified, restarted — but never pushed. The
