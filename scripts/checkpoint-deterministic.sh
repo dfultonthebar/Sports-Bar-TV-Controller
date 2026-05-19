@@ -66,26 +66,23 @@ run_a() {
     emit STOP "leaked-secret pattern in pending diff"
   fi
 
-  # 2. Critical-script deletion scan — narrowed to the SAME file.
-  # v2.50.14 fix: the original check OR'd "any critical script touched" with
-  # "any file deleted in the diff" — which false-positive'd whenever
-  # auto-update.sh was modified AND an unrelated file (e.g. a heartbeat
-  # JSON that exists on location but not on main) appeared as deleted in
-  # `git diff HEAD..origin/main`. Leglamp hit this on 2026-05-19 v2.50.13
-  # push because its .auto-update-last-success.json (committed per-location
-  # heartbeat) shows as "deleted" in the diff against main even though the
-  # merge wouldn't actually drop it. Now we extract the per-file diff
-  # section for each critical script and confirm THAT file has the
-  # "deleted file mode" line — not just that SOME file does.
+  # 2. Critical-script deletion scan.
+  # v2.52.1 fix: switch from awk-on-diff-text (AP-1 anti-pattern, see
+  # docs/AUTO_UPDATE_DESIGN_RULES.md) to `git diff --name-status`. The
+  # v2.50.14 awk parser had a latent bug: once a critical script's
+  # `diff --git` line was matched, the `capturing` state stayed true for
+  # ALL subsequent diff entries — so an unrelated non-critical script
+  # being deleted later in the same diff (e.g. legitimately-removed
+  # capture-tv-macs.sh) attributed the deletion to the LAST-seen file
+  # which happened to be the non-critical one. Luckys hit this on
+  # 2026-05-19 v2.50.16 with capture-tv-macs.sh deletion.
+  #
+  # The right fix per AP-1: use git's structured `--name-status` output
+  # which returns exactly `D<TAB>path` per deleted file. No false
+  # positives possible.
   local critical_deleted
-  critical_deleted=$(echo "$diff" | awk '
-    /^diff --git a\/scripts\/(auto-update|verify-install|rollback)\.sh/ {
-      capturing = 1; current = $0; del = 0; next
-    }
-    /^diff --git / && capturing { if (del) print current; capturing = 1; current = $0; del = 0; next }
-    /^deleted file mode/ && capturing { del = 1 }
-    END { if (del) print current }
-  ')
+  critical_deleted=$(git diff --name-status HEAD..origin/main 2>/dev/null \
+    | grep -E '^D[[:space:]]+scripts/(auto-update|verify-install|rollback)\.sh$' || true)
   if [ -n "$critical_deleted" ]; then
     diag "critical-script deletion: $critical_deleted"
     emit STOP "critical script deleted in pending diff"
