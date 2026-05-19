@@ -155,6 +155,11 @@ class SchedulerService {
     this.registerPoll('correlateInterference', () => this.runCorrelateInterferenceSafe(), 600000, 180000);
     this.registerPoll('rebuildArtistProfiles', () => this.runRebuildArtistProfilesSafe(), 21600000, 600000);
     this.registerPoll('runPreemptiveStrike', () => this.runPreemptiveStrikeSafe(), 3600000, 900000);
+    // v2.52.14 — Tier 3 AI: daily Ollama-powered RF Pattern Digest.
+    // Runs once every 24h (86_400_000 ms) with an initial 30-minute delay
+    // (1_800_000 ms) so the watcher has time to populate sdr_spectrum
+    // after a fresh start before the digest tries to summarize it.
+    this.registerPoll('generateRfPatternDigest', () => this.runRfPatternDigestSafe(), 86_400_000, 1_800_000);
 
     schedulerLogger.info(
       'scheduler-service',
@@ -278,6 +283,28 @@ class SchedulerService {
       await runPreemptiveStrike({ locationId });
     } catch (error: any) {
       logger.error('[PREEMPTIVE] Unexpected strike pass failure:', { error });
+    }
+  }
+
+  /**
+   * v2.52.14 — Tier 3 AI integration. Generate the daily Ollama-powered
+   * RF Pattern Digest. Skips silently when LOCATION_ID is unset. The
+   * underlying generator is itself defensive (falls back to a raw-counts
+   * summary if Ollama is unreachable), so the only thing we need to do
+   * here is wrap in try/catch so a digest failure doesn't take down the
+   * scheduler tick.
+   */
+  private async runRfPatternDigestSafe() {
+    const locationId = process.env.LOCATION_ID;
+    if (!locationId) {
+      logger.warn('[RF-DIGEST] Skipping: LOCATION_ID env not set');
+      return;
+    }
+    try {
+      const { generateRfPatternDigest } = await import('./rf-pattern-digest');
+      await generateRfPatternDigest({ locationId });
+    } catch (error: any) {
+      logger.error('[RF-DIGEST] Unexpected digest failure:', { error });
     }
   }
 

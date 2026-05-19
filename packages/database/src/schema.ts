@@ -2755,6 +2755,37 @@ export const shureRfEvents = sqliteTable('shure_rf_events', {
   receiverIdx: index('shure_rf_events_receiver_idx').on(table.receiverId, table.channel, table.detectedAt),
 }))
 
+// v2.52.14: daily RF Pattern Digest. Tier 3 of the SDR AI integration.
+// A scheduler job runs once per day, pulls 24h of sdr_carriers,
+// shure_rf_events, and matched NeighborhoodEvent rows, formats a
+// structured prompt for Ollama qwen2.5:14b, and stores the LLM
+// summary here. The bartender Audio tab reads the latest row.
+//
+// Bartender-grade output — plain language, no jargon. Example:
+//   "The band at Anduzzi's tonight (DJ Casey) tends to use freqs near
+//    your Mic 2. The SDR has been seeing strong activity at 484-485 MHz
+//    on the past 3 Fridays around 9pm. Consider moving Mic 2 to
+//    491 MHz before showtime."
+//
+// structured_findings is a JSON blob with the LLM's parsed
+// recommendations + raw counts (for the UI to render badges/charts
+// instead of just the prose).
+export const rfPatternDigest = sqliteTable('rf_pattern_digest', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  locationId: text('location_id').notNull(),
+  periodStart: integer('period_start').notNull(),
+  periodEnd: integer('period_end').notNull(),
+  summaryText: text('summary_text').notNull(),
+  structuredFindings: text('structured_findings'),
+  modelUsed: text('model_used').notNull(),
+  promptTokenCount: integer('prompt_token_count'),
+  completionTokenCount: integer('completion_token_count'),
+  generationMs: integer('generation_ms'),
+  generatedAt: integer('generated_at').notNull().$defaultFn(() => Math.floor(Date.now() / 1000)),
+}, (table) => ({
+  locationIdx: index('rf_pattern_digest_location_idx').on(table.locationId, table.generatedAt),
+}))
+
 export const schedulingPreferences = sqliteTable('scheduling_preferences', {
   id: text('id').primaryKey(),
   preferenceType: text('preference_type').notNull(),
