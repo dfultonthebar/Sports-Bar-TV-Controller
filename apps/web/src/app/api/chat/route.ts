@@ -8,7 +8,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { documentSearch } from '@/lib/enhanced-document-search'
 import { retrieveContext } from '@/lib/rag-server/query-engine'
 import { operationLogger } from '@/lib/operation-logger'
-import { findUnique, update } from '@/lib/db-helpers'
+import { findUnique, update, upsert } from '@/lib/db-helpers'
 import { schema } from '@/db'
 import { eq } from 'drizzle-orm'
 import { logger } from '@sports-bar/logger'
@@ -547,14 +547,30 @@ what's there.`,
     messages.push(assistantMsg)
 
     if (sessionId) {
-      await update('chatSessions', eq(schema.chatSessions.id, sessionId), {
-        messages: JSON.stringify(messages),
-        updatedAt: new Date(),
-      })
+      // v2.49.6: was update() — silently no-op'd when the sessionId row
+      // didn't exist yet, so 0 chat sessions ever persisted despite the
+      // UI sending UUIDs. upsert() correctly creates on first message.
+      const nowIso = new Date().toISOString()
+      const titleGuess = (messages.find((m: ChatMessage) => m.role === 'user')?.content || 'New chat').slice(0, 80)
+      await upsert(
+        'chatSessions',
+        eq(schema.chatSessions.id, sessionId),
+        {
+          id: sessionId,
+          title: titleGuess,
+          messages: JSON.stringify(messages),
+          createdAt: nowIso,
+          updatedAt: nowIso,
+        },
+        {
+          messages: JSON.stringify(messages),
+          updatedAt: nowIso,
+        },
+      )
     }
 
     // Send completion
-    await sendSSE({ 
+    await sendSSE({
       type: 'done',
       sessionId: sessionId || 'new'
     })
@@ -680,10 +696,24 @@ NONE of the snippets address the question. Do not refuse on uncertainty.`,
   messages.push(nsAssistantMsg)
 
   if (sessionId) {
-    await update('chatSessions', eq(schema.chatSessions.id, sessionId), {
-      messages: JSON.stringify(messages),
-      updatedAt: new Date(),
-    })
+    // v2.49.6: upsert (was update — silently no-op'd for new sessionIds)
+    const nowIso = new Date().toISOString()
+    const titleGuess = (messages.find((m: ChatMessage) => m.role === 'user')?.content || 'New chat').slice(0, 80)
+    await upsert(
+      'chatSessions',
+      eq(schema.chatSessions.id, sessionId),
+      {
+        id: sessionId,
+        title: titleGuess,
+        messages: JSON.stringify(messages),
+        createdAt: nowIso,
+        updatedAt: nowIso,
+      },
+      {
+        messages: JSON.stringify(messages),
+        updatedAt: nowIso,
+      },
+    )
   }
 
   return NextResponse.json({

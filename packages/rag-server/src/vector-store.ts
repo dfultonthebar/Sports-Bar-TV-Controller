@@ -224,12 +224,51 @@ export async function searchVectorStore(
       });
     }
 
-    // Calculate similarities
-    const results: SearchResult[] = entries.map(entry => ({
-      chunk: entry.chunk,
-      score: cosineSimilarity(queryEmbedding, entry.embedding),
-      id: entry.id,
-    }));
+    // v2.49.6: query-aware relevance boost — when the operator's question
+    // mentions a known location name OR a vendor name, boost matching
+    // location/vendor-specific chunks so they crowd out generic matches.
+    //
+    // Motivating example: "What outputOffset does Lucky's use?" used to
+    // retrieve mostly CLAUDE.md generic-rule chunks (high cosine similarity
+    // because they explain outputOffset) and miss the per-location file
+    // .claude/locations/lucky-s-1313.md that has the actual value.
+    //
+    // Boost is additive (+0.10) so it nudges relevant location chunks above
+    // generic ones without overwhelming true high-similarity matches. Tuned
+    // small to avoid burying truly-relevant generic docs.
+    const queryLower = query.toLowerCase();
+    const LOCATION_BOOSTS: Array<[RegExp, string]> = [
+      [/\b(holmgren|lambeau)\b/, 'holmgren-way'],
+      [/\b(graystone)\b/, 'graystone'],
+      [/\b(lucky'?s?|1313)\b/, 'lucky-s-1313'],
+      [/\b(stoneyard.*greenville|greenville)\b/, 'stoneyard-greenville'],
+      [/\b(stoneyard.*appleton|appleton)\b/, 'stoneyard-appleton'],
+      [/\b(leg lamp|leglamp)\b/, 'leg-lamp'],
+    ];
+    const locationMatches = LOCATION_BOOSTS
+      .filter(([re]) => re.test(queryLower))
+      .map(([, slug]) => slug);
+
+    // Calculate similarities (with optional location-file boost)
+    const results: SearchResult[] = entries.map(entry => {
+      const baseScore = cosineSimilarity(queryEmbedding, entry.embedding);
+      let boost = 0;
+      if (locationMatches.length > 0) {
+        const filepath = entry.chunk.metadata.filepath || '';
+        for (const slug of locationMatches) {
+          if (filepath.includes(`/locations/${slug}.md`) ||
+              filepath.includes(`/locations/${slug}/`)) {
+            boost = 0.10;
+            break;
+          }
+        }
+      }
+      return {
+        chunk: entry.chunk,
+        score: baseScore + boost,
+        id: entry.id,
+      };
+    });
 
     // Sort by score descending
     results.sort((a, b) => b.score - a.score);
