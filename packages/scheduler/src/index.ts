@@ -197,3 +197,6 @@ export {
   type PreemptiveStrikeCandidate,
   type CleanFreqSuggestion,
 } from './preemptive-strike'
+
+// v2.52.14: Tier 3 — Daily Ollama-powered RF Pattern Digest
+export { generateRfPatternDigest } from './rf-pattern-digest'
