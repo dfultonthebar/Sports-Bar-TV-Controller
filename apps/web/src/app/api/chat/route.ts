@@ -74,6 +74,45 @@ function pickModel(enableTools: boolean): string {
 // change needed at any location. -1 = never unload.
 const OLLAMA_KEEP_ALIVE = -1
 
+// v2.50.3 Quick Win #3: Convert our ToolDefinition shape to Ollama's
+// JSON-Schema "tools" parameter (OpenAI-compatible, supported by
+// llama3.1:8b + qwen2.5:14b natively since Ollama 0.3, Jul 2024).
+// This replaces the brittle TOOL_CALL regex parser that the model
+// sometimes formatted wrong. Native API: 94-98% reliability per BFCL.
+//
+// Ollama returns tool_calls as a separate structured field in the
+// response — no regex needed, no malformed-block failure mode.
+function convertToOllamaToolsFormat(tools: ToolDefinition[]): Array<{
+  type: 'function'
+  function: {
+    name: string
+    description: string
+    parameters: {
+      type: 'object'
+      properties: Record<string, { type: string; description: string; enum?: string[] }>
+      required: string[]
+    }
+  }
+}> {
+  return tools.map((t) => {
+    const properties: Record<string, { type: string; description: string; enum?: string[] }> = {}
+    const required: string[] = []
+    for (const p of t.parameters) {
+      properties[p.name] = { type: p.type, description: p.description }
+      if (p.enum) properties[p.name].enum = p.enum
+      if (p.required) required.push(p.name)
+    }
+    return {
+      type: 'function',
+      function: {
+        name: t.name,
+        description: t.description,
+        parameters: { type: 'object', properties, required },
+      },
+    }
+  })
+}
+
 // Option B unification (v2.46.3): the AI Hub /api/chat reads from the
 // RAG vector store (3000+ chunks: CLAUDE.md, docs/, packages/*/README.md,
 // .claude/locations/*.md, memory files, vendor protocol specs) instead
@@ -526,6 +565,13 @@ what's there.`,
     logger.info('[STREAMING] Message count:', { data: [systemMessage, ...messages].length })
     logger.info('[STREAMING] Picked model:', { data: streamModel })
 
+    // v2.50.3: pass tools as structured JSON-Schema parameter (Ollama
+    // native API since 0.3). Model returns tool_calls as a separate
+    // field — no regex parsing of the response text.
+    const ollamaTools = enableTools && availableTools.length > 0
+      ? convertToOllamaToolsFormat(availableTools)
+      : undefined
+
     const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -534,6 +580,7 @@ what's there.`,
         messages: [systemMessage, ...messages],
         stream: true, // Enable streaming from Ollama
         keep_alive: OLLAMA_KEEP_ALIVE, // v2.50.0 #1: stay resident → warm prefix cache
+        ...(ollamaTools ? { tools: ollamaTools } : {}), // v2.50.3
         options: {
           temperature: 0.3, // v2.46.3: lowered from 0.7 for RAG fidelity
           top_p: 0.9,
@@ -555,6 +602,12 @@ what's there.`,
 
     logger.info('[STREAMING] Starting to read stream...')
     let fullResponse = ''
+    // v2.50.3: collect native tool_calls from the stream. Ollama emits
+    // them in a per-chunk message.tool_calls field — usually in the
+    // final chunk (with done=true) for tool-trained models. We accumulate
+    // any tool_calls seen at any point in the stream.
+    type NativeToolCall = { function: { name: string; arguments: Record<string, unknown> } }
+    const collectedToolCalls: NativeToolCall[] = []
     const decoder = new TextDecoder()
 
     while (true) {
@@ -570,17 +623,24 @@ what's there.`,
       for (const line of lines) {
         try {
           const data = JSON.parse(line)
-          
+
           if (data.message?.content) {
             const content = data.message.content
             fullResponse += content
-            
+
             // Send content chunk to client
-            await sendSSE({ 
-              type: 'content', 
+            await sendSSE({
+              type: 'content',
               content,
-              done: false 
+              done: false
             })
+          }
+
+          // v2.50.3: native tool_calls — structured, no regex needed
+          if (Array.isArray(data.message?.tool_calls) && data.message.tool_calls.length > 0) {
+            for (const tc of data.message.tool_calls) {
+              if (tc?.function?.name) collectedToolCalls.push(tc)
+            }
           }
 
           if (data.done) {
@@ -597,8 +657,72 @@ what's there.`,
     // (multi-turn sessions used to lose the tool-call/result history).
     let persistedToolResults: ToolResult[] = []
 
-    // Check for tool calls in the response
-    if (enableTools && fullResponse.includes('TOOL_CALL:')) {
+    // v2.50.3: prefer native tool_calls over the legacy TOOL_CALL: regex.
+    // The regex path remains as fallback for non-tool-trained models that
+    // emit text-based TOOL_CALL: blocks (phi3:mini, llama3.2:3b). Skip
+    // the legacy parser entirely when native tool_calls were collected.
+    if (enableTools && collectedToolCalls.length > 0) {
+      await sendSSE({ type: 'status', message: `Executing ${collectedToolCalls.length} native tool call(s)...` })
+      const ctx = createDefaultContext()
+      const nativeResults: ToolResult[] = []
+      for (const tc of collectedToolCalls) {
+        try {
+          // Ollama may pass arguments as already-parsed object or a JSON string
+          let args = tc.function.arguments as any
+          if (typeof args === 'string') {
+            try { args = JSON.parse(args) } catch { args = {} }
+          }
+          const r = await executeTool(tc.function.name, args || {}, ctx)
+          nativeResults.push({
+            id: tc.function.name + '-' + Date.now(),
+            name: tc.function.name,
+            result: r,
+            success: !!r?.success,
+            error: r?.error,
+          })
+        } catch (err) {
+          nativeResults.push({
+            id: tc.function.name + '-err',
+            name: tc.function.name,
+            result: null,
+            success: false,
+            error: err instanceof Error ? err.message : 'Unknown error',
+          })
+        }
+      }
+      persistedToolResults = nativeResults
+
+      await sendSSE({ type: 'tool_results', results: nativeResults })
+
+      // Re-call Ollama with tool messages appended for the final answer.
+      // No tools param this time — we want a plain summarization, not
+      // another round of tool calls.
+      const toolMessages = nativeResults.map((r) => ({
+        role: 'tool' as const,
+        content: `Tool ${r.name} returned: ${JSON.stringify(r.result)}`,
+      }))
+      const followUp = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: streamModel,
+          messages: [systemMessage, ...messages, { role: 'assistant', content: fullResponse }, ...toolMessages],
+          stream: false,
+          keep_alive: OLLAMA_KEEP_ALIVE,
+        }),
+      })
+      if (followUp.ok) {
+        const followUpData = await followUp.json()
+        const followUpContent = followUpData.message?.content || ''
+        await sendSSE({ type: 'content', content: followUpContent, done: true })
+        fullResponse += '\n\n' + followUpContent
+      }
+    }
+
+    // Check for tool calls in the response (LEGACY REGEX PATH — runs only
+    // when native tool_calls path didn't fire, e.g. for non-tool-trained
+    // models that emit text-based TOOL_CALL: blocks)
+    if (enableTools && collectedToolCalls.length === 0 && fullResponse.includes('TOOL_CALL:')) {
       await sendSSE({ type: 'status', message: 'Executing tools...' })
       const toolResults = await handleToolCalls(fullResponse)
       persistedToolResults = toolResults
@@ -743,6 +867,10 @@ NONE of the snippets address the question. Do not refuse on uncertainty.`,
 
   // Call Ollama without streaming
   const nsModel = pickModel(enableTools)
+  // v2.50.3: native tools (Ollama 0.3+)
+  const nsOllamaTools = enableTools && availableTools.length > 0
+    ? convertToOllamaToolsFormat(availableTools)
+    : undefined
   const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -751,6 +879,7 @@ NONE of the snippets address the question. Do not refuse on uncertainty.`,
       messages: [systemMessage, ...messages],
       stream: false,
       keep_alive: OLLAMA_KEEP_ALIVE, // v2.50.0 #1: stay resident → warm prefix cache
+      ...(nsOllamaTools ? { tools: nsOllamaTools } : {}), // v2.50.3
       options: {
         temperature: 0.3, // v2.46.3: match streaming-path fidelity setting
         top_p: 0.9,
@@ -765,9 +894,60 @@ NONE of the snippets address the question. Do not refuse on uncertainty.`,
   const data = await response.json()
   let aiResponse = data.message?.content || ''
 
-  // Handle tool calls (v2.49.1: capture results for session persistence)
+  // v2.50.3: native tool_calls path (preferred). Ollama returns a
+  // structured tool_calls array in the message — no regex parsing.
   let nsPersistedToolResults: ToolResult[] = []
-  if (enableTools && aiResponse.includes('TOOL_CALL:')) {
+  const nsNativeToolCalls = Array.isArray(data.message?.tool_calls) ? data.message.tool_calls : []
+  if (enableTools && nsNativeToolCalls.length > 0) {
+    const ctx = createDefaultContext()
+    const results: ToolResult[] = []
+    for (const tc of nsNativeToolCalls) {
+      try {
+        let args = tc.function?.arguments as any
+        if (typeof args === 'string') {
+          try { args = JSON.parse(args) } catch { args = {} }
+        }
+        const r = await executeTool(tc.function.name, args || {}, ctx)
+        results.push({
+          id: tc.function.name + '-' + Date.now(),
+          name: tc.function.name,
+          result: r,
+          success: !!r?.success,
+          error: r?.error,
+        })
+      } catch (err) {
+        results.push({
+          id: tc.function?.name + '-err',
+          name: tc.function?.name || 'unknown',
+          result: null,
+          success: false,
+          error: err instanceof Error ? err.message : 'Unknown error',
+        })
+      }
+    }
+    nsPersistedToolResults = results
+
+    // Re-call Ollama with tool results for the final summary
+    const toolMessages = results.map((r) => ({
+      role: 'tool' as const,
+      content: `Tool ${r.name} returned: ${JSON.stringify(r.result)}`,
+    }))
+    const followUp = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: nsModel,
+        messages: [systemMessage, ...messages, { role: 'assistant', content: aiResponse }, ...toolMessages],
+        stream: false,
+        keep_alive: OLLAMA_KEEP_ALIVE,
+      }),
+    })
+    if (followUp.ok) {
+      const followUpData = await followUp.json()
+      aiResponse += '\n\n' + (followUpData.message?.content || '')
+    }
+  } else if (enableTools && aiResponse.includes('TOOL_CALL:')) {
+    // LEGACY REGEX FALLBACK — only for non-tool-trained models
     const toolResults = await handleToolCalls(aiResponse)
     nsPersistedToolResults = toolResults
 
