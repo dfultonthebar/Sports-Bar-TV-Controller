@@ -196,32 +196,49 @@ All wrapped in try/catch wrappers (`*Safe()`) so a failure in one doesn't break 
 
 ## Per-location bootstrap (when adding to a new fleet box)
 
-For a NEW fleet location (leglamp, luckys, graystone, greenville, appleton):
+v2.51.2+ — the operator just needs to ensure the Location row has a valid address. Everything else self-bootstraps.
 
-1. **Add LOCATION_LAT and LOCATION_LON to `.env`** at the new location:
-   ```bash
-   echo "LOCATION_LAT=44.5012" >> .env
-   echo "LOCATION_LON=-88.0626" >> .env
-   echo "NEIGHBORHOOD_DISCOVERY_RADIUS_MI=2" >> .env       # optional, default 2
-   pm2 restart sports-bar-tv-controller --update-env
+1. **Verify the bar's address is filled in via the System Admin UI** (or directly in DB):
+   ```sql
+   SELECT name, address, city, state, zipCode FROM Location WHERE id = '<LOCATION_ID>';
+   ```
+   If `address` is empty, set it via the admin page or:
+   ```sql
+   UPDATE Location SET address='2001 Holmgren Way', city='Green Bay', state='WI', zipCode='54304' WHERE id = '<LOCATION_ID>';
    ```
 
-2. **Run the venue-discovery CLI once** to populate NeighborhoodVenue:
+2. **(Optional) Geocode once manually** to verify Nominatim resolves the address correctly. The weekly scheduler tick does this automatically, but you can force an immediate first geocode:
    ```bash
-   npx tsx scripts/discover-venues.ts --lat 44.5012 --lon -88.0626 --radius-mi 2
+   npx tsx -e "import { geocodeAndPersist } from '@sports-bar/utils';
+                import { db, schema } from '@sports-bar/database';
+                geocodeAndPersist({ db, schema, locationId: process.env.LOCATION_ID, forceRegeocode: true }).then(r => console.log(r));"
+   # Expected output: { latitude: <number>, longitude: <number> }
    ```
-   Or trigger via API: `POST /api/neighborhood/discover` (admin-auth).
 
-3. **Operator reviews pending_review rows** in the admin UI (or via DB):
+3. **First weekly venue-discovery run happens automatically** at the next scheduler-service tick. It reads Location.latitude/longitude (geocoding the address if empty) and writes `pending_review` rows to NeighborhoodVenue.
+
+4. **Operator reviews pending_review rows** in the admin UI (or via DB):
    ```sql
    UPDATE NeighborhoodVenue
      SET review_status='approved', is_active=1
      WHERE id IN (...);
    ```
 
-4. **From here on:** weekly auto-discovery catches new venues automatically; daily Bananas ingestion populates events; correlation engine accumulates attributions.
+5. **From here on:** weekly auto-discovery catches new venues automatically; daily Bananas ingestion populates events; correlation engine accumulates attributions.
 
 After 30-60 days of data, the artist profile builder has enough confidence to flag preemptive-strikes.
+
+### Legacy v2.51.1 path (still supported as fallback)
+
+If the operator prefers the env-var approach (e.g. Location address is unset or geocodes to the wrong place):
+
+```bash
+echo "LOCATION_LAT=44.5012" >> .env
+echo "LOCATION_LON=-88.0626" >> .env
+pm2 restart sports-bar-tv-controller --update-env
+```
+
+The scheduler falls through to env vars when Location row has no lat/lon AND no address.
 
 ---
 

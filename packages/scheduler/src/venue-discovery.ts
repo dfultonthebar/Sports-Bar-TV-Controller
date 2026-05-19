@@ -81,28 +81,73 @@ export async function runVenueDiscovery(opts: DiscoveryOpts): Promise<DiscoveryR
 }
 
 /**
- * Scheduler-wrapped variant — reads lat/lon from env (LOCATION_LAT /
- * LOCATION_LON or falls back to a sane default if unset) and runs the
- * discovery. Called weekly from packages/scheduler/src/scheduler-service.ts.
+ * Scheduler-wrapped variant — reads lat/lon from the Location table.
+ * Called weekly from packages/scheduler/src/scheduler-service.ts.
  *
- * If LOCATION_LAT/LOCATION_LON are not set in .env, logs a one-line
- * skip notice + returns errored=false (it's a config gap, not a runtime
- * failure — most fleet locations will add these after the v2.51.1
- * deployment).
+ * v2.51.2: Lookup order:
+ *   1. Location.latitude / Location.longitude (already geocoded — preferred)
+ *   2. Geocode Location.address + city + state + zipCode via Nominatim,
+ *      save back to the Location row, then use the result
+ *   3. LOCATION_LAT / LOCATION_LON env (backwards compat with v2.51.1)
+ *   4. Skip with informational log (no error)
+ *
+ * The geocode-on-the-fly path means a new fleet location only has to
+ * fill in their bar's address via the System Admin UI — the discovery
+ * pipeline self-bootstraps from there.
  */
 export async function runScheduledVenueDiscovery(): Promise<DiscoveryResult> {
-  const latStr = process.env.LOCATION_LAT
-  const lonStr = process.env.LOCATION_LON
-  if (!latStr || !lonStr) {
-    logger.info('[VENUE-DISCOVERY] LOCATION_LAT / LOCATION_LON not set in .env — skipping weekly discovery. Add these to enable.')
+  const locationId = process.env.LOCATION_ID
+  let lat: number | undefined
+  let lon: number | undefined
+
+  if (locationId) {
+    try {
+      const { db, schema } = await import('@sports-bar/database')
+      const { eq } = await import('drizzle-orm')
+      const rows = await db.select().from(schema.locations).where(eq(schema.locations.id, locationId)).limit(1)
+      if (rows.length > 0) {
+        const row = rows[0] as any
+        if (row.latitude !== null && row.longitude !== null) {
+          lat = row.latitude
+          lon = row.longitude
+          logger.info(`[VENUE-DISCOVERY] using geocoded Location lat/lon: (${lat?.toFixed(4)}, ${lon?.toFixed(4)})`)
+        } else if (row.address && row.city) {
+          // Auto-geocode via Nominatim + save back to Location row.
+          logger.info(`[VENUE-DISCOVERY] Location lat/lon empty — geocoding "${row.address}, ${row.city}, ${row.state}, ${row.zipCode}"...`)
+          const { geocodeAndPersist } = await import('@sports-bar/utils/geocoder')
+          const geo = await geocodeAndPersist({ db, schema, locationId })
+          if (geo) {
+            lat = geo.latitude
+            lon = geo.longitude
+            logger.info(`[VENUE-DISCOVERY] geocoded to (${lat.toFixed(4)}, ${lon.toFixed(4)}) and saved to Location row`)
+          }
+        }
+      }
+    } catch (e: any) {
+      logger.warn('[VENUE-DISCOVERY] Location table lookup failed', { data: { error: e.message } })
+    }
+  }
+
+  // Backwards-compat fallback to env vars (v2.51.1 path).
+  if (lat === undefined || lon === undefined) {
+    const latStr = process.env.LOCATION_LAT
+    const lonStr = process.env.LOCATION_LON
+    if (latStr && lonStr) {
+      const e1 = parseFloat(latStr)
+      const e2 = parseFloat(lonStr)
+      if (!isNaN(e1) && !isNaN(e2)) {
+        lat = e1
+        lon = e2
+        logger.info(`[VENUE-DISCOVERY] using env LOCATION_LAT/LOCATION_LON fallback: (${lat?.toFixed(4)}, ${lon?.toFixed(4)})`)
+      }
+    }
+  }
+
+  if (lat === undefined || lon === undefined) {
+    logger.info('[VENUE-DISCOVERY] no coordinates available (Location row has no lat/lon AND no address, and no LOCATION_LAT/LON env vars). Configure either path to enable weekly auto-discovery.')
     return { newCount: 0, updatedCount: 0, skippedCount: 0, errored: false, rawLog: '(not configured)' }
   }
-  const lat = parseFloat(latStr)
-  const lon = parseFloat(lonStr)
-  if (isNaN(lat) || isNaN(lon)) {
-    logger.error('[VENUE-DISCOVERY] LOCATION_LAT/LOCATION_LON in .env are not numbers', { data: { latStr, lonStr } })
-    return { newCount: 0, updatedCount: 0, skippedCount: 0, errored: true, rawLog: 'bad config' }
-  }
+
   const radiusMi = parseFloat(process.env.NEIGHBORHOOD_DISCOVERY_RADIUS_MI || '2')
   return runVenueDiscovery({ lat, lon, radiusMi, dryRun: false })
 }

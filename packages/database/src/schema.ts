@@ -1311,6 +1311,17 @@ export const locations = sqliteTable('Location', {
   state: text('state'),
   zipCode: text('zipCode'),
   timezone: text('timezone').notNull().default('America/New_York'),
+  // v2.51.2 — geocoded coordinates for this bar. Populated by
+  // packages/utils/src/geocoder.ts via OSM Nominatim API when the
+  // operator saves an address via the System Admin UI, OR by running
+  // `npx tsx scripts/geocode-location.ts` once. Used by the neighborhood
+  // RF prediction pipeline (NeighborhoodVenue distance computation +
+  // weekly Overpass venue auto-discovery). Null until geocoded.
+  latitude: real('latitude'),
+  longitude: real('longitude'),
+  // ISO timestamp of last successful geocode. Used to avoid re-geocoding
+  // every save if the address hasn't changed.
+  lastGeocodedAt: text('lastGeocodedAt'),
   isActive: integer('isActive', { mode: 'boolean' }).notNull().default(true),
   metadata: text('metadata'), // JSON for future extensibility
   createdAt: timestamp('createdAt').notNull().default(timestampNow()),
