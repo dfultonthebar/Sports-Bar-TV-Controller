@@ -29,28 +29,25 @@ export async function extractTextFromFile(filePath: string, mimeType?: string): 
 
 async function extractTextFromPDF(filePath: string): Promise<TextExtractionResult> {
   try {
-    // Create a clean environment for pdf-parse to avoid test file issues
-    const originalCwd = process.cwd()
-
-    // Dynamic import with proper error handling
     const buffer = await fs.readFile(filePath)
 
-    // Import pdf-parse
-    const pdfParse = (await import('pdf-parse')).default
-
-    // Parse the PDF
-    const data = await pdfParse(buffer, {
-      // Disable external resources to avoid test file issues
-      version: 'v1.10.100',
-      max: 0 // Parse all pages
-    })
+    // pdf-parse v2 (Sep 2025) replaced the v1 default-callable with
+    // the PDFParse class. Migration:
+    //   v1:  const data = await pdfParse(buffer);  data.text / data.numpages
+    //   v2:  const p = new PDFParse({ data: buffer });
+    //        const r = await p.getText();         r.text / r.pages.length
+    const { PDFParse } = await import('pdf-parse')
+    const parser = new PDFParse({ data: buffer })
+    const result = await parser.getText()
 
     return {
-      text: data.text,
+      text: result.text,
       metadata: {
-        pages: data.numpages,
-        info: data.info
-      }
+        pages: result.total ?? result.pages?.length ?? 0,
+        // v2 TextResult no longer exposes .info — only { pages, text, total }.
+        // If we need PDF metadata in the future, call parser.getMetadata() / getInfo().
+        info: undefined,
+      },
     }
   } catch (error) {
     logger.error('Error extracting text from PDF:', error)
