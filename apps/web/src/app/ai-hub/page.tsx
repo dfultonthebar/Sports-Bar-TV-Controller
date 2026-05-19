@@ -1,8 +1,8 @@
 
 'use client'
 
-import { useState, useEffect } from 'react'
-import { Brain, MessageSquare, Cpu, Settings as SettingsIcon, Key, RefreshCw, Database, FileCode, CheckCircle, AlertCircle, Loader2, Bot, ArrowLeft, Activity } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { Brain, MessageSquare, Cpu, Settings as SettingsIcon, Key, RefreshCw, Database, FileCode, CheckCircle, AlertCircle, Loader2, Bot, ArrowLeft, Activity, FileText } from 'lucide-react'
 import Link from 'next/link'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import ApiKeysManager from '@/components/ApiKeysManager'
@@ -45,6 +45,39 @@ interface AIProvidersStatus {
   active: number
 }
 
+// v2.49.0: source citation shape — comes back from /api/chat as `sources` array
+interface SourceCitation {
+  name: string
+  score: number
+  excerpt: string
+}
+
+// v2.49.0: chat message now carries optional sources + elapsed-time
+interface ChatMessage {
+  role: 'user' | 'assistant'
+  content: string
+  sources?: SourceCitation[]
+  elapsedMs?: number
+  model?: string
+}
+
+// v2.49.0: stable sessionId — read once from localStorage, generate fresh
+// if missing. The new chat-route persists messages keyed on this UUID via
+// the chatSessions table, so the bartender's debugging conversation
+// survives page reloads.
+function getOrCreateSessionId(): string {
+  if (typeof window === 'undefined') return ''
+  const KEY = 'sportsBar.aiHub.sessionId'
+  let id = window.localStorage.getItem(KEY)
+  if (!id) {
+    id = (typeof crypto !== 'undefined' && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : `session-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+    window.localStorage.setItem(KEY, id)
+  }
+  return id
+}
+
 export default function AIHubPage() {
   // AI Assistant state
   const [isIndexing, setIsIndexing] = useState(false)
@@ -52,8 +85,16 @@ export default function AIHubPage() {
   const [codebaseStats, setCodebaseStats] = useState<CodebaseStats | null>(null)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [chatMessage, setChatMessage] = useState('')
-  const [chatHistory, setChatHistory] = useState<Array<{ role: 'user' | 'assistant'; content: string }>>([])
+  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([])
   const [isChatting, setIsChatting] = useState(false)
+  // v2.49.0 new state
+  const [sessionId, setSessionId] = useState<string>('')
+  const [streamingResponse, setStreamingResponse] = useState<string>('') // assistant tokens as they arrive
+  const [streamingSources, setStreamingSources] = useState<SourceCitation[]>([])
+  const [streamingStatus, setStreamingStatus] = useState<string>('') // "Searching documentation..." / "Generating response..."
+  const [thinkingStartMs, setThinkingStartMs] = useState<number>(0)
+  const [thinkingElapsed, setThinkingElapsed] = useState<number>(0)
+  const chatScrollRef = useRef<HTMLDivElement>(null)
 
   // AI Configuration state
   const [providersStatus, setProvidersStatus] = useState<AIProvidersStatus | null>(null)
@@ -76,7 +117,25 @@ export default function AIHubPage() {
   useEffect(() => {
     loadCodebaseStats()
     testProviders()
+    setSessionId(getOrCreateSessionId())
   }, [])
+
+  // v2.49.0: elapsed-time ticker — shows "AI is thinking… (4s)" so
+  // operators don't think the UI is hung when Ollama is slow.
+  useEffect(() => {
+    if (!isChatting || thinkingStartMs === 0) return
+    const t = setInterval(() => {
+      setThinkingElapsed(Date.now() - thinkingStartMs)
+    }, 250)
+    return () => clearInterval(t)
+  }, [isChatting, thinkingStartMs])
+
+  // v2.49.0: auto-scroll chat to bottom on new tokens/messages
+  useEffect(() => {
+    if (chatScrollRef.current) {
+      chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight
+    }
+  }, [chatHistory, streamingResponse])
 
   const loadCodebaseStats = async () => {
     try {
@@ -127,6 +186,10 @@ export default function AIHubPage() {
     }
   }
 
+  // v2.49.0: streaming SSE chat with progressive token rendering, source
+  // citations, sessionId persistence, and elapsed-time indicator. Closes
+  // UX-audit BROKEN-#1 (silent hangs), #2 (no session), #3 (no sources),
+  // #5 (wrong model name in error).
   const handleSendMessage = async () => {
     if (!chatMessage.trim() || isChatting) return
 
@@ -134,40 +197,108 @@ export default function AIHubPage() {
     setChatMessage('')
     setChatHistory(prev => [...prev, { role: 'user', content: userMessage }])
     setIsChatting(true)
+    setStreamingResponse('')
+    setStreamingSources([])
+    setStreamingStatus('Searching documentation…')
+    const startMs = Date.now()
+    setThinkingStartMs(startMs)
+    setThinkingElapsed(0)
+
+    let assembledContent = ''
+    let receivedSources: SourceCitation[] = []
+    let serverModel = ''
+    let didError = false
 
     try {
       const response = await fetch('/api/chat', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           query: userMessage,
           message: userMessage,
           enableTools: true,
-          stream: false // Use non-streaming for simplicity in AI Hub
-        })
+          stream: true,
+          sessionId: sessionId || undefined,
+        }),
       })
 
-      if (!response.ok) {
-        throw new Error(`Chat request failed: ${response.statusText}`)
+      if (!response.ok || !response.body) {
+        throw new Error(`Chat request failed: ${response.statusText || response.status}`)
       }
 
-      const data = await response.json()
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
 
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        // SSE frames are separated by blank lines
+        const frames = buffer.split('\n\n')
+        buffer = frames.pop() || '' // keep partial frame in buffer
+        for (const frame of frames) {
+          const dataLine = frame.split('\n').find((l) => l.startsWith('data: '))
+          if (!dataLine) continue
+          try {
+            const evt = JSON.parse(dataLine.slice(6))
+            if (evt.type === 'status' && evt.message) {
+              setStreamingStatus(evt.message)
+            } else if (evt.type === 'sources' && Array.isArray(evt.sources)) {
+              receivedSources = evt.sources
+              setStreamingSources(evt.sources)
+            } else if (evt.type === 'content' && typeof evt.content === 'string') {
+              assembledContent += evt.content
+              setStreamingResponse(assembledContent)
+              setStreamingStatus('') // hide "Generating response…" once tokens flow
+            } else if (evt.type === 'model' && evt.model) {
+              serverModel = evt.model
+            } else if (evt.type === 'error') {
+              throw new Error(evt.error || 'Stream error')
+            }
+            // 'done' is silent — we finalize after the loop ends naturally
+          } catch (parseErr) {
+            // Tolerate malformed frames — the next one may be fine
+          }
+        }
+      }
+
+      // Finalize: commit the assembled assistant message + sources to history
       setChatHistory(prev => [...prev, {
         role: 'assistant',
-        content: data.response || data.content || 'Sorry, I could not process your request.'
+        content: assembledContent || 'Sorry, no response received.',
+        sources: receivedSources,
+        elapsedMs: Date.now() - startMs,
+        model: serverModel || undefined,
       }])
     } catch (error) {
+      didError = true
       logger.error('Chat error:', error)
       setChatHistory(prev => [...prev, {
         role: 'assistant',
-        content: 'Error: ' + (error instanceof Error ? error.message : 'Unknown error') + '. Make sure Ollama is running with the phi3:mini model.'
+        // v2.49.0: don't hardcode model name — the error rarely cares about model;
+        // most failures are Ollama connectivity or timeout.
+        content: 'Error: ' + (error instanceof Error ? error.message : 'Unknown error')
+          + '. Check that Ollama is reachable (`curl http://localhost:11434/api/tags`).',
+        elapsedMs: Date.now() - startMs,
       }])
     } finally {
       setIsChatting(false)
+      setStreamingResponse('')
+      setStreamingSources([])
+      setStreamingStatus('')
+      setThinkingStartMs(0)
     }
+  }
+
+  // v2.49.0: clear conversation + start a fresh session
+  const handleNewSession = () => {
+    const newId = (typeof crypto !== 'undefined' && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : `session-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+    window.localStorage.setItem('sportsBar.aiHub.sessionId', newId)
+    setSessionId(newId)
+    setChatHistory([])
   }
 
   const testProviders = async () => {
@@ -426,32 +557,108 @@ export default function AIHubPage() {
               </div>
             </div>
 
-            {/* AI Chat Interface */}
+            {/* AI Chat Interface (v2.49.0: streaming + sessions + source cites + textarea) */}
             <div className="card">
               <div className="p-6">
-                <h2 className="text-xl font-bold text-slate-100 mb-4">Ask About Your Codebase</h2>
-                
-                {/* Chat History */}
-                <div className="mb-4 h-96 overflow-y-auto bg-slate-800/50 rounded-lg p-4 space-y-4">
-                  {chatHistory.length === 0 ? (
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h2 className="text-xl font-bold text-slate-100">Ask About Your System</h2>
+                    <p className="text-xs text-slate-400 mt-1">
+                      Grounded in {codebaseStats?.totalFiles ?? '?'} indexed files + RAG documentation store. Session preserved across page reloads.
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleNewSession}
+                    disabled={isChatting || chatHistory.length === 0}
+                    className="text-xs px-3 py-1.5 bg-slate-700 hover:bg-slate-600 disabled:bg-slate-800 disabled:text-slate-500 text-slate-200 rounded transition-colors"
+                    title="Start a fresh conversation (current is preserved in DB)"
+                  >
+                    New Session
+                  </button>
+                </div>
+
+                {/* Chat History — scrollable, auto-scrolls on new tokens */}
+                <div
+                  ref={chatScrollRef}
+                  className="mb-4 h-96 md:h-[28rem] overflow-y-auto bg-slate-800/50 rounded-lg p-4 space-y-4"
+                >
+                  {chatHistory.length === 0 && !isChatting ? (
                     <div className="text-center text-slate-400 py-8">
-                      <p>Ask me anything about your codebase!</p>
-                      <p className="text-sm mt-2">I have access to all your source files and can help with troubleshooting.</p>
+                      <p className="font-medium">Ask me anything about the system</p>
+                      <p className="text-sm mt-2">I have access to:</p>
+                      <ul className="text-xs mt-1 space-y-0.5 text-slate-500">
+                        <li>• Every API route, lib service, and package source</li>
+                        <li>• All vendor docs (Atlas, Shure, Wolf Pack, dbx, BSS, DirecTV, Fire TV)</li>
+                        <li>• Per-location hardware refs + operator memory + setup scripts</li>
+                      </ul>
+                      <p className="text-xs mt-3 text-slate-500">Paste a log or error message — I&apos;ll quote the relevant doc lines.</p>
                     </div>
                   ) : (
                     chatHistory.map((msg, idx) => (
                       <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                         <div className={`max-w-3xl p-3 rounded-lg ${
-                          msg.role === 'user' 
-                            ? 'bg-blue-600 text-white' 
+                          msg.role === 'user'
+                            ? 'bg-blue-600 text-white'
                             : 'bg-slate-700 text-slate-100'
                         }`}>
                           <div className="text-sm whitespace-pre-wrap">{msg.content}</div>
+                          {msg.role === 'assistant' && msg.sources && msg.sources.length > 0 && (
+                            <details className="mt-3 pt-3 border-t border-slate-600/50">
+                              <summary className="text-xs text-slate-300 cursor-pointer hover:text-slate-100 flex items-center gap-1.5">
+                                <FileText className="w-3 h-3" />
+                                Grounded in {msg.sources.length} {msg.sources.length === 1 ? 'source' : 'sources'}
+                                {msg.elapsedMs ? ` · ${(msg.elapsedMs / 1000).toFixed(1)}s` : ''}
+                                {msg.model ? ` · ${msg.model}` : ''}
+                              </summary>
+                              <div className="mt-2 space-y-1.5">
+                                {msg.sources.map((s, i) => (
+                                  <div key={i} className="text-xs bg-slate-800/60 rounded px-2 py-1.5">
+                                    <div className="flex items-center justify-between text-slate-300">
+                                      <span className="font-mono truncate">{s.name}</span>
+                                      <span className="text-slate-500 ml-2">score {(s.score ?? 0).toFixed(2)}</span>
+                                    </div>
+                                    {s.excerpt && (
+                                      <div className="text-slate-500 mt-1 truncate" title={s.excerpt}>
+                                        {s.excerpt.replace(/\s+/g, ' ').slice(0, 120)}…
+                                      </div>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            </details>
+                          )}
                         </div>
                       </div>
                     ))
                   )}
-                  {isChatting && (
+
+                  {/* Streaming in-flight response (renders progressively) */}
+                  {isChatting && (streamingResponse || streamingStatus || streamingSources.length > 0) && (
+                    <div className="flex justify-start">
+                      <div className="max-w-3xl p-3 rounded-lg bg-slate-700/70 text-slate-100 border border-slate-600">
+                        {streamingStatus && !streamingResponse && (
+                          <div className="text-xs text-slate-300 flex items-center gap-2 mb-2">
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                            <span>{streamingStatus} ({Math.floor(thinkingElapsed / 1000)}s)</span>
+                          </div>
+                        )}
+                        {streamingResponse && (
+                          <div className="text-sm whitespace-pre-wrap">
+                            {streamingResponse}
+                            <span className="inline-block w-2 h-4 bg-slate-300 ml-0.5 animate-pulse" />
+                          </div>
+                        )}
+                        {streamingSources.length > 0 && !streamingResponse && (
+                          <div className="text-xs text-slate-400 mt-2">
+                            Found {streamingSources.length} relevant {streamingSources.length === 1 ? 'doc' : 'docs'} — generating answer…
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Pure spinner when nothing else to show yet */}
+                  {isChatting && !streamingResponse && !streamingStatus && streamingSources.length === 0 && (
                     <div className="flex justify-start">
                       <div className="bg-slate-700 text-slate-100 p-3 rounded-lg">
                         <Loader2 className="w-5 h-5 animate-spin" />
@@ -460,23 +667,28 @@ export default function AIHubPage() {
                   )}
                 </div>
 
-                {/* Chat Input */}
-                <div className="flex space-x-2">
-                  <input
-                    type="text"
+                {/* Chat Input — textarea now (paste logs OK; Shift+Enter = newline, Enter = send) */}
+                <div className="flex gap-2 items-end">
+                  <textarea
                     value={chatMessage}
                     onChange={(e) => setChatMessage(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-                    placeholder="Ask about your code, troubleshoot issues, or request help..."
-                    className="flex-1 px-4 py-2 bg-slate-800 border border-slate-600 rounded-lg text-slate-100 placeholder-slate-400 focus:outline-none focus:border-blue-500"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault()
+                        handleSendMessage()
+                      }
+                    }}
+                    placeholder="Ask about code, paste a log, troubleshoot, etc. (Shift+Enter for newline, Enter to send)"
+                    rows={3}
+                    className="flex-1 px-4 py-2 bg-slate-800 border border-slate-600 rounded-lg text-slate-100 placeholder-slate-400 focus:outline-none focus:border-blue-500 resize-y min-h-[3rem] max-h-64 font-sans"
                     disabled={isChatting}
                   />
                   <button
                     onClick={handleSendMessage}
                     disabled={isChatting || !chatMessage.trim()}
-                    className="px-6 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white rounded-lg transition-colors"
+                    className="px-6 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white rounded-lg transition-colors min-h-[44px] self-stretch"
                   >
-                    Send
+                    {isChatting ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Send'}
                   </button>
                 </div>
               </div>

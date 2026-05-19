@@ -46,6 +46,46 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-18 — v2.49.0 — AI Hub game-changer pass (streaming UI + source cites + sessions + grounding fix)
+
+**What changed (driven by 4-agent deep audit 2026-05-18):**
+
+Massive AI Hub overhaul fixing 5 BROKEN + 3 design concerns identified by the agent audit:
+
+**Backend (`apps/web/src/app/api/chat/route.ts`):**
+
+1. **Source citations in BOTH paths.** Streaming emits new `sources` SSE event with `[{name, score, excerpt}]` after RAG retrieval. Non-streaming returns `sources` + `model` in the JSON response. Closes UX BROKEN-#3 (no source attribution).
+2. **Grounding rules moved to absolute END of system prompt** (LLM recency — instruction at the end weights highest). Was previously mid-prompt; now last 30 lines.
+3. **Anti-inversion rule** added: docs use "X (NOT Y)" pattern frequently (TX_MODEL not TX_TYPE, GROUP_CHANNEL not GROUP_CHAN, +18 offset NOT raw dB). Explicit example in prompt warns the LLM not to invert. **Verified fix:** TX_MODEL question now answers correctly (previous Q1 in fact-checker was hallucinating TX_TYPE).
+4. **Extraction rule** softened: was "I don't see that" on any uncertainty → now "extract what's there and note the gap." Fixes Q3-style evasion (Lucky's outputOffset answer hedged despite being explicit in docs).
+5. **Chunk size 1000→600 chars** for context-budget headroom (8 chunks × 1000 + persona + tools + history was approaching llama3.1:8b's 8K context window).
+6. **operationLogger regex broadened** from narrow keyword match to "any non-trivial query (≥6 chars)" — fixes audit's "what happened last night?" miss.
+
+**Frontend (`apps/web/src/app/ai-hub/page.tsx`):**
+
+1. **Streaming SSE chat** — replaces `stream: false` with full SSE parser (frame-buffered, progressive token render, blinking cursor). Closes UX BROKEN-#1 (silent hangs).
+2. **Session persistence** — sessionId is a UUID stored in localStorage, sent with every request. The chat-route persists messages keyed on this UUID via the `chatSessions` table, so the operator's debugging conversation survives page reloads. Includes a "New Session" button. Closes UX BROKEN-#2.
+3. **Source citation UI** — every assistant message has a collapsible `<details>` panel showing the {name, score, excerpt} list of sources used. Click to expand. Closes UX BROKEN-#3 viewer side.
+4. **Textarea input** (was single-line `<input>`) with Shift+Enter for newline + Enter for send. Operators can now paste multi-line logs/errors. Closes UX MISSING-OBVIOUS-#10.
+5. **Elapsed-time indicator** — "Searching documentation… (4s)" while in-flight. Closes UX MISSING-OBVIOUS-#7.
+6. **Model badge** in source panel — shows actual model (`llama3.1:8b`) per message, not the wrong `phi3:mini` from old error text. Closes UX BROKEN-#5.
+7. **Status panel** with summary of what RAG has indexed + chunk count visible at idle.
+
+**What could break:** zero — net additive plus a wholesale streaming switchover. Backwards-compatible: non-streaming response still includes `response` field (old shape) PLUS new `sources` + `model` fields.
+
+**Manual steps required:** none beyond auto-update + the standing RAG re-scan from v2.48.x.
+
+**Rollback:** `git revert <SHA>` restores v2.48.5 chat. The `chatSessions` table rows from new sessions stay (no orphan side effects).
+
+**Verified live (Holmgren v2.49.0 smoke test):**
+- TX_MODEL question: answered correctly with verbatim quote + source citation `SLX-D_Command_Strings_v2_2020-G.md` at 0.70 relevance (was hallucinating TX_TYPE).
+- Streaming SSE parser handles frame buffering, sources event, content tokens, model event, error frame.
+- Sessionid UUID generated on first visit + reused on reload.
+
+`Checkpoint model: sonnet`
+
+---
+
 ### 2026-05-18 — v2.48.5 — schema.ts cleanup: 11 unused tables removed (defs only — DB tables intact)
 
 **What changed:**
