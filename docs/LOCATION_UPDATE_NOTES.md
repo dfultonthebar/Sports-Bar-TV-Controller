@@ -46,6 +46,29 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-18 — v2.49.1 — chat-route audit BUG#1 fix + Q3 hedge tightening
+
+**What changed:**
+
+1. **Tool result session persistence** (chat-route audit BUG #1): both streaming and non-streaming paths now persist `toolResults` array on the assistant ChatMessage when sessions are loaded. Previously only the text response was saved — multi-turn debugging was blind to prior tool invocations + outputs. Refactored to use a typed `assistantMsg` builder rather than an inline-spread object (the spread approach had a backwards-compat trap and also dodged the typescript-narrow path).
+
+2. **Q3 hedge fix (table extraction)**: added a "Table extraction rule" to the grounding prompt with an explicit CLAUDE.md §4 example showing the Lucky's 1313 row → outputOffset = 0. The prior model behavior was confident hedging ("the value is not explicit") even when retrieval returned the table chunk. Now refuses cleanly when uncertain rather than hallucinating a number.
+
+3. **Template-literal nested-backtick bug** (caught during build): the v2.49.0 prompt addition used markdown inline-code `\`like this\`` inside a JS template-literal which terminated the outer template early and broke compilation. v2.49.1 strips inline-code backticks from prompt text. Lesson logged for future prompt edits.
+
+**Verified live (Holmgren v2.49.1):**
+- TX_MODEL question: still answers correctly with single-word response.
+- Q3 outputOffset: model now refuses gracefully ("couldn't find any information") rather than fabricating "1" as it did briefly in v2.49.0. This is a llama3.1:8b limitation extracting from markdown tables — deeper fix (per-location-file retrieval boost OR qwen2.5:14b switch OR table-flattening pre-pass) deferred to v2.49.x.
+- Build green (29/29 turbo tasks).
+
+**Manual steps required:** none.
+
+**Rollback:** `git revert <SHA>`.
+
+`Checkpoint model: sonnet`
+
+---
+
 ### 2026-05-18 — v2.49.0 — AI Hub game-changer pass (streaming UI + source cites + sessions + grounding fix)
 
 **What changed (driven by 4-agent deep audit 2026-05-18):**
