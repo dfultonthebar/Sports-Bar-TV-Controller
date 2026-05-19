@@ -152,8 +152,15 @@ export async function addChunks(chunks: DocumentChunk[]): Promise<void> {
     // Load existing store
     const store = await loadVectorStore();
 
-    // Generate embeddings for chunks
-    const texts = chunks.map(chunk => chunk.content);
+    // v2.50.6 Contextual Retrieval: embed `contextPrefix + content` so the
+    // chunk inherits doc-level context (Anthropic Sept 2024 — claimed -35%
+    // retrieval failure embeddings alone, stacks to -67% with reranker).
+    // The chunk.content stays clean so the LLM sees the raw text for
+    // generation. Both BM25 (below) and downstream display use raw content.
+    const texts = chunks.map((chunk) => {
+      const prefix = chunk.metadata.contextPrefix
+      return prefix ? `${prefix}\n\n${chunk.content}` : chunk.content
+    })
     const embeddings = await generateEmbeddings(texts);
 
     // Create vector entries
@@ -263,28 +270,73 @@ export async function searchVectorStore(
       .filter(([re]) => re.test(queryLower))
       .map(([, slug]) => slug);
 
-    // v2.49.12: audience-aware boost. When the query reads like a
-    // bartender ("the mic isn't working", "no sound", "won't come up",
-    // "I pressed something"), boost docs/bartender-help/ chunks by
-    // +0.12 so they crowd out operator-grade runbooks that have
-    // higher cosine similarity but the wrong vocabulary.
+    // v2.49.12/v2.50.6: audience-aware boost. When the query reads like
+    // a bartender, boost docs/bartender-help/ chunks by +0.12 so they
+    // crowd out operator-grade runbooks that have higher cosine
+    // similarity but the wrong vocabulary.
     //
-    // Motivating example (v2.49.10 broken answer): "the wireless mic
-    // isnt working what do i do" returned IR-cable-box learning docs
-    // because "what do i do" matched generic recovery chunks better
-    // than the new MIC_NOT_WORKING.md bartender doc. Boost forces
-    // the bartender doc into top-k when register markers fire.
-    const BARTENDER_MARKERS = /\b(isn'?t working|not working|won'?t (come up|turn on|play|work)|no (sound|signal|video|audio|music|picture)|the (tv|mic|music|sound)|stopped|broken|stuck|frozen|i (pressed|tried|just|don'?t know)|how do i|what do i do|help)\b/;
+    // v2.50.6 fix: the old v2.49.12 regex was too strict — it required
+    // "how do i" (with the trailing "i") and missed natural English
+    // phrasings like "how do fix interference on my shure". Broadened
+    // to catch:
+    //   - "how do" / "how can" / "how to" (without requiring trailing "i")
+    //   - "fix" / "trouble" as standalone trouble verbs
+    //   - "interferen" (interference + interferance misspelling)
+    //   - vendor names (shure/atlas/wolf|wolfpack/directv/fire tv) as
+    //     evidence of "I'm asking about this hardware"
+    //   - "wireless" / "channel" / "scan" as topic markers
+    //   - "where is" / "where do" (find-something questions)
+    //
+    // Motivating example (v2.50.5 user-reported failure): "how do fix
+    // interferance on my shure wireless system" returned SYSTEM_OVERVIEW
+    // HDMI-matrix chunks and the SDR/Atlas pipeline architecture memo —
+    // NOT the actual user-facing SHURE_FREQUENCY_SCAN.md / MIC_NOT_WORKING.md
+    // that answer the question. Below regex catches "how do fix" + "shure"
+    // + "interferen" so the boost fires.
+    const BARTENDER_MARKERS = /\b(isn'?t working|not working|won'?t (come up|turn on|play|work)|no (sound|signal|video|audio|music|picture)|the (tv|mic|music|sound)|stopped|broken|stuck|frozen|i (pressed|tried|just|don'?t know)|how (do|can|to|i|you)|what do i do|where (is|do)|fix|trouble|interferen|wireless|channel scan|group scan|help)\b/;
     const isBartenderRegister = BARTENDER_MARKERS.test(queryLower);
 
+    // v2.50.6: vendor-name boost. When the query mentions a specific
+    // vendor or product line, +0.08 boost to chunks under that vendor's
+    // doc/package/runbook namespace. Stacks with bartender + location.
+    //
+    // Resolves: "shure interference" queries that retrieve generic config
+    // docs because dense embeddings don't strongly favor the Shure
+    // namespace. Same problem the per-location boost solved for location
+    // names.
+    const VENDOR_BOOSTS: Array<[RegExp, RegExp]> = [
+      [/\b(shure|slx[\-_ ]?d?|wireless mic|wireless microphone|handheld)\b/, /(shure|SHURE_|MIC_NOT_WORKING)/],
+      [/\b(atlas|azm[48]|azmp[48]|audio processor)\b/, /(atlas|ATLAS_)/],
+      [/\b(wolf ?pack|wolfpack|hdmi matrix|matrix switcher|output ?offset)\b/, /(wolfpack|MATRIX_|wolf-pack)/],
+      [/\b(directv|genie|satellite)\b/, /(directv|DIRECTV)/],
+      [/\b(fire ?tv|cube|amazon stick|alexa|kindle)\b/, /(firetv|firecube|FIRETV_|streaming)/],
+      [/\b(dbx|zonepro|zone pro)\b/, /(dbx-zonepro|dbx)/],
+      [/\b(bss|soundweb|hiqnet)\b/, /(bss-blu|bss)/],
+      [/\b(crestron|dm[\-_ ]?nvx)\b/, /(crestron)/],
+      [/\b(itach|ip2ir|ir blaster|global cache)\b/, /(ir-control|iTach|IR_)/],
+      [/\b(sdr|rtl[\-_ ]?sdr|nesdr|spectrum monitor)\b/, /(sdr|SDR_)/],
+    ];
+    const vendorPatterns = VENDOR_BOOSTS
+      .filter(([qre]) => qre.test(queryLower))
+      .map(([, pathRe]) => pathRe);
+
     // Calculate similarities (with optional location-file boost +
-    // audience boost)
+    // audience boost + vendor boost)
     const results: SearchResult[] = entries.map(entry => {
       const baseScore = cosineSimilarity(queryEmbedding, entry.embedding);
       let boost = 0;
       const filepath = entry.chunk.metadata.filepath || '';
       if (isBartenderRegister && filepath.includes('/bartender-help/')) {
         boost = Math.max(boost, 0.12);
+      }
+      // v2.50.6: vendor-namespace boost (stacks with bartender + location)
+      if (vendorPatterns.length > 0) {
+        for (const pathRe of vendorPatterns) {
+          if (pathRe.test(filepath)) {
+            boost = Math.max(boost, 0.08);
+            break;
+          }
+        }
       }
       if (locationMatches.length > 0) {
         for (const slug of locationMatches) {
