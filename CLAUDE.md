@@ -285,6 +285,32 @@ Wolf Pack matrix does NOT pass CEC + Spectrum disables CEC in firmware → all c
 
 **Wrapped in SafeBoundary** — a render crash in the SDR panel only shows a tiny red inline card, doesn't escalate to the global "Something went wrong" page boundary.
 
+**v2.52.10-17 calibration + AI integration (2026-05-19 SDR install at Holmgren):**
+
+- **`SDR_DBM_OFFSET` software calibration** (default `-55`) applied in `handleSweepLine` at ingest. rtl_power outputs uncalibrated dBFS — not real antenna-port dBm — so every `sdr_spectrum`/`sdr_carriers` row + the carrier-detection threshold needs a per-tuner correction to land in textbook -110→0 dBm register. Holmgren tuned to `-37` at `SDR_GAIN_DB=14.4`. Calibrate per-location by keying a known mic + comparing SDR vs Shure RSSI. See [[feedback-sdr-rtl-power-calibration]].
+
+- **Per-sweep SSE event** (`sweep` event type, ~1 sec cadence) via `apps/web/src/lib/sdr-sweep-emitter.ts` (globalThis singleton per Gotcha #10). The FFT panadapter consumes this directly so it updates at sub-second freshness, not the per-minute bucket cadence. Catches 30-sec DJ-mic bursts that minute-aggregates would miss.
+
+- **Carrier coalescing** at `/api/sdr/status`: adjacent active-bin events within 500 kHz collapse to ONE carrier with `widthKhz` + `binCount` fields. 200 kHz TV broadcast renders as one entry, not 8 separate 25-kHz bin rows. `CARRIER_THRESHOLD_DBM` raised `-85 → -70` (less noise after calibration).
+
+- **FFT panadapter** (`apps/web/src/components/ShureSdrSpectrumPanel.tsx`) sits above the waterfall. 160px FFT primary view, 50px waterfall secondary, shared X-axis. Hover tooltip ("484.0 MHz · −62 dBm").
+
+- **Tier 1 — interference correlator (`packages/scheduler/src/interference-correlator.ts`):** `correlateAllInterference()` runs BOTH `correlateInterference()` (Shure-event source) and `correlateSdrInterference()` (SDR-carrier source). SDR pass filters to ±0.1 MHz of our currently-tuned Shure freqs so we attribute real mic-band interference only, not the continuous WCWF broadcast. `InterferenceAttribution.source` distinguishes `'shure'` vs `'sdr'`. Scheduler runs every 10 min.
+
+- **Tier 2 — preemptive-strike + clean-freq suggestion:** `PreemptiveStrikeCandidate.suggestedCleanFreqs[]` populated per-candidate from 7-day `sdr_spectrum` quietness scoring. `findCleanFreqs()` helper exported for on-demand UI use.
+
+- **Tier 3 — daily Ollama RF Pattern Digest:** `packages/scheduler/src/rf-pattern-digest.ts` runs once / 24h, llama3.1:8b summarizes the last 24h of SDR + Shure + neighborhood events into bartender-grade prose. Stored in `rf_pattern_digest` table. The model is shared with shift-brief/AI Suggest (one resident, not two — see [[feedback-ollama-ram-pressure]]).
+
+- **Tier 4 — `GET /api/sdr/clean-freqs?topN=N`:** ranked clean-freq suggestions, excludes currently-tuned Shure freqs by default, returns rationale ("quiet 99.4% of last 7 days, avg -88 dBm").
+
+- **UI surface (`apps/web/src/components/ShureRfAiPanel.tsx`):** Wireless Mics admin tab has "RF Environment Summary" card (LLM prose + Refresh button + counts grid) + "Suggest a Clean Frequency" button. SafeBoundary-wrapped.
+
+- **Shift-brief integration:** `apps/web/src/app/api/ai/shift-brief/route.ts` now injects mic-status 1-liner + heads-up bullets for upcoming KNOWN INTERFERER neighborhood gigs ("Heads up: Casey at Anduzzi's at 9pm might cause mic interference"). 10-min cache → 18 ms typical operator-visible response. Pre-filter to ≤8 games to avoid LLM context-overflow hallucination — see [[feedback-llm-context-overflow]].
+
+- **Architecture map:** see [[project-ai-tier-architecture]] memory for the full tier diagram + which file does what.
+
+**ecosystem.config.js forwards all SDR_* env vars** (v2.52.7 fix) — adding a new SDR_FOO env requires (a) reading `process.env.SDR_FOO` in the watcher AND (b) listing it in `ecosystem.config.js`'s `env:` block AND (c) `pm2 delete && pm2 start ecosystem.config.js` (NOT just `restart` — per Gotcha #2).
+
 #### 8. Wolf Pack Multi-View Card Control
 `packages/multiview/` — HDTVSupply 4K60 Quad-View cards in Wolf Pack slots. RS-232 USB (115200 8N1), 8 display modes (single → quad), hex frame format. DB: `WolfpackMultiViewCard`. Full hex frames + mode table: `packages/multiview/README.md`.
 
