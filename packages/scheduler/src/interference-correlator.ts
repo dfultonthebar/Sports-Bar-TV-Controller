@@ -142,16 +142,21 @@ export async function correlateInterference(
 
       // Upsert via the unique (rf_event_id, neighborhood_event_id) index.
       // Re-running adjusts confidence / time_delta only.
+      // v2.52.20 fix (audit M2): include source='shure' explicitly
+      // rather than relying on the column default. The default keeps
+      // working but if the schema is ever recreated without a default
+      // (re-migration, fresh install glitch) this silently failed.
+      // Explicit is defensive + matches the SDR pass on line 316.
       await db.run(sql`
         INSERT INTO InterferenceAttribution (
           id, rf_event_id, neighborhood_event_id,
           time_delta_seconds, distance_mi, confidence,
-          attribution_method, created_at
+          attribution_method, source, created_at
         )
         VALUES (
           ${crypto.randomUUID()}, ${rf.id}, ${ne.id},
           ${dt}, ${dist}, ${confidence},
-          'correlation_v1', ${nowSec}
+          'correlation_v1', 'shure', ${nowSec}
         )
         ON CONFLICT(rf_event_id, neighborhood_event_id) DO UPDATE SET
           confidence = excluded.confidence,
@@ -199,7 +204,12 @@ export async function correlateInterference(
 // carrier closest in time to event start. Multiple sdr_carriers
 // during one DJ set at the same freq collapse to one attribution.
 
-const SDR_FREQ_MATCH_MHZ = 0.10
+// v2.52.21: helpers moved to shure-freq-utils.ts (shared with preemptive-
+// strike + rf-pattern-digest). SHURE_FREQ_MATCH_MHZ is now the canonical
+// tolerance constant; SDR_FREQ_MATCH_MHZ is retained as an alias for
+// the few inline references below to avoid churn.
+import { getShureFreqsMhz, buildFreqBandClauses, SHURE_FREQ_MATCH_MHZ } from './shure-freq-utils'
+const SDR_FREQ_MATCH_MHZ = SHURE_FREQ_MATCH_MHZ
 const SDR_LOOKBACK_SECONDS = 7 * 24 * 3600
 
 interface SdrCarrierRow {
@@ -209,40 +219,13 @@ interface SdrCarrierRow {
   detected_at: number
 }
 
-/**
- * Get our Shure receiver freqs to filter SDR carriers by. Wrapped in
- * try/catch because shureSlxdClientManager may not exist on locations
- * without a Shure receiver — fall back to empty list and skip the SDR
- * correlation entirely there.
- */
-async function getOurShureFreqsForCorrelation(): Promise<number[]> {
-  try {
-    // Dynamic import — packages/scheduler shouldn't have a hard
-    // dependency on the shure-slxd package, since not every location
-    // has a Shure receiver. If the import fails (no shure-slxd
-    // installed at this location), return empty.
-    const mgrMod: any = await import('@sports-bar/shure-slxd').catch(() => null)
-    if (!mgrMod || typeof mgrMod.shureSlxdClientManager?.getSnapshots !== 'function') return []
-    const snaps = mgrMod.shureSlxdClientManager.getSnapshots()
-    const freqs = new Set<number>()
-    for (const s of snaps) {
-      for (const ch of s.channels ?? []) {
-        if (typeof ch.frequencyMhz === 'number' && ch.frequencyMhz > 0) freqs.add(ch.frequencyMhz)
-      }
-    }
-    return Array.from(freqs)
-  } catch {
-    return []
-  }
-}
-
 export async function correlateSdrInterference(
   opts: CorrelateOptions = {},
 ): Promise<CorrelateResult> {
   const sinceEpoch =
     opts.sinceEpoch ?? Math.floor(Date.now() / 1000) - SDR_LOOKBACK_SECONDS
 
-  const ourFreqs = await getOurShureFreqsForCorrelation()
+  const ourFreqs = await getShureFreqsMhz() // v2.52.21: shared util
   if (ourFreqs.length === 0) {
     logger.info('[CORRELATOR-SDR] no Shure freqs known — skipping SDR pass')
     return { rfEventsProcessed: 0, attributionsWritten: 0 }
@@ -251,15 +234,14 @@ export async function correlateSdrInterference(
   // Pull SDR carriers within freq-window of each of our Shure freqs.
   // event_type='carrier_active' is the canonical rising-edge event;
   // heartbeats during sustained carriers are de-duped below.
-  const freqClauses = ourFreqs.map(
-    (f) => sql`(freq_mhz BETWEEN ${f - SDR_FREQ_MATCH_MHZ} AND ${f + SDR_FREQ_MATCH_MHZ})`,
-  )
+  // v2.52.21: shared buildFreqBandClauses (was inline 3 lines here).
+  const freqBandClause = buildFreqBandClauses(ourFreqs, SDR_FREQ_MATCH_MHZ)!
   const carriers = await db.all<SdrCarrierRow>(sql`
     SELECT id, freq_mhz, peak_dbm, detected_at
     FROM sdr_carriers
     WHERE event_type = 'carrier_active'
       AND detected_at >= ${sinceEpoch}
-      AND (${sql.join(freqClauses, sql` OR `)})
+      AND (${freqBandClause})
     ORDER BY detected_at DESC
   `)
 

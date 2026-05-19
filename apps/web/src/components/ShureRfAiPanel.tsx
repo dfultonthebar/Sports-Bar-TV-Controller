@@ -74,7 +74,7 @@ export default function ShureRfAiPanel() {
     setDigestLoading(true)
     setDigestErr(null)
     try {
-      // Ollama qwen2.5:14b: 30-90 sec typical on iGPU
+      // Ollama (llama3.1:8b by default per v2.52.17): warm 30s, cold ~60s on iGPU
       const r = await fetch('/api/sdr/digest', { method: 'POST' })
       if (!r.ok) {
         setDigestErr(`HTTP ${r.status} — Ollama may be unreachable or overloaded`)
