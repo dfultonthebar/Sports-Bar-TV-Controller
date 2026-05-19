@@ -419,9 +419,18 @@ export default function BartenderRemotePage() {
       const response = await fetch('/api/audio-processor')
       if (response.ok) {
         const data = await response.json()
-        if (data.processors && data.processors.length > 0) {
-          // Use the first audio processor found
-          const processor = data.processors[0]
+        const processors = data.processors || []
+        // Pick a processor the bartender Audio panel can actually drive.
+        // 'shure-slxd' is a wireless mic receiver — monitor-only, no
+        // zones/sources/groups, can't be the source IP for /api/atlas/*
+        // calls. The panel has explicit branches for 'atlas' (default)
+        // and 'dbx-zonepro'; everything else would silently feed the
+        // wrong IP into Atlas endpoints (Holmgren 2026-05-18 incident).
+        const drivable = processors.filter(
+          (p: any) => p.processorType === 'atlas' || p.processorType === 'dbx-zonepro'
+        )
+        const processor = drivable[0]
+        if (processor) {
           setAudioProcessorIp(processor.ipAddress)
           setAudioProcessorId(processor.id)
           setAudioProcessorType(processor.processorType || 'atlas')

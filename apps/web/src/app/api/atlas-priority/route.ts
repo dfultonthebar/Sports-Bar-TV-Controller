@@ -8,7 +8,7 @@ import { logger } from '@sports-bar/logger'
 type EventRow = {
   id: string
   processor_id: string
-  event_type: 'source_override' | 'mic_active'
+  event_type: 'source_override' | 'mic_active' | 'rf_induced_mic_active' | 'mic_cleared'
   zone_number: number | null
   zone_name: string | null
   previous_source: number | null
@@ -18,6 +18,8 @@ type EventRow = {
   input_level_db: number | null
   detected_at: number
 }
+
+const MIC_ON_TYPES = new Set(['mic_active', 'rf_induced_mic_active'])
 
 const ACTIVE_WINDOW_SECS = 30
 
@@ -49,10 +51,23 @@ export async function GET(request: NextRequest) {
       seconds_ago: nowSec - r.detected_at,
     }))
 
-    // Summary for UI badge — is anything currently active?
+    // Summary for UI badge — per-input latest-state rather than
+    // "any row in window". Otherwise a stale heartbeat row hung
+    // around for ~20s after the mic went silent before the banner
+    // cleared (Holmgren 2026-05-18 operator complaint). With this:
+    // a mic_cleared row on the falling edge immediately voids any
+    // earlier mic_active/heartbeat rows for the same input.
     const activeRows = rows.filter((r) => r.detected_at >= cutoff)
+    const latestByInput = new Map<number, EventRow>()
+    for (const r of activeRows) {
+      if (r.input_index === null) continue
+      if (!latestByInput.has(r.input_index)) latestByInput.set(r.input_index, r)
+    }
     const activeMics = Array.from(new Set(
-      activeRows.filter((r) => r.event_type === 'mic_active').map((r) => r.input_name).filter(Boolean)
+      Array.from(latestByInput.values())
+        .filter((r) => MIC_ON_TYPES.has(r.event_type))
+        .map((r) => r.input_name)
+        .filter(Boolean)
     ))
     const overriddenZones = Array.from(new Set(
       activeRows.filter((r) => r.event_type === 'source_override').map((r) => r.zone_name).filter(Boolean)
@@ -60,7 +75,10 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      active: activeRows.length > 0,
+      // Active = any mic currently on OR any unresolved source override.
+      // Plain "rows in window" would stay true after a mic_cleared
+      // row landed (since the cleared row itself is in the window).
+      active: activeMics.length > 0 || overriddenZones.length > 0,
       activeMics,
       overriddenZones,
       windowSeconds: ACTIVE_WINDOW_SECS,

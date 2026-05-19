@@ -44,7 +44,11 @@ const ACTIVE_EVENT_TYPES = new Set([
 ])
 
 export async function GET(request: NextRequest) {
-  const rateLimit = await withRateLimit(request, RateLimitConfigs.DEFAULT)
+  // HARDWARE bucket — same reasoning as /api/shure-rf/status.
+  // The admin page also polls /api/shure-rf?active=true every 10s
+  // (6/min) and the bartender banner polls active events similarly;
+  // they all share the same default budget unless we split them out.
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
   if (!rateLimit.allowed) return rateLimit.response
 
   try {

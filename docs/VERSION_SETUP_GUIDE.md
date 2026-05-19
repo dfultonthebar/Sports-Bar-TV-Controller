@@ -35,6 +35,145 @@ is the archive.
 
 ---
 
+## v2.48.x — system audit cleanup + RAG SME upgrade (multi-version)
+
+**Versions covered:** v2.48.0 → v2.48.5 (six commits on 2026-05-18)
+**Branch landed:** main
+
+**Big-picture changes:**
+
+- Removed ESLint entirely (v2.47.3) + 5 unused npm deps + 12 dead bridge files + 9 dead scripts + 27 dead API routes + 11 dead schema table defs. Net: -250+ lines, ~30 MB smaller `node_modules`, fewer things to bump weekly per Rule 10.
+- AI Hub RAG store extended with config files, drizzle migrations, operator shell scripts, AND React `.tsx` components/pages. Expected post-rescan total: ~7,500-8,500 chunks (was 4,536).
+
+**Required Manual Steps (per-location, IN ORDER):**
+
+1. **Run auto-update:**
+   ```bash
+   bash scripts/auto-update.sh --triggered-by=manual_cli
+   ```
+   This pulls v2.48.x, runs `npm ci`, rebuilds, restarts PM2. Schema cleanup is code-only — no DB migration runs.
+
+2. **Re-scan RAG to pick up the new file types:**
+   ```bash
+   cd /home/ubuntu/Sports-Bar-TV-Controller
+   npx tsx scripts/scan-system-docs.ts --clear     # picks up config, drizzle SQL, shell scripts
+   npx tsx scripts/scan-code-docs.ts               # picks up the 161 .tsx components/pages
+   ```
+   **Why `--clear` first:** removes stale chunks from deleted dead routes / bridge files (otherwise the AI would still cite them). Then the code-scan adds source + components on top.
+
+   **Time budget:** scan-system-docs.ts is ~25-40 min; scan-code-docs.ts is ~45-60 min (the .tsx additions are large). Run them sequentially — concurrent runs would saturate Ollama's embedding endpoint.
+
+3. **Verify RAG growth:**
+   ```bash
+   curl -sS http://localhost:3001/api/rag/stats | python3 -m json.tool
+   ```
+   Expected: `totalChunks` between 7,500 and 8,500. If significantly lower, the scan was interrupted — re-run.
+
+4. **Spot-test AI Hub grounding:**
+   ```bash
+   curl -X POST http://localhost:3001/api/chat \
+     -H 'Content-Type: application/json' \
+     -d '{"message":"What is the TX_MODEL property in our Shure SLX-D parser?","stream":false}'
+   ```
+   Expected: answer quotes `TX_MODEL` verbatim from indexed Shure docs. If it says "I don't have access to documentation", the RAG store didn't load — restart PM2 (`pm2 restart sports-bar-tv-controller`).
+
+**Operator timing:** RAG rescans take ~90 min total but run unattended. Schedule during off-peak. No service downtime — Pattern Digest and AI Hub continue working on the old index until the rescan finishes.
+
+---
+
+## v2.47.1 — eslint 9→10 + pdf-parse 1→2 (continued Rule 10 pass)
+
+**Released:** 2026-05-18
+**Branch landed:** main
+
+**Required Manual Steps:** none — `bash scripts/auto-update.sh` handles `npm ci` + rebuild + restart automatically.
+
+**Known issue:** `npm run lint` will crash with `react/display-name: contextOrFilename.getFilename is not a function` until `eslint-config-next` ships ESLint 10 compat for the bundled `eslint-plugin-react`. Build + type-check + tests are unaffected; lint is a developer-only script.
+
+**Verification:**
+
+```bash
+# Confirm pdf-parse v2 and eslint 10 are installed
+node -e "console.log('pdf-parse:', require('pdf-parse/package.json').version)"
+node -e "console.log('eslint:', require('eslint/package.json').version)"
+# Expected: pdf-parse: 2.4.5  /  eslint: 10.x
+
+# Verify build still passes
+cd /home/ubuntu/Sports-Bar-TV-Controller
+npm run build 2>&1 | tail -3
+# Expected: Tasks: 29 successful, 29 total
+```
+
+---
+
+## v2.47.0 — breaking-major npm dep bumps (first pass per Rule 10)
+
+**Released:** 2026-05-18
+**Branch landed:** main
+
+**Required Manual Steps:** none — `bash scripts/auto-update.sh` handles `npm ci` + rebuild + restart automatically. Verify with:
+
+```bash
+cd /home/ubuntu/Sports-Bar-TV-Controller
+node -e "console.log(require('@anthropic-ai/sdk/package.json').version)"
+# Expected: 0.96.0 or later
+```
+
+**Why this matters:** first execution of the strengthened Rule 10 ("everything stays on latest"). Bumps the Anthropic SDK + Node types + supertest types. Build verified green; runtime API surface unchanged.
+
+---
+
+## v2.46.3 — AI Hub Option B unification + Standing Rule 10 strengthened
+
+**Released:** 2026-05-18
+**Branch landed:** main
+
+**Required Manual Steps (per-location, IN ORDER):**
+
+1. **Pull latest code + auto-update:**
+   ```bash
+   bash scripts/auto-update.sh --triggered-by=manual_cli
+   ```
+
+2. **Per NEW Standing Rule 10 — refresh local AI models:**
+   ```bash
+   ollama pull llama3.1:8b
+   ollama pull nomic-embed-text
+   ollama pull qwen2.5:14b
+   ```
+   **Verification:** `ollama list` shows recent `MODIFIED` timestamp on all three.
+   **Gotcha:** if running IPEX-LLM Ollama (most fleet boxes), pulls may require `sudo` because models live under `/usr/share/ollama/.ollama/models/` (root-owned). Run `sudo -u ollama ollama pull <model>` OR `sudo chmod -R g+w /usr/share/ollama/.ollama/models/` then add your user to the `ollama` group.
+
+3. **Per NEW Standing Rule 10 — npm dep refresh:**
+   ```bash
+   cd /home/ubuntu/Sports-Bar-TV-Controller
+   npm audit fix
+   npm update
+   git add package.json package-lock.json
+   git commit -m "chore: weekly npm refresh per Standing Rule 10"
+   git push
+   ```
+   **Verification:** `npm outdated` shows fewer entries than before.
+
+4. **(Optional but recommended) Add source code to RAG store** so the AI Hub can answer implementation-level questions:
+   ```bash
+   cd /home/ubuntu/Sports-Bar-TV-Controller
+   npx tsx scripts/scan-code-docs.ts
+   ```
+   **Expected:** ~828 files indexed, ~5000 chunks added, run-time ~25 min on iGPU.
+   **Verification:** `curl localhost:3001/api/rag/stats | python3 -m json.tool` shows `totalChunks > 7000`.
+
+5. **Re-run the system doc scanner** if any of the above touched documentation:
+   ```bash
+   npx tsx scripts/scan-system-docs.ts
+   ```
+
+**Why this matters:** AI Hub chat at `/ai-hub` now grounds answers in our actual documentation instead of generic training data. Without the model refresh + code scan, AI Hub will work but won't have the full SME context.
+
+**Operator timing:** can be done during normal hours. The model pull is the biggest time sink (~10 min over good connection); npm refresh + code scan run in background.
+
+---
+
 ## OPERATOR HEADS-UP — 2026-04-17 batch (v2.18.0 through v2.22.x)
 
 **Applies to every location auto-updating tonight.** 14 versions shipped
@@ -186,6 +325,67 @@ grep LOCATION_TIMEZONE /home/ubuntu/Sports-Bar-TV-Controller/.env
 ---
 
 ## Current entries
+
+### v2.45.x — SDR spectrum monitoring (NESDR Smart / RTL-SDR)
+
+**Required Manual Step — when an RTL-SDR dongle arrives at a
+location.** Skip entirely at locations without an SDR dongle (the
+watcher defaults to disabled and is a no-op).
+
+```bash
+# One-time install: apt rtl-sdr + DVB blacklist + .env default
+sudo bash /home/ubuntu/Sports-Bar-TV-Controller/scripts/setup-sdr.sh
+
+# Restart PM2 to pick up SDR_ENABLED=auto from .env
+pm2 restart sports-bar-tv-controller --update-env
+
+# Verify (immediate, while dongle is plugged in or not):
+curl -sS http://localhost:3001/api/sdr/status
+# Expected: {"success":true, "enabled":true, "healthy":<true if dongle plugged>, ...}
+```
+
+After the one-time setup, plugging or unplugging the dongle is
+plug-and-play — the watcher auto-detects within 5 min, no PM2
+restart needed.
+
+**Idempotent.** Re-running the setup script is safe — `apt install
+rtl-sdr` no-ops if already installed, the blacklist file is
+rewritten in-place, and the `.env` is only modified if
+`SDR_ENABLED` is missing.
+
+**Verification command after dongle is plugged in:**
+
+```bash
+# Should report "Found 1 device" (or more)
+rtl_test -t
+
+# Live stream test (should emit 'hello' event within 1s):
+timeout 3 curl -sS -N http://localhost:3001/api/sdr/status | head -5
+```
+
+**Per-location values** (none — pure software install, no
+per-location config):
+
+| Location | SDR hardware status | SDR_ENABLED |
+|---|---|---|
+| Holmgren Way | Pending (NESDR Smart in transit) | `auto` (set by setup-sdr.sh) |
+| All others | Not yet rolled out | `false` (default — no-op) |
+
+**Auto-band-tracking:** the watcher reads connected Shure receiver
+frequencies and sweeps MIN-5 MHz to MAX+5 MHz. Override via
+`SDR_BAND_PRESET=uhf-wireless` (470-700 MHz) or `full-uhf`
+(470-960 MHz) in `.env` if you want broader coverage; default
+'auto' is fine for game-day monitoring.
+
+**If something goes wrong:**
+- Symptom: `rtl_test -t` says "Failed to open rtlsdr device / usb_claim_interface error -6"
+  → DVB module still attached. Run `sudo rmmod dvb_usb_rtl28xxu` then `rtl_test -t` again.
+  If it persists, reboot once so the blacklist takes effect for the kernel.
+- Symptom: `/api/sdr/status` says `enabled: false` even after setup
+  → Check `.env` has `SDR_ENABLED=auto` (or `true`). Restart PM2 with `--update-env`.
+- Symptom: `/api/sdr/status` says `enabled: true, healthy: false`
+  → Dongle not detected. Check USB connection, try a different port
+  (avoid USB 3 — emits RFI in the UHF band). Watcher will retry every 5 min.
 
 ### v2.34.1 — Shure SLX-D Phase 2 (battery UI, preflight, correlation, low-battery, mock)
 

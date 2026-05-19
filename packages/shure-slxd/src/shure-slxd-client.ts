@@ -124,6 +124,17 @@ export class ShureSlxdClient extends EventEmitter {
         // Seed cache. REP-on-change is opportunistic, not historical,
         // so always replay state at connect time.
         this.sendRaw(`${SHURE_PROTOCOL.FRAME_OPEN}GET 0 ALL${SHURE_PROTOCOL.FRAME_CLOSE}`)
+        // GET 0 ALL covers channel-scope properties. Device-scope
+        // (FW_VER, MODEL, RF_BAND, DEVICE_ID) needs explicit GETs
+        // WITHOUT a channel field — `< GET 0 FW_VER >` returns
+        // `< REP ERR >` on SLXD4D firmware 1.4.7.0. Without this the
+        // receiver state's model/firmwareVersion/rfBand stay
+        // undefined, breaks preflight detection + the admin tile's
+        // "fw / band" subtitle.
+        this.sendRaw(`${SHURE_PROTOCOL.FRAME_OPEN}GET FW_VER${SHURE_PROTOCOL.FRAME_CLOSE}`)
+        this.sendRaw(`${SHURE_PROTOCOL.FRAME_OPEN}GET MODEL${SHURE_PROTOCOL.FRAME_CLOSE}`)
+        this.sendRaw(`${SHURE_PROTOCOL.FRAME_OPEN}GET RF_BAND${SHURE_PROTOCOL.FRAME_CLOSE}`)
+        this.sendRaw(`${SHURE_PROTOCOL.FRAME_OPEN}GET DEVICE_ID${SHURE_PROTOCOL.FRAME_CLOSE}`)
         this.startHeartbeat()
         if (this.meterRateMs > 0) {
           // Re-issue subscription — METER_RATE does NOT survive reconnect.
@@ -222,6 +233,36 @@ export class ShureSlxdClient extends EventEmitter {
     this.sendRaw(`${SHURE_PROTOCOL.FRAME_OPEN}SET ${channel} FREQUENCY ${raw}${SHURE_PROTOCOL.FRAME_CLOSE}`)
   }
 
+  /**
+   * Rename a channel. Shure pads the name to 31 chars internally — pass
+   * an unpadded string; receiver handles the padding. SET is fire-and-forget;
+   * the receiver echoes a REP CHAN_NAME which will arrive on the existing
+   * frame handler and update the cache.
+   *
+   * Silently dropped if name is empty or > 31 chars (no ERR frame in the
+   * protocol). Caller should validate before sending.
+   */
+  async setChannelName(channel: number, name: string): Promise<void> {
+    this.sendRaw(`${SHURE_PROTOCOL.FRAME_OPEN}SET ${channel} CHAN_NAME {${name}}${SHURE_PROTOCOL.FRAME_CLOSE}`)
+  }
+
+  /**
+   * Set the audio output gain trim for a channel. Caller passes dB
+   * value in the valid range -18 to +42 (per SLX-D spec). On the
+   * wire AUDIO_GAIN is a raw 0-60 integer where `raw - 18 = dB`, so
+   * we add the +18 offset before sending.
+   *
+   * v2.39.0 BUG (fixed v2.39.1): writer was passing dB directly, no
+   * offset — sending +20 dB landed as +2 dB on the receiver, sending
+   * any negative dB was silently dropped (raw < 0 out of range, no
+   * ERR frame per protocol). Reader at applyRepToChannels line 456
+   * was already doing the correct `raw - 18` inverse.
+   */
+  async setAudioGain(channel: number, gainDb: number): Promise<void> {
+    const raw = Math.round(gainDb) + 18
+    this.sendRaw(`${SHURE_PROTOCOL.FRAME_OPEN}SET ${channel} AUDIO_GAIN ${raw}${SHURE_PROTOCOL.FRAME_CLOSE}`)
+  }
+
   /** Flash the receiver's front-panel LEDs for visual ID (~30s auto-off). */
   async flash(): Promise<void> {
     this.sendRaw(`${SHURE_PROTOCOL.FRAME_OPEN}SET 0 FLASH ON${SHURE_PROTOCOL.FRAME_CLOSE}`)
@@ -311,10 +352,29 @@ export class ShureSlxdClient extends EventEmitter {
     }
 
     const tokens = working.split(/\s+/).filter((t) => t.length > 0)
-    if (tokens.length < 3) return null
-    const [verb, chanStr, property, ...values] = tokens
-    const channel = parseInt(chanStr, 10)
-    if (!Number.isFinite(channel)) return null
+    if (tokens.length < 2) return null
+    // Two REP shapes seen on real SLXD4D firmware 1.4.7.0 at Holmgren:
+    //   Channel-scope: < REP <chan> <PROP> [value...] >   (3+ tokens)
+    //   Device-scope:  < REP <PROP> {value} >             (2 tokens)
+    // Older code required 3 tokens and silently dropped device-scope REPs,
+    // which is why FW_VER, MODEL, RF_BAND, DEVICE_ID never populated the
+    // receiver state on real hardware. Disambiguate by trying to parse
+    // the second token as a channel number — if it's numeric, channel-scope;
+    // otherwise device-scope (channel=0).
+    const [verb, secondToken, ...rest] = tokens
+    const chanMaybe = parseInt(secondToken, 10)
+    let channel: number
+    let property: string
+    let values: string[]
+    if (Number.isFinite(chanMaybe) && String(chanMaybe) === secondToken && rest.length >= 1) {
+      channel = chanMaybe
+      property = rest[0]
+      values = rest.slice(1)
+    } else {
+      channel = 0
+      property = secondToken
+      values = rest
+    }
     if (bracedValue !== null) values.push(bracedValue)
     return { verb, channel, property, values, raw }
   }
@@ -333,8 +393,11 @@ export class ShureSlxdClient extends EventEmitter {
 
       const setStr = (key: keyof ShureReceiverState, s: string | undefined) => {
         if (s === undefined) return
-        if (prev[key] !== s) {
-          (next as any)[key] = s
+        // Trim the trailing-space padding Shure applies to braced
+        // string values (FW_VER "1.4.7.0 ", MODEL "SLXD4D ", etc).
+        const trimmed = s.trim()
+        if (prev[key] !== trimmed) {
+          (next as any)[key] = trimmed
           changed = true
         }
       }
@@ -378,8 +441,15 @@ export class ShureSlxdClient extends EventEmitter {
       }
       const setStr = (key: keyof ShureChannelState, s: string | undefined) => {
         if (s === undefined) return
-        if (prev[key] !== s) {
-          (next as any)[key] = s
+        // Shure firmware pads braced string values (CHAN_NAME, GROUP_CHAN,
+        // FW_VER, etc.) to a fixed width with trailing spaces — e.g.
+        // CHAN_NAME comes through as "Shure1                         ".
+        // Trim once at the storage layer so every downstream consumer
+        // (snapshot, UI tile, log line) gets the operator-meaningful
+        // value without each having to .trim() defensively.
+        const trimmed = s.trim()
+        if (prev[key] !== trimmed) {
+          (next as any)[key] = trimmed
           changed = true
         }
       }
@@ -399,7 +469,17 @@ export class ShureSlxdClient extends EventEmitter {
           setStr('audioOutSwitch', frame.values.join(' '))
           break
         }
-        case 'TX_TYPE': {
+        // Per the official SLX-D Command Strings spec v2 (2020-G), the
+        // transmitter-model property is `TX_MODEL`, not `TX_TYPE`.
+        // Probed live on Holmgren SLXD4D firmware 1.4.7.0 (2026-05-18):
+        //   < GET 1 TX_MODEL > → < REP 1 TX_MODEL UNKNOWN >  ✓
+        //   < GET 1 TX_TYPE >  → < REP ERR >                 ✗
+        // Our earlier code listened for TX_TYPE — so the receiver-side
+        // state cache's `txType` field never populated for real
+        // hardware. Now matches the spec. We keep the TS field name
+        // `txType` for back-compat with all UI/watcher references;
+        // only the wire-protocol property name changes here.
+        case 'TX_MODEL': {
           setStr('txType', frame.values.join(' '))
           break
         }
@@ -417,7 +497,11 @@ export class ShureSlxdClient extends EventEmitter {
           setStr('channelName', frame.values.join(' '))
           break
         }
-        case 'GROUP_CHAN': {
+        // Spec name is GROUP_CHANNEL (not GROUP_CHAN). Confirmed live
+        // on SLXD4D 1.4.7.0: receiver emits < REP 2 GROUP_CHANNEL {--,--} >
+        // as the immediate REP after a SET FREQUENCY (front-panel Manual
+        // mode). Earlier code listened for GROUP_CHAN — never matched.
+        case 'GROUP_CHANNEL': {
           setStr('groupChannel', frame.values.join(' '))
           break
         }

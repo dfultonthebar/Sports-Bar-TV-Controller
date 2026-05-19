@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Volume2, VolumeX, Minus, Plus, Mic, AlertTriangle, Radio } from 'lucide-react'
 import ShureMicStatusPanel from './ShureMicStatusPanel'
+import LiveMicChips from './LiveMicChips'
 import { logger } from '@sports-bar/logger'
 
 interface AtlasZone {
@@ -284,9 +285,15 @@ export default function AtlasZoneControl({
 
   return (
     <div className="space-y-3">
-      {/* Shure wireless mic status tile — renders nothing if no Shure
-          receiver configured. Above the Atlas banners so operators see
-          mic status first when there's RF action. */}
+      {/* Compact persistent strip — one chip per wireless mic channel
+          showing live/off + battery. Sits above the priority banner so
+          the bartender can see at a glance whether Mic 1/Mic 2 are
+          hot before they go live, not only when someone is speaking
+          loud enough to cross the Atlas priority threshold. */}
+      <LiveMicChips />
+      {/* Shure wireless mic status tile — full per-channel detail
+          (RSSI dBm, runtime, frequency). Renders nothing if no Shure
+          receiver configured. */}
       <ShureMicStatusPanel />
       {priorityActive && (
         <div className="rounded-xl border border-amber-500/40 bg-amber-950/30 px-4 py-3 flex items-center gap-3">
