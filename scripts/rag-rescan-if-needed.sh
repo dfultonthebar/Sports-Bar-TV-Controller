@@ -80,20 +80,27 @@ fi
 echo "[rag-rescan] kicking off background scan → $LOGFILE"
 echo "[rag-rescan] (scan runs ~25-40 min; this script does NOT block)"
 
-# Run in background so auto-update.sh can return promptly. Write our
-# PID to the lock IMMEDIATELY so concurrent calls back off.
+# v2.52.0 — Run in background. The previous code wrote `echo $$` from
+# INSIDE the subshell, recording the subshell's PID. That subshell exits
+# as soon as the npx tsx command begins (the npx process becomes the
+# leaf), so the lock immediately appears stale to the parent's `kill -0`
+# check (Mode 14 discovery, AP-6 in docs/AUTO_UPDATE_DESIGN_RULES.md).
+#
+# Fix: launch the actual scan process directly, capture $! (its real
+# PID), write that to the lock. The trap on EXIT in the subshell still
+# cleans up.
 (
-  echo $$ > "$LOCK"
-  trap "rm -f '$LOCK'" EXIT
   npx tsx scripts/scan-system-docs.ts >> "$LOGFILE" 2>&1
-  # Code scan, IN SERIES, only after doc scan exits cleanly
   if printf '%s\n' "${CHANGED[@]}" | grep -qE '\.(ts|tsx)$'; then
     echo "[rag-rescan] TypeScript paths changed — running scan-code-docs.ts now" >> "$LOGFILE"
     npx tsx scripts/scan-code-docs.ts >> "$LOGFILE" 2>&1
   fi
-) > "$LOGFILE" 2>&1 &
+  rm -f "$LOCK"
+) >> "$LOGFILE" 2>&1 &
+SCAN_PID=$!
+echo "$SCAN_PID" > "$LOCK"
 
-echo "[rag-rescan] background scan group PID: $!"
-echo "[rag-rescan] lock file: $LOCK"
+echo "[rag-rescan] background scan group PID: $SCAN_PID"
+echo "[rag-rescan] lock file: $LOCK (contains real scan PID for stale-detection)"
 echo "[rag-rescan] done — scan running in background. Tail: tail -f $LOGFILE"
 exit 0
