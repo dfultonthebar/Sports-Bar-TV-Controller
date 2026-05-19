@@ -1296,6 +1296,13 @@ fi
 # PHASE: PM2 RESTART
 # ===========================================================================
 step "pm2_restart"
+# v2.50.14: record exact pm2_restart moment so Checkpoint C's PM2 crash-pattern
+# detector can filter out stale crashes from BEFORE this restart. Without this,
+# any unrelated crash in the last 80 PM2 log lines trips the deterministic STOP
+# (Holmgren hit this 2026-05-19 with a 5-min-old JSON parse error from a
+# chat/RAG race). Export so checkpoint-deterministic.sh's awk filter sees it.
+export PM2_RESTART_EPOCH=$(date +%s)
+log "PM2_RESTART_EPOCH=$PM2_RESTART_EPOCH (Checkpoint C crash scan will ignore older log lines)"
 log "pm2 restart sports-bar-tv-controller --update-env"
 pm2 restart sports-bar-tv-controller --update-env 2>&1 | tee -a "$LOG_FILE"
 if [ "${PIPESTATUS[0]}" -ne 0 ]; then
@@ -1474,6 +1481,31 @@ if [ -f "$REPO_ROOT/scripts/fleet-schedule.json" ] && [ -x "$REPO_ROOT/scripts/i
     log "Fleet stagger: re-synced timer to $SYNCED_SLOT"
   else
     log "⚠ Fleet stagger: install-auto-update-timer.sh failed (continuing — see /tmp/fleet-stagger-sync.log)"
+  fi
+fi
+
+# v2.50.13 — Standing Rule 11: RAG rescan after every successful auto-update.
+# Path-aware via scripts/rag-rescan-if-needed.sh — it diffs PRE vs POST
+# commit SHAs, checks if any RAG-indexed paths changed (CLAUDE.md, docs/**,
+# .claude/locations/*.md, packages/*/README.md, memory/*.md, drizzle SQL),
+# and only kicks off the actual scan if so. Returns immediately (the scan
+# runs as a detached background job, 25-40 min on iGPU). Non-fatal —
+# failure here doesn't roll back the auto-update; the operator can re-run
+# the script manually if it errored.
+#
+# Why this matters: docs/AUTO_UPDATE_TROUBLESHOOTING.md and the bartender
+# runbooks aren't useful to operators (or to the Claude CLI at checkpoints)
+# until they're embedded in the local RAG store. Without this hook, every
+# location's RAG drifts further out of date with every doc-touching update,
+# and the AI Hub chat answers stale questions. Wiring this here means every
+# location's RAG self-heals on every update — no manual operator action
+# needed at any of the 6 fleet boxes.
+if [ -x "$REPO_ROOT/scripts/rag-rescan-if-needed.sh" ]; then
+  RESCAN_SINCE="${PRE_MERGE_SHA:-HEAD~5}"
+  if bash "$REPO_ROOT/scripts/rag-rescan-if-needed.sh" --since "$RESCAN_SINCE" >/tmp/auto-update-rag-rescan.log 2>&1; then
+    log "RAG rescan: $(tail -1 /tmp/auto-update-rag-rescan.log)"
+  else
+    log "⚠ RAG rescan: returned non-zero (continuing — see /tmp/auto-update-rag-rescan.log)"
   fi
 fi
 
