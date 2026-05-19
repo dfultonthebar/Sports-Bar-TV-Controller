@@ -66,9 +66,28 @@ run_a() {
     emit STOP "leaked-secret pattern in pending diff"
   fi
 
-  # 2. Critical-script deletion scan.
-  if echo "$diff" | grep -qE '^diff --git a/scripts/(auto-update|verify-install|rollback)\.sh' && \
-     echo "$diff" | grep -qE '^deleted file mode'; then
+  # 2. Critical-script deletion scan — narrowed to the SAME file.
+  # v2.50.14 fix: the original check OR'd "any critical script touched" with
+  # "any file deleted in the diff" — which false-positive'd whenever
+  # auto-update.sh was modified AND an unrelated file (e.g. a heartbeat
+  # JSON that exists on location but not on main) appeared as deleted in
+  # `git diff HEAD..origin/main`. Leglamp hit this on 2026-05-19 v2.50.13
+  # push because its .auto-update-last-success.json (committed per-location
+  # heartbeat) shows as "deleted" in the diff against main even though the
+  # merge wouldn't actually drop it. Now we extract the per-file diff
+  # section for each critical script and confirm THAT file has the
+  # "deleted file mode" line — not just that SOME file does.
+  local critical_deleted
+  critical_deleted=$(echo "$diff" | awk '
+    /^diff --git a\/scripts\/(auto-update|verify-install|rollback)\.sh/ {
+      capturing = 1; current = $0; del = 0; next
+    }
+    /^diff --git / && capturing { if (del) print current; capturing = 1; current = $0; del = 0; next }
+    /^deleted file mode/ && capturing { del = 1 }
+    END { if (del) print current }
+  ')
+  if [ -n "$critical_deleted" ]; then
+    diag "critical-script deletion: $critical_deleted"
     emit STOP "critical script deleted in pending diff"
   fi
 
@@ -237,14 +256,37 @@ run_c() {
   #   (seen at v2.32.59 via `[AI-SUGGEST:UNIFIED-DIFF] builder failed (non-fatal):`)
   # - ESPN softball 400 logged at level ERROR — doesn't match the allowlist
   #   and is correctly ignored.
+  # v2.50.14 fix: filter PM2 log lines by timestamp so we only flag crashes
+  # that happened AFTER our pm2_restart in this run. The auto-update.sh
+  # passes the restart epoch in PM2_RESTART_EPOCH env var; if missing,
+  # fall back to "30 seconds ago" as a conservative window (will catch
+  # genuine post-restart crashes but miss anything older).
+  #
+  # Holmgren hit the original bug on 2026-05-19 v2.50.13 — a JSON parse
+  # error from a chat-API/RAG-rescan race condition at 02:33:44 (5 min
+  # BEFORE this run's pm2_restart at 02:38:06) was still in the last
+  # 80 PM2 log lines and tripped the detector. Filter by epoch instead.
   if command -v pm2 >/dev/null 2>&1; then
+    local restart_epoch="${PM2_RESTART_EPOCH:-$(date +%s -d '30 seconds ago')}"
     local crashes
-    crashes=$(pm2 logs sports-bar-tv-controller --lines 80 --nostream 2>/dev/null \
+    # PM2 log format: "1|sports-b | 2026-05-19 02:33:44 -05:00: ..."
+    # Extract the timestamp, convert to epoch, compare against restart_epoch.
+    crashes=$(pm2 logs sports-bar-tv-controller --lines 200 --nostream 2>/dev/null \
       | grep -iE '(unhandledRejection|Cannot find module|EADDRINUSE|SyntaxError|FATAL)' \
       | grep -ivE 'non-fatal' \
+      | awk -v re="$restart_epoch" '
+          {
+            match($0, /[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}/)
+            if (RLENGTH > 0) {
+              ts = substr($0, RSTART, RLENGTH)
+              cmd = "date +%s -d \"" ts "\" 2>/dev/null"
+              cmd | getline epoch; close(cmd)
+              if (epoch + 0 >= re + 0) print
+            } else { print }  # no parseable timestamp, include for safety
+          }' \
       | head -3)
     if [ -n "$crashes" ]; then
-      diag "PM2 crash pattern hit: $crashes"
+      diag "PM2 crash pattern hit (since restart_epoch=$restart_epoch): $crashes"
       emit STOP "fresh crash pattern in PM2 logs post-restart"
     fi
   fi
