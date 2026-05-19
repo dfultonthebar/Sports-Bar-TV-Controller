@@ -315,7 +315,63 @@ Growing size + recent mtime = actively working. Mtime older than your trigger ti
 
 ---
 
-## Failure mode 12: stale Q-A or RAG-related processes burning CPU/RAM for hours
+## Failure mode 12: Checkpoint A false-positive — "critical script deleted in pending diff"
+
+**Symptom:** Checkpoint A returns `STOP - critical script deleted in pending diff` at a location that hasn't been updated in a while, even though the pending commits only ADD/MODIFY scripts (no deletions).
+
+**Real-world hit:** **leglamp-tvcontroller, 2026-05-19** — v2.50.13 push (which only added `docs/CLAUDE_CLI_RAG_ACCESS.md` and modified `package.json` + `scripts/auto-update.sh`). Checkpoint A flagged it because the location's `.auto-update-last-success.json` (a per-location heartbeat file that exists on leglamp but doesn't exist on `main`) appears as `D .auto-update-last-success.json` in `git diff HEAD..origin/main`. The old detector OR'd "any critical script touched" with "any file deleted" — both true, so STOP fired even though the deleted file wasn't a critical script.
+
+**Why:** the deterministic Checkpoint A scan in `scripts/checkpoint-deterministic.sh` had:
+```bash
+if echo "$diff" | grep -qE '^diff --git a/scripts/(auto-update|verify-install|rollback)\.sh' && \
+   echo "$diff" | grep -qE '^deleted file mode'; then
+  emit STOP "critical script deleted in pending diff"
+fi
+```
+The two greps were independent — one fired on script CHANGE, the other on ANY file delete. They didn't have to be the SAME file.
+
+**Fix (v2.50.14):** narrowed the check to extract the per-file diff section for each critical script and confirm THAT file specifically has `deleted file mode`. Now an unrelated heartbeat-file delete plus a critical-script modification no longer false-positives.
+
+**Workaround on a stuck location (pre-v2.50.14):**
+```bash
+# manually mark the run as approved + skip checkpoint A (NOT a real flag, just rebuild)
+# OR delete the heartbeat file on the location branch so it doesn't appear "deleted":
+ssh ubuntu@<host>
+cd ~/Sports-Bar-TV-Controller
+git rm .auto-update-last-success.json  # location-only, gets recreated on next successful run
+git commit -m "chore: remove stale heartbeat to unblock checkpoint A"
+git push origin location/<name>
+bash scripts/auto-update.sh --triggered-by=manual_cli
+```
+
+---
+
+## Failure mode 13: Checkpoint C false-positive — stale PM2 crash from BEFORE pm2_restart
+
+**Symptom:** Checkpoint C returns `STOP - fresh crash pattern in PM2 logs post-restart` and rolls back, but the cited crash timestamp is BEFORE the auto-update's `pm2_restart` step in the same log.
+
+**Real-world hit:** **Holmgren, 2026-05-19 02:38:29** — Checkpoint C cited a `SyntaxError: Unterminated string in JSON at position 13617698` crash at 02:33:44 (5 min before the run's pm2_restart at 02:38:06). The crash was real — likely caused by the chat API trying to read `vector-store.json` while the rag-rescan was rewriting it (race condition). But it predated the current run's restart by 5 minutes, so it was leftover noise, not a regression introduced by the merge.
+
+**Why:** the deterministic Checkpoint C scan grabs `pm2 logs --lines 80 --nostream` and greps for crash patterns. With no timestamp filter, any pre-existing crash in those 80 lines (which can span 30+ minutes during low-traffic periods) is treated as fresh.
+
+**Fix (v2.50.14):** `auto-update.sh` now exports `PM2_RESTART_EPOCH=$(date +%s)` immediately before invoking `pm2 restart`. Checkpoint C's awk filter parses each PM2 log line's timestamp, converts to epoch, and skips any crash older than the restart. Pre-restart noise no longer trips STOP.
+
+**Workaround on a stuck location (pre-v2.50.14):**
+```bash
+# Confirm the cited crash is genuinely from before pm2_restart in your run's log:
+ssh ubuntu@<host>
+grep -E 'PM2 crash pattern hit|STEP: pm2_restart' \
+  $(ls -t ~/sports-bar-data/update-logs/auto-update-*.log | head -1)
+# If the crash timestamp is older than pm2_restart, the rollback was a false-positive.
+# Re-fire after a few minutes (so the stale crash scrolls out of PM2's last 80 lines):
+bash scripts/auto-update.sh --triggered-by=manual_cli
+```
+
+If the crash IS post-restart, it's a real regression — investigate the v2.X.Y diff for what could have caused it.
+
+---
+
+## Failure mode 14: stale Q-A or RAG-related processes burning CPU/RAM for hours
 
 **Symptom:** `ps aux | grep node` shows long-running processes (multi-hour elapsed) with 0% CPU, in `ep_poll` state. Their output files are empty or never created.
 
