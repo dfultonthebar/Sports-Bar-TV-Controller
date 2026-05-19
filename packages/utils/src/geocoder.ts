@@ -67,7 +67,10 @@ export async function geocodeAddress(input: GeocodeInput): Promise<GeocodeResult
       logger.warn('[GEOCODER] Nominatim returned non-200', { data: { status: res.status, q } })
       return null
     }
-    const body: any[] = await res.json()
+    // v2.51.4: `res.json()` returns `Promise<unknown>` under strict TS in
+    // newer @types/node; the `: any[]` annotation collided with that.
+    // Explicit cast to any[] after the await keeps the runtime check below.
+    const body = (await res.json()) as any[]
     if (!Array.isArray(body) || body.length === 0) {
       logger.warn('[GEOCODER] Nominatim returned no results', { data: { q } })
       return null
