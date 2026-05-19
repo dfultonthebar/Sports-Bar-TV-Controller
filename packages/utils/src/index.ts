@@ -111,3 +111,4 @@ export {
   type AutoSyncClient,
   type ConfigChangeTrackerOptions
 } from './config-change-tracker'
+export * from './geocoder'

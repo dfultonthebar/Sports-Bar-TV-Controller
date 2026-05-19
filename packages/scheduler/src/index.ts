@@ -165,3 +165,29 @@ export {
   type CatalogTile,
   type CatalogWalkStats,
 } from './firetv-catalog-walker'
+
+// Bananas Entertainment Ingestion (v2.51.0 Neighborhood RF Prediction)
+export {
+  runBananasIngestion,
+  type BananasIngestionStats,
+} from './bananas-ingestion'
+
+// Neighborhood RF Interference Prediction — correlator + profile builder + preemptive strike (v2.51.0+)
+export {
+  correlateInterference,
+  computeAttributionConfidence,
+  type CorrelateOptions,
+  type CorrelateResult,
+} from './interference-correlator'
+
+export {
+  rebuildArtistProfiles,
+  type RebuildProfilesOptions,
+  type RebuildProfilesResult,
+} from './artist-profile-builder'
+
+export {
+  runPreemptiveStrike,
+  type PreemptiveStrikeOptions,
+  type PreemptiveStrikeCandidate,
+} from './preemptive-strike'

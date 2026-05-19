@@ -16,7 +16,8 @@
     "@sports-bar/config": "*",
     "@sports-bar/circuit-breaker": "*",
     "@sports-bar/logger": "*",
-    "@sports-bar/rate-limiting": "*"
+    "@sports-bar/rate-limiting": "*",
+    "cheerio": "^1.1.2"
   },
   "devDependencies": {
     "@sports-bar/config": "*",
