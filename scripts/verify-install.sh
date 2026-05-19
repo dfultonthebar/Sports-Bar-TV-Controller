@@ -372,9 +372,19 @@ check_crash_logs() {
     # AP-5). Without this filter, a stale crash from BEFORE the rollback
     # pm2_restart can false-positive verify-install during the rollback
     # itself — rollback.sh:174-180 re-runs verify-install --quiet.
-    if [ -n "$matches" ] && [ -n "${PM2_RESTART_EPOCH:-}" ]; then
+    #
+    # v2.52.3 fix (code-reviewer audit Finding #5, AP-5 doc gap): when
+    # verify-install.sh is called standalone (operator invokes manually,
+    # rollback.sh's post-rollback verify), PM2_RESTART_EPOCH is unset and
+    # the filter branch is skipped entirely → stale pre-rollback crashes
+    # appear as fresh failures. Apply filter unconditionally with a 30-
+    # seconds-ago fallback when PM2_RESTART_EPOCH is unset, per the AP-5
+    # code snippet in docs/AUTO_UPDATE_DESIGN_RULES.md.
+    if [ -n "$matches" ]; then
+        local restart_epoch
+        restart_epoch="${PM2_RESTART_EPOCH:-$(date +%s -d '30 seconds ago')}"
         local filtered
-        filtered=$(echo "$matches" | awk -v re="$PM2_RESTART_EPOCH" '
+        filtered=$(echo "$matches" | awk -v re="$restart_epoch" '
             {
                 match($0, /[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}/)
                 if (RLENGTH > 0) {

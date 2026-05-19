@@ -279,7 +279,12 @@ async function main() {
   console.log('')
 }
 
-main().catch((e) => {
-  console.error('Fatal:', e)
-  process.exit(1)
-})
+// v2.52.3: explicit process.exit(0) on success — same root-cause as
+// scan-system-docs.ts (Ollama keep_alive + module-level sqlite hold the
+// event loop). See docs/AUTO_UPDATE_DESIGN_RULES.md.
+main()
+  .then(() => process.exit(0))
+  .catch((e) => {
+    console.error('Fatal:', e)
+    process.exit(1)
+  })
