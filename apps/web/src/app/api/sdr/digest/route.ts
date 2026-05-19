@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const locationId = process.env.LOCATION_ID ?? 'default-location'
-    const rows = await db.all<{
+    let rows: Array<{
       id: string
       period_start: number
       period_end: number
@@ -30,15 +30,21 @@ export async function GET(request: NextRequest) {
       completion_token_count: number | null
       generation_ms: number | null
       generated_at: number
-    }>(sql`
-      SELECT id, period_start, period_end, summary_text, structured_findings,
-             model_used, prompt_token_count, completion_token_count,
-             generation_ms, generated_at
-      FROM rf_pattern_digest
-      WHERE location_id = ${locationId}
-      ORDER BY generated_at DESC
-      LIMIT 1
-    `).catch(() => [])
+    }> = []
+    try {
+      rows = await db.all<typeof rows[number]>(sql`
+        SELECT id, period_start, period_end, summary_text, structured_findings,
+               model_used, prompt_token_count, completion_token_count,
+               generation_ms, generated_at
+        FROM rf_pattern_digest
+        WHERE location_id = ${locationId}
+        ORDER BY generated_at DESC
+        LIMIT 1
+      `)
+    } catch (e) {
+      // Table missing → no digest yet. Return null gracefully.
+      logger.debug(`[SDR-DIGEST GET] table missing or query failed: ${(e as Error)?.message ?? e}`)
+    }
 
     if (rows.length === 0) {
       return NextResponse.json({

@@ -41,6 +41,7 @@ import { Button } from '@/components/ui/button'
 import { logger } from '@sports-bar/logger'
 import type { ShureChannelState, ShureReceiverSnapshot } from '@sports-bar/shure-slxd'
 import ShureSdrSpectrumPanel from './ShureSdrSpectrumPanel'
+import ShureRfAiPanel from './ShureRfAiPanel'
 import SafeBoundary from './SafeBoundary'
 
 interface ShureReceiverRow {
@@ -1013,6 +1014,13 @@ export default function ShureWirelessMicAdmin() {
             )
           }
         />
+      </SafeBoundary>
+
+      {/* v2.52.15 — RF AI Insights (Tier 3 digest + Tier 4 clean-freq).
+          Wrapped in SafeBoundary so a render crash here doesn't take
+          out the rest of the Shure admin tab. */}
+      <SafeBoundary label="RF AI Insights">
+        <ShureRfAiPanel />
       </SafeBoundary>
 
       <div className="rounded-xl border border-slate-700 bg-slate-800/50 p-4">
