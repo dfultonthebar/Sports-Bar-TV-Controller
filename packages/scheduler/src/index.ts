@@ -173,8 +173,11 @@ export {
 } from './bananas-ingestion'
 
 // Neighborhood RF Interference Prediction — correlator + profile builder + preemptive strike (v2.51.0+)
+// v2.52.12: + SDR correlator (correlateSdrInterference) + combined runner (correlateAllInterference)
 export {
   correlateInterference,
+  correlateSdrInterference,
+  correlateAllInterference,
   computeAttributionConfidence,
   type CorrelateOptions,
   type CorrelateResult,

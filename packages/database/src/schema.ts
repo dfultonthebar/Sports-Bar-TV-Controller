@@ -2950,12 +2950,22 @@ export const interferenceAttributions = sqliteTable('InterferenceAttribution', {
   // 'correlation_v1' = the algorithmic time+distance match. 'manual' =
   // operator marked it. Future: 'ml_v2' if we add a learned model.
   attributionMethod: text('attribution_method').notNull().default('correlation_v1'),
+  // v2.52.12: 'shure' for events from shure_rf_events table, 'sdr' for
+  // events from sdr_carriers table. Allows the correlator to feed
+  // BOTH detection sources into ArtistInterferenceProfile — when both
+  // independently see RF activity at a venue's event time, confidence
+  // is materially higher than either source alone. The FK in
+  // rf_event_id is informal (FK enforcement off in prod sqlite); the
+  // referenced ID lives in whichever table source points to.
+  source: text('source').notNull().default('shure'),
   createdAt: integer('created_at').notNull().$defaultFn(() => Math.floor(Date.now() / 1000)),
 }, (table) => ({
   rfEventIdx: index('InterferenceAttribution_rfEvent_idx').on(table.rfEventId),
   neighborhoodEventIdx: index('InterferenceAttribution_neighborhoodEvent_idx').on(table.neighborhoodEventId),
+  sourceIdx: index('InterferenceAttribution_source_idx').on(table.source),
   // One attribution per (rf_event, neighborhood_event) pair — re-running
-  // the correlation engine is idempotent.
+  // the correlation engine is idempotent. rf_event IDs are UUIDs from
+  // either shure_rf_events or sdr_carriers (no collision risk).
   uniqueAttribution: uniqueIndex('InterferenceAttribution_rfEvent_neighborhoodEvent_unique').on(table.rfEventId, table.neighborhoodEventId),
 }))
 

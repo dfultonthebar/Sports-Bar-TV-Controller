@@ -231,8 +231,13 @@ class SchedulerService {
    */
   private async runCorrelateInterferenceSafe() {
     try {
-      const { correlateInterference } = await import('./interference-correlator');
-      await correlateInterference();
+      // v2.52.12: correlateAllInterference runs BOTH Shure and SDR
+      // passes. The SDR pass narrows to carriers within ±0.1 MHz of
+      // our Shure receiver freqs so we attribute "Anduzzi DJ 8pm" to
+      // real mic-band interference, not the continuous WCWF broadcast.
+      const { correlateAllInterference } = await import('./interference-correlator');
+      const { shure, sdr } = await correlateAllInterference();
+      logger.info(`[CORRELATOR] Shure: ${shure.attributionsWritten} attributions; SDR: ${sdr.attributionsWritten} attributions`);
     } catch (error: any) {
       logger.error('[CORRELATOR] Unexpected correlation failure:', { error });
     }
