@@ -47,10 +47,13 @@ export const RAGConfig = {
     'database': ['db', 'schema', 'migration'],
     'api': ['api', 'route', 'endpoint'],
     'firetv': ['firetv', 'adb'],
-    'matrix': ['matrix', 'switcher'],
-    'ai': ['ai', 'assistant', 'chat'],
+    'matrix': ['matrix', 'switcher', 'wolfpack'],
+    'ai': ['ai', 'assistant', 'chat', 'ollama', 'rag'],
     'testing': ['test', 'jest', 'playwright'],
     'deployment': ['deploy', 'production', 'pm2'],
+    'rf': ['rf_interference', 'rf-interference', 'sdr', 'shure', 'wireless'],
+    'audio': ['atlas', 'dbx', 'bss', 'soundtrack', 'azmp', 'zonepro'],
+    'bartender': ['bartender'],
   },
 
   // Cache settings
