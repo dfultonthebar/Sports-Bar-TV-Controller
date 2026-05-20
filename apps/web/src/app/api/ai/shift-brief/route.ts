@@ -343,6 +343,36 @@ async function gatherShiftContext() {
     // atlas_priority_events table missing or query failed — feature off.
   }
 
+  // v2.53.14 — last 24h Atlas drop recap. Conditional bullet: only set
+  // when at least one real zone drop fired (≥15-point drop landing ≤10).
+  // Most days at most locations this is null — Atlas is stable, no
+  // bullet. When it IS set, the bartender wants to know which zone+how
+  // many so they can verify before the rush. atlas_drop_events has no
+  // event_type column; watcher writes ONLY real drops (boot rows go in
+  // atlas_priority_events.event_type='startup' — see drop watcher).
+  let atlasDropRecap: string | null = null
+  try {
+    const dayAgoUnix = nowUnix - 24 * 3600
+    const dropRows = await db.all<{ zone_number: number; zone_name: string | null; n: number }>(sql`
+      SELECT zone_number, zone_name, count(*) AS n
+      FROM atlas_drop_events
+      WHERE detected_at >= ${dayAgoUnix}
+      GROUP BY zone_number, zone_name
+      ORDER BY n DESC
+      LIMIT 3
+    `)
+    if (dropRows.length > 0) {
+      const total = dropRows.reduce((acc, r) => acc + r.n, 0)
+      const worst = dropRows[0]
+      const worstLabel = worst.zone_name ? `${worst.zone_name} (zone ${worst.zone_number})` : `zone ${worst.zone_number}`
+      atlasDropRecap = total === 1
+        ? `Last 24h Atlas drops: 1 zone-gain crash in ${worstLabel} — worth a sound check before the rush.`
+        : `Last 24h Atlas drops: ${total} zone-gain crashes (worst: ${worstLabel}, ${worst.n}×) — worth a sound check before the rush.`
+    }
+  } catch {
+    // atlas_drop_events table missing or query failed — feature off.
+  }
+
   // v2.32.25 — fleet-stale alerts. Bartender at any location can see when
   // sister locations are stuck so they can ping the operator. Soft-fail:
   // if the fleet API is down, we just skip this section.
@@ -432,6 +462,8 @@ async function gatherShiftContext() {
     upcomingMicRisks,
     // v2.53.6 — last 24h Atlas priority recap (mic activity summary)
     atlasPriorityRecap,
+    // v2.53.14 — last 24h Atlas drop recap (conditional — null when no drops)
+    atlasDropRecap,
   }
 }
 
@@ -526,6 +558,12 @@ function buildPrompt(ctx: any): string {
   const atlasRecapBullet = ctx.atlasPriorityRecap
     ? `- ${ctx.atlasPriorityRecap}`
     : null
+  // v2.53.14 — conditional drops bullet. ctx.atlasDropRecap is null
+  // when no drops fired in the last 24h, in which case nothing appears
+  // in the brief. Same server-built-verbatim treatment as priority recap.
+  const atlasDropBullet = ctx.atlasDropRecap
+    ? `- ${ctx.atlasDropRecap}`
+    : null
 
   // v2.52.17: explicit home-team list in the prompt + strict rule
   // about not inventing/relabeling teams. The home-team list is the
@@ -563,6 +601,10 @@ ${upcomingRisks}
 
 ${atlasRecapBullet
   ? `Atlas priority recap bullet — PRE-WRITTEN, include EXACTLY as shown as its own bullet, do not rephrase the numbers, do not add a label or section header (the bullet is self-labeled):\n${atlasRecapBullet}`
+  : ''}
+
+${atlasDropBullet
+  ? `Atlas drops bullet — PRE-WRITTEN, include EXACTLY as shown as its own bullet, do not rephrase the numbers or zone names, do not add a label or section header (the bullet is self-labeled). This bullet only appears when real zone-gain crashes were detected; treat it as a high-signal pre-shift check item:\n${atlasDropBullet}`
   : ''}
 
 Format:
@@ -634,6 +676,11 @@ function fallbackBrief(ctx: any): string {
   // issues even if the brief is degraded.
   if (ctx.atlasPriorityRecap) {
     lines.push(ctx.atlasPriorityRecap)
+  }
+  // v2.53.14 — Atlas drops bullet on the LLM-less fallback path too.
+  // Conditional in the same way: only fires when real drops happened.
+  if (ctx.atlasDropRecap) {
+    lines.push(ctx.atlasDropRecap)
   }
   return lines.join('\n')
 }
