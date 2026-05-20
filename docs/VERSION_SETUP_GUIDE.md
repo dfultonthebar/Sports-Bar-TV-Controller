@@ -35,6 +35,52 @@ is the archive.
 
 ---
 
+## v2.53.10 → v2.53.14 — follow-ups + venue UI + brief fixes (multi-version 2026-05-20)
+
+**Versions covered:** v2.53.10 → v2.53.14 (5 commits on 2026-05-20)
+**Branch landed:** main
+**Fleet target:** rolling upgrade from v2.53.9 — all 6 boxes shipped same-day
+
+Pure follow-up batch after the v2.51-v2.53.9 big-ship. Each version is small but together they close real gaps. Strictly additive — no env vars, no schema migrations, no operator opt-ins.
+
+- **v2.53.10** — VERSION_SETUP_GUIDE entry for the v2.51-v2.53.9 batch.
+- **v2.53.11** — TWO production bugs:
+  1. **Shift-brief surfaced override-digest 30-day recommendations under "Recent hardware/software failures"** (LLM merged the 30-day pattern observations into the 24h failures section). Fix: drop `newRecommendations` from the brief context entirely; admin recommendations stay in the DB for admin tooling but no longer reach bartenders.
+  2. **`RAG_RERANK_ENABLED=true` was a no-op on the /api/chat path.** v2.53.0 wired the reranker into `queryDocs`/`queryDocsStream` (one-shot + SSE) but not into `retrieveContext`, which is what chat actually calls. Locations that paid the +600MB RAM + PM2 restart cost got zero chat-side benefit. Fix: `retrieveContext` now routes through the same `retrieveAndRerank` helper when the flag is on. Functional verification = chat response `sources.length === 8` (was 5).
+- **v2.53.12** — VERSION_SETUP_GUIDE corrected the v2.51-v2.53.9 per-location RAM table (4 boxes stated as 16 GB were actually 31 GB; Graystone correctly at 15 GB). Added new pre-flight: `command -v pm2` in a non-interactive SSH shell. Leg-lamp's `pm2` lived only in NVM (not `/usr/bin/` like the other 4 boxes) — auto-update.sh + future remote PM2 restarts silently failed there. Applied `/usr/local/bin/pm2` symlink out-of-band; documented for future-location-setup. **Future-new-location action:** `command -v pm2` MUST return a non-empty path in `ssh ubuntu@<host> 'command -v pm2'`. If empty, `sudo ln -sfv /home/ubuntu/.nvm/versions/node/v20.20.0/bin/{node,npm,npx,pm2} /usr/local/bin/`.
+- **v2.53.13** — Operator UI for pending neighborhood venues at `/admin/venues/pending` (backend was shipped in v2.53.4 as API-only; CLI was the only client). Same field surface as the CLI: name + latest event, category, distance, source badge, event count. Per-row approve / decline / merge-with-target buttons. SafeBoundary-wrapped. **Auth fix:** both `/api/admin/venues/pending` GET and `/api/admin/venues/[id]/review` POST now call `requireAuth(request, 'ADMIN', { auditAction: ... })`. Before this commit they were rate-limit-only — any client on the bar's LAN could approve, decline, or merge venues anonymously.
+- **v2.53.14** — Atlas drops bullet in shift-brief. Mirrors the v2.53.6 priority-recap pattern for `atlas_drop_events`. **Conditional**: only appears when drops>0 in the last 24h. When 0 (common case post-v2.42.1 false-positive fix), no bullet renders. When ≥1, server-built-verbatim bullet with worst-zone + total count. Bullet also mirrored into `fallbackBrief()` for Ollama-degraded path parity.
+
+### Required Manual Steps
+
+- **None for v2.53.10, .11, .14** — pure code/doc changes, auto-update handles them.
+- **For v2.53.12 (NEW-location-only)** — add the `command -v pm2` pre-flight to your new-location setup. If empty, apply the NVM symlink (see above).
+- **For v2.53.13** — operator can now use the UI at `/admin/venues/pending` instead of `npx tsx apps/web/scripts/review-pending-venues.ts`. The CLI still works (kept for ops/scripting). Existing API consumers should send an authenticated request — sessions issued by /login carry the ADMIN role correctly.
+
+### Verification gates (after each box updates)
+
+- `pm2 status` → sports-bar-tv-controller online, restart_time +1
+- `curl localhost:3001/api/version` → reports `2.53.14`
+- `curl localhost:3001/admin/venues/pending` → 200 OK (HTML page; renders auth prompt for unauthenticated browsers)
+- `curl -o /dev/null -w "%{http_code}" localhost:3001/api/admin/venues/pending` → **401** (auth gate; the previous-version answer was 200 with data — that was the leak)
+- Shift-brief smoke test:
+  ```bash
+  curl -sS "http://localhost:3001/api/ai/shift-brief?force=true" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['brief'])"
+  ```
+  Expected sections: home-team games / other games / "Recent hardware/software failures to watch for: None" (NOT 30-day Xavier-output-25 noise) / Wireless mic status / Neighborhood-event heads-up (if any) / Atlas priority recap. The drops bullet is conditional and absent on stable Atlas — that's correct behavior, not a regression.
+
+### Known acceptable behaviors
+
+- **Drops bullet absent at all 6 boxes today** — Atlas hardware is stable everywhere post-v2.42.1. Feature is future-proof; when a real drop fires the bullet will appear.
+- **First chat call after restart loads bge-reranker-v2-m3 ONNX (~3-100s cold start)** — expected with `RAG_RERANK_ENABLED=true`. Subsequent calls ~+300ms over baseline.
+- **Pending venue queue stays at 0 at most locations** — new venues populate when Ticketmaster scrapes (4× daily) AND the location has `TICKETMASTER_API_KEY` set. Holmgren is currently the only fleet box with the key.
+
+### Rollback
+
+Standard auto-update.sh rollback path covers all five versions. If something specific to v2.53.13 regresses (admin UI render failure, auth gate too tight), revert just that commit (`0fa98fd3`) without losing the v2.53.11 production bug fixes.
+
+---
+
 ## v2.51.0 → v2.53.9 — Neighborhood RF + reranker + shift-brief expansion (multi-version 2026-05-19/20)
 
 **Versions covered:** v2.51.0 → v2.53.9 (~30 commits across 2026-05-19 + 2026-05-20)
