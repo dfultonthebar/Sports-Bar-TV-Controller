@@ -130,19 +130,20 @@ curl -sS "http://localhost:3001/api/ai/shift-brief?force=true" \
 
 ### Per-Location Opt-In Decisions
 
-| Location           | RAM    | RAG_RERANK_ENABLED  | TICKETMASTER_API_KEY                              | Notes                                                                                              |
-|--------------------|--------|---------------------|---------------------------------------------------|----------------------------------------------------------------------------------------------------|
-| holmgren-way       | 32 GB  | `true`              | `set` (active key — held by operator)              | Canary for both features. Already running v2.53.9. Pattern Digest enabled.                         |
-| leg-lamp           | 16 GB  | `true` (after canary OK at Holmgren) | unset (no operator-active key — keep OFF)        | Single-card; verify `MATRIX_SINGLE_CARD=true` still present (CLAUDE.md §4).                        |
-| lucky-s-1313       | 16 GB  | `true`              | unset                                              | Single-card; dbx ZonePRO @ 192.168.10.50.                                                          |
-| stoneyard-appleton | 16 GB+ | `true`              | unset                                              | Multi-card. Fleet-best AI Suggest baseline — confirm cold-call still ≤80s after rerank ships.       |
-| stoneyard-greenville | 16 GB+ | `true`              | unset                                              | Multi-card. Most-neglected box; budget extra time for verify.                                       |
-| graystone          | 15 GB  | **`false` — DO NOT ENABLE** | unset                                      | Tightest RAM box: 250-400MB app + 600MB reranker + 5.3GB llama3.1:8b = no headroom. See `[[project-graystone-ram-constraint]]`. |
+| Location           | RAM (verified 2026-05-20 via `free -g`) | RAG_RERANK_ENABLED  | TICKETMASTER_API_KEY                              | Notes                                                                                              |
+|--------------------|---------|---------------------|---------------------------------------------------|----------------------------------------------------------------------------------------------------|
+| holmgren-way       | 32 GB   | `true`              | `set` (active key — held by operator)              | Canary for both features. Pattern Digest enabled.                                                  |
+| leg-lamp           | 31 GB   | `true`              | unset (no operator-active key — keep OFF)         | Single-card; verify `MATRIX_SINGLE_CARD=true` still present (CLAUDE.md §4). **Per-location quirk**: NVM-installed `pm2` is NOT in `/usr/bin/` like the other boxes — `/usr/local/bin/pm2` symlinked manually 2026-05-20. See [[feedback-systemd-paths-and-ollama-perms]]. |
+| lucky-s-1313       | 31 GB   | `true`              | unset                                              | Single-card; dbx ZonePRO @ 192.168.10.50.                                                          |
+| stoneyard-appleton | 31 GB   | `true`              | unset                                              | Multi-card. Fleet-best AI Suggest baseline — confirm cold-call still ≤80s after rerank ships.       |
+| stoneyard-greenville | 31 GB | `true`              | unset                                              | Multi-card. Most-neglected box; budget extra time for verify.                                       |
+| graystone          | 15 GB   | **`false` — DO NOT ENABLE** | unset                                      | Tightest RAM box: 250-400MB app + 600MB reranker + 5.3GB llama3.1:8b = no headroom. See `[[project-graystone-ram-constraint]]`. |
 
 **Derivation rule (for adding NEW locations later):**
 
-- `RAG_RERANK_ENABLED=true` if `free -g | awk '/^Mem:/ {print $2}'` ≥ 16. Otherwise leave unset.
+- `RAG_RERANK_ENABLED=true` if `free -g | awk '/^Mem:/ {print $2}'` ≥ 16. Otherwise leave unset. (5 of 6 current fleet boxes have 31-32 GB; only Graystone is on the 15 GB threshold.)
 - `TICKETMASTER_API_KEY` ONLY if the operator has provisioned a developer key for this location AND wants stadium-scale (25mi) event awareness. Key issuance: https://developer.ticketmaster.com/ → Discovery API → "Get your API key".
+- **`pm2` PATH check (NEW LOCATION SETUP):** confirm `command -v pm2` returns a non-empty path in a non-interactive shell (`ssh ubuntu@<host> 'command -v pm2'`). If empty, the auto-update.sh + future remote restart commands will silently fail. Fix: `sudo ln -sfv /home/ubuntu/.nvm/versions/node/v20.20.0/bin/{node,npm,npx,pm2} /usr/local/bin/`. Audit `/usr/bin/pm2` vs NVM `pm2` — fleet has a split: 4 boxes use `/usr/bin/pm2` (apt or global npm) and 1 box (leglamp) uses NVM with manual symlink.
 
 ### Verification gates (must PASS before promoting next location)
 
