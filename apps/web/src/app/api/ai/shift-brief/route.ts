@@ -297,6 +297,47 @@ async function gatherShiftContext() {
     // NeighborhoodEvent table missing — feature off. Skip.
   }
 
+  // v2.53.6 — last 24h Atlas priority recap. Bartender starting a shift
+  // wants to know what the prior shift's RF / mic environment was like:
+  // any unexplained source overrides, RF-induced ghost mics, etc.
+  // Excludes 'startup' (watcher boot markers, not real signal).
+  let atlasPriorityRecap: string | null = null
+  try {
+    const dayAgoUnix = nowUnix - 24 * 3600
+    const apRows = await db.all<{ event_type: string; n: number }>(sql`
+      SELECT event_type, count(*) AS n
+      FROM atlas_priority_events
+      WHERE detected_at >= ${dayAgoUnix}
+        AND event_type != 'startup'
+      GROUP BY event_type
+    `)
+    const counts: Record<string, number> = {}
+    for (const r of apRows) counts[r.event_type] = r.n
+
+    const micActive = counts['mic_active'] ?? 0
+    const rfInduced = counts['rf_induced_mic_active'] ?? 0
+    const overrides = counts['source_override'] ?? 0
+
+    if (micActive === 0 && rfInduced === 0 && overrides === 0) {
+      atlasPriorityRecap = 'Last 24h Atlas priority recap: quiet (0 priority events).'
+    } else {
+      // Build the recap line. Order: mic-keys first (baseline), then RF
+      // ghosts (worrisome), then overrides (operator-attention worthy).
+      const parts: string[] = []
+      if (micActive > 0) parts.push(`${micActive} mic-keys`)
+      if (rfInduced > 0) parts.push(`${rfInduced} RF-induced ghost${rfInduced > 1 ? 's' : ''}`)
+      if (overrides > 0) parts.push(`${overrides} manual source override${overrides > 1 ? 's' : ''}`)
+      const tail = rfInduced > 0
+        ? ' — RF interference suspected, check Wireless Mics tab'
+        : overrides > 0
+          ? ' — operator wrestled control from automation'
+          : ''
+      atlasPriorityRecap = `Last 24h Atlas priority recap: ${parts.join(', ')}${tail}.`
+    }
+  } catch {
+    // atlas_priority_events table missing or query failed — feature off.
+  }
+
   // v2.32.25 — fleet-stale alerts. Bartender at any location can see when
   // sister locations are stuck so they can ping the operator. Soft-fail:
   // if the fleet API is down, we just skip this section.
@@ -378,6 +419,8 @@ async function gatherShiftContext() {
     // v2.52.16 — mic status + neighborhood RF risk for the brief
     micStatusLine,
     upcomingMicRisks,
+    // v2.53.6 — last 24h Atlas priority recap (mic activity summary)
+    atlasPriorityRecap,
   }
 }
 
@@ -394,10 +437,13 @@ async function generateBriefViaOllama(ctx: any): Promise<string> {
       stream: false,
       // v2.52.17: keep_alive=-1 mirrors v2.50.0 — keeps the model
       // resident in RAM/VRAM between requests so the second + later
-      // briefs feel snappy. num_predict=200 lets the full bullet list
-      // finish (150 was truncating the TELL OWNER fleet-alert line).
+      // briefs feel snappy.
+      // num_predict: 200 → 320 in v2.53.6 to leave headroom for the
+      // new Atlas-priority recap bullet (200 was truncating mid-failure
+      // section before the Atlas line could render; 280 still cut the
+      // tail; 320 reliably fits the full brief).
       keep_alive: -1,
-      options: { temperature: 0.2, num_predict: 200 },
+      options: { temperature: 0.2, num_predict: 320 },
     }),
     signal: AbortSignal.timeout(90_000),
   })
@@ -466,6 +512,13 @@ function buildPrompt(ctx: any): string {
     ? headsUpBullets.join('\n')
     : '(no upcoming neighborhood events worth flagging)'
 
+  // v2.53.6 — pre-built Atlas priority recap bullet. Same verbatim
+  // pattern as the mic-status + heads-up bullets so the LLM doesn't
+  // rephrase the numbers.
+  const atlasRecapBullet = ctx.atlasPriorityRecap
+    ? `- ${ctx.atlasPriorityRecap}`
+    : null
+
   // v2.52.17: explicit home-team list in the prompt + strict rule
   // about not inventing/relabeling teams. The home-team list is the
   // ONLY source of truth for whether a game is "our team."
@@ -502,6 +555,10 @@ no rewording, no day-of-week swapping ("Friday" stays "Friday", do
 not collapse to "tonight"). Or skip the whole section if it says
 "no upcoming neighborhood events worth flagging".
 ${upcomingRisks}
+
+${atlasRecapBullet
+  ? `Atlas priority recap bullet — PRE-WRITTEN, include EXACTLY as shown as its own bullet, do not rephrase the numbers, do not add a label or section header (the bullet is self-labeled):\n${atlasRecapBullet}`
+  : ''}
 
 Format:
 - Start with a one-line headline for the biggest game tonight. If a home-team game (one with [HOME TEAM] flag in the games list above) is tonight, headline that. Otherwise pick the biggest networks game (ESPN/ABC/FOX/etc.).
@@ -565,6 +622,13 @@ function fallbackBrief(ctx: any): string {
       const flag = r.known ? ' (known interferer from past gigs)' : ''
       lines.push(`Heads up: ${sanitizeForLlmContext(r.artistName)} at ${sanitizeForLlmContext(r.venueName)} at ${r.startLocal} might cause mic interference${flag}.`)
     }
+  }
+  // v2.53.6 — Atlas priority recap also shows on the LLM-less fallback path,
+  // not just the happy path. The 24h mic-activity summary is arguably MOST
+  // useful when Ollama is down — operators want to know if last shift had
+  // issues even if the brief is degraded.
+  if (ctx.atlasPriorityRecap) {
+    lines.push(ctx.atlasPriorityRecap)
   }
   return lines.join('\n')
 }
