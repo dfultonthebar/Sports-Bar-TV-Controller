@@ -419,7 +419,13 @@ async function gatherShiftContext() {
       tvs: a.tvCount,
     })),
     recentFailures: recentFailureClusters.map(r => r.message),
-    newRecommendations: newOverrideRecs.map(r => r.message),
+    // v2.53.11 — override-digest recommendations are 30-day pattern
+    // observations meant for the admin dashboard, NOT bartender pre-shift
+    // items. They were getting LLM-mixed into the "hardware/software
+    // failures" section and surfacing "in the last 30 days" phrasing
+    // that contradicts the brief's 24h scope. Kept the DB write for the
+    // admin surface; just don't ship them to the bartender brief.
+    newRecommendations: [],
     fleetAlerts,
     // v2.52.16 — mic status + neighborhood RF risk for the brief
     micStatusLine,
@@ -471,9 +477,6 @@ function buildPrompt(ctx: any): string {
   const failures = ctx.recentFailures.length > 0
     ? ctx.recentFailures.map((m: string) => `- ${m}`).join('\n')
     : '- (no recent failure clusters)'
-  const recs = ctx.newRecommendations.length > 0
-    ? ctx.newRecommendations.map((m: string) => `- ${m}`).join('\n')
-    : '- (no new learning recommendations)'
   const fleet = ctx.fleetAlerts && ctx.fleetAlerts.length > 0
     ? ctx.fleetAlerts.map((m: string) => `- ${m}`).join('\n')
     : '- (sister locations all healthy)'
@@ -541,11 +544,8 @@ ${games}
 Currently playing:
 ${active}
 
-Recent hardware/software failures to watch for:
+Recent hardware/software failures to watch for (last 24 hours ONLY — actual device/network/routing errors from logs, not scheduling-pattern observations):
 ${failures}
-
-New learnings from bartender corrections:
-${recs}
 
 Sister-location health (TELL THE OWNER if any are stuck):
 ${fleet}
