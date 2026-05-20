@@ -428,7 +428,11 @@ function buildPrompt(ctx: any): string {
     : '- (sister locations all healthy)'
 
   // v2.52.16 — mic status + neighborhood RF risk
-  const micLine = ctx.micStatusLine ?? '(no mic data — Shure receiver not configured)'
+  // v2.53.3 — pre-build as a complete bullet so LLM doesn't re-prefix
+  // it as "Wireless mic status: Mic status: good" (the data already
+  // starts with "Mic status:" — the v2.52.16 prompt rule asking the
+  // LLM to "not prefix" was unreliable).
+  const micBullet = `- ${ctx.micStatusLine ?? 'Mic status: no Shure receiver configured'}`
   // v2.53.2 — server-built heads-up bullets. We assemble each bullet
   // with the right phrasing + DATE here so the LLM can't paraphrase
   // "Friday (May 22)" into "tonight". Then we tell the LLM to include
@@ -488,10 +492,9 @@ ${recs}
 Sister-location health (TELL THE OWNER if any are stuck):
 ${fleet}
 
-Wireless mic status — include this line VERBATIM as one bullet, do NOT
-prefix with "Mic status:" or "Wireless mic status:" since the sentence
-already starts that way:
-${micLine}
+Wireless mic status bullet — this is PRE-WRITTEN as a complete bullet,
+include it EXACTLY as shown, no prefix, no rephrasing:
+${micBullet}
 
 Neighborhood-event heads-up bullets — these are PRE-WRITTEN and you
 MUST include each one in the brief EXACTLY AS WRITTEN, on its own line,
@@ -502,11 +505,11 @@ ${upcomingRisks}
 
 Format:
 - Start with a one-line headline for the biggest game tonight. If a home-team game (one with [HOME TEAM] flag in the games list above) is tonight, headline that. Otherwise pick the biggest networks game (ESPN/ABC/FOX/etc.).
-- Under "Home-team games tonight:", list ONLY games marked [HOME TEAM] above. Do NOT put non-home-team games under that heading. If there are zero [HOME TEAM] games, write "Home-team games tonight: none."
+- Under "Home-team games tonight:", list ONLY games from the upcoming-games block that have BOTH a matchup string AND a time AND the [HOME TEAM] flag. The "Our home teams" list at the top is for identifying WHICH teams are home teams during matching — it is NOT a list of games. DO NOT list a team there unless that exact team appears in an actual scheduled game above. If zero upcoming games have the [HOME TEAM] flag, write exactly "Home-team games tonight: none." and nothing else under that heading.
 - Under "Other games:", list any non-home games from the list above (up to 4).
 - Use the matchup string VERBATIM as provided (do not invent teams or change "Away @ Home" order).
 - Mention any recent failures the bartender should pre-test.
-- Include the wireless mic status line VERBATIM as one of the bullets (don't reword it).
+- Include the pre-written mic-status bullet VERBATIM as one of the bullets. Do not add a prefix like "Wireless mic status:" — the bullet already starts with "Mic status:".
 - For neighborhood-event heads-up bullets, include them VERBATIM (see the dedicated section above). Do not rephrase. Do not change "Friday (May 22)" to "tonight". Do not merge multiple bullets into one.
 - If sister-location health shows STUCK locations, add ONE line: "TELL OWNER: <names> stuck on auto-update".
 - Use plain text, bullets OK, no markdown headings. Be direct — no hedging phrases like "you might want to consider". The bartender is experienced.
