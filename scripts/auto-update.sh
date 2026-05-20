@@ -1741,6 +1741,18 @@ if [ -n "${VERIFY_INSTALL_JSON:-}" ]; then
   fi
 fi
 
+# v2.54.3 — Snapshot the just-verified release to /home/ubuntu/sports-bar-releases/
+# so scripts/instant-rollback.sh can restore it in ~5s without re-checkout
+# + rebuild. Snapshot is "known good" by construction — we got here only
+# because verify-install passed. Non-fatal: if snapshot fails, the update
+# is still successful; only instant-rollback for THIS version is unavailable
+# (operator can still use auto-update.sh's normal rollback path).
+if bash "$REPO_ROOT/scripts/snapshot-release.sh" 2>&1 | tee -a "$LOG_FILE"; then
+  log "Release snapshot OK"
+else
+  log "WARN: snapshot-release.sh returned non-zero — instant-rollback unavailable for this version, but update still successful"
+fi
+
 # v2.32.6 — Canary bless write. If this location IS the canary AND
 # canary mode is enabled in scripts/canary-config.json, write
 # .canary-blessed.json with the just-verified commit so non-canary
