@@ -432,13 +432,22 @@ here.
 - To re-seed from JSON: delete rows from the DB table, restart the app
 - The `@sports-bar/directv` package still reads JSON for guide fetching (known tech debt)
 
-### 6. drizzle-kit push Fails Silently on Pre-Existing Indexes
-`npx drizzle-kit push` aborts entirely when it hits an index that already exists (e.g., `ApiKey_provider_keyName_key already exists`). Any tables or columns scheduled to be created AFTER that index in the push order are silently skipped. **Always verify new columns/tables exist after push:**
-```bash
-sqlite3 /home/ubuntu/sports-bar-data/production.db "PRAGMA table_info(TableName);"
-sqlite3 /home/ubuntu/sports-bar-data/production.db ".tables"
-```
-If a column is missing, add it manually with `ALTER TABLE ... ADD COLUMN`.
+### 6. drizzle-kit push Fails Silently on Pre-Existing Indexes — RESOLVED v2.54.1
+**Historical:** `npx drizzle-kit push` aborts entirely when it hits an index that already exists. Any tables or columns scheduled to be created AFTER that index in the push order are silently skipped. Caused a 24h outage on 2026-05-20 when 5 fleet boxes had the v2.51 NeighborhoodEvent table silently missing.
+
+**Fix (v2.54.1):** the schema-update flow no longer uses `push`. Auto-update.sh now runs:
+1. `scripts/bootstrap-drizzle-migrations.sh` (idempotent; ensures `__drizzle_migrations` exists with markers for every committed migration)
+2. `npx drizzle-kit migrate` (applies pending migrations one-at-a-time, fails LOUD on any error)
+
+Dev workflow for schema changes is now:
+1. Edit `packages/database/src/schema.ts`.
+2. `cd <repo root> && npx drizzle-kit generate --name <description>` — writes `drizzle/000N_<name>.sql` + `drizzle/meta/000N_snapshot.json`.
+3. Review the generated SQL. Drizzle MAY propose dropping orphan tables (sdr_*, AudioMessage, etc.) that aren't declared in schema.ts but exist in production. Use `--custom` or hand-edit the SQL to remove the DROP statements before commit.
+4. Commit + push. Auto-update on each fleet box runs the migration on next cycle.
+
+**Belt-and-suspenders:** `verify-install.sh` has a `schema_completeness` layer (v2.53.17) that checks expected tables exist post-install. If a future bug bypasses migrate, this catches it before verify-install passes.
+
+If a box ever shows a missing table again, the recovery is the same one used for the v2.51 outage — see `scripts/bootstrap-drizzle-migrations.sh` source + the v2.54.0 commit message for the manual DDL apply path.
 
 ### 7. Location Data Files Get Blanked on Merge from Main
 Main has empty template JSON files (`tv-layout.json` = 61 bytes, `directv-devices.json` = 15 bytes). When merging main into a location branch, git can silently overwrite real data with these templates if there's no conflict. **After every merge from main, verify:**
@@ -795,7 +804,7 @@ git merge origin/main
 #   git checkout --ours apps/web/data/<file>
 #   git checkout --theirs package-lock.json package.json
 npm ci
-npx drizzle-kit push --config drizzle.config.ts  # Create any new DB tables
+npx drizzle-kit migrate  # apply pending migrations (was: push, switched in v2.54.1)
 npm run build
 pm2 restart sports-bar-tv-controller --update-env
 # Check logs for auto-seed: pm2 logs sports-bar-tv-controller --lines 20
