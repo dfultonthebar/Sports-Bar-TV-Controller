@@ -331,7 +331,12 @@ export async function retrieveContext(
   try {
     // v2.50.4: retrieveContext is what the /api/chat adapter calls — switch
     // it to hybrid so chat queries benefit from BM25 sparse retrieval too.
-    const results = await searchHybrid(query, topK, techFilter);
+    // v2.53.11: when RAG_RERANK_ENABLED=true, route through retrieveAndRerank
+    // so chat gets the same cross-encoder pass that queryDocs does. Without
+    // this, the env flag silently no-ops on the chat path.
+    const results = RAGConfig.rerankEnabled
+      ? await retrieveAndRerank(query, topK, techFilter)
+      : await searchHybrid(query, topK, techFilter);
 
     const chunks = results.map(result => ({
       content: result.chunk.content,
