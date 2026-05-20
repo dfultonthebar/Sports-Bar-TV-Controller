@@ -29,6 +29,7 @@ import { db, schema } from '@/db'
 import { and, eq, sql } from 'drizzle-orm'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
+import { requireAuth } from '@/lib/auth'
 import { logger } from '@sports-bar/logger'
 
 const DEFAULT_LIMIT = 50
@@ -37,6 +38,8 @@ const MAX_LIMIT = 500
 export async function GET(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.DEFAULT)
   if (!rateLimit.allowed) return rateLimit.response
+  const authCheck = await requireAuth(request, 'ADMIN', { auditAction: 'venues_pending_list' })
+  if (!authCheck.allowed) return authCheck.response!
 
   try {
     const sourceParam = request.nextUrl.searchParams.get('source')
