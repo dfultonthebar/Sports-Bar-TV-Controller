@@ -305,7 +305,11 @@ Wolf Pack matrix does NOT pass CEC + Spectrum disables CEC in firmware → all c
 
 - **UI surface (`apps/web/src/components/ShureRfAiPanel.tsx`):** Wireless Mics admin tab has "RF Environment Summary" card (LLM prose + Refresh button + counts grid) + "Suggest a Clean Frequency" button. SafeBoundary-wrapped.
 
-- **Shift-brief integration:** `apps/web/src/app/api/ai/shift-brief/route.ts` now injects mic-status 1-liner + heads-up bullets for upcoming KNOWN INTERFERER neighborhood gigs ("Heads up: Casey at Anduzzi's at 9pm might cause mic interference"). 10-min cache → 18 ms typical operator-visible response. Pre-filter to ≤8 games to avoid LLM context-overflow hallucination — see [[feedback-llm-context-overflow]].
+- **Shift-brief integration:** `apps/web/src/app/api/ai/shift-brief/route.ts` is now the bartender's primary pre-shift surface, with 3 RF-related verbatim bullets (each server-built per Gotcha #12):
+  - **Mic-status 1-liner** (v2.52.16): live Shure mic health.
+  - **Heads-up bullets** (v2.52.16 + v2.53.2): neighborhood-event warnings via Ticketmaster + Bananas. Category-aware radius/lookahead — bars: 1 mi / 12h, stadiums + concert halls: 25 mi / 72h.
+  - **Atlas priority recap** (v2.53.6): 24h aggregate of mic-key / RF-induced-ghost / source-override counts for yesterday's shift.
+  10-min cache (`?force=true` to bust), `num_predict: 320`. Pre-filter games to ≤8 to avoid LLM context-overflow hallucination (`[[feedback-llm-context-overflow]]`). Whenever adding a new section, mirror to `fallbackBrief()` so degraded-path bartenders still see it. Full architecture: `[[project-shift-brief-architecture]]`.
 
 - **Architecture map:** see [[project-ai-tier-architecture]] memory for the full tier diagram + which file does what.
 
@@ -499,6 +503,18 @@ ssh ubuntu@<host> "systemctl --user list-timers sports-bar-autoupdate.timer; log
 ```
 If linger=no → fix it. If ROLLBACK present → resolve the conflict. If `npx: command not found` in a `rag-rescan-*.log` → symlink fix. If `ollama pull` errored with permission denied → group fix. Apply all four checks at install time via `docs/NEW_LOCATION_SETUP.md` §7b.
 
+### 12. llama3.1:8b paraphrases short verbatim text — server-build it instead
+
+llama3.1:8b ignores prompt rules like "do not rephrase" and "use EXACTLY as written" about half the time for short LLM-rendered text (formatted dates, counts, channel labels, source-target pairs). Proven across v2.53.0-8 in 6+ shift-brief sections: the model kept rewriting "Friday (May 22) at 7:30 PM" → "tonight at 7:30 PM", and "Mic status: good" → "Wireless mic status: Mic status: good" (double-prefix). Adding CRITICAL rules to the prompt didn't help.
+
+**Fix pattern:** server-construct the exact string in TypeScript, embed it as a labeled section in the prompt: `"Foo bullet — PRE-WRITTEN, include EXACTLY as shown, no rephrasing, no prefix, no rewording. The bullet is self-labeled:\n${preBuiltBullet}"`. Also include the verbatim bullet in any `fallbackBrief` / degraded-path code so the operator still sees it when Ollama is unreachable. The model is good at copying verbatim text when told to; it just paraphrases free-form generation. Full pattern in `[[feedback-llm-server-built-verbatim]]` memory. Related: `[[feedback-llm-context-overflow]]` for the >8-items hallucination sibling.
+
+### 13. Karaoke at the bars uses BYO mics — never frame bartender docs around it
+
+Standing operator rule (caught mid-doc-write 2026-05-19): the bar's house Shure wireless system is NEVER used for karaoke. Karaoke crews bring their own (BYO) wireless rigs. The house wireless is for paging, hosted events (trivia, MC, in-house entertainment), and the manager's announcement mic. v2.53.7+v2.53.8 fixed ~21 references across `RF_INTERFERENCE_FOR_BARTENDERS.md` + `MIC_NOT_WORKING.md` where "karaoke mic" or "Karaoke" as a channel-label example implied bartenders manage karaoke via the house Shure. They don't.
+
+**When writing bartender-facing content:** use "wireless mic" generic / "page mic" / "hosted-event mic" — never "karaoke mic" as canonical. Acceptable uses: karaoke as a busy-night context ("on a busy karaoke + game night, expect more paging"), or honest disambiguation ("note: karaoke at the bar uses BYO mics, not the house system"). Full guidance in `[[feedback-karaoke-uses-byo-mics]]`.
+
 ## Development Workflow
 
 ### Standing Rules (MUST follow in every session)
@@ -673,6 +689,14 @@ Consolidation complete (v2.4.0–v2.4.4). All admin UI lives at `/sports-guide-a
 #### 9. AI Scheduling Intelligence
 **Components:** `pattern-analyzer.ts` (historical viewing → optimal channel assignment), `ai-suggest/route.ts` (Ollama llama3.1:8b, 300s timeout), per-location scheduling preferences, default source config, DJ mode (locks TVs during special events).
 **API:** `GET/POST /api/scheduling/preferences`, `GET /api/scheduling/suggestions`, `POST /api/scheduling/apply`.
+
+**Neighborhood RF intelligence stack (v2.51.0+, expanded v2.53.x):** `NeighborhoodEvent` table fed by TWO scrapers running in `packages/scheduler/`:
+- **Bananas** (v2.51.0): small-venue live-music gigs at neighbor bars. ~1 mi radius useful.
+- **Ticketmaster Discovery API** (v2.53.1): big-venue events (Lambeau, Resch Center, EPIC, Fox Cities PAC, Weidner). Default OFF; activates per-location when `TICKETMASTER_API_KEY` is set. 4× daily, 14-day lookahead, 30-mi radius. Free tier 5000 calls/day, we use ~4.
+
+Both share the source-agnostic downstream pipeline: `preemptive-strike` correlator + shift-brief blurb + RF Pattern Digest. Idempotency key `(source, source_event_id)`. Auto-discovered venues land with `review_status='pending_review'` for operator triage via the v2.53.4 review API + `apps/web/scripts/review-pending-venues.ts` CLI. Both decline (`is_active=false`) AND review_status update atomically per Gotcha #14 / `[[feedback-state-machine-belt-suspenders]]`.
+
+**Cross-encoder reranking (v2.53.0+, RAG pipeline):** `bge-reranker-v2-m3-ONNX` (int8) loads in-process via `@huggingface/transformers`. Default OFF — opt-in per location via `RAG_RERANK_ENABLED=true`. Solves the "bi-encoder retrieves correct chunks but LLM blends adjacent similar chunks" failure mode (e.g., cyan vs yellow banner answers). Requires PM2 `max_memory_restart >= 3G` + `--max-old-space-size=2048` since the ONNX model adds ~600 MB resident memory off-heap. Holmgren is the canary; see `[[feedback-reranker-memory-budget]]` for the full memory model and rollout notes.
 
 **Ollama runtime (fleet-standard at v2.32.57+):** Intel Iris Xe iGPU acceleration via the IPEX-LLM Ollama portable build (replaces the upstream CPU-only Ollama systemd service). Yields ~14 tok/s on `llama3.1:8b` Q4 (vs ~3 tok/s CPU on the same i9-13900HK class hardware) — AI Suggest goes from 3+ min to ~100s. Models live unchanged at `/usr/share/ollama/.ollama/models/` (the IPEX unit reads them via `OLLAMA_MODELS=/usr/share/ollama/.ollama/models` and group permissions). Standardized via `scripts/setup-iris-ollama.sh` — run once per location. Verify with `journalctl -u ollama-ipex | grep "using Intel GPU"`. Not all hardware qualifies — the script checks `clinfo` for an Intel platform and refuses on AMD/Nvidia boxes.
 
