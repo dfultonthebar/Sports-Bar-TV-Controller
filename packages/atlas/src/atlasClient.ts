@@ -548,13 +548,22 @@ export class AtlasTCPClient {
             // the rejection. Logging at error-level is noise. Demote to debug.
             // ALL OTHER error codes still log at error-level (real protocol
             // failures, auth errors, etc.).
-            const errCode = response.error.code
-            if (errCode === -32604) {
-              atlasLogger.debug('RESPONSE', 'param not found (benign)', response.error)
-            } else {
-              atlasLogger.error('RESPONSE', 'Atlas command error', response.error)
+            //
+            // v2.54.5 — response.error from the wire arrives as EITHER a
+            // parsed object OR a JSON-encoded string depending on the
+            // upstream framing. Handle both shapes by parsing-if-string.
+            let errObj: any = response.error
+            if (typeof errObj === 'string') {
+              try { errObj = JSON.parse(errObj) } catch { /* leave as string */ }
             }
-            pending.reject(new Error(response.error.message || 'Atlas command error'))
+            const errCode = (typeof errObj === 'object' && errObj) ? errObj.code : undefined
+            const errMsg = (typeof errObj === 'object' && errObj) ? errObj.message : String(errObj)
+            if (errCode === -32604) {
+              atlasLogger.debug('RESPONSE', 'param not found (benign)', errObj)
+            } else {
+              atlasLogger.error('RESPONSE', 'Atlas command error', errObj)
+            }
+            pending.reject(new Error(errMsg || 'Atlas command error'))
           } else {
             pending.resolve(response)
           }
