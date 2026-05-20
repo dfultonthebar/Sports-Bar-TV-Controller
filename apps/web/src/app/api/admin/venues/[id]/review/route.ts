@@ -74,9 +74,20 @@ export async function POST(
     }
 
     if (body.action === 'decline') {
+      // Two changes per decline:
+      //  1. is_active=false  → filters venue out of all downstream queries
+      //     (shift-brief, preemptive-strike, etc — they all gate by is_active=1)
+      //  2. review_status='declined'  → removes from the pending review queue.
+      //     Without this, the venue stays in the GET /pending list forever
+      //     even after the operator has clearly decided "no". Caught during
+      //     the v2.53.4 bulk triage at Holmgren.
       await db
         .update(schema.neighborhoodVenues)
-        .set({ isActive: false, updatedAt: Math.floor(Date.now() / 1000) })
+        .set({
+          isActive: false,
+          reviewStatus: 'declined',
+          updatedAt: Math.floor(Date.now() / 1000),
+        })
         .where(eq(schema.neighborhoodVenues.id, id))
       logger.info('[ADMIN-VENUES] Declined (deactivated)', { data: { id, name: venue.name } })
       return NextResponse.json({ success: true, action: 'decline', venueId: id })
