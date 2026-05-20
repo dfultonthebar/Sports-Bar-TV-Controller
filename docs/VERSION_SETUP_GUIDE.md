@@ -35,6 +35,155 @@ is the archive.
 
 ---
 
+## v2.51.0 → v2.53.9 — Neighborhood RF + reranker + shift-brief expansion (multi-version 2026-05-19/20)
+
+**Versions covered:** v2.51.0 → v2.53.9 (~30 commits across 2026-05-19 + 2026-05-20)
+**Branch landed:** main
+**Fleet target:** all 6 locations upgrade from v2.50.7 → v2.53.9
+
+Largest single-batch upgrade since v2.50.x. The work groups cleanly:
+
+- **v2.51.x — Neighborhood RF Interference Prediction:** new `NeighborhoodVenue` / `NeighborhoodVenueAlias` / `NeighborhoodEvent` / `InterferenceAttribution` tables, Bananas scraper (small-venue live music ~1mi useful), auto-geocoding of Location address via OSM Nominatim, `is_self` flag so own-bar gigs at Anduzzi's-style venues stop polluting the heads-up. No env vars; runs everywhere.
+- **v2.52.x SDR + AI:** SDR ↔ shift-brief integration, mic status one-liner, neighborhood-events heads-up bullet, daily Ollama RF Pattern Digest, hallucinated-game fix (pre-filter games ≤8 to avoid `[[feedback-llm-context-overflow]]`).
+- **v2.53.0 — Cross-encoder reranking:** `bge-reranker-v2-m3-ONNX` (int8) via `@huggingface/transformers`. **OPT-IN per location** via `RAG_RERANK_ENABLED=true`. PM2 `max_memory_restart` bumped 1G → 3G and `--max-old-space-size` 512 → 2048 fleet-wide (already in ecosystem.config.js commit — applies to every box).
+- **v2.53.1-2 — Ticketmaster Discovery API:** second neighborhood-events source for big venues (Lambeau, Resch, EPIC, Fox Cities PAC, Weidner). 30mi radius, 14-day lookahead, ~4 API calls/day (free tier limit is 5000). **OPT-IN per location** via `TICKETMASTER_API_KEY`. Default OFF.
+- **v2.53.4-5 — Venue review API:** `/api/admin/venues/pending` + `/review` endpoints + `apps/web/scripts/review-pending-venues.ts` CLI for triaging auto-discovered venues. Decline updates BOTH `is_active=false` AND `review_status='declined'` atomically (`[[feedback-state-machine-belt-suspenders]]`).
+- **v2.53.6-9 — Shift-brief expansion + karaoke-framing fix:** Atlas priority recap added as a 3rd RF bullet; server-built-verbatim pattern (`[[feedback-llm-server-built-verbatim]]`) used for mic-status + heads-up + Atlas recap to defeat llama3.1:8b paraphrasing (Gotcha #12). `num_predict: 200 → 320`. House Shure wireless is NEVER for karaoke (BYO mics) — bartender docs scrubbed of "karaoke mic" framing (Gotcha #13).
+
+### Required Manual Steps (per-location, IN ORDER):
+
+```bash
+# 1. SSH to the location via Tailscale
+ssh ubuntu@<location-tailscale-hostname>
+cd /home/ubuntu/Sports-Bar-TV-Controller
+
+# 2. Snapshot for rollback safety
+git log --oneline -3      # note current SHA
+sqlite3 /home/ubuntu/sports-bar-data/production.db ".backup /home/ubuntu/sports-bar-data/production.db.pre-v2.53.bak"
+
+# 3. Run auto-update — handles merge / npm ci / drizzle push / build / PM2 restart / verify-install
+bash scripts/auto-update.sh --triggered-by=manual_cli
+# Expect ~5-8 min. Adds @huggingface/transformers (+ONNX runtime) — first npm ci will be slow.
+
+# 4. (CONDITIONAL) Enable cross-encoder reranking — see decision table below.
+#    Default policy: ENABLE at every location AT OR ABOVE 16 GB RAM. Skip at Graystone (15 GB).
+#    If enabling:
+echo "RAG_RERANK_ENABLED=true" >> .env
+pm2 delete sports-bar-tv-controller && pm2 start ecosystem.config.js && pm2 save
+#    (delete+start required to re-read .env per Gotcha #2 — restart alone won't pick up the new env var)
+
+# 5. (CONDITIONAL) Enable Ticketmaster Discovery API for big-venue events — see decision table below.
+#    Default policy: ENABLE only where the operator has an active Ticketmaster developer key.
+#    If enabling:
+read -srp 'TICKETMASTER_API_KEY> ' TM_KEY && echo
+echo "TICKETMASTER_API_KEY=$TM_KEY" >> .env
+unset TM_KEY
+pm2 delete sports-bar-tv-controller && pm2 start ecosystem.config.js && pm2 save
+
+# 6. Verify the neighborhood tables exist (drizzle-kit push should have created them; double-check
+#    per Gotcha #6 — drizzle aborts silently on pre-existing indexes)
+sqlite3 /home/ubuntu/sports-bar-data/production.db "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('NeighborhoodVenue','NeighborhoodVenueAlias','NeighborhoodEvent','InterferenceAttribution');"
+# Expected: all 4 names listed. If any missing, see ROLLBACK / manual-DDL section below.
+
+# 7. (CONDITIONAL) Seed neighborhood venues from main's curated list (Lambeau/Resch/Anduzzi/etc.).
+#    Only needed at locations whose NeighborhoodVenue table is empty after step 6.
+sqlite3 /home/ubuntu/sports-bar-data/production.db "SELECT COUNT(*) FROM NeighborhoodVenue;"
+# If 0:
+npx tsx apps/web/scripts/seed-neighborhood-venues.ts
+# If Ticketmaster is enabled at this location, also seed its venue catalog:
+npx tsx apps/web/scripts/seed-ticketmaster-venues.ts
+
+# 8. Auto-geocode the Location row (v2.51.2 — uses OSM Nominatim, no env config).
+#    Idempotent: skips if Location already has lat/long.
+#    Triggered automatically on next scheduler tick (every 60s); to force-trigger:
+curl -sS -X POST http://localhost:3001/api/admin/geocode-location | python3 -m json.tool
+# Expected: { ok: true, lat: <number>, lng: <number> } OR { ok: true, alreadyGeocoded: true, ... }
+
+# 9. Triage any pending auto-discovered venues (interactive — only if NeighborhoodVenue.review_status
+#    contains 'pending_review' rows). At Holmgren this caught 94 venues after Ticketmaster turned on.
+npx tsx apps/web/scripts/review-pending-venues.ts
+# Press 'a' (approve) / 'd' (decline) / 'm' (merge with existing). 'q' to quit anytime — safe to resume.
+
+# 10. Per Standing Rule 11 — RAG re-scan (CLAUDE.md gained Gotchas #12 + #13, §7a + §9
+#     expanded; multiple bartender-help + ops docs updated; memory files referenced)
+nohup npx tsx scripts/scan-system-docs.ts > /tmp/scan-system-post-v2.53.log 2>&1 &
+# ~15-25 min with v2.50.1 batched embed.
+
+# 11. Verify chat picks up the new content
+curl -sS -X POST http://localhost:3001/api/chat \
+  -H 'Content-Type: application/json' \
+  -d '{"message":"why would the wireless mic banner show up at the same time as the priority banner","stream":false,"enableTools":false}' \
+  | python3 -c "import sys,json; d=json.load(sys.stdin); print((d.get('response') or '')[:500])"
+# Expected: answer mentions RF-induced priority (cyan + amber co-occurrence) and references
+# the RF_INTERFERENCE docs. If the model says "I don't have info", rescan didn't complete.
+
+# 12. Smoke-test the shift-brief
+curl -sS "http://localhost:3001/api/ai/shift-brief?force=true" \
+  -H 'Content-Type: application/json' | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('brief',''))"
+# Expected: 8-9 bullets including a mic-status line, optional heads-up line (if neighborhood events
+# in window), and Atlas priority recap. If the body lacks the Atlas recap section, fallbackBrief is
+# in play — confirm Ollama reachable (`ollama ps` shows llama3.1:8b loaded).
+
+# 13. Update fleet status doc
+# Edit docs/FLEET_STATUS.md row for this location → v2.53.9
+```
+
+### Per-Location Opt-In Decisions
+
+| Location           | RAM    | RAG_RERANK_ENABLED  | TICKETMASTER_API_KEY                              | Notes                                                                                              |
+|--------------------|--------|---------------------|---------------------------------------------------|----------------------------------------------------------------------------------------------------|
+| holmgren-way       | 32 GB  | `true`              | `set` (active key — held by operator)              | Canary for both features. Already running v2.53.9. Pattern Digest enabled.                         |
+| leg-lamp           | 16 GB  | `true` (after canary OK at Holmgren) | unset (no operator-active key — keep OFF)        | Single-card; verify `MATRIX_SINGLE_CARD=true` still present (CLAUDE.md §4).                        |
+| lucky-s-1313       | 16 GB  | `true`              | unset                                              | Single-card; dbx ZonePRO @ 192.168.10.50.                                                          |
+| stoneyard-appleton | 16 GB+ | `true`              | unset                                              | Multi-card. Fleet-best AI Suggest baseline — confirm cold-call still ≤80s after rerank ships.       |
+| stoneyard-greenville | 16 GB+ | `true`              | unset                                              | Multi-card. Most-neglected box; budget extra time for verify.                                       |
+| graystone          | 15 GB  | **`false` — DO NOT ENABLE** | unset                                      | Tightest RAM box: 250-400MB app + 600MB reranker + 5.3GB llama3.1:8b = no headroom. See `[[project-graystone-ram-constraint]]`. |
+
+**Derivation rule (for adding NEW locations later):**
+
+- `RAG_RERANK_ENABLED=true` if `free -g | awk '/^Mem:/ {print $2}'` ≥ 16. Otherwise leave unset.
+- `TICKETMASTER_API_KEY` ONLY if the operator has provisioned a developer key for this location AND wants stadium-scale (25mi) event awareness. Key issuance: https://developer.ticketmaster.com/ → Discovery API → "Get your API key".
+
+### Verification gates (must PASS before promoting next location)
+
+- `pm2 status` → `sports-bar-tv-controller` online, restart_time incremented exactly 1 (2 if you ran a delete+start for env var opt-in)
+- `curl localhost:3001/api/health` → 200 OK
+- `curl localhost:3001/api/version` → reports `2.53.9`
+- `sqlite3 .../production.db "SELECT COUNT(*) FROM NeighborhoodVenue;"` → ≥ 1
+- `sqlite3 .../production.db "SELECT COUNT(*) FROM NeighborhoodVenue WHERE review_status='pending_review' AND is_active=1;"` → triaged to 0 OR documented as an outstanding follow-up
+- `pm2 logs sports-bar-tv-controller --lines 200 --nostream | grep -E 'RERANK|rerank' | head -3` → if RAG_RERANK_ENABLED=true, expect `[RERANK] loaded` line and NO `OOM` / `kill-loop` references
+- Shift-brief smoke test contains: mic-status line, Atlas recap line, ≥3 game bullets
+- Chat smoke test answer cites at least one of: `RF_INTERFERENCE_DETECTION_SYSTEM.md`, `RF_INTERFERENCE_FOR_BARTENDERS.md`, `MIC_NOT_WORKING.md`
+
+### Rollback
+
+If anything fails verify-install, `auto-update.sh` has already rolled back to pre-update commit. To restore the DB:
+
+```bash
+cp /home/ubuntu/sports-bar-data/production.db.pre-v2.53.bak /home/ubuntu/sports-bar-data/production.db
+pm2 restart sports-bar-tv-controller --update-env
+```
+
+If the neighborhood tables are missing post-update (drizzle Gotcha #6), apply manually:
+
+```bash
+# drizzle-kit aborted on a pre-existing index. Apply the missing tables by replaying the schema push:
+cd /home/ubuntu/Sports-Bar-TV-Controller
+npx drizzle-kit push --config apps/web/drizzle.config.ts --force
+# Then verify (step 6 above).
+```
+
+### Known regressions / acceptable side-effects
+
+- **First chat call after enabling RAG_RERANK_ENABLED is slow (~3-5s extra)** — bge-reranker-v2-m3-ONNX cold-loads from `node_modules/@huggingface/transformers/.cache/`. Subsequent queries ~+300ms over baseline. Acceptable.
+- **PM2 RSS will sit ~600 MB higher** at locations with rerank enabled — that's the resident ONNX model. PM2 max_memory_restart=3G has headroom for normal request bursts. `[[feedback-reranker-memory-budget]]`.
+- **Ticketmaster scraper logs `[REDACTED]` when a request fails** — fixed in v2.53.1 audit. If you see a raw `apikey=xxx` in logs, the security fix wasn't deployed — re-run auto-update.
+- **Atlas priority recap may say "no events yesterday"** at locations whose `atlas_drop_events` + `atlas_priority_events` tables are still seeded only with `event_type='startup'` heartbeats — that's correct, not a bug. Real recap rows fill in over time as priority/drop events occur.
+- **Pending venue triage burden:** at locations where Ticketmaster is enabled, the first scrape will populate `NeighborhoodVenue` with `review_status='pending_review'` for any Ticketmaster venue not in the curated seed list. Holmgren had 94 to triage. Use `apps/web/scripts/review-pending-venues.ts`. Until triaged, those venues are gated OUT of shift-brief / preemptive-strike per `[[feedback-state-machine-belt-suspenders]]`.
+- **`OLLAMA_MODEL` stays `llama3.1:8b` for shift-brief + Pattern Digest + AI Suggest** — picking ONE resident model avoids the v2.52.17 RAM thrash (`[[feedback-ollama-ram-pressure]]`). Tool-routes still use qwen2.5:14b per v2.50.0.
+
+---
+
 ## v2.50.x — AI Hub game-changer batch (the big one) — multi-version 2026-05-18/19
 
 **Versions covered:** v2.46.3 → v2.50.7 (~50 commits across 2026-05-18 + 2026-05-19)
