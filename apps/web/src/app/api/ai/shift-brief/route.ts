@@ -327,10 +327,15 @@ async function gatherShiftContext() {
       if (micActive > 0) parts.push(`${micActive} mic-keys`)
       if (rfInduced > 0) parts.push(`${rfInduced} RF-induced ghost${rfInduced > 1 ? 's' : ''}`)
       if (overrides > 0) parts.push(`${overrides} manual source override${overrides > 1 ? 's' : ''}`)
+      // v2.53.7 — softened tail phrasings per bartender-persona doc
+      // review. "RF interference suspected, check Wireless Mics tab"
+      // sounded like a red-ink order; "operator wrestled control from
+      // automation" sounded like conflict went down. Bartenders are
+      // anxious enough on shift; let the data carry the message.
       const tail = rfInduced > 0
-        ? ' — RF interference suspected, check Wireless Mics tab'
+        ? ' — RF interference suspected, worth a glance at the Wireless Mics tab before the rush'
         : overrides > 0
-          ? ' — operator wrestled control from automation'
+          ? ' — somebody manually picked the audio source (normal if the manager or AV tech was tweaking)'
           : ''
       atlasPriorityRecap = `Last 24h Atlas priority recap: ${parts.join(', ')}${tail}.`
     }
