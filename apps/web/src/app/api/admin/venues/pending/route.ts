@@ -81,6 +81,7 @@ export async function GET(request: NextRequest) {
         (SELECT start_time FROM NeighborhoodEvent ne WHERE ne.venue_id = nv.id ORDER BY start_time DESC LIMIT 1) AS latest_event_start
       FROM NeighborhoodVenue nv
       WHERE nv.review_status = 'pending_review'
+        AND nv.is_active = 1
         ${sourceParam ? sql`AND nv.discovery_source = ${sourceParam}` : sql``}
         ${categoryParam ? sql`AND nv.category = ${categoryParam}` : sql``}
       ORDER BY event_count DESC, nv.created_at DESC
