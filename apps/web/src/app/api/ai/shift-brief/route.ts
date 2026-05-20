@@ -165,7 +165,7 @@ async function gatherShiftContext() {
   // Operator example: "Johnny Wadd at Anduzzi's at 3pm might have mic
   // interference."
   let micStatusLine: string | null = null
-  let upcomingMicRisks: Array<{ artistName: string; venueName: string; startLocal: string; confidence: number; distanceMi: number | null; known: boolean }> = []
+  let upcomingMicRisks: Array<{ artistName: string; venueName: string; startLocal: string; confidence: number; distanceMi: number | null; known: boolean; eventType: string; source: string }> = []
   try {
     const sixtyMinAgo = nowUnix - 60 * 60
     const shureRecent = await db.all<{ n: number }>(sql`
@@ -197,43 +197,102 @@ async function gatherShiftContext() {
   // Upcoming neighborhood gigs in next 12h. Join to
   // ArtistInterferenceProfile to mark known interferers.
   try {
+    // v2.53.2 — category-aware radius. Bands/DJs at small venues (bars,
+    // restaurants) only matter within 1 mi (RF travels < 1 mi at typical
+    // wireless-mic power levels). Stadiums and concert halls get a 25-mi
+    // window because Packers games at Lambeau, Resch Center concerts, and
+    // Fox Cities arena sports are very high-RF events (broadcast trucks,
+    // multi-channel wireless rigs) that can radiate further AND because
+    // the operator wants the heads-up about the bigger event regardless.
     const upcomingRisks = await db.all<{
       artist_name: string
       venue_name: string
       start_time: number
       distance_mi: number | null
       confidence: number | null
+      event_type: string
+      source: string
+      category: string
     }>(sql`
       SELECT
         ne.artist_name,
         nv.name AS venue_name,
         ne.start_time,
         nv.distance_mi,
-        aip.confidence
+        aip.confidence,
+        ne.event_type,
+        ne.source,
+        nv.category
       FROM NeighborhoodEvent ne
       INNER JOIN NeighborhoodVenue nv ON nv.id = ne.venue_id
       LEFT JOIN ArtistInterferenceProfile aip
         ON aip.artist_normalized = ne.artist_normalized
         AND aip.location_id = ${process.env.LOCATION_ID ?? 'default-location'}
       WHERE ne.start_time > ${nowUnix}
-        AND ne.start_time < ${twelveHoursLater}
         AND nv.is_active = 1
-        AND (nv.distance_mi IS NULL OR nv.distance_mi <= 1.0)
+        AND (
+          -- Big venues (stadium / concert hall): 72-hour lookahead,
+          -- 25-mile radius. Concerts and games are planned days out;
+          -- the bartender wants "Heads up: Packers home game this
+          -- weekend" 2-3 days early, not just the same shift. 72h
+          -- chosen as Fri-prep-for-Sun-game horizon.
+          (nv.category IN ('stadium', 'concert_hall')
+            AND nv.distance_mi IS NOT NULL
+            AND nv.distance_mi <= 25.0
+            AND ne.start_time < ${nowUnix + 72 * 3600})
+          OR
+          -- Small venues (bar / restaurant / other): 12-hour lookahead,
+          -- 1-mile radius. Bands at neighbor bars are spontaneous and
+          -- only relevant tonight.
+          (nv.category NOT IN ('stadium', 'concert_hall')
+            AND (nv.distance_mi IS NULL OR nv.distance_mi <= 1.0)
+            AND ne.start_time < ${twelveHoursLater})
+        )
         AND (nv.is_self = 0 OR nv.is_self IS NULL)
       ORDER BY ne.start_time ASC
       LIMIT 8
     `)
-    upcomingMicRisks = upcomingRisks.map((r) => ({
-      artistName: r.artist_name,
-      venueName: r.venue_name,
-      startLocal: new Date(r.start_time * 1000).toLocaleString('en-US', {
-        timeZone: HARDWARE_CONFIG.venue.timezone,
-        hour: 'numeric', minute: '2-digit', hour12: true,
-      }),
-      confidence: r.confidence ?? 0,
-      distanceMi: r.distance_mi,
-      known: (r.confidence ?? 0) >= 0.6,
-    }))
+    upcomingMicRisks = upcomingRisks.map((r) => {
+      // v2.53.2 — date-aware formatting. Bands at neighbor bars are
+      // always tonight (12h window) so just show the time. Big-venue
+      // events go up to 72h out, so include day-of-week + time so the
+      // LLM can phrase "tonight" / "tomorrow" / "Friday" correctly
+      // instead of always saying "tonight at 7:30pm" for a Saturday show.
+      const startMs = r.start_time * 1000
+      const tz = HARDWARE_CONFIG.venue.timezone
+      const startDate = new Date(startMs)
+      const nowDate = new Date()
+      const dayDeltaHours = (startMs - nowDate.getTime()) / 3_600_000
+      const isToday = dayDeltaHours < 18 && startDate.getDate() === nowDate.getDate()
+      const isTomorrow = !isToday && dayDeltaHours < 42
+      const timeStr = startDate.toLocaleString('en-US', {
+        timeZone: tz, hour: 'numeric', minute: '2-digit', hour12: true,
+      })
+      const dateTagStr = startDate.toLocaleString('en-US', {
+        timeZone: tz, month: 'short', day: 'numeric',
+      })
+      let startLocal: string
+      if (isToday) {
+        startLocal = `tonight (${dateTagStr}) at ${timeStr}`
+      } else if (isTomorrow) {
+        startLocal = `tomorrow (${dateTagStr}) at ${timeStr}`
+      } else {
+        const dayStr = startDate.toLocaleString('en-US', { timeZone: tz, weekday: 'long' })
+        // Force the explicit date so the LLM cannot paraphrase "Friday"
+        // as "tonight" — the (May 22) parenthetical pins it.
+        startLocal = `${dayStr} (${dateTagStr}) at ${timeStr}`
+      }
+      return {
+        artistName: r.artist_name,
+        venueName: r.venue_name,
+        startLocal,
+        confidence: r.confidence ?? 0,
+        distanceMi: r.distance_mi,
+        known: (r.confidence ?? 0) >= 0.6,
+        eventType: r.event_type ?? 'other',
+        source: r.source ?? 'unknown',
+      }
+    })
   } catch {
     // NeighborhoodEvent table missing — feature off. Skip.
   }
@@ -370,13 +429,38 @@ function buildPrompt(ctx: any): string {
 
   // v2.52.16 — mic status + neighborhood RF risk
   const micLine = ctx.micStatusLine ?? '(no mic data — Shure receiver not configured)'
-  const upcomingRisks = (ctx.upcomingMicRisks || []).length > 0
-    ? ctx.upcomingMicRisks.map((r: any) => {
-        const distance = r.distanceMi != null ? ` (${r.distanceMi.toFixed(1)} mi away)` : ''
-        const flag = r.known ? ' — KNOWN INTERFERER from past gigs' : ''
-        return `- ${sanitizeForLlmContext(r.artistName)} at ${sanitizeForLlmContext(r.venueName)} at ${r.startLocal}${distance}${flag}`
-      }).join('\n')
-    : '- (no nearby gigs in the next 12 hours)'
+  // v2.53.2 — server-built heads-up bullets. We assemble each bullet
+  // with the right phrasing + DATE here so the LLM can't paraphrase
+  // "Friday (May 22)" into "tonight". Then we tell the LLM to include
+  // each bullet verbatim — same pattern as the mic-status line.
+  const headsUpBullets: string[] = []
+  for (const r of (ctx.upcomingMicRisks || []) as any[]) {
+    const artist = sanitizeForLlmContext(r.artistName)
+    const venue = sanitizeForLlmContext(r.venueName)
+    const dist = r.distanceMi != null ? ` (${r.distanceMi.toFixed(1)} mi away)` : ''
+    if (r.eventType === 'sports') {
+      // Always include sports — stadium events are universally high RF.
+      headsUpBullets.push(
+        `- Heads up: ${artist} at ${venue} ${r.startLocal}${dist} — stadium broadcast trucks usually cause RF noise`,
+      )
+    } else if (r.eventType === 'concert') {
+      // Always include concerts — concert wireless rigs are RF-dense.
+      headsUpBullets.push(
+        `- Heads up: ${artist} at ${venue} ${r.startLocal}${dist} — concert wireless rigs may step on our mics`,
+      )
+    } else if (r.known || (r.distanceMi != null && r.distanceMi <= 0.5)) {
+      // Band/DJ at neighbor bar — only surface if KNOWN INTERFERER or
+      // very close (≤ 0.5 mi). Distance-based filter keeps the brief
+      // tight when there are 5 random unknowns within 1 mi.
+      const flag = r.known ? ' — known interferer from past gigs' : ''
+      headsUpBullets.push(
+        `- Heads up: ${artist} at ${venue} ${r.startLocal}${dist}${flag} might cause mic interference`,
+      )
+    }
+  }
+  const upcomingRisks = headsUpBullets.length > 0
+    ? headsUpBullets.join('\n')
+    : '(no upcoming neighborhood events worth flagging)'
 
   // v2.52.17: explicit home-team list in the prompt + strict rule
   // about not inventing/relabeling teams. The home-team list is the
@@ -409,7 +493,11 @@ prefix with "Mic status:" or "Wireless mic status:" since the sentence
 already starts that way:
 ${micLine}
 
-Nearby bands/DJs in the next 12 hours that could step on our wireless mics:
+Neighborhood-event heads-up bullets — these are PRE-WRITTEN and you
+MUST include each one in the brief EXACTLY AS WRITTEN, on its own line,
+no rewording, no day-of-week swapping ("Friday" stays "Friday", do
+not collapse to "tonight"). Or skip the whole section if it says
+"no upcoming neighborhood events worth flagging".
 ${upcomingRisks}
 
 Format:
@@ -419,11 +507,13 @@ Format:
 - Use the matchup string VERBATIM as provided (do not invent teams or change "Away @ Home" order).
 - Mention any recent failures the bartender should pre-test.
 - Include the wireless mic status line VERBATIM as one of the bullets (don't reword it).
-- If there are nearby bands/DJs in the next 12h, add a line like "Heads up: <artist> at <venue> at <time> might cause mic interference" — but only for KNOWN INTERFERER entries OR entries within 0.5 mi. Skip distant unknowns to avoid noise.
+- For neighborhood-event heads-up bullets, include them VERBATIM (see the dedicated section above). Do not rephrase. Do not change "Friday (May 22)" to "tonight". Do not merge multiple bullets into one.
 - If sister-location health shows STUCK locations, add ONE line: "TELL OWNER: <names> stuck on auto-update".
 - Use plain text, bullets OK, no markdown headings. Be direct — no hedging phrases like "you might want to consider". The bartender is experienced.
 
 CRITICAL: Only reference game start times that are explicitly listed above. Never invent, estimate, or round times. If a game's time is not in the data, do not mention any time for it. If a game is marked "in_progress", use the "started at <time>" from the Currently-playing section verbatim and do not reframe it as an upcoming start time.
+
+CRITICAL: For neighborhood events (heads-up lines), use the day/time string from the data EXACTLY as written. The string is one of "tonight at <time>" / "tomorrow at <time>" / "<DayName> at <time>". If the data says "Friday at 7:30 PM", write "Friday at 7:30 PM" — do NOT rewrite it as "tonight" or "tomorrow". The bartender needs to know the correct day for an event 2+ days out.
 `
 }
 
