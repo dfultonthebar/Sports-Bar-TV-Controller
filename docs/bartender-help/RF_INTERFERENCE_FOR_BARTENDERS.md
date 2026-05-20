@@ -53,6 +53,10 @@ This is the most useful combo. It means: the system thinks a mic is active (yell
 
 You don't have to do anything. The system itself figures this out and will sort it out within a few seconds. But if the music keeps getting weirdly ducked over and over with nobody on a mic, that's worth a text to the manager.
 
+#### Q: Why would the cyan banner and the yellow banner fire at the same time?
+
+**A: This is ONE problem, not two.** The yellow banner is firing because the system thinks a mic is active. The cyan banner is firing because the system detected outside-the-bar radio interference at the same moment. When both fire together, **the interference is what fake-triggered the yellow banner.** The "mic" was never really on — interference made the system think it was. Engineers call this an **"RF-induced ghost mic"** or **"RF-induced priority event."** Do NOT chase it as two separate issues. The system sorts itself out in a few seconds. Only escalate if it keeps happening on repeat with nobody on a mic.
+
 ### "SDR-confirmed" — what that label means
 
 Sometimes you'll see the cyan banner with extra words: **"SDR-confirmed"** or "(SDR-confirmed)" on an event in the history list.
