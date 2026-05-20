@@ -17,6 +17,7 @@ import { db, schema } from '@/db'
 import { eq, sql } from 'drizzle-orm'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
+import { requireAuth } from '@/lib/auth'
 import { validateRequestBody } from '@sports-bar/validation'
 import { logger } from '@sports-bar/logger'
 
@@ -32,6 +33,8 @@ export async function POST(
 ) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.DEFAULT)
   if (!rateLimit.allowed) return rateLimit.response
+  const authCheck = await requireAuth(request, 'ADMIN', { auditAction: 'venue_review' })
+  if (!authCheck.allowed) return authCheck.response!
 
   const { id } = await params
   if (!id || typeof id !== 'string') {
