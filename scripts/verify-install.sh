@@ -343,6 +343,79 @@ check_critical_tables() {
 }
 
 # ---------------------------------------------------------------------------
+# Check 5b: Schema completeness — recent schema additions actually present
+# ---------------------------------------------------------------------------
+# Why this exists: `drizzle-kit push` silently aborts on a pre-existing index
+# (CLAUDE.md Gotcha #6) and any CREATE TABLE scheduled AFTER that index in
+# the push order gets skipped. The push exits 0 — auto-update.sh thinks
+# everything is fine — verify-install thinks everything is fine — but a
+# newly-added feature is broken because its tables don't exist.
+#
+# This actually happened on 2026-05-20: v2.51 added 4 NeighborhoodVenue/
+# Event/Alias/InterferenceAttribution tables. drizzle-kit push aborted on
+# every fleet box except Holmgren (where dev created tables manually); the
+# preemptive-strike scheduler threw "no such table: NeighborhoodEvent"
+# every 10 minutes for ~24 hours before being caught by manual log audit.
+#
+# Fix: keep this list updated when adding new tables. Each entry should be
+# a table that the codebase EXPECTS to exist at the current version. If any
+# is missing, fail the install loud — auto-update.sh's rollback fires and
+# the operator gets a clear "missing table X" message instead of silent
+# feature-broken state.
+#
+# Real fix (task #154): switch to drizzle-kit generate + migrate which
+# can't silent-abort. Until that ships, this layer is the safety net.
+check_schema_completeness() {
+    log_info "Checking schema completeness (tables added since v2.33)..."
+    if [ ! -f "$DB_PATH" ]; then
+        log_fail "Database file not found at ${DB_PATH}"
+        record "schema_completeness" 0 "db file missing"
+        return 17
+    fi
+
+    # Tables that exist in the current codebase and are at risk of being
+    # silent-skipped by drizzle-kit push. Add new entries here when adding
+    # new tables to apps/web/src/db/schema.ts AND packages/database/src/schema.ts.
+    local expected=(
+        # v2.51 — Neighborhood RF Interference Prediction
+        "NeighborhoodVenue" "NeighborhoodEvent" "NeighborhoodVenueAlias" "InterferenceAttribution"
+        # v2.33 — Atlas drop + priority watchers
+        "atlas_drop_events" "atlas_priority_events"
+        # v2.34 — Shure SLX-D RF interference
+        "shure_rf_events"
+        # v2.41/v2.52 — SDR spectrum monitor + Pattern Digest
+        "sdr_spectrum" "sdr_carriers" "rf_pattern_digest"
+        # v2.52 — auto-update state
+        "auto_update_state"
+        # v2.49+ — ChatSession (chat persistence; messages stored as JSON in-row)
+        "ChatSession"
+        # v2.11 — BartenderLayout (was a JSON-to-DB migration)
+        "BartenderLayout"
+    )
+
+    local missing=()
+    for t in "${expected[@]}"; do
+        local exists
+        exists=$(sqlite3 "$DB_PATH" "SELECT 1 FROM sqlite_master WHERE type='table' AND name='$t';" 2>/dev/null)
+        if [ -z "$exists" ]; then
+            missing+=("$t")
+        fi
+    done
+
+    if [ ${#missing[@]} -gt 0 ]; then
+        local missing_str
+        missing_str=$(IFS=,; echo "${missing[*]}")
+        log_fail "Missing tables: ${missing_str} — drizzle-kit push likely silently aborted (Gotcha #6). Re-run push or apply DDL manually."
+        record "schema_completeness" 0 "missing=${missing_str}"
+        return 17
+    fi
+
+    log_pass "Schema completeness OK (${#expected[@]} expected tables all present)"
+    record "schema_completeness" 1 "${#expected[@]}/${#expected[@]} present"
+    return 0
+}
+
+# ---------------------------------------------------------------------------
 # Check 6: No recent crash strings in PM2 error logs
 # ---------------------------------------------------------------------------
 # Looks at last CRASH_LOG_LINES of PM2 error stream and grepps for crash
@@ -500,9 +573,10 @@ run_check check_pm2             "pm2_online"
 run_check check_health_http     "health_http"
 run_check check_metrics_http    "metrics_http"
 run_check check_bartender_proxy "bartender_proxy"
-run_check check_critical_tables "critical_tables"
-run_check check_matrix_config   "matrix_config"
-run_check check_crash_logs      "crash_logs"
+run_check check_critical_tables       "critical_tables"
+run_check check_schema_completeness   "schema_completeness"
+run_check check_matrix_config         "matrix_config"
+run_check check_crash_logs            "crash_logs"
 
 END_EPOCH=$(date +%s)
 DURATION=$((END_EPOCH - START_EPOCH))
