@@ -12,6 +12,7 @@ import { probeAllDirecTVTuned } from './directv-probe'
 import { runFiretvAppSyncSweep } from './firetv-app-sync'
 import { runFiretvCatalogWalk } from './firetv-catalog-walker'
 import { runBananasIngestion } from './bananas-ingestion'
+import { runTicketmasterIngestion } from './ticketmaster-ingestion'
 
 // Get API port from environment or default to 3001
 const API_PORT = process.env.PORT || 3001
@@ -131,6 +132,14 @@ class SchedulerService {
     // 2 min so we don't pile onto first-boot load.
     this.registerPoll('runBananasIngestion', () => this.runBananasIngestionSafe(), 86400000, 120000);
 
+    // v2.53.1 — Ticketmaster Discovery API ingestion (task #161). Second
+    // neighborhood-events source covering Lambeau, Resch Center, Brown
+    // County Arena, etc. Default OFF: scraper no-ops if
+    // TICKETMASTER_API_KEY env is unset, so locations without a key keep
+    // running Bananas-only. 6h cadence + 5-min initial delay (lands a
+    // few minutes after Bananas so the venue/alias cache is warm).
+    this.registerPoll('runTicketmasterIngestion', () => this.runTicketmasterIngestionSafe(), 6 * 60 * 60 * 1000, 5 * 60 * 1000);
+
     // v2.51.1 — Weekly Overpass+Ollama venue re-discovery. Catches new
     // bars/clubs opening near the bar over time without operator
     // intervention. Writes pending_review rows; correlation engine
@@ -209,6 +218,23 @@ class SchedulerService {
       await runBananasIngestion();
     } catch (error: any) {
       logger.error('[BANANAS-INGEST] Unexpected ingestion failure:', { error });
+    }
+  }
+
+  /**
+   * v2.53.1 — Run a single Ticketmaster Discovery API ingestion sweep.
+   * Wrapper around runTicketmasterIngestion() with a top-level catch so a
+   * fetch/parse failure never crashes the scheduler tick. The ingestion
+   * module already has per-event try/catch + returns stats rather than
+   * throwing on the happy path; this guards the unexpected (DB unavailable,
+   * module import error). Scraper itself no-ops when TICKETMASTER_API_KEY
+   * is unset — no error path needed for the disabled case.
+   */
+  private async runTicketmasterIngestionSafe() {
+    try {
+      await runTicketmasterIngestion();
+    } catch (error: any) {
+      logger.error('[TM-INGEST] Unexpected ingestion failure:', { error });
     }
   }
 

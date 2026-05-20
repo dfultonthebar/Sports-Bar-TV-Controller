@@ -75,7 +75,15 @@ module.exports = {
         // scripts/ensure-server-actions-key.sh on first run. Stays stable
         // across builds so client bundles' encrypted refs remain valid
         // after PM2 restart.
-        NEXT_SERVER_ACTIONS_ENCRYPTION_KEY: process.env.NEXT_SERVER_ACTIONS_ENCRYPTION_KEY
+        NEXT_SERVER_ACTIONS_ENCRYPTION_KEY: process.env.NEXT_SERVER_ACTIONS_ENCRYPTION_KEY,
+        // v2.53.1 — Ticketmaster Discovery API ingestion (task #161).
+        // Default OFF: if TICKETMASTER_API_KEY is empty/unset, scraper
+        // logs "disabled" and returns []. NEIGHBORHOOD_LATLONG is shared
+        // with the SDR neighborhood scrape so the two stay in sync.
+        TICKETMASTER_API_KEY: process.env.TICKETMASTER_API_KEY || '',
+        TICKETMASTER_RADIUS_MILES: process.env.TICKETMASTER_RADIUS_MILES || '30',
+        TICKETMASTER_LOOKAHEAD_DAYS: process.env.TICKETMASTER_LOOKAHEAD_DAYS || '14',
+        NEIGHBORHOOD_LATLONG: process.env.NEIGHBORHOOD_LATLONG || '44.5012,-88.0626'
       },
       // Use PM2's default log location for better log rotation support
       // Custom logs still work through the app's logger system
