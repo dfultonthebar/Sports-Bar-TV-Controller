@@ -1290,22 +1290,57 @@ fi
 rm -f "$NPM_CI_LOG"
 
 # ===========================================================================
-# PHASE: SCHEMA PUSH (drizzle-kit)
+# PHASE: SCHEMA MIGRATE (drizzle-kit) — v2.54.1+
 # ===========================================================================
-# Apply any new tables/columns from packages/database/src/schema.ts to the
-# live production.db before the build runs. Without this, releases that add
-# a new table (like v2.8.0's ChannelTuneLog) build successfully but their
-# new endpoints 500 at runtime because the table doesn't exist.
+# Apply pending schema changes by running drizzle-kit migrate against
+# committed migration files in drizzle/. Replaces the v2.8-v2.53 `push`
+# flow which had a known silent-abort failure mode (CLAUDE.md Gotcha #6):
+# push aborts on a pre-existing index, but exits 0, and any CREATE TABLE
+# scheduled after the failing point is silently skipped. v2.51 shipped
+# this way to 5 fleet boxes — NeighborhoodEvent never created, preemptive-
+# strike scheduler threw "no such table" every 10 min for ~24 hours
+# before being caught.
 #
-# drizzle-kit push will sometimes fail on *pre-existing* indexes/tables that
-# were created out of band (manual sqlite3, earlier hotfix, etc.) — drizzle
-# tracks schema by literal CREATE statements, not by structural diff, so any
-# untracked-but-already-present object trips it. That class of error is
-# benign: the schema is already in the desired state. We detect it, log a
-# warning, and continue. Any OTHER error fails the update because it likely
-# indicates a real schema corruption or version mismatch.
-step "schema_push"
-log "npx drizzle-kit push (apply pending schema changes)"
+# Migrate has none of those failure modes: pending migrations are tracked
+# in __drizzle_migrations, missing migrations are applied one-at-a-time,
+# any SQL error fails LOUD with a non-zero exit. Schema state is
+# deterministic from the migration files in git, not from in-place diff.
+#
+# Step 1: bootstrap-drizzle-migrations.sh marks the current committed
+# migrations as "already applied" if they aren't already. Idempotent —
+# no-op after first run on a given DB. Bridges existing fleet boxes from
+# the push workflow without touching their schemas.
+#
+# Step 2: drizzle-kit migrate runs any pending migrations. On a freshly-
+# bootstrapped box this is a no-op. On a box that's been on migrate for
+# a while, this applies whatever was generated since the last update.
+#
+# Legacy `ensure-schema.sh` and the push fallback handling have been
+# removed — the migrate flow eliminates the failure modes they existed
+# to work around. If they're needed again, git history has them.
+step "schema_migrate"
+log "Bootstrap drizzle migrations + run migrate"
+SCHEMA_MIGRATE_LOG="$LOG_DIR/drizzle-migrate-$(date +%s).log"
+
+# --- Step 1: bootstrap (idempotent) ---
+if bash "$REPO_ROOT/scripts/bootstrap-drizzle-migrations.sh" "$DB_PATH" 2>&1 | tee -a "$SCHEMA_MIGRATE_LOG" | tee -a "$LOG_FILE"; then
+    log "bootstrap-drizzle-migrations.sh OK"
+else
+    fail "bootstrap-drizzle-migrations.sh failed — see $SCHEMA_MIGRATE_LOG" 4
+fi
+
+# --- Step 2: run migrate ---
+if NODE_ENV=development npx drizzle-kit migrate 2>&1 | tee -a "$SCHEMA_MIGRATE_LOG" | tee -a "$LOG_FILE"; then
+    log "drizzle-kit migrate completed cleanly"
+else
+    fail "drizzle-kit migrate failed — see $SCHEMA_MIGRATE_LOG. To re-attempt manually: cd $REPO_ROOT && NODE_ENV=development npx drizzle-kit migrate" 4
+fi
+
+# --- Legacy push block kept below for the v2.54.0 transition only; the
+# code path is now unreachable because step "schema_migrate" above does
+# everything. Will be removed in a future version once all locations have
+# been observed running cleanly on the migrate flow.
+if false; then
 SCHEMA_PUSH_LOG="$LOG_DIR/drizzle-push-$(date +%s).log"
 # drizzle-kit push prompts for confirmation when it detects a data-loss
 # statement (e.g. dropping a table that still has rows). In the
@@ -1416,6 +1451,7 @@ else
     fail "drizzle-kit push failed with an unrecognized error — see $SCHEMA_PUSH_LOG" 4
   fi
 fi
+fi  # end of `if false` — legacy push block disabled in v2.54.1
 
 # v2.32.5 — Detect destructive schema operations and mark the pre-update
 # DB backup as required for rollback. Without this marker, rollback.sh
@@ -1429,16 +1465,21 @@ fi
 # loss in its push output. Pure additive schema (CREATE TABLE / ADD
 # COLUMN) doesn't trip this and rollback continues to leave the DB
 # alone (the additive schema is forward-compatible with old code).
-if [ -f "$SCHEMA_PUSH_LOG" ] && grep -qiE "you're about to (delete|drop)|drop (table|column)|data.loss|truncate" "$SCHEMA_PUSH_LOG" 2>/dev/null; then
+# v2.54.1+ — adapted to read the migrate log. Both `push` and `migrate`
+# emit similar destructive-operation strings ("drop table X" etc.) when
+# they would lose data. We scan both logs so this block keeps working
+# during the legacy push fallback window AND after it's removed.
+DESTRUCT_LOG="${SCHEMA_MIGRATE_LOG:-${SCHEMA_PUSH_LOG:-}}"
+if [ -n "$DESTRUCT_LOG" ] && [ -f "$DESTRUCT_LOG" ] && grep -qiE "you're about to (delete|drop)|drop (table|column)|data.loss|truncate" "$DESTRUCT_LOG" 2>/dev/null; then
   DESTRUCTIVE_MARKER="$BACKUP_FILE.destructive"
-  log "Schema push included destructive operations — writing $DESTRUCTIVE_MARKER (rollback will auto-restore DB)"
+  log "Schema migration included destructive operations — writing $DESTRUCTIVE_MARKER (rollback will auto-restore DB)"
   {
     echo "runId=$(basename "$LOG_FILE" .log)"
     echo "detectedAtUtc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     echo "preMergeSha=${PRE_MERGE_SHA:-unknown}"
     echo "postMergeSha=${POST_MERGE_SHA:-unknown}"
     echo "--- detected lines ---"
-    grep -iE "you're about to|drop (table|column)|data.loss|truncate|dropping" "$SCHEMA_PUSH_LOG" 2>/dev/null | head -20
+    grep -iE "you're about to|drop (table|column)|data.loss|truncate|dropping" "$DESTRUCT_LOG" 2>/dev/null | head -20
   } > "$DESTRUCTIVE_MARKER" 2>/dev/null || log "WARNING: could not write destructive marker"
 fi
 
