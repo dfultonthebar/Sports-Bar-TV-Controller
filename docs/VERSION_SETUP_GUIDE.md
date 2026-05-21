@@ -35,7 +35,7 @@ is the archive.
 
 ---
 
-## v2.54.0 → v2.54.8 — drizzle migrate switch + release snapshots + log demotes (multi-version 2026-05-20/21)
+## v2.54.0 → v2.54.10 — drizzle migrate switch + release snapshots + log demotes + schema-completeness baseline-derived (multi-version 2026-05-20/21)
 
 **Versions covered:** v2.54.0 → v2.54.6 (7 commits across 2026-05-20 evening + 2026-05-21 early)
 **Branch landed:** main
@@ -52,6 +52,8 @@ This batch is the systemic fix for the v2.51 24h fleet outage (5/6 boxes missing
 - **v2.54.6** — Same demote pattern applied to `firetv-connection-manager.ts` + `firetv-health-monitor.ts`. When Atmosphere TV / Epson Projector / Fire TV is intentionally powered off (signage-off hours, after-hours, between schedule windows), the previous code logged ERROR on every reconnect attempt (~200+/day per offline device). Now first failure logs ERROR (novel signal), subsequent failures within the same offline streak log DEBUG. Reconnect logs INFO with "was offline" so recovery is visible. Catalyst: Holmgren's `10.11.3.48` is the **Atmosphere TV** (NOT a dead Fire Cube as earlier memory had it), intermittently off by design.
 - **v2.54.7** — VERSION_SETUP_GUIDE entry for this batch.
 - **v2.54.8** — Atlas DEBUG output now routes through `logger.debug` (was: `logger.info`). v2.54.4/.5's ERROR→DEBUG demote only changed the level tag in the message text — the underlying `writeLog()` in `packages/atlas/src/atlas-logger.ts` routed every non-ERROR / non-WARN level through `logger.info()`, so the spam stayed at INFO in PM2 stdout. Now DEBUG hits `logger.debug()` which the shared `@sports-bar/logger` filters out in production (LogLevel.INFO+ only). File log at `~/Sports-Bar-TV-Controller/log/atlas-communication.log` still receives every level for forensics. Verified post-restart: dense Atlas RESPONSE/COMMAND/GET JSON blocks no longer appear in `pm2 logs`.
+- **v2.54.9** — VERSION_SETUP_GUIDE addendum (this file) extended to cover v2.54.7 + v2.54.8.
+- **v2.54.10** — **schema_completeness verify-install layer now derives expected table list from drizzle/0000_baseline.sql instead of a hardcoded 13.** Pre-holiday audit (2026-05-21) found **`ArtistInterferenceProfile` missing on 5/6 fleet boxes** — preemptive-strike scheduler was crashing hourly with `no such table: ArtistInterferenceProfile`. The table was added in v2.51.x with the Neighborhood RF Prediction subsystem but never added to the hardcoded verify list, so schema_completeness PASSed 13/13 even though preemptive-strike was broken. DDL applied out-of-band to recover the 5 boxes; v2.54.10 verify-install now reports `120/120 present` and will catch any future missing table automatically. **Required Manual Step for boxes upgrading to v2.54.10 from <v2.54.10:** none — `IF NOT EXISTS` DDL was already applied out-of-band on 2026-05-21 (Holmgren UTC 03:35). New verify-install will pass on the next auto-update cycle.
 
 ### Required Manual Steps
 
