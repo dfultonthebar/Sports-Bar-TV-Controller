@@ -313,7 +313,17 @@ class FireTVHealthMonitor {
       this.clearDownTime(device.id)
 
     } catch (error: any) {
-      logger.error(`[HEALTH MONITOR] ❌ Reconnection failed for ${device.name}:`, error.message)
+      // Same demote pattern as firetv-connection-manager.ts: first failure logs
+      // ERROR (real signal), repeat failures DEBUG (device is intentionally
+      // powered off — Atmosphere TV during signage-off hours, Epson projector
+      // after-hours, Fire TV between schedule windows). The `attempts` value
+      // here is the attempt number ALREADY incremented by scheduleReconnection,
+      // so attempts===1 is the first try; attempts>1 is a repeat.
+      if (attempts <= 1) {
+        logger.error(`[HEALTH MONITOR] ❌ Reconnection failed for ${device.name}:`, error.message)
+      } else {
+        logger.debug(`[HEALTH MONITOR] Reconnect attempt ${attempts} failed for ${device.name} (device may be powered off): ${error.message}`)
+      }
       this.updateHealthStatus(device, false, error.message)
 
       // Schedule another attempt if we haven't exceeded max attempts

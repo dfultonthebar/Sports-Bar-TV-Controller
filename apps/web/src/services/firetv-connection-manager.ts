@@ -104,11 +104,11 @@ class FireTVConnectionManager {
         logger.warn(`[CONNECTION MANAGER] Skipping device ${device.id} (${device.name || 'no name'}): no ipAddress`)
         continue
       }
-      // Don't await - let connections happen in background
+      // Don't await - let connections happen in background.
+      // The inner getOrCreateConnection already logs (first failure ERROR,
+      // repeats DEBUG); silence the outer catch so we don't double-log.
       this.getOrCreateConnection(device.id, device.ipAddress, device.port)
-        .catch(error => {
-          logger.error(`[CONNECTION MANAGER] Failed to initialize connection for ${device.name}:`, error.message)
-        })
+        .catch(() => {})
     }
 
     this.initialized = true
@@ -161,9 +161,14 @@ class FireTVConnectionManager {
       const connected = await client.connect()
       
       if (connected) {
+        const wasOffline = connectionInfo.connectionAttempts > 0
         connectionInfo.status = 'connected'
         connectionInfo.connectionAttempts = 0
-        logger.info(`[CONNECTION MANAGER] Successfully connected to ${deviceAddress}`)
+        if (wasOffline) {
+          logger.info(`[CONNECTION MANAGER] Reconnected to ${deviceAddress} (was offline)`)
+        } else {
+          logger.info(`[CONNECTION MANAGER] Successfully connected to ${deviceAddress}`)
+        }
 
         // Update device status in database
         await this.updateDeviceStatus(deviceId, true)
@@ -177,18 +182,29 @@ class FireTVConnectionManager {
       } else {
         connectionInfo.status = 'error'
         connectionInfo.lastError = 'Connection failed'
-        logger.error(`[CONNECTION MANAGER] Failed to connect to ${deviceAddress}`)
+        // Don't log here — the catch block below logs once with appropriate level.
         throw new Error('Connection failed')
       }
     } catch (error: any) {
       connectionInfo.status = 'error'
       connectionInfo.lastError = error.message
+      const isFirstFailure = connectionInfo.connectionAttempts === 0
       connectionInfo.connectionAttempts++
-      logger.error(`[CONNECTION MANAGER] Connection error for ${deviceAddress}:`, error.message)
-      
+
+      // First failure → ERROR (real signal: device just went offline or is misconfigured).
+      // Subsequent failures → DEBUG (expected: device intentionally powered off, eg
+      // Atmosphere TV when display schedule is off, Epson projector after-hours).
+      // Demote pattern mirrors Atlas -32604 (v2.54.4/.5) to keep error log focused
+      // on novel failures, not steady-state powered-off devices.
+      if (isFirstFailure) {
+        logger.error(`[CONNECTION MANAGER] Connection error for ${deviceAddress}:`, error.message)
+      } else {
+        logger.debug(`[CONNECTION MANAGER] Reconnect attempt ${connectionInfo.connectionAttempts} for ${deviceAddress} failed (device may be powered off): ${error.message}`)
+      }
+
       // Update device status in database
       await this.updateDeviceStatus(deviceId, false)
-      
+
       throw error
     }
   }
