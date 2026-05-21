@@ -207,7 +207,7 @@ export default function InteractiveBartenderLayout({
     return (
       <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl shadow-2xl p-12 text-center">
         <Monitor className="w-20 h-20 mx-auto mb-6 text-slate-400" />
-        <p className="text-xl font-bold bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">No Layout Uploaded</p>
+        <p className="text-xl font-bold text-white">No Layout Uploaded</p>
         <p className="text-sm text-slate-400 mt-3">Upload a floor plan in the Layout Editor to get started</p>
       </div>
     )
@@ -219,7 +219,7 @@ export default function InteractiveBartenderLayout({
       <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl shadow-2xl p-3 sm:p-4">
         {/* Header */}
         <div className="mb-2 sm:mb-4">
-          <h2 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent mb-2">{layout.name}</h2>
+          <h2 className="text-2xl font-bold text-white mb-2">{layout.name}</h2>
           <p className="text-slate-300">
             <span className="inline-flex items-center space-x-2">
               <Tv className="w-4 h-4" />
@@ -383,7 +383,7 @@ export default function InteractiveBartenderLayout({
             {/* Modal Header */}
             <div className="backdrop-blur-xl bg-gradient-to-r from-slate-500/10 to-gray-500/10 border-b border-white/10 px-6 py-5 flex items-center justify-between">
               <div className="flex-1 min-w-0">
-                <h3 className="text-xl font-bold bg-gradient-to-r from-green-400 to-emerald-400 bg-clip-text text-transparent">
+                <h3 className="text-xl font-bold text-white">
                   {selectedZone.label || `TV ${selectedZone.outputNumber}`}
                 </h3>
                 <p className="text-slate-300 text-sm mt-1">Select source or toggle power</p>
