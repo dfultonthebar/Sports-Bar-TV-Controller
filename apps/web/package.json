@@ -87,7 +87,6 @@
     "@sports-bar/cache-manager": "*",
     "@sports-bar/circuit-breaker": "*",
     "@sports-bar/config": "*",
-    "@sports-bar/data": "*",
     "@sports-bar/database": "*",
     "@sports-bar/directv": "*",
     "@sports-bar/dmx": "*",
