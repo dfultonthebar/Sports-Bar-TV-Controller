@@ -40,11 +40,18 @@ function writeLog(level: string, category: string, message: string, data?: any) 
     data ? ' | ' + JSON.stringify(data, null, 2) : ''
   }\n`
   
-  // Write to console
+  // Write to console — route DEBUG through logger.debug so the shared logger
+  // filters it out in production (LogLevel.INFO+). Previously DEBUG was being
+  // routed to logger.info, which meant the v2.54.4/.5 ERROR→DEBUG demote did
+  // not actually suppress the console noise — it just changed the level tag
+  // in the text while still emitting to PM2 stdout at INFO level. File log
+  // below still receives every level for forensic value.
   if (level === 'ERROR') {
     logger.error(logLine)
   } else if (level === 'WARN') {
     logger.warn(logLine)
+  } else if (level === 'DEBUG') {
+    logger.debug(logLine)
   } else {
     logger.info(logLine)
   }
