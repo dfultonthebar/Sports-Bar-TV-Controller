@@ -35,7 +35,7 @@ is the archive.
 
 ---
 
-## v2.54.0 → v2.54.10 — drizzle migrate switch + release snapshots + log demotes + schema-completeness baseline-derived (multi-version 2026-05-20/21)
+## v2.54.0 → v2.54.13 — drizzle migrate switch + release snapshots + log demotes + schema-completeness baseline-derived + Pass 3 cleanup (multi-version 2026-05-20/21)
 
 **Versions covered:** v2.54.0 → v2.54.6 (7 commits across 2026-05-20 evening + 2026-05-21 early)
 **Branch landed:** main
@@ -54,6 +54,18 @@ This batch is the systemic fix for the v2.51 24h fleet outage (5/6 boxes missing
 - **v2.54.8** — Atlas DEBUG output now routes through `logger.debug` (was: `logger.info`). v2.54.4/.5's ERROR→DEBUG demote only changed the level tag in the message text — the underlying `writeLog()` in `packages/atlas/src/atlas-logger.ts` routed every non-ERROR / non-WARN level through `logger.info()`, so the spam stayed at INFO in PM2 stdout. Now DEBUG hits `logger.debug()` which the shared `@sports-bar/logger` filters out in production (LogLevel.INFO+ only). File log at `~/Sports-Bar-TV-Controller/log/atlas-communication.log` still receives every level for forensics. Verified post-restart: dense Atlas RESPONSE/COMMAND/GET JSON blocks no longer appear in `pm2 logs`.
 - **v2.54.9** — VERSION_SETUP_GUIDE addendum (this file) extended to cover v2.54.7 + v2.54.8.
 - **v2.54.10** — **schema_completeness verify-install layer now derives expected table list from drizzle/0000_baseline.sql instead of a hardcoded 13.** Pre-holiday audit (2026-05-21) found **`ArtistInterferenceProfile` missing on 5/6 fleet boxes** — preemptive-strike scheduler was crashing hourly with `no such table: ArtistInterferenceProfile`. The table was added in v2.51.x with the Neighborhood RF Prediction subsystem but never added to the hardcoded verify list, so schema_completeness PASSed 13/13 even though preemptive-strike was broken. DDL applied out-of-band to recover the 5 boxes; v2.54.10 verify-install now reports `120/120 present` and will catch any future missing table automatically. **Required Manual Step for boxes upgrading to v2.54.10 from <v2.54.10:** none — `IF NOT EXISTS` DDL was already applied out-of-band on 2026-05-21 (Holmgren UTC 03:35). New verify-install will pass on the next auto-update cycle.
+- **v2.54.11** — VERSION_SETUP_GUIDE addendum for v2.54.9 + v2.54.10. Also normalized greenville-stoneyard's `LOG_LEVEL=DEBUG` → `INFO` (per-location env override left over from past troubleshooting; was bypassing the v2.54.8 atlas DEBUG suppression and flooding logs ~10x). pm2 delete+start required per Gotcha #2.
+- **v2.54.12** — **Pass 3 packages/* audit: delete verified dead code (-3291 lines)**. Code-explorer agent + grep verification of zero callers across the codebase identified:
+  - Whole package: `packages/tv-docs/` (+ orphan shim `apps/web/src/lib/tvDocs/`)
+  - Atlas stubs: `atlas-ai-analyzer.ts` (619-line stub, replaced by atlas-meter-manager v2.33.50+), `atlas-ai-training-data.ts` (AtlasPatternMatcher + atlasTrainingPatterns, 0 callers), `atlas-meter-service.ts` (simulated-data stub)
+  - Services dead: `sports-guide-ollama-helper.ts` (6 exports, 0 callers), `enhanced-ai-client.ts` (EnhancedAIClient unreachable)
+  - Orphan shims at `apps/web/src/lib/{ai-sports-context,atlas-meter-service,enhanced-ai-client}.ts`
+  - Kept `packages/services/src/ai-sports-context.ts` — still used internally by `automated-health-check` + `health-check-scheduler`, just removed from public index.
+  - **NOT deleted (agent false-positive):** `@sports-bar/security` — verification found it IS actively used by `/api/streaming-platforms/credentials`.
+  - Build verified clean: `npx turbo run build --force` → 35/35 tasks successful.
+- **v2.54.13** — **Pass 3 doc fixes**:
+  - `packages/bss-blu/README.md` + `bss-service.ts` top-of-file: prominent warning that `setZoneMute` / `setZoneGain` / `setZoneSource` / `getDeviceState` are NO-OP STUBS — TCP socket connects but no HiQnet commands are emitted. Operator-protection against deploying BSS hardware expecting working zone control.
+  - `packages/scheduler/src/espn-sync-service.ts:354`: convert stale `TODO: Add espnTeamId column` to a `KNOWN LIMITATION:` comment explaining the trade-off (team-name fuzzy match has been running in production at all 6 locations since shipping; schema column adds cost without commensurate value).
 
 ### Required Manual Steps
 
