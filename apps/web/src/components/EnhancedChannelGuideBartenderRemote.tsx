@@ -1561,7 +1561,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
 
       {/* Header */}
       <div className="relative z-10 text-center mb-6">
-        <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent mb-2">
+        <h1 className="text-2xl md:text-3xl font-bold text-white mb-2">
           Bartender Channel Guide
         </h1>
         <div className="flex items-center justify-center space-x-2 text-sm flex-wrap">
@@ -1606,7 +1606,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
         {/* Left Panel - Input Selection */}
         <div className="lg:col-span-1">
           <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl shadow-2xl p-4 h-fit">
-            <h2 className="text-lg font-bold bg-gradient-to-r from-blue-400 via-indigo-400 to-purple-400 bg-clip-text text-transparent mb-3 flex items-center">
+            <h2 className="text-lg font-bold text-white mb-3 flex items-center">
               <Tv className="mr-2 w-5 h-5 text-blue-400" />
               Select Input
             </h2>
@@ -1709,14 +1709,14 @@ export default function EnhancedChannelGuideBartenderRemote() {
           ) : !selectedInput ? (
             <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl shadow-2xl p-8 text-center">
               <Tv className="w-16 h-16 text-purple-400 mx-auto mb-4 opacity-50" />
-              <h3 className="text-xl font-medium bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent mb-2">Select an Input</h3>
+              <h3 className="text-xl font-medium text-white mb-2">Select an Input</h3>
               <p className="text-slate-400">Choose an input from the left panel to load its channel guide</p>
             </div>
           ) : (
             <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl shadow-2xl p-4">
               <div className="flex items-center justify-between mb-4">
                 <div>
-                  <h2 className="text-xl font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent flex items-center">
+                  <h2 className="text-xl font-bold text-white flex items-center">
                     <Calendar className="mr-2 w-5 h-5 text-blue-400" />
                     {inputs.find(i => i.channelNumber === selectedInput)?.label} Guide
                   </h2>
@@ -1989,7 +1989,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
               {/* Streaming Apps (for Fire TV ONLY — not cable or DirecTV) */}
               {guideData?.type === 'streaming' && guideData.apps && getDeviceTypeForInput(selectedInput) === 'streaming' && (
                 <div className="mt-6 pt-4 border-t border-white/10">
-                  <h3 className="text-lg font-medium bg-gradient-to-r from-green-400 to-emerald-400 bg-clip-text text-transparent mb-3">Quick Access Sports Apps</h3>
+                  <h3 className="text-lg font-medium text-white mb-3">Quick Access Sports Apps</h3>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                     {guideData.apps.filter(app => app.sportsContent).map((app) => (
                       <button type="button"

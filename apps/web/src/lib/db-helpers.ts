@@ -32,6 +32,7 @@ export {
   // Utilities
   sanitizeData,
   serializeDrizzleResult,
+  setDbHelperLogger,
 
   // Drizzle operators (re-exported for convenience)
   eq,
@@ -46,6 +47,7 @@ export {
   gt,
   lt,
   ne,
+  not,
   sql,
   isNotNull,
   isNull,

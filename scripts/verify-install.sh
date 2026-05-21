@@ -390,35 +390,66 @@ check_schema_completeness() {
         return 0
     fi
 
-    local expected
-    expected=$(grep -oE 'CREATE TABLE `[A-Za-z_][A-Za-z_0-9]*`' "$baseline_sql" | sed 's/CREATE TABLE `//;s/`//' | sort -u)
-    local expected_count
-    expected_count=$(echo "$expected" | wc -l)
+    # Use Python — easier to parse the baseline migration's CREATE TABLE
+    # blocks AND compare per-column against PRAGMA table_info on the live DB.
+    # v2.54.20 incident: 5/6 fleet boxes were missing Location.latitude /
+    # longitude / lastGeocodedAt columns because v2.51.2's ALTER TABLE never
+    # landed via the push workflow, AND atlas_drop_events.event_type was
+    # missing on all 6 boxes. The previous table-only check passed even
+    # though columns were missing. Now we audit columns too.
+    local audit_result
+    audit_result=$(python3 - "$DB_PATH" "$baseline_sql" 2>&1 <<'PYEOF'
+import re, sqlite3, sys
+db_path, baseline_path = sys.argv[1], sys.argv[2]
+src = open(baseline_path).read()
+tables = {}
+for m in re.finditer(r'CREATE TABLE `([A-Za-z_][A-Za-z_0-9]*)` \((.*?)\);', src, re.DOTALL):
+    name = m.group(1)
+    body = m.group(2)
+    cols = set()
+    for cm in re.finditer(r'`([a-zA-Z_][a-zA-Z_0-9]*)`\s+(?!REFERENCES)\S', body):
+        cols.add(cm.group(1))
+    tables[name] = cols
+conn = sqlite3.connect(db_path)
+missing_tables = []
+missing_cols = []  # list of "table.column"
+for tname, expected_cols in sorted(tables.items()):
+    row = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (tname,)
+    ).fetchone()
+    if not row:
+        missing_tables.append(tname)
+        continue
+    actual_cols = set(r[1] for r in conn.execute(f"PRAGMA table_info('{tname}')"))
+    missing = expected_cols - actual_cols
+    for c in sorted(missing):
+        missing_cols.append(f"{tname}.{c}")
+print(f"TABLES={len(tables)}", f"MISSING_TABLES={','.join(missing_tables)}", f"MISSING_COLS={','.join(missing_cols)}")
+PYEOF
+)
 
-    local missing=()
-    while IFS= read -r t; do
-        [ -z "$t" ] && continue
-        local exists
-        exists=$(sqlite3 "$DB_PATH" "SELECT 1 FROM sqlite_master WHERE type='table' AND name='$t';" 2>/dev/null)
-        if [ -z "$exists" ]; then
-            missing+=("$t")
-        fi
-    done <<< "$expected"
+    local total_tables missing_tables_str missing_cols_str
+    total_tables=$(echo "$audit_result" | grep -oE 'TABLES=[0-9]+' | cut -d= -f2)
+    missing_tables_str=$(echo "$audit_result" | grep -oE 'MISSING_TABLES=[^ ]*' | cut -d= -f2)
+    missing_cols_str=$(echo "$audit_result" | grep -oE 'MISSING_COLS=[^ ]*' | cut -d= -f2)
 
-    if [ ${#missing[@]} -gt 0 ]; then
-        local missing_str
-        missing_str=$(IFS=,; echo "${missing[*]}")
-        # Cap missing-list at 200 chars so JSON output stays parseable.
-        if [ ${#missing_str} -gt 200 ]; then
-            missing_str="${missing_str:0:200}..."
-        fi
-        log_fail "Missing tables: ${missing_str} — drizzle-kit push likely silently aborted (Gotcha #6). Re-run push, drizzle-kit migrate, or apply DDL manually."
-        record "schema_completeness" 0 "missing=${missing_str}"
+    if [ -n "$missing_tables_str" ]; then
+        local cap="$missing_tables_str"
+        if [ ${#cap} -gt 200 ]; then cap="${cap:0:200}..."; fi
+        log_fail "Missing tables: ${cap} — drizzle silent abort (Gotcha #6). Apply DDL manually or run drizzle-kit migrate."
+        record "schema_completeness" 0 "missing_tables=${cap}"
+        return 17
+    fi
+    if [ -n "$missing_cols_str" ]; then
+        local cap="$missing_cols_str"
+        if [ ${#cap} -gt 200 ]; then cap="${cap:0:200}..."; fi
+        log_fail "Missing columns: ${cap} — older ALTER TABLE migration never landed. Apply DDL manually."
+        record "schema_completeness" 0 "missing_cols=${cap}"
         return 17
     fi
 
-    log_pass "Schema completeness OK (${expected_count} baseline tables all present)"
-    record "schema_completeness" 1 "${expected_count}/${expected_count} present"
+    log_pass "Schema completeness OK (${total_tables} tables, all columns present)"
+    record "schema_completeness" 1 "${total_tables}/${total_tables} tables present, all columns present"
     return 0
 }
 

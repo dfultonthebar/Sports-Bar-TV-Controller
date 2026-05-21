@@ -327,7 +327,7 @@ export default function BartenderMusicControl() {
       {/* Player Selection (if multiple players) */}
       {players.length > 1 && (
         <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl shadow-2xl p-6">
-          <h3 className="text-sm font-semibold text-white mb-4 bg-gradient-to-r from-pink-400 via-purple-400 to-blue-400 bg-clip-text text-transparent">Select Music Zone:</h3>
+          <h3 className="text-sm font-semibold text-white mb-4 text-white">Select Music Zone:</h3>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
             {players.map((player) => (
               <button
@@ -368,7 +368,7 @@ export default function BartenderMusicControl() {
       {nowPlaying && (
         <div className="backdrop-blur-xl bg-gradient-to-br from-pink-500/20 to-purple-500/20 border-2 border-pink-400/30 rounded-2xl shadow-2xl p-6">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-white font-bold flex items-center text-lg bg-gradient-to-r from-pink-400 via-purple-400 to-blue-400 bg-clip-text text-transparent">
+            <h3 className="text-white font-bold flex items-center text-lg text-white">
               <Disc className="w-6 h-6 mr-2 text-pink-400 animate-spin" style={{ animationDuration: '3s' }} />
               Now Playing {players.length > 1 && `- ${selectedPlayer.name}`}
             </h3>
@@ -433,7 +433,7 @@ export default function BartenderMusicControl() {
       <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl shadow-2xl p-6">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h3 className="text-xl font-bold text-white bg-gradient-to-r from-pink-400 via-purple-400 to-blue-400 bg-clip-text text-transparent">{selectedPlayer.name}</h3>
+            <h3 className="text-xl font-bold text-white text-white">{selectedPlayer.name}</h3>
             <p className="text-sm text-slate-400 mt-1">Music Player</p>
           </div>
           <Badge variant={selectedPlayer.isPlaying ? "default" : "secondary"} className={`text-sm font-medium ${selectedPlayer.isPlaying ? 'backdrop-blur-xl bg-green-500/20 border border-green-400/30 text-green-200' : 'backdrop-blur-xl bg-white/5 border border-white/10 text-slate-300'}`}>
