@@ -35,7 +35,7 @@ is the archive.
 
 ---
 
-## v2.54.0 → v2.54.13 — drizzle migrate switch + release snapshots + log demotes + schema-completeness baseline-derived + Pass 3 cleanup (multi-version 2026-05-20/21)
+## v2.54.0 → v2.54.16 — drizzle migrate switch + release snapshots + log demotes + schema-completeness baseline-derived + Pass 3 cleanup (multi-version 2026-05-20/21)
 
 **Versions covered:** v2.54.0 → v2.54.6 (7 commits across 2026-05-20 evening + 2026-05-21 early)
 **Branch landed:** main
@@ -66,6 +66,19 @@ This batch is the systemic fix for the v2.51 24h fleet outage (5/6 boxes missing
 - **v2.54.13** — **Pass 3 doc fixes**:
   - `packages/bss-blu/README.md` + `bss-service.ts` top-of-file: prominent warning that `setZoneMute` / `setZoneGain` / `setZoneSource` / `getDeviceState` are NO-OP STUBS — TCP socket connects but no HiQnet commands are emitted. Operator-protection against deploying BSS hardware expecting working zone control.
   - `packages/scheduler/src/espn-sync-service.ts:354`: convert stale `TODO: Add espnTeamId column` to a `KNOWN LIMITATION:` comment explaining the trade-off (team-name fuzzy match has been running in production at all 6 locations since shipping; schema column adds cost without commensurate value).
+- **v2.54.14** — VERSION_SETUP_GUIDE addendum covering v2.54.11/.12/.13.
+- **v2.54.15** — **Pass 3 architectural cleanups (deletions only, no migrations)**:
+  - **Finding 9** — `HealthCheckScheduler` in `packages/services/src/health-check-scheduler.ts` owned its own `setInterval` loops, but `startHealthCheckScheduler()` had zero call sites anywhere in the codebase. Deleted the file + orphan shim. (The two siblings `automated-health-check` and `sports-schedule-sync` were correctly placed and stay where they are.)
+  - **Finding 12** — `nfhsApi` / `isNFHSApiAvailable` / `NFHSEvent` removed from the public surface of `packages/streaming/src/index.ts`. The stub IS still consumed internally by `unified-streaming-api.ts` (relative import, kept), but external consumers should not import a stub. Deleted the orphan bridge `apps/web/src/lib/streaming/api-integrations/nfhs-api.ts`.
+  - **Finding 2** re-verified and SKIPPED — `@/lib/ai-tools` has 2 live callers (api/chat + api/security/logs); `local-ai-analyzer` has 4 callers. Both live, not dead.
+- **v2.54.16** — **Pass 3 F8: merge `@sports-bar/data` into `@sports-bar/database` (-1367 lines)**. The two packages had functional overlap (both provided CRUD helpers + Drizzle operator re-exports). Migration:
+  - `pagination.ts`, `database-logger.ts`, `operation-logger.ts` — `git mv` from `packages/data/src/` to `packages/database/src/`. Added re-exports to `packages/database/src/index.ts`.
+  - `sanitizeData` in `packages/database/src/helpers.ts:45` changed from internal to `export function`, added to index.
+  - `apps/web/src/lib/db-helpers.ts` rewritten — dropped the `createDbHelpers` factory pattern (was never used as DI; only call site passed the production singleton). Now a thin re-export bridge from `@sports-bar/database`.
+  - 8 caller files (`apps/web/src/lib/{pagination,database-logger,operation-logger}.ts`, 4 API routes using `operationLogger`, `packages/services/src/ir-database.ts` using `logDatabaseOperation`) — `from '@sports-bar/data'` → `from '@sports-bar/database'` via sed.
+  - `@sports-bar/data` dependency dropped from `apps/web/package.json` + `packages/services/package.json`.
+  - `packages/data/` directory DELETED.
+  - **Required Manual Step:** none — auto-update handles the npm install + rebuild. Independent code-reviewer agent verified no double-substitution artifacts, all 8 callers correctly rewritten, no orphan call sites. Holmgren runtime-verified: `/api/channel-presets` 200, ESPN sync running, zero `Cannot find module '@sports-bar/data'` errors in PM2 logs post-restart.
 
 ### Required Manual Steps
 
