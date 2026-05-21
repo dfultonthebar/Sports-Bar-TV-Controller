@@ -32,13 +32,6 @@ export {
   type IRDBAccountResponse,
 } from './ir-database'
 
-// AI Sports Context - Provides game context for AI
-export {
-  AISportsContextProvider,
-  getAISportsContextProvider,
-  type SportsContext,
-} from './ai-sports-context'
-
 // Command Scheduler - Scheduled command execution service
 export {
   commandScheduler,
@@ -102,20 +95,3 @@ export {
   type DocumentSearchResult,
 } from './enhanced-document-search'
 
-// Enhanced AI Client - Ollama integration with health checks
-export {
-  EnhancedAIClient,
-  type ScriptGenerationRequest,
-  type FeatureDesignRequest,
-  type AIResponse,
-} from './enhanced-ai-client'
-
-// Sports Guide Ollama Helper - AI-powered sports guide analysis
-export {
-  getSportsGuideLogs,
-  getSportsGuideErrorLogs,
-  queryOllamaWithContext,
-  analyzeSportsGuideLogs,
-  getSportsGuideRecommendations,
-  testOllamaConnection,
-} from './sports-guide-ollama-helper'
