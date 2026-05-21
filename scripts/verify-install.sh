@@ -366,52 +366,59 @@ check_critical_tables() {
 # Real fix (task #154): switch to drizzle-kit generate + migrate which
 # can't silent-abort. Until that ships, this layer is the safety net.
 check_schema_completeness() {
-    log_info "Checking schema completeness (tables added since v2.33)..."
+    log_info "Checking schema completeness (derived from drizzle/0000_baseline.sql)..."
     if [ ! -f "$DB_PATH" ]; then
         log_fail "Database file not found at ${DB_PATH}"
         record "schema_completeness" 0 "db file missing"
         return 17
     fi
 
-    # Tables that exist in the current codebase and are at risk of being
-    # silent-skipped by drizzle-kit push. Add new entries here when adding
-    # new tables to apps/web/src/db/schema.ts AND packages/database/src/schema.ts.
-    local expected=(
-        # v2.51 — Neighborhood RF Interference Prediction
-        "NeighborhoodVenue" "NeighborhoodEvent" "NeighborhoodVenueAlias" "InterferenceAttribution"
-        # v2.33 — Atlas drop + priority watchers
-        "atlas_drop_events" "atlas_priority_events"
-        # v2.34 — Shure SLX-D RF interference
-        "shure_rf_events"
-        # v2.41/v2.52 — SDR spectrum monitor + Pattern Digest
-        "sdr_spectrum" "sdr_carriers" "rf_pattern_digest"
-        # v2.52 — auto-update state
-        "auto_update_state"
-        # v2.49+ — ChatSession (chat persistence; messages stored as JSON in-row)
-        "ChatSession"
-        # v2.11 — BartenderLayout (was a JSON-to-DB migration)
-        "BartenderLayout"
-    )
+    # The expected table list is derived dynamically from
+    # drizzle/0000_baseline.sql so we don't have to remember to update a
+    # hardcoded list every time the schema grows. v2.54.9 incident:
+    # ArtistInterferenceProfile was missing on 5/6 fleet boxes for weeks
+    # because the previous hardcoded list of 13 tables didn't include it
+    # — the bootstrap script marked baseline as applied without verifying.
+    # Deriving from the baseline migration closes that loophole.
+    local script_dir
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    local baseline_sql="$script_dir/../drizzle/0000_baseline.sql"
+    if [ ! -f "$baseline_sql" ]; then
+        # Fallback: layer is informational only when baseline missing
+        log_pass "Schema completeness SKIPPED (baseline migration not present)"
+        record "schema_completeness" 1 "baseline migration absent — skipped"
+        return 0
+    fi
+
+    local expected
+    expected=$(grep -oE 'CREATE TABLE `[A-Za-z_][A-Za-z_0-9]*`' "$baseline_sql" | sed 's/CREATE TABLE `//;s/`//' | sort -u)
+    local expected_count
+    expected_count=$(echo "$expected" | wc -l)
 
     local missing=()
-    for t in "${expected[@]}"; do
+    while IFS= read -r t; do
+        [ -z "$t" ] && continue
         local exists
         exists=$(sqlite3 "$DB_PATH" "SELECT 1 FROM sqlite_master WHERE type='table' AND name='$t';" 2>/dev/null)
         if [ -z "$exists" ]; then
             missing+=("$t")
         fi
-    done
+    done <<< "$expected"
 
     if [ ${#missing[@]} -gt 0 ]; then
         local missing_str
         missing_str=$(IFS=,; echo "${missing[*]}")
-        log_fail "Missing tables: ${missing_str} — drizzle-kit push likely silently aborted (Gotcha #6). Re-run push or apply DDL manually."
+        # Cap missing-list at 200 chars so JSON output stays parseable.
+        if [ ${#missing_str} -gt 200 ]; then
+            missing_str="${missing_str:0:200}..."
+        fi
+        log_fail "Missing tables: ${missing_str} — drizzle-kit push likely silently aborted (Gotcha #6). Re-run push, drizzle-kit migrate, or apply DDL manually."
         record "schema_completeness" 0 "missing=${missing_str}"
         return 17
     fi
 
-    log_pass "Schema completeness OK (${#expected[@]} expected tables all present)"
-    record "schema_completeness" 1 "${#expected[@]}/${#expected[@]} present"
+    log_pass "Schema completeness OK (${expected_count} baseline tables all present)"
+    record "schema_completeness" 1 "${expected_count}/${expected_count} present"
     return 0
 }
 
