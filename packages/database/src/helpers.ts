@@ -42,7 +42,7 @@ function getTableDisplayName(tableName: string): string {
 /**
  * Helper to sanitize data for SQLite
  */
-function sanitizeData(data: any): any {
+export function sanitizeData(data: any): any {
   const sanitized: any = {}
   for (const [key, value] of Object.entries(data)) {
     if (value === undefined) {

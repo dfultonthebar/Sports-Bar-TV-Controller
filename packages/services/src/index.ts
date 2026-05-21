@@ -51,13 +51,6 @@ export {
   type HealthCheckResult,
 } from './automated-health-check'
 
-// Health Check Scheduler - Automatic daily and pre-game checks
-export {
-  HealthCheckScheduler,
-  getHealthCheckScheduler,
-  startHealthCheckScheduler,
-} from './health-check-scheduler'
-
 // Q&A Uploader - Parse and upload Q&A documents
 export {
   parseQAContent,
