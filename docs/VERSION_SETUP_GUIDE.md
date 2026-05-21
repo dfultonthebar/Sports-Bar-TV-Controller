@@ -35,6 +35,50 @@ is the archive.
 
 ---
 
+## v2.54.0 → v2.54.6 — drizzle migrate switch + release snapshots + log demotes (multi-version 2026-05-20/21)
+
+**Versions covered:** v2.54.0 → v2.54.6 (7 commits across 2026-05-20 evening + 2026-05-21 early)
+**Branch landed:** main
+**Fleet target:** rolling upgrade from v2.53.17 — auto-update will roll the batch
+
+This batch is the systemic fix for the v2.51 24h fleet outage (5/6 boxes missing `NeighborhoodEvent` because `drizzle-kit push` silently aborted on a pre-existing index — Gotcha #6). Also adds release snapshots so future rollbacks take ~5s instead of ~3min, and demotes two classes of steady-state log noise that were drowning real failures in the error stream.
+
+- **v2.54.0** — Baseline drizzle migration. `drizzle/0000_baseline.sql` (94K) captures the entire current schema.ts as a clean migration file so new locations + recovery paths have a single canonical starting point. Generated via `drizzle-kit generate --name baseline` and hand-reviewed to strip any orphan-table DROPs (sdr_*, AudioMessage, etc. that exist in production but aren't declared in schema.ts).
+- **v2.54.1** — Switched schema-update path from `push` to `migrate`. `scripts/bootstrap-drizzle-migrations.sh` (NEW, idempotent) ensures `__drizzle_migrations` exists with sha256-hash markers for every committed migration. `scripts/auto-update.sh` now runs bootstrap + `drizzle-kit migrate` instead of `drizzle-kit push`. `migrate` applies pending migrations one at a time and fails LOUD on any error — no more silent abort skipping subsequent table creations. Legacy push block wrapped in `if false; then ... fi` (not deleted yet — left as audit trail).
+- **v2.54.2** — CLAUDE.md Gotcha #6 marked RESOLVED. Full dev workflow rewrite for generate+migrate (no more `db:push` in normal dev flow).
+- **v2.54.3** — Capistrano-style release snapshots. `scripts/snapshot-release.sh` (NEW) captures `.next/` + `package.json` + `drizzle/` + manifest.json to `/home/ubuntu/sports-bar-releases/v<ver>/` at the END of every successful auto-update — by construction "known good" because verify-install just passed. Retention KEEP_LAST=5. `scripts/instant-rollback.sh` (NEW) restores any snapshot in ~5s: PM2 stop → `git reset --hard` to snapshot SHA → rsync `.next` → PM2 start → health check. Standard auto-update.sh rollback path (~3min) still works as fallback.
+- **v2.54.4** — Demoted Atlas JSON-RPC `-32604 param not found` from ERROR to DEBUG at `packages/atlas/src/atlasClient.ts:543` (RESPONSE handler) and ~1027 (GET catch). The error fires hundreds of times/day on every priority-watcher poll cycle (probes 60+ candidate param names that don't exist on AZM8 firmware 4.5.18 — see [[feedback-atlas-azm8-no-priority-param]]). Real signal, not a bug.
+- **v2.54.5** — CRITICAL fix for v2.54.4: `response.error` arrives as a JSON-encoded STRING (not parsed object), so the `response.error.code === -32604` check was always false and the v2.54.4 demote never took effect. Fix: `if (typeof errObj === 'string') { try { errObj = JSON.parse(errObj) } catch {} }` before extracting the code.
+- **v2.54.6** — Same demote pattern applied to `firetv-connection-manager.ts` + `firetv-health-monitor.ts`. When Atmosphere TV / Epson Projector / Fire TV is intentionally powered off (signage-off hours, after-hours, between schedule windows), the previous code logged ERROR on every reconnect attempt (~200+/day per offline device). Now first failure logs ERROR (novel signal), subsequent failures within the same offline streak log DEBUG. Reconnect logs INFO with "was offline" so recovery is visible. Catalyst: Holmgren's `10.11.3.48` is the **Atmosphere TV** (NOT a dead Fire Cube as earlier memory had it), intermittently off by design.
+
+### Required Manual Steps
+
+- **None for fresh installs** — `bootstrap-drizzle-migrations.sh` is idempotent and runs automatically on every auto-update. The baseline migration is applied at first install.
+- **For locations that auto-update from v2.53.17 → v2.54.x** — auto-update will run bootstrap (registers existing schema state with `__drizzle_migrations`) then drizzle-kit migrate (no-op since all migrations already marked applied). Should "just work". If it fails, see Known Errors & Fixes.
+- **OPERATOR ACTION (one-time, post-v2.54.3 — none required at any current fleet box):** `instant-rollback.sh` is opt-in. To use it in an emergency: `bash scripts/instant-rollback.sh --list` (see available snapshots) → `bash scripts/instant-rollback.sh <version>`. No setup needed; snapshots accrue automatically on each successful update.
+
+### Verification gates (after each box updates)
+
+- `pm2 status` → sports-bar-tv-controller online, restart_time +1
+- `curl localhost:3001/api/version` → reports `2.54.6` (or whatever latest is)
+- `sqlite3 /home/ubuntu/sports-bar-data/production.db "SELECT COUNT(*) FROM __drizzle_migrations"` → ≥ 1 (proves bootstrap ran; new installs will be N=migration count, existing installs will be N=count of committed migrations).
+- `ls /home/ubuntu/sports-bar-releases/v*/manifest.json 2>/dev/null | wc -l` → 1 or more (snapshots accruing). Empty = `snapshot-release.sh` didn't run; check auto-update.sh log for the snapshot block at finalize.
+- `pm2 logs sports-bar-tv-controller --lines 500 --err --nostream | grep -c "Failed to connect to 10\."` → after 24h on v2.54.6, should be ≤ 6 (one per offline device per restart). Previous baseline was 200+. If still high, the demote isn't taking effect.
+
+### Known acceptable behaviors
+
+- **`__drizzle_migrations` table appears empty on first read after v2.54.1 update** — bootstrap runs at next auto-update cycle and populates it. Not an error.
+- **`/home/ubuntu/sports-bar-releases/` empty at first v2.54.3 update** — snapshots accrue starting with the NEXT successful update. First snapshot appears after v2.54.3 → v2.54.x rolls.
+- **First failure for any device after PM2 restart still logs ERROR** — that's by design (novel signal). Only the repeats are demoted.
+
+### Rollback
+
+- For v2.54.0/v2.54.1 (the migrate switch): if `drizzle-kit migrate` fails on a box, the auto-update.sh trap fires full rollback as normal. Manual recovery path is documented in the v2.54.0 commit message — apply DDL out-of-band via `sqlite3` then re-trigger auto-update.
+- For v2.54.6 (the log demote): cosmetic regression only; revert the commit if it's masking a real failure somehow.
+- General: every snapshot in `/home/ubuntu/sports-bar-releases/` is by construction known-good. `instant-rollback.sh <prev-version>` works for any release in that dir.
+
+---
+
 ## v2.53.10 → v2.53.14 — follow-ups + venue UI + brief fixes (multi-version 2026-05-20)
 
 **Versions covered:** v2.53.10 → v2.53.14 (5 commits on 2026-05-20)
