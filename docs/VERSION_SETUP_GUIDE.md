@@ -35,7 +35,7 @@ is the archive.
 
 ---
 
-## v2.54.0 → v2.54.6 — drizzle migrate switch + release snapshots + log demotes (multi-version 2026-05-20/21)
+## v2.54.0 → v2.54.8 — drizzle migrate switch + release snapshots + log demotes (multi-version 2026-05-20/21)
 
 **Versions covered:** v2.54.0 → v2.54.6 (7 commits across 2026-05-20 evening + 2026-05-21 early)
 **Branch landed:** main
@@ -50,6 +50,8 @@ This batch is the systemic fix for the v2.51 24h fleet outage (5/6 boxes missing
 - **v2.54.4** — Demoted Atlas JSON-RPC `-32604 param not found` from ERROR to DEBUG at `packages/atlas/src/atlasClient.ts:543` (RESPONSE handler) and ~1027 (GET catch). The error fires hundreds of times/day on every priority-watcher poll cycle (probes 60+ candidate param names that don't exist on AZM8 firmware 4.5.18 — see [[feedback-atlas-azm8-no-priority-param]]). Real signal, not a bug.
 - **v2.54.5** — CRITICAL fix for v2.54.4: `response.error` arrives as a JSON-encoded STRING (not parsed object), so the `response.error.code === -32604` check was always false and the v2.54.4 demote never took effect. Fix: `if (typeof errObj === 'string') { try { errObj = JSON.parse(errObj) } catch {} }` before extracting the code.
 - **v2.54.6** — Same demote pattern applied to `firetv-connection-manager.ts` + `firetv-health-monitor.ts`. When Atmosphere TV / Epson Projector / Fire TV is intentionally powered off (signage-off hours, after-hours, between schedule windows), the previous code logged ERROR on every reconnect attempt (~200+/day per offline device). Now first failure logs ERROR (novel signal), subsequent failures within the same offline streak log DEBUG. Reconnect logs INFO with "was offline" so recovery is visible. Catalyst: Holmgren's `10.11.3.48` is the **Atmosphere TV** (NOT a dead Fire Cube as earlier memory had it), intermittently off by design.
+- **v2.54.7** — VERSION_SETUP_GUIDE entry for this batch.
+- **v2.54.8** — Atlas DEBUG output now routes through `logger.debug` (was: `logger.info`). v2.54.4/.5's ERROR→DEBUG demote only changed the level tag in the message text — the underlying `writeLog()` in `packages/atlas/src/atlas-logger.ts` routed every non-ERROR / non-WARN level through `logger.info()`, so the spam stayed at INFO in PM2 stdout. Now DEBUG hits `logger.debug()` which the shared `@sports-bar/logger` filters out in production (LogLevel.INFO+ only). File log at `~/Sports-Bar-TV-Controller/log/atlas-communication.log` still receives every level for forensics. Verified post-restart: dense Atlas RESPONSE/COMMAND/GET JSON blocks no longer appear in `pm2 logs`.
 
 ### Required Manual Steps
 
