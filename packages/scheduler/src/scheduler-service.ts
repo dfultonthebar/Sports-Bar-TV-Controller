@@ -12,6 +12,7 @@ import { probeAllDirecTVTuned } from './directv-probe'
 import { runFiretvAppSyncSweep } from './firetv-app-sync'
 import { runFiretvCatalogWalk } from './firetv-catalog-walker'
 import { runBananasIngestion } from './bananas-ingestion'
+import { runTicketmasterIngestion } from './ticketmaster-ingestion'
 
 // Get API port from environment or default to 3001
 const API_PORT = process.env.PORT || 3001
@@ -131,6 +132,14 @@ class SchedulerService {
     // 2 min so we don't pile onto first-boot load.
     this.registerPoll('runBananasIngestion', () => this.runBananasIngestionSafe(), 86400000, 120000);
 
+    // v2.53.1 — Ticketmaster Discovery API ingestion (task #161). Second
+    // neighborhood-events source covering Lambeau, Resch Center, Brown
+    // County Arena, etc. Default OFF: scraper no-ops if
+    // TICKETMASTER_API_KEY env is unset, so locations without a key keep
+    // running Bananas-only. 6h cadence + 5-min initial delay (lands a
+    // few minutes after Bananas so the venue/alias cache is warm).
+    this.registerPoll('runTicketmasterIngestion', () => this.runTicketmasterIngestionSafe(), 6 * 60 * 60 * 1000, 5 * 60 * 1000);
+
     // v2.51.1 — Weekly Overpass+Ollama venue re-discovery. Catches new
     // bars/clubs opening near the bar over time without operator
     // intervention. Writes pending_review rows; correlation engine
@@ -155,6 +164,11 @@ class SchedulerService {
     this.registerPoll('correlateInterference', () => this.runCorrelateInterferenceSafe(), 600000, 180000);
     this.registerPoll('rebuildArtistProfiles', () => this.runRebuildArtistProfilesSafe(), 21600000, 600000);
     this.registerPoll('runPreemptiveStrike', () => this.runPreemptiveStrikeSafe(), 3600000, 900000);
+    // v2.52.14 — Tier 3 AI: daily Ollama-powered RF Pattern Digest.
+    // Runs once every 24h (86_400_000 ms) with an initial 30-minute delay
+    // (1_800_000 ms) so the watcher has time to populate sdr_spectrum
+    // after a fresh start before the digest tries to summarize it.
+    this.registerPoll('generateRfPatternDigest', () => this.runRfPatternDigestSafe(), 86_400_000, 1_800_000);
 
     schedulerLogger.info(
       'scheduler-service',
@@ -208,6 +222,23 @@ class SchedulerService {
   }
 
   /**
+   * v2.53.1 — Run a single Ticketmaster Discovery API ingestion sweep.
+   * Wrapper around runTicketmasterIngestion() with a top-level catch so a
+   * fetch/parse failure never crashes the scheduler tick. The ingestion
+   * module already has per-event try/catch + returns stats rather than
+   * throwing on the happy path; this guards the unexpected (DB unavailable,
+   * module import error). Scraper itself no-ops when TICKETMASTER_API_KEY
+   * is unset — no error path needed for the disabled case.
+   */
+  private async runTicketmasterIngestionSafe() {
+    try {
+      await runTicketmasterIngestion();
+    } catch (error: any) {
+      logger.error('[TM-INGEST] Unexpected ingestion failure:', { error });
+    }
+  }
+
+  /**
    * v2.51.1 — Weekly Overpass+Ollama venue re-discovery, wrapped for
    * scheduler safety. Reads LOCATION_LAT / LOCATION_LON from env;
    * gracefully no-ops if unset (logs the skip but doesn't error).
@@ -231,8 +262,13 @@ class SchedulerService {
    */
   private async runCorrelateInterferenceSafe() {
     try {
-      const { correlateInterference } = await import('./interference-correlator');
-      await correlateInterference();
+      // v2.52.12: correlateAllInterference runs BOTH Shure and SDR
+      // passes. The SDR pass narrows to carriers within ±0.1 MHz of
+      // our Shure receiver freqs so we attribute "Anduzzi DJ 8pm" to
+      // real mic-band interference, not the continuous WCWF broadcast.
+      const { correlateAllInterference } = await import('./interference-correlator');
+      const { shure, sdr } = await correlateAllInterference();
+      logger.info(`[CORRELATOR] Shure: ${shure.attributionsWritten} attributions; SDR: ${sdr.attributionsWritten} attributions`);
     } catch (error: any) {
       logger.error('[CORRELATOR] Unexpected correlation failure:', { error });
     }
@@ -273,6 +309,28 @@ class SchedulerService {
       await runPreemptiveStrike({ locationId });
     } catch (error: any) {
       logger.error('[PREEMPTIVE] Unexpected strike pass failure:', { error });
+    }
+  }
+
+  /**
+   * v2.52.14 — Tier 3 AI integration. Generate the daily Ollama-powered
+   * RF Pattern Digest. Skips silently when LOCATION_ID is unset. The
+   * underlying generator is itself defensive (falls back to a raw-counts
+   * summary if Ollama is unreachable), so the only thing we need to do
+   * here is wrap in try/catch so a digest failure doesn't take down the
+   * scheduler tick.
+   */
+  private async runRfPatternDigestSafe() {
+    const locationId = process.env.LOCATION_ID;
+    if (!locationId) {
+      logger.warn('[RF-DIGEST] Skipping: LOCATION_ID env not set');
+      return;
+    }
+    try {
+      const { generateRfPatternDigest } = await import('./rf-pattern-digest');
+      await generateRfPatternDigest({ locationId });
+    } catch (error: any) {
+      logger.error('[RF-DIGEST] Unexpected digest failure:', { error });
     }
   }
 

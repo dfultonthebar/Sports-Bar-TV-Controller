@@ -207,7 +207,7 @@ export default function InteractiveBartenderLayout({
     return (
       <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl shadow-2xl p-12 text-center">
         <Monitor className="w-20 h-20 mx-auto mb-6 text-slate-400" />
-        <p className="text-xl font-bold bg-linear-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">No Layout Uploaded</p>
+        <p className="text-xl font-bold text-white">No Layout Uploaded</p>
         <p className="text-sm text-slate-400 mt-3">Upload a floor plan in the Layout Editor to get started</p>
       </div>
     )
@@ -219,7 +219,7 @@ export default function InteractiveBartenderLayout({
       <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl shadow-2xl p-3 sm:p-4">
         {/* Header */}
         <div className="mb-2 sm:mb-4">
-          <h2 className="text-2xl font-bold bg-linear-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent mb-2">{layout.name}</h2>
+          <h2 className="text-2xl font-bold text-white mb-2">{layout.name}</h2>
           <p className="text-slate-300">
             <span className="inline-flex items-center space-x-2">
               <Tv className="w-4 h-4" />
@@ -276,30 +276,15 @@ export default function InteractiveBartenderLayout({
           </div>
         )}
 
-        {/* Layout Container — uses aspect-ratio with both max-w and max-h so
-            the browser picks the largest box that fits both constraints while
-            preserving image aspect ratio. The earlier version combined
-            `w-full` + `max-h` + `aspectRatio`, which let `w-full` win and
-            stretched the image horizontally when the derived height hit the
-            `max-h` cap (the "squeezed" look). */}
-        <div
-          className="relative mx-auto backdrop-blur-xl bg-slate-900/50 rounded-xl overflow-hidden border border-white/10 shadow-xl"
-          style={{
-            aspectRatio: String(imageAspectRatio),
-            maxWidth: '100%',
-            maxHeight: 'calc(100vh - 200px)',
-          }}
-        >
-          {/* Background Floor Plan Image — `object-contain` is safe here
-              because the container aspect-ratio matches the image's, so the
-              result is identical to `object-fill` without the risk of
-              distortion if the ratios ever desync. */}
+        {/* Layout Container - aspect ratio matches actual image so zones align */}
+        <div className="relative w-full backdrop-blur-xl bg-slate-900/50 rounded-xl overflow-hidden border border-white/10 shadow-xl max-h-[calc(100vh-200px)]" style={{ aspectRatio: String(imageAspectRatio) }}>
+          {/* Background Floor Plan Image */}
           {imageUrl && (
             <img
               ref={layoutImageRef}
               src={imageUrl}
               alt="Floor plan"
-              className="absolute inset-0 w-full h-full object-contain opacity-40 pointer-events-none"
+              className="absolute inset-0 w-full h-full object-fill opacity-40 pointer-events-none"
               draggable={false}
               onLoad={(e) => {
                 const img = e.currentTarget
@@ -334,8 +319,8 @@ export default function InteractiveBartenderLayout({
                   className={`relative backdrop-blur-xl border-2 shadow-xl hover:scale-105 transition-all duration-300
                     min-w-[32px] sm:min-w-[36px] md:min-w-[40px] lg:min-w-[44px] xl:min-w-[48px] ${
                     currentInput
-                      ? 'bg-linear-to-br from-green-500/20 to-emerald-500/20'
-                      : 'bg-linear-to-br from-slate-500/10 to-gray-500/10 hover:from-green-500/20 hover:to-emerald-500/20'
+                      ? 'bg-gradient-to-br from-green-500/20 to-emerald-500/20'
+                      : 'bg-gradient-to-br from-slate-500/10 to-gray-500/10 hover:from-green-500/20 hover:to-emerald-500/20'
                   }`}
                   style={{
                     borderColor: roomColor ? `${roomColor}80` : (currentInput ? 'rgb(74 222 128 / 0.3)' : 'rgb(255 255 255 / 0.1)')
@@ -344,22 +329,17 @@ export default function InteractiveBartenderLayout({
                   {/* Room Color Indicator */}
                   {roomInfo && (
                     <div
-                      className="absolute -top-1 -right-1 w-3 h-3 rounded-full border border-white shadow-xs"
+                      className="absolute -top-1 -right-1 w-3 h-3 rounded-full border border-white shadow-sm"
                       style={{ backgroundColor: roomColor }}
                       title={roomInfo.name}
                     />
                   )}
-                  {/* TV Icon — same footprint in every state. The active-input
-                      label used to stack BELOW the icon, which grew the button's
-                      vertical footprint whenever a TV was tuned (green state),
-                      making precise zone placement harder in the editor and
-                      crowding the layout in the Video tab. The label is now
-                      absolutely-positioned BELOW the icon so it overflows
-                      visually but does not affect the button's hit box. */}
-                  <div className="relative z-10 p-1.5 sm:p-2 md:p-2 lg:p-2.5 xl:p-2.5 flex items-center justify-center">
+                  {/* TV Icon - Compact sizing to prevent overlap */}
+                  <div className="relative z-10 p-1.5 sm:p-2 md:p-2 lg:p-2.5 xl:p-2.5 flex flex-col items-center">
                     <Tv className={`w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7 lg:w-8 lg:h-8 xl:w-9 xl:h-9 ${currentInput ? 'text-green-400' : 'text-slate-300 group-hover:text-green-400'}`} />
+                    {/* Current Input Label - Compact text */}
                     {currentInput && (
-                      <div className="absolute left-1/2 -translate-x-1/2 top-full mt-0.5 px-1.5 py-0.5 bg-black/70 rounded-sm text-[9px] sm:text-[10px] font-semibold text-white whitespace-nowrap pointer-events-none shadow-md">
+                      <div className="mt-0.5 sm:mt-1 md:mt-1 px-1.5 sm:px-2 md:px-2 py-0.5 bg-black/60 rounded text-[8px] sm:text-[9px] md:text-[10px] lg:text-xs font-semibold text-white truncate max-w-[50px] sm:max-w-[60px] md:max-w-[70px] lg:max-w-[80px] xl:max-w-[90px]">
                         {currentInput}
                       </div>
                     )}
@@ -373,13 +353,13 @@ export default function InteractiveBartenderLayout({
         {/* Legend - LARGER SQUARE ICONS FOR BETTER VISIBILITY */}
         <div className="mt-6 flex items-center justify-center space-x-8 text-sm">
           <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 backdrop-blur-xl bg-linear-to-br from-slate-500/10 to-gray-500/10 border-2 border-white/10 shadow-lg flex items-center justify-center">
+            <div className="w-8 h-8 backdrop-blur-xl bg-gradient-to-br from-slate-500/10 to-gray-500/10 border-2 border-white/10 shadow-lg flex items-center justify-center">
               <Tv className="w-4 h-4 text-slate-300" />
             </div>
             <span className="text-slate-300 font-medium">Available</span>
           </div>
           <div className="flex items-center space-x-3">
-            <div className="relative w-8 h-8 backdrop-blur-xl bg-linear-to-br from-green-500/20 to-emerald-500/20 border-2 border-green-400/30 shadow-lg flex items-center justify-center">
+            <div className="relative w-8 h-8 backdrop-blur-xl bg-gradient-to-br from-green-500/20 to-emerald-500/20 border-2 border-green-400/30 shadow-lg flex items-center justify-center">
               <Tv className="w-4 h-4 text-green-400" />
               <div className="absolute -top-1 -left-1 w-3 h-3 bg-green-500 rounded-full border border-white text-[8px] flex items-center justify-center font-bold">
                 #
@@ -388,7 +368,7 @@ export default function InteractiveBartenderLayout({
             <span className="text-slate-300 font-medium">Active (Input# + Name)</span>
           </div>
           <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 backdrop-blur-xl bg-linear-to-br from-green-500/20 to-emerald-500/20 border-2 border-green-400/50 shadow-lg flex items-center justify-center">
+            <div className="w-8 h-8 backdrop-blur-xl bg-gradient-to-br from-green-500/20 to-emerald-500/20 border-2 border-green-400/50 shadow-lg flex items-center justify-center">
               <Tv className="w-4 h-4 text-green-400" />
             </div>
             <span className="text-slate-300 font-medium">Hover</span>
@@ -398,12 +378,12 @@ export default function InteractiveBartenderLayout({
 
       {/* Input Selection Modal */}
       {selectedZone && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
           <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl shadow-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden">
             {/* Modal Header */}
-            <div className="backdrop-blur-xl bg-linear-to-r from-slate-500/10 to-gray-500/10 border-b border-white/10 px-6 py-5 flex items-center justify-between">
+            <div className="backdrop-blur-xl bg-gradient-to-r from-slate-500/10 to-gray-500/10 border-b border-white/10 px-6 py-5 flex items-center justify-between">
               <div className="flex-1 min-w-0">
-                <h3 className="text-xl font-bold bg-linear-to-r from-green-400 to-emerald-400 bg-clip-text text-transparent">
+                <h3 className="text-xl font-bold text-white">
                   {selectedZone.label || `TV ${selectedZone.outputNumber}`}
                 </h3>
                 <p className="text-slate-300 text-sm mt-1">Select source or toggle power</p>
@@ -454,8 +434,8 @@ export default function InteractiveBartenderLayout({
                       onClick={() => handleInputSelect(input.channelNumber)}
                       className={`group relative backdrop-blur-xl border-2 shadow-xl p-5 text-left transition-all duration-300 hover:scale-105 ${
                         isActive
-                          ? 'bg-linear-to-br from-green-500/20 to-emerald-500/20 border-green-400/50'
-                          : 'bg-linear-to-br from-slate-500/10 to-gray-500/10 border-white/10 hover:from-green-500/20 hover:to-emerald-500/20 hover:border-green-400/50'
+                          ? 'bg-gradient-to-br from-green-500/20 to-emerald-500/20 border-green-400/50'
+                          : 'bg-gradient-to-br from-slate-500/10 to-gray-500/10 border-white/10 hover:from-green-500/20 hover:to-emerald-500/20 hover:border-green-400/50'
                       }`}
                     >
                       <div className="relative z-10 flex items-center justify-between">

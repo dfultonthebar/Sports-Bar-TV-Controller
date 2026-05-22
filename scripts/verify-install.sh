@@ -343,6 +343,117 @@ check_critical_tables() {
 }
 
 # ---------------------------------------------------------------------------
+# Check 5b: Schema completeness — recent schema additions actually present
+# ---------------------------------------------------------------------------
+# Why this exists: `drizzle-kit push` silently aborts on a pre-existing index
+# (CLAUDE.md Gotcha #6) and any CREATE TABLE scheduled AFTER that index in
+# the push order gets skipped. The push exits 0 — auto-update.sh thinks
+# everything is fine — verify-install thinks everything is fine — but a
+# newly-added feature is broken because its tables don't exist.
+#
+# This actually happened on 2026-05-20: v2.51 added 4 NeighborhoodVenue/
+# Event/Alias/InterferenceAttribution tables. drizzle-kit push aborted on
+# every fleet box except Holmgren (where dev created tables manually); the
+# preemptive-strike scheduler threw "no such table: NeighborhoodEvent"
+# every 10 minutes for ~24 hours before being caught by manual log audit.
+#
+# Fix: keep this list updated when adding new tables. Each entry should be
+# a table that the codebase EXPECTS to exist at the current version. If any
+# is missing, fail the install loud — auto-update.sh's rollback fires and
+# the operator gets a clear "missing table X" message instead of silent
+# feature-broken state.
+#
+# Real fix (task #154): switch to drizzle-kit generate + migrate which
+# can't silent-abort. Until that ships, this layer is the safety net.
+check_schema_completeness() {
+    log_info "Checking schema completeness (derived from drizzle/0000_baseline.sql)..."
+    if [ ! -f "$DB_PATH" ]; then
+        log_fail "Database file not found at ${DB_PATH}"
+        record "schema_completeness" 0 "db file missing"
+        return 17
+    fi
+
+    # The expected table list is derived dynamically from
+    # drizzle/0000_baseline.sql so we don't have to remember to update a
+    # hardcoded list every time the schema grows. v2.54.9 incident:
+    # ArtistInterferenceProfile was missing on 5/6 fleet boxes for weeks
+    # because the previous hardcoded list of 13 tables didn't include it
+    # — the bootstrap script marked baseline as applied without verifying.
+    # Deriving from the baseline migration closes that loophole.
+    local script_dir
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    local baseline_sql="$script_dir/../drizzle/0000_baseline.sql"
+    if [ ! -f "$baseline_sql" ]; then
+        # Fallback: layer is informational only when baseline missing
+        log_pass "Schema completeness SKIPPED (baseline migration not present)"
+        record "schema_completeness" 1 "baseline migration absent — skipped"
+        return 0
+    fi
+
+    # Use Python — easier to parse the baseline migration's CREATE TABLE
+    # blocks AND compare per-column against PRAGMA table_info on the live DB.
+    # v2.54.20 incident: 5/6 fleet boxes were missing Location.latitude /
+    # longitude / lastGeocodedAt columns because v2.51.2's ALTER TABLE never
+    # landed via the push workflow, AND atlas_drop_events.event_type was
+    # missing on all 6 boxes. The previous table-only check passed even
+    # though columns were missing. Now we audit columns too.
+    local audit_result
+    audit_result=$(python3 - "$DB_PATH" "$baseline_sql" 2>&1 <<'PYEOF'
+import re, sqlite3, sys
+db_path, baseline_path = sys.argv[1], sys.argv[2]
+src = open(baseline_path).read()
+tables = {}
+for m in re.finditer(r'CREATE TABLE `([A-Za-z_][A-Za-z_0-9]*)` \((.*?)\);', src, re.DOTALL):
+    name = m.group(1)
+    body = m.group(2)
+    cols = set()
+    for cm in re.finditer(r'`([a-zA-Z_][a-zA-Z_0-9]*)`\s+(?!REFERENCES)\S', body):
+        cols.add(cm.group(1))
+    tables[name] = cols
+conn = sqlite3.connect(db_path)
+missing_tables = []
+missing_cols = []  # list of "table.column"
+for tname, expected_cols in sorted(tables.items()):
+    row = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (tname,)
+    ).fetchone()
+    if not row:
+        missing_tables.append(tname)
+        continue
+    actual_cols = set(r[1] for r in conn.execute(f"PRAGMA table_info('{tname}')"))
+    missing = expected_cols - actual_cols
+    for c in sorted(missing):
+        missing_cols.append(f"{tname}.{c}")
+print(f"TABLES={len(tables)}", f"MISSING_TABLES={','.join(missing_tables)}", f"MISSING_COLS={','.join(missing_cols)}")
+PYEOF
+)
+
+    local total_tables missing_tables_str missing_cols_str
+    total_tables=$(echo "$audit_result" | grep -oE 'TABLES=[0-9]+' | cut -d= -f2)
+    missing_tables_str=$(echo "$audit_result" | grep -oE 'MISSING_TABLES=[^ ]*' | cut -d= -f2)
+    missing_cols_str=$(echo "$audit_result" | grep -oE 'MISSING_COLS=[^ ]*' | cut -d= -f2)
+
+    if [ -n "$missing_tables_str" ]; then
+        local cap="$missing_tables_str"
+        if [ ${#cap} -gt 200 ]; then cap="${cap:0:200}..."; fi
+        log_fail "Missing tables: ${cap} — drizzle silent abort (Gotcha #6). Apply DDL manually or run drizzle-kit migrate."
+        record "schema_completeness" 0 "missing_tables=${cap}"
+        return 17
+    fi
+    if [ -n "$missing_cols_str" ]; then
+        local cap="$missing_cols_str"
+        if [ ${#cap} -gt 200 ]; then cap="${cap:0:200}..."; fi
+        log_fail "Missing columns: ${cap} — older ALTER TABLE migration never landed. Apply DDL manually."
+        record "schema_completeness" 0 "missing_cols=${cap}"
+        return 17
+    fi
+
+    log_pass "Schema completeness OK (${total_tables} tables, all columns present)"
+    record "schema_completeness" 1 "${total_tables}/${total_tables} tables present, all columns present"
+    return 0
+}
+
+# ---------------------------------------------------------------------------
 # Check 6: No recent crash strings in PM2 error logs
 # ---------------------------------------------------------------------------
 # Looks at last CRASH_LOG_LINES of PM2 error stream and grepps for crash
@@ -500,9 +611,10 @@ run_check check_pm2             "pm2_online"
 run_check check_health_http     "health_http"
 run_check check_metrics_http    "metrics_http"
 run_check check_bartender_proxy "bartender_proxy"
-run_check check_critical_tables "critical_tables"
-run_check check_matrix_config   "matrix_config"
-run_check check_crash_logs      "crash_logs"
+run_check check_critical_tables       "critical_tables"
+run_check check_schema_completeness   "schema_completeness"
+run_check check_matrix_config         "matrix_config"
+run_check check_crash_logs            "crash_logs"
 
 END_EPOCH=$(date +%s)
 DURATION=$((END_EPOCH - START_EPOCH))

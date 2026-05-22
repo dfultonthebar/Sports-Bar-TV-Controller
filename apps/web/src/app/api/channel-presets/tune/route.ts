@@ -8,7 +8,7 @@ import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { z } from 'zod'
 import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
-import { operationLogger } from '@sports-bar/data'
+import { operationLogger } from '@sports-bar/database'
 
 
 type TuneLogEntry = {

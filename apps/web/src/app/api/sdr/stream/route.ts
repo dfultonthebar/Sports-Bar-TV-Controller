@@ -39,6 +39,7 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { logger } from '@sports-bar/logger'
 import { db } from '@/db'
 import { sql } from 'drizzle-orm'
+import { getSdrSweepEmitter, type SweepEvent } from '@/lib/sdr-sweep-emitter'
 
 // Polling interval for fresh DB rows. The watcher writes per-minute
 // aggregates so the natural cadence is 60s, but new CARRIER events
@@ -179,14 +180,34 @@ export async function GET(request: NextRequest) {
         enqueue('heartbeat', { at: Math.floor(Date.now() / 1000) })
       }, HEARTBEAT_MS)
 
-      // Cleanup when the client disconnects.
+      // v2.52.10: subscribe to per-sweep events from the watcher.
+      // Each rtl_power band scan (~1 sec cadence) is assembled in
+      // sdr-watcher.ts into one full-band sweep snapshot and emitted
+      // via the globalThis EventEmitter singleton. We forward each
+      // sweep to this SSE connection as a 'sweep' event. The UI uses
+      // these for the FFT panadapter — sub-second freshness instead of
+      // waiting for the per-minute aggregator flush.
+      //
+      // v2.52.19 fix (audit H1): register the abort handler IMMEDIATELY,
+      // synchronously, after subscribing the sweep listener. Pre-fix
+      // had a race window — if request.signal aborted between the
+      // emitter.on(...) line and the abort listener registration, the
+      // sweep listener leaked forever (EventEmitter held a ref to a
+      // closure that referenced the now-dead controller). Order: hook
+      // abort cleanup first, then subscribe.
+      const sweepListener = (ev: SweepEvent) => {
+        if (closed) return
+        enqueue('sweep', { t: ev.t, bins: ev.bins, dbms: ev.dbms, startMhz: ev.startMhz, endMhz: ev.endMhz })
+      }
       request.signal.addEventListener('abort', () => {
         closed = true
         clearInterval(bucketTimer)
         clearInterval(carrierTimer)
         clearInterval(heartbeatTimer)
+        getSdrSweepEmitter().off('sweep', sweepListener)
         try { controller.close() } catch { /* already closed */ }
       })
+      getSdrSweepEmitter().on('sweep', sweepListener)
     },
   })
 

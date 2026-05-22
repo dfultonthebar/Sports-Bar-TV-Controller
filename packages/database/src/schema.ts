@@ -2755,6 +2755,37 @@ export const shureRfEvents = sqliteTable('shure_rf_events', {
   receiverIdx: index('shure_rf_events_receiver_idx').on(table.receiverId, table.channel, table.detectedAt),
 }))
 
+// v2.52.14: daily RF Pattern Digest. Tier 3 of the SDR AI integration.
+// A scheduler job runs once per day, pulls 24h of sdr_carriers,
+// shure_rf_events, and matched NeighborhoodEvent rows, formats a
+// structured prompt for Ollama qwen2.5:14b, and stores the LLM
+// summary here. The bartender Audio tab reads the latest row.
+//
+// Bartender-grade output — plain language, no jargon. Example:
+//   "The band at Anduzzi's tonight (DJ Casey) tends to use freqs near
+//    your Mic 2. The SDR has been seeing strong activity at 484-485 MHz
+//    on the past 3 Fridays around 9pm. Consider moving Mic 2 to
+//    491 MHz before showtime."
+//
+// structured_findings is a JSON blob with the LLM's parsed
+// recommendations + raw counts (for the UI to render badges/charts
+// instead of just the prose).
+export const rfPatternDigest = sqliteTable('rf_pattern_digest', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  locationId: text('location_id').notNull(),
+  periodStart: integer('period_start').notNull(),
+  periodEnd: integer('period_end').notNull(),
+  summaryText: text('summary_text').notNull(),
+  structuredFindings: text('structured_findings'),
+  modelUsed: text('model_used').notNull(),
+  promptTokenCount: integer('prompt_token_count'),
+  completionTokenCount: integer('completion_token_count'),
+  generationMs: integer('generation_ms'),
+  generatedAt: integer('generated_at').notNull().$defaultFn(() => Math.floor(Date.now() / 1000)),
+}, (table) => ({
+  locationIdx: index('rf_pattern_digest_location_idx').on(table.locationId, table.generatedAt),
+}))
+
 export const schedulingPreferences = sqliteTable('scheduling_preferences', {
   id: text('id').primaryKey(),
   preferenceType: text('preference_type').notNull(),
@@ -2950,12 +2981,22 @@ export const interferenceAttributions = sqliteTable('InterferenceAttribution', {
   // 'correlation_v1' = the algorithmic time+distance match. 'manual' =
   // operator marked it. Future: 'ml_v2' if we add a learned model.
   attributionMethod: text('attribution_method').notNull().default('correlation_v1'),
+  // v2.52.12: 'shure' for events from shure_rf_events table, 'sdr' for
+  // events from sdr_carriers table. Allows the correlator to feed
+  // BOTH detection sources into ArtistInterferenceProfile — when both
+  // independently see RF activity at a venue's event time, confidence
+  // is materially higher than either source alone. The FK in
+  // rf_event_id is informal (FK enforcement off in prod sqlite); the
+  // referenced ID lives in whichever table source points to.
+  source: text('source').notNull().default('shure'),
   createdAt: integer('created_at').notNull().$defaultFn(() => Math.floor(Date.now() / 1000)),
 }, (table) => ({
   rfEventIdx: index('InterferenceAttribution_rfEvent_idx').on(table.rfEventId),
   neighborhoodEventIdx: index('InterferenceAttribution_neighborhoodEvent_idx').on(table.neighborhoodEventId),
+  sourceIdx: index('InterferenceAttribution_source_idx').on(table.source),
   // One attribution per (rf_event, neighborhood_event) pair — re-running
-  // the correlation engine is idempotent.
+  // the correlation engine is idempotent. rf_event IDs are UUIDs from
+  // either shure_rf_events or sdr_carriers (no collision risk).
   uniqueAttribution: uniqueIndex('InterferenceAttribution_rfEvent_neighborhoodEvent_unique').on(table.rfEventId, table.neighborhoodEventId),
 }))
 
