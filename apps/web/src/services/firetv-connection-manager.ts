@@ -65,6 +65,12 @@ class FireTVConnectionManager {
   private initialized: boolean = false
   private readonly MAX_QUEUED_COMMANDS = 50 // Max commands to queue per device
   private readonly COMMAND_QUEUE_TIMEOUT = 5 * 60 * 1000 // 5 minutes
+  // Survives this.connections.delete() in disconnect() / cleanup paths so
+  // the rising-edge ERROR→DEBUG demote stays correct across the full
+  // failure → disconnect → retry cycle. Reset to 0 only on successful
+  // connect (line 174). v2.54.23 — v2.54.22 fix was insufficient because
+  // disconnect() wipes the connections Map entry, losing the counter.
+  private failureCount: Map<string, number> = new Map()
 
   private constructor() {
     logger.info('[CONNECTION MANAGER] Initializing Fire TV Connection Manager')
@@ -143,15 +149,13 @@ class FireTVConnectionManager {
       connectionTimeout: config.connection.connectionTimeout
     })
 
-    // Preserve prior connectionAttempts so the rising-edge demote
-    // (v2.54.6) actually works across reconnect attempts. Without this,
-    // an 'error'-state entry below was being replaced wholesale on every
-    // retry — connectionAttempts reset to 0, every failure looked like
-    // a "first failure", and the demote never fired. Carry the counter
-    // and prior commandQueue over from the existing entry; everything
-    // else gets a fresh client + status.
-    const priorAttempts = existing ? existing.connectionAttempts : 0
+    // Preserve prior commandQueue from any existing entry so requests
+    // that were queued during reconnect survive. connectionAttempts is
+    // mirrored from this.failureCount (which outlives Map.delete()), so
+    // the rising-edge ERROR→DEBUG demote in the catch block stays correct
+    // even after disconnect() wipes the connections Map entry.
     const priorQueue = existing ? existing.commandQueue : []
+    const priorAttempts = this.failureCount.get(deviceId) ?? 0
     const connectionInfo: ConnectionInfo = {
       deviceId,
       deviceAddress,
@@ -172,6 +176,9 @@ class FireTVConnectionManager {
         const wasOffline = connectionInfo.connectionAttempts > 0
         connectionInfo.status = 'connected'
         connectionInfo.connectionAttempts = 0
+        // Reset the durable counter too — next failure should be a fresh
+        // first-failure ERROR (real signal that the device just dropped).
+        this.failureCount.delete(deviceId)
         if (wasOffline) {
           logger.info(`[CONNECTION MANAGER] Reconnected to ${deviceAddress} (was offline)`)
         } else {
@@ -198,6 +205,10 @@ class FireTVConnectionManager {
       connectionInfo.lastError = error.message
       const isFirstFailure = connectionInfo.connectionAttempts === 0
       connectionInfo.connectionAttempts++
+      // Persist to the durable counter so the next retry — even after a
+      // disconnect()/cleanup wipes connections — sees a non-zero count
+      // and demotes to DEBUG.
+      this.failureCount.set(deviceId, connectionInfo.connectionAttempts)
 
       // First failure → ERROR (real signal: device just went offline or is misconfigured).
       // Subsequent failures → DEBUG (expected: device intentionally powered off, eg
