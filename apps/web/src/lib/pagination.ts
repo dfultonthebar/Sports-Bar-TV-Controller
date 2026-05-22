@@ -2,7 +2,7 @@
  * Pagination Utilities - Re-exported from @sports-bar/data
  *
  * This file bridges the local import path (@/lib/pagination) to the shared package.
- * All pagination functionality is maintained in the @sports-bar/data package.
+ * All pagination functionality is maintained in the @sports-bar/database package.
  */
 
 // Re-export everything from the data package pagination module
@@ -25,4 +25,4 @@ export {
   type PaginatedResponse,
   type CursorPaginationParams,
   type CursorPaginatedResponse
-} from '@sports-bar/data'
+} from '@sports-bar/database'

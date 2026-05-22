@@ -9,9 +9,8 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.96.0",
+    "@anthropic-ai/sdk": "^0.97.0",
     "@sports-bar/config": "*",
-    "@sports-bar/data": "*",
     "@sports-bar/database": "*",
     "@sports-bar/logger": "*",
     "@sports-bar/soundtrack": "*",

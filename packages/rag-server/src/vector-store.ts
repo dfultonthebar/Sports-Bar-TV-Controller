@@ -32,6 +32,13 @@ export interface SearchResult {
   chunk: DocumentChunk;
   score: number;
   id: string;
+  /**
+   * Cross-encoder rerank score (logit + sigmoid, 0-1).
+   * Populated by `rerankChunks` when `RAG_RERANK_ENABLED=true`. Distinct
+   * from `score` (RRF hybrid score 0-1) so downstream UI can keep
+   * displaying the bi-encoder relevance percentage unchanged.
+   */
+  rerankScore?: number;
 }
 
 const VECTOR_STORE_FILE = path.join(RAGConfig.ragDataPath, 'vector-store.json');

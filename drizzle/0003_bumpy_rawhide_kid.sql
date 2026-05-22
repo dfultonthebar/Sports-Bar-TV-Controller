@@ -1,1 +1,0 @@
-ALTER TABLE `IRDevice` ADD `irCodes` text;

@@ -173,8 +173,11 @@ export {
 } from './bananas-ingestion'
 
 // Neighborhood RF Interference Prediction — correlator + profile builder + preemptive strike (v2.51.0+)
+// v2.52.12: + SDR correlator (correlateSdrInterference) + combined runner (correlateAllInterference)
 export {
   correlateInterference,
+  correlateSdrInterference,
+  correlateAllInterference,
   computeAttributionConfidence,
   type CorrelateOptions,
   type CorrelateResult,
@@ -186,8 +189,14 @@ export {
   type RebuildProfilesResult,
 } from './artist-profile-builder'
 
+// v2.52.13: + SDR-aware findCleanFreqs for Tier 2 + Tier 4 freq suggestions
 export {
   runPreemptiveStrike,
+  findCleanFreqs,
   type PreemptiveStrikeOptions,
   type PreemptiveStrikeCandidate,
+  type CleanFreqSuggestion,
 } from './preemptive-strike'
+
+// v2.52.14: Tier 3 — Daily Ollama-powered RF Pattern Digest
+export { generateRfPatternDigest } from './rf-pattern-digest'

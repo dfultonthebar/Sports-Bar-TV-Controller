@@ -6,7 +6,7 @@ import { logger } from '@sports-bar/logger'
 import { db } from '@/db'
 import { schema } from '@/db'
 import { eq } from 'drizzle-orm'
-import { operationLogger } from '@sports-bar/data'
+import { operationLogger } from '@sports-bar/database'
 import { SamsungTVClient, TVBrand } from '@sports-bar/tv-network-control'
 import { persistSamsungTokenIfChanged } from '@/lib/samsung-token-persist'
 

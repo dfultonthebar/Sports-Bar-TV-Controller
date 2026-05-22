@@ -142,16 +142,21 @@ export async function correlateInterference(
 
       // Upsert via the unique (rf_event_id, neighborhood_event_id) index.
       // Re-running adjusts confidence / time_delta only.
+      // v2.52.20 fix (audit M2): include source='shure' explicitly
+      // rather than relying on the column default. The default keeps
+      // working but if the schema is ever recreated without a default
+      // (re-migration, fresh install glitch) this silently failed.
+      // Explicit is defensive + matches the SDR pass on line 316.
       await db.run(sql`
         INSERT INTO InterferenceAttribution (
           id, rf_event_id, neighborhood_event_id,
           time_delta_seconds, distance_mi, confidence,
-          attribution_method, created_at
+          attribution_method, source, created_at
         )
         VALUES (
           ${crypto.randomUUID()}, ${rf.id}, ${ne.id},
           ${dt}, ${dist}, ${confidence},
-          'correlation_v1', ${nowSec}
+          'correlation_v1', 'shure', ${nowSec}
         )
         ON CONFLICT(rf_event_id, neighborhood_event_id) DO UPDATE SET
           confidence = excluded.confidence,
@@ -167,4 +172,169 @@ export async function correlateInterference(
   )
 
   return { rfEventsProcessed: rfRows.length, attributionsWritten }
+}
+
+// =============================================================================
+// v2.52.12: SDR ↔ NeighborhoodEvent correlator
+// =============================================================================
+//
+// Parallel pipeline to the Shure correlator above, reading the
+// sdr_carriers table instead of shure_rf_events. Two reasons to
+// have both:
+//
+//   1. Wider band: the SDR sweeps 470-516 MHz seeing transmitters
+//      Shure's receivers aren't even tuned to. So we may correlate
+//      events that the Shure-only path misses entirely.
+//
+//   2. Independent confirmation: when BOTH the Shure and SDR see
+//      activity coinciding with an artist's event, ArtistInterference
+//      Profile confidence climbs faster (artist-profile-builder
+//      aggregates both into per-artist counters).
+//
+// CRITICAL NARROWING: sdr_carriers fires for every transmitter we
+// detect, including the giant WCWF UHF14 broadcast that's continuous.
+// We don't want to attribute "Anduzzi's 8pm gig" to WCWF being on the
+// air at 8pm. So this pass filters to SDR carriers within ±0.1 MHz
+// of one of OUR Shure receiver freqs — i.e., transmitters that could
+// actually interfere with our wireless mics. The Shure receiver freqs
+// are pulled from shureSlxdClientManager's live snapshot (already
+// hoisted to globalThis per Gotcha #10).
+//
+// De-dup: for each (NeighborhoodEvent, Shure freq), pick the SDR
+// carrier closest in time to event start. Multiple sdr_carriers
+// during one DJ set at the same freq collapse to one attribution.
+
+// v2.52.21: helpers moved to shure-freq-utils.ts (shared with preemptive-
+// strike + rf-pattern-digest). SHURE_FREQ_MATCH_MHZ is now the canonical
+// tolerance constant; SDR_FREQ_MATCH_MHZ is retained as an alias for
+// the few inline references below to avoid churn.
+import { getShureFreqsMhz, buildFreqBandClauses, SHURE_FREQ_MATCH_MHZ } from './shure-freq-utils'
+const SDR_FREQ_MATCH_MHZ = SHURE_FREQ_MATCH_MHZ
+const SDR_LOOKBACK_SECONDS = 7 * 24 * 3600
+
+interface SdrCarrierRow {
+  id: string
+  freq_mhz: number
+  peak_dbm: number | null
+  detected_at: number
+}
+
+export async function correlateSdrInterference(
+  opts: CorrelateOptions = {},
+): Promise<CorrelateResult> {
+  const sinceEpoch =
+    opts.sinceEpoch ?? Math.floor(Date.now() / 1000) - SDR_LOOKBACK_SECONDS
+
+  const ourFreqs = await getShureFreqsMhz() // v2.52.21: shared util
+  if (ourFreqs.length === 0) {
+    logger.info('[CORRELATOR-SDR] no Shure freqs known — skipping SDR pass')
+    return { rfEventsProcessed: 0, attributionsWritten: 0 }
+  }
+
+  // Pull SDR carriers within freq-window of each of our Shure freqs.
+  // event_type='carrier_active' is the canonical rising-edge event;
+  // heartbeats during sustained carriers are de-duped below.
+  // v2.52.21: shared buildFreqBandClauses (was inline 3 lines here).
+  const freqBandClause = buildFreqBandClauses(ourFreqs, SDR_FREQ_MATCH_MHZ)!
+  const carriers = await db.all<SdrCarrierRow>(sql`
+    SELECT id, freq_mhz, peak_dbm, detected_at
+    FROM sdr_carriers
+    WHERE event_type = 'carrier_active'
+      AND detected_at >= ${sinceEpoch}
+      AND (${freqBandClause})
+    ORDER BY detected_at DESC
+  `)
+
+  if (carriers.length === 0) {
+    logger.info('[CORRELATOR-SDR] processed 0 carriers, wrote 0 attributions')
+    return { rfEventsProcessed: 0, attributionsWritten: 0 }
+  }
+
+  const minTime = Math.min(...carriers.map((r) => r.detected_at))
+  const maxTime = Math.max(...carriers.map((r) => r.detected_at))
+
+  const candidateEvents = await db.all<NeighborhoodEventRow>(sql`
+    SELECT ne.id, ne.venue_id, ne.start_time, ne.artist_normalized, nv.distance_mi
+    FROM NeighborhoodEvent ne
+    INNER JOIN NeighborhoodVenue nv ON nv.id = ne.venue_id
+    WHERE nv.is_active = 1
+      AND nv.distance_mi IS NOT NULL
+      AND nv.distance_mi <= ${MAX_DISTANCE_MI}
+      AND ne.start_time >= ${minTime - TIME_WINDOW_SECONDS}
+      AND ne.start_time <= ${maxTime + TIME_WINDOW_SECONDS}
+  `)
+
+  // De-dup: per (NeighborhoodEvent, Shure freq), pick the SDR carrier
+  // closest in time. Map key = `${neId}:${freqIdx}`.
+  const bestPerPair = new Map<string, { carrier: SdrCarrierRow; ne: NeighborhoodEventRow; freqIdx: number; dt: number }>()
+  for (const c of carriers) {
+    // Find which of our freqs this carrier belongs to
+    let freqIdx = -1
+    for (let i = 0; i < ourFreqs.length; i++) {
+      if (Math.abs(c.freq_mhz - ourFreqs[i]) <= SDR_FREQ_MATCH_MHZ) {
+        freqIdx = i
+        break
+      }
+    }
+    if (freqIdx < 0) continue
+
+    for (const ne of candidateEvents) {
+      const dt = Math.abs(c.detected_at - ne.start_time)
+      if (dt > TIME_WINDOW_SECONDS) continue
+      const key = `${ne.id}:${freqIdx}`
+      const prev = bestPerPair.get(key)
+      if (!prev || dt < prev.dt) {
+        bestPerPair.set(key, { carrier: c, ne, freqIdx, dt })
+      }
+    }
+  }
+
+  let attributionsWritten = 0
+  const nowSec = Math.floor(Date.now() / 1000)
+  for (const { carrier, ne, dt } of bestPerPair.values()) {
+    if (ne.distance_mi === null) continue
+    const confidence = computeAttributionConfidence(dt, ne.distance_mi)
+    await db.run(sql`
+      INSERT INTO InterferenceAttribution (
+        id, rf_event_id, neighborhood_event_id,
+        time_delta_seconds, distance_mi, confidence,
+        attribution_method, source, created_at
+      )
+      VALUES (
+        ${crypto.randomUUID()}, ${carrier.id}, ${ne.id},
+        ${dt}, ${ne.distance_mi}, ${confidence},
+        'correlation_v1', 'sdr', ${nowSec}
+      )
+      ON CONFLICT(rf_event_id, neighborhood_event_id) DO UPDATE SET
+        confidence = excluded.confidence,
+        time_delta_seconds = excluded.time_delta_seconds,
+        distance_mi = excluded.distance_mi,
+        source = excluded.source
+    `)
+    attributionsWritten++
+  }
+
+  logger.info(
+    `[CORRELATOR-SDR] processed ${carriers.length} carriers (${ourFreqs.length} Shure freqs, ${candidateEvents.length} candidate events), wrote ${attributionsWritten} attributions`,
+  )
+
+  return { rfEventsProcessed: carriers.length, attributionsWritten }
+}
+
+/**
+ * Run BOTH Shure and SDR correlation passes. Scheduler should call
+ * this. Errors in either pass are logged but don't prevent the other.
+ */
+export async function correlateAllInterference(
+  opts: CorrelateOptions = {},
+): Promise<{ shure: CorrelateResult; sdr: CorrelateResult }> {
+  const shure = await correlateInterference(opts).catch((err) => {
+    logger.error('[CORRELATOR] Shure pass failed:', err)
+    return { rfEventsProcessed: 0, attributionsWritten: 0 }
+  })
+  const sdr = await correlateSdrInterference(opts).catch((err) => {
+    logger.error('[CORRELATOR-SDR] SDR pass failed:', err)
+    return { rfEventsProcessed: 0, attributionsWritten: 0 }
+  })
+  return { shure, sdr }
 }
