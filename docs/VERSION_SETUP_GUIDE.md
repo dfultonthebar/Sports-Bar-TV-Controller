@@ -35,6 +35,282 @@ is the archive.
 
 ---
 
+## v2.54.0 → v2.54.20 — drizzle migrate switch + release snapshots + log demotes + schema-completeness baseline-derived + Pass 3 cleanup + column-level schema check + bartender gradient sweep + Rule 10 weekly bumps (multi-version 2026-05-20/21)
+
+**Versions covered:** v2.54.0 → v2.54.6 (7 commits across 2026-05-20 evening + 2026-05-21 early)
+**Branch landed:** main
+**Fleet target:** rolling upgrade from v2.53.17 — auto-update will roll the batch
+
+This batch is the systemic fix for the v2.51 24h fleet outage (5/6 boxes missing `NeighborhoodEvent` because `drizzle-kit push` silently aborted on a pre-existing index — Gotcha #6). Also adds release snapshots so future rollbacks take ~5s instead of ~3min, and demotes two classes of steady-state log noise that were drowning real failures in the error stream.
+
+- **v2.54.0** — Baseline drizzle migration. `drizzle/0000_baseline.sql` (94K) captures the entire current schema.ts as a clean migration file so new locations + recovery paths have a single canonical starting point. Generated via `drizzle-kit generate --name baseline` and hand-reviewed to strip any orphan-table DROPs (sdr_*, AudioMessage, etc. that exist in production but aren't declared in schema.ts).
+- **v2.54.1** — Switched schema-update path from `push` to `migrate`. `scripts/bootstrap-drizzle-migrations.sh` (NEW, idempotent) ensures `__drizzle_migrations` exists with sha256-hash markers for every committed migration. `scripts/auto-update.sh` now runs bootstrap + `drizzle-kit migrate` instead of `drizzle-kit push`. `migrate` applies pending migrations one at a time and fails LOUD on any error — no more silent abort skipping subsequent table creations. Legacy push block wrapped in `if false; then ... fi` (not deleted yet — left as audit trail).
+- **v2.54.2** — CLAUDE.md Gotcha #6 marked RESOLVED. Full dev workflow rewrite for generate+migrate (no more `db:push` in normal dev flow).
+- **v2.54.3** — Capistrano-style release snapshots. `scripts/snapshot-release.sh` (NEW) captures `.next/` + `package.json` + `drizzle/` + manifest.json to `/home/ubuntu/sports-bar-releases/v<ver>/` at the END of every successful auto-update — by construction "known good" because verify-install just passed. Retention KEEP_LAST=5. `scripts/instant-rollback.sh` (NEW) restores any snapshot in ~5s: PM2 stop → `git reset --hard` to snapshot SHA → rsync `.next` → PM2 start → health check. Standard auto-update.sh rollback path (~3min) still works as fallback.
+- **v2.54.4** — Demoted Atlas JSON-RPC `-32604 param not found` from ERROR to DEBUG at `packages/atlas/src/atlasClient.ts:543` (RESPONSE handler) and ~1027 (GET catch). The error fires hundreds of times/day on every priority-watcher poll cycle (probes 60+ candidate param names that don't exist on AZM8 firmware 4.5.18 — see [[feedback-atlas-azm8-no-priority-param]]). Real signal, not a bug.
+- **v2.54.5** — CRITICAL fix for v2.54.4: `response.error` arrives as a JSON-encoded STRING (not parsed object), so the `response.error.code === -32604` check was always false and the v2.54.4 demote never took effect. Fix: `if (typeof errObj === 'string') { try { errObj = JSON.parse(errObj) } catch {} }` before extracting the code.
+- **v2.54.6** — Same demote pattern applied to `firetv-connection-manager.ts` + `firetv-health-monitor.ts`. When Atmosphere TV / Epson Projector / Fire TV is intentionally powered off (signage-off hours, after-hours, between schedule windows), the previous code logged ERROR on every reconnect attempt (~200+/day per offline device). Now first failure logs ERROR (novel signal), subsequent failures within the same offline streak log DEBUG. Reconnect logs INFO with "was offline" so recovery is visible. Catalyst: Holmgren's `10.11.3.48` is the **Atmosphere TV** (NOT a dead Fire Cube as earlier memory had it), intermittently off by design.
+- **v2.54.7** — VERSION_SETUP_GUIDE entry for this batch.
+- **v2.54.8** — Atlas DEBUG output now routes through `logger.debug` (was: `logger.info`). v2.54.4/.5's ERROR→DEBUG demote only changed the level tag in the message text — the underlying `writeLog()` in `packages/atlas/src/atlas-logger.ts` routed every non-ERROR / non-WARN level through `logger.info()`, so the spam stayed at INFO in PM2 stdout. Now DEBUG hits `logger.debug()` which the shared `@sports-bar/logger` filters out in production (LogLevel.INFO+ only). File log at `~/Sports-Bar-TV-Controller/log/atlas-communication.log` still receives every level for forensics. Verified post-restart: dense Atlas RESPONSE/COMMAND/GET JSON blocks no longer appear in `pm2 logs`.
+- **v2.54.9** — VERSION_SETUP_GUIDE addendum (this file) extended to cover v2.54.7 + v2.54.8.
+- **v2.54.10** — **schema_completeness verify-install layer now derives expected table list from drizzle/0000_baseline.sql instead of a hardcoded 13.** Pre-holiday audit (2026-05-21) found **`ArtistInterferenceProfile` missing on 5/6 fleet boxes** — preemptive-strike scheduler was crashing hourly with `no such table: ArtistInterferenceProfile`. The table was added in v2.51.x with the Neighborhood RF Prediction subsystem but never added to the hardcoded verify list, so schema_completeness PASSed 13/13 even though preemptive-strike was broken. DDL applied out-of-band to recover the 5 boxes; v2.54.10 verify-install now reports `120/120 present` and will catch any future missing table automatically. **Required Manual Step for boxes upgrading to v2.54.10 from <v2.54.10:** none — `IF NOT EXISTS` DDL was already applied out-of-band on 2026-05-21 (Holmgren UTC 03:35). New verify-install will pass on the next auto-update cycle.
+- **v2.54.11** — VERSION_SETUP_GUIDE addendum for v2.54.9 + v2.54.10. Also normalized greenville-stoneyard's `LOG_LEVEL=DEBUG` → `INFO` (per-location env override left over from past troubleshooting; was bypassing the v2.54.8 atlas DEBUG suppression and flooding logs ~10x). pm2 delete+start required per Gotcha #2.
+- **v2.54.12** — **Pass 3 packages/* audit: delete verified dead code (-3291 lines)**. Code-explorer agent + grep verification of zero callers across the codebase identified:
+  - Whole package: `packages/tv-docs/` (+ orphan shim `apps/web/src/lib/tvDocs/`)
+  - Atlas stubs: `atlas-ai-analyzer.ts` (619-line stub, replaced by atlas-meter-manager v2.33.50+), `atlas-ai-training-data.ts` (AtlasPatternMatcher + atlasTrainingPatterns, 0 callers), `atlas-meter-service.ts` (simulated-data stub)
+  - Services dead: `sports-guide-ollama-helper.ts` (6 exports, 0 callers), `enhanced-ai-client.ts` (EnhancedAIClient unreachable)
+  - Orphan shims at `apps/web/src/lib/{ai-sports-context,atlas-meter-service,enhanced-ai-client}.ts`
+  - Kept `packages/services/src/ai-sports-context.ts` — still used internally by `automated-health-check` + `health-check-scheduler`, just removed from public index.
+  - **NOT deleted (agent false-positive):** `@sports-bar/security` — verification found it IS actively used by `/api/streaming-platforms/credentials`.
+  - Build verified clean: `npx turbo run build --force` → 35/35 tasks successful.
+- **v2.54.13** — **Pass 3 doc fixes**:
+  - `packages/bss-blu/README.md` + `bss-service.ts` top-of-file: prominent warning that `setZoneMute` / `setZoneGain` / `setZoneSource` / `getDeviceState` are NO-OP STUBS — TCP socket connects but no HiQnet commands are emitted. Operator-protection against deploying BSS hardware expecting working zone control.
+  - `packages/scheduler/src/espn-sync-service.ts:354`: convert stale `TODO: Add espnTeamId column` to a `KNOWN LIMITATION:` comment explaining the trade-off (team-name fuzzy match has been running in production at all 6 locations since shipping; schema column adds cost without commensurate value).
+- **v2.54.14** — VERSION_SETUP_GUIDE addendum covering v2.54.11/.12/.13.
+- **v2.54.15** — **Pass 3 architectural cleanups (deletions only, no migrations)**:
+  - **Finding 9** — `HealthCheckScheduler` in `packages/services/src/health-check-scheduler.ts` owned its own `setInterval` loops, but `startHealthCheckScheduler()` had zero call sites anywhere in the codebase. Deleted the file + orphan shim. (The two siblings `automated-health-check` and `sports-schedule-sync` were correctly placed and stay where they are.)
+  - **Finding 12** — `nfhsApi` / `isNFHSApiAvailable` / `NFHSEvent` removed from the public surface of `packages/streaming/src/index.ts`. The stub IS still consumed internally by `unified-streaming-api.ts` (relative import, kept), but external consumers should not import a stub. Deleted the orphan bridge `apps/web/src/lib/streaming/api-integrations/nfhs-api.ts`.
+  - **Finding 2** re-verified and SKIPPED — `@/lib/ai-tools` has 2 live callers (api/chat + api/security/logs); `local-ai-analyzer` has 4 callers. Both live, not dead.
+- **v2.54.17** — VERSION_SETUP_GUIDE addendum for v2.54.14/.15/.16.
+- **v2.54.18** — **Bartender gradient sweep (18 swaps across 7 files) + db-helpers NIT exports**. Per `project_bartender_gradient_review_pending` memory: gradient text (`bg-clip-text text-transparent`) renders fragile on aged iPad Safari used by bartenders. Mechanical regex swap → `text-white`. Files: BartenderRemoteAudioPanel (4), EnhancedChannelGuideBartenderRemote (5), BartenderMusicControl (3), InteractiveBartenderLayout (3), BartenderRemoteSelector (1), BartenderRemoteSelector-Enhanced (1), DMXLightingRemote (1). Memory said 17 instances; current was 18 (one added since memory was written). Playwright-ui-tester agent verified visually on 1024x768 iPad viewport — all 4 tabs render solid white, layout intact, touch targets ≥44px, zero console errors. Also: forwarded `not` + `setDbHelperLogger` through `apps/web/src/lib/db-helpers.ts` per the v2.54.16 code-reviewer NIT (zero live callers, just future-proofing).
+- **v2.54.19** — **Rule 10 weekly bumps**: uuid 13→14 (only breaks v3/v5/v6 invalid-offset; we use v4 only across 5 call sites), @anthropic-ai/sdk 0.96→0.97 (patch-version SDK move; only consumed by qa-generator-processor), npm update (patch/minor: @types/react, postcss, ts-jest, tsx). Ollama: phi3:mini + llama3.2:3b refreshed. Deferred bumps (each needs dedicated PR): zod 3→4 (validation schemas everywhere), tailwindcss 3→4 (config-format rewrite), typescript 5.9→6.0 (too new), @huggingface/transformers 3.8→4.2 (reranker re-verify), tesseract.js 6→7, serialport 12→13. npm audit: 13 transitive vulns (esbuild via drizzle-kit, ip via node-ssdp, postcss/serialize-javascript inside Next 16 internals) — `audit fix --force` would downgrade Next 16; tracking upstream. OS: Ubuntu 24.04.4 LTS noble — current.
+- **v2.54.20** — **schema_completeness now checks COLUMNS, not just tables.** Pre-holiday audit found another silent-drift class the v2.54.10 table-only check missed: 5/6 fleet boxes were missing `Location.{latitude, longitude, lastGeocodedAt}` (v2.51.2 ALTER never landed) → venue-discovery cron couldn't geocode → 0 NeighborhoodVenue rows at 5 locations. 6/6 boxes were also missing `atlas_drop_events.event_type`. **DDL applied out-of-band on Holmgren UTC 06:23** (5 ALTER TABLEs total — verified post-apply via PRAGMA table_info). Verify-install now invokes Python to compare baseline `CREATE TABLE` blocks against PRAGMA per-column; reports `MISSING_COLS=Location.latitude...` when columns are missing. **Required Manual Step for boxes upgrading from <v2.54.20:** none — DDL is already applied. On next auto-update PM2 restart, venue-discovery cron will fire 30 min later, geocode each Location's address via Nominatim, write lat/long back, then Overpass query for nearby venues. **Operator action needed for luckys1313 only:** its Location row has name='Lucky's 1313' but blank address fields — geocoder will return null and venue-discovery will skip. Operator should populate `address`, `city`, `state`, `zipCode` via System Admin UI or directly via sqlite3 UPDATE.
+- **v2.54.24** — **auto-update.sh: add `apps/web/src/services/`, `apps/web/src/config/`, `apps/web/src/middleware/` to `SHARED_SOFTWARE_PREFIXES`.** v2.54.23's rollout to holmgren-way failed at the merge step with `CONFLICT (content): Merge conflict in apps/web/src/services/firetv-connection-manager.ts` → full rollback. Root cause: `SHARED_SOFTWARE_PREFIXES` listed `apps/web/src/{app,components,lib,hooks,db,types,utils}/` but not `services/`, so when the v2.54.22 commit on each location branch (different SHA than main's v2.54.22) collided with v2.54.23's edits to the same lines, no prefix matched, the conflict was treated as "non-whitelisted file", and auto-update aborted. **Required Manual Step for boxes upgrading from <v2.54.24:** the v2.54.23 rollout needs a manual workstation-side pre-resolve on each location branch (`git checkout location/X && git merge -X theirs origin/main` for the conflicted file, then push) before auto-update will run cleanly. After v2.54.24 lands, future services/ edits propagate automatically. Also adds `config/` and `middleware/` directories preemptively — pure-software subtrees that locations should never carry divergent versions of.
+- **v2.54.23** — **Demote-defeat #2: failureCount Map outlives `connections.delete()`.** v2.54.22 preserved `connectionAttempts` across `getOrCreateConnection` calls but missed that `disconnect()` (called from `executeCommand` failure path, `reconnect`, and the periodic `cleanupStaleConnections`) **deletes** the entry from `this.connections` entirely — wiping the counter back to 0 on every disconnect→reconnect cycle. Holmgren after v2.54.22 still emitted ~7 ERROR/35min per offline device. Fix: added `private failureCount: Map<string, number>` field as a durable counter independent of the connections-Map lifecycle. Catch block writes through to it; success path deletes the entry; `getOrCreateConnection` reads from it (not from `existing.connectionAttempts`). Pure logging change, no behavioral impact on connection lifecycle.
+- **v2.54.22** — **Connection-manager / ADB-client / FIRE-CUBE log demote completion**. v2.54.6 added a rising-edge demote in `firetv-connection-manager.ts` but it was defeated by a bug at line 147: every reconnect attempt allocated a *fresh* `ConnectionInfo` object, resetting `connectionAttempts=0`, so every failure looked like a "first failure" and ERROR-logged. Holmgren still emitted ~44 ERROR rows/day from `10.11.3.14` (Epson projector off-hours) + `10.11.3.48` (Atmosphere TV) + 2 sleeping Fire Cubes. This release: (a) preserve `connectionAttempts` + queued commands when reusing the slot (real rising-edge); (b) demote `adb-client.executeShellCommand` ERROR → DEBUG (the function throws — caller decides); (c) demote `adb-client.sendKey` duplicate-log → DEBUG; (d) add rising-edge to `adb-client.keep-alive ping` (first miss ERROR, repeats DEBUG); (e) demote `adb-client.connect()` catch → DEBUG (connection-manager already logs at the right level via its rising-edge); (f) demote `adb-client.Max reconnection attempts` → DEBUG (fires on every keep-alive tick once cap is hit); (g) `firetv/send-command/route.ts` catch demotes `timeout / refused / unreachable / "failed to connect"` → DEBUG, keeps ERROR for novel failures (auth, unrecognized). Expected log reduction at Holmgren: ~44 → ~4 ERROR/day (1 per device per offline-streak transition). **Required Manual Step:** none — code-only fix, auto-update handles rebuild + restart.
+- **v2.54.16** — **Pass 3 F8: merge `@sports-bar/data` into `@sports-bar/database` (-1367 lines)**. The two packages had functional overlap (both provided CRUD helpers + Drizzle operator re-exports). Migration:
+  - `pagination.ts`, `database-logger.ts`, `operation-logger.ts` — `git mv` from `packages/data/src/` to `packages/database/src/`. Added re-exports to `packages/database/src/index.ts`.
+  - `sanitizeData` in `packages/database/src/helpers.ts:45` changed from internal to `export function`, added to index.
+  - `apps/web/src/lib/db-helpers.ts` rewritten — dropped the `createDbHelpers` factory pattern (was never used as DI; only call site passed the production singleton). Now a thin re-export bridge from `@sports-bar/database`.
+  - 8 caller files (`apps/web/src/lib/{pagination,database-logger,operation-logger}.ts`, 4 API routes using `operationLogger`, `packages/services/src/ir-database.ts` using `logDatabaseOperation`) — `from '@sports-bar/data'` → `from '@sports-bar/database'` via sed.
+  - `@sports-bar/data` dependency dropped from `apps/web/package.json` + `packages/services/package.json`.
+  - `packages/data/` directory DELETED.
+  - **Required Manual Step:** none — auto-update handles the npm install + rebuild. Independent code-reviewer agent verified no double-substitution artifacts, all 8 callers correctly rewritten, no orphan call sites. Holmgren runtime-verified: `/api/channel-presets` 200, ESPN sync running, zero `Cannot find module '@sports-bar/data'` errors in PM2 logs post-restart.
+
+### Required Manual Steps
+
+- **None for fresh installs** — `bootstrap-drizzle-migrations.sh` is idempotent and runs automatically on every auto-update. The baseline migration is applied at first install.
+- **For locations that auto-update from v2.53.17 → v2.54.x** — auto-update will run bootstrap (registers existing schema state with `__drizzle_migrations`) then drizzle-kit migrate (no-op since all migrations already marked applied). Should "just work". If it fails, see Known Errors & Fixes.
+- **OPERATOR ACTION (one-time, post-v2.54.3 — none required at any current fleet box):** `instant-rollback.sh` is opt-in. To use it in an emergency: `bash scripts/instant-rollback.sh --list` (see available snapshots) → `bash scripts/instant-rollback.sh <version>`. No setup needed; snapshots accrue automatically on each successful update.
+
+### Verification gates (after each box updates)
+
+- `pm2 status` → sports-bar-tv-controller online, restart_time +1
+- `curl localhost:3001/api/version` → reports `2.54.6` (or whatever latest is)
+- `sqlite3 /home/ubuntu/sports-bar-data/production.db "SELECT COUNT(*) FROM __drizzle_migrations"` → ≥ 1 (proves bootstrap ran; new installs will be N=migration count, existing installs will be N=count of committed migrations).
+- `ls /home/ubuntu/sports-bar-releases/v*/manifest.json 2>/dev/null | wc -l` → 1 or more (snapshots accruing). Empty = `snapshot-release.sh` didn't run; check auto-update.sh log for the snapshot block at finalize.
+- `pm2 logs sports-bar-tv-controller --lines 500 --err --nostream | grep -c "Failed to connect to 10\."` → after 24h on v2.54.6, should be ≤ 6 (one per offline device per restart). Previous baseline was 200+. If still high, the demote isn't taking effect.
+
+### Known acceptable behaviors
+
+- **`__drizzle_migrations` table appears empty on first read after v2.54.1 update** — bootstrap runs at next auto-update cycle and populates it. Not an error.
+- **`/home/ubuntu/sports-bar-releases/` empty at first v2.54.3 update** — snapshots accrue starting with the NEXT successful update. First snapshot appears after v2.54.3 → v2.54.x rolls.
+- **First failure for any device after PM2 restart still logs ERROR** — that's by design (novel signal). Only the repeats are demoted.
+
+### Rollback
+
+- For v2.54.0/v2.54.1 (the migrate switch): if `drizzle-kit migrate` fails on a box, the auto-update.sh trap fires full rollback as normal. Manual recovery path is documented in the v2.54.0 commit message — apply DDL out-of-band via `sqlite3` then re-trigger auto-update.
+- For v2.54.6 (the log demote): cosmetic regression only; revert the commit if it's masking a real failure somehow.
+- General: every snapshot in `/home/ubuntu/sports-bar-releases/` is by construction known-good. `instant-rollback.sh <prev-version>` works for any release in that dir.
+
+---
+
+## v2.53.10 → v2.53.14 — follow-ups + venue UI + brief fixes (multi-version 2026-05-20)
+
+**Versions covered:** v2.53.10 → v2.53.14 (5 commits on 2026-05-20)
+**Branch landed:** main
+**Fleet target:** rolling upgrade from v2.53.9 — all 6 boxes shipped same-day
+
+Pure follow-up batch after the v2.51-v2.53.9 big-ship. Each version is small but together they close real gaps. Strictly additive — no env vars, no schema migrations, no operator opt-ins.
+
+- **v2.53.10** — VERSION_SETUP_GUIDE entry for the v2.51-v2.53.9 batch.
+- **v2.53.11** — TWO production bugs:
+  1. **Shift-brief surfaced override-digest 30-day recommendations under "Recent hardware/software failures"** (LLM merged the 30-day pattern observations into the 24h failures section). Fix: drop `newRecommendations` from the brief context entirely; admin recommendations stay in the DB for admin tooling but no longer reach bartenders.
+  2. **`RAG_RERANK_ENABLED=true` was a no-op on the /api/chat path.** v2.53.0 wired the reranker into `queryDocs`/`queryDocsStream` (one-shot + SSE) but not into `retrieveContext`, which is what chat actually calls. Locations that paid the +600MB RAM + PM2 restart cost got zero chat-side benefit. Fix: `retrieveContext` now routes through the same `retrieveAndRerank` helper when the flag is on. Functional verification = chat response `sources.length === 8` (was 5).
+- **v2.53.12** — VERSION_SETUP_GUIDE corrected the v2.51-v2.53.9 per-location RAM table (4 boxes stated as 16 GB were actually 31 GB; Graystone correctly at 15 GB). Added new pre-flight: `command -v pm2` in a non-interactive SSH shell. Leg-lamp's `pm2` lived only in NVM (not `/usr/bin/` like the other 4 boxes) — auto-update.sh + future remote PM2 restarts silently failed there. Applied `/usr/local/bin/pm2` symlink out-of-band; documented for future-location-setup. **Future-new-location action:** `command -v pm2` MUST return a non-empty path in `ssh ubuntu@<host> 'command -v pm2'`. If empty, `sudo ln -sfv /home/ubuntu/.nvm/versions/node/v20.20.0/bin/{node,npm,npx,pm2} /usr/local/bin/`.
+- **v2.53.13** — Operator UI for pending neighborhood venues at `/admin/venues/pending` (backend was shipped in v2.53.4 as API-only; CLI was the only client). Same field surface as the CLI: name + latest event, category, distance, source badge, event count. Per-row approve / decline / merge-with-target buttons. SafeBoundary-wrapped. **Auth fix:** both `/api/admin/venues/pending` GET and `/api/admin/venues/[id]/review` POST now call `requireAuth(request, 'ADMIN', { auditAction: ... })`. Before this commit they were rate-limit-only — any client on the bar's LAN could approve, decline, or merge venues anonymously.
+- **v2.53.14** — Atlas drops bullet in shift-brief. Mirrors the v2.53.6 priority-recap pattern for `atlas_drop_events`. **Conditional**: only appears when drops>0 in the last 24h. When 0 (common case post-v2.42.1 false-positive fix), no bullet renders. When ≥1, server-built-verbatim bullet with worst-zone + total count. Bullet also mirrored into `fallbackBrief()` for Ollama-degraded path parity.
+
+### Required Manual Steps
+
+- **None for v2.53.10, .11, .14** — pure code/doc changes, auto-update handles them.
+- **For v2.53.12 (NEW-location-only)** — add the `command -v pm2` pre-flight to your new-location setup. If empty, apply the NVM symlink (see above).
+- **For v2.53.13** — operator can now use the UI at `/admin/venues/pending` instead of `npx tsx apps/web/scripts/review-pending-venues.ts`. The CLI still works (kept for ops/scripting). Existing API consumers should send an authenticated request — sessions issued by /login carry the ADMIN role correctly.
+
+### Verification gates (after each box updates)
+
+- `pm2 status` → sports-bar-tv-controller online, restart_time +1
+- `curl localhost:3001/api/version` → reports `2.53.14`
+- `curl localhost:3001/admin/venues/pending` → 200 OK (HTML page; renders auth prompt for unauthenticated browsers)
+- `curl -o /dev/null -w "%{http_code}" localhost:3001/api/admin/venues/pending` → **401** (auth gate; the previous-version answer was 200 with data — that was the leak)
+- Shift-brief smoke test:
+  ```bash
+  curl -sS "http://localhost:3001/api/ai/shift-brief?force=true" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['brief'])"
+  ```
+  Expected sections: home-team games / other games / "Recent hardware/software failures to watch for: None" (NOT 30-day Xavier-output-25 noise) / Wireless mic status / Neighborhood-event heads-up (if any) / Atlas priority recap. The drops bullet is conditional and absent on stable Atlas — that's correct behavior, not a regression.
+
+### Known acceptable behaviors
+
+- **Drops bullet absent at all 6 boxes today** — Atlas hardware is stable everywhere post-v2.42.1. Feature is future-proof; when a real drop fires the bullet will appear.
+- **First chat call after restart loads bge-reranker-v2-m3 ONNX (~3-100s cold start)** — expected with `RAG_RERANK_ENABLED=true`. Subsequent calls ~+300ms over baseline.
+- **Pending venue queue stays at 0 at most locations** — new venues populate when Ticketmaster scrapes (4× daily) AND the location has `TICKETMASTER_API_KEY` set. Holmgren is currently the only fleet box with the key.
+
+### Rollback
+
+Standard auto-update.sh rollback path covers all five versions. If something specific to v2.53.13 regresses (admin UI render failure, auth gate too tight), revert just that commit (`0fa98fd3`) without losing the v2.53.11 production bug fixes.
+
+---
+
+## v2.51.0 → v2.53.9 — Neighborhood RF + reranker + shift-brief expansion (multi-version 2026-05-19/20)
+
+**Versions covered:** v2.51.0 → v2.53.9 (~30 commits across 2026-05-19 + 2026-05-20)
+**Branch landed:** main
+**Fleet target:** all 6 locations upgrade from v2.50.7 → v2.53.9
+
+Largest single-batch upgrade since v2.50.x. The work groups cleanly:
+
+- **v2.51.x — Neighborhood RF Interference Prediction:** new `NeighborhoodVenue` / `NeighborhoodVenueAlias` / `NeighborhoodEvent` / `InterferenceAttribution` tables, Bananas scraper (small-venue live music ~1mi useful), auto-geocoding of Location address via OSM Nominatim, `is_self` flag so own-bar gigs at Anduzzi's-style venues stop polluting the heads-up. No env vars; runs everywhere.
+- **v2.52.x SDR + AI:** SDR ↔ shift-brief integration, mic status one-liner, neighborhood-events heads-up bullet, daily Ollama RF Pattern Digest, hallucinated-game fix (pre-filter games ≤8 to avoid `[[feedback-llm-context-overflow]]`).
+- **v2.53.0 — Cross-encoder reranking:** `bge-reranker-v2-m3-ONNX` (int8) via `@huggingface/transformers`. **OPT-IN per location** via `RAG_RERANK_ENABLED=true`. PM2 `max_memory_restart` bumped 1G → 3G and `--max-old-space-size` 512 → 2048 fleet-wide (already in ecosystem.config.js commit — applies to every box).
+- **v2.53.1-2 — Ticketmaster Discovery API:** second neighborhood-events source for big venues (Lambeau, Resch, EPIC, Fox Cities PAC, Weidner). 30mi radius, 14-day lookahead, ~4 API calls/day (free tier limit is 5000). **OPT-IN per location** via `TICKETMASTER_API_KEY`. Default OFF.
+- **v2.53.4-5 — Venue review API:** `/api/admin/venues/pending` + `/review` endpoints + `apps/web/scripts/review-pending-venues.ts` CLI for triaging auto-discovered venues. Decline updates BOTH `is_active=false` AND `review_status='declined'` atomically (`[[feedback-state-machine-belt-suspenders]]`).
+- **v2.53.6-9 — Shift-brief expansion + karaoke-framing fix:** Atlas priority recap added as a 3rd RF bullet; server-built-verbatim pattern (`[[feedback-llm-server-built-verbatim]]`) used for mic-status + heads-up + Atlas recap to defeat llama3.1:8b paraphrasing (Gotcha #12). `num_predict: 200 → 320`. House Shure wireless is NEVER for karaoke (BYO mics) — bartender docs scrubbed of "karaoke mic" framing (Gotcha #13).
+
+### Required Manual Steps (per-location, IN ORDER):
+
+```bash
+# 1. SSH to the location via Tailscale
+ssh ubuntu@<location-tailscale-hostname>
+cd /home/ubuntu/Sports-Bar-TV-Controller
+
+# 2. Snapshot for rollback safety
+git log --oneline -3      # note current SHA
+sqlite3 /home/ubuntu/sports-bar-data/production.db ".backup /home/ubuntu/sports-bar-data/production.db.pre-v2.53.bak"
+
+# 3. Run auto-update — handles merge / npm ci / drizzle push / build / PM2 restart / verify-install
+bash scripts/auto-update.sh --triggered-by=manual_cli
+# Expect ~5-8 min. Adds @huggingface/transformers (+ONNX runtime) — first npm ci will be slow.
+
+# 4. (CONDITIONAL) Enable cross-encoder reranking — see decision table below.
+#    Default policy: ENABLE at every location AT OR ABOVE 16 GB RAM. Skip at Graystone (15 GB).
+#    If enabling:
+echo "RAG_RERANK_ENABLED=true" >> .env
+pm2 delete sports-bar-tv-controller && pm2 start ecosystem.config.js && pm2 save
+#    (delete+start required to re-read .env per Gotcha #2 — restart alone won't pick up the new env var)
+
+# 5. (CONDITIONAL) Enable Ticketmaster Discovery API for big-venue events — see decision table below.
+#    Default policy: ENABLE only where the operator has an active Ticketmaster developer key.
+#    If enabling:
+read -srp 'TICKETMASTER_API_KEY> ' TM_KEY && echo
+echo "TICKETMASTER_API_KEY=$TM_KEY" >> .env
+unset TM_KEY
+pm2 delete sports-bar-tv-controller && pm2 start ecosystem.config.js && pm2 save
+
+# 6. Verify the neighborhood tables exist (drizzle-kit push should have created them; double-check
+#    per Gotcha #6 — drizzle aborts silently on pre-existing indexes)
+sqlite3 /home/ubuntu/sports-bar-data/production.db "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('NeighborhoodVenue','NeighborhoodVenueAlias','NeighborhoodEvent','InterferenceAttribution');"
+# Expected: all 4 names listed. If any missing, see ROLLBACK / manual-DDL section below.
+
+# 7. (CONDITIONAL) Seed neighborhood venues from main's curated list (Lambeau/Resch/Anduzzi/etc.).
+#    Only needed at locations whose NeighborhoodVenue table is empty after step 6.
+sqlite3 /home/ubuntu/sports-bar-data/production.db "SELECT COUNT(*) FROM NeighborhoodVenue;"
+# If 0:
+npx tsx apps/web/scripts/seed-neighborhood-venues.ts
+# If Ticketmaster is enabled at this location, also seed its venue catalog:
+npx tsx apps/web/scripts/seed-ticketmaster-venues.ts
+
+# 8. Auto-geocode the Location row (v2.51.2 — uses OSM Nominatim, no env config).
+#    Idempotent: skips if Location already has lat/long.
+#    Triggered automatically on next scheduler tick (every 60s); to force-trigger:
+curl -sS -X POST http://localhost:3001/api/admin/geocode-location | python3 -m json.tool
+# Expected: { ok: true, lat: <number>, lng: <number> } OR { ok: true, alreadyGeocoded: true, ... }
+
+# 9. Triage any pending auto-discovered venues (interactive — only if NeighborhoodVenue.review_status
+#    contains 'pending_review' rows). At Holmgren this caught 94 venues after Ticketmaster turned on.
+npx tsx apps/web/scripts/review-pending-venues.ts
+# Press 'a' (approve) / 'd' (decline) / 'm' (merge with existing). 'q' to quit anytime — safe to resume.
+
+# 10. Per Standing Rule 11 — RAG re-scan (CLAUDE.md gained Gotchas #12 + #13, §7a + §9
+#     expanded; multiple bartender-help + ops docs updated; memory files referenced)
+nohup npx tsx scripts/scan-system-docs.ts > /tmp/scan-system-post-v2.53.log 2>&1 &
+# ~15-25 min with v2.50.1 batched embed.
+
+# 11. Verify chat picks up the new content
+curl -sS -X POST http://localhost:3001/api/chat \
+  -H 'Content-Type: application/json' \
+  -d '{"message":"why would the wireless mic banner show up at the same time as the priority banner","stream":false,"enableTools":false}' \
+  | python3 -c "import sys,json; d=json.load(sys.stdin); print((d.get('response') or '')[:500])"
+# Expected: answer mentions RF-induced priority (cyan + amber co-occurrence) and references
+# the RF_INTERFERENCE docs. If the model says "I don't have info", rescan didn't complete.
+
+# 12. Smoke-test the shift-brief
+curl -sS "http://localhost:3001/api/ai/shift-brief?force=true" \
+  -H 'Content-Type: application/json' | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('brief',''))"
+# Expected: 8-9 bullets including a mic-status line, optional heads-up line (if neighborhood events
+# in window), and Atlas priority recap. If the body lacks the Atlas recap section, fallbackBrief is
+# in play — confirm Ollama reachable (`ollama ps` shows llama3.1:8b loaded).
+
+# 13. Update fleet status doc
+# Edit docs/FLEET_STATUS.md row for this location → v2.53.9
+```
+
+### Per-Location Opt-In Decisions
+
+| Location           | RAM (verified 2026-05-20 via `free -g`) | RAG_RERANK_ENABLED  | TICKETMASTER_API_KEY                              | Notes                                                                                              |
+|--------------------|---------|---------------------|---------------------------------------------------|----------------------------------------------------------------------------------------------------|
+| holmgren-way       | 32 GB   | `true`              | `set` (active key — held by operator)              | Canary for both features. Pattern Digest enabled.                                                  |
+| leg-lamp           | 31 GB   | `true`              | unset (no operator-active key — keep OFF)         | Single-card; verify `MATRIX_SINGLE_CARD=true` still present (CLAUDE.md §4). **Per-location quirk**: NVM-installed `pm2` is NOT in `/usr/bin/` like the other boxes — `/usr/local/bin/pm2` symlinked manually 2026-05-20. See [[feedback-systemd-paths-and-ollama-perms]]. |
+| lucky-s-1313       | 31 GB   | `true`              | unset                                              | Single-card; dbx ZonePRO @ 192.168.10.50.                                                          |
+| stoneyard-appleton | 31 GB   | `true`              | unset                                              | Multi-card. Fleet-best AI Suggest baseline — confirm cold-call still ≤80s after rerank ships.       |
+| stoneyard-greenville | 31 GB | `true`              | unset                                              | Multi-card. Most-neglected box; budget extra time for verify.                                       |
+| graystone          | 15 GB   | **`false` — DO NOT ENABLE** | unset                                      | Tightest RAM box: 250-400MB app + 600MB reranker + 5.3GB llama3.1:8b = no headroom. See `[[project-graystone-ram-constraint]]`. |
+
+**Derivation rule (for adding NEW locations later):**
+
+- `RAG_RERANK_ENABLED=true` if `free -g | awk '/^Mem:/ {print $2}'` ≥ 16. Otherwise leave unset. (5 of 6 current fleet boxes have 31-32 GB; only Graystone is on the 15 GB threshold.)
+- `TICKETMASTER_API_KEY` ONLY if the operator has provisioned a developer key for this location AND wants stadium-scale (25mi) event awareness. Key issuance: https://developer.ticketmaster.com/ → Discovery API → "Get your API key".
+- **`pm2` PATH check (NEW LOCATION SETUP):** confirm `command -v pm2` returns a non-empty path in a non-interactive shell (`ssh ubuntu@<host> 'command -v pm2'`). If empty, the auto-update.sh + future remote restart commands will silently fail. Fix: `sudo ln -sfv /home/ubuntu/.nvm/versions/node/v20.20.0/bin/{node,npm,npx,pm2} /usr/local/bin/`. Audit `/usr/bin/pm2` vs NVM `pm2` — fleet has a split: 4 boxes use `/usr/bin/pm2` (apt or global npm) and 1 box (leglamp) uses NVM with manual symlink.
+
+### Verification gates (must PASS before promoting next location)
+
+- `pm2 status` → `sports-bar-tv-controller` online, restart_time incremented exactly 1 (2 if you ran a delete+start for env var opt-in)
+- `curl localhost:3001/api/health` → 200 OK
+- `curl localhost:3001/api/version` → reports `2.53.9`
+- `sqlite3 .../production.db "SELECT COUNT(*) FROM NeighborhoodVenue;"` → ≥ 1
+- `sqlite3 .../production.db "SELECT COUNT(*) FROM NeighborhoodVenue WHERE review_status='pending_review' AND is_active=1;"` → triaged to 0 OR documented as an outstanding follow-up
+- `pm2 logs sports-bar-tv-controller --lines 200 --nostream | grep -E 'RERANK|rerank' | head -3` → if RAG_RERANK_ENABLED=true, expect `[RERANK] loaded` line and NO `OOM` / `kill-loop` references
+- Shift-brief smoke test contains: mic-status line, Atlas recap line, ≥3 game bullets
+- Chat smoke test answer cites at least one of: `RF_INTERFERENCE_DETECTION_SYSTEM.md`, `RF_INTERFERENCE_FOR_BARTENDERS.md`, `MIC_NOT_WORKING.md`
+
+### Rollback
+
+If anything fails verify-install, `auto-update.sh` has already rolled back to pre-update commit. To restore the DB:
+
+```bash
+cp /home/ubuntu/sports-bar-data/production.db.pre-v2.53.bak /home/ubuntu/sports-bar-data/production.db
+pm2 restart sports-bar-tv-controller --update-env
+```
+
+If the neighborhood tables are missing post-update (drizzle Gotcha #6), apply manually:
+
+```bash
+# drizzle-kit aborted on a pre-existing index. Apply the missing tables by replaying the schema push:
+cd /home/ubuntu/Sports-Bar-TV-Controller
+npx drizzle-kit push --config apps/web/drizzle.config.ts --force
+# Then verify (step 6 above).
+```
+
+### Known regressions / acceptable side-effects
+
+- **First chat call after enabling RAG_RERANK_ENABLED is slow (~3-5s extra)** — bge-reranker-v2-m3-ONNX cold-loads from `node_modules/@huggingface/transformers/.cache/`. Subsequent queries ~+300ms over baseline. Acceptable.
+- **PM2 RSS will sit ~600 MB higher** at locations with rerank enabled — that's the resident ONNX model. PM2 max_memory_restart=3G has headroom for normal request bursts. `[[feedback-reranker-memory-budget]]`.
+- **Ticketmaster scraper logs `[REDACTED]` when a request fails** — fixed in v2.53.1 audit. If you see a raw `apikey=xxx` in logs, the security fix wasn't deployed — re-run auto-update.
+- **Atlas priority recap may say "no events yesterday"** at locations whose `atlas_drop_events` + `atlas_priority_events` tables are still seeded only with `event_type='startup'` heartbeats — that's correct, not a bug. Real recap rows fill in over time as priority/drop events occur.
+- **Pending venue triage burden:** at locations where Ticketmaster is enabled, the first scrape will populate `NeighborhoodVenue` with `review_status='pending_review'` for any Ticketmaster venue not in the curated seed list. Holmgren had 94 to triage. Use `apps/web/scripts/review-pending-venues.ts`. Until triaged, those venues are gated OUT of shift-brief / preemptive-strike per `[[feedback-state-machine-belt-suspenders]]`.
+- **`OLLAMA_MODEL` stays `llama3.1:8b` for shift-brief + Pattern Digest + AI Suggest** — picking ONE resident model avoids the v2.52.17 RAM thrash (`[[feedback-ollama-ram-pressure]]`). Tool-routes still use qwen2.5:14b per v2.50.0.
+
+---
+
 ## v2.50.x — AI Hub game-changer batch (the big one) — multi-version 2026-05-18/19
 
 **Versions covered:** v2.46.3 → v2.50.7 (~50 commits across 2026-05-18 + 2026-05-19)

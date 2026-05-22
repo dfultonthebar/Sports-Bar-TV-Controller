@@ -63,7 +63,11 @@ export class ADBClient {
       this.isConnected = false
       return false
     } catch (error: any) {
-      logger.error(`[ADB CLIENT] Connection error:`, error.message)
+      // DEBUG — caller (firetv-connection-manager) decides whether to
+      // ERROR-log via its rising-edge demote. Avoids logging twice for
+      // powered-off devices. Keep ERROR for the adb-not-installed branch
+      // below, which is a real configuration problem.
+      logger.debug(`[ADB CLIENT] Connection error: ${error.message}`)
 
       // Check if ADB command is not found
       if (error.message && (error.message.includes('adb') &&
@@ -102,12 +106,19 @@ export class ADBClient {
         const errorMsg = error?.message || 'Unknown error'
         const stderr = error?.stderr || ''
         const fullError = stderr ? `${errorMsg} - ${stderr}` : errorMsg
-        logger.error(`[ADB CLIENT] Keep-alive ping failed for ${this.deviceAddress} (failure ${consecutiveFailures}/${MAX_FAILURES_BEFORE_RECONNECT}): ${fullError}`)
+        // Rising-edge: first ping miss is real news (something just went
+        // away); subsequent misses are expected for a powered-off device.
+        if (consecutiveFailures === 1) {
+          logger.error(`[ADB CLIENT] Keep-alive ping failed for ${this.deviceAddress} (failure 1/${MAX_FAILURES_BEFORE_RECONNECT}): ${fullError}`)
+        } else {
+          logger.debug(`[ADB CLIENT] Keep-alive ping failed for ${this.deviceAddress} (failure ${consecutiveFailures}/${MAX_FAILURES_BEFORE_RECONNECT}): ${fullError}`)
+        }
 
         // Only attempt reconnection after multiple consecutive failures
         if (consecutiveFailures >= MAX_FAILURES_BEFORE_RECONNECT) {
           if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-            logger.error(`[ADB CLIENT] Max reconnection attempts (${this.maxReconnectAttempts}) reached for ${this.deviceAddress}`)
+            // Reached on every keep-alive tick after cap — DEBUG, not ERROR.
+            logger.debug(`[ADB CLIENT] Max reconnection attempts (${this.maxReconnectAttempts}) reached for ${this.deviceAddress}`)
             return // Stop trying
           }
 
@@ -125,7 +136,13 @@ export class ADBClient {
               logger.info(`[ADB CLIENT] Reconnection successful for ${this.deviceAddress}`)
             } catch (reconnectError: any) {
               const reconnectErrMsg = reconnectError?.message || 'Unknown error'
-              logger.error(`[ADB CLIENT] Reconnection failed for ${this.deviceAddress}: ${reconnectErrMsg}`)
+              // Same rising-edge logic — first reconnect failure ERROR (real),
+              // subsequent DEBUG (device probably still powered off).
+              if (this.reconnectAttempts === 1) {
+                logger.error(`[ADB CLIENT] Reconnection failed for ${this.deviceAddress}: ${reconnectErrMsg}`)
+              } else {
+                logger.debug(`[ADB CLIENT] Reconnection failed for ${this.deviceAddress} (attempt ${this.reconnectAttempts}): ${reconnectErrMsg}`)
+              }
             }
           }, delay)
         }
@@ -237,7 +254,11 @@ export class ADBClient {
       const errorMsg = error.message || 'Unknown error'
       const stderr = error.stderr || ''
       const fullError = stderr ? `${errorMsg} - ${stderr}` : errorMsg
-      logger.error(`[ADB CLIENT] Execute command error for ${this.deviceAddress}:`, fullError)
+      // DEBUG, not ERROR — this function throws, callers decide whether
+      // the failure is worth logging. Avoids the triple-log pattern with
+      // sendKey/launchApp + the API route's catch block when a Fire TV
+      // is powered off. Demote pattern mirrors v2.54.6 (firetv-health-monitor).
+      logger.debug(`[ADB CLIENT] Execute command error for ${this.deviceAddress}: ${fullError}`)
       throw error
     }
   }
@@ -302,7 +323,9 @@ export class ADBClient {
       logger.info(`[ADB CLIENT] Sending key ${keyCode} to ${this.deviceAddress}`)
       return await this.executeShellCommand(`input keyevent ${keyCode}`, timeoutMs)
     } catch (error) {
-      logger.error(`[ADB CLIENT] Send key error:`, error)
+      // DEBUG — executeShellCommand already throws with full context, and
+      // the API route's catch logs once at its level. Don't double-log.
+      logger.debug(`[ADB CLIENT] Send key error: ${(error as Error).message}`)
       throw error
     }
   }

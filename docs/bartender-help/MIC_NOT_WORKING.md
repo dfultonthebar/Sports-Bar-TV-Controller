@@ -113,7 +113,7 @@ If the knob is pointed down or to the far left, the volume is at zero.
 ### What to do
 
 1. Find the knobs on the front of the silver box. There are usually two — one for each mic. Each knob is small, about the size of a dime.
-2. Identify which knob goes with the mic you're trying to use. The screen above each knob shows the mic's name (often "Mic 1" or "Bar" or "Karaoke").
+2. Identify which knob goes with the mic you're trying to use. The screen above each knob shows the mic's name (often "Mic 1" or "Bar" or "Page" — note: the bar's wireless system is for paging/hosted events, not karaoke; karaoke crews bring their own mics).
 3. Turn the knob clockwise (to the right) until it's pointing straight up (the 12 o'clock position). **This is a safe starting volume — you can always turn it down later.**
 4. Talk into the mic. You should hear yourself.
 
