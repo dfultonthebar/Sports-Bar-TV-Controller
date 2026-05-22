@@ -176,8 +176,22 @@ export async function POST(request: NextRequest) {
     })
     
   } catch (error: any) {
-    logger.error('[FIRE CUBE] ❌ Command execution error:', error)
-    
+    // Demote known-offline-device error patterns (timeout / refused / unreachable)
+    // to DEBUG — these fire constantly when a Fire Cube or Atmosphere TV is
+    // powered off and are not actionable. ERROR is reserved for novel failures
+    // like unauthorized ADB, which still indicate something the operator can fix.
+    const msg = error?.message || ''
+    const isOfflineDevice =
+      msg.includes('timeout') ||
+      msg.includes('refused') ||
+      msg.includes('No route to host') ||
+      msg.includes('failed to connect')
+    if (isOfflineDevice) {
+      logger.debug(`[FIRE CUBE] Command failed against likely-offline device: ${msg}`)
+    } else {
+      logger.error('[FIRE CUBE] ❌ Command execution error:', error)
+    }
+
     let errorMessage = 'Failed to execute command'
     
     if (error.message && error.message.includes('timeout')) {

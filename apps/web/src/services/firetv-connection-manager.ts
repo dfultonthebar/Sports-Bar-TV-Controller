@@ -143,15 +143,23 @@ class FireTVConnectionManager {
       connectionTimeout: config.connection.connectionTimeout
     })
 
-    // Store connection info
+    // Preserve prior connectionAttempts so the rising-edge demote
+    // (v2.54.6) actually works across reconnect attempts. Without this,
+    // an 'error'-state entry below was being replaced wholesale on every
+    // retry — connectionAttempts reset to 0, every failure looked like
+    // a "first failure", and the demote never fired. Carry the counter
+    // and prior commandQueue over from the existing entry; everything
+    // else gets a fresh client + status.
+    const priorAttempts = existing ? existing.connectionAttempts : 0
+    const priorQueue = existing ? existing.commandQueue : []
     const connectionInfo: ConnectionInfo = {
       deviceId,
       deviceAddress,
       client,
       lastActivity: new Date(),
-      connectionAttempts: 0,
+      connectionAttempts: priorAttempts,
       status: 'connecting',
-      commandQueue: []
+      commandQueue: priorQueue
     }
 
     this.connections.set(deviceId, connectionInfo)
