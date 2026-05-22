@@ -87,7 +87,7 @@ function levenshtein(a: string, b: string): number {
  * stripped of standalone punctuation. Keeps apostrophes inside names
  * (Lucky's) but drops trailing/leading dashes and parens.
  */
-function normalizeVenueName(s: string): string {
+export function normalizeVenueName(s: string): string {
   return s
     .toLowerCase()
     .replace(/[(){}\[\]]/g, ' ')
