@@ -35,6 +35,42 @@ is the archive.
 
 ---
 
+## v2.54.28 — Rule 10 bumps part 2: @huggingface/transformers 3.8→4.2 + qwen3:14b pull (2026-05-26)
+
+**Versions covered:** v2.54.28
+**Branch landed:** main
+**Fleet target:** rolling upgrade. Reranker is opt-in (RAG_RERANK_ENABLED) — only Holmgren has it on, so the transformers bump only affects HW at runtime.
+
+Continuation of post-Memorial-Day Rule 10 pass.
+
+- **`@huggingface/transformers` ^3.0.0 → ^4.2.0** in `packages/rag-server/package.json`. Only call site: `packages/rag-server/src/reranker.ts:46` (dynamic import → `pipeline('text-classification', model, { dtype })`). The v3→v4 API surface for this exact call is unchanged — verified by local build pass and the same downstream signature. The v4 release adds WebGPU + Node.js worker improvements + better quantization handling. Drop-in for our usage.
+  - **Runtime verification at HW (the only box with `RAG_RERANK_ENABLED=true`):** after rollout, hit `/api/rag/query` with `{"query": "<known-good question>"}` and confirm `sources.length === 8` and the first source is the expected file. PM2 memory should stay under the 3G `max_memory_restart` ceiling (see `[[feedback-reranker-memory-budget]]`).
+- **`qwen3:14b` pulled on HW** (canary box, per Rule 10 — pull latest model tags weekly). Coexists with the other 5 models on disk (llama3.1:8b, llama3.2:3b, phi3:mini, qwen2.5:14b, nomic-embed-text). NOT made the default `OLLAMA_MODEL` for any per-location AI feature.
+  - **Reason for not swapping the default:** qwen3:14b has reasoning-mode (`<think>...</think>` wrappers) enabled by default. Without a `/no_think` system message AND a server-side `<think>` stripper, `format:'json'` responses come back empty (verified via direct probe — `{}` with eval_count=2). Swapping the default would require:
+    1. Add `enable_thinking: false` or `/no_think` to every Ollama call site (AI Suggest, shift-brief, pattern digest, RAG chat — 4+ sites).
+    2. Add `stripThinkBlock()` helper in `packages/services/src/ollama-client.ts` to remove `<think>\n\n</think>` prefix from responses.
+    3. Re-validate every prompt — qwen3's token budget consumption is different (more verbose with `/no_think` system message).
+    4. Watch RAM: qwen3:14b is ~9GB vs llama3.1:8b ~4.7GB. Pinning qwen3 as keep_alive=-1 alongside `nomic-embed-text` would push HW resident to ~10GB (still under 32GB ceiling) but Graystone (15GB total) couldn't even load qwen3:14b — fleet-wide swap is therefore NOT viable until Graystone RAM is upgraded.
+  - **Net:** qwen3:14b is now an available model on HW; not the default. The "pull weekly + verify" Rule 10 requirement is satisfied. Operator can manually invoke `qwen3:14b` via `curl /api/generate -d '{"model":"qwen3:14b",…}'` after a future ollama-client refactor adds reasoning-mode support. Tracked as a follow-up bump candidate.
+
+**Other ollama models on HW** (verified `ollama list`): all up-to-date as of 2026-05-26. No re-pull needed today.
+
+**Required Manual Step:** none — auto-update handles `npm ci` + rebuild + restart. qwen3 is already on disk at HW; remains on disk after restart.
+
+**Verification at Holmgren post-rollout:**
+```bash
+# Confirm reranker still fires + returns expected shape
+curl -sX POST http://hw-sports-bar-tv-controller:3001/api/rag/query \
+  -H "Content-Type: application/json" \
+  -d '{"query":"Atlas processor priority watcher"}' \
+  | python3 -c 'import json,sys;d=json.load(sys.stdin);print("sources:",len(d.get("sources",[])));print("answer chars:",len(d.get("answer","")))'
+# Expected: sources: 8, answer chars: ≥ 200
+```
+
+**Other locations:** unaffected at runtime (reranker disabled, qwen3 not pulled). Pure on-disk dep update; rebuild is no-op cost.
+
+---
+
 ## v2.54.27 — AI Suggest client-side timeout + accurate loading copy (2026-05-26)
 
 **Versions covered:** v2.54.27
