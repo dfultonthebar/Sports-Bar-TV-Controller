@@ -35,6 +35,27 @@ is the archive.
 
 ---
 
+## v2.54.33 — Cleanup follow-ups: drop autoprefixer + drop TS6 baseUrl/ignoreDeprecations (2026-05-26)
+
+**Versions covered:** v2.54.33
+**Branch landed:** main
+**Fleet target:** rolling upgrade
+
+Cleanup pass for the deferrals carried in v2.54.29 (TypeScript) and v2.54.31 (Tailwind) commit notes.
+
+- **Dropped `autoprefixer`** from `apps/web/package.json` devDependencies. v2.54.31's tailwind v4 migration moved PostCSS handling to `@tailwindcss/postcss` which has autoprefixer built in — the standalone declaration was harmless but dead. -1 dep, no other change.
+- **Dropped `baseUrl` + `ignoreDeprecations: "6.0"`** from root `tsconfig.json`. v2.54.29 added these as a stopgap because TS6 deprecates `baseUrl` entirely while we still had `paths` to resolve. TS6 now lets `paths` resolve relative to the tsconfig location directly — no baseUrl needed. Removing baseUrl also removes the only deprecation that needed silencing, so `ignoreDeprecations` is gone too. The `paths` mapping (`@/* → ./src/*`) still works.
+
+**What's still deferred** (carried forward from earlier in the day):
+- Migrate `tailwind.config.js` theme.extend to `@theme` CSS block (so we can delete the JS config). Risk: v4 `@theme` variable naming convention isn't 100% drop-in for backgroundImage gradients, needs verification. Not worth the visual-regression risk in a no-prep session.
+- Run `@tailwindcss/upgrade` for class-name renames (shadow-sm → shadow-xs etc.) — still tracked, still needs playwright visual regression first.
+
+**Required Manual Step:** none.
+
+Build: 34/34 successful. No runtime behavior change.
+
+---
+
 ## v2.54.32 — Rule 10 weekly minor/patch sweep + FLEET_STATUS refresh + @types/node normalization (2026-05-26)
 
 **Versions covered:** v2.54.32
