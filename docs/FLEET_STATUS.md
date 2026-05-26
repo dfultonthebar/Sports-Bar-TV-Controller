@@ -8,16 +8,18 @@ A snapshot of where each location stands. Update this file after every fleet-wid
 
 ## Per-location summary
 
-| Location | Branch | OS | Software ver | Bartender proxy | AI Suggest backend | iGPU acceleration | Notes |
-|---|---|---|---|---|---|---|---|
-| holmgren-way | `location/holmgren-way` | noble (24.04) | **v2.54.31** (Node 22.22.0) | Nginx | IPEX-LLM Ollama (Iris Xe, llama3.1:8b resident + qwen3:14b on disk) | ✅ active | Reference deployment; **only box with RAG_RERANK_ENABLED** + Shure RF + SDR spectrum + Ticketmaster API key |
-| lucky-s-1313 | `location/lucky-s-1313` | noble (24.04) | **v2.54.31** (Node 20.20.0) | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | Single-card WP matrix; address fields populated 2026-05-26 (venue-discovery cron will geocode + populate NeighborhoodVenue) |
-| graystone | `location/graystone` | noble (24.04) | **v2.54.31** (Node 20.20.2) | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | **15GB total RAM — fleet smallest.** Cannot load qwen3:14b alongside other resident models. Slower hardware: AI Suggest ~170s vs Appleton 67s. RAG re-scan 1.5-2× longer than fleet baseline |
-| stoneyard-appleton | `location/stoneyard-appleton` | noble (24.04) | **v2.54.31** (Node 20.20.2) | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | AI Suggest 67s on iGPU — fleet perf baseline |
-| greenville | `location/stoneyard-greenville` | noble (24.04) | **v2.54.31** (Node 22.22.2) | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | Samsung TV-20 (10.40.10.20) dead since weekend — needs MAC for WoL, operator action |
-| leglamp | `location/leg-lamp` | noble (24.04) | **v2.54.31** (Node 20.20.0) | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | Single-card WP matrix; smallest install |
+| Location | Branch | OS | Software ver | Node | Bartender proxy | AI Suggest backend | iGPU acceleration | Notes |
+|---|---|---|---|---|---|---|---|---|
+| holmgren-way | `location/holmgren-way` | noble (24.04) | **v2.54.38** | 22.22.0 (nvm) | Nginx | IPEX-LLM Ollama (Iris Xe, llama3.1:8b resident + qwen3:14b on disk) | ✅ active | Reference deployment; **only box with RAG_RERANK_ENABLED** + Shure RF + SDR spectrum + Ticketmaster API key |
+| lucky-s-1313 | `location/lucky-s-1313` | noble (24.04) | **v2.54.38** | 20.20.0 (apt/NodeSource) | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | Single-card WP matrix; address populated 2026-05-26 — venue-discovery will geocode on next cron |
+| graystone | `location/graystone` | noble (24.04) | **v2.54.38** | 20.20.2 (apt/NodeSource) | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | **15GB total RAM — fleet smallest.** Cannot load qwen3:14b alongside other resident models. AI Suggest ~170s |
+| stoneyard-appleton | `location/stoneyard-appleton` | noble (24.04) | **v2.54.38** | 20.20.2 (apt/NodeSource) | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | AI Suggest 67s on iGPU — fleet perf baseline |
+| greenville | `location/stoneyard-greenville` | noble (24.04) | **v2.54.38** | 22.22.2 (nvm) | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | Samsung TV-20 (10.40.10.20) dead — needs MAC for WoL, **operator action** |
+| leglamp | `location/leg-lamp` | noble (24.04) | **v2.54.38** | **22.22.3 (nvm)** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | Single-card WP matrix; smallest install. **Upgraded to Node 22.22.3 on 2026-05-26** — canary for the remaining 3 NodeSource-apt boxes |
 
-**Node version drift (per Standing Rule 10):** Holmgren on Node 22.22.0, Greenville on Node 22.22.2, the other 4 still on Node 20.20.0/20.20.2. **Not blocking** (Next 16 declares `engines.node = >=20.9.0`); follow-up for the next maintenance window.
+**Node version status (per Standing Rule 10):** Holmgren + Greenville + Leglamp on Node 22 ✓. Lucky's + Graystone + Appleton still on Node 20.20.x — apt/NodeSource-based, **deferred to off-hours** after the leglamp canary (~40 min downtime with multiple manual interventions). Latest Node 22 LTS is 22.22.3 (Jod). **Not blocking** (Next 16 requires `>=20.9.0`).
+
+**Node 22 upgrade gotchas (from leglamp 2026-05-26):** (a) prebuild-install gives ABI-mismatched binaries — must force `cd node_modules/better-sqlite3 && rm -rf build prebuilds && npm run build-release`; (b) `pm2 update` can hang 10+ min — safer to `pm2 save && pm2 kill && cd repo && pm2 start ecosystem.config.js`; (c) `nvm use` in subshells doesn't persist — export PATH manually to /home/ubuntu/.nvm/versions/node/vX.Y.Z/bin before npm ci; (d) `cd /home/ubuntu/Sports-Bar-TV-Controller` REQUIRED before any pm2 start ecosystem.config.js call.
 
 **Aggregate health (2026-05-26 12:30 UTC):**
 - 6/6: bartender remote on Nginx ✓
