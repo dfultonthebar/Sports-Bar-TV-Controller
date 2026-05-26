@@ -35,6 +35,30 @@ is the archive.
 
 ---
 
+## v2.54.26 — Rule 10 dep bumps: serialport 12→13, tesseract.js 6→7 (2026-05-26)
+
+**Versions covered:** v2.54.26
+**Branch landed:** main
+**Fleet target:** rolling upgrade from v2.54.25
+
+First post-Memorial-Day Rule 10 pass. Two low-risk breaking-major npm bumps from the v2.54.19 deferral list, taken together because their surface area is small + complementary (both upgrade-only, no API call-site changes needed).
+
+- **`serialport` 12 → 13** in `packages/dbx-zonepro` + `packages/dmx` + `packages/multiview` (root devDep was already `^13`). v13 dropped Node 16/18 support (we're on 20.20.0, satisfies `engines.node >=20`). API surface (`import { SerialPort } from 'serialport'`) unchanged since v5. Only real import: `packages/multiview/src/serial-client.ts:8`. `packages/dbx-zonepro/src/dbx-serial-client.ts:37` uses dynamic `await import('serialport')` (loads at runtime only if serial hardware is present — no compile-time dependency).
+- **`tesseract.js` 6 → 7** in `apps/web` + `packages/layout-detection`. Only call site: `packages/layout-detection/src/index.ts:678` — `Tesseract.recognize(buffer, 'eng', { logger })` which is stable across v4-v7. Used as the CPU fallback OCR when Ollama Vision isn't available (floor-plan TV-label extraction).
+
+**npm install delta:** 57 packages removed, 2 changed (mostly the tesseract.js v6 tree pruning to v7's slimmer tree).
+**npm audit:** 15 transitive vulns remain (8 mod, 7 high) — same set as v2.54.19 (`ip` via `node-ssdp`, `serialize-javascript` via the `next-pwa` → `workbox-build` chain that still needs webpack since we set `--webpack` flag for Next 16). NOT introduced by these bumps. `audit fix --force` would downgrade Next 16 — tracking upstream.
+
+**Required Manual Step:** none — pure npm dep change, auto-update handles `npm ci` + rebuild + restart.
+
+**Verification gates:**
+- `pm2 status` → sports-bar-tv-controller online, restart_time +1
+- `curl localhost:3001/api/version` → `2.54.26`
+- For Wolf Pack RS-232 multi-view locations (Holmgren, Graystone): tail PM2 logs for `[MULTIVIEW]` messages — should connect/disconnect cleanly with no `Cannot find module 'serialport'` errors
+- For OCR floor-plan upload: drag-drop a layout image in the UI; should extract TV labels without throwing
+
+---
+
 ## v2.54.25 — Weekend log-noise fix pass 3: ADB wrappers + DirecTV channel-guide + Fire Cube send-command catch (2026-05-26)
 
 **Versions covered:** v2.54.25 (single commit)
