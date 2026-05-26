@@ -176,20 +176,34 @@ export async function POST(request: NextRequest) {
     })
     
   } catch (error: any) {
-    // Demote known-offline-device error patterns (timeout / refused / unreachable)
-    // to DEBUG — these fire constantly when a Fire Cube or Atmosphere TV is
-    // powered off and are not actionable. ERROR is reserved for novel failures
-    // like unauthorized ADB, which still indicate something the operator can fix.
+    // Demote known-offline-device error patterns to DEBUG — these fire
+    // constantly when a Fire Cube or Atmosphere TV is powered off and are
+    // not actionable. ERROR is reserved for novel failures like unauthorized
+    // ADB, which still indicate something the operator can fix.
+    //
+    // v2.54.25: widened to cover ADB-specific offline patterns. Previously
+    // "device 'X' not found" / "device offline" (stderr from ADB) fell
+    // through to ERROR. Also the prior call passed `error` as the 2nd arg
+    // but logger.error expects `{ error }` — meaning the underlying message
+    // never reached the log line. Both fixed.
     const msg = error?.message || ''
+    const stderr = error?.stderr || ''
+    const combined = `${msg} ${stderr}`.toLowerCase()
     const isOfflineDevice =
-      msg.includes('timeout') ||
-      msg.includes('refused') ||
-      msg.includes('No route to host') ||
-      msg.includes('failed to connect')
+      combined.includes('timeout') ||
+      combined.includes('refused') ||
+      combined.includes('no route to host') ||
+      combined.includes('failed to connect') ||
+      combined.includes('ehostunreach') ||
+      combined.includes('etimedout') ||
+      combined.includes('enetunreach') ||
+      combined.includes('device offline') ||
+      combined.includes('not found') ||  // adb "device 'X' not found"
+      combined.includes('no devices')
     if (isOfflineDevice) {
-      logger.debug(`[FIRE CUBE] Command failed against likely-offline device: ${msg}`)
+      logger.debug(`[FIRE CUBE] Command failed against likely-offline device: ${msg || stderr || 'no detail'}`)
     } else {
-      logger.error('[FIRE CUBE] ❌ Command execution error:', error)
+      logger.error('[FIRE CUBE] ❌ Command execution error', { error })
     }
 
     let errorMessage = 'Failed to execute command'

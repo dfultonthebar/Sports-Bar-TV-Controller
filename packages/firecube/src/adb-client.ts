@@ -228,7 +228,10 @@ export class ADBClient {
         softwareVersion: softwareVersion || undefined
       }
     } catch (error) {
-      logger.error(`[ADB CLIENT] Get device info error:`, error)
+      // DEBUG — executeShellCommand already logs at DEBUG and throws.
+      // Health-monitor poll loop calls this every cycle; ERROR floods logs
+      // when a Cube is powered off. Caller decides whether {} matters.
+      logger.debug(`[ADB CLIENT] Get device info error: ${(error as Error).message}`)
       return {}
     }
   }
@@ -239,7 +242,10 @@ export class ADBClient {
       const { stdout } = await execAsync(command, { timeout: timeoutMs })
       return stdout.trim() || null
     } catch (error) {
-      logger.error(`[ADB CLIENT] Get property error:`, error)
+      // DEBUG — wrappers like getDeviceInfo call this repeatedly on dead
+      // devices. Caller sees null and treats as "unknown". Same reasoning
+      // as executeShellCommand demote.
+      logger.debug(`[ADB CLIENT] Get property error: ${(error as Error).message}`)
       return null
     }
   }
@@ -342,7 +348,10 @@ export class ADBClient {
       logger.info(`[ADB CLIENT] Found ${packages.length} installed packages`)
       return packages
     } catch (error) {
-      logger.error(`[ADB CLIENT] Get installed packages error:`, error)
+      // DEBUG — this re-throws so the caller logs. Streaming-manager polls
+      // isAppInstalled per app per Cube on every channel-guide refresh;
+      // a single offline Cube = 3+ ERROR/tick before this demote.
+      logger.debug(`[ADB CLIENT] Get installed packages error: ${(error as Error).message}`)
       throw error
     }
   }
@@ -355,7 +364,9 @@ export class ADBClient {
       logger.info(`[ADB CLIENT] ${packageName} is ${isInstalled ? 'INSTALLED' : 'NOT INSTALLED'}`)
       return isInstalled
     } catch (error) {
-      logger.error(`[ADB CLIENT] Check app installed error:`, error)
+      // DEBUG — swallowed as `false`. Caller (streaming-manager) reports
+      // "X is not installed" on its own; double-logging is noise.
+      logger.debug(`[ADB CLIENT] Check app installed error: ${(error as Error).message}`)
       return false
     }
   }
@@ -364,20 +375,22 @@ export class ADBClient {
     try {
       logger.info(`[ADB CLIENT] Getting current app on ${this.deviceAddress}`)
       const output = await this.executeShellCommand('dumpsys window windows | grep -E "mCurrentFocus"')
-      
+
       // Parse output like: mCurrentFocus=Window{abc123 u0 com.amazon.tv.launcher/com.amazon.tv.launcher.ui.HomeActivity}
       const match = output.match(/([a-zA-Z0-9._]+)\/([a-zA-Z0-9._]+)/)
-      
+
       if (match) {
         return {
           packageName: match[1],
           activityName: match[2]
         }
       }
-      
+
       return null
     } catch (error) {
-      logger.error(`[ADB CLIENT] Get current app error:`, error)
+      // DEBUG — swallowed as null. Used by health-monitor + Scout walker
+      // polling loops; ERROR was firing every 30 min per offline Cube.
+      logger.debug(`[ADB CLIENT] Get current app error: ${(error as Error).message}`)
       return null
     }
   }
