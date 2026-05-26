@@ -24,6 +24,7 @@ import BartenderMusicControl from '@/components/BartenderMusicControl'
 import BartenderRemoteAudioPanel from '@/components/BartenderRemoteAudioPanel'
 import InteractiveBartenderLayout from '@/components/InteractiveBartenderLayout'
 import BartenderRemoteSelector from '@/components/BartenderRemoteSelector'
+import { BartenderAskAIButton } from '@/components/BartenderAskAIButton'
 import DMXLightingRemote from '@/components/dmx/DMXLightingRemote'
 import DJControlPanel from '@/components/DJControlPanel'
 import ScheduledGamesPanel from '@/components/ScheduledGamesPanel'
@@ -1400,6 +1401,11 @@ export default function BartenderRemotePage() {
           </div>
         </div>
       )}
+
+      {/* v2.54.48 (Grok audit E) — floating "Ask AI" button + modal.
+          Lives at the page root so it's available on every tab without
+          per-tab wiring. Tap-target ≥44px (bartender lens). */}
+      <BartenderAskAIButton />
     </div>
   )
 }
