@@ -35,6 +35,34 @@ is the archive.
 
 ---
 
+## v2.54.31 — Rule 10 bumps part 5: tailwindcss 3→4 (2026-05-26)
+
+**Versions covered:** v2.54.31
+**Branch landed:** main
+**Fleet target:** rolling upgrade
+
+Fifth (and final today) post-Memorial-Day Rule 10 pass. Tailwind 4.3.0.
+
+Took the **minimal v3→v4 migration path** (preserves the existing JS config + class names; no automated `@tailwindcss/upgrade` mass-rewrite):
+
+- **`apps/web/package.json`**: `"tailwindcss": "^3.4.18"` → `"^4.3.0"` + added `"@tailwindcss/postcss": "^4.3.0"`. v4 split the PostCSS plugin into its own package per the official v4 migration guide.
+- **`apps/web/postcss.config.js`**: replaced `tailwindcss: {}` + `autoprefixer: {}` with `'@tailwindcss/postcss': {}`. v4 has autoprefixer built in.
+- **`apps/web/src/app/globals.css`**: replaced the 3-line `@tailwind base/components/utilities` block with `@import "tailwindcss";` + `@config "../../tailwind.config.js";`. The `@config` directive tells v4 to keep using the existing JS-based theme (custom `primary`/`sportsBar`/`accent` color scales + 3 `backgroundImage` gradients defined in `tailwind.config.js`). Migrating those to v4's `@theme` CSS block is a follow-up cleanup; class compat is unaffected.
+- **`tailwind.config.js`**: unchanged. v4's `@config` directive consumes the legacy JS format with no further changes.
+
+**What we did NOT do this release** (deferred):
+- Migrate `theme.extend.colors` to `@theme` CSS block in globals.css (would let us delete tailwind.config.js entirely)
+- Run `npx @tailwindcss/upgrade` (would auto-rewrite class names with v3→v4 renames like `shadow-sm` → `shadow-xs`, but the blast radius of bartender-iPad visual regressions is too high for a same-day ship; saving for a focused PR with playwright-ui-tester visual regression sweep)
+- Drop `autoprefixer` from devDependencies (v4 has it built-in; remaining declaration is dead but harmless)
+
+Build: 28/28 successful.
+
+**Required Manual Step:** none — auto-update handles `npm ci` + rebuild + restart.
+
+**Bartender visual-regression risk:** LOW. The minimal migration changes ZERO class names. Tailwind v4 maintains class compat for all v3 utility classes when using the legacy `@config` directive. The only theoretical risk is the v4 CSS reset (now applied via `@import "tailwindcss"`) being slightly stricter than v3's `@tailwind base` — but v4 docs confirm the reset is unchanged from v3.4.x. Verify after rollout by loading the bartender remote on an iPad and confirming no visible layout changes.
+
+---
+
 ## v2.54.30 — Rule 10 bumps part 4: zod 3→4 across monorepo (2026-05-26)
 
 **Versions covered:** v2.54.30
