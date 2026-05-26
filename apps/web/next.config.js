@@ -55,21 +55,45 @@ const nextConfig = {
       { source: '/scheduling',          destination: '/sports-guide-admin?tab=games',         permanent: false },
     ]
   },
-  // v2.54.36 — migrated webpack: block to Turbopack-compatible Next 16 config.
   // serverExternalPackages handles native-module bundling exclusions at the
-  // top-level Next.js config (works for BOTH Turbopack and webpack). The Next
-  // 16 default list already includes `isolated-vm`, `better-sqlite3`, `sharp`,
-  // `postcss`, `webpack` etc., so we only add the ones not already covered.
-  // React/ReactDOM dedup aliases from the old webpack block are dropped —
-  // Turbopack's module resolution doesn't have the same duplication issue
-  // that triggered React error #31 in the old webpack build.
+  // top-level Next.js config. v2.54.36 trimmed this list trusting Next 16's
+  // defaults to cover `isolated-vm` + others — but Appleton's auto-update
+  // (2026-05-26 18:01) FAILED to build under --webpack with
+  //   Module not found: ./out/isolated_vm
+  //   at packages/ai-tools/node_modules/isolated-vm/isolated-vm.js
+  // The webpack flag clearly does NOT honor Next's default external list
+  // the same way Turbopack does. v2.54.38 puts every native module we
+  // touch BACK in the explicit list (defense in depth) — the duplication
+  // with Next's defaults is harmless.
   serverExternalPackages: [
+    'isolated-vm',
     'serialport',
     '@serialport/bindings-cpp',
     'ws',
     'bufferutil',
     'utf-8-validate',
+    'better-sqlite3',
+    'sharp',
   ],
+
+  // Also explicitly externalize the same set in webpack — belt-and-suspenders
+  // since v2.54.36's removal of this exact block is what broke Appleton.
+  // Remove this block ONLY when we drop --webpack flag for Turbopack
+  // (deferred — see file-system/execute spawn analyzer issue in v2.54.36).
+  webpack: (config, { isServer }) => {
+    if (isServer) {
+      config.externals = config.externals || [];
+      config.externals.push(
+        'isolated-vm',
+        'serialport',
+        '@serialport/bindings-cpp',
+        'ws',
+        'bufferutil',
+        'utf-8-validate',
+      );
+    }
+    return config;
+  },
 };
 
 module.exports = nextConfig;
