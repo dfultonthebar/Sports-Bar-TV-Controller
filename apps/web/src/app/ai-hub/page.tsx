@@ -611,28 +611,48 @@ export default function AIHubPage() {
                 >
                   {chatHistory.length === 0 && !isChatting ? (
                     <div className="text-center text-slate-400 py-6">
-                      <p className="font-medium mb-1">Ask me anything about the system</p>
+                      <p className="font-medium mb-1">Ask me anything</p>
                       <p className="text-xs mb-4 text-slate-500">
-                        I&apos;m grounded in every doc, source file, vendor manual, and operator memory we have. Paste a log or error — I&apos;ll quote the relevant lines.
+                        Whether you&apos;re behind the bar (&quot;the mic isn&apos;t working&quot;) or in the office
+                        (&quot;rebuild the RAG vector store&quot;), I&apos;ll match the level. Paste a log or error and
+                        I&apos;ll quote the relevant lines.
                       </p>
-                      {/* v2.49.3: starter prompts — one-tap common ops/setup questions.
-                          Operationally-focused per the "feed the AI ops + setup" pivot 2026-05-18. */}
+                      {/* v2.54.47 (Grok audit) — split into bartender + admin starter sets. Matches the
+                          register-detection logic in chat/route.ts:404-445 and the new bartender-mode
+                          adapter in @sports-bar/rag-server's llm-client.ts. */}
                       <div className="mt-2">
-                        <p className="text-xs text-slate-400 mb-2 font-medium">Quick-start questions:</p>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-w-2xl mx-auto">
+                        <p className="text-xs text-slate-400 mb-2 font-medium">Behind the bar:</p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-w-2xl mx-auto mb-4">
                           {[
-                            'How do I restart a stuck Atlas processor?',
-                            'How do I learn a new IR code on a cable box?',
-                            'A Fire TV is offline — what do I check?',
-                            'How do I bootstrap a new location?',
-                            'How do I rebuild the RAG vector store?',
-                            'What does the Atlas drop watcher detect?',
+                            "The wireless mic isn't working",
+                            'TV 3 has the wrong game on',
+                            'The music stopped in the patio',
+                            'How do I change the channel on TV 5?',
                           ].map((q) => (
                             <button
                               key={q}
                               onClick={() => {
                                 setChatMessage(q)
-                                // small delay to let state propagate, then send
+                                setTimeout(() => handleSendMessage(), 50)
+                              }}
+                              className="text-left text-xs px-3 py-2 bg-slate-800/60 hover:bg-slate-700 rounded border border-slate-700 text-slate-300 hover:text-slate-100 transition-colors"
+                            >
+                              {q}
+                            </button>
+                          ))}
+                        </div>
+                        <p className="text-xs text-slate-400 mb-2 font-medium">Admin / setup:</p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-w-2xl mx-auto">
+                          {[
+                            'How do I restart a stuck Atlas processor?',
+                            'How do I learn a new IR code on a cable box?',
+                            'How do I bootstrap a new location?',
+                            'How do I rebuild the RAG vector store?',
+                          ].map((q) => (
+                            <button
+                              key={q}
+                              onClick={() => {
+                                setChatMessage(q)
                                 setTimeout(() => handleSendMessage(), 50)
                               }}
                               className="text-left text-xs px-3 py-2 bg-slate-800/60 hover:bg-slate-700 rounded border border-slate-700 text-slate-300 hover:text-slate-100 transition-colors"
