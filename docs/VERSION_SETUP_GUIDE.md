@@ -35,6 +35,30 @@ is the archive.
 
 ---
 
+## v2.54.32 — Rule 10 weekly minor/patch sweep + FLEET_STATUS refresh + @types/node normalization (2026-05-26)
+
+**Versions covered:** v2.54.32
+**Branch landed:** main
+**Fleet target:** rolling upgrade
+
+Sixth post-Memorial-Day pass — cleanup batch after the breaking-major sweep:
+
+- **`@anthropic-ai/sdk`** 0.97.1 → 0.98.0 (2 sites — apps/web + packages/services). Minor bump, additive only.
+- **`openai`** 6.2.0 → 6.39.0 (apps/web). Several minor releases caught up. API surface unchanged.
+- **`ts-jest`** 29.4.5 → 29.4.11 (apps/web). Patch series caught up.
+- **`ws`** 8.18.0 → 8.21.0 (packages/tv-network-control). Minor bump, additive only.
+- **`@types/node`** normalized to `^25.0.0` across all packages (was a mix of 20.x/22.x/24.x/25.9 — 4 different pins across 33 packages). All resolve to 25.9.1 actual. v25 narrows the Node Socket `data` event type to `Buffer` (NonSharedBuffer branded), surfaced one type error in `packages/htd/src/htd-tcp-client.ts:93` — fixed by wrapping the handler with `Buffer.from(data)`.
+
+**FLEET_STATUS.md refresh** — previous version was from 2026-05-19 and claimed the fleet was on v2.32.94 with v2.50.7 staged. After today's 10-version sweep all 6 boxes are on v2.54.31 (32 imminent). Updated the per-location table, removed stale "rollout-pending" labels (everyone is current), refreshed Notes column with today's true state.
+
+**npm audit:** 15 vulns (8 mod, 7 high). Same set as v2.54.19 — the `next-pwa` → `workbox-build` → `rollup-plugin-terser` → `serialize-javascript` (HIGH) chain and `node-ssdp` → `ip` (HIGH). NOT introduced by today's bumps. Replacing `next-pwa` is the only way to close these — tracked as the next post-Memorial-Day item.
+
+Build: 34/34 successful.
+
+**Required Manual Step:** none — pure dep + doc update.
+
+---
+
 ## v2.54.31 — Rule 10 bumps part 5: tailwindcss 3→4 (2026-05-26)
 
 **Versions covered:** v2.54.31
