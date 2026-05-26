@@ -35,6 +35,84 @@ is the archive.
 
 ---
 
+## v2.54.31 — Rule 10 bumps part 5: tailwindcss 3→4 (2026-05-26)
+
+**Versions covered:** v2.54.31
+**Branch landed:** main
+**Fleet target:** rolling upgrade
+
+Fifth (and final today) post-Memorial-Day Rule 10 pass. Tailwind 4.3.0.
+
+Took the **minimal v3→v4 migration path** (preserves the existing JS config + class names; no automated `@tailwindcss/upgrade` mass-rewrite):
+
+- **`apps/web/package.json`**: `"tailwindcss": "^3.4.18"` → `"^4.3.0"` + added `"@tailwindcss/postcss": "^4.3.0"`. v4 split the PostCSS plugin into its own package per the official v4 migration guide.
+- **`apps/web/postcss.config.js`**: replaced `tailwindcss: {}` + `autoprefixer: {}` with `'@tailwindcss/postcss': {}`. v4 has autoprefixer built in.
+- **`apps/web/src/app/globals.css`**: replaced the 3-line `@tailwind base/components/utilities` block with `@import "tailwindcss";` + `@config "../../tailwind.config.js";`. The `@config` directive tells v4 to keep using the existing JS-based theme (custom `primary`/`sportsBar`/`accent` color scales + 3 `backgroundImage` gradients defined in `tailwind.config.js`). Migrating those to v4's `@theme` CSS block is a follow-up cleanup; class compat is unaffected.
+- **`tailwind.config.js`**: unchanged. v4's `@config` directive consumes the legacy JS format with no further changes.
+
+**What we did NOT do this release** (deferred):
+- Migrate `theme.extend.colors` to `@theme` CSS block in globals.css (would let us delete tailwind.config.js entirely)
+- Run `npx @tailwindcss/upgrade` (would auto-rewrite class names with v3→v4 renames like `shadow-sm` → `shadow-xs`, but the blast radius of bartender-iPad visual regressions is too high for a same-day ship; saving for a focused PR with playwright-ui-tester visual regression sweep)
+- Drop `autoprefixer` from devDependencies (v4 has it built-in; remaining declaration is dead but harmless)
+
+Build: 28/28 successful.
+
+**Required Manual Step:** none — auto-update handles `npm ci` + rebuild + restart.
+
+**Bartender visual-regression risk:** LOW. The minimal migration changes ZERO class names. Tailwind v4 maintains class compat for all v3 utility classes when using the legacy `@config` directive. The only theoretical risk is the v4 CSS reset (now applied via `@import "tailwindcss"`) being slightly stricter than v3's `@tailwind base` — but v4 docs confirm the reset is unchanged from v3.4.x. Verify after rollout by loading the bartender remote on an iPad and confirming no visible layout changes.
+
+---
+
+## v2.54.30 — Rule 10 bumps part 4: zod 3→4 across monorepo (2026-05-26)
+
+**Versions covered:** v2.54.30
+**Branch landed:** main
+**Fleet target:** rolling upgrade
+
+Fourth post-Memorial-Day Rule 10 pass. Zod 4.4.3.
+
+Bumped `"zod": "^3.x"` → `"zod": "^4.0.0"` in 3 package.json files (apps/web, packages/config, packages/validation). 212 imports across the codebase, but the breaking-change surface area only touched 20 call sites:
+
+- **`.ip()` removed** in zod v4 — replaced 3 sites with `z.union([z.ipv4(), z.ipv6()])` (preserves both IPv4/IPv6 semantics):
+  - `packages/validation/src/schemas.ts:61`
+  - `packages/config/src/validation/schemas.ts:43`
+  - `apps/web/src/app/api/input-channel-lists/[listId]/scan/route.ts:117`
+- **`errorMap: () => ({ message: 'X' })`** replaced with `error: () => 'X'` (v4 simplified error customization) — 17 sites across the same 4 files. Per zod v4 changelog: "errorMap is renamed to error. Error maps can now return a plain string or undefined to yield control to the next error map in the chain."
+- `.refine(fn, fn)` overload (deprecated in v4): we don't use this pattern — verified via grep.
+- `.superRefine()` ctx.path removal: zero call sites — not affected.
+
+Build: 34/34 successful.
+
+**Required Manual Step:** none — code-only fix, auto-update handles rebuild + restart. v4 wire format for `safeParse()` results is unchanged (still `{ success, data, error }`), so any code consuming validator output continues to work.
+
+**Runtime behavior change to watch for:** v4 error messages have a different shape under `.format()` and `.flatten()`. Our code doesn't introspect these in user-facing ways — validation failures bubble up as 400 responses with the schema's `message` field, which is unchanged. If a downstream consumer relied on the v3 `.format()` tree shape, it would surface as a runtime TypeError; none seen in build/grep.
+
+---
+
+## v2.54.29 — Rule 10 bumps part 3: typescript 5.9→6.0 (2026-05-26)
+
+**Versions covered:** v2.54.29
+**Branch landed:** main
+**Fleet target:** rolling upgrade. Pure compile-time bump — no runtime behavior change if build passes.
+
+Third post-Memorial-Day Rule 10 pass. TypeScript 6.0.3 across all 33 packages.
+
+Bulk-bumped every `"typescript": "^5.x"` → `"typescript": "^6.0.0"` in package.json files. Then fixed TS6 strictness regressions:
+
+- **`downlevelIteration` removed** from `packages/config/src/tsconfig/base.json` + `apps/web/tsconfig.json`. TS6 marks it deprecated (errors out unless silenced). It's unnecessary with `target: ES2020+` because native iteration is standard. Also bumped `apps/web` `target: es2017` → `es2020` for consistency.
+- **Root `tsconfig.json`**: `moduleResolution: "node"` → `"bundler"` (TS6 renamed the legacy `"node"` resolver to `"node10"` and deprecated it); added `"ignoreDeprecations": "6.0"` to silence `baseUrl` deprecation (still needed by Next.js path mapping); added `"types": ["node"]` so the 9 packages extending root get Node globals (`fs`, `path`, `Buffer`, `console`, `setTimeout`, etc.) under TS6's stricter auto-include rules.
+- **Shared library tsconfig** (`packages/config/src/tsconfig/library.json`): added `"types": ["node"]` so the 10 packages extending it get the same.
+- **Standalone tsconfigs** (5 packages: ai-tools, config, database, htd, rate-limiting — no `extends`): added `"types": ["node"]` directly.
+- **`packages/ai-tools/tsconfig.json`**: `moduleResolution: "node"` → `"node10"` + `"ignoreDeprecations": "6.0"`. This package uses CommonJS so it can't move to `"bundler"`; the explicit `node10` keeps semantics and the deprecation flag silences the warning until TS7 forces a real migration.
+
+**Required Manual Step:** none — pure dep + tsconfig update, auto-update handles `npm ci` + rebuild + restart. No code changes.
+
+**Verification:** `npx turbo run build --force` returns 34/34 successful. If a location's auto-update reports build failure on this version, the most likely cause is an outdated tsconfig in a sibling package that wasn't covered — check `pm2 logs` for `error TS` lines.
+
+**Deferred to a future release:** clean up `baseUrl` (TS6 deprecates entirely; needs path-mapping rewrite), prune the legacy root `tsconfig.json` once all packages extend the shared lib config, remove `ignoreDeprecations: "6.0"` after refactor.
+
+---
+
 ## v2.54.28 — Rule 10 bumps part 2: @huggingface/transformers 3.8→4.2 + qwen3:14b pull (2026-05-26)
 
 **Versions covered:** v2.54.28
