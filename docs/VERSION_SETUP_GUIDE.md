@@ -35,6 +35,40 @@ is the archive.
 
 ---
 
+## v2.54.40 — Fleet-wide Node 22.22.x LTS upgrade COMPLETE (6/6 boxes) + script + gotchas doc (2026-05-26)
+
+**Versions covered:** v2.54.40 (doc + script artifact bump — no code change)
+**Branch landed:** main
+**Fleet target:** ALREADY DONE (6/6 boxes already on Node 22 as of 2026-05-26 ~14:30 my time / ~19:30 UTC)
+
+Final entry of today's Rule 10 sweep. All 6 fleet boxes now on Node 22.22.x LTS:
+
+| Box | Node | How | Wall-clock | Notes |
+|---|---|---|---|---|
+| holmgren-way | 22.22.0 (nvm) | already-there | — | Done long ago |
+| greenville | 22.22.2 (nvm) | already-there | — | OS-upgrade era |
+| leglamp | **22.22.3** (nvm) | manual + script | ~40 min | Canary; first hit ALL 5 gotchas |
+| lucky-s | **22.22.2** (apt/NodeSource) | script | ~6 min | First NodeSource clean run |
+| stoneyard-appleton | **22.22.2** (apt/NodeSource) | script | ~6 min | |
+| graystone | **22.22.2** (apt/NodeSource) | script | ~8 min | Slower hardware |
+
+**Script artifact:** `/tmp/node22-upgrade-nodesource.sh` (local, not committed) — handles all 5 gotchas inline. Future Node major upgrades should re-use this template.
+
+**5 gotchas the leglamp canary exposed** (all 5 now codified in the script + memory):
+1. `npm rebuild` and `npm install` use prebuild-install → ABI-mismatched binaries. Must force `cd node_modules/<pkg> && rm -rf build prebuilds && npm run build-release` for `better-sqlite3` + `isolated-vm`.
+2. `pm2 update` can hang 10+ min and kill managed processes. Use `pm2 save && pm2 kill && cd /home/ubuntu/Sports-Bar-TV-Controller && pm2 start ecosystem.config.js` instead.
+3. `nvm use 22 && npm ci` in a subshell — npm ci runs under the parent shell's Node version. Export PATH explicitly.
+4. `pm2 start ecosystem.config.js` from $HOME errors "File not found". Must `cd` to repo first.
+5. NodeSource installs Node 20 as apt-held. `apt install -y nodejs` errors "Held packages were changed". Must use `--allow-change-held-packages`.
+
+**Memory updated:** `feedback_node_major_upgrade_gotchas.md` contains the full procedure + script template. Re-use for future Node 24 upgrade.
+
+**Required Manual Step:** none — already done.
+
+Build: 28/28 successful (doc-only commit).
+
+---
+
 ## v2.54.39 — Strip remaining PWA metadata + manifest + dead icons (operator: "no cache stuff") (2026-05-26)
 
 **Versions covered:** v2.54.39
