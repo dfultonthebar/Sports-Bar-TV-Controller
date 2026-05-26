@@ -35,6 +35,35 @@ is the archive.
 
 ---
 
+## v2.54.42 — Tailwind config dead-code cleanup + Lucky's manual venue seed (2026-05-26)
+
+**Versions covered:** v2.54.42
+**Branch landed:** main
+**Fleet target:** rolling upgrade — small config + DB change
+
+Two minor pieces of cleanup:
+
+1. **`apps/web/tailwind.config.js` — dropped dead `accent` color scale + `accent-gradient` backgroundImage.** Audited usages across `apps/web/src/**/*.{ts,tsx}` — `accent-{green,orange,red,purple}` had ZERO references, `bg-accent-gradient` had ZERO references. Pure config bloat. Evaluated migration of remaining `primary` + `sportsBar` scales to v4 CSS-first `@theme` block — would require 101 sed substitutions (camelCase `sportsBar` → kebab-case `sports-bar` to match v4's auto-naming convention) with no functional benefit. Tailwind v4 supports the JS config indefinitely via `@config` directive in globals.css. Keeping JS config; just trimming dead entries.
+
+2. **Lucky's NeighborhoodVenue seeded manually** (separate, operator-supplied 2026-05-26): 10 Madison-area music venues populated via `/tmp/seed-luckys-madison-venues.py` (Python sqlite3 + Nominatim geocoder). Venues: High Noon Saloon, The Annex (0.08 mi — next door at 1206 Regent), The Bur Oak, Atwood Music Hall, Gamma Ray, Crystal Corner Bar, Lakeside Street Coffee House, Cafe Coda, The Sylvee, North Street Cabaret. `review_status='manual'`, `discovery_source='manual_seed_madison'`. Bonus: the auto-discover script (which previously errored out) ALSO succeeded inserting 31+ Overpass candidates with `review_status='pending_review'` — operator can approve/decline via admin UI. **Lucky's NeighborhoodVenue now has 41+ rows.**
+
+**Known bugs filed as followups (separate work):**
+- `scripts/discover-venues.ts` hits SQLITE_BUSY on its final INSERT phase when sports-bar app is running. Drizzle better-sqlite3 doesn't retry. Mitigation: add busy_timeout PRAGMA + retry loop.
+- `bananas-ingest` emits noise warnings for events outside the location's radius (Lucky's gets "no venue match for WAVERLY BEACH" — that's an Appleton-area venue). Needs per-location lat/lon radius filter.
+
+**Required Manual Step:** none.
+
+Build: 28/28 successful under Turbopack.
+
+**Today's post-Memorial-Day work — DONE:**
+- Lucky's venue seeding ✓
+- Ollama weekly model check ✓ (all 5 models pull-current)
+- npm outdated re-check ✓ (zero deltas)
+- Full Turbopack migration ✓ (v2.54.41 — unblocked by deleting dead /api/file-system/execute route)
+- Tailwind config cleanup ✓ (this commit — minimal scope, JS config retained)
+
+---
+
 ## v2.54.41 — Full Turbopack migration (dropped --webpack) + deleted dead /api/file-system/execute + PWA leftovers (2026-05-26)
 
 **Versions covered:** v2.54.41
