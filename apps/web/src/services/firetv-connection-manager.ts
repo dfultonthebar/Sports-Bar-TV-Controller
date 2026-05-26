@@ -78,13 +78,27 @@ class FireTVConnectionManager {
   }
 
   /**
-   * Get singleton instance
+   * Get singleton instance.
+   *
+   * v2.54.45 (Grok audit pass 3 HIGH) — hoisted to globalThis + Symbol.for()
+   * per Gotcha #10. Next.js App Router compiles each route handler into its
+   * own server bundle; a `private static instance` class field is therefore
+   * per-bundle, not per-process. Each bundle would create its own
+   * ConnectionManager → duplicate ADB sockets per device → split
+   * `failureCount`/`connections` Maps → defeats the rising-edge demote (the
+   * exact bug chain that v2.54.6/22/23 patched at the symptom level but
+   * left intact at the architectural root).
+   *
+   * Same pattern as `packages/atlas/src/atlas-client-manager.ts`,
+   * `packages/shure-slxd/src/shure-slxd-client-manager.ts`.
    */
   public static getInstance(): FireTVConnectionManager {
-    if (!FireTVConnectionManager.instance) {
-      FireTVConnectionManager.instance = new FireTVConnectionManager()
+    const KEY = Symbol.for('@sports-bar/firetv/FireTVConnectionManager.instance')
+    const g = globalThis as any
+    if (!g[KEY]) {
+      g[KEY] = new FireTVConnectionManager()
     }
-    return FireTVConnectionManager.instance
+    return g[KEY] as FireTVConnectionManager
   }
 
   /**
