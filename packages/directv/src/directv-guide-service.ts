@@ -162,12 +162,15 @@ export async function fetchMultipleChannelProgramInfo(
       const programInfo = await fetchChannelProgramInfo(device, channel, timeout)
       results.set(channel, programInfo)
     } catch (error) {
-      // Only log as error if it's an unexpected channel failure
+      // Per-channel failures are noisy when a receiver is in standby
+      // (every preset times out, 50+ ERROR/refresh). The API-route caller
+      // logs a summary (`Completed: N/M successful`) which is the actionable
+      // signal — per-channel detail belongs at DEBUG.
+      const errMsg = error instanceof Error ? error.message : String(error)
       if (expectedFailureChannels.has(channel)) {
         logger.debug(`[DIRECTV_GUIDE] Channel ${channel} not available (expected)`)
       } else {
-        const errMsg = error instanceof Error ? error.message : String(error)
-        logger.error(`[DIRECTV_GUIDE] Failed to fetch channel ${channel}: ${errMsg}`)
+        logger.debug(`[DIRECTV_GUIDE] Failed to fetch channel ${channel}: ${errMsg}`)
       }
       // Don't set in results map - will be handled by caller
     }

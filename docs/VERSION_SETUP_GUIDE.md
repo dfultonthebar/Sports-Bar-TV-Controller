@@ -35,6 +35,40 @@ is the archive.
 
 ---
 
+## v2.54.25 — Weekend log-noise fix pass 3: ADB wrappers + DirecTV channel-guide + Fire Cube send-command catch (2026-05-26)
+
+**Versions covered:** v2.54.25 (single commit)
+**Branch landed:** main
+**Fleet target:** rolling upgrade from v2.54.24 — auto-update will roll
+
+Weekend audit (Fri 5/22 → Tue 5/26) showed graystone at 138 ERROR rows / 4 days (95 DTV-GUIDE + 24 ADB CLIENT + 12 FIRECUBE + 6 STREAMING + 1 other) all driven by one dead Fire Cube (`192.168.5.131`) + DirecTV receivers in standby. The v2.54.6/.22/.23 demote campaign covered `firetv-connection-manager` + `executeShellCommand` + `sendKey` + Atlas `-32604`, but missed three steady-state noise paths that the weekend re-surfaced:
+
+- **`packages/firecube/src/adb-client.ts`** — five wrapper functions still logged ERROR even though they either re-throw (caller already logs) or swallow as `null`/`false`/`{}` (caller already represents the failure in its return-shape):
+  - `getDeviceInfo` (line 230) → DEBUG, returns `{}`
+  - `getDeviceProperty` (line 241) → DEBUG, returns `null`
+  - `getInstalledPackages` (line 344) → DEBUG, re-throws
+  - `isAppInstalled` (line 357) → DEBUG, returns `false`
+  - `getCurrentApp` (line 379) → DEBUG, returns `null`
+
+  `executeShellCommand` already logged at DEBUG (v2.54.22), so these wrappers were the duplicate-log layer. The five ERROR sites all carried the comment-able rationale "caller decides logging level".
+- **`packages/directv/src/directv-guide-service.ts:170`** — `Failed to fetch channel N: Request timeout after 5000ms` was ERROR per-channel. A single receiver in standby = 50+ ERROR/refresh × every preset poll. The API route at `/api/directv/guide/route.ts` logs `Completed: N/M successful` at INFO which is the actionable summary; per-channel detail → DEBUG.
+- **`apps/web/src/app/api/firetv-devices/send-command/route.ts:178`** — `isOfflineDevice` keyword list missed ADB-specific stderr patterns (`device 'X' not found`, `device offline`, `EHOSTUNREACH`, `ETIMEDOUT`, `ENETUNREACH`, `no devices`) AND the catch passed `error` directly as the 2nd arg of `logger.error(msg, error)` but the logger signature is `error(msg, options?: LogOptions)` so `options.error`/`options.data` were undefined and the underlying failure detail never reached the log (hence the bare `❌ Command execution error:` we saw in graystone PM2 stdout). Both fixed: widened keyword set including `error.stderr`, switched to `logger.error(msg, { error })`.
+
+**Expected log reduction at graystone (the worst offender):** ~138 → ~5 ERROR/4 days. (One ERROR per offline-device first-failure transition + real user-triggered failures like `[TV-CONTROL] Power toggle failed` remain ERROR by design — they're novel + actionable.)
+
+**ArtistInterferenceProfile false alarm:** initial audit showed 3 boxes (luckys, appleton, leglamp) had stale 2026-05-21 errors for `no such table: ArtistInterferenceProfile`. Verified the table exists on all 3 boxes (row count 0, no errors since 5/22) — already fixed by v2.54.20's column-level schema check. Stale entries were inside the file mtime window but predate the v2.54.20 rollout.
+
+**Required Manual Step:** none — pure log-level change, auto-update handles rebuild + restart.
+
+**Verification gate (24h after each box updates):**
+```bash
+# Should report ~0 instead of dozens
+pm2 logs sports-bar-tv-controller --lines 5000 --err --nostream 2>/dev/null | \
+  grep -cE 'DIRECTV_GUIDE.*Failed to fetch|ADB CLIENT.*(Get installed|Check app|Get current|Get property|Get device info)'
+```
+
+---
+
 ## v2.54.0 → v2.54.20 — drizzle migrate switch + release snapshots + log demotes + schema-completeness baseline-derived + Pass 3 cleanup + column-level schema check + bartender gradient sweep + Rule 10 weekly bumps (multi-version 2026-05-20/21)
 
 **Versions covered:** v2.54.0 → v2.54.6 (7 commits across 2026-05-20 evening + 2026-05-21 early)
