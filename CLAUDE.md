@@ -61,9 +61,10 @@ pm2 restart sports-bar-tv-controller
 
 ### Database Operations
 ```bash
-npm run db:generate      # Generate Drizzle migrations from schema changes
-npm run db:push          # Push schema changes to database (no migration files)
+npm run db:generate      # Generate Drizzle migration files from schema changes
+npm run db:migrate       # Apply pending migrations to database (preferred since v2.54.1)
 npm run db:studio        # Open Drizzle Studio database GUI
+# npm run db:push        # LEGACY — silently aborts on pre-existing indexes (Gotcha #6). Do NOT use in production flow.
 ```
 
 **Database Architecture:**
@@ -100,8 +101,9 @@ npm run test:coverage       # Generate coverage report
 - Layouts: `apps/web/src/app/**/layout.tsx` files
 
 **Next.js 16 Breaking Changes (from v15):**
-- Turbopack is now the default bundler; use `--webpack` flag for webpack-dependent packages like `next-pwa`
-- `eslint` config in next.config.js is removed; run ESLint separately
+- **Turbopack is the unconditional default bundler** (v2.54.41 dropped `--webpack` flag from dev+build scripts). Native modules (`isolated-vm`, `better-sqlite3`, `serialport`, `sharp`, `ws`, etc.) are declared in top-level `serverExternalPackages` in `apps/web/next.config.js`. For client-bundled bridges that need server-only code (e.g. `child_process` import in `@sports-bar/firecube`), add a `client-safe` subpath export to the package and import THAT from the bridge file.
+- **PWA support removed entirely** (v2.54.34 dropped `next-pwa` to close 5 HIGH workbox CVEs; v2.54.39 stripped manifest + appleWebApp metadata + sw.js + workbox + dead icons). No service worker, no offline cache, no install-to-home-screen prompt. Browser HTTP caching only.
+- `eslint` config in next.config.js is removed; run `eslint .` directly
 - The `next lint` command is removed; use `eslint .` directly
 - Request APIs (`cookies()`, `headers()`, `params`) are now fully async (synchronous access removed)
 
@@ -567,19 +569,28 @@ Every commit to `main` MUST include a `package.json` version bump (same commit o
 
 ### Making Schema Changes
 ```bash
-# 1. Edit apps/web/src/db/schema.ts
-# 2. Generate migration
-npm run db:generate
+# 1. Edit packages/database/src/schema.ts (canonical) or apps/web/src/db/schema.ts (legacy bridge)
+# 2. Generate migration file
+npx drizzle-kit generate --name <short-description>
 
-# 3. Apply to database
-npm run db:push
+# 3. REVIEW the generated drizzle/000N_<name>.sql — Drizzle may propose
+#    DROP statements for orphan tables (sdr_*, AudioMessage, etc.) that
+#    exist in production but aren't declared in schema.ts. Remove those
+#    by hand before commit.
 
-# 4. Rebuild app
+# 4. Commit + push to main. Auto-update.sh on each fleet box runs:
+#      scripts/bootstrap-drizzle-migrations.sh  (idempotent marker bootstrap)
+#      npx drizzle-kit migrate                  (applies new file)
+#    then rebuild + PM2 restart automatically.
+
+# Local-dev one-shot equivalent (if you need to test before push):
+bash scripts/bootstrap-drizzle-migrations.sh
+npx drizzle-kit migrate
 npm run build
-
-# 5. Restart PM2
 pm2 restart sports-bar-tv-controller
 ```
+
+**NEVER use `npm run db:push` in production flow** after v2.54.1 — push silently aborts on pre-existing indexes, leaving subsequent tables uncreated. Was the root cause of the 2026-05-20 24h NeighborhoodEvent outage. See Gotcha #6.
 
 ### Adding New API Endpoints
 1. Create route file: `apps/web/src/app/api/your-endpoint/route.ts`

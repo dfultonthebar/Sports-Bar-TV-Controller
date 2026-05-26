@@ -5,6 +5,9 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
+import { requireAuth } from '@/lib/auth'
 import { documentSearch } from '@/lib/enhanced-document-search'
 import { retrieveContext } from '@/lib/rag-server/query-engine'
 import { operationLogger } from '@/lib/operation-logger'
@@ -151,6 +154,15 @@ async function searchDocsViaRag(
 }
 
 export async function POST(request: NextRequest) {
+  // v2.54.45 — Grok audit pass 2 HIGH finding: this route was previously
+  // unauth + un-rate-limited. Trivial DoS surface on Ollama
+  // (300s timeouts) + prompt-injection vector since RAG indexes docs/configs/logs.
+  // STAFF level matches the bartender-iPad role; Ollama is expensive, AI rate-limit class.
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.AI)
+  if (!rateLimit.allowed) return rateLimit.response
+  const auth = await requireAuth(request, 'STAFF', { auditAction: 'ai_chat' })
+  if (!auth.allowed) return auth.response || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
   // Input validation
   const bodyValidation = await validateRequestBody(request, ValidationSchemas.aiQuery)
   if (isValidationError(bodyValidation)) return bodyValidation.error
