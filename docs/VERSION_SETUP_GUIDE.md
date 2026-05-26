@@ -35,6 +35,28 @@ is the archive.
 
 ---
 
+## v2.54.35 — Replace node-ssdp with custom SSDP client (closes last 2 HIGH vulns — npm audit HIGH count now 0) (2026-05-26)
+
+**Versions covered:** v2.54.35
+**Branch landed:** main
+**Fleet target:** rolling upgrade
+
+Closes the remaining HIGH-severity npm audit findings — `node-ssdp` 4.0.1 was abandoned (last published 2022) and transitively pulled in `ip@1.1.9` (GHSA-2p57-rm9w-gvfp — SSRF in `isPublic`). Used only by DirecTV LAN discovery at `packages/directv/src/discovery.ts:4`.
+
+- **Wrote `packages/directv/src/ssdp-client.ts`** — minimal ~80-line drop-in replacement for `node-ssdp`'s `Client`. Pure Node.js `dgram` UDP multicast on 239.255.255.250:1900. Implements only the API surface our code actually uses: `new SSDPClient()`, `.search(searchTarget)`, `.on('response', cb)`, `.stop()`. Callback signature `(headers, statusCode, rinfo)` matches node-ssdp 1:1 — no caller changes needed.
+- **`packages/directv/src/discovery.ts:4`** — import changed `from 'node-ssdp'` → `from './ssdp-client'`. Zero other changes; SSDP usage pattern unchanged.
+- **Dropped `node-ssdp` dep** from both `packages/directv/package.json` AND `apps/web/package.json` (it was declared in TWO places — first removal didn't drop it from the install tree because apps/web's package.json kept it pinned).
+
+**npm audit:** 10 vulns (2 HIGH) → **8 vulns (0 HIGH, 8 moderate, 0 critical)**. ALL HIGH-severity findings in the tree are now closed. Moderate findings (8) are all transitive (esbuild via drizzle-kit, postcss via Next 16 internals) — tracking upstream.
+
+**Required Manual Step:** none — pure refactor + dep removal.
+
+Build: 34/34 successful.
+
+**Test coverage gap:** the new SSDP client is hand-rolled, no automated test. Manual smoke test on a network with at least one DirecTV box: call `new DirecTVDiscovery().discoverViaSsdp(5000)` — should return the box's IP within 5s if SSDP advertisements are enabled on the DTV box (which is the default).
+
+---
+
 ## v2.54.34 — Remove next-pwa entirely (closes 5 HIGH vulns) (2026-05-26)
 
 **Versions covered:** v2.54.34
