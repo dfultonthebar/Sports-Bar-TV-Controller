@@ -1,6 +1,6 @@
 # Fleet Status
 
-**Last updated:** 2026-05-19 (Holmgren on v2.50.7; rest of fleet still on v2.32.94. Big v2.50.x AI-Hub batch staged for rollout — see `docs/VERSION_SETUP_GUIDE.md` v2.50.x section for the per-location runbook. Rollout order: leg-lamp canary → lucky-s-1313 → graystone → stoneyard-appleton → stoneyard-greenville. **Graystone scheduled last in canary-bless order because the box is slower hardware** — RAG re-scan + npm rebuild will take 1.5-2× longer than the rest.)
+**Last updated:** 2026-05-26 (post-Memorial-Day Rule 10 sweep complete. Fleet bumped from v2.54.21 → v2.54.31 across 10 sub-versions in one day, including 5 breaking-major npm bumps: serialport 12→13, tesseract.js 6→7, @huggingface/transformers 3→4, typescript 5→6, zod 3→4, tailwindcss 3→4. All 6 boxes verified GREEN post-rollout.)
 
 A snapshot of where each location stands. Update this file after every fleet-wide change so future operators (and Claude) have a single place to see the truth.
 
@@ -10,21 +10,22 @@ A snapshot of where each location stands. Update this file after every fleet-wid
 
 | Location | Branch | OS | Software ver | Bartender proxy | AI Suggest backend | iGPU acceleration | Notes |
 |---|---|---|---|---|---|---|---|
-| holmgren-way | `location/holmgren-way` | noble (24.04) | **v2.50.7** (Node 22.22.0) | Nginx | IPEX-LLM Ollama (Iris Xe, qwen2.5:14b loaded for tools) | ✅ active | Reference deployment; on the big v2.50.x AI-Hub batch since 2026-05-19. Q-A training corpus gen running overnight via Anthropic Haiku |
-| lucky-s-1313 | `location/lucky-s-1313` | noble (24.04) | **v2.49.1** (Node 20.20.0) — target v2.50.7 | Nginx | IPEX-LLM Ollama (Iris Xe) | ⏳ rollout-pending | **CLOSEST to target — only 6 sub-versions behind.** Single-card matrix; same profile as leg-lamp. Probably the fastest upgrade in the fleet at 20-30 min wall-clock |
-| graystone | `location/graystone` | noble (24.04) | **v2.37.2** (Node 20.20.2) — target v2.50.7 | Nginx | IPEX-LLM Ollama (Iris Xe) | ⏳ rollout-pending | **SLOWEST in fleet** — different hardware (AI Suggest 170s vs Appleton 67s). RAG re-scan + npm rebuild will take 1.5-2× longer. Schedule LAST in the rollout; allow 90-120 min wall-clock for full update including post-update rescan. ~14 sub-versions of app updates |
-| stoneyard-appleton | `location/stoneyard-appleton` | noble (24.04) | **v2.37.2** (Node 20.20.2) — target v2.50.7 | Nginx | IPEX-LLM Ollama (Iris Xe) | ⏳ rollout-pending | AI Suggest 67.3s on iGPU (fleet best — perf baseline). If post-update timing slips >80s, perf regression bug. ~14 sub-versions. 50-70 min wall-clock |
-| greenville | `location/stoneyard-greenville` | noble (24.04) | **v2.33.57** (Node 22.22.2) — target v2.50.7 | Nginx | IPEX-LLM Ollama (Iris Xe) | ⏳ rollout-pending | OS upgraded 2026-05-08; AI Suggest 119s on iGPU. Historically most-neglected — needs extra eyes after rollout (outputDefaults / HomeTeam table state per SCHEDULER_FIXES_APRIL_2026.md). ~17 sub-versions. 60-75 min wall-clock |
-| leglamp | `location/leg-lamp` | noble (24.04) | **v2.33.57** (Node 20.20.0) — target v2.50.7 | Nginx | IPEX-LLM Ollama (Iris Xe) | ⏳ canary-first | **CANARY — push v2.50.7 FIRST.** Single-card matrix, smallest install; if it passes verify-install + smoke chat, the `.canary-blessed.json` sidecar greenlights everyone else. ~17 sub-versions. 30-45 min wall-clock |
+| holmgren-way | `location/holmgren-way` | noble (24.04) | **v2.54.31** (Node 22.22.0) | Nginx | IPEX-LLM Ollama (Iris Xe, llama3.1:8b resident + qwen3:14b on disk) | ✅ active | Reference deployment; **only box with RAG_RERANK_ENABLED** + Shure RF + SDR spectrum + Ticketmaster API key |
+| lucky-s-1313 | `location/lucky-s-1313` | noble (24.04) | **v2.54.31** (Node 20.20.0) | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | Single-card WP matrix; address fields populated 2026-05-26 (venue-discovery cron will geocode + populate NeighborhoodVenue) |
+| graystone | `location/graystone` | noble (24.04) | **v2.54.31** (Node 20.20.2) | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | **15GB total RAM — fleet smallest.** Cannot load qwen3:14b alongside other resident models. Slower hardware: AI Suggest ~170s vs Appleton 67s. RAG re-scan 1.5-2× longer than fleet baseline |
+| stoneyard-appleton | `location/stoneyard-appleton` | noble (24.04) | **v2.54.31** (Node 20.20.2) | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | AI Suggest 67s on iGPU — fleet perf baseline |
+| greenville | `location/stoneyard-greenville` | noble (24.04) | **v2.54.31** (Node 22.22.2) | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | Samsung TV-20 (10.40.10.20) dead since weekend — needs MAC for WoL, operator action |
+| leglamp | `location/leg-lamp` | noble (24.04) | **v2.54.31** (Node 20.20.0) | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | Single-card WP matrix; smallest install |
 
-**Node version drift (per Standing Rule 10):** Holmgren on Node 22.22.0, Greenville on Node 22.22.2, the other 4 still on Node 20.20.0/20.20.2. **Not a blocker for v2.50.7** (Next 16.2.6 declares `engines.node = >=20.9.0`), but a separate per-Rule-10 follow-up. Schedule Node 22 LTS bump at the next maintenance window for graystone/appleton/lucky-s/leglamp.
+**Node version drift (per Standing Rule 10):** Holmgren on Node 22.22.0, Greenville on Node 22.22.2, the other 4 still on Node 20.20.0/20.20.2. **Not blocking** (Next 16 declares `engines.node = >=20.9.0`); follow-up for the next maintenance window.
 
-**Aggregate health (2026-05-08 18:00 UTC):**
+**Aggregate health (2026-05-26 12:30 UTC):**
 - 6/6: bartender remote on Nginx ✓
 - 6/6: noble (24.04) + 6.8.0-111 kernel ✓
-- 6/6: latest software (v2.32.90) ✓ — verified PASS 7/7 across all heartbeats
+- 6/6: latest software (v2.54.31) ✓ — verified PASS post-rollout (HTTP version + health=200 on all 6)
 - 6/6: iGPU acceleration active ✓
 - 6/6: drift-recovery sidecar bootstrapped at `/home/ubuntu/sports-bar-data/.auto-update-last-success.json` ✓
+- HW SSH password auth refused since 2026-05-26 morning — verified via HTTP only; operator action TBD (key auth setup?)
 
 **AI Suggest cold-run timings on iGPU (llama3.1:8b):** appleton 67s (fleet best) · greenville 119s · graystone 170s · holmgren ~100s · leglamp ~100s · lucky-s ~100s. Variance correlates with thermals + concurrent load, not procedure.
 
