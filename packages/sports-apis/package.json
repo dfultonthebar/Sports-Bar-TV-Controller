@@ -23,6 +23,6 @@
     "@sports-bar/config": "*",
     "@types/node": "^24.5.2",
     "opossum": "^9.0.0",
-    "typescript": "^5.9.2"
+    "typescript": "^6.0.0"
   }
 }
