@@ -35,6 +35,40 @@ is the archive.
 
 ---
 
+## v2.54.44 — Grok audit quick-wins bundle: dead code + stale docs + auto-update.sh dead push block (2026-05-26)
+
+**Versions covered:** v2.54.44
+**Branch landed:** main
+**Fleet target:** rolling upgrade
+
+First Grok-CLI audit batch (Grok installed today, ran 4 parallel audits, this commits 7 of his HIGH/MED quick-wins). Validates the "buddy" workflow — Grok caught 3 verified HIGH items I missed.
+
+**Dead code deletions (zero callers verified):**
+- `apps/web/src/components/PWAInstallPrompt.tsx` — 71-line component left over from v2.54.34 next-pwa removal + v2.54.39 PWA strip.
+- `scripts/verify-pwa.sh` — checked the deleted component.
+- `docs/PWA_QUICK_START.md` — documented a feature that no longer exists.
+- `apps/web/src/lib/ai-tools/security/config.ts` — 110-line byte-for-byte dupe of `packages/ai-tools/src/security/config.ts`. Stale shim from the ai-tools package extraction; the package's version IS the one being consumed via the bridge layer.
+- `apps/web/src/middleware.ts.disabled` — 30-line abandoned request-id experiment, zero references.
+- `packages/tv-docs/` — empty stale workspace dir (no `package.json`, only leftover `node_modules/`). Removed from the "37 shared packages" count.
+- `scripts/auto-update.sh:1342-1457` — 116-line `if false; then ... fi` legacy `drizzle-kit push` block. Live path uses `drizzle-kit migrate` since v2.54.1. The dead block was a regression vector — anyone flipping the `if` (or running an old copy of the script) would re-create the v2.51 24h NeighborhoodEvent outage. Also simplified the `DESTRUCT_LOG="${SCHEMA_MIGRATE_LOG:-${SCHEMA_PUSH_LOG:-}}"` fallback to just `SCHEMA_MIGRATE_LOG` since the push log var no longer exists.
+
+**Doc fixes (drift caught by Grok's pass 4):**
+- `CLAUDE.md:65` — `npm run db:push` was listed as primary in Database Operations. Replaced with `npm run db:migrate`; marked push as LEGACY with explicit "Do NOT use in production flow" note + cross-ref to Gotcha #6.
+- `CLAUDE.md:103` — "Turbopack is now the default bundler; use `--webpack` flag for webpack-dependent packages like `next-pwa`" was factually wrong post-v2.54.41. Replaced with current state: Turbopack is unconditional default, native modules via `serverExternalPackages`, client-bundle bridges use `client-safe` subpath exports. PWA bullet rewritten to reflect full strip.
+- `CLAUDE.md:575` — "Making Schema Changes" code block still showed the old `db:push` workflow. Replaced with the canonical `drizzle-kit generate` + bootstrap + migrate flow, with explicit warning about push silently aborting.
+- `packages/directv/README.md:18` — claimed wraps `node-ssdp`. Updated to describe the custom in-package SSDP client (v2.54.35 replacement).
+- `docs/NEW_LOCATION_SETUP.md:21` — installer description still said `drizzle-kit push`. Updated to `bootstrap-drizzle-migrations.sh + drizzle-kit migrate`.
+
+**Architectural improvement (fixes Grok's "leaky import" finding + the build break it caused):**
+- **`packages/firecube/package.json`** — added explicit `exports` field with `"."` (full barrel) AND `"./client-safe"` (only types + constants from `firetv-utils.ts`, no Node-only `child_process` imports). 
+- **`apps/web/src/lib/firetv-utils.ts:13`** — import changed from `'@sports-bar/firecube/src/firetv-utils'` (leaky internal path) to `'@sports-bar/firecube/client-safe'` (proper public surface, client-bundle-safe).
+
+**Lesson learned mid-commit:** initial fix of just changing `'/src/firetv-utils'` → barrel `'@sports-bar/firecube'` broke the Turbopack build because the public barrel re-exports ADBClient + Discovery which import `child_process`. The bridge file is consumed by CLIENT React components — pulling in the barrel poisoned the client bundle. The client-safe subpath solves both Grok's no-leak requirement AND the bundling constraint. Memory updated.
+
+**Required Manual Step:** none. Build: 28/28 successful under Turbopack in ~14s.
+
+---
+
 ## v2.54.43 — Followup fixes: discover-venues SQLITE_BUSY + bananas-ingest no-match warn noise (2026-05-26)
 
 **Versions covered:** v2.54.43

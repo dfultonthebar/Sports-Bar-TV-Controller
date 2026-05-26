@@ -10,4 +10,4 @@ export {
   FIRETV_SPORTS_APPS,
   SPORTS_QUICK_ACCESS,
   generateFireTVDeviceId
-} from '@sports-bar/firecube/src/firetv-utils'
+} from '@sports-bar/firecube/client-safe'
