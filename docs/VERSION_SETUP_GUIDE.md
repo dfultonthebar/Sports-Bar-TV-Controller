@@ -35,6 +35,33 @@ is the archive.
 
 ---
 
+## v2.54.27 — AI Suggest client-side timeout + accurate loading copy (2026-05-26)
+
+**Versions covered:** v2.54.27
+**Branch landed:** main
+**Fleet target:** rolling upgrade
+
+Holmgren manager reported AI Suggest "timed out" today. Root cause investigation:
+
+- Direct Ollama probe at HW (`POST /api/generate` with realistic AI Suggest prompt + `format:'json'` + `num_predict:2048`): **70.4s total wall-clock** (4.5s prompt eval + 65.9s generation × 672 tokens × 10.2 tok/s). Ollama is healthy and fast for IPEX-LLM iGPU.
+- Server route at `apps/web/src/app/api/scheduling/ai-suggest/route.ts:524` has `OLLAMA_TIMEOUT_MS = 300_000` (5 min) — well above real call time.
+- Nginx proxy block at `/api/scheduling/` already has `proxy_read_timeout 300s` (see CLAUDE.md §10 / setup-bartender-nginx.sh).
+- **Client-side: `apps/web/src/components/ScheduledGamesPanel.tsx:584` and `apps/web/src/components/ai/DistributionPlanModal.tsx:141` used bare `fetch()` with NO `signal` and NO `AbortController`.** Browser default behavior on idle long-poll connections — especially iPad Safari behind the bar with intermittent power-save — frequently abandons the request sub-90s. Manager sees a generic "Network Error" or just a stuck spinner while the server is still working.
+- Loading copy at line 1313 said `"This may take up to 30 seconds"` — a lie. Real call is 60-120s.
+
+Fix:
+- Both fetch sites now use `AbortController` with explicit 300_000ms timeout (matches server).
+- `AbortError` is caught and rendered as `"AI took longer than 5 minutes — try again or check the Ollama service."` — the only legitimate timeout, attributable to the real cause.
+- Loading copy updated to `"Typically 1-2 minutes — please leave this page open"`.
+
+**Required Manual Step:** none — pure UI fix, auto-update handles rebuild + restart.
+
+**Verification:** in bartender UI → Schedule tab → click "AI Suggest" → loading shows the new copy. With Holmgren's Ollama healthy, suggestions return in ~70-120s without error.
+
+**Follow-up consideration (not in this release):** switching the Ollama call to `stream:true` would let the client receive first bytes within 5s and incrementally render — defeats any "no response" timeout class. Bigger UX work; deferred.
+
+---
+
 ## v2.54.26 — Rule 10 dep bumps: serialport 12→13, tesseract.js 6→7 (2026-05-26)
 
 **Versions covered:** v2.54.26
