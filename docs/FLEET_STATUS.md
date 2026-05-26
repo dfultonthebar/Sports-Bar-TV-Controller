@@ -14,7 +14,7 @@ A snapshot of where each location stands. Update this file after every fleet-wid
 | lucky-s-1313 | `location/lucky-s-1313` | noble (24.04) | **v2.54.38** | **22.22.2 (apt/NodeSource)** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | Single-card WP matrix; address populated 2026-05-26 — venue-discovery will geocode on next cron. **Node upgraded 2026-05-26 (~6 min)** |
 | graystone | `location/graystone` | noble (24.04) | **v2.54.38** | **22.22.2 (apt/NodeSource)** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | **15GB total RAM — fleet smallest.** Cannot load qwen3:14b alongside other resident models. AI Suggest ~170s. **Node upgraded 2026-05-26 (~8 min)** |
 | stoneyard-appleton | `location/stoneyard-appleton` | noble (24.04) | **v2.54.38** | **22.22.2 (apt/NodeSource)** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | AI Suggest 67s on iGPU — fleet perf baseline. **Node upgraded 2026-05-26 (~6 min)** |
-| greenville | `location/stoneyard-greenville` | noble (24.04) | **v2.54.38** | 22.22.2 (nvm) | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | Samsung TV-20 (10.40.10.20) dead — needs MAC for WoL, **operator action** |
+| greenville | `location/stoneyard-greenville` | noble (24.04) | **v2.54.38** | 22.22.2 (nvm) | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | Samsung TV-20 (10.40.10.20) L2-offline — deferred (will fix when TV is physically restored) |
 | leglamp | `location/leg-lamp` | noble (24.04) | **v2.54.38** | **22.22.3 (nvm)** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | Single-card WP matrix; smallest install. **Node upgraded 2026-05-26 (canary, ~40 min)** |
 
 **Node version status (per Standing Rule 10):** ✅ 6/6 on Node 22 (2026-05-26). nvm-based: holmgren (22.22.0), greenville (22.22.2), leglamp (22.22.3). apt/NodeSource-based: luckys/graystone/appleton (22.22.2 — held back one patch by NodeSource's per-major release cadence).
@@ -27,10 +27,11 @@ A snapshot of where each location stands. Update this file after every fleet-wid
 **Aggregate health (2026-05-26 12:30 UTC):**
 - 6/6: bartender remote on Nginx ✓
 - 6/6: noble (24.04) + 6.8.0-111 kernel ✓
-- 6/6: latest software (v2.54.31) ✓ — verified PASS post-rollout (HTTP version + health=200 on all 6)
+- 6/6: latest software (v2.54.38-40 mix) ✓ — verified PASS post-Node-22-sweep (HTTP version + health=200 on all 6)
+- 6/6: **Node 22.22.x LTS** ✓ (2026-05-26 full-fleet upgrade)
 - 6/6: iGPU acceleration active ✓
 - 6/6: drift-recovery sidecar bootstrapped at `/home/ubuntu/sports-bar-data/.auto-update-last-success.json` ✓
-- HW SSH password auth refused since 2026-05-26 morning — verified via HTTP only; operator action TBD (key auth setup?)
+- **Claude AI session runs ON Holmgren** — no external SSH needed; HW management is via the local CLI. The "HW SSH" item earlier in this session was a misframing.
 
 **AI Suggest cold-run timings on iGPU (llama3.1:8b):** appleton 67s (fleet best) · greenville 119s · graystone 170s · holmgren ~100s · leglamp ~100s · lucky-s ~100s. Variance correlates with thermals + concurrent load, not procedure.
 
