@@ -149,35 +149,22 @@ const nextConfig = {
       { source: '/scheduling',          destination: '/sports-guide-admin?tab=games',         permanent: false },
     ]
   },
-  webpack: (config, { isServer }) => {
-    // Exclude native modules from webpack bundling
-    if (isServer) {
-      config.externals = config.externals || [];
-      config.externals.push('isolated-vm');
-      config.externals.push('serialport');
-      config.externals.push('@serialport/bindings-cpp');
-      config.externals.push('ws');
-      config.externals.push('bufferutil');
-      config.externals.push('utf-8-validate');
-    }
-
-    // Fix React error #31: Ensure React and ReactDOM are properly deduplicated
-    // Only apply to client-side bundle to avoid breaking Next.js internal imports
-    if (!isServer) {
-      const path = require('path');
-      const reactPath = path.dirname(require.resolve('react/package.json'));
-      const reactDomPath = path.dirname(require.resolve('react-dom/package.json'));
-
-      config.resolve.alias = {
-        ...config.resolve.alias,
-        'react': reactPath,
-        'react-dom': reactDomPath,
-      };
-    }
-
-    return config;
-  },
+  // v2.54.36 — migrated webpack: block to Turbopack-compatible Next 16 config.
+  // serverExternalPackages handles native-module bundling exclusions at the
+  // top-level Next.js config (works for BOTH Turbopack and webpack). The Next
+  // 16 default list already includes `isolated-vm`, `better-sqlite3`, `sharp`,
+  // `postcss`, `webpack` etc., so we only add the ones not already covered.
+  // React/ReactDOM dedup aliases from the old webpack block are dropped —
+  // Turbopack's module resolution doesn't have the same duplication issue
+  // that triggered React error #31 in the old webpack build.
+  serverExternalPackages: [
+    'serialport',
+    '@serialport/bindings-cpp',
+    'ws',
+    'bufferutil',
+    'utf-8-validate',
+  ],
 };
 
-module.exports = withPWA(nextConfig);
+module.exports = nextConfig;
 
