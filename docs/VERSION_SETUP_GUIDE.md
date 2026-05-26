@@ -35,6 +35,30 @@ is the archive.
 
 ---
 
+## v2.54.36 — next.config.js modernization + venue-discovery import fix (Turbopack migration partial) (2026-05-26)
+
+**Versions covered:** v2.54.36
+**Branch landed:** main
+**Fleet target:** rolling upgrade
+
+Attempted full Turbopack migration as the next post-Memorial-Day item. Got partial benefit; full migration deferred to a focused PR.
+
+**Shipped:**
+- **`apps/web/next.config.js`**: replaced the `webpack:` config block with the modern Next 16 `serverExternalPackages` top-level option. The Next 16 default list already covers `isolated-vm`, `better-sqlite3`, `sharp`, `postcss`, `webpack` — we only explicitly added `serialport`, `@serialport/bindings-cpp`, `ws`, `bufferutil`, `utf-8-validate` (the native modules not in Next's default list). Works with BOTH the legacy webpack bundler AND Turbopack — modernizes the config regardless of which bundler we use later.
+- **Dropped the React/ReactDOM dedup aliases** that the old webpack block carried for "React error #31". That alias was a webpack-specific workaround; not needed under Turbopack and not surfaced under our current webpack build either after testing. Safe to delete.
+- **`packages/scheduler/src/venue-discovery.ts:140`** — fixed dynamic import path `'@sports-bar/utils/geocoder'` → `'@sports-bar/utils'`. The `@sports-bar/utils` package has no `exports` field defining a `/geocoder` subpath; the old import would have failed at runtime the moment the venue-discovery cron tried to geocode a location with empty lat/lon. The named import `{ geocodeAndPersist }` resolves through the package's index.ts (which re-exports geocoder via `export *`). **This is the bug that prevented Lucky's address from being geocoded earlier today** — operator populated the address fields per CLAUDE.md update, but venue-discovery would have thrown on the dynamic import once it ran. Turbopack's stricter static analysis caught this; webpack's was looser and let it slide at build time only to fail at runtime.
+
+**Deferred (Turbopack migration full):**
+- `apps/web/package.json` `dev` + `build` scripts kept `--webpack` flag. Turbopack's static analyzer chokes on the `spawn()` call in `apps/web/src/app/api/file-system/execute/route.ts:106` — misinterprets the dynamic `interpreter` + `execArgs` arguments as a module-resolution path and fails with `Module not found: Can't resolve (<dynamic> | '-c')`. Need to either (a) refactor that route to avoid the dynamic-args pattern, (b) inline-comment-guard it from Turbopack's NFT, or (c) wait for a Next 16.x patch that handles this. Tracked as a follow-up. Build speed payoff (~4-10× per Next docs) deferred until then.
+
+**Required Manual Step:** none — code-only fix.
+
+Build: 28/28 successful (back on webpack, all green).
+
+**Operator impact at Lucky's (post-rollout):** the venue-discovery cron's geocoding path is now reachable. Combined with operator's address-fields population from earlier today, NeighborhoodVenue rows should populate within the next cron tick (~30 min).
+
+---
+
 ## v2.54.35 — Replace node-ssdp with custom SSDP client (closes last 2 HIGH vulns — npm audit HIGH count now 0) (2026-05-26)
 
 **Versions covered:** v2.54.35
