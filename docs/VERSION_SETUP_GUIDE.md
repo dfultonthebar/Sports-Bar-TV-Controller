@@ -35,6 +35,26 @@ is the archive.
 
 ---
 
+## v2.54.39 — Strip remaining PWA metadata + manifest + dead icons (operator: "no cache stuff") (2026-05-26)
+
+**Versions covered:** v2.54.39
+**Branch landed:** main
+**Fleet target:** rolling upgrade
+
+Operator decision today: "get rid of the pwa stuff... we need it current no cache stuff." Followup to v2.54.34's `next-pwa` removal — that release dropped the service-worker library but left the PWA manifest + Apple-Web-App metadata in place. This release strips the rest.
+
+- **`apps/web/src/app/layout.tsx`** (metadata block): removed `manifest: '/manifest.json'` and the entire `appleWebApp` config (`capable: true` / `statusBarStyle` / `title`). Result: no Add-to-Home-Screen prompt on iOS, no "standalone app mode" rendering. Browser favicon (icon-192x192.png) is unchanged — bar tab still shows the TV icon.
+- **Deleted `apps/web/public/manifest.json`** (PWA manifest with 8 icon sizes + theme color + standalone display mode).
+- **Deleted 7 dead icon PNGs** that were ONLY referenced by the manifest: `icon-{72,96,128,144,152,384,512}x{N}.png`. Kept `icon-192x192.png` (still used as favicon in layout.tsx).
+
+**No runtime caching change.** PWA's "cache" is the Service Worker's `runtimeCaching` config (offline + stale-while-revalidate). next-pwa was already disabled before v2.54.34, then removed in v2.54.34. So actual cache behavior was unchanged. v2.54.39 just removes the metadata pointing to a now-non-existent cache. Browser still does normal HTTP cache-control (a separate thing controlled by individual route headers, not changed here).
+
+**Required Manual Step:** none — auto-update handles rebuild. iPad-on-the-bar UX is unchanged except: any operator who'd previously "installed" the app to their iPad home screen will see the icon refresh to the standard browser-tab favicon on next visit.
+
+Build: 28/28 successful.
+
+---
+
 ## v2.54.38 — HOT FIX: restore webpack externals for native modules (v2.54.36 regression) (2026-05-26)
 
 **Versions covered:** v2.54.38
