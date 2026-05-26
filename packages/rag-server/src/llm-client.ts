@@ -12,7 +12,58 @@ export interface LLMOptions {
   maxTokens?: number;
   systemPrompt?: string;
   stream?: boolean;
+  /**
+   * v2.54.47 (Grok audit) — auto-pick a register-appropriate system prompt
+   * when none is provided. 'bartender' = plain English, appearance-based
+   * hardware names, "you can't break it", manager-escalation framing.
+   * 'operator' = current technical-assistant default. 'auto' (default)
+   * detects from the query phrasing.
+   */
+  register?: 'bartender' | 'operator' | 'auto';
 }
+
+/**
+ * v2.54.47 — Detect bartender vs operator register from query phrasing.
+ * Mirrors the logic in apps/web/src/app/api/chat/route.ts:404-445.
+ *   - Bartender signals: symptom-first ("the mic isn't working", "no sound on TV 3"),
+ *     possessive UI ("my iPad shows..."), informal contractions, single-word problems.
+ *   - Operator signals: hardware model names (Atlas, SLX-D, Wolf Pack), CLI verbs
+ *     (restart, rebuild, bootstrap, migrate), code/log paste, "drizzle" / "PM2" / "RAG".
+ */
+function detectRegister(query: string): 'bartender' | 'operator' {
+  const q = query.toLowerCase();
+  const operatorSignals = [
+    /\b(atlas|shure|slx-?d|wolf\s?pack|crestron|bss|dbx)\b/,
+    /\b(restart|rebuild|bootstrap|migrate|drizzle|pm2|systemd|cron|tsx)\b/,
+    /\b(rag|ollama|vector\s?store|embedding|qdrant|llama)\b/,
+    /\b(api|route|handler|middleware|schema|sql|json|yaml|dockerfile)\b/,
+    /```/,  // code paste
+    /\b(error|exception|stack\s?trace|fatal):/,  // log paste
+    /\bv?\d+\.\d+\.\d+\b/,  // version numbers
+  ];
+  if (operatorSignals.some((r) => r.test(q))) return 'operator';
+  return 'bartender';
+}
+
+const BARTENDER_SYSTEM_PROMPT = `You are a friendly helper for the bar staff. Talk like you're standing next to a bartender who just looked up from making a drink — plain English, no jargon, no acronyms.
+
+Hard rules:
+- Refer to hardware by appearance, not model name. The Shure receiver is "the silver box with the antennas on the wall". The Atlas processor is "the audio rack in the office". The iPad behind the bar is "the iPad".
+- Use numbered steps for anything they need to DO. Keep each step to one sentence.
+- Add reassurance: "you can't break it by trying" / "if this doesn't work, the next step is fine to skip".
+- ALWAYS end with how to escalate: "If this doesn't fix it, text the manager with a photo of [the relevant thing]."
+- Prefer information from \`docs/bartender-help/*.md\` over technical runbooks. If the context has both, quote the bartender-help version.
+- If you genuinely don't know, say "I'm not sure — text the manager. They'll know."
+
+What the bartender sees: iPad behind the bar with tabs for Video, Audio, Music, Guide, Power. The page \`/remote\` on the iPad's home screen is the bartender remote.`;
+
+const OPERATOR_SYSTEM_PROMPT = `You are a technical documentation assistant for a Sports Bar TV Controller system.
+
+Provide clear, accurate answers based ONLY on the context provided below. If the answer isn't in the context, say so.
+
+Include code examples if relevant and format them properly in markdown.
+
+Be concise but comprehensive. Focus on practical, actionable information.`;
 
 export interface LLMResponse {
   answer: string;
@@ -236,11 +287,12 @@ export async function* streamLLM(
   const complexity = determineQueryComplexity(query);
   const maxTokens = options.maxTokens || RAGConfig.maxTokens[complexity];
 
-  const systemPrompt = options.systemPrompt || `You are a technical documentation assistant.
-
-Provide clear, accurate answers based ONLY on the context provided. If the answer isn't in the context, say so.
-
-Include code examples if relevant.`;
+  // v2.54.47 — same register adaptation as queryLLM
+  const register = options.register === 'bartender' || options.register === 'operator'
+    ? options.register
+    : detectRegister(query);
+  const systemPrompt = options.systemPrompt
+    || (register === 'bartender' ? BARTENDER_SYSTEM_PROMPT : OPERATOR_SYSTEM_PROMPT);
 
   const prompt = `${systemPrompt}
 

@@ -35,6 +35,28 @@ is the archive.
 
 ---
 
+## v2.54.47 — Grok AI-Hub audit bundle: bartender chat unblocked + RAG bartender-mode + AI Hub UX (2026-05-26)
+
+**Versions covered:** v2.54.47
+**Branch landed:** main
+**Fleet target:** rolling upgrade + nginx reload on every box
+
+This release unblocks the **single largest UX gap** in the AI surface — Grok's audit (running on Holmgren tonight) found that the chat infrastructure was carefully designed for bartenders (excellent bartender-mode system prompt at `chat/route.ts:404-445`, 4 great `docs/bartender-help/*.md` files), but bartenders **literally cannot reach the chat** from the iPad behind the bar because the nginx port-3002 allow-list doesn't include `/api/chat`. The chat was admin-only at the network layer despite being content-designed for bartenders.
+
+**A — `scripts/setup-bartender-nginx.sh`:** added `location /api/chat` (300s read timeout, `proxy_buffering off` for SSE streaming) + `location /api/rag/query` (60s) blocks to the bartender allow-list. Chat is already STAFF-auth'd (v2.54.45) and bartender sessions are STAFF, so the auth layer works correctly. **REQUIRED MANUAL STEP per fleet box:** re-run `sudo bash scripts/setup-bartender-nginx.sh` after auto-update — the script writes a new `/etc/nginx/sites-enabled/sports-bar-tv-controller.conf` + reloads nginx. Or: the auto-update.sh wrapper could be extended to detect setup-bartender-nginx.sh changes and re-run it (followup).
+
+**B — `apps/web/src/app/ai-hub/page.tsx:614`:** AI Hub chat empty-state quick-starts split into two groups: "Behind the bar" (4 bartender questions: "The wireless mic isn't working", "TV 3 has the wrong game on", "The music stopped in the patio", "How do I change the channel on TV 5?") + "Admin / setup" (4 technical questions, the previous defaults). Subtitle rewritten to address both audiences. The chat route's existing register detection (`chat/route.ts:404-445`) auto-picks bartender vs operator mode based on phrasing — these starter questions exercise both paths.
+
+**C — `packages/rag-server/src/llm-client.ts`:** added `register: 'bartender' | 'operator' | 'auto'` to `LLMOptions`. New `detectRegister(query)` function mirrors `chat/route.ts:404` logic (hardware model names + CLI verbs + version numbers + code-fence + log patterns = operator; otherwise = bartender). New `BARTENDER_SYSTEM_PROMPT` constant: "silver box with the antennas on the wall" naming convention, numbered steps, "you can't break it", "text the manager with a photo" escalation, explicit "prefer docs/bartender-help/ over technical runbooks". Both `queryLLM` (non-streaming) and `streamLLM` updated. **Before v2.54.47** pure RAG paths always emitted technical-assistant prose even on bartender questions — now they auto-adapt.
+
+**D — `docs/FLEET_STATUS.md`:** corrected `holmgren-way` from "22.22.0 (nvm)" to "22.22.2 (apt/NodeSource)". Was wrong twice today (greenville fixed earlier, holmgren now). Both boxes' `which node` returns `/usr/bin/node`. Added explicit "Lesson from 2026-05-26" paragraph + cross-ref to `feedback_fleet_node_install_method_drift` memory. Memory entry added in same session.
+
+**Required Manual Step:** **per-fleet-box nginx reload** for item A to take effect at each location. Auto-update.sh handles the code rebuild + PM2 restart, but the nginx config file at `/etc/nginx/sites-enabled/sports-bar-tv-controller.conf` is written by setup-bartender-nginx.sh which is a separate operator-run script. Followup: have auto-update.sh check setup-bartender-nginx.sh mtime against the installed config + re-run automatically.
+
+Build: 28/28 successful under Turbopack.
+
+---
+
 ## v2.54.46 — commercial-lighting 19-route auth+rate-limit codemod (deferred from v2.54.45) (2026-05-26)
 
 **Versions covered:** v2.54.46
