@@ -137,11 +137,16 @@ export default function DistributionPlanModal({ open, proposedGames, onClose, on
   async function bootstrapPlanFromSuggestions() {
     setLoading(true)
     setError(null)
+    // v2.54.27 — explicit 300s AbortController matches server timeout.
+    // See ScheduledGamesPanel.fetchSuggestions for the same fix.
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 300_000)
     try {
       const res = await fetch('/api/scheduling/ai-suggest', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({}),
+        signal: controller.signal,
       })
       const data = await res.json()
       if (!data.success) {
@@ -156,9 +161,14 @@ export default function DistributionPlanModal({ open, proposedGames, onClose, on
       const games = suggestions.map((s: any) => ({ gameScheduleId: s.gameId }))
       await fetchPlan(games)
     } catch (e: any) {
-      setError(e.message)
+      const msg = e?.name === 'AbortError'
+        ? 'AI took longer than 5 minutes — try again or check the Ollama service.'
+        : e.message
+      setError(msg)
       logger.error('[DIST-MODAL] bootstrapPlanFromSuggestions', e)
       setLoading(false)
+    } finally {
+      clearTimeout(timeoutId)
     }
   }
 
