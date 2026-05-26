@@ -35,6 +35,31 @@ is the archive.
 
 ---
 
+## v2.54.38 — HOT FIX: restore webpack externals for native modules (v2.54.36 regression) (2026-05-26)
+
+**Versions covered:** v2.54.38
+**Branch landed:** main
+**Fleet target:** rolling upgrade — **URGENT** because v2.54.36 rolled back at Appleton + likely others.
+
+🚨 **Production incident**: v2.54.36 removed the webpack `externals` block trusting Next 16's default `serverExternalPackages` list (which includes `isolated-vm`). Local build passed because `.next` cache had pre-resolved isolated-vm. Appleton's auto-update at 2026-05-26 18:01 ran a clean `npm ci` → `isolated-vm` rebuilt from source → webpack tried to bundle `packages/ai-tools/node_modules/isolated-vm/isolated-vm.js` which `require('./out/isolated_vm')` (the native .node binding) → "Module not found" → build FAILED → auto-update ROLLED BACK to v2.54.35.
+
+**Root cause:** the `--webpack` flag clearly does NOT honor Next 16's default `serverExternalPackages` list the same way Turbopack does. The list works partially, but native modules with C++ bindings still need explicit `webpack.externals` declarations.
+
+**Fix:**
+- **`apps/web/next.config.js`**:
+  - Added `isolated-vm`, `better-sqlite3`, `sharp` (which ARE in Next's defaults but evidence shows webpack ignored that) back to the explicit `serverExternalPackages` list.
+  - **Restored the `webpack:` config block** with explicit `config.externals.push(...)` for all the same native modules. Belt-and-suspenders. Remove this block ONLY when we eventually drop `--webpack` for Turbopack (deferred — see v2.54.36 file-system/execute spawn issue).
+
+**Required Manual Step:** none — auto-update will pull v2.54.38 on next cron cycle and the build will succeed.
+
+**For any boxes that rolled back to v2.54.35:** they'll auto-update past v2.54.36 → v2.54.38 in one pass (v2.54.38 supersedes the broken v2.54.36 config). The new build will succeed.
+
+**Lesson logged** to memory: never trust framework "default" externals lists when the framework still has TWO bundlers — verify by running a fresh `npm ci` + clean build before shipping native-module config changes.
+
+Build: 28/28 successful locally; needs fleet-wide verification once boxes roll past v2.54.36.
+
+---
+
 ## v2.54.37 — Subpath exports audit + next.config.js dead code cleanup (2026-05-26)
 
 **Versions covered:** v2.54.37
