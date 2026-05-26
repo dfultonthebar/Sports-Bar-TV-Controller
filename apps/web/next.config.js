@@ -1,105 +1,11 @@
-// next-pwa removed in v2.54.34 — PWA support had been disabled via
-// `disable: true` for some time (caching issues per the original comment),
-// so we were paying full vuln surface (workbox-build → rollup-plugin-terser
-// → serialize-javascript HIGH CVE) for zero runtime benefit. /manifest.json
-// in apps/web/src/app/layout.tsx is a plain static web app manifest and
-// does NOT depend on next-pwa.
+// next-pwa removed in v2.54.34 (was disabled via `disable: true`, paying
+// full workbox vuln surface for zero benefit). If PWA support is needed
+// in the future, prefer @serwist/next (modern Workbox successor, Next 16
+// + Turbopack compatible). v2.54.34 commit history has the full archived
+// runtimeCaching config inline if reference is ever needed.
 //
-// If PWA support is ever needed in the future, prefer @serwist/next
-// (modern Workbox successor, Next 16 + Turbopack compatible).
-const withPWA = (c) => c
-const _legacyPwaConfig = {  // archived inline for reference, not consumed
-  runtimeCaching: [
-    {
-      urlPattern: /^https:\/\/fonts\.(?:googleapis|gstatic)\.com\/.*/i,
-      handler: 'CacheFirst',
-      options: {
-        cacheName: 'google-fonts',
-        expiration: { maxEntries: 4, maxAgeSeconds: 365 * 24 * 60 * 60 }
-      }
-    },
-    {
-      urlPattern: /\.(?:eot|otf|ttc|ttf|woff|woff2|font.css)$/i,
-      handler: 'StaleWhileRevalidate',
-      options: {
-        cacheName: 'static-font-assets',
-        expiration: { maxEntries: 4, maxAgeSeconds: 7 * 24 * 60 * 60 }
-      }
-    },
-    {
-      urlPattern: /\.(?:jpg|jpeg|gif|png|svg|ico|webp)$/i,
-      handler: 'StaleWhileRevalidate',
-      options: {
-        cacheName: 'static-image-assets',
-        expiration: { maxEntries: 64, maxAgeSeconds: 24 * 60 * 60 }
-      }
-    },
-    {
-      urlPattern: /\/_next\/image\?url=.+$/i,
-      handler: 'StaleWhileRevalidate',
-      options: {
-        cacheName: 'next-image',
-        expiration: { maxEntries: 64, maxAgeSeconds: 24 * 60 * 60 }
-      }
-    },
-    {
-      urlPattern: /\.(?:js)$/i,
-      handler: 'StaleWhileRevalidate',
-      options: {
-        cacheName: 'static-js-assets',
-        expiration: {
-          maxEntries: 32,
-          maxAgeSeconds: 24 * 60 * 60 // 24 hours
-        }
-      }
-    },
-    {
-      urlPattern: /\.(?:css|less)$/i,
-      handler: 'StaleWhileRevalidate',
-      options: {
-        cacheName: 'static-style-assets',
-        expiration: {
-          maxEntries: 32,
-          maxAgeSeconds: 24 * 60 * 60 // 24 hours
-        }
-      }
-    },
-    {
-      // Exclude SSE streams from service worker - they need direct network access
-      urlPattern: /\/api\/atlas\/meters\/stream/i,
-      handler: 'NetworkOnly'
-    },
-    {
-      // Exclude any other streaming endpoints
-      urlPattern: /\/api\/.*\/stream/i,
-      handler: 'NetworkOnly'
-    },
-    {
-      urlPattern: /^https?:\/\/.*\/api\/.*/i,
-      handler: 'NetworkFirst',
-      options: {
-        cacheName: 'apis',
-        expiration: {
-          maxEntries: 16,
-          maxAgeSeconds: 60 * 60 // 1 hour
-        },
-        networkTimeoutSeconds: 10
-      }
-    },
-    {
-      urlPattern: /.*/i,
-      handler: 'NetworkFirst',
-      options: {
-        cacheName: 'others',
-        expiration: {
-          maxEntries: 32,
-          maxAgeSeconds: 24 * 60 * 60 // 24 hours
-        },
-        networkTimeoutSeconds: 10
-      }
-    }
-  ]
-}
+// /manifest.json in apps/web/src/app/layout.tsx is a plain static web app
+// manifest at apps/web/public/manifest.json and does NOT depend on next-pwa.
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
