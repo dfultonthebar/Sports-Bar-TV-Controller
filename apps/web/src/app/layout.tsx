@@ -26,18 +26,16 @@ export async function generateMetadata(): Promise<Metadata> {
     ? `${locationPrefix}-Sports-Bar-TV-Controller`
     : 'Sports Bar TV Controller'
 
+  // v2.54.39 — stripped PWA metadata (manifest + appleWebApp) per operator
+  // direction "no cache stuff, keep it current". Without next-pwa (removed in
+  // v2.54.34) AND without a PWA manifest, this is a plain web app. Browser
+  // favicon still works via /icon-192x192.png.
   return {
     title: tabTitle,
     description: 'Professional TV and audio control system for sports bars',
-    manifest: '/manifest.json',
     icons: {
       icon: '/icon-192x192.png',
       apple: '/icon-192x192.png',
-    },
-    appleWebApp: {
-      capable: true,
-      statusBarStyle: 'black-translucent',
-      title: 'TV Control',
     },
   }
 }
