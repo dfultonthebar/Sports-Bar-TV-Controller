@@ -35,6 +35,32 @@ is the archive.
 
 ---
 
+## v2.54.30 — Rule 10 bumps part 4: zod 3→4 across monorepo (2026-05-26)
+
+**Versions covered:** v2.54.30
+**Branch landed:** main
+**Fleet target:** rolling upgrade
+
+Fourth post-Memorial-Day Rule 10 pass. Zod 4.4.3.
+
+Bumped `"zod": "^3.x"` → `"zod": "^4.0.0"` in 3 package.json files (apps/web, packages/config, packages/validation). 212 imports across the codebase, but the breaking-change surface area only touched 20 call sites:
+
+- **`.ip()` removed** in zod v4 — replaced 3 sites with `z.union([z.ipv4(), z.ipv6()])` (preserves both IPv4/IPv6 semantics):
+  - `packages/validation/src/schemas.ts:61`
+  - `packages/config/src/validation/schemas.ts:43`
+  - `apps/web/src/app/api/input-channel-lists/[listId]/scan/route.ts:117`
+- **`errorMap: () => ({ message: 'X' })`** replaced with `error: () => 'X'` (v4 simplified error customization) — 17 sites across the same 4 files. Per zod v4 changelog: "errorMap is renamed to error. Error maps can now return a plain string or undefined to yield control to the next error map in the chain."
+- `.refine(fn, fn)` overload (deprecated in v4): we don't use this pattern — verified via grep.
+- `.superRefine()` ctx.path removal: zero call sites — not affected.
+
+Build: 34/34 successful.
+
+**Required Manual Step:** none — code-only fix, auto-update handles rebuild + restart. v4 wire format for `safeParse()` results is unchanged (still `{ success, data, error }`), so any code consuming validator output continues to work.
+
+**Runtime behavior change to watch for:** v4 error messages have a different shape under `.format()` and `.flatten()`. Our code doesn't introspect these in user-facing ways — validation failures bubble up as 400 responses with the schema's `message` field, which is unchanged. If a downstream consumer relied on the v3 `.format()` tree shape, it would surface as a runtime TypeError; none seen in build/grep.
+
+---
+
 ## v2.54.29 — Rule 10 bumps part 3: typescript 5.9→6.0 (2026-05-26)
 
 **Versions covered:** v2.54.29
