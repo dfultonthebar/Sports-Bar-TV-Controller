@@ -127,7 +127,6 @@
     "next": "^16.1.1",
     "next-auth": "^4.24.13",
     "node-cron": "^4.2.1",
-    "node-ssdp": "^4.0.1",
     "openai": "^6.39.0",
     "opossum": "^9.0.0",
     "pdf-parse": "^2.4.5",
