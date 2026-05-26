@@ -35,6 +35,30 @@ is the archive.
 
 ---
 
+## v2.54.48 — Grok AI-Hub audit bundle 2: Ask-AI floating button + bartender Q&A seed + AI Hub onboarding (2026-05-26)
+
+**Versions covered:** v2.54.48
+**Branch landed:** main
+**Fleet target:** rolling upgrade + per-box `npx tsx scripts/seed-bartender-qa.ts` (one-shot QA seed)
+
+Closes the remaining 3 Grok audit findings (E, F, G) that were deferred from v2.54.47.
+
+**E — `apps/web/src/components/BartenderAskAIButton.tsx`** (new component, ~200 lines): floating purple "Ask AI" pill in the bottom-right of the bartender remote. Tap → inline chat modal with text input + scrollable answer area + close. POSTs to `/api/chat` (allow-listed for the bartender port-3002 proxy in v2.54.47, STAFF-auth-gated since v2.54.45). Empty-state shows 4 common bartender questions as tap-targets ("The wireless mic isn't working", "TV 3 has the wrong game on", "The music stopped in the patio", "How do I change the channel on TV 5?"). All tap-targets ≥44px per the bartender-lens rule. 5-min AbortController matches the chat route + nginx timeout. Wired into `apps/web/src/app/remote/page.tsx` at the page root so it's available on every tab without per-tab wiring.
+
+**F — `scripts/seed-bartender-qa.ts`** (new): seeds 17 curated bartender Q→A pairs into the `QAEntry` table, drawn from `docs/bartender-help/*.md` (MIC_NOT_WORKING, WRONG_CHANNEL_ON_TV, MUSIC_OR_AUDIO_PROBLEM, RF_INTERFERENCE_FOR_BARTENDERS). Idempotent — uses UNIQUE constraint on question, so re-running is safe. Pairs cover: mic battery/sync, channel changes, TV black-screen recovery, music zone control, audio source switching, yellow/cyan banner meanings, manager escalation flow, physical remote location, normal-state expectations. `sourceType='curated_bartender_v2.54.48'` so the RAG/chat retrieval can prioritize these for bartender-mode queries. **REQUIRED MANUAL STEP per fleet box**: `cd /home/ubuntu/Sports-Bar-TV-Controller && npx tsx scripts/seed-bartender-qa.ts` after auto-update — seeds the local DB.
+
+**G — `apps/web/src/app/ai-hub/page.tsx:621`**: added a small "New bartender?" onboarding paragraph above the quick-start questions, with explicit pointer to the 4 `docs/bartender-help/*.md` files by name. Completes the discoverability fix that v2.54.47 started with the question-set split.
+
+**Required Manual Step:** **per-fleet-box `seed-bartender-qa.ts` run** for item F to populate the local QAEntry table. Followup: have auto-update.sh check for new seed-* scripts and offer to run them.
+
+Build: 28/28 successful under Turbopack.
+
+**Pairs with v2.54.47:** the nginx allow-list change in v2.54.47 (added `/api/chat` + `/api/rag/query` to port-3002) is the network-layer prerequisite for v2.54.48's floating button to actually reach the chat. v2.54.47 unblocks the route; v2.54.48 gives bartenders a UI to use it.
+
+**Honest limitation:** the seeded Q&A pairs are NOT yet wired into the chat retrieval pipeline as a high-priority source. The chat currently uses RAG over docs + code + memory; the QAEntry table is queried separately by `/api/ai-hub/qa-training/stats` only. Followup item: integrate QAEntry as a priority-1 retrieval source in `packages/rag-server/src/query-engine.ts` so bartender-mode queries hit the curated answers first before falling back to the bartender-help MD files.
+
+---
+
 ## v2.54.47 — Grok AI-Hub audit bundle: bartender chat unblocked + RAG bartender-mode + AI Hub UX (2026-05-26)
 
 **Versions covered:** v2.54.47
