@@ -35,6 +35,41 @@ is the archive.
 
 ---
 
+## v2.54.45 — Grok audit HIGH bundle: /api/chat auth + 3 Gotcha #10 singleton fixes + atlas-priority-watcher timeout (2026-05-26)
+
+**Versions covered:** v2.54.45
+**Branch landed:** main
+**Fleet target:** rolling upgrade
+
+Second Grok-CLI audit batch — the architecture + security fixes. Three HIGH and one MED finding, all in services that were touched by today's v2.54.6/22/23 work but still had the underlying singleton/auth bugs Grok caught.
+
+**H — `/api/chat/route.ts`: added auth + rate-limit guards (Grok pass 2 HIGH).**
+The chat endpoint was completely unauthenticated and un-rate-limited. With Ollama 300s timeouts on llama3.1:8b, this was a trivial DoS surface. RAG also indexes docs/configs/logs, so the unauth query path was a prompt-injection vector that could extract those. Now: 
+- `withRateLimit(request, RateLimitConfigs.AI)` — AI rate-limit class (matches the expensive-Ollama-call shape)
+- `requireAuth(request, 'STAFF', { auditAction: 'ai_chat' })` — STAFF level matches the bartender-iPad use case
+4-line preamble before the existing Zod validation.
+
+**J — Three Gotcha #10 singleton violations fixed (Grok pass 3 HIGH + MED + MED).**
+The very services/ files that today's v2.54.6/22/23 work patched (rising-edge demote pattern) still used plain `private static instance` or ad-hoc `global.__name__` props that don't survive Next.js per-route-bundle compilation. A bundle split would re-create the exact log-noise storm those releases tried to fix. Standardized all 3 on the canonical `Symbol.for()` registry pattern used by `packages/atlas/src/atlas-client-manager.ts` and `packages/shure-slxd/src/shure-slxd-client-manager.ts`:
+
+- **`apps/web/src/services/firetv-connection-manager.ts:83`** — HIGH. Was plain `private static instance`. Now `Symbol.for('@sports-bar/firetv/FireTVConnectionManager.instance')`. The `failureCount` durable Map + connection lifecycle now survive bundle splits.
+- **`apps/web/src/services/streaming-service-manager.ts:39`** — MED (HIGH transitive risk). Was plain `private static instance`; holds the `installedAppsCache` Map. Same pattern fix.
+- **`apps/web/src/services/firetv-health-monitor.ts:48`** — MED. Was using `global.__fireTVHealthMonitor` (collision-prone with any future `__fireTV*` property). Same pattern fix with the namespaced Symbol.
+
+**K — `atlas-priority-watcher.ts:67`: AbortController timeout on internal-loop fetch (Grok pass 3 MED).**
+The 5s priority-watcher poll loop did `await fetch(.../api/atlas/input-meters?...)` with NO signal/AbortController. If the internal route handler ever blocked (the v2.33.50 UDP socket split class of bug), the entire watcher would back up. Now wraps with `AbortController` + 4s timeout, matching the pattern in `samsung-model-probe.ts:30` and `wolfpack/inputs/route.ts:28`.
+
+**I — DEFERRED to a separate PR.** The commercial-lighting routes (19 files, all bypass auth + rate-limit per Grok pass 1+2 HIGH) need the same 4-line preamble but the bulk codemod was scope-creep beyond the H/J/K bundle. Will write a per-file walkthrough as v2.54.46 with explicit operator review of each handler shape.
+
+**Required Manual Step:** none. Build: 28/28 successful under Turbopack.
+
+**Risk assessment:**
+- H: low (adds latency on cold-cache only; chat already wraps Ollama with its own 300s budget)
+- J: low-medium (singleton refactor — the pattern is identical to atlas/shure which have been in prod since v2.33.50; new bundle reload might briefly show a duplicate connection during the transition)
+- K: zero (defensive timeout)
+
+---
+
 ## v2.54.44 — Grok audit quick-wins bundle: dead code + stale docs + auto-update.sh dead push block (2026-05-26)
 
 **Versions covered:** v2.54.44

@@ -34,13 +34,20 @@ class StreamingServiceManager {
   }
 
   /**
-   * Get singleton instance
+   * Get singleton instance.
+   *
+   * v2.54.45 (Grok audit pass 3 MED) — globalThis + Symbol.for() per
+   * Gotcha #10. Was plain-static; cache poisoning + missed invalidation
+   * across route-handler bundles. Also calls FireTVConnectionManager,
+   * so it inherits any singleton-split bug from that manager.
    */
   public static getInstance(): StreamingServiceManager {
-    if (!StreamingServiceManager.instance) {
-      StreamingServiceManager.instance = new StreamingServiceManager()
+    const KEY = Symbol.for('@sports-bar/firetv/StreamingServiceManager.instance')
+    const g = globalThis as any
+    if (!g[KEY]) {
+      g[KEY] = new StreamingServiceManager()
     }
-    return StreamingServiceManager.instance
+    return g[KEY] as StreamingServiceManager
   }
 
   /**
