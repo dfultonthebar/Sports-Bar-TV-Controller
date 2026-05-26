@@ -35,6 +35,30 @@ is the archive.
 
 ---
 
+## v2.54.29 — Rule 10 bumps part 3: typescript 5.9→6.0 (2026-05-26)
+
+**Versions covered:** v2.54.29
+**Branch landed:** main
+**Fleet target:** rolling upgrade. Pure compile-time bump — no runtime behavior change if build passes.
+
+Third post-Memorial-Day Rule 10 pass. TypeScript 6.0.3 across all 33 packages.
+
+Bulk-bumped every `"typescript": "^5.x"` → `"typescript": "^6.0.0"` in package.json files. Then fixed TS6 strictness regressions:
+
+- **`downlevelIteration` removed** from `packages/config/src/tsconfig/base.json` + `apps/web/tsconfig.json`. TS6 marks it deprecated (errors out unless silenced). It's unnecessary with `target: ES2020+` because native iteration is standard. Also bumped `apps/web` `target: es2017` → `es2020` for consistency.
+- **Root `tsconfig.json`**: `moduleResolution: "node"` → `"bundler"` (TS6 renamed the legacy `"node"` resolver to `"node10"` and deprecated it); added `"ignoreDeprecations": "6.0"` to silence `baseUrl` deprecation (still needed by Next.js path mapping); added `"types": ["node"]` so the 9 packages extending root get Node globals (`fs`, `path`, `Buffer`, `console`, `setTimeout`, etc.) under TS6's stricter auto-include rules.
+- **Shared library tsconfig** (`packages/config/src/tsconfig/library.json`): added `"types": ["node"]` so the 10 packages extending it get the same.
+- **Standalone tsconfigs** (5 packages: ai-tools, config, database, htd, rate-limiting — no `extends`): added `"types": ["node"]` directly.
+- **`packages/ai-tools/tsconfig.json`**: `moduleResolution: "node"` → `"node10"` + `"ignoreDeprecations": "6.0"`. This package uses CommonJS so it can't move to `"bundler"`; the explicit `node10` keeps semantics and the deprecation flag silences the warning until TS7 forces a real migration.
+
+**Required Manual Step:** none — pure dep + tsconfig update, auto-update handles `npm ci` + rebuild + restart. No code changes.
+
+**Verification:** `npx turbo run build --force` returns 34/34 successful. If a location's auto-update reports build failure on this version, the most likely cause is an outdated tsconfig in a sibling package that wasn't covered — check `pm2 logs` for `error TS` lines.
+
+**Deferred to a future release:** clean up `baseUrl` (TS6 deprecates entirely; needs path-mapping rewrite), prune the legacy root `tsconfig.json` once all packages extend the shared lib config, remove `ignoreDeprecations: "6.0"` after refactor.
+
+---
+
 ## v2.54.28 — Rule 10 bumps part 2: @huggingface/transformers 3.8→4.2 + qwen3:14b pull (2026-05-26)
 
 **Versions covered:** v2.54.28
