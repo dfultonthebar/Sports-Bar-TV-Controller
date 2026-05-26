@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@sports-bar/logger": "*",
-    "serialport": "^12.0.0"
+    "serialport": "^13.0.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

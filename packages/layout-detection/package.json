@@ -18,7 +18,7 @@
     "@sports-bar/config": "*",
     "@sports-bar/logger": "*",
     "sharp": "^0.34.4",
-    "tesseract.js": "^6.0.1",
+    "tesseract.js": "^7.0.0",
     "node-fetch": "^3.3.2"
   },
   "devDependencies": {
