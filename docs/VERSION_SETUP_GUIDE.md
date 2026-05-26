@@ -35,6 +35,24 @@ is the archive.
 
 ---
 
+## v2.54.43 — Followup fixes: discover-venues SQLITE_BUSY + bananas-ingest no-match warn noise (2026-05-26)
+
+**Versions covered:** v2.54.43
+**Branch landed:** main
+**Fleet target:** rolling upgrade
+
+Closes both followups filed in v2.54.42:
+
+1. **`packages/database/src/db.ts`**: added `sqlite.pragma('busy_timeout = 30000')` immediately after the WAL-mode pragma. SQLite-recommended pattern for "one app + occasional CLI/cron writer" topology. Before: `scripts/discover-venues.ts` failed its final INSERT phase with `SQLITE_BUSY` when sports-bar app was running because Drizzle's better-sqlite3 doesn't auto-retry. After: concurrent writers wait up to 30s for the WAL lock to clear; in practice WAL allows readers + writers to coexist so contention resolves in ms. Affects ALL CLI scripts under `@sports-bar/database`, not just discover-venues (defense-in-depth for ingestion scripts, cron tasks, etc.)
+
+2. **`packages/scheduler/src/bananas-ingestion.ts:285`**: demoted the per-event `[BANANAS-INGEST] no venue match for "X"` log from WARN → DEBUG. Bananas scrapes the entire Wisconsin music calendar (~200+ events/cycle); each fleet location seeds only 10-40 nearby venues. The vast majority of events will legitimately not match (they're 100+ miles away). The end-of-batch summary already reports `skippedNoVenue` count for operator visibility. Per-event WARN was just noise — at Lucky's (Madison), Bananas returns Green Bay / Appleton venue events every cycle, all logged as "no match" even though that's expected. True per-location radius filter not feasible (Bananas events don't carry lat/lon, would need Nominatim per venue — expensive).
+
+**Required Manual Step:** none — code-only fixes. Auto-update handles rebuild+restart.
+
+Build: 28/28 successful under Turbopack.
+
+---
+
 ## v2.54.42 — Tailwind config dead-code cleanup + Lucky's manual venue seed (2026-05-26)
 
 **Versions covered:** v2.54.42
