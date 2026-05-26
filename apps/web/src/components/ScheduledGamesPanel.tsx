@@ -580,8 +580,15 @@ export default function ScheduledGamesPanel() {
     setApprovedIds(new Set())
     setModifyingId(null)
 
+    // v2.54.27 — explicit 300s AbortController matches the server's
+    // OLLAMA_TIMEOUT_MS. Without it the browser's default idle-connection
+    // policy (especially iPad Safari at the bar) can abort sub-90s during
+    // long Ollama generations, leaving the manager with a generic
+    // "Network Error" while the server is still working.
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 300_000)
     try {
-      const res = await fetch('/api/scheduling/ai-suggest')
+      const res = await fetch('/api/scheduling/ai-suggest', { signal: controller.signal })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
         throw new Error(data.error || `Request failed (${res.status})`)
@@ -593,8 +600,12 @@ export default function ScheduledGamesPanel() {
       setSuggestions(data.suggestions || [])
     } catch (err: any) {
       logger.error('[AI-SUGGEST] Failed to fetch suggestions:', err)
-      setSuggestError(err.message || 'Failed to fetch suggestions')
+      const msg = err?.name === 'AbortError'
+        ? 'AI took longer than 5 minutes — try again or check the Ollama service.'
+        : (err.message || 'Failed to fetch suggestions')
+      setSuggestError(msg)
     } finally {
+      clearTimeout(timeoutId)
       setSuggestLoading(false)
     }
   }, [])
@@ -1311,7 +1322,7 @@ export default function ScheduledGamesPanel() {
                 AI is analyzing games and generating suggestions...
               </p>
               <p className="text-xs text-slate-500 mt-1">
-                This may take up to 30 seconds
+                Typically 1-2 minutes — please leave this page open
               </p>
             </div>
           )}
