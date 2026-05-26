@@ -17,6 +17,6 @@
   },
   "devDependencies": {
     "@sports-bar/config": "*",
-    "typescript": "^5.9.2"
+    "typescript": "^6.0.0"
   }
 }

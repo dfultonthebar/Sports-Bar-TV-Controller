@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
   const pollRequestSchema = z.object({
     deviceId: z.string().min(1, 'Device ID is required'),
     deviceType: z.enum(['directv', 'firetv'], {
-      errorMap: () => ({ message: 'Device type must be either "directv" or "firetv"' })
+      error: () => 'Device type must be either "directv" or "firetv"'
     }),
     force: z.boolean().optional()
   })
