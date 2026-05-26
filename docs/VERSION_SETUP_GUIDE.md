@@ -35,6 +35,28 @@ is the archive.
 
 ---
 
+## v2.54.34 — Remove next-pwa entirely (closes 5 HIGH vulns) (2026-05-26)
+
+**Versions covered:** v2.54.34
+**Branch landed:** main
+**Fleet target:** rolling upgrade
+
+Audit revealed PWA was already disabled (`disable: true` in next.config.js, original comment said "Temporarily disabled to fix caching issues" — turned out to be permanently disabled). We were paying the full vulnerability surface of `next-pwa` → `workbox-build` → `rollup-plugin-terser` → `serialize-javascript` (HIGH CVE — RCE via RegExp.flags + Date.prototype.toISOString) for zero runtime benefit.
+
+- **Dropped `next-pwa` from `apps/web/package.json`** (devDependencies).
+- **Rewrote `apps/web/next.config.js`**: removed the `require('next-pwa')` wrapper, replaced `module.exports = withPWA(nextConfig)` with `module.exports = nextConfig`. Archived the legacy `runtimeCaching` config inline as `_legacyPwaConfig` comment for future reference if PWA is ever re-introduced via `@serwist/next` (the modern Workbox successor that's Next 16 + Turbopack compatible).
+- **`apps/web/src/app/layout.tsx` still references `manifest: '/manifest.json'`** — this is a plain static web app manifest at `apps/web/public/manifest.json`, NOT dependent on next-pwa. The app remains web-app-manifest enabled (icon + name + theme color) but no service worker, no offline caching, no install prompt — same behavior as before (since PWA was disabled).
+
+**npm audit:** 15 vulns (7 HIGH) → **10 vulns (2 HIGH)**. Closed: `next-pwa`, `workbox-build`, `workbox-webpack-plugin`, `rollup-plugin-terser`, `serialize-javascript`. Remaining 2 HIGH: `ip` SSRF via `node-ssdp` (used only by DirecTV LAN discovery — low real-world attack surface; node-ssdp 4.0.1 was last published in 2022, replacement tracked as a separate item).
+
+**`--webpack` flag retained** in `apps/web/package.json` dev/build scripts even though next-pwa was the original reason for it. Reason: `apps/web/next.config.js` still has a `webpack:` config block (native module externals like `isolated-vm`, `serialport`, `ws` + React/ReactDOM dedup aliases). Migrating to Turbopack would require porting those configs to Turbopack's `experimental.turbo` format and verifying SSR builds still resolve native modules correctly — bigger PR, separate item.
+
+**Required Manual Step:** none — pure dep removal + config simplification. PWA was already disabled at runtime, so nothing the operator sees changes.
+
+Build: 28/28 successful.
+
+---
+
 ## v2.54.33 — Cleanup follow-ups: drop autoprefixer + drop TS6 baseUrl/ignoreDeprecations (2026-05-26)
 
 **Versions covered:** v2.54.33
