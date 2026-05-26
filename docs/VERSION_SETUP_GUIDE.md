@@ -35,6 +35,35 @@ is the archive.
 
 ---
 
+## v2.54.46 — commercial-lighting 19-route auth+rate-limit codemod (deferred from v2.54.45) (2026-05-26)
+
+**Versions covered:** v2.54.46
+**Branch landed:** main
+**Fleet target:** rolling upgrade
+
+Closes Grok audit pass 1+2 HIGH finding I that was deferred from v2.54.45 (auto-mode classifier flagged the bulk codemod as scope-creep there; operator explicitly approved the codemod approach with diff review for this release).
+
+**Codemod scope (`/tmp/add-lighting-guards.py`):**
+- Walks `apps/web/src/app/api/commercial-lighting/**/route.ts` (19 files)
+- For each handler (`export async function GET|POST|PUT|DELETE|PATCH`):
+  - GET → adds `withRateLimit(DEFAULT)` (read-side, no auth required)
+  - POST/PUT/DELETE/PATCH → adds `withRateLimit(HARDWARE)` + `requireAuth('STAFF', { auditAction: 'lighting_control' })`
+- Adds the 3 required imports right after the `next/server` import
+- Idempotent (skips files that already have `withRateLimit`)
+
+**Result:** 19/19 files patched, 31 handlers guarded, 244 lines added, 0 deletions. Pure additions — no business logic touched.
+
+**Files affected** (all under `apps/web/src/app/api/commercial-lighting/`):
+- control/route.ts, devices/[id]/route.ts, devices/control/route.ts, devices/route.ts, hue/discover/route.ts, hue/pair/route.ts, logs/route.ts, scenes/[id]/route.ts, scenes/bartender/route.ts, scenes/recall/route.ts, scenes/route.ts, systems/[id]/route.ts, systems/[id]/sync/route.ts, systems/[id]/test/route.ts, systems/discover/route.ts, systems/route.ts, zones/[id]/route.ts, zones/control/route.ts, zones/route.ts
+
+**Risk:** the bartender remote at port 3002 invokes some of these routes (zones/control, scenes/recall, devices/control). Bartender sessions are STAFF level per `packages/auth/src/config.ts`, so STAFF-level `requireAuth` should work seamlessly. If a specific control flow regresses post-rollout, the fix is either (a) lower the auth requirement for that specific handler back to NONE, or (b) verify the bartender session cookie is being forwarded through nginx port 3002 (it should be — same-origin).
+
+**Deferred from this release** (not blocking): full Zod validation refactor (current routes still do `const body = await request.json()` + manual destructure). The auth+rate-limit guards close the immediate exposure; Zod validation can land in a separate cleanup PR.
+
+**Required Manual Step:** none. Build: 28/28 successful under Turbopack in ~14s.
+
+---
+
 ## v2.54.45 — Grok audit HIGH bundle: /api/chat auth + 3 Gotcha #10 singleton fixes + atlas-priority-watcher timeout (2026-05-26)
 
 **Versions covered:** v2.54.45
