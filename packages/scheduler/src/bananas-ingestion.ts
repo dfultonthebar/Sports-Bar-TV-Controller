@@ -283,10 +283,16 @@ export async function runBananasIngestion(): Promise<BananasIngestionStats> {
     try {
       const match = findVenueId(ev.venue, venues, aliasMap)
       if (!match) {
+        // v2.54.43 — demoted WARN → DEBUG. Bananas scrapes the entire WI
+        // music calendar; each fleet location only seeds 10-40 nearby
+        // venues. The vast majority of events will legitimately not match
+        // (they're 100+ miles away from this location). The end-of-batch
+        // summary already reports `skippedNoVenue` count for visibility.
+        // Per-event WARN was just noise — at Lucky's (Madison), Bananas
+        // returns Green Bay / Appleton venue events every cycle.
         stats.skippedNoVenue++
-        const warn = `[BANANAS-INGEST] no venue match for "${ev.venue}" (artist=${ev.artist}, start=${ev.startTimeISO})`
-        logger.warn(warn)
-        stats.warnings.push(warn)
+        const msg = `[BANANAS-INGEST] no venue match for "${ev.venue}" (artist=${ev.artist}, start=${ev.startTimeISO})`
+        logger.debug(msg)
         continue
       }
 
