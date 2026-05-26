@@ -16,7 +16,7 @@
     "@sports-bar/streaming": "*"
   },
   "devDependencies": {
-    "@types/node": "^24.5.2",
+    "@types/node": "^25.0.0",
     "typescript": "^6.0.0"
   }
 }

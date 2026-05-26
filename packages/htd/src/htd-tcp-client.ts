@@ -90,7 +90,9 @@ export class HTDTcpClient extends EventEmitter {
       });
 
       this.socket.on('data', (data) => {
-        this.handleData(data);
+        // @types/node v25 narrows the data event to Buffer (NonSharedBuffer
+        // branded). Since we never call setEncoding(), it's always a Buffer.
+        this.handleData(Buffer.from(data));
       });
 
       this.socket.on('error', (error: Error) => {

@@ -1,18 +1,21 @@
-const withPWA = require('next-pwa')({
-  dest: 'public',
-  disable: true, // Temporarily disabled to fix caching issues
-  register: true,
-  skipWaiting: true,
+// next-pwa removed in v2.54.34 — PWA support had been disabled via
+// `disable: true` for some time (caching issues per the original comment),
+// so we were paying full vuln surface (workbox-build → rollup-plugin-terser
+// → serialize-javascript HIGH CVE) for zero runtime benefit. /manifest.json
+// in apps/web/src/app/layout.tsx is a plain static web app manifest and
+// does NOT depend on next-pwa.
+//
+// If PWA support is ever needed in the future, prefer @serwist/next
+// (modern Workbox successor, Next 16 + Turbopack compatible).
+const withPWA = (c) => c
+const _legacyPwaConfig = {  // archived inline for reference, not consumed
   runtimeCaching: [
     {
       urlPattern: /^https:\/\/fonts\.(?:googleapis|gstatic)\.com\/.*/i,
       handler: 'CacheFirst',
       options: {
         cacheName: 'google-fonts',
-        expiration: {
-          maxEntries: 4,
-          maxAgeSeconds: 365 * 24 * 60 * 60 // 365 days
-        }
+        expiration: { maxEntries: 4, maxAgeSeconds: 365 * 24 * 60 * 60 }
       }
     },
     {
@@ -20,10 +23,7 @@ const withPWA = require('next-pwa')({
       handler: 'StaleWhileRevalidate',
       options: {
         cacheName: 'static-font-assets',
-        expiration: {
-          maxEntries: 4,
-          maxAgeSeconds: 7 * 24 * 60 * 60 // 7 days
-        }
+        expiration: { maxEntries: 4, maxAgeSeconds: 7 * 24 * 60 * 60 }
       }
     },
     {
@@ -31,10 +31,7 @@ const withPWA = require('next-pwa')({
       handler: 'StaleWhileRevalidate',
       options: {
         cacheName: 'static-image-assets',
-        expiration: {
-          maxEntries: 64,
-          maxAgeSeconds: 24 * 60 * 60 // 24 hours
-        }
+        expiration: { maxEntries: 64, maxAgeSeconds: 24 * 60 * 60 }
       }
     },
     {
@@ -42,10 +39,7 @@ const withPWA = require('next-pwa')({
       handler: 'StaleWhileRevalidate',
       options: {
         cacheName: 'next-image',
-        expiration: {
-          maxEntries: 64,
-          maxAgeSeconds: 24 * 60 * 60 // 24 hours
-        }
+        expiration: { maxEntries: 64, maxAgeSeconds: 24 * 60 * 60 }
       }
     },
     {
@@ -105,7 +99,7 @@ const withPWA = require('next-pwa')({
       }
     }
   ]
-})
+}
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
