@@ -63,14 +63,26 @@ async function pollOnce(baseUrl: string) {
     if (p.processorType && p.processorType !== 'atlas') continue
 
     let meters: Array<{ index: number; name: string; level: number; peak: number }> = []
+    // v2.54.45 (Grok audit pass 3 MED) — explicit 4s AbortController.
+    // This is the 5s priority-watcher poll loop; an untimed internal fetch
+    // could stall the watcher indefinitely if the input-meters route blocks
+    // (the v2.33.50 UDP socket split class of bug). Mirrors the timeout
+    // pattern in samsung-model-probe.ts + wolfpack/inputs/route.ts.
+    const controller = new AbortController()
+    const timeoutHandle = setTimeout(() => controller.abort(), 4000)
     try {
-      const resp = await fetch(`${baseUrl}/api/atlas/input-meters?processorIp=${p.ipAddress}`)
+      const resp = await fetch(
+        `${baseUrl}/api/atlas/input-meters?processorIp=${p.ipAddress}`,
+        { signal: controller.signal }
+      )
       if (!resp.ok) continue
       const json = await resp.json()
       meters = json.meters || []
     } catch (err) {
       logger.debug(`[ATLAS-PRIORITY-WATCHER] Input meter fetch failed for ${p.ipAddress}: ${(err as Error).message}`)
       continue
+    } finally {
+      clearTimeout(timeoutHandle)
     }
 
     for (const meter of meters) {

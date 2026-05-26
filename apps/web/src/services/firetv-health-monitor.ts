@@ -42,16 +42,21 @@ class FireTVHealthMonitor {
   }
 
   /**
-   * Get singleton instance
-   * Uses global object to prevent Next.js from creating multiple instances
+   * Get singleton instance.
+   *
+   * v2.54.45 (Grok audit pass 3 MED) — was using plain `global.__fireTVHealthMonitor`
+   * which is collision-prone (any other package using `__fireTV*` on global
+   * would clobber). Switched to `Symbol.for()` namespaced registry per Gotcha
+   * #10 canonical pattern. Holds 5 separate Maps + monitorInterval; a split
+   * here = duplicate reconnect timers + duplicate alert spam.
    */
   public static getInstance(): FireTVHealthMonitor {
-    // Use global object to ensure singleton across module contexts
-    const globalAny = global as any
-    if (!globalAny.__fireTVHealthMonitor) {
-      globalAny.__fireTVHealthMonitor = new FireTVHealthMonitor()
+    const KEY = Symbol.for('@sports-bar/firetv/FireTVHealthMonitor.instance')
+    const g = globalThis as any
+    if (!g[KEY]) {
+      g[KEY] = new FireTVHealthMonitor()
     }
-    return globalAny.__fireTVHealthMonitor
+    return g[KEY] as FireTVHealthMonitor
   }
 
   /**
