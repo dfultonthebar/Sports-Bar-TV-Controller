@@ -35,6 +35,25 @@ is the archive.
 
 ---
 
+## v2.54.37 — Subpath exports audit + next.config.js dead code cleanup (2026-05-26)
+
+**Versions covered:** v2.54.37
+**Branch landed:** main
+**Fleet target:** rolling upgrade
+
+Followup cleanup pass after the v2.54.36 Turbopack attempt revealed a class of subpath-import latent bugs.
+
+- **`packages/utils/package.json`**: added `"exports"` field declaring both `"."` (the index) and `"./geocoder"` subpaths. This is the proper fix for the bug v2.54.36 worked around — defensive against future code that wants `from '@sports-bar/utils/geocoder'` directly (would now resolve cleanly under both webpack and Turbopack). Already audited the rest of the codebase: `@sports-bar/logger` (has `./enhanced-logger`) and `@sports-bar/database` (has `./schema`) both declare subpath exports correctly. No other latent subpath bugs.
+- **`apps/web/next.config.js`**: deleted the dead `_legacyPwaConfig` object literal that v2.54.34 left as an inline reference. ~90 lines of unused code (next-pwa was removed). Git history at v2.54.34 commit message retains the full runtimeCaching config if anyone ever wants to re-introduce PWA via `@serwist/next`. Replaced with a 6-line comment-block pointer to that history.
+
+**Required Manual Step:** none — pure cleanup.
+
+Build: 28/28 successful, no runtime behavior change.
+
+**Turbopack migration still deferred** (per v2.54.36 notes) — the file-system/execute spawn() issue requires more invasive refactoring or a Next 16.x patch.
+
+---
+
 ## v2.54.36 — next.config.js modernization + venue-discovery import fix (Turbopack migration partial) (2026-05-26)
 
 **Versions covered:** v2.54.36
