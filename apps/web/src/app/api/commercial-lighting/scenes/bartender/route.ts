@@ -4,6 +4,9 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
+import { requireAuth } from '@/lib/auth'
 import { db } from '@/db'
 import * as schema from '@/db/schema'
 import { eq, and, desc } from 'drizzle-orm'
@@ -11,6 +14,10 @@ import { logger } from '@sports-bar/logger'
 
 // GET - Get bartender-visible scenes grouped by category
 export async function GET() {
+  // v2.54.46 — Grok audit: rate-limit only (read path).
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.DEFAULT)
+  if (!rateLimit.allowed) return rateLimit.response
+
   try {
     // Get all bartender-visible scenes
     const scenes = await db
