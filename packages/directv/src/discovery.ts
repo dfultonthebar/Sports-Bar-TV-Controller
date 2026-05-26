@@ -1,7 +1,7 @@
 
 // DirecTV Box Discovery Service
 
-import { Client as SSDPClient } from 'node-ssdp';
+import { SSDPClient } from './ssdp-client';
 import { SHEFClient } from './shef-client';
 import { DIRECTV_CONFIG, MODEL_FAMILIES } from './constants';
 import type { DirecTVBox, DiscoveryResult, ModelInfo } from './types';
