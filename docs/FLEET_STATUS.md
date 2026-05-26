@@ -10,16 +10,19 @@ A snapshot of where each location stands. Update this file after every fleet-wid
 
 | Location | Branch | OS | Software ver | Node | Bartender proxy | AI Suggest backend | iGPU acceleration | Notes |
 |---|---|---|---|---|---|---|---|---|
-| holmgren-way | `location/holmgren-way` | noble (24.04) | **v2.54.38** | 22.22.0 (nvm) | Nginx | IPEX-LLM Ollama (Iris Xe, llama3.1:8b resident + qwen3:14b on disk) | ✅ active | Reference deployment; **only box with RAG_RERANK_ENABLED** + Shure RF + SDR spectrum + Ticketmaster API key |
-| lucky-s-1313 | `location/lucky-s-1313` | noble (24.04) | **v2.54.38** | 20.20.0 (apt/NodeSource) | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | Single-card WP matrix; address populated 2026-05-26 — venue-discovery will geocode on next cron |
-| graystone | `location/graystone` | noble (24.04) | **v2.54.38** | 20.20.2 (apt/NodeSource) | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | **15GB total RAM — fleet smallest.** Cannot load qwen3:14b alongside other resident models. AI Suggest ~170s |
-| stoneyard-appleton | `location/stoneyard-appleton` | noble (24.04) | **v2.54.38** | 20.20.2 (apt/NodeSource) | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | AI Suggest 67s on iGPU — fleet perf baseline |
+| holmgren-way | `location/holmgren-way` | noble (24.04) | **v2.54.39** | 22.22.0 (nvm) | Nginx | IPEX-LLM Ollama (Iris Xe, llama3.1:8b resident + qwen3:14b on disk) | ✅ active | Reference deployment; **only box with RAG_RERANK_ENABLED** + Shure RF + SDR spectrum + Ticketmaster API key |
+| lucky-s-1313 | `location/lucky-s-1313` | noble (24.04) | **v2.54.38** | **22.22.2 (apt/NodeSource)** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | Single-card WP matrix; address populated 2026-05-26 — venue-discovery will geocode on next cron. **Node upgraded 2026-05-26 (~6 min)** |
+| graystone | `location/graystone` | noble (24.04) | **v2.54.38** | **22.22.2 (apt/NodeSource)** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | **15GB total RAM — fleet smallest.** Cannot load qwen3:14b alongside other resident models. AI Suggest ~170s. **Node upgraded 2026-05-26 (~8 min)** |
+| stoneyard-appleton | `location/stoneyard-appleton` | noble (24.04) | **v2.54.38** | **22.22.2 (apt/NodeSource)** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | AI Suggest 67s on iGPU — fleet perf baseline. **Node upgraded 2026-05-26 (~6 min)** |
 | greenville | `location/stoneyard-greenville` | noble (24.04) | **v2.54.38** | 22.22.2 (nvm) | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | Samsung TV-20 (10.40.10.20) dead — needs MAC for WoL, **operator action** |
-| leglamp | `location/leg-lamp` | noble (24.04) | **v2.54.38** | **22.22.3 (nvm)** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | Single-card WP matrix; smallest install. **Upgraded to Node 22.22.3 on 2026-05-26** — canary for the remaining 3 NodeSource-apt boxes |
+| leglamp | `location/leg-lamp` | noble (24.04) | **v2.54.38** | **22.22.3 (nvm)** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | Single-card WP matrix; smallest install. **Node upgraded 2026-05-26 (canary, ~40 min)** |
 
-**Node version status (per Standing Rule 10):** Holmgren + Greenville + Leglamp on Node 22 ✓. Lucky's + Graystone + Appleton still on Node 20.20.x — apt/NodeSource-based, **deferred to off-hours** after the leglamp canary (~40 min downtime with multiple manual interventions). Latest Node 22 LTS is 22.22.3 (Jod). **Not blocking** (Next 16 requires `>=20.9.0`).
+**Node version status (per Standing Rule 10):** ✅ 6/6 on Node 22 (2026-05-26). nvm-based: holmgren (22.22.0), greenville (22.22.2), leglamp (22.22.3). apt/NodeSource-based: luckys/graystone/appleton (22.22.2 — held back one patch by NodeSource's per-major release cadence).
 
-**Node 22 upgrade gotchas (from leglamp 2026-05-26):** (a) prebuild-install gives ABI-mismatched binaries — must force `cd node_modules/better-sqlite3 && rm -rf build prebuilds && npm run build-release`; (b) `pm2 update` can hang 10+ min — safer to `pm2 save && pm2 kill && cd repo && pm2 start ecosystem.config.js`; (c) `nvm use` in subshells doesn't persist — export PATH manually to /home/ubuntu/.nvm/versions/node/vX.Y.Z/bin before npm ci; (d) `cd /home/ubuntu/Sports-Bar-TV-Controller` REQUIRED before any pm2 start ecosystem.config.js call.
+**Node 22 upgrade procedure (refined after leglamp + 3 NodeSource boxes 2026-05-26):**
+- **nvm-based:** custom procedure with manual PM2 daemon kill required. Leglamp took ~40 min due to first-pass discovery of all 5 gotchas. See `feedback_node_major_upgrade_gotchas.md` memory.
+- **NodeSource-apt:** `/tmp/node22-upgrade-nodesource.sh` end-to-end procedure. Required `--allow-change-held-packages` for apt. **Average wall-clock ~6-8 min per box** once script was correct.
+- **Critical gotchas (all 5 hit during leglamp; script handles all):** (a) prebuild-install ships ABI-mismatched binaries — must force `cd node_modules/better-sqlite3 && rm -rf build prebuilds && npm run build-release`; (b) `pm2 update` can hang 10+ min — use `pm2 save && pm2 kill && pm2 start ecosystem.config.js` instead; (c) `nvm use` in subshells doesn't persist — export PATH manually; (d) `cd /home/ubuntu/Sports-Bar-TV-Controller` REQUIRED before pm2 start; (e) nodejs may be apt-held — `--allow-change-held-packages` required.
 
 **Aggregate health (2026-05-26 12:30 UTC):**
 - 6/6: bartender remote on Nginx ✓
