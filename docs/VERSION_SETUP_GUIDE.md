@@ -35,6 +35,73 @@ is the archive.
 
 ---
 
+## v2.54.34 — Remove next-pwa entirely (closes 5 HIGH vulns) (2026-05-26)
+
+**Versions covered:** v2.54.34
+**Branch landed:** main
+**Fleet target:** rolling upgrade
+
+Audit revealed PWA was already disabled (`disable: true` in next.config.js, original comment said "Temporarily disabled to fix caching issues" — turned out to be permanently disabled). We were paying the full vulnerability surface of `next-pwa` → `workbox-build` → `rollup-plugin-terser` → `serialize-javascript` (HIGH CVE — RCE via RegExp.flags + Date.prototype.toISOString) for zero runtime benefit.
+
+- **Dropped `next-pwa` from `apps/web/package.json`** (devDependencies).
+- **Rewrote `apps/web/next.config.js`**: removed the `require('next-pwa')` wrapper, replaced `module.exports = withPWA(nextConfig)` with `module.exports = nextConfig`. Archived the legacy `runtimeCaching` config inline as `_legacyPwaConfig` comment for future reference if PWA is ever re-introduced via `@serwist/next` (the modern Workbox successor that's Next 16 + Turbopack compatible).
+- **`apps/web/src/app/layout.tsx` still references `manifest: '/manifest.json'`** — this is a plain static web app manifest at `apps/web/public/manifest.json`, NOT dependent on next-pwa. The app remains web-app-manifest enabled (icon + name + theme color) but no service worker, no offline caching, no install prompt — same behavior as before (since PWA was disabled).
+
+**npm audit:** 15 vulns (7 HIGH) → **10 vulns (2 HIGH)**. Closed: `next-pwa`, `workbox-build`, `workbox-webpack-plugin`, `rollup-plugin-terser`, `serialize-javascript`. Remaining 2 HIGH: `ip` SSRF via `node-ssdp` (used only by DirecTV LAN discovery — low real-world attack surface; node-ssdp 4.0.1 was last published in 2022, replacement tracked as a separate item).
+
+**`--webpack` flag retained** in `apps/web/package.json` dev/build scripts even though next-pwa was the original reason for it. Reason: `apps/web/next.config.js` still has a `webpack:` config block (native module externals like `isolated-vm`, `serialport`, `ws` + React/ReactDOM dedup aliases). Migrating to Turbopack would require porting those configs to Turbopack's `experimental.turbo` format and verifying SSR builds still resolve native modules correctly — bigger PR, separate item.
+
+**Required Manual Step:** none — pure dep removal + config simplification. PWA was already disabled at runtime, so nothing the operator sees changes.
+
+Build: 28/28 successful.
+
+---
+
+## v2.54.33 — Cleanup follow-ups: drop autoprefixer + drop TS6 baseUrl/ignoreDeprecations (2026-05-26)
+
+**Versions covered:** v2.54.33
+**Branch landed:** main
+**Fleet target:** rolling upgrade
+
+Cleanup pass for the deferrals carried in v2.54.29 (TypeScript) and v2.54.31 (Tailwind) commit notes.
+
+- **Dropped `autoprefixer`** from `apps/web/package.json` devDependencies. v2.54.31's tailwind v4 migration moved PostCSS handling to `@tailwindcss/postcss` which has autoprefixer built in — the standalone declaration was harmless but dead. -1 dep, no other change.
+- **Dropped `baseUrl` + `ignoreDeprecations: "6.0"`** from root `tsconfig.json`. v2.54.29 added these as a stopgap because TS6 deprecates `baseUrl` entirely while we still had `paths` to resolve. TS6 now lets `paths` resolve relative to the tsconfig location directly — no baseUrl needed. Removing baseUrl also removes the only deprecation that needed silencing, so `ignoreDeprecations` is gone too. The `paths` mapping (`@/* → ./src/*`) still works.
+
+**What's still deferred** (carried forward from earlier in the day):
+- Migrate `tailwind.config.js` theme.extend to `@theme` CSS block (so we can delete the JS config). Risk: v4 `@theme` variable naming convention isn't 100% drop-in for backgroundImage gradients, needs verification. Not worth the visual-regression risk in a no-prep session.
+- Run `@tailwindcss/upgrade` for class-name renames (shadow-sm → shadow-xs etc.) — still tracked, still needs playwright visual regression first.
+
+**Required Manual Step:** none.
+
+Build: 34/34 successful. No runtime behavior change.
+
+---
+
+## v2.54.32 — Rule 10 weekly minor/patch sweep + FLEET_STATUS refresh + @types/node normalization (2026-05-26)
+
+**Versions covered:** v2.54.32
+**Branch landed:** main
+**Fleet target:** rolling upgrade
+
+Sixth post-Memorial-Day pass — cleanup batch after the breaking-major sweep:
+
+- **`@anthropic-ai/sdk`** 0.97.1 → 0.98.0 (2 sites — apps/web + packages/services). Minor bump, additive only.
+- **`openai`** 6.2.0 → 6.39.0 (apps/web). Several minor releases caught up. API surface unchanged.
+- **`ts-jest`** 29.4.5 → 29.4.11 (apps/web). Patch series caught up.
+- **`ws`** 8.18.0 → 8.21.0 (packages/tv-network-control). Minor bump, additive only.
+- **`@types/node`** normalized to `^25.0.0` across all packages (was a mix of 20.x/22.x/24.x/25.9 — 4 different pins across 33 packages). All resolve to 25.9.1 actual. v25 narrows the Node Socket `data` event type to `Buffer` (NonSharedBuffer branded), surfaced one type error in `packages/htd/src/htd-tcp-client.ts:93` — fixed by wrapping the handler with `Buffer.from(data)`.
+
+**FLEET_STATUS.md refresh** — previous version was from 2026-05-19 and claimed the fleet was on v2.32.94 with v2.50.7 staged. After today's 10-version sweep all 6 boxes are on v2.54.31 (32 imminent). Updated the per-location table, removed stale "rollout-pending" labels (everyone is current), refreshed Notes column with today's true state.
+
+**npm audit:** 15 vulns (8 mod, 7 high). Same set as v2.54.19 — the `next-pwa` → `workbox-build` → `rollup-plugin-terser` → `serialize-javascript` (HIGH) chain and `node-ssdp` → `ip` (HIGH). NOT introduced by today's bumps. Replacing `next-pwa` is the only way to close these — tracked as the next post-Memorial-Day item.
+
+Build: 34/34 successful.
+
+**Required Manual Step:** none — pure dep + doc update.
+
+---
+
 ## v2.54.31 — Rule 10 bumps part 5: tailwindcss 3→4 (2026-05-26)
 
 **Versions covered:** v2.54.31
