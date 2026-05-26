@@ -5,6 +5,9 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
+import { requireAuth } from '@/lib/auth'
 import { db } from '@/db'
 import * as schema from '@/db/schema'
 import { eq } from 'drizzle-orm'
@@ -12,6 +15,10 @@ import { logger } from '@sports-bar/logger'
 
 // GET - List all commercial lighting systems
 export async function GET() {
+  // v2.54.46 — Grok audit: rate-limit only (read path).
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.DEFAULT)
+  if (!rateLimit.allowed) return rateLimit.response
+
   try {
     const systems = await db
       .select()
@@ -33,6 +40,13 @@ export async function GET() {
 
 // POST - Create a new commercial lighting system
 export async function POST(request: NextRequest) {
+  // v2.54.46 — Grok audit pass 1+2 HIGH: this route family previously
+  // bypassed auth + rate-limit. Hardware-control surface; requires STAFF.
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
+  if (!rateLimit.allowed) return rateLimit.response
+  const auth = await requireAuth(request, 'STAFF', { auditAction: 'lighting_control' })
+  if (!auth.allowed) return auth.response || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
   try {
     const body = await request.json()
 
