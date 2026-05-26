@@ -617,6 +617,14 @@ export default function AIHubPage() {
                         (&quot;rebuild the RAG vector store&quot;), I&apos;ll match the level. Paste a log or error and
                         I&apos;ll quote the relevant lines.
                       </p>
+                      {/* v2.54.48 (Grok audit G) — bartender onboarding pointer */}
+                      <p className="text-xs text-slate-500 mb-4 max-w-2xl mx-auto">
+                        <strong className="text-slate-300">New bartender?</strong> Tap any &quot;Behind the bar&quot;
+                        question below to get started, or describe what you&apos;re seeing in plain English. I&apos;ll
+                        walk you through it step-by-step. Full plain-English help docs live in{' '}
+                        <code className="text-slate-400">docs/bartender-help/</code> (MIC_NOT_WORKING,
+                        WRONG_CHANNEL_ON_TV, MUSIC_OR_AUDIO_PROBLEM, RF_INTERFERENCE_FOR_BARTENDERS).
+                      </p>
                       {/* v2.54.47 (Grok audit) — split into bartender + admin starter sets. Matches the
                           register-detection logic in chat/route.ts:404-445 and the new bartender-mode
                           adapter in @sports-bar/rag-server's llm-client.ts. */}
