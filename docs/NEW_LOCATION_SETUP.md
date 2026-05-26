@@ -18,7 +18,7 @@ git clone https://github.com/dfultonthebar/Sports-Bar-TV-Controller.git
 cd Sports-Bar-TV-Controller
 
 # 2. Run the canonical installer (system deps + Node + Ollama + Tailscale +
-#    npm ci + drizzle-kit push + npm run build + PM2 + verify-install)
+#    npm ci + bootstrap-drizzle-migrations.sh + drizzle-kit migrate + npm run build + PM2 + verify-install)
 ./install.sh
 
 # 3. Bootstrap auth (Location row + AuthPin + .env LOCATION_ID binding +
