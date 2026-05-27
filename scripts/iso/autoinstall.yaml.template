@@ -46,20 +46,15 @@ autoinstall:
     geoip: true
     fallback: offline-install
 
-  # Identity: ubuntu/ubuntu by default. Hostname can be overridden by
-  # operator via the brief interactive identity section. The {{PASS_HASH}}
-  # placeholder is filled at build time via openssl passwd -6.
+  # Identity: ubuntu/ubuntu, hostname sports-bar-controller. Operator
+  # can change hostname AFTER install via the location-setup-wizard
+  # (first-boot-fresh.sh invokes it). v3.1.0 keeps the install 100%
+  # unattended for smoke-test reliability — no interactive-sections.
   identity:
     realname: 'Sports Bar TV Controller'
     username: ubuntu
     password: '{{UBUNTU_PASSWORD_HASH}}'
     hostname: sports-bar-controller
-
-  # The identity section is interactive so operator can change hostname
-  # for multi-bar installs. Everything else (disk, network, packages)
-  # is fully automated.
-  interactive-sections:
-    - identity
 
   ssh:
     install-server: true
