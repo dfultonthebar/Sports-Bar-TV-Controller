@@ -35,6 +35,31 @@ is the archive.
 
 ---
 
+## v2.54.70 — DJ Mode audio control fix: picked wrong processor (Shure instead of Atlas) (2026-05-27)
+
+**Versions covered:** v2.54.70
+**Branch landed:** main
+**Fleet target:** rolling upgrade. **Operator-facing fix** — DJ Mode source picker + zones + volumes now show on Holmgren.
+
+Operator reported: "the dj audio control is broken can't select the source a can't see the zones or zone volume". Investigation by parallel agent.
+
+**Root cause** (same shape as the 2026-05-18 Audio panel bug that v2.34+ already fixed in `BartenderRemoteAudioPanel`): `apps/web/src/components/DJControlPanel.tsx` did `const processor = data.processors[0]` to pick the audio processor. Since v2.34.x the Shure SLX-D mic receiver is registered in `/api/audio-processor` (so AudioProcessorManager can manage it for RF/battery monitoring) and shows up FIRST in the list at Holmgren. So:
+- `/api/atlas/sources?processorIp=10.11.3.251` (Shure IP) returned 404 — `djSources` stayed empty → "Source A" dropdown showed no options.
+- `/api/audio-processor/zones?processorId=<shure-id>` returned `{ zones: [] }` — no zone list → no volume sliders.
+
+The Audio panel got this exact fix in v2.34+ (`remote/page.tsx:438-463`) — explicit `processorType === 'atlas' || 'dbx-zonepro'` filter. DJ panel never received the same fix.
+
+**Fix in `apps/web/src/components/DJControlPanel.tsx:108-136`**: replaced `processors[0]` with `processors.find(p => p.processorType === 'atlas')`. Logs an error to console if no Atlas processor exists (alerts the operator that DJ Mode requires Atlas). Same filter idiom + explanatory comment as the Audio panel so future grep catches both.
+
+**Verified post-fix on Holmgren** (all 200 OK):
+- Atlas processor found: id `3641dcba...d9`, ip `10.11.3.246`
+- `/api/atlas/sources?processorIp=10.11.3.246` → 14 sources including index 11 "DJ Audio" (auto-selected by existing `.includes('dj')` heuristic) + Matrix 1-4 for Source B
+- `/api/audio-processor/zones?processorId=3641dcba...d9` → 8 zones with current volumes (Main Bar through VIP Tent)
+
+Operator sees source picker + zones + volumes on next iPad refresh.
+
+---
+
 ## v2.54.69 — ISO v3.0.1: fix dispatcher autostart + tty1 autologin + recovery bash-profile (2026-05-27)
 
 **Versions covered:** v2.54.69 (repo) + ISO v3.0.1 (rebuilt artifact)
