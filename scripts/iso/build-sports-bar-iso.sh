@@ -48,7 +48,7 @@ step() { echo -e "\n${BOLD}${GREEN}=== $* ===${NC}"; }
 
 # ─── Configuration ────────────────────────────────────────────────────────────
 BUILD_DATE=$(date +%Y-%m-%d)
-VERSION="v3.0"
+VERSION="v3.0.1"
 ISO_NAME="sports-bar-tv-controller-${VERSION}-${BUILD_DATE}.iso"
 
 BUILD_DIR="${BUILD_DIR:-/home/ubuntu/iso-build}"
@@ -450,13 +450,16 @@ esac
 DISPATCHER_EOF
 chmod +x "${CHROOT_DIR}/usr/local/bin/sports-bar-first-boot.sh"
 
-# Systemd one-shot service
+# Systemd one-shot service for FRESH mode (no install — runs first-boot-fresh.sh).
+# v3.0.1: only fires when sports_bar_mode=fresh AND disk-installer mode is NOT active.
+# Network IS required for fresh mode (clones from GitHub) — keep network-online wait.
 cat > "${CHROOT_DIR}/etc/systemd/system/sports-bar-first-boot.service" << 'SERVICE_EOF'
 [Unit]
-Description=Sports Bar TV Controller First Boot Setup
+Description=Sports Bar TV Controller First Boot Setup (fresh mode)
 After=network-online.target
 Wants=network-online.target
 ConditionPathExists=!/var/lib/sports-bar-first-boot-done
+ConditionKernelCommandLine=!sports_bar_mode=install
 
 [Service]
 Type=oneshot
@@ -473,21 +476,29 @@ SERVICE_EOF
 # Enable the service
 chr "systemctl enable sports-bar-first-boot.service"
 
-# Disk installer service (interactive on tty1, for install mode)
+# Disk installer service — v3.0.1 FIX: must take over tty1 BEFORE getty does,
+# OR the operator sees the login prompt instead of the installer. Before+Conflicts
+# on getty@tty1.service is the systemd-canonical way to grab a TTY at boot.
+# No network dependency — disk install doesn't need GitHub access.
 cat > "${CHROOT_DIR}/etc/systemd/system/sports-bar-disk-installer.service" << 'DISKEOF'
 [Unit]
 Description=Sports Bar TV Controller - Disk Installer
-After=multi-user.target
 ConditionKernelCommandLine=sports_bar_mode=install
+ConditionPathExists=!/var/lib/sports-bar-first-boot-done
+Before=getty@tty1.service
+Conflicts=getty@tty1.service
 
 [Service]
-Type=oneshot
+Type=idle
 ExecStart=/usr/local/bin/disk-installer.sh
-StandardInput=tty
+StandardInput=tty-force
 StandardOutput=tty
 StandardError=tty
 TTYPath=/dev/tty1
 TTYReset=yes
+TTYVHangup=yes
+KillMode=process
+IgnoreSIGPIPE=no
 RemainAfterExit=yes
 
 [Install]
@@ -495,6 +506,75 @@ WantedBy=multi-user.target
 DISKEOF
 
 chr "systemctl enable sports-bar-disk-installer.service"
+
+# v3.0.1: tty1 autologin as `ubuntu` for the LIVE / safe-mode paths. Without
+# this, an operator who picks "Live (No Install)" lands at a login prompt with
+# casper-overridden credentials they don't know — unrecoverable. Autologin
+# means they get a shell + the ~/.bash_profile safety net (below) can offer
+# next-step actions.
+mkdir -p "${CHROOT_DIR}/etc/systemd/system/getty@tty1.service.d"
+cat > "${CHROOT_DIR}/etc/systemd/system/getty@tty1.service.d/autologin.conf" << 'AUTOLOGIN_EOF'
+[Service]
+ExecStart=
+ExecStart=-/sbin/agetty --autologin ubuntu --noclear %I $TERM
+AUTOLOGIN_EOF
+
+# v3.0.1: ubuntu user's .bash_profile recovery net. If the operator ends up at
+# a shell because the dispatcher didn't fire (network failure, etc.), this
+# detects sports_bar_mode= on the cmdline and offers to run the installer.
+# Harmless on subsequent logins — guarded by the DONE_MARKER check.
+cat > "${CHROOT_DIR}/home/ubuntu/.bash_profile" << 'BASHPROFILE_EOF'
+# v3.0.1 first-boot recovery net. See scripts/iso/build-sports-bar-iso.sh.
+if [ -t 0 ] && [ -t 1 ] && [ -f /usr/local/bin/sports-bar-first-boot.sh ] && [ ! -f /var/lib/sports-bar-first-boot-done ]; then
+    MODE=$(grep -oP 'sports_bar_mode=\K\S+' /proc/cmdline 2>/dev/null || echo "")
+    if [ -n "$MODE" ]; then
+        echo
+        echo "════════════════════════════════════════════════════════════════════"
+        echo " Sports Bar TV Controller — First-Boot Recovery"
+        echo "════════════════════════════════════════════════════════════════════"
+        echo " Detected mode: $MODE"
+        echo " The dispatcher service didn't auto-run (usually a network timeout)."
+        echo
+        echo " To start the install/setup manually, run:"
+        echo "   sudo /usr/local/bin/sports-bar-first-boot.sh"
+        echo
+        echo " To skip recovery this session:"
+        echo "   touch /tmp/.skip-recovery   (one shell session only)"
+        echo "════════════════════════════════════════════════════════════════════"
+        echo
+        if [ ! -f /tmp/.skip-recovery ]; then
+            read -r -p "Run the installer now? [Y/n] " ans
+            case "$ans" in
+                ""|y|Y|yes|YES) sudo /usr/local/bin/sports-bar-first-boot.sh ;;
+                *) echo "Skipping. Run later with: sudo /usr/local/bin/sports-bar-first-boot.sh" ;;
+            esac
+        fi
+    fi
+fi
+BASHPROFILE_EOF
+chr "chown ubuntu:ubuntu /home/ubuntu/.bash_profile"
+
+# v3.0.1: /etc/issue banner so the LIVE-boot user sees credentials even before
+# any login. Replaces the default Ubuntu issue.
+cat > "${CHROOT_DIR}/etc/issue" << 'ISSUE_EOF'
+
+╔══════════════════════════════════════════════════════════════════╗
+║  Sports Bar TV Controller — Live ISO                             ║
+║                                                                  ║
+║  This system will auto-login as 'ubuntu' on tty1.                ║
+║  If asked for a password manually: ubuntu / ubuntu               ║
+║                                                                  ║
+║  Picked Install from the menu? The disk-installer should be      ║
+║  running on tty1 — if you see this banner instead, the           ║
+║  recovery net at login will offer to start it.                   ║
+║                                                                  ║
+║  Pre-install docs: docs/BARE_METAL_ISO.md                        ║
+╚══════════════════════════════════════════════════════════════════╝
+
+\s \r \l
+
+ISSUE_EOF
+
 
 log "First-boot and disk-installer services installed and enabled."
 
