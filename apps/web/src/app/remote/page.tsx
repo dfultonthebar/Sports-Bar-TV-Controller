@@ -1352,19 +1352,27 @@ export default function BartenderRemotePage() {
           </button>
 
           {/* Ambient tier — 44×52px, text-xs, text-slate-500 inactive */}
-          {audioProcessorIp && (
-            <button
-              onClick={() => setActiveTab('audio')}
-              className={`min-h-[44px] min-w-[52px] flex flex-col items-center justify-center gap-1 px-2 py-2 rounded-xl transition-all ${
-                activeTab === 'audio'
-                  ? 'ring-1 ring-sky-400/50 bg-sky-500/20 text-sky-300 scale-[1.03]'
-                  : 'text-slate-500 hover:text-slate-300'
-              }`}
-            >
-              <Volume2 className="h-4 w-4" />
-              <span className="text-xs font-medium">Audio</span>
-            </button>
-          )}
+          {/*
+           * Audio tab is ALWAYS visible (v2.54.57) so a fresh-install
+           * bartender can discover the empty-state recovery card inside
+           * BartenderRemoteAudioPanel — previously the tab was hidden
+           * when no processor was configured, which meant a botched
+           * merge that blanked the processor IP would leave the
+           * bartender with no in-app indication that Audio existed at
+           * all. The panel renders a clear "not set up yet" card when
+           * processorIp is empty.
+           */}
+          <button
+            onClick={() => setActiveTab('audio')}
+            className={`min-h-[44px] min-w-[52px] flex flex-col items-center justify-center gap-1 px-2 py-2 rounded-xl transition-all ${
+              activeTab === 'audio'
+                ? 'ring-1 ring-sky-400/50 bg-sky-500/20 text-sky-300 scale-[1.03]'
+                : 'text-slate-500 hover:text-slate-300'
+            }`}
+          >
+            <Volume2 className="h-4 w-4" />
+            <span className="text-xs font-medium">Audio</span>
+          </button>
 
           <button
             onClick={() => setActiveTab('music')}

@@ -23,25 +23,14 @@ export async function POST(request: NextRequest) {
   }
 
 
-  // Input validation
-  const bodyValidation = await validateRequestBody(request, z.record(z.unknown()))
+  // v2.54.57 — replaced `z.record(z.unknown())` + ad-hoc String() coercion
+  // with the proper sportsGuideUpdateKey schema. Old version would have
+  // accepted `apiKey: 42` or `apiKey: undefined` and silently coerced into
+  // a malformed test call.
+  const bodyValidation = await validateRequestBody(request, ValidationSchemas.sportsGuideUpdateKey)
   if (isValidationError(bodyValidation)) return bodyValidation.error
   try {
-    const { apiKey: apiKeyRaw, userId: userIdRaw } = bodyValidation.data;
-
-    // Convert unknown to string
-    const apiKey = String(apiKeyRaw)
-    const userId = String(userIdRaw)
-
-    if (!apiKey || !userId) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: 'API key and User ID are required',
-        },
-        { status: 400 }
-      );
-    }
+    const { apiKey, userId } = bodyValidation.data;
 
     // Verify the new API key works before saving
     const testApi = new SportsGuideApi({
