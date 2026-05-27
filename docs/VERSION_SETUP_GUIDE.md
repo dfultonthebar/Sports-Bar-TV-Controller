@@ -35,6 +35,34 @@ is the archive.
 
 ---
 
+## v2.54.79 — ISO chroot: add squashfs-tools (disk-installer Step 4/7 fix) (2026-05-27)
+
+**Versions covered:** v2.54.79
+**Branch landed:** main
+**Fleet target:** ISO consumers only — next ISO build (v3.0.1 attempt-6) gets the fix. No runtime change for installed fleet.
+
+**Symptom (caught during 2026-05-27 VM 200 install of attempt-4 ISO):** disk-installer.sh hung indefinitely at "Step 4/7: Extracting filesystem from /cdrom/casper/filesystem.squashfs..." — screendumps identical for 7+ minutes, no progress, no error message printed to the tty.
+
+**Root cause:** `disk-installer.sh` calls `unsquashfs -f -d "$MOUNT_DIR" "$SQUASHFS_PATH"` to copy the live filesystem onto the target disk. The `squashfs-tools` package — which provides `unsquashfs` — was installed on the BUILD HOST (for `mksquashfs` to compress the rootfs at build time) but was NOT installed inside the chroot that becomes the live ISO. So when the live ISO booted and tried to install itself onto disk, `unsquashfs` was a "command not found" — which `disk-installer.sh` swallowed silently because of how it captured output.
+
+**Fix:** `scripts/iso/build-sports-bar-iso.sh` line ~333 — added `squashfs-tools` to the chroot apt install list (alongside parted/gdisk/dosfstools added in v2.54.76 for the same class of bug). One line of code; comment in the file explains why.
+
+**Required Manual Steps at locations:** NONE. Existing installs don't run disk-installer ever again — they're already on disk.
+
+**Required Manual Steps for new-NUC install with the v3.0.1 attempt-6 ISO:** Same as v3.0 — boot from USB, run through the 7-step disk-install wizard. Step 4/7 should now complete in ~2-3 min (was hanging forever in attempt-4).
+
+**Verification:**
+```
+# On the build host after attempt-6 builds:
+grep "squashfs-tools" scripts/iso/build-sports-bar-iso.sh   # must show 2+ hits (host pkgs + chroot pkgs)
+# After install on VM 200 (or any NUC):
+ssh ubuntu@<host> "which unsquashfs"   # /usr/bin/unsquashfs
+```
+
+**Pattern reminder:** When `disk-installer.sh` calls a binary, that binary MUST be in the chroot package list — the build host's copy doesn't make it into the live ISO. v2.54.76 caught parted/mkfs.ext4/mkfs.vfat; v2.54.79 caught unsquashfs. Next install gap to check: anything else `disk-installer.sh` shells out to.
+
+---
+
 ## v2.54.78 — ISO: add Tailscale + Grok CLI to first-boot install (2026-05-27)
 
 **Versions covered:** v2.54.78
