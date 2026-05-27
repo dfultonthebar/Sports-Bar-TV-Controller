@@ -10,6 +10,7 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { requireAuth } from '@/lib/auth'
 import { documentSearch } from '@/lib/enhanced-document-search'
 import { retrieveContext } from '@/lib/rag-server/query-engine'
+import { findBestQAMatch, recordQAHit, looksLikeBartenderQuery, QA_CONFIDENT_THRESHOLD } from '@/lib/qa-retrieval'
 import { operationLogger } from '@/lib/operation-logger'
 import { findUnique, update, upsert } from '@/lib/db-helpers'
 import { schema } from '@/db'
@@ -130,25 +131,60 @@ async function searchDocsViaRag(
   query: string,
   topK: number,
 ): Promise<Array<{ id: string; originalName: string; content: string; relevanceScore: number; matchedTerms: string[] }>> {
+  // v2.54.50 (Grok audit #1): QAEntry pre-pass for bartender-register
+  // queries. The 36 curated bartender Q&A pairs in QAEntry are the
+  // canonical answers for common bartender questions, written in the
+  // exact voice docs/bartender-help/*.md uses. Pure cosine on doc
+  // chunks doesn't surface them. Confident match -> QA is the sole
+  // context (LLM still narrates but constrained to the curated text).
+  // Moderate match -> QA prepended as highest-ranked source.
+  let qaResult: Array<{ id: string; originalName: string; content: string; relevanceScore: number; matchedTerms: string[] }> = []
+  if (looksLikeBartenderQuery(query)) {
+    try {
+      const qa = await findBestQAMatch(query)
+      if (qa) {
+        logger.info(`[QA-HIT] match=${qa.matchType} score=${qa.score.toFixed(3)} q="${query.slice(0, 60)}" -> "${qa.question.slice(0, 60)}"`)
+        recordQAHit(qa.id)
+        qaResult = [
+          {
+            id: `qa-${qa.id}`,
+            originalName: `${qa.sourceFile} (curated Q&A)`,
+            content: `**Q: ${qa.question}**\n\n${qa.answer}`,
+            relevanceScore: qa.matchType === 'confident' ? 1.0 : 0.9,
+            matchedTerms: query.toLowerCase().split(/\s+/).filter((t) => t.length > 3).slice(0, 5),
+          },
+        ]
+        if (qa.score >= QA_CONFIDENT_THRESHOLD) {
+          return qaResult
+        }
+      }
+    } catch (err) {
+      logger.warn(`[QA-RETRIEVAL] pre-pass failed (continuing to RAG): ${(err as Error)?.message ?? err}`)
+    }
+  }
+
   try {
-    const result = await retrieveContext(query, topK)
+    const remainingTopK = qaResult.length > 0 ? Math.max(1, topK - 1) : topK
+    const result = await retrieveContext(query, remainingTopK)
     if (!result.chunks || result.chunks.length === 0) {
-      return documentSearch.searchDocuments(query, topK)
+      return qaResult.length > 0 ? qaResult : documentSearch.searchDocuments(query, topK)
     }
     const terms = query
       .toLowerCase()
       .split(/\s+/)
       .filter((t) => t.length > 3)
       .slice(0, 5)
-    return result.chunks.map((c, i) => ({
+    const ragResults = result.chunks.map((c, i) => ({
       id: `rag-${i}`,
       originalName: c.source ?? `chunk_${i}`,
       content: c.content,
       relevanceScore: c.score ?? 0,
       matchedTerms: terms,
     }))
+    return [...qaResult, ...ragResults]
   } catch (err) {
     logger.warn(`[AI-HUB-CHAT] RAG retrieval failed, falling back: ${(err as Error)?.message ?? err}`)
+    if (qaResult.length > 0) return qaResult
     return documentSearch.searchDocuments(query, topK)
   }
 }
