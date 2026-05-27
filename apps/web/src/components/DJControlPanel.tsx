@@ -43,23 +43,31 @@ export default function DJControlPanel() {
   const [volumeTimers, setVolumeTimers] = useState<Map<number, ReturnType<typeof setTimeout>>>(new Map())
 
   // Fetch Atlas sources
-  const fetchSources = useCallback(async () => {
+  // NOTE: deps deliberately DO NOT include selectedDJSource — if they did,
+  // every user pick would recreate this callback, re-fire the init useEffect
+  // (which lists fetchSources in its deps), re-run /api/settings/dj-mode GET,
+  // and restore the PREVIOUSLY saved source — overwriting the user's pick.
+  // That's the v2.54.71 "select-doesn't-stick" bug. We pass an
+  // explicit autoSelectIfUnset flag instead (true only on initial load).
+  const fetchSources = useCallback(async (autoSelectIfUnset = false) => {
     if (!processorIp) return
     try {
       const res = await fetch(`/api/atlas/sources?processorIp=${processorIp}`)
       const data = await res.json()
       if (data.success && data.sources) {
         setDjSources(data.sources)
-        // Auto-select DJ Audio if available
-        const djSource = data.sources.find((s: AtlasSource) => s.name.toLowerCase().includes('dj'))
-        if (djSource && selectedDJSource === null) {
-          setSelectedDJSource(djSource.index)
+        if (autoSelectIfUnset) {
+          // Auto-select DJ Audio only when no saved state has set the source
+          const djSource = data.sources.find((s: AtlasSource) => s.name.toLowerCase().includes('dj'))
+          if (djSource) {
+            setSelectedDJSource((prev) => (prev === null ? djSource.index : prev))
+          }
         }
       }
     } catch (err) {
       logger.error('[DJ_PANEL] Failed to fetch sources:', err)
     }
-  }, [processorIp, selectedDJSource])
+  }, [processorIp])
 
   // Fetch Atlas zones
   const fetchZones = useCallback(async () => {
@@ -134,12 +142,21 @@ export default function DJControlPanel() {
     fetchProcessor()
   }, [])
 
-  // Load saved state once processor is loaded
+  // Load saved state once processor is loaded.
+  // ONE-SHOT per (processorId, processorIp) — guarded by initRef so that
+  // changes to fetchSources/fetchZones (callback identity) cannot retrigger
+  // this effect and re-restore saved state on top of user input. This is the
+  // v2.54.71 "select-doesn't-stick" fix.
+  const initRef = useRef<string | null>(null)
   useEffect(() => {
     if (!processorId || !processorIp) return
+    const initKey = `${processorId}:${processorIp}`
+    if (initRef.current === initKey) return
+    initRef.current = initKey
+
     const init = async () => {
       setLoading(true)
-      await Promise.all([fetchSources(), fetchZones()])
+      await Promise.all([fetchSources(true), fetchZones()])
 
       // Restore saved state
       try {
