@@ -17,6 +17,28 @@ use `docs/NEW_LOCATION_SETUP.md` instead.
   **https://github.com/dfultonthebar/Sports-Bar-TV-Controller/releases**
   (the most recent `sports-bar-v*.iso` asset).
 
+## Building the ISO yourself (optional — only if no Release asset exists)
+
+Any fleet box can build the ISO since v3.0 (snapshot mode disabled — the
+ISO is location-independent). One-time setup:
+
+```
+sudo apt-get install -y debootstrap xorriso squashfs-tools \
+    grub-efi-amd64-bin grub-pc-bin mtools dosfstools isolinux syslinux-utils
+```
+
+Then:
+
+```
+cd /home/ubuntu/Sports-Bar-TV-Controller
+sudo bash scripts/iso/build-sports-bar-iso.sh --no-upload
+```
+
+15-30 min. Result lands in `/home/ubuntu/iso-build/sports-bar-tv-controller-v3.0-*.iso`.
+Use `--build-dir /path` to put it elsewhere. v2.54.58+ checks all
+prereqs upfront and bails with a clear apt-get command if anything is
+missing.
+
 ## Build the USB
 
 On any Linux machine, find the device with `lsblk`. Pick the USB by
