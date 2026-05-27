@@ -2,7 +2,6 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { Card, CardHeader, CardTitle, CardContent } from './ui/cards'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
 import { Select, SelectContent, SelectItem, SelectValue, SelectTrigger } from './ui/select'
@@ -169,69 +168,61 @@ export default function LogAnalyticsDashboard() {
 
       {/* Quick Stats */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center">
-              <Activity className="h-8 w-8 text-blue-600" />
-              <div className="ml-4">
-                <p className="text-sm font-medium text-muted-foreground">Total Events</p>
-                <p className="text-2xl font-bold">{analytics.totalLogs.toLocaleString()}</p>
-              </div>
+        <div className="rounded-lg border border-slate-700 bg-slate-800/50 p-6">
+          <div className="flex items-center">
+            <Activity className="h-8 w-8 text-blue-600" />
+            <div className="ml-4">
+              <p className="text-sm font-medium text-slate-400">Total Events</p>
+              <p className="text-2xl font-bold">{analytics.totalLogs.toLocaleString()}</p>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center">
-              <AlertTriangle className={`h-8 w-8 ${getErrorRateColor(analytics.errorRate)}`} />
-              <div className="ml-4">
-                <p className="text-sm font-medium text-muted-foreground">Error Rate</p>
-                <p className={`text-2xl font-bold ${getErrorRateColor(analytics.errorRate)}`}>
-                  {analytics.errorRate.toFixed(1)}%
-                </p>
-              </div>
+        <div className="rounded-lg border border-slate-700 bg-slate-800/50 p-6">
+          <div className="flex items-center">
+            <AlertTriangle className={`h-8 w-8 ${getErrorRateColor(analytics.errorRate)}`} />
+            <div className="ml-4">
+              <p className="text-sm font-medium text-slate-400">Error Rate</p>
+              <p className={`text-2xl font-bold ${getErrorRateColor(analytics.errorRate)}`}>
+                {analytics.errorRate.toFixed(1)}%
+              </p>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center">
-              <TrendingUp className="h-8 w-8 text-green-600" />
-              <div className="ml-4">
-                <p className="text-sm font-medium text-muted-foreground">Avg Response</p>
-                <p className="text-2xl font-bold">
-                  {formatDuration(analytics.performanceMetrics.averageResponseTime)}
-                </p>
-              </div>
+        <div className="rounded-lg border border-slate-700 bg-slate-800/50 p-6">
+          <div className="flex items-center">
+            <TrendingUp className="h-8 w-8 text-green-600" />
+            <div className="ml-4">
+              <p className="text-sm font-medium text-slate-400">Avg Response</p>
+              <p className="text-2xl font-bold">
+                {formatDuration(analytics.performanceMetrics.averageResponseTime)}
+              </p>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center">
-              <HardDrive className="h-8 w-8 text-purple-600" />
-              <div className="ml-4">
-                <p className="text-sm font-medium text-muted-foreground">Active Devices</p>
-                <p className="text-2xl font-bold">{analytics.deviceUsage.length}</p>
-              </div>
+        <div className="rounded-lg border border-slate-700 bg-slate-800/50 p-6">
+          <div className="flex items-center">
+            <HardDrive className="h-8 w-8 text-purple-600" />
+            <div className="ml-4">
+              <p className="text-sm font-medium text-slate-400">Active Devices</p>
+              <p className="text-2xl font-bold">{analytics.deviceUsage.length}</p>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
 
       {/* Recommendations */}
       {analytics.recommendations.length > 0 && (
-        <Card className="border-orange-200 bg-orange-50/50">
-          <CardHeader>
-            <CardTitle className="text-orange-800 flex items-center">
+        <div className="rounded-lg border border-orange-200 bg-orange-50/50 p-6">
+          <div className="mb-4">
+            <h3 className="text-lg font-semibold text-orange-800 flex items-center">
               <AlertTriangle className="mr-2 h-5 w-5" />
               AI Recommendations
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
+            </h3>
+          </div>
+          <div>
             <div className="space-y-2">
               {analytics.recommendations.map((recommendation, index) => (
                 <div key={index} className="flex items-start gap-2">
@@ -240,8 +231,8 @@ export default function LogAnalyticsDashboard() {
                 </div>
               ))}
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       )}
 
       {/* Charts and Tables */}
@@ -256,40 +247,40 @@ export default function LogAnalyticsDashboard() {
 
         <TabsContent value="overview" className="space-y-4">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center">
+            <div className="rounded-lg border border-slate-700 bg-slate-800/50 p-6">
+              <div className="mb-4">
+                <h3 className="text-lg font-semibold text-slate-100 flex items-center">
                   <Clock className="mr-2 h-5 w-5" />
                   Activity Timeline (24 Hours)
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
+                </h3>
+              </div>
+              <div>
                 <ResponsiveContainer width="100%" height={300}>
                   <LineChart data={analytics.timePatterns}>
                     <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis 
-                      dataKey="hour" 
+                    <XAxis
+                      dataKey="hour"
                       tickFormatter={(hour) => `${hour}:00`}
                     />
                     <YAxis />
-                    <Tooltip 
+                    <Tooltip
                       labelFormatter={(hour) => `${hour}:00 - ${hour + 1}:00`}
                       formatter={(value) => [value, 'Events']}
                     />
                     <Line type="monotone" dataKey="activity" stroke="#8884d8" strokeWidth={2} />
                   </LineChart>
                 </ResponsiveContainer>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center">
+            <div className="rounded-lg border border-slate-700 bg-slate-800/50 p-6">
+              <div className="mb-4">
+                <h3 className="text-lg font-semibold text-slate-100 flex items-center">
                   <Users className="mr-2 h-5 w-5" />
                   User Actions
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
+                </h3>
+              </div>
+              <div>
                 <ResponsiveContainer width="100%" height={300}>
                   <PieChart>
                     <Pie
@@ -309,18 +300,18 @@ export default function LogAnalyticsDashboard() {
                     <Tooltip />
                   </PieChart>
                 </ResponsiveContainer>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           </div>
         </TabsContent>
 
         <TabsContent value="performance" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Slowest Operations</CardTitle>
-              <p className="text-sm text-muted-foreground">Operations taking the most time</p>
-            </CardHeader>
-            <CardContent>
+          <div className="rounded-lg border border-slate-700 bg-slate-800/50 p-6">
+            <div className="mb-4">
+              <h3 className="text-lg font-semibold text-slate-100">Slowest Operations</h3>
+              <p className="text-sm text-slate-400 mt-1">Operations taking the most time</p>
+            </div>
+            <div>
               <div className="space-y-4">
                 {analytics.performanceMetrics.slowestOperations.slice(0, 10).map((op, index) => (
                   <div key={index} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
@@ -331,17 +322,17 @@ export default function LogAnalyticsDashboard() {
                   </div>
                 ))}
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </TabsContent>
 
         <TabsContent value="errors" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-red-600">Top Errors</CardTitle>
-              <p className="text-sm text-muted-foreground">Most frequently occurring errors</p>
-            </CardHeader>
-            <CardContent>
+          <div className="rounded-lg border border-slate-700 bg-slate-800/50 p-6">
+            <div className="mb-4">
+              <h3 className="text-lg font-semibold text-red-600">Top Errors</h3>
+              <p className="text-sm text-slate-400 mt-1">Most frequently occurring errors</p>
+            </div>
+            <div>
               <div className="space-y-4">
                 {analytics.topErrors.slice(0, 10).map((error, index) => (
                   <div key={index} className="p-4 rounded-lg border border-red-200 bg-red-50/50">
@@ -357,17 +348,17 @@ export default function LogAnalyticsDashboard() {
                   </div>
                 ))}
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </TabsContent>
 
         <TabsContent value="devices" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Device Usage & Health</CardTitle>
-              <p className="text-sm text-muted-foreground">Performance statistics by device</p>
-            </CardHeader>
-            <CardContent>
+          <div className="rounded-lg border border-slate-700 bg-slate-800/50 p-6">
+            <div className="mb-4">
+              <h3 className="text-lg font-semibold text-slate-100">Device Usage & Health</h3>
+              <p className="text-sm text-slate-400 mt-1">Performance statistics by device</p>
+            </div>
+            <div>
               <div className="overflow-x-auto">
                 <table className="w-full border-collapse">
                   <thead>
@@ -401,21 +392,21 @@ export default function LogAnalyticsDashboard() {
                   </tbody>
                 </table>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </TabsContent>
 
         <TabsContent value="activity" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>User Activity Breakdown</CardTitle>
-            </CardHeader>
-            <CardContent>
+          <div className="rounded-lg border border-slate-700 bg-slate-800/50 p-6">
+            <div className="mb-4">
+              <h3 className="text-lg font-semibold text-slate-100">User Activity Breakdown</h3>
+            </div>
+            <div>
               <ResponsiveContainer width="100%" height={400}>
                 <BarChart data={analytics.userActivity.slice(0, 10)}>
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis 
-                    dataKey="action" 
+                  <XAxis
+                    dataKey="action"
                     angle={-45}
                     textAnchor="end"
                     height={100}
@@ -425,8 +416,8 @@ export default function LogAnalyticsDashboard() {
                   <Bar dataKey="count" fill="#8884d8" />
                 </BarChart>
               </ResponsiveContainer>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </TabsContent>
       </Tabs>
     </div>
