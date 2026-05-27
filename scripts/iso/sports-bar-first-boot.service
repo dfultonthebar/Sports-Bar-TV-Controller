@@ -1,0 +1,20 @@
+[Unit]
+Description=Sports Bar TV Controller — first-boot setup (clone app + build + start PM2)
+Documentation=https://github.com/dfultonthebar/Sports-Bar-TV-Controller
+After=network-online.target
+Wants=network-online.target
+# Don't run if the marker file says we've already completed
+ConditionPathExists=!/var/lib/sports-bar-first-boot-done
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/sports-bar-first-boot.sh
+RemainAfterExit=true
+StandardOutput=journal+console
+StandardError=journal+console
+TimeoutStartSec=1800
+# Run as root — the script handles user-switching for git/npm operations
+User=root
+
+[Install]
+WantedBy=multi-user.target
