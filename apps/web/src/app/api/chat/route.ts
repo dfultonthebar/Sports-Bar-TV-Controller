@@ -190,14 +190,22 @@ async function searchDocsViaRag(
 }
 
 export async function POST(request: NextRequest) {
-  // v2.54.45 — Grok audit pass 2 HIGH finding: this route was previously
-  // unauth + un-rate-limited. Trivial DoS surface on Ollama
-  // (300s timeouts) + prompt-injection vector since RAG indexes docs/configs/logs.
-  // STAFF level matches the bartender-iPad role; Ollama is expensive, AI rate-limit class.
+  // v2.54.45 added `requireAuth(STAFF)` here as a Grok-audit DoS/prompt-injection
+  // hardening. Reverted in v2.54.74: the bartender iPad never logs in (the rest
+  // of the bartender remote — /remote, /api/audio-processor, /api/matrix,
+  // /api/atlas, /api/shure-rf, /api/scheduling, etc. — are all unauth by
+  // design and gated network-side by the port-3002 nginx allow-list). The
+  // STAFF gate broke "Ask AI" on the bartender remote: every request 401'd
+  // and the UI surfaced "log in" to bartenders, which is never supposed to
+  // happen on the iPad. Defense-in-depth still present:
+  //   - port-3002 allow-list restricts the route to bartender-LAN origin
+  //   - RateLimitConfigs.AI throttles per-IP to bound Ollama burn
+  //   - validateRequestBody(ValidationSchemas.aiQuery) bounds input shape/size
+  //   - the underlying Ollama model is sandboxed local inference (no exfil path)
+  // If we ever need to re-add auth, do it conditionally on a session existing
+  // (allow anon + identify when present), not as a hard gate.
   const rateLimit = await withRateLimit(request, RateLimitConfigs.AI)
   if (!rateLimit.allowed) return rateLimit.response
-  const auth = await requireAuth(request, 'STAFF', { auditAction: 'ai_chat' })
-  if (!auth.allowed) return auth.response || NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   // Input validation
   const bodyValidation = await validateRequestBody(request, ValidationSchemas.aiQuery)
