@@ -35,6 +35,38 @@ is the archive.
 
 ---
 
+## v2.54.61 — Grok persistent briefing + invocation wrapper (Grok knows the rules every time) (2026-05-26)
+
+**Versions covered:** v2.54.61
+**Branch landed:** main
+**Fleet target:** rolling upgrade. No runtime change. Tooling only.
+
+Operator-requested: "make sure Grok knows the rules and a way to remember them or access them." Grok has no persistent memory across invocations — every `grok --prompt-file X` starts fresh. Previously I'd hand-write the relevant standing rules into each Grok prompt, which is error-prone (forget a rule, get inconsistent recommendations).
+
+**NEW `docs/GROK_BRIEFING.md`** (~125 lines): distilled essentials Grok needs at the top of every prompt.
+- All 11 Standing Rules summarized
+- Top 7 of 13 Gotchas (the most-expensive ones — #1, #6, #7, #8, #10, #11, #13)
+- 10 validated operator preferences (software-to-main, Turbo force-rebuild, PM2 delete+start, CEC-deprecated, matrix outputOffset, device DB source of truth, iPad touch targets, latest-versions rule, RAG re-scan, bartender voice)
+- Role separation (Claude = implementer, Grok = advisor + auditor)
+- Pointers to deeper docs (CLAUDE.md, CLAUDE_MEMORY_GUIDE, CLAUDE_VERSIONING_GUIDE, VERSION_SETUP_GUIDE, FLEET_STATUS)
+- "Read on demand" pointers to operator memory file groups by topic (AI/RAG, hardware, install/fleet, bartender UX)
+- Version scheme reminder + mandatory `package.json` bump per commit
+
+**NEW `scripts/grok-prime.sh`**: wrapper that prepends `GROK_BRIEFING.md` to any Grok prompt automatically. Usage:
+```bash
+bash scripts/grok-prime.sh <prompt-file>           # one-shot
+bash scripts/grok-prime.sh --task "..."            # inline task
+bash scripts/grok-prime.sh --task "..." --file extra.md  # task + extra context
+echo "..." | bash scripts/grok-prime.sh -          # stdin
+```
+Reports prompt size + briefing line count to stderr; pipes to `grok --permission-mode auto`. Smoke-tested: asked Grok "what standing rule covers auto-update.sh vs manual pm2 restart?" — Grok correctly cited Rule 6 verbatim and distinguished it from related Gotcha 11 + Operator Preference 3.
+
+**CLAUDE.md** got a one-paragraph pointer at the top (under "Grok collaboration") so anyone reading CLAUDE.md sees how to invoke Grok with rules pre-loaded.
+
+**Outcome**: future Grok audits no longer need me to hand-write "remember to follow Standing Rule X" in the prompt. The wrapper handles it. Operator can also invoke Grok directly via the wrapper for one-off questions.
+
+---
+
 ## v2.54.60 — OS hygiene + trim sweep (Grok + 2 parallel agents) — 137 GB reclaimed on Holmgren (2026-05-26)
 
 **Versions covered:** v2.54.60
