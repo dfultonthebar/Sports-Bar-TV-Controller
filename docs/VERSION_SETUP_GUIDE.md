@@ -35,6 +35,30 @@ is the archive.
 
 ---
 
+## v2.54.50 — Grok #1: QAEntry-first retrieval for bartender chat path (2026-05-26)
+
+**Versions covered:** v2.54.50
+**Branch landed:** main
+**Fleet target:** rolling upgrade. No manual step required.
+
+Closes Grok audit follow-up #1 (the HIGH-leverage item from v2.54.49's ship notes — the one Grok said "unlocks the entire 9-doc + 36-QA investment"). The 36 curated bartender Q&A pairs seeded in v2.54.49 were sitting in the QAEntry table but the chat route's RAG path ignored them entirely. Pure cosine-on-doc-chunks meant the bartender voice the curated answers carry got diluted by neighboring CLAUDE.md / runbook chunks even when the question was an exact match.
+
+**`apps/web/src/lib/qa-retrieval.ts`** (NEW ~150 lines): in-memory cached (5-min TTL) lookup against the seeded curated_bartender_% rows. Tokenize query + stem + stopword-strip → score against each cached QA via weighted Jaccard + coverage. Returns `{ entry, score, matchType: 'confident' | 'moderate' } | null`. Thresholds: ≥0.55 confident, 0.40-0.55 moderate. Records useCount + lastUsed fire-and-forget on hit. Crude in-house stemmer (`-ing/-ed/-s/-es/-ies` → root) closes the singular/plural + verb-tense gaps the smoke test caught ("mic doesn't work" → "wireless mic isn't working").
+
+**`apps/web/src/app/api/chat/route.ts:129-185`** (modified ~30 lines): `searchDocsViaRag` now runs the QA pre-pass when `looksLikeBartenderQuery(query)` fires. Confident hit → QA is the SOLE context source (LLM still narrates but constrained to the curated text, topK=1). Moderate hit → QA prepended as highest-ranked source + 7 vector chunks for additional context. Miss → existing RAG flow. All-bets-off failure → QA wraps in try/catch, falls through cleanly.
+
+**Why in apps/web/ not packages/rag-server/:** rag-server doesn't depend on @sports-bar/database (and shouldn't — it's the search engine, not the data layer). The chat route already imports both; adapter pattern keeps the package graph clean. Followup #3 (Ollama-down fallback) will reuse this same helper.
+
+**`packages/rag-server/src/vector-store.ts:303`** + **`apps/web/src/lib/qa-retrieval.ts:172`** — BARTENDER_MARKERS regex **broadened** (kept in sync in both files per the comment). Smoke test caught 5/14 missed phrasings against the original regex: added `doesn'?t work`, `what (does|should|is|are)`, `the (banner|lights|patio|bar|tab|game|channel)`, `\btv\s*\d+\b`, `wrong`, `fire alarm`, `emergency`, `clock in`. False positives are CHEAP — pre-pass returns null on no match, chat path falls through to vector RAG anyway. False negatives kill the whole feature.
+
+**`scripts/smoke-qa-retrieval.ts`** (NEW): 14-case smoke test covering exact phrasings + paraphrases + off-topic. **14/14 pass.** Run from repo root: `npx tsx scripts/smoke-qa-retrieval.ts`. Verified at Holmgren.
+
+**No fleet manual step.** The 36 QA rows already exist in QAEntry from v2.54.49's seed run. The new retrieval helper reads them automatically.
+
+**Honest scope:** v2.54.50 is the retrieval. v2.54.51 (Grok #3) adds the Ollama-down fallback so bartenders STILL get the curated answer when the LLM is dead. v2.54.52 (Grok #2) adds session history so the floating button supports follow-ups.
+
+---
+
 ## v2.54.49 — Bartender how-tos coverage: 5 new docs + 36 curated Q&A pairs + idempotent seed (2026-05-26)
 
 **Versions covered:** v2.54.49
