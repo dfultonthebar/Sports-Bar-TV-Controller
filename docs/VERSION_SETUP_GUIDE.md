@@ -35,6 +35,42 @@ is the archive.
 
 ---
 
+## v2.54.75 — UI polish triple-agent batch: SystemAdmin + DeviceConfig Card→div migration + loading skeletons (2026-05-27)
+
+**Versions covered:** v2.54.75
+**Branch landed:** main
+**Fleet target:** rolling upgrade. No runtime change. Pure styling consistency + perceived-perf polish.
+
+Three parallel agents ran while the v3.0.1 ISO rebuilt. All HIGH confidence.
+
+**Agent A — SystemAdmin Card→div migration:**
+- `apps/web/src/app/system-admin/page.tsx`: 3 outer `<Card>` blocks (Layout tab TV Editor wrapper, Sync tab GitHub Config header, Sync tab Config Overview) → bordered slate divs per `SchedulerLogsDashboard.tsx` exemplar + `docs/UI_STYLING.md`.
+- Removed 2 unused imports (Card primitive bundle + unused Badge).
+- Build green (28/28, 14s). `/system-admin` returns 200.
+- Recolored a GitBranch icon `text-blue-600 → text-blue-400` for dark-bg contrast parity.
+
+**Agent B — DeviceConfig Card→div migration:**
+- `apps/web/src/app/device-config/page.tsx`: ~10 Card-family elements removed across 2 render sites (`SectionHeader` helper used by 12 tabs + Quick AI Actions collapsible).
+- 1 import line removed (Card bundle).
+- Build SKIPPED by agent due to RAM pressure at the time (correct call — Holmgren had Ollama + ISO rebuild active). Main thread combined build now green.
+
+**Agent C — Loading skeletons:**
+- NEW `apps/web/src/components/ui/skeleton.tsx` (60 lines, Tailwind-only): exports `<Skeleton>`, `<SkeletonRow>`, `<SkeletonCard>`. Animate-pulse on bg-slate-700/50.
+- Applied to 4 heavy dashboards (replaces "Loading..." text / blank states with pulsing placeholders):
+  - `SchedulerLogsDashboard.tsx` — 6 skeleton table rows
+  - `ScheduledGamesPanel.tsx` — 4 skeleton game cards
+  - `EnhancedChannelGuideBartenderRemote.tsx` — 5 skeleton game-row cards
+  - `admin/SmartSchedulingDashboard.tsx` — 3 skeleton cards
+- Layout doesn't shift when real data arrives (skeletons match real-content dimensions).
+
+**Combined build**: green (28/28, 13.4s). PM2 restarted clean.
+
+**Visual change summary**: SystemAdmin + DeviceConfig pages now use the same bordered-slate-div pattern as SchedulerLogsDashboard (the documented canonical). 4 dashboards show pulsing skeletons during 1-3s initial fetches instead of empty space or "Loading..." text.
+
+**RAM context**: Holmgren was tight today (Ollama + ISO build) — agents B and C correctly skipped their own builds. Main thread did the combined build after the ISO mksquashfs finished + freed RAM.
+
+---
+
 ## v2.54.74 — Shift brief: cap RF/neighborhood-event radius at 2 mi + chat route auth removed for bartender path (2026-05-27)
 
 **Versions covered:** v2.54.74

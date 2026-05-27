@@ -15,6 +15,7 @@ import FireTVAppShortcuts from './FireTVAppShortcuts'
 import AIGamePlanModal from './AIGamePlanModal'
 import LiveSportsDashboard from './LiveSportsDashboard'
 import ScheduledGameTVPicker from './ScheduledGameTVPicker'
+import { Skeleton } from './ui/skeleton'
 import { logger } from '@sports-bar/logger'
 import { findStreamingAppByPackageName } from '@sports-bar/streaming'
 import {
@@ -1760,9 +1761,31 @@ export default function EnhancedChannelGuideBartenderRemote() {
               {/* Guide Content */}
               <div className="max-h-96 overflow-y-auto">
                 {loadingGuide ? (
-                  <div className="text-center py-8">
-                    <div className="animate-spin rounded-full h-8 w-8 border-2 border-blue-500 border-t-transparent mx-auto mb-4"></div>
-                    <p className="text-slate-500">Loading channel guide...</p>
+                  // Skeleton placeholders matching the game-card shape
+                  // below — keeps the popup from flashing blank for the
+                  // ~2 sec the guide fetch takes on a busy network.
+                  <div className="space-y-3">
+                    {Array.from({ length: 5 }).map((_, i) => (
+                      <div
+                        key={`guide-skeleton-${i}`}
+                        className="backdrop-blur-xl bg-gradient-to-br from-purple-500/5 to-pink-500/5 border border-purple-400/10 rounded-xl p-4"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1 space-y-2">
+                            <div className="flex items-center gap-2">
+                              <Skeleton className="h-5 w-12 rounded-full" />
+                              <Skeleton className="h-5 w-12 rounded-full" />
+                            </div>
+                            <Skeleton className="h-5 w-3/4" />
+                            <div className="flex items-center gap-3">
+                              <Skeleton className="h-4 w-20" />
+                              <Skeleton className="h-4 w-16" />
+                            </div>
+                          </div>
+                          <Skeleton className="h-9 w-20 rounded-lg ml-3" />
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 ) : guideError ? (
                   <div className="text-center py-8">
