@@ -35,6 +35,35 @@ is the archive.
 
 ---
 
+## v2.54.58 — ISO build script: prereq check + stale header fix + pre-flight kicked (2026-05-26)
+
+**Versions covered:** v2.54.58
+**Branch landed:** main
+**Fleet target:** rolling upgrade. **Build-host one-time prereq install** for any box that will build the ISO (not needed at run-time on existing fleet boxes):
+```
+sudo apt-get install -y debootstrap xorriso squashfs-tools \
+    grub-efi-amd64-bin grub-pc-bin mtools dosfstools isolinux syslinux-utils
+```
+
+**Trigger:** task #282 — pre-flight v2.54.51 ISO in a VM before the new-location NUC ships this week. Audit found two real issues in `scripts/iso/build-sports-bar-iso.sh`:
+
+1. **Stale "Run on Leg Lamp ONLY" warning** at line 13. This predates v3.0's snapshot-mode removal (line 470: "Snapshot mode removed in v3.0 — this ISO is location-independent"). The warning would have scared operators away from building on any fleet box. **Replaced** with an accurate v2.54.58 header explaining snapshot is disabled, ISO is now location-independent, `--skip-snapshot` flag retained for backwards-compat but is now a no-op. Documented prereqs + duration + disk needs upfront.
+
+2. **No prereq check** — debootstrap / xorriso / grub-pc-bin / mtools / isolinux / syslinux-utils could be missing on a fresh build host and the script would fail mid-build with cryptic errors. **Added** an explicit prereq check that runs before Step 1 of the build and bails with one clear copy-paste `sudo apt-get install ...` command listing exactly the missing packages.
+
+**`docs/BARE_METAL_ISO.md`** — added "Building the ISO yourself" section with the apt-get one-liner + build command + result location. Operators who can't find a Release asset can now self-build cleanly.
+
+**Pre-flight test kicked in background on Holmgren (this box):**
+- Installed the 6 missing apt packages
+- Launched `sudo bash scripts/iso/build-sports-bar-iso.sh --no-upload --build-dir /home/ubuntu/iso-build` in background
+- ~15-30 min expected. Result will land in `/home/ubuntu/iso-build/sports-bar-tv-controller-v3.0-*.iso`.
+- If the build succeeds: pre-flight proves v2.54.51's installer pipeline produces a bootable ISO. Operator can `dd` to USB + boot a VM (or NUC) for end-to-end validation.
+- If the build fails: log at `/tmp/iso-build-v2.54.58.log` shows exactly where + the v2.54.58 prereq check rules out the easy "missing apt package" causes.
+
+**Why now (vs deferring pre-flight to operator):** the new location is going up THIS WEEK per operator. v2.54.51's installer wiring was aspirational until proven. A 15-30 min unattended background build is cheap; catching a regression before the NUC ships is high-value.
+
+---
+
 ## v2.54.57 — Sports-guide route gates + bartender empty-state recovery (Grok Part 2 P1) (2026-05-26)
 
 **Versions covered:** v2.54.57
