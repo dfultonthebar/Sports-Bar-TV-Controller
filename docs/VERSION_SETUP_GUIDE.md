@@ -35,6 +35,46 @@ is the archive.
 
 ---
 
+## v2.54.54 — Grok Part 2 P0: auth/login Gotcha #1 + bartender touch sweep + dark-theme primitives (2026-05-26)
+
+**Versions covered:** v2.54.54
+**Branch landed:** main
+**Fleet target:** rolling upgrade. No manual step.
+
+Closes the highest-leverage findings from Grok handoff Part 2 (UI + bug audit). Multi-agent parallel waves: 3 agents in parallel + me on auth/login simultaneously. All HIGH confidence, build green (34/34 Turbopack 16s), PM2 healthy.
+
+**Auth/login Gotcha #1 (me, security fix):**
+- `apps/web/src/app/api/auth/login/route.ts:40-50` was using raw `request.json()` + manual `if (!pin)` check (Gotcha #1 violation per CLAUDE.md, also accepted non-string pin values that bcrypt-compared garbage).
+- Added `authLoginSchema = z.object({ pin: z.string().regex(/^\d{4,8}$/) })` to `packages/validation/src/schemas.ts` + registered as `ValidationSchemas.authLogin`.
+- Switched route to canonical `validateRequestBody(request, ValidationSchemas.authLogin)` + `isValidationError` pattern. Now rejects non-digit / wrong-length pins at the schema gate with a 400 before any database call.
+
+**Dark-theme primitive sweep (Agent A1):**
+- `components/ui/select.tsx`: 7 swaps — Content/ScrollUp/ScrollDown/Item/Label/Check/Separator all `bg-white text-black` → `bg-slate-900 text-slate-100 border-slate-700`. Added explicit `data-[highlighted]` keyboard-nav highlight matching dark theme.
+- `components/ui/card.tsx`: 4 swaps — Card root `bg-white` → `bg-slate-800/50 text-slate-100 border border-slate-700`. CardHeader border-bottom slate. CardTitle slate-100. CardDescription slate-400. Mirrors SchedulerLogsDashboard.tsx exemplar.
+- `components/ui/button.tsx`: size map — default `h-10` → `h-11` (44px iPad target), lg `h-11` → `h-12`, icon `h-10` → `h-11`. No `bg-white` leaks in variants. Bartender-remote inherits 44px default automatically.
+
+**Bartender remote touch sweep — page.tsx + EnhancedBartenderRemoteControl (Agent A2):**
+- `app/remote/page.tsx` Power tab TV cards (lines 914-1019): ~9 interactive elements per TV bumped to `≥44px` + `text-sm` minimum. Input/OK/Pair/Power/HDMI 1-4 all compliant. Routing matrix cells (lines 1127-1146) `min-h-[44px] min-w-[44px]`.
+- `EnhancedBartenderRemoteControl.tsx`: no edits needed — Agent A1's button primitive `size="icon"` bump to `h-11 w-11` already brings the 3 size="icon" mute/volume buttons into compliance. Component is also not currently mounted in the live tree.
+- Deliberately left small: brand logo, IP address text, status dots (online/offline indicators are non-interactive).
+
+**Bartender remote touch sweep — InteractiveBartenderLayout + remotes/* (Agent A3):**
+- `InteractiveBartenderLayout.tsx`: zone tap wrappers got `min-h-[44px] min-w-[44px] flex items-center justify-center` overlay pattern — invisible 44px hit area centered on the original-sized visible zone dot (preserves floorplan proportionality). Room color indicator dots: `p-3 -m-3 box-content` with `backgroundClip: 'content-box'` to extend hit slop without enlarging the colored circle. Filter tabs `min-h-[44px]`. Channel-label text `text-[8px..xs] → text-xs..sm`.
+- `remotes/CableBoxRemote.tsx`: ~9 elements bumped. Killed `size="sm"` (h-9 = 36px) on Enter/Clear → `min-h-[44px] min-w-[80px] text-sm font-semibold`.
+- `remotes/DirecTVRemote.tsx`: ~8 elements bumped. CLR/GO already at min-h-[48px], no `size="sm"` violations here.
+- `remotes/FireTVRemote.tsx`: 2 visual labels bumped. All button heights already 44px-compliant via Button primitive default.
+
+**Cumulative touch-target compliance:** the bartender remote on iPad now satisfies Apple HIG 44x44 on the Power tab, all device remote keypads, and the floorplan tap targets. Status dots and non-interactive labels deliberately kept small to preserve information density.
+
+**Out of scope for this PR** (deferred to v2.54.55+):
+- Card-pattern violations across SystemAdmin / DeviceConfig / Atlas panels (Wave A1 fixed the Card PRIMITIVE; the consuming pages should eventually migrate to bordered slate divs per UI_STYLING.md, but the primitive change immediately makes existing consumers look correct without any page-level work).
+- `sports-guide` + `live-status` routes bypassing validate/rate-limit.
+- `packages/validation` vs `packages/config` dedup.
+- Seed-empty-UI recovery flow.
+- Grok #4-6 UX bugs (HDMI silo, multi-view preview, More-tab discoverability).
+
+---
+
 ## v2.54.53 — Grok #3: QAEntry fallback when Ollama is unreachable (2026-05-26)
 
 **Versions covered:** v2.54.53
