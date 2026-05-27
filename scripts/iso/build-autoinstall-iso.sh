@@ -191,26 +191,61 @@ step "Step 5/6: Add autoinstall entry to grub.cfg"
 GRUB_CFG="${BUILD_DIR}/source-files/boot/grub/grub.cfg"
 [ -f "$GRUB_CFG" ] || { err "grub.cfg not found at $GRUB_CFG"; exit 1; }
 
-# Prepend an "Autoinstall" entry as the default boot option (timeout=5s)
-# Use \; for the semicolon in the kernel cmdline (GRUB requires backslash-escape).
-AUTOINSTALL_ENTRY='menuentry "Sports Bar TV Controller — Autoinstall (default)" {
+# v2.54.92: rewrite grub.cfg ENTIRELY using a single-quoted heredoc.
+# Single-quoted EOF disables ALL shell escaping — guarantees the kernel
+# cmdline lands on disk exactly as written, no awk/sed escape bugs.
+#
+# Uses QUOTED form for ds=nocloud — Grok + research agent both confirmed
+# this is immune to escape-strip bugs (the v1 build had `\;` get stripped
+# by awk -v, breaking GRUB's understanding of the kernel cmdline).
+#
+# timeout=0 + default=0 = TRULY hands-off (no key press needed).
+# Stock 24.04.4 menuentries kept BELOW ours as fallback if operator
+# needs to interrupt boot.
+log "Writing new grub.cfg with autoinstall as default (truly hands-off)..."
+# Preserve the upstream entries (set as fallback after ours)
+UPSTREAM_GRUB=$(cat "$GRUB_CFG")
+cat > "$GRUB_CFG" << 'GRUB_EOF'
+set timeout=0
+set default=0
+loadfont unicode
+set menu_color_normal=white/black
+set menu_color_highlight=black/light-gray
+
+menuentry "Sports Bar TV Controller — Autoinstall (default)" {
     set gfxpayload=keep
-    linux   /casper/vmlinuz autoinstall ds=nocloud\;s=/cdrom/server/ ---
+    linux   /casper/vmlinuz quiet autoinstall "ds=nocloud;s=/cdrom/server/" ---
     initrd  /casper/initrd
 }
 
-set default="0"
-set timeout=5
+GRUB_EOF
+# Append upstream fallback entries (Try/Install Ubuntu, HWE kernel, etc) — strip their original `set timeout` + `set default` lines so ours wins
+echo "$UPSTREAM_GRUB" | grep -vE '^(set timeout|set default)' >> "$GRUB_CFG"
+log "grub.cfg rewritten — quoted ds=nocloud form + timeout=0 + default=0"
 
-'
+# Validation BEFORE xorriso — catches escape bugs immediately
+log "Validating grub.cfg + user-data on disk before repack..."
+echo "  --- grub.cfg autoinstall menuentry ---"
+grep -A 4 'Sports Bar TV Controller' "$GRUB_CFG" | head -6 | sed 's/^/    /'
+if ! grep -qE 'autoinstall.*ds=nocloud.*s=/cdrom/server/' "$GRUB_CFG"; then
+    err "grub.cfg validation FAILED: autoinstall + ds=nocloud + /cdrom/server/ not all present on same line"
+    err "The line:"
+    grep autoinstall "$GRUB_CFG" | head -3 | sed 's/^/    /' >&2
+    exit 1
+fi
+log "grub.cfg validation PASS"
 
-# Insert before the first existing menuentry
-awk -v entry="$AUTOINSTALL_ENTRY" '
-    /^menuentry/ && !done { print entry; done=1 }
-    { print }
-' "$GRUB_CFG" > "${GRUB_CFG}.new"
-mv "${GRUB_CFG}.new" "$GRUB_CFG"
-log "Autoinstall entry added to grub.cfg (default boot, 5s timeout)"
+echo "  --- user-data first 20 lines ---"
+head -20 "${BUILD_DIR}/source-files/server/user-data" | sed 's/^/    /'
+if ! head -1 "${BUILD_DIR}/source-files/server/user-data" | grep -q '^#cloud-config'; then
+    err "user-data MUST start with '#cloud-config' header"
+    exit 1
+fi
+if ! grep -qE '^autoinstall:' "${BUILD_DIR}/source-files/server/user-data"; then
+    err "user-data MUST contain top-level 'autoinstall:' key"
+    exit 1
+fi
+log "user-data validation PASS"
 
 # ─── Step 6: Repack as BIOS+UEFI hybrid bootable ISO ───────────────────────
 step "Step 6/6: Repack with xorriso (BIOS+UEFI hybrid bootable)"
