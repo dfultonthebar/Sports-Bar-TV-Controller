@@ -199,7 +199,15 @@ parted -s "$TARGET_DISK" \
     mkpart "root" ext4 513MiB 100%
 
 sleep 2  # Wait for kernel to re-read partition table
-partprobe "$TARGET_DISK" 2>/dev/null || true
+# v2.54.81: silent-fail removed. If partprobe fails, the kernel doesn't see
+# the new partitions; downstream mkfs would fail with a confusing
+# "No such file or directory" instead of a clear "partprobe failed".
+# Retry once with longer sleep — kernel re-read can be flaky on busy I/O.
+if ! partprobe "$TARGET_DISK"; then
+    warn "partprobe attempt 1 failed; sleeping 3s and retrying..."
+    sleep 3
+    partprobe "$TARGET_DISK" || { err "partprobe ${TARGET_DISK} failed twice — kernel partition table not refreshed"; exit 1; }
+fi
 sleep 1
 
 # Determine partition names (nvme uses p1/p2, sata uses 1/2)
@@ -333,23 +341,32 @@ chmod 440 "${MOUNT_DIR}/etc/sudoers.d/ubuntu-nopasswd"
 log "User: ubuntu (password: ubuntu)"
 
 # ─── SSH ─────────────────────────────────────────────────────────────────────
-chr "systemctl enable ssh" 2>/dev/null || true
+# v2.54.81: silent-fail removed. If SSH isn't enabled, operator can't remote in
+# to recover the box — same severity as a broken bootloader.
+chr "systemctl enable ssh" || { err "systemctl enable ssh failed"; exit 1; }
 log "SSH enabled."
 
 # ─── Regenerate SSH host keys ────────────────────────────────────────────────
+# v2.54.81: silent-fail removed. If host-key regen fails, every install ships
+# with the SAME ssh_host_* keys baked into the chroot — fleet-wide MITM risk.
 rm -f "${MOUNT_DIR}/etc/ssh/ssh_host_"*
-chr "dpkg-reconfigure -f noninteractive openssh-server" 2>/dev/null || true
+chr "dpkg-reconfigure -f noninteractive openssh-server" || { err "SSH host key regeneration failed"; exit 1; }
 
 # ─── Machine ID ──────────────────────────────────────────────────────────────
+# v2.54.81: silent-fail removed. Duplicate machine-id across fleet breaks
+# DHCP client IDs, journald, dbus name collisions, systemd state sync.
 rm -f "${MOUNT_DIR}/etc/machine-id" "${MOUNT_DIR}/var/lib/dbus/machine-id"
-chr "systemd-machine-id-setup" 2>/dev/null || true
+chr "systemd-machine-id-setup" || { err "systemd-machine-id-setup failed"; exit 1; }
 
 # ─── Create data directory ───────────────────────────────────────────────────
 mkdir -p "${MOUNT_DIR}/home/ubuntu/sports-bar-data"
 chr "chown -R ubuntu:ubuntu /home/ubuntu"
 
 # ─── Enable first-boot service ──────────────────────────────────────────────
-chr "systemctl enable sports-bar-first-boot.service" 2>/dev/null || true
+# v2.54.81: silent-fail removed. CRITICAL — if first-boot.service isn't enabled,
+# the installed system never clones the app, never starts PM2, never serves
+# bartender remote. Whole installer becomes a no-op.
+chr "systemctl enable sports-bar-first-boot.service" || { err "Failed to enable sports-bar-first-boot.service — installed system would never start PM2"; exit 1; }
 log "First-boot service enabled — will clone app and build on first real boot."
 
 # ═════════════════════════════════════════════════════════════════════════════
