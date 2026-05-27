@@ -2,7 +2,6 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/cards'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -321,15 +320,15 @@ export function IRDatabaseSearch({ device, onClose }: IRDatabaseSearchProps) {
           </div>
         </div>
 
-        <Card className="border-slate-700 bg-slate-800/50">
-          <CardHeader>
-            <CardTitle className="text-slate-100">Global Cache Account</CardTitle>
-            <CardDescription>
-              You need a Global Cache account to download IR codes. 
+        <div className="rounded-lg border border-slate-700 bg-slate-800/50 p-6">
+          <div className="mb-4">
+            <h3 className="text-lg font-semibold text-slate-100">Global Cache Account</h3>
+            <p className="text-sm text-slate-400 mt-1">
+              You need a Global Cache account to download IR codes.
               Create one at <a href="https://irdb.globalcache.com" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">irdb.globalcache.com</a>
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
+            </p>
+          </div>
+          <div className="space-y-4">
             <div>
               <Label htmlFor="email" className="text-slate-300">Email</Label>
               <Input
@@ -352,8 +351,8 @@ export function IRDatabaseSearch({ device, onClose }: IRDatabaseSearchProps) {
                 className="bg-slate-700 border-slate-600 text-slate-100"
               />
             </div>
-            <Button 
-              onClick={saveCredentials} 
+            <Button
+              onClick={saveCredentials}
               disabled={loading}
               className="w-full"
             >
@@ -366,8 +365,8 @@ export function IRDatabaseSearch({ device, onClose }: IRDatabaseSearchProps) {
                 'Login & Continue'
               )}
             </Button>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
     )
   }
@@ -391,17 +390,17 @@ export function IRDatabaseSearch({ device, onClose }: IRDatabaseSearchProps) {
 
         <div className="grid grid-cols-3 gap-6">
           {/* Brands */}
-          <Card className="border-slate-700 bg-slate-800/50">
-            <CardHeader>
-              <CardTitle className="text-slate-100 text-lg">1. Select Brand</CardTitle>
+          <div className="rounded-lg border border-slate-700 bg-slate-800/50 p-6">
+            <div className="mb-4">
+              <h3 className="text-lg font-semibold text-slate-100">1. Select Brand</h3>
               <Input
                 placeholder="Search brands..."
                 value={brandSearch}
                 onChange={(e) => setBrandSearch(e.target.value)}
                 className="mt-2 bg-slate-700 border-slate-600 text-slate-100"
               />
-            </CardHeader>
-            <CardContent className="max-h-96 overflow-y-auto">
+            </div>
+            <div className="max-h-96 overflow-y-auto">
               {loading && !brands.length ? (
                 <div className="text-center text-slate-400 py-4">
                   <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
@@ -421,15 +420,15 @@ export function IRDatabaseSearch({ device, onClose }: IRDatabaseSearchProps) {
                   ))}
                 </div>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
 
           {/* Types */}
-          <Card className="border-slate-700 bg-slate-800/50">
-            <CardHeader>
-              <CardTitle className="text-slate-100 text-lg">2. Select Type</CardTitle>
-            </CardHeader>
-            <CardContent className="max-h-96 overflow-y-auto">
+          <div className="rounded-lg border border-slate-700 bg-slate-800/50 p-6">
+            <div className="mb-4">
+              <h3 className="text-lg font-semibold text-slate-100">2. Select Type</h3>
+            </div>
+            <div className="max-h-96 overflow-y-auto">
               {!selectedBrand ? (
                 <div className="text-center text-slate-400 py-8">
                   Select a brand first
@@ -453,13 +452,13 @@ export function IRDatabaseSearch({ device, onClose }: IRDatabaseSearchProps) {
                   ))}
                 </div>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
 
           {/* Models */}
-          <Card className="border-slate-700 bg-slate-800/50">
-            <CardHeader>
-              <CardTitle className="text-slate-100 text-lg">3. Select Model</CardTitle>
+          <div className="rounded-lg border border-slate-700 bg-slate-800/50 p-6">
+            <div className="mb-4">
+              <h3 className="text-lg font-semibold text-slate-100">3. Select Model</h3>
               {models.length > 0 && (
                 <Input
                   placeholder="Search models..."
@@ -468,8 +467,8 @@ export function IRDatabaseSearch({ device, onClose }: IRDatabaseSearchProps) {
                   className="mt-2 bg-slate-700 border-slate-600 text-slate-100"
                 />
               )}
-            </CardHeader>
-            <CardContent className="max-h-96 overflow-y-auto">
+            </div>
+            <div className="max-h-96 overflow-y-auto">
               {!selectedType ? (
                 <div className="text-center text-slate-400 py-8">
                   Select a type first
@@ -498,8 +497,8 @@ export function IRDatabaseSearch({ device, onClose }: IRDatabaseSearchProps) {
                   ))}
                 </div>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </div>
       </div>
     )
@@ -533,8 +532,8 @@ export function IRDatabaseSearch({ device, onClose }: IRDatabaseSearchProps) {
         </div>
 
         {downloadResult ? (
-          <Card className="border-green-500/20 bg-green-500/10">
-            <CardContent className="py-6">
+          <div className="rounded-lg border border-green-500/20 bg-green-500/10 p-6">
+            <div className="py-6">
               <div className="flex items-center justify-center gap-3 text-green-400">
                 <CheckCircle2 className="w-8 h-8" />
                 <div>
@@ -549,19 +548,19 @@ export function IRDatabaseSearch({ device, onClose }: IRDatabaseSearchProps) {
                   )}
                 </div>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         ) : (
-          <Card className="border-slate-700 bg-slate-800/50">
-            <CardHeader>
+          <div className="rounded-lg border border-slate-700 bg-slate-800/50 p-6">
+            <div className="mb-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <CardTitle className="text-slate-100">
+                  <h3 className="text-lg font-semibold text-slate-100">
                     Available Functions ({functions.length})
-                  </CardTitle>
-                  <CardDescription>
+                  </h3>
+                  <p className="text-sm text-slate-400 mt-1">
                     {selectedFunctions.size} selected
-                  </CardDescription>
+                  </p>
                 </div>
                 <Button
                   onClick={downloadCodes}
@@ -581,8 +580,8 @@ export function IRDatabaseSearch({ device, onClose }: IRDatabaseSearchProps) {
                   )}
                 </Button>
               </div>
-            </CardHeader>
-            <CardContent className="max-h-[600px] overflow-y-auto">
+            </div>
+            <div className="max-h-[600px] overflow-y-auto">
               <div className="grid grid-cols-3 gap-3">
                 {functions.map((func) => {
                   const isSelected = selectedFunctions.has(func.Function)
@@ -619,8 +618,8 @@ export function IRDatabaseSearch({ device, onClose }: IRDatabaseSearchProps) {
                   )
                 })}
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         )}
       </div>
     )
