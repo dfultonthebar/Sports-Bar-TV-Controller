@@ -125,6 +125,14 @@ export default function BartenderRemotePage() {
   const [multiViewMode, setMultiViewMode] = useState<number>(0)
   const [multiViewCardId, setMultiViewCardId] = useState<string | null>(null)
   const [multiViewLoading, setMultiViewLoading] = useState(false)
+  // 4 Wolf Pack input numbers (window1..window4) that the card will tile
+  // when Quad View activates. Drives the 2x2 preview in the routing tab.
+  const [multiViewInputs, setMultiViewInputs] = useState<{
+    window1: number
+    window2: number
+    window3: number
+    window4: number
+  } | null>(null)
 
   // Channel digit buffer for tracking manual channel entry
   const digitBufferRef = useRef<string>('')
@@ -381,8 +389,20 @@ export default function BartenderRemotePage() {
       if (response.ok) {
         const data = await response.json()
         if (data.cards?.length > 0) {
-          setMultiViewCardId(data.cards[0].id)
-          setMultiViewMode(data.cards[0].currentMode ?? 0)
+          const card = data.cards[0]
+          setMultiViewCardId(card.id)
+          setMultiViewMode(card.currentMode ?? 0)
+          // inputAssignments comes pre-parsed from the API
+          // ({window1..window4}: number) — used for the Quad View preview.
+          if (card.inputAssignments &&
+              typeof card.inputAssignments.window1 === 'number' &&
+              typeof card.inputAssignments.window2 === 'number' &&
+              typeof card.inputAssignments.window3 === 'number' &&
+              typeof card.inputAssignments.window4 === 'number') {
+            setMultiViewInputs(card.inputAssignments)
+          } else {
+            setMultiViewInputs(null)
+          }
         }
       }
     } catch (error) {
@@ -837,6 +857,7 @@ export default function BartenderRemotePage() {
               inputs={inputs}
               currentChannels={currentChannels}
               onRefreshRoutes={loadCurrentRoutes}
+              networkTVs={networkTVs}
             />
             {selectedInput === 11 && <AtmosphereControl />}
           </div>
@@ -1034,23 +1055,72 @@ export default function BartenderRemotePage() {
         {activeTab === 'routing' && (
           <div className="max-w-7xl mx-auto pt-4">
             <div className="bg-slate-900/90 backdrop-blur rounded-lg shadow-xl p-4 border border-slate-700/50">
-              <div className="flex items-center justify-between mb-4">
-                <div>
+              <div className="flex items-start justify-between mb-4 gap-4 flex-wrap">
+                <div className="flex-1 min-w-[180px]">
                   <h3 className="text-lg font-semibold text-slate-100">Quick Routing Matrix</h3>
                   <p className="text-xs text-slate-400 mt-1">Tap a cell to route an input to an output</p>
                 </div>
                 {multiViewCardId && (
-                  <button
-                    onClick={toggleMultiView}
-                    disabled={multiViewLoading}
-                    className={`px-4 py-2 rounded-lg text-sm font-bold transition-colors ${
-                      multiViewMode === 6
-                        ? 'bg-purple-600 text-white hover:bg-purple-700'
-                        : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-                    } ${multiViewLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  >
-                    {multiViewLoading ? '...' : multiViewMode === 6 ? '■ Single View' : '⊞ Quad View'}
-                  </button>
+                  <div className={`flex flex-col items-center gap-2 p-2 rounded-lg border ${
+                    multiViewMode === 6
+                      ? 'bg-purple-900/20 border-purple-500/50'
+                      : 'bg-slate-800/50 border-slate-700'
+                  }`}>
+                    <p className="text-[10px] uppercase tracking-wide text-slate-400 font-semibold">
+                      Multi-View Preview
+                      {multiViewMode === 6 && (
+                        <span className="ml-2 text-purple-300">● Active</span>
+                      )}
+                    </p>
+                    {/* 2x2 preview — shows the 4 Wolf Pack inputs that will tile
+                        when Quad View is on. If no assignments configured, shows
+                        a friendly note instead of crashing. */}
+                    {multiViewInputs ? (
+                      <div className="grid grid-cols-2 gap-1 w-[140px] h-[140px]">
+                        {([
+                          multiViewInputs.window1,
+                          multiViewInputs.window2,
+                          multiViewInputs.window3,
+                          multiViewInputs.window4
+                        ]).map((inputNum, idx) => {
+                          const input = inputs.find(i => i.channelNumber === inputNum)
+                          return (
+                            <div
+                              key={idx}
+                              className={`bg-slate-800 border border-slate-700 rounded text-center flex flex-col items-center justify-center px-1 py-1 ${
+                                multiViewMode === 6 ? 'ring-1 ring-purple-400/40' : ''
+                              }`}
+                              title={input?.label || `Input ${inputNum}`}
+                            >
+                              <span className="text-sm font-bold text-blue-300 leading-none">
+                                IN {inputNum}
+                              </span>
+                              {input?.label && (
+                                <span className="text-[9px] text-slate-400 truncate max-w-full mt-0.5 leading-tight">
+                                  {input.label}
+                                </span>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    ) : (
+                      <div className="w-[140px] h-[140px] flex items-center justify-center text-center text-[10px] text-slate-500 px-2 border border-dashed border-slate-700 rounded">
+                        (no preview — multi-view card not configured)
+                      </div>
+                    )}
+                    <button
+                      onClick={toggleMultiView}
+                      disabled={multiViewLoading}
+                      className={`w-[140px] px-3 py-3 min-h-[44px] rounded-lg text-sm font-bold transition-colors ${
+                        multiViewMode === 6
+                          ? 'bg-purple-600 text-white hover:bg-purple-700'
+                          : 'bg-slate-700 text-slate-200 hover:bg-slate-600'
+                      } ${multiViewLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    >
+                      {multiViewLoading ? '...' : multiViewMode === 6 ? '■ Single View' : '⊞ Quad View'}
+                    </button>
+                  </div>
                 )}
                 <button
                   onClick={loadCurrentRoutes}
@@ -1236,6 +1306,23 @@ export default function BartenderRemotePage() {
             <span className="text-sm font-medium">Guide</span>
           </button>
 
+          {/* Schedule promoted to primary tab strip (Grok #6 UX fix, v2.54.55) —
+           * bartenders on game days need ScheduledGamesPanel to set up AI Suggest
+           * allocations. Previously hidden behind the unlabeled "More" 3-dot icon,
+           * which had a discoverability hole the bartender how-tos couldn't bridge.
+           * Uses Clock icon to differentiate from Guide's ListVideo. */}
+          <button
+            onClick={() => setActiveTab('schedule')}
+            className={`min-h-[52px] min-w-[60px] flex flex-col items-center justify-center gap-1.5 px-2.5 py-3 rounded-xl transition-all ${
+              activeTab === 'schedule'
+                ? 'ring-1 ring-sky-400/50 bg-sky-500/20 text-sky-300 scale-[1.03]'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Clock className="h-5 w-5" />
+            <span className="text-sm font-medium">Schedule</span>
+          </button>
+
           <button
             onClick={() => {
               setActiveTab('routing')
@@ -1321,19 +1408,21 @@ export default function BartenderRemotePage() {
             <span className="text-xs font-medium">Power</span>
           </button>
 
-          {/* Overflow — Schedule + DJ in a bottom sheet */}
-          <button
-            onClick={() => setMoreOpen(true)}
-            className={`min-h-[44px] min-w-[44px] flex flex-col items-center justify-center gap-1 px-2 py-2 rounded-xl transition-all ${
-              activeTab === 'schedule' || activeTab === 'dj'
-                ? 'ring-1 ring-sky-400/50 bg-sky-500/20 text-sky-300 scale-[1.03]'
-                : 'text-slate-500 hover:text-slate-300'
-            }`}
-            aria-label="More options"
-          >
-            <MoreHorizontal className="h-4 w-4" />
-            <span className="text-xs font-medium">More</span>
-          </button>
+          {/* Overflow — DJ in a bottom sheet (Schedule promoted to primary in v2.54.55) */}
+          {djControlsEnabled && (
+            <button
+              onClick={() => setMoreOpen(true)}
+              className={`min-h-[44px] min-w-[44px] flex flex-col items-center justify-center gap-1 px-2 py-2 rounded-xl transition-all ${
+                activeTab === 'dj'
+                  ? 'ring-1 ring-sky-400/50 bg-sky-500/20 text-sky-300 scale-[1.03]'
+                  : 'text-slate-500 hover:text-slate-300'
+              }`}
+              aria-label="More options"
+            >
+              <MoreHorizontal className="h-4 w-4" />
+              <span className="text-xs font-medium">More</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -1360,24 +1449,7 @@ export default function BartenderRemotePage() {
               </button>
             </div>
             <div className="flex gap-3 flex-wrap">
-              <button
-                onClick={() => {
-                  setActiveTab('schedule')
-                  setMoreOpen(false)
-                }}
-                className={`flex-1 min-w-[140px] min-h-[64px] flex items-center gap-3 px-4 py-3 rounded-xl border border-slate-700 transition-all ${
-                  activeTab === 'schedule'
-                    ? 'ring-1 ring-sky-400/50 bg-sky-500/20 text-sky-300'
-                    : 'bg-slate-800/50 text-slate-300 hover:bg-slate-800 hover:text-slate-100'
-                }`}
-              >
-                <Clock className="h-5 w-5 flex-shrink-0" />
-                <div className="flex flex-col items-start">
-                  <span className="text-sm font-semibold">Schedule</span>
-                  <span className="text-xs opacity-70">Scheduled games</span>
-                </div>
-              </button>
-
+              {/* Schedule entry removed in v2.54.55 — promoted to primary tab strip */}
               {djControlsEnabled && (
                 <button
                   onClick={() => {
