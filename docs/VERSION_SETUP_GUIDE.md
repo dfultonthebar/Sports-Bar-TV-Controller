@@ -35,6 +35,33 @@ is the archive.
 
 ---
 
+## v2.54.73 — Ask AI "Something hiccuped" crash fix: crypto.randomUUID secure-context (2026-05-27)
+
+**Versions covered:** v2.54.73
+**Branch landed:** main
+**Fleet target:** rolling upgrade. **Operator-facing fix** — Ask AI button on bartender remote no longer crashes the React tree on open.
+
+Operator reported: "when selecting asked ai you get a something hiccuped error and asks to try again comes back to something hiccuped". The "Something hiccuped" copy comes from `/remote/error.tsx` (v2.54.56). That means the Ask AI button is CRASHING → error boundary catches → "Try again" remounts → crashes again → loop.
+
+**Root cause** (parallel agent diagnosed): `crypto.randomUUID()` (added in v2.54.52 for sessionId generation) requires a "secure context" (HTTPS or localhost). The bartender iPad connects to `http://<lan-ip>:3002` — **insecure context** — so `crypto.randomUUID` is undefined on Safari OR throws `SecurityError`. Component crashes on EVERY modal open.
+
+**Fix — NEW `apps/web/src/lib/uuid-safe.ts`** exporting `makeSessionId()`. Three-tier fallback:
+1. `crypto.randomUUID()` if it's a function (secure context — admin browser hitting localhost)
+2. `crypto.getRandomValues(new Uint8Array(16))` v4 UUID assembly (works in insecure context on every modern browser including Safari)
+3. `Math.random()`-based last-resort (not crypto-grade but won't crash)
+
+Both crypto paths wrapped in try/catch because some browsers throw rather than leave the property undefined.
+
+**Fixed 4 client-side call sites** (all migrated to `import { makeSessionId } from '@/lib/uuid-safe'`):
+- `apps/web/src/components/BartenderAskAIButton.tsx:61, :67` — the reported crash
+- `apps/web/src/app/ai-hub/page.tsx:73, :316` — same latent bug (had `typeof crypto.randomUUID` property check but still called the function — `typeof === 'function'` returns true even when the call throws)
+
+Server-side `crypto.randomUUID()` calls (Node has it always available) NOT touched. Pure client-side fix.
+
+Build clean (34/34 Turbopack 14.7s). PM2 online. Operator's next Ask AI tap → modal opens, sessionId lands via getRandomValues, chat works.
+
+---
+
 ## v2.54.72 — ISO build mksquashfs OOM fix + fail-loud (broken v3.0.1 artifact removed) (2026-05-27)
 
 **Versions covered:** v2.54.72
