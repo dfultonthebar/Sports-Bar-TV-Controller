@@ -302,6 +302,9 @@ log "Installing base packages..."
 # needs `parted` to partition + `mkfs.ext4` + `mkfs.vfat` to format.
 # These were missing from v3.0 chroot → the install step 2/7 (partitioning)
 # died with "parted: command not found", caught during 2026-05-27 VM pre-flight.
+# v2.54.79: added squashfs-tools — disk-installer.sh uses `unsquashfs` to
+# extract /cdrom/casper/filesystem.squashfs onto the target disk. Without it
+# Step 4/7 silently hangs forever (caught during attempt-4 VM pre-flight).
 chr "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     linux-image-generic \
     linux-headers-generic \
@@ -330,6 +333,7 @@ chr "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     grub-efi-amd64-signed \
     shim-signed \
     rsync \
+    squashfs-tools \
     2>&1" | tail -20
 
 # adb and cec-utils installed separately (universe, may be named differently)
