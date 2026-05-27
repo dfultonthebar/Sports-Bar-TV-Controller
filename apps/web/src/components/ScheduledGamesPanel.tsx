@@ -31,6 +31,7 @@ import {
   Timer,
 } from 'lucide-react'
 import ScheduledGameTVPicker from './ScheduledGameTVPicker'
+import { Skeleton } from '@/components/ui/skeleton'
 import { logger } from '@sports-bar/logger'
 
 // ---------------------------------------------------------------------------
@@ -1106,13 +1107,34 @@ export default function ScheduledGamesPanel() {
             )
           })()}
 
-          {/* Loading state */}
+          {/* Loading state — skeleton placeholders mirror the real
+              game-row shape (status badge, team line, time, TV chips)
+              so the layout doesn't shift when the fetch resolves
+              ~1-2 sec later. */}
           {loading && (
-            <div className="flex items-center justify-center py-12">
-              <RefreshCw className="h-6 w-6 text-slate-500 animate-spin" />
-              <span className="ml-2 text-slate-400 text-sm">
-                Loading schedule...
-              </span>
+            <div className="space-y-3">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div
+                  key={`schedule-skeleton-${i}`}
+                  className="rounded-lg border border-slate-700 bg-slate-800/40 p-4"
+                >
+                  <div className="flex items-start gap-3">
+                    <Skeleton className="h-3 w-3 rounded-full mt-1.5" />
+                    <div className="flex-1 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <Skeleton className="h-5 w-16 rounded-full" />
+                        <Skeleton className="h-4 w-20" />
+                      </div>
+                      <Skeleton className="h-5 w-3/4" />
+                      <div className="flex items-center gap-2 pt-1">
+                        <Skeleton className="h-6 w-14 rounded-full" />
+                        <Skeleton className="h-6 w-14 rounded-full" />
+                        <Skeleton className="h-6 w-14 rounded-full" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
 

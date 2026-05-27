@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { SkeletonCard } from '@/components/ui/skeleton';
 import TournamentBracket from '@/components/scheduling/TournamentBracket';
 import ConflictAlerts from '@/components/scheduling/ConflictAlerts';
 
@@ -92,10 +93,18 @@ export default function SmartSchedulingDashboard() {
   };
 
   if (loading) {
+    // Skeleton placeholders mirror the page structure (header + 3 main
+    // sections: Conflicts, Allocations, Input Sources) so the layout
+    // is stable when the fetch resolves and real content swaps in.
     return (
-      <div className="container mx-auto p-6">
-        <h1 className="text-3xl font-bold text-white mb-6">Smart Scheduling Dashboard</h1>
-        <p className="text-slate-400">Loading...</p>
+      <div className="container mx-auto p-6 space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold text-white mb-2">Smart Scheduling Dashboard</h1>
+          <p className="text-slate-400">Monitor game allocations, upcoming games, tournaments, and input sources</p>
+        </div>
+        <SkeletonCard />
+        <SkeletonCard />
+        <SkeletonCard />
       </div>
     );
   }
