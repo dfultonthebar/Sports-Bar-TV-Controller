@@ -46,6 +46,26 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-27 — v2.54.80 — disk-installer GRUB hardening: fatal-fail + MBR signature verify
+
+**Risk:** GO — zero runtime impact for installed fleet.
+
+**What changed:** `scripts/iso/disk-installer.sh` Step 6 (GRUB install) is now fatal on dual-failure + verifies MBR boot signature 0x55AA post-BIOS install. Previously every grub-install call was wrapped in `|| warn` — silent failure mode where the installer said "INSTALLATION COMPLETE!" but the disk MBR was unprogrammed. Caught during VM 200 attempt-6 install: all 7 steps green but post-reboot SeaBIOS hung at "Booting from Hard Disk..."
+
+**Where this matters:** ONLY new-NUC installs from v3.0.1 attempt-7 (or later) ISOs. Installed fleet boxes never run disk-installer again.
+
+**Bonus:** new `scripts/iso/cleanup-chroot.sh` helper — safe replacement for the lazy-umount-then-rm pattern that hollowed Holmgren's /dev on 2026-05-27. Memorialized for future debootstrap chroot workflows.
+
+**Manual steps required:** none for existing locations. Next-NUC install: same 7-step wizard, but Step 6 will now LOUDLY exit on failure instead of silently shipping a broken install.
+
+**Rollback:** `git revert <SHA>` — no functional change to revert at any installed location.
+
+**Pattern:** v2.54.76 (parted) + v2.54.79 (unsquashfs) + v2.54.80 (grub-install) — three ISO bugs of the same class. Disk-installer.sh now LOUD when disk-programming fails. Future audit: grep `disk-installer.sh` for remaining `|| warn` / `|| true` patterns at disk-touching steps.
+
+`Checkpoint model: opus`
+
+---
+
 ### 2026-05-27 — v2.54.79 — ISO chroot: add squashfs-tools (disk-installer Step 4/7 fix)
 
 **Risk:** GO — zero runtime impact for installed fleet.
