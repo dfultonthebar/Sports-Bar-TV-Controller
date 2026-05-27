@@ -106,6 +106,30 @@ decision log, not a permanent archive. Git history is the archive.
 
 ---
 
+### 2026-05-18 → 2026-05-27 — v2.49.2 through v2.54.78 — CATCH-UP entry (per-release notes not maintained in this range)
+
+**Risk:** GO — no STOP-grade incidents identified in this range. No location reported an auto-update rollback that required manual intervention beyond what's already captured in CLAUDE.md gotchas.
+
+**Why this is a catch-up entry instead of 60+ individual ones:** the per-release LOCATION_UPDATE_NOTES.md entries were not kept up to date for this range. Full per-release prescriptive details ARE in `docs/VERSION_SETUP_GUIDE.md` (61 substantive entries from v2.54.42 forward). For the gap before v2.54.42 (v2.49.2 → v2.54.41), refer to `git log --oneline main` for the commit-level history; commit subjects follow the same "vX.Y.Z: <one-line summary>" pattern.
+
+**Manually-actionable highlights from the gap** (versions that needed ANYTHING beyond auto-update):
+- **v2.54.51** — Virgin installer Part 1 P0: introduces `bootstrap-new-location.sh` + DB migrate path. NEW LOCATIONS only; existing fleet unaffected.
+- **v2.54.46** — commercial-lighting 19-route auth+rate-limit codemod. Auth-required for /api/commercial-lighting/** now; no operator action.
+- **v2.54.41** — full Turbopack migration (dropped --webpack). Requires `serverExternalPackages` in next.config.js for native modules. Already in place; no operator action.
+- **v2.54.38** — HOT FIX restoring webpack externals for native modules (canary fix during the Turbopack switch). No operator action.
+- **v2.54.34** — removed next-pwa entirely (closes 5 HIGH vulns). PWA install / "Add to home screen" feature removed; service worker gone. No operator action; bartenders will use browser bookmarks instead.
+- **v2.54.30** — zod 3→4 across monorepo. Breaking validation API changes confined to the package itself; no operator action.
+- **v2.54.29** — typescript 5.9→6.0. No operator action; type-check passes.
+- **v2.54.31** — tailwindcss 3→4. Minimal migration; no operator action.
+
+**Everything else in the range** (~140 commits) is GO with no manual steps: bug fixes, log demotes, dep bumps (Rule 10), doc updates, dead-code removal, agent-batch UI polish.
+
+**Per-release backfill deferred:** writing 140 individual entries from git log is a 2+ hour mechanical task with low marginal value (this catch-up entry covers the auto-update gate need). Can be revisited if a specific version's missing detail bites someone.
+
+`Checkpoint model: opus`
+
+---
+
 ### 2026-05-18 — v2.49.1 — chat-route audit BUG#1 fix + Q3 hedge tightening
 
 **What changed:**
