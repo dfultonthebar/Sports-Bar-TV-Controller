@@ -621,13 +621,44 @@ mkdir -p "${ISO_STAGING}/casper"
 SQUASH_FILE="${ISO_STAGING}/casper/filesystem.squashfs"
 
 log "Running mksquashfs..."
+# v3.0.1: removed `-Xdict-size 100%` which tried to use ALL available RAM
+# as the XZ dictionary. On Holmgren (31 GB RAM with Ollama resident ~18 GB)
+# this got OOM-killed mid-compression, producing a 611 MB truncated
+# squashfs that initramfs couldn't mount. Bumped block size to 1M (already
+# was) but capped dict-size at 1M (modest, fits in memory tight or loose).
+# Also removed `|| true` after the grep filter — that was SWALLOWING the
+# mksquashfs failure (the grep `|| true` masked a SIGKILL exit code), so
+# the build "succeeded" with a broken squashfs.
+# pipefail (set -o pipefail is on via `set -euo pipefail` at top of script)
+# will now propagate the mksquashfs failure through the pipe.
+set -o pipefail
 mksquashfs "${CHROOT_DIR}" "$SQUASH_FILE" \
     -comp xz \
     -b 1M \
-    -Xdict-size 100% \
+    -Xdict-size 1M \
+    -mem 4G \
     -noappend \
     -e boot \
-    2>&1 | grep -E "^(Parallel|Filesystem|mksquashfs|[0-9]+%)" || true
+    2>&1 | grep -E "^(Parallel|Filesystem|mksquashfs|[0-9]+%|FATAL)" || {
+        rc=$?
+        # grep exits 1 if no match — that's OK if mksquashfs produced no matching lines.
+        # But if mksquashfs itself failed, the pipefail above caught it; exit here.
+        if [ "$rc" -gt 1 ]; then
+            err "mksquashfs failed (rc=$rc) — chroot may be too large for available RAM, or out of disk space. Try: free -h; df -h"
+            exit 1
+        fi
+    }
+set +o pipefail
+
+# Sanity check: a real Ubuntu chroot squashfs should be at least 500 MB.
+# (v3.0 squashfs was ~2 GB; v3.0.1 with build-script changes only should be
+# similar size. If we see <500 MB, the chroot or mksquashfs was incomplete.)
+SQUASH_BYTES=$(stat -c %s "$SQUASH_FILE")
+if [ "$SQUASH_BYTES" -lt 500000000 ]; then
+    err "Squashfs is suspiciously small: $SQUASH_BYTES bytes (<500 MB). Chroot likely incomplete."
+    err "Check chroot package count: dpkg -l --root=${CHROOT_DIR} | wc -l (should be 400+)"
+    exit 1
+fi
 
 SQUASH_SIZE=$(du -h "$SQUASH_FILE" | cut -f1)
 log "Squashfs created: $SQUASH_FILE ($SQUASH_SIZE)"
