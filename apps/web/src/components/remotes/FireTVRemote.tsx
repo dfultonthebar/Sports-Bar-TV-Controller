@@ -179,7 +179,7 @@ export default function FireTVRemote({ deviceId, deviceName, ipAddress, port, on
             className="bg-slate-700 hover:bg-slate-600 text-white p-3"
           >
             <Volume2 className="w-5 h-5" />
-            <span className="ml-1 text-xs">+</span>
+            <span className="ml-1 text-sm">+</span>
           </Button>
           <Button
             onClick={() => sendCommand('MUTE', 'Mute')}
@@ -192,7 +192,7 @@ export default function FireTVRemote({ deviceId, deviceName, ipAddress, port, on
             className="bg-slate-700 hover:bg-slate-600 text-white p-3"
           >
             <Volume2 className="w-5 h-5" />
-            <span className="ml-1 text-xs">-</span>
+            <span className="ml-1 text-sm">-</span>
           </Button>
         </div>
 

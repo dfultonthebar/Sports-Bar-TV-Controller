@@ -922,24 +922,24 @@ export default function BartenderRemotePage() {
                             if (e.key === 'Escape') setEditingTVName(null)
                           }}
                           autoFocus
-                          className="flex-1 px-1.5 py-0.5 bg-slate-700 border border-slate-600 rounded text-xs text-white focus:outline-none focus:border-blue-500 min-w-0"
+                          className="flex-1 px-2 py-2 min-h-[44px] bg-slate-700 border border-slate-600 rounded text-sm text-white focus:outline-none focus:border-blue-500 min-w-0"
                           placeholder="TV name..."
                         />
                         <button
                           onClick={() => saveTVName(tv.id, editNameValue)}
-                          className="px-1.5 py-0.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-[10px]"
+                          className="px-3 py-2 min-h-[44px] min-w-[44px] bg-blue-600 hover:bg-blue-700 text-white rounded text-sm font-medium"
                         >OK</button>
                       </div>
                     ) : (
                       <p
                         onClick={() => { setEditingTVName(tv.id); setEditNameValue(tv.name || tv.outputLabel || '') }}
-                        className="text-sm font-semibold text-white truncate mb-0.5 cursor-pointer hover:text-blue-300 transition-colors"
+                        className="text-sm font-semibold text-white truncate mb-0.5 cursor-pointer hover:text-blue-300 transition-colors min-h-[44px] flex items-center"
                         title="Click to rename"
                       >
                         {tv.name || tv.outputLabel || 'Unnamed TV'}
                       </p>
                     )}
-                    <div className="flex items-center gap-1.5 mb-3">
+                    <div className="flex items-center gap-2 mb-3 flex-wrap">
                       <p className="text-[10px] text-slate-500 font-mono">{tv.ipAddress}</p>
                       {assigningOutput === tv.id ? (
                         <select
@@ -947,7 +947,7 @@ export default function BartenderRemotePage() {
                           onChange={(e) => assignTVOutput(tv.id, e.target.value || null)}
                           autoFocus
                           onBlur={() => setAssigningOutput(null)}
-                          className="text-[10px] bg-slate-700 border border-slate-600 text-white rounded px-1 py-0.5 focus:outline-none focus:border-blue-500"
+                          className="text-sm bg-slate-700 border border-slate-600 text-white rounded px-2 py-2 min-h-[44px] focus:outline-none focus:border-blue-500"
                         >
                           <option value="">None</option>
                           {matrixOutputs.map((o) => (
@@ -957,7 +957,7 @@ export default function BartenderRemotePage() {
                       ) : (
                         <span
                           onClick={() => setAssigningOutput(tv.id)}
-                          className="text-[10px] text-slate-600 bg-slate-700/50 px-1 rounded cursor-pointer hover:text-blue-300 transition-colors"
+                          className="text-sm text-slate-300 bg-slate-700/50 px-3 py-2 min-h-[44px] inline-flex items-center rounded cursor-pointer hover:text-blue-300 transition-colors"
                           title="Click to assign Wolf Pack output"
                         >
                           {tv.outputNumber ? `Out ${tv.outputNumber}` : 'Link output'}
@@ -971,9 +971,9 @@ export default function BartenderRemotePage() {
                         <button
                           onClick={() => pairNetworkTV(tv.id, tv.name || tv.outputLabel || tv.ipAddress)}
                           disabled={pairingTVId === tv.id}
-                          className="w-full py-1.5 bg-orange-600 hover:bg-orange-700 text-white rounded text-xs font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-1"
+                          className="w-full py-2 min-h-[44px] bg-orange-600 hover:bg-orange-700 text-white rounded text-sm font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                         >
-                          {pairingTVId === tv.id ? <><Loader2 className="w-3 h-3 animate-spin" /> Waiting for TV...</> : <><Zap className="w-3 h-3" /> Pair</>}
+                          {pairingTVId === tv.id ? <><Loader2 className="w-4 h-4 animate-spin" /> Waiting for TV...</> : <><Zap className="w-4 h-4" /> Pair</>}
                         </button>
                       </div>
                     )}
@@ -984,11 +984,11 @@ export default function BartenderRemotePage() {
                         <button
                           onClick={() => sendTVPower(tv.id, 'toggle')}
                           disabled={tvPowerLoading === `${tv.id}-toggle`}
-                          className={`w-full py-1.5 text-white rounded text-xs font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-1 ${
+                          className={`w-full py-2 min-h-[44px] text-white rounded text-sm font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2 ${
                             tv.status === 'online' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'
                           }`}
                         >
-                          {tvPowerLoading === `${tv.id}-toggle` ? <Loader2 className="w-3 h-3 animate-spin" /> : <><Power className="w-3 h-3" /> Power</>}
+                          {tvPowerLoading === `${tv.id}-toggle` ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Power className="w-4 h-4" /> Power</>}
                         </button>
                       </div>
                     )}
@@ -996,22 +996,22 @@ export default function BartenderRemotePage() {
                     {/* HDMI Input Buttons */}
                     {tv.supportsInput && (
                       <div>
-                        <p className="text-[10px] text-slate-500 mb-1 flex items-center gap-1">
-                          <Monitor className="w-2.5 h-2.5" /> HDMI Input
+                        <p className="text-sm text-slate-400 mb-2 flex items-center gap-1">
+                          <Monitor className="w-3.5 h-3.5" /> HDMI Input
                         </p>
-                        <div className="grid grid-cols-4 gap-1">
+                        <div className="grid grid-cols-4 gap-2">
                           {(['hdmi1', 'hdmi2', 'hdmi3', 'hdmi4'] as const).map((input) => (
                             <button
                               key={input}
                               onClick={() => sendTVInput(tv.id, input)}
                               disabled={tvInputLoading === `${tv.id}-${input}`}
-                              className={`py-1 rounded text-[10px] font-medium transition-colors disabled:opacity-50 ${
+                              className={`py-2 min-h-[44px] rounded text-sm font-medium transition-colors disabled:opacity-50 ${
                                 tv.currentInput === input
                                   ? 'bg-blue-600 text-white ring-1 ring-blue-400'
                                   : 'bg-slate-700 hover:bg-blue-600 text-slate-300 hover:text-white'
                               }`}
                             >
-                              {tvInputLoading === `${tv.id}-${input}` ? <Loader2 className="w-2.5 h-2.5 animate-spin mx-auto" /> : input.replace('hdmi', '')}
+                              {tvInputLoading === `${tv.id}-${input}` ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : input.replace('hdmi', '')}
                             </button>
                           ))}
                         </div>
@@ -1127,7 +1127,7 @@ export default function BartenderRemotePage() {
                               return (
                                 <td
                                   key={`${output.channelNumber}-${input.channelNumber}`}
-                                  className={`border border-slate-700 p-2 text-center cursor-pointer transition-all active:scale-95 ${
+                                  className={`border border-slate-700 p-2 text-center cursor-pointer transition-all active:scale-95 min-h-[44px] min-w-[44px] h-[44px] ${
                                     isRouted
                                       ? 'bg-green-600 hover:bg-green-700'
                                       : 'bg-slate-900 hover:bg-blue-700/50 active:bg-blue-600'
