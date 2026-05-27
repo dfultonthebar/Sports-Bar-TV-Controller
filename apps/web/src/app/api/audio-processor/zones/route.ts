@@ -40,8 +40,27 @@ export async function GET(request: NextRequest) {
           where: eq(schema.audioProcessors.id, processorId)
         })
         if (processor?.ipAddress) {
-          const { getAtlasClient } = await import('@/lib/atlasClient')
-          const client = getAtlasClient(processor.ipAddress, processor.tcpPort || HARDWARE_CONFIG.atlas.tcpPort)
+          // v2.54.65: getAtlasClient is exported from @/lib/atlas-client-manager
+          // (the singleton-aware bridge), NOT @/lib/atlasClient (the legacy
+          // bridge that only re-exports AtlasTCPClient/createAtlasClient/
+          // executeAtlasCommand). The old import returned `undefined`, the
+          // very next line then threw "TypeError: getAtlasClient is not a
+          // function", and the catch below swallowed it — so the DB mute
+          // sync silently never ran, leaving every zone stuck at muted=1
+          // forever after the last manual toggle. Holmgren operator
+          // reported "Audio tab always shows muted even though zones are
+          // not muted" — that was this. Fix: correct import path + await
+          // (function is async) + (no longer needed to assign client; the
+          // /api/atlas/output-meters call below uses the SHARED client
+          // via its own getAtlasClient resolve).
+          const _client = await (await import('@/lib/atlas-client-manager')).getAtlasClient(
+            `processor-${processor.ipAddress}`,
+            {
+              ipAddress: processor.ipAddress,
+              tcpPort: processor.tcpPort || HARDWARE_CONFIG.atlas.tcpPort,
+              timeout: 5000,
+            }
+          )
 
           // Get live zone data from output meters (most reliable source of truth)
           const dbZones = await findMany('audioZones', {
@@ -71,7 +90,11 @@ export async function GET(request: NextRequest) {
           }
         }
       } catch (err) {
-        logger.warn('[ZONES] Failed to sync live zone data from hardware:', err)
+        // v2.54.65: include error message in the warn so future debugging
+        // doesn't require attaching a debugger. The old "Failed to sync
+        // live zone data from hardware:" with empty body hid the
+        // TypeError that caused this bug for weeks.
+        logger.warn(`[ZONES] Failed to sync live zone data from hardware: ${(err as Error)?.message ?? err}`, err)
       }
     }
 
