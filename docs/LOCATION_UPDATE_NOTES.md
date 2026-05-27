@@ -46,6 +46,24 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-27 — v2.54.79 — ISO chroot: add squashfs-tools (disk-installer Step 4/7 fix)
+
+**Risk:** GO — zero runtime impact for installed fleet.
+
+**What changed:** added `squashfs-tools` to the chroot apt install in `scripts/iso/build-sports-bar-iso.sh` so the live-ISO's `disk-installer.sh` can run `unsquashfs` at Step 4/7. Without it, VM 200 install pre-flight hung indefinitely with identical screendumps for 7+ minutes (silent because `disk-installer.sh` swallowed the "command not found").
+
+**Where this matters:** ONLY when a new NUC is being installed from a v3.0.1 ISO. Installed fleet boxes never run disk-installer again (they're already on disk) so this commit is a no-op for them.
+
+**Manual steps required:** none for existing locations. For new-NUC installs: download v3.0.1 attempt-6 ISO (or later) when posted to GitHub Releases. The 7-step wizard now completes Step 4/7 cleanly.
+
+**Rollback:** `git revert <SHA>` — but no functional change to revert at any installed location.
+
+**Pattern:** when `disk-installer.sh` shells out to any binary, that binary MUST be in the chroot install list (v2.54.76 caught parted/mkfs; v2.54.79 catches unsquashfs). Future ISO bugs in the same class: search `disk-installer.sh` for command invocations + cross-check against the chroot apt list.
+
+`Checkpoint model: opus`
+
+---
+
 ### 2026-05-18 — v2.49.1 — chat-route audit BUG#1 fix + Q3 hedge tightening
 
 **What changed:**
