@@ -35,6 +35,10 @@ is the archive.
 
 ---
 
+## v2.54.87 — AtlasProgrammingInterface iterator Cards migration (closes v2.54.82 deferral) + restores text-blue-100 accent on processor form, no setup required, no runtime change (2026-05-27)
+
+---
+
 ## v2.54.86 — disk-installer adds bios_boot partition (THE bug behind SeaBIOS hang despite kernel+grub being correct) (2026-05-27)
 
 **Versions covered:** v2.54.86
