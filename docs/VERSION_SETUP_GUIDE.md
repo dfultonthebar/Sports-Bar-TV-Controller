@@ -35,6 +35,20 @@ is the archive.
 
 ---
 
+## v2.54.91 — install docs refresh for v3.1.0 autoinstall (2026-05-27)
+
+**Versions covered:** v2.54.91
+**Branch landed:** main
+**Fleet target:** No runtime change. Doc-only.
+
+Updated `docs/BARE_METAL_ISO.md`, `docs/NEW_LOCATION_SETUP.md`, and `docs/PROXMOX_PXE_SETUP.md` to reflect the v3.1.0 autoinstall architecture shipped in v2.54.89/.90 — new build command (`bash scripts/iso/build-autoinstall-iso.sh`), new smoke command (`bash scripts/iso/smoke-test-autoinstall.sh`), build-host prereqs (`p7zip-full xorriso wget openssl`), new ISO file name (`sports-bar-tv-controller-v3.1.0-YYYY-MM-DD.iso`), fully-unattended install flow (no YES + Enter), Proxmox best practice OVMF/q35/virtio-scsi-pci.
+
+**Required Manual Steps:** None.
+
+**Verification:** `grep -l "v3.0\\|disk-installer.sh\\|YES + Enter" docs/BARE_METAL_ISO.md docs/NEW_LOCATION_SETUP.md docs/PROXMOX_PXE_SETUP.md` should return nothing matching the deprecated terms.
+
+---
+
 ## v2.54.89 — NEW: subiquity autoinstall ISO architecture (v3.1.0 replaces v3.0.1 hand-rolled) (2026-05-27)
 
 **Versions covered:** v2.54.89 (app-level), v3.1.0 (ISO-level)
