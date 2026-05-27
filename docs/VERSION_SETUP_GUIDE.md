@@ -35,6 +35,35 @@ is the archive.
 
 ---
 
+## v2.54.65 — BUG FIX: bartender Audio tab "always muted" — wrong Atlas import path swallowed the sync error (2026-05-27)
+
+**Versions covered:** v2.54.65
+**Branch landed:** main
+**Fleet target:** rolling upgrade. **Operator-facing fix** — the Audio tab on the bartender remote was showing zones as MUTED even when hardware reported them unmuted. Holmgren had 7 of 8 zones stuck this way.
+
+**Root cause:** `apps/web/src/app/api/audio-processor/zones/route.ts:43` imported `getAtlasClient` from the wrong bridge file. `@/lib/atlasClient.ts` only re-exports `AtlasTCPClient`/`createAtlasClient`/`executeAtlasCommand`. `getAtlasClient` (the singleton-aware version per Gotcha #10 / v2.33.50) lives in `@/lib/atlas-client-manager.ts`. Result:
+1. `const { getAtlasClient } = await import('@/lib/atlasClient')` → `getAtlasClient === undefined`
+2. `getAtlasClient(processor.ipAddress, ...)` → `TypeError: getAtlasClient is not a function`
+3. `catch (err) { logger.warn('[ZONES] Failed to sync live zone data from hardware:', err) }` swallowed the error
+4. The DB mute-sync loop never ran
+5. Zones stuck at whatever `muted` value they were last manually toggled to
+6. UI displays that stuck DB value as "MUTED"
+
+Made worse by the `logger.warn` call passing `err` as second arg only — Pino-style structured logging printed the message prefix with no body, so the actual TypeError was invisible in the logs. Could have caught this immediately if the error had been interpolated.
+
+**Fix in `apps/web/src/app/api/audio-processor/zones/route.ts:42-75`**:
+1. Import from `@/lib/atlas-client-manager` (correct bridge).
+2. `getAtlasClient` is async — added `await`. Signature is `(processorId: string, config: AtlasConnectionConfig)`, not `(ip, port)`. Pass full config object with `ipAddress`, `tcpPort`, `timeout`.
+3. Improved the catch's `logger.warn` to interpolate `(err as Error)?.message` into the message string so future failures don't disappear into a void.
+
+**Verified live on Holmgren** post-rebuild + PM2 restart: all 8 zones now report correct mute state (6 unmuted, 2 actually muted — Upstairs + VIP Tent which are genuinely off right now). Operator should see correct state on next iPad refresh.
+
+**Pattern reminder for future debugging**: `logger.warn("X failed:", err)` with the error as a separate arg often shows in PM2 stdout/stderr as just "X failed:" with no body. Better: `logger.warn(\`X failed: ${(err as Error)?.message ?? err}\`, err)` — interpolated string for visibility, full object as second arg for structured logging. Saved as memory `feedback_demote_verify_actual_firing` cousin: log-the-error-message-not-just-the-object.
+
+**Honest scope:** this fixes the SYNC. Zones that the operator had manually muted via the UI still show muted (correctly). Zones that were stuck on muted=1 due to the sync bug are now reset to the actual hardware state.
+
+---
+
 ## v2.54.64 — Shell cleanup + SECURITY: leaked SSH password removed from tracked file (2026-05-27)
 
 **Versions covered:** v2.54.64
