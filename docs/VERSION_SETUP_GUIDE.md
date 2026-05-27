@@ -35,6 +35,49 @@ is the archive.
 
 ---
 
+## v2.54.60 — OS hygiene + trim sweep (Grok + 2 parallel agents) — 137 GB reclaimed on Holmgren (2026-05-26)
+
+**Versions covered:** v2.54.60
+**Branch landed:** main
+**Fleet target:** rolling upgrade. **REQUIRED PER-BOX**: `sudo bash scripts/optimize-os.sh` after auto-update (idempotent — safe to re-run). For NEW installs, install.sh PHASE 13 runs it automatically.
+
+Operator-requested OS optimization audit. Engaged Grok for "what does a sports-bar-TV-controller actually NEED at OS level" + 2 parallel Explore agents for "what's actually installed/running/consuming" on Holmgren. All 3 converged.
+
+**THE BIGGEST FIND — local agents caught what Grok couldn't see:** a **140 GB runaway `atlas-communication.log`** (5.75 BILLION lines since 2026-02-18, 98 days of continuous append). Root cause: `packages/atlas/src/atlas-client-manager.ts:119,180` logged `Reusing existing Atlas client` + `Released Atlas client` at INFO level — these fire on EVERY Atlas operation (~15-30 Hz across the fleet). Plus `packages/atlas/src/atlas-logger.ts` had no size cap or rotation.
+
+**Fixes (atlas log root cause):**
+- `packages/atlas/src/atlas-client-manager.ts`: demoted 2 lines from `.info` to `.debug` (per `[[feedback_demote_verify_actual_firing]]` pattern). Reuse + Release are normal-operation noise, not events. Kept `.info` on `Creating new` (first-time event), `Reconnecting` (rare + notable), and `Force disconnecting` (operator action).
+- `packages/atlas/src/atlas-logger.ts`: added `MAX_LOG_BYTES = 100 * 1024 * 1024` size cap. Checked every 1000 writes. When exceeded, file rotated to `.old` sibling and next write opens a fresh file.
+- **Manual truncate**: `: > atlas-communication.log` (inode-preserving) reclaimed 140 GB instantly without restart. Verified live PM2 writer kept appending after truncate (size grew to 9.3K within 5 seconds, then to 18 KB / 10s post-rebuild — an 80% reduction from the ~100 KB / 10s pre-fix rate).
+
+**NEW `scripts/optimize-os.sh`** (288 lines, idempotent, modeled on `enforce-gotcha11-hardening.sh` from v2.54.51):
+- **Layer 1**: journald `SystemMaxUse=500M`, `MaxRetentionSec=14day`, `SystemKeepFree=2G` via `/etc/systemd/journald.conf.d/99-fleet-trim.conf`. Holmgren had no cap; reclaimed 145 MB (297 → 152 MB) + bounds future growth.
+- **Layer 2**: `vm.swappiness=10` + `vm.vfs_cache_pressure=50` via `/etc/sysctl.d/99-fleet-memory.conf`. Critical with IPEX-LLM Ollama using 16+ GB resident — default swappiness=60 was thrashing (Holmgren swap 100% used at audit). Already-swapped pages drain over days as workload accesses them.
+- **Layer 3**: disable 7 services with no hardware/use on the fleet: `ModemManager`, `apport`, `whoopsie`, `motd-news.timer`, `apt-daily.timer`, `apt-daily-upgrade.timer` (we have auto-update.sh per Standing Rule #6), `cups-browsed`. Plus sets `ENABLED=0` in `/etc/default/motd-news`.
+- **Layer 4**: purges old kernel images keeping only running + latest. Holmgren had 31 old kernel packages (6 kernel versions × ~5 packages each: image, image-unsigned, modules, modules-extra, headers).
+- **Layer 5**: sweeps caches > size threshold: apt (>10 MB), npm (>1 GB), pip (>500 MB), snap disabled-revisions (>500 MB), `/tmp/*.log` older than 3 days. Holmgren reclaimed: apt 55 MB + npm 3398 MB + pip 2790 MB + snap 1988 MB + 126 /tmp logs = **~8.2 GB**.
+- **Layer 6**: purges `sports-bar-data/backups/pre-update-*.db` older than 14 days. Holmgren had 57 uncapped files (auto-update.sh creates these on every cycle, no retention). 44 deleted = **3.3 GB**.
+
+All layers idempotent. `--check` mode dry-runs + exits non-zero if any layer is out of desired state — wireable into `verify-install.sh` for fleet drift detection.
+
+**Wired into `install.sh` as PHASE 13** (runs after PHASE 12 Gotcha #11 hardening). New installs get optimized boxes automatically; existing fleet runs `sudo bash scripts/optimize-os.sh` on next auto-update or manual sweep.
+
+**Holmgren reclaim tally:**
+- Atlas log truncate: **140 GB** (root cause fixed for the future)
+- pre-update backups: 3.3 GB
+- Caches (apt + npm + pip + snap + tmp): 8.2 GB
+- Old kernel packages: ~735 MB
+- journald retention cap: 145 MB
+- **Total: ~152 GB on this single box** (disk went 287 → 150 GB used = 137 GB measurable + bounded future growth)
+
+**Deferred items needing operator decision** (NOT in this commit, see Grok + agent reports):
+- snapd removal (5-7 GB win, but breaks if anyone uses Chromium snap via xrdp)
+- xrdp removal (no active sessions but operator may RDP in occasionally)
+- openjdk-17, python3-botocore, libwebkit2gtk audit + removal (need `apt rdepends` review)
+- Ollama model audit (26 GB; phi3:mini + llama3.2:3b may be orphans — but Standing Rule #10 keeps all models)
+
+---
+
 ## v2.54.59 — ISO uploader via direct REST (fallback when `gh auth` scope is missing) (2026-05-26)
 
 **Versions covered:** v2.54.59
