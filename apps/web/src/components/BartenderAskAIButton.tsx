@@ -123,7 +123,7 @@ export function BartenderAskAIButton() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="fixed bottom-6 right-6 z-50 flex items-center gap-2 px-5 py-3 bg-purple-600 hover:bg-purple-500 text-white font-medium rounded-full shadow-lg border border-purple-500 transition-colors min-h-[44px]"
+        className="fixed bottom-24 right-6 z-50 flex items-center gap-2 px-5 py-3 bg-purple-600 hover:bg-purple-500 text-white font-medium rounded-full shadow-lg border border-purple-500 transition-colors min-h-[44px]"
         aria-label="Open AI help chat"
       >
         <MessageSquare className="h-5 w-5" />
