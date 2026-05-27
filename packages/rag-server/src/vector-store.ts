@@ -300,7 +300,10 @@ export async function searchVectorStore(
     // NOT the actual user-facing SHURE_FREQUENCY_SCAN.md / MIC_NOT_WORKING.md
     // that answer the question. Below regex catches "how do fix" + "shure"
     // + "interferen" so the boost fires.
-    const BARTENDER_MARKERS = /\b(isn'?t working|not working|won'?t (come up|turn on|play|work)|no (sound|signal|video|audio|music|picture)|the (tv|mic|music|sound)|stopped|broken|stuck|frozen|i (pressed|tried|just|don'?t know)|how (do|can|to|i|you)|what do i do|where (is|do)|fix|trouble|interferen|wireless|channel scan|group scan|help)\b/;
+    // v2.54.50 broadening (kept in sync with apps/web/src/lib/qa-retrieval.ts)
+    // — see that file for the rationale + the 5 missed phrasings caught by
+    // the QA smoke test that drove the expansion.
+    const BARTENDER_MARKERS = /\b(isn'?t working|not working|doesn'?t work|won'?t (come up|turn on|play|work)|no (sound|signal|video|audio|music|picture)|the (tv|mic|music|sound|banner|lights|patio|bar|tab|game|channel)|\btv\s*\d+\b|stopped|broken|stuck|frozen|wrong|i (pressed|tried|just|don'?t know)|how (do|can|to|i|you)|what (do|does|should|is|are)|where (is|do)|fix|trouble|interferen|wireless|channel scan|group scan|help|fire alarm|emergency|clock in)\b/;
     const isBartenderRegister = BARTENDER_MARKERS.test(queryLower);
 
     // v2.50.6: vendor-name boost. When the query mentions a specific
