@@ -7,6 +7,7 @@ import Link from 'next/link'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import ApiKeysManager from '@/components/ApiKeysManager'
 import DeviceAIAssistant from '@/components/DeviceAIAssistant'
+import { makeSessionId } from '@/lib/uuid-safe'
 
 import { logger } from '@sports-bar/logger'
 
@@ -70,9 +71,10 @@ function getOrCreateSessionId(): string {
   const KEY = 'sportsBar.aiHub.sessionId'
   let id = window.localStorage.getItem(KEY)
   if (!id) {
-    id = (typeof crypto !== 'undefined' && crypto.randomUUID)
-      ? crypto.randomUUID()
-      : `session-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+    // makeSessionId handles insecure-context (HTTP) gracefully — direct
+    // crypto.randomUUID() throws on http://<lan-ip>:3002 even when the
+    // property exists. See apps/web/src/lib/uuid-safe.ts.
+    id = makeSessionId()
     window.localStorage.setItem(KEY, id)
   }
   return id
@@ -311,9 +313,7 @@ export default function AIHubPage() {
 
   // v2.49.0: clear conversation + start a fresh session
   const handleNewSession = () => {
-    const newId = (typeof crypto !== 'undefined' && crypto.randomUUID)
-      ? crypto.randomUUID()
-      : `session-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+    const newId = makeSessionId()
     window.localStorage.setItem('sportsBar.aiHub.sessionId', newId)
     setSessionId(newId)
     setChatHistory([])

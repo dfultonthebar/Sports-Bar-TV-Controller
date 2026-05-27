@@ -19,6 +19,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { MessageSquare, X, Loader2, Send } from 'lucide-react'
+import { makeSessionId } from '@/lib/uuid-safe'
 
 interface Msg {
   role: 'user' | 'assistant'
@@ -58,13 +59,15 @@ export function BartenderAskAIButton() {
       inputRef.current.focus()
     }
     if (open && !sessionIdRef.current) {
-      sessionIdRef.current = crypto.randomUUID()
+      // makeSessionId is safe in insecure HTTP contexts (bartender iPad
+      // hits http://<lan-ip>:3002). crypto.randomUUID() throws there.
+      sessionIdRef.current = makeSessionId()
     }
   }, [open])
 
   function startFresh() {
     setMessages([])
-    sessionIdRef.current = crypto.randomUUID()
+    sessionIdRef.current = makeSessionId()
   }
 
   async function send(text: string) {
