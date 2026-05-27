@@ -35,6 +35,16 @@ is the archive.
 
 ---
 
+## v2.54.85 — 7 new bartender how-tos closing high-frequency audit gaps (2026-05-27)
+
+**Versions covered:** v2.54.85
+**Branch landed:** main
+**Fleet target:** all locations — documentation only.
+
+**Required Manual Steps:** none. No runtime change, no schema change, no env vars. Pure additions to `docs/bartender-help/` (7 new files: `SCHEDULING_GAMES_AHEAD.md`, `FINDING_A_LIVE_GAME.md`, `MULTI_VIEW_QUAD.md`, `SHIFT_BRIEF_AT_CLOCK_IN.md`, `PUTTING_GAMES_ON_TVS_VIDEO_TAB.md`, `DJ_MODE.md`, `OVERRIDE_LEARN.md`). Auto-update will RAG-rescan automatically per Standing Rule 11 (these paths are in `docs/**/*.md`), making them queryable in the AI Hub chat at every location.
+
+---
+
 ## v2.54.84 — disk-installer copies kernel+initrd from casper to /boot (THE bug behind "Booting from Hard Disk... forever") (2026-05-27)
 
 **Versions covered:** v2.54.84
