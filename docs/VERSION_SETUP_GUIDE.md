@@ -35,6 +35,34 @@ is the archive.
 
 ---
 
+## v2.54.64 — Shell cleanup + SECURITY: leaked SSH password removed from tracked file (2026-05-27)
+
+**Versions covered:** v2.54.64
+**Branch landed:** main
+**Fleet target:** rolling upgrade. No runtime change.
+
+Routine shell audit kicked up a real security finding.
+
+**SECURITY — `scripts/retrieve-benchmark-results.sh:11` had `REMOTE_PASS="6809233DjD\$\$\$"` in plaintext.** Real SSH password for `ubuntu@135.131.39.26:223` (operator's home Linux box, used as a benchmark fetch target). Script was an orphan (zero callers in the codebase) and the leaked password is the same one used as `$SSHPASS` in ad-hoc operator scripts. **Deleted from HEAD in this commit. STILL IN GIT HISTORY** — operator threat-model decision required: rotate the password OR scrub history with `git filter-repo` + force-push (which breaks all existing clones). Saved memory `feedback_password_leak_in_git_history.md` with both paths documented.
+
+**Deletions (6 files):**
+- `fresh_install.sh`, `install_fixed.sh`, `fix_and_install.sh`, `update_from_github.sh` — already deprecated with loud `DEPRECATED` headers in v2.54.51 (~6h ago). Operators have been redirected at the canonical `install.sh` + ISO + `scripts/auto-update.sh`. Time to actually remove.
+- `scripts/final-logger-wrapper.sh` — pre-v2-monorepo path references (`src/components/...` not `apps/web/src/components/...`). Historical sed-injection fix-up that doesn't match current file layout. Dead.
+- `scripts/retrieve-benchmark-results.sh` — password leak (above).
+
+**Header updates (3 files)** — orphan scripts that ARE useful operator helpers but had no caller documentation. Added "OPERATOR HELPER, not invoked by any automated flow (verified v2.54.64 audit)" so future audits know they're intentionally kept:
+- `scripts/av-system-monitor.sh` (Wolf Pack TCP/UDP port monitor + restart, 59 lines)
+- `scripts/status-dashboard.sh` (color-coded terminal dashboard with 5s refresh, 249 lines)
+- `scripts/verify-db-migration.sh` (curl-based API smoke for post-DB-migration; complementary to `verify-install.sh`)
+
+**`db:push` mentions** — remaining 7 in 5 files are all HISTORICAL-CONTEXT comments explaining what v2.54.1 migrated AWAY from (`first-boot-fresh.sh:142`, `install.sh:781`, `ensure-schema.sh:3,7`, `verify-install.sh:348,355`, `rollback.sh:76`). Left as-is per "don't churn what's correct" — these explain WHY we use the canonical pattern. Not stale.
+
+**Shell tally post-cleanup**: 100 .sh in the repo (was 106). Of those, 4 explicitly DEPRECATED warnings → 0 (they're gone). 5 orphans → 3 (kept + documented; 2 deleted).
+
+Total commit footprint: 6 deletions (~280 lines removed) + 3 header updates (+~15 lines).
+
+---
+
 ## v2.54.63 — Proxmox PXE LXC plan + scripts for office NUC pre-provisioning (2026-05-26)
 
 **Versions covered:** v2.54.63
