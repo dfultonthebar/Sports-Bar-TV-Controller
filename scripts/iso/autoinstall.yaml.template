@@ -13,10 +13,15 @@
 autoinstall:
   version: 1
 
-  # Refresh subiquity from snap to latest stable before installing.
-  # Ensures we get the freshest curtin bugfixes.
+  # v2.54.92: update=false — true makes subiquity BLOCK on the
+  # "checking for updates" screen waiting for operator confirmation.
+  # We pin to whatever subiquity ships in the stock 24.04.4 ISO.
   refresh-installer:
-    update: true
+    update: false
+
+  # Explicit empty = fully automated. Default is also [] but Grok + research
+  # agent both recommend setting it explicitly for clarity / safety.
+  interactive-sections: []
 
   locale: en_US.UTF-8
 
@@ -26,18 +31,16 @@ autoinstall:
 
   timezone: America/Chicago
 
-  # Wildcard DHCP on any ethernet interface. The hand-rolled installer
-  # hardcoded the LIVE ISO's NIC name, which broke when the installed
-  # system had a different NIC (different hardware path). Wildcards
-  # match whatever the actual NUC has.
+  # Wildcard DHCP via netplan `match:` glob. Hand-rolled installer
+  # hardcoded the LIVE ISO's NIC name and broke when installed system
+  # had a different NIC name (different hardware path). The match
+  # form is the recommended netplan idiom (one entry covers any en*).
   network:
     version: 2
     ethernets:
-      "en*":
-        dhcp4: true
-        dhcp4-overrides:
-          use-dns: true
-      "eth*":
+      primary-nic:
+        match:
+          name: "en*"
         dhcp4: true
 
   # APT mirror with geoip auto-selection; fallback to offline-install
