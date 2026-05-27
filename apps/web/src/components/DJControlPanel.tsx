@@ -110,10 +110,22 @@ export default function DJControlPanel() {
       try {
         const res = await fetch('/api/audio-processor')
         const data = await res.json()
-        if (data.processors?.length > 0) {
-          const processor = data.processors[0]
-          setProcessorId(processor.id)
-          setProcessorIp(processor.ipAddress)
+        const processors = data.processors || []
+        // DJ Mode drives Atlas zones/sources via /api/atlas/* + /api/audio-processor/*.
+        // 'shure-slxd' is a wireless mic receiver — monitor-only, no zones/sources.
+        // Without this filter we'd pick processors[0], which at Holmgren is the
+        // Shure receiver, sending the Shure IP to /api/atlas/sources?processorIp=
+        // (returns 404 "No Atlas processor configured at this IP") and the Shure
+        // ID to /api/audio-processor/zones (returns empty []). Same root cause as
+        // the BartenderRemoteAudioPanel fix in remote/page.tsx loadAudioProcessor().
+        const atlasProcessor = processors.find(
+          (p: any) => p.processorType === 'atlas'
+        )
+        if (atlasProcessor) {
+          setProcessorId(atlasProcessor.id)
+          setProcessorIp(atlasProcessor.ipAddress)
+        } else {
+          logger.error('[DJ_PANEL] No Atlas processor found in /api/audio-processor — DJ Mode requires an Atlas processor')
         }
       } catch (err) {
         logger.error('[DJ_PANEL] Failed to fetch processor:', err)
