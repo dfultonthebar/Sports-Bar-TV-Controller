@@ -35,6 +35,32 @@ is the archive.
 
 ---
 
+## v2.54.72 — ISO build mksquashfs OOM fix + fail-loud (broken v3.0.1 artifact removed) (2026-05-27)
+
+**Versions covered:** v2.54.72
+**Branch landed:** main
+**Fleet target:** no runtime change. **ISO consumers**: download the NEW v3.0.1 build (the first v3.0.1 ISO from earlier today is broken — initramfs can't mount squashfs).
+
+First v3.0.1 ISO produced this morning (701 MB) was broken:
+- `mksquashfs` got SIGKILL'd by the OOM killer mid-compression
+- Holmgren has 31 GB RAM but Ollama is resident ~18 GB; mksquashfs's `-Xdict-size 100%` tried to grab ALL remaining RAM for the XZ dictionary → OOM
+- Resulting truncated squashfs (611 MB) booted ISOLINUX but initramfs `losetup` couldn't mount it ("file does not fit into a 512-byte sector")
+- The build script's `2>&1 | grep ... || true` SWALLOWED the SIGKILL exit code → built a "successful" ISO that's actually corrupt
+
+**Fixes in `scripts/iso/build-sports-bar-iso.sh` Step 8 (mksquashfs invocation)**:
+
+1. **Removed `-Xdict-size 100%`** — replaced with `-Xdict-size 1M -mem 4G`. Caps XZ dictionary memory regardless of system RAM. Slightly less compression efficiency (~10% larger squashfs) for guaranteed-no-OOM behavior. Compression is still XZ block-size 1M, just with a bounded dictionary.
+
+2. **`set -o pipefail`** explicitly around the mksquashfs pipe — ensures grep's success doesn't mask mksquashfs's failure.
+
+3. **Removed the trailing `|| true`** — was silently swallowing every kind of mksquashfs failure (OOM, disk full, parse error). Replaced with a guarded `rc > 1` check that exits loud if the failure was real (grep `rc=1` for no-match is the only acceptable failure).
+
+4. **NEW post-mksquashfs sanity check** — `stat -c %s` the squashfs; if it's <500 MB, fail loud with a message pointing at chroot completeness. A real Ubuntu chroot squashfs should be at least 500 MB. Catches the silent-truncation failure mode in case future regressions get past pipefail.
+
+**Broken v3.0.1 artifact removed** from Holmgren `/home/ubuntu/` AND from Proxmox `/var/lib/vz/template/iso/`. Rebuild kicked on Holmgren. Should produce a CORRECT v3.0.1 ISO in ~20-30 min. Will retest on Proxmox VM 200 once ready.
+
+---
+
 ## v2.54.71 — DJ Source A selection-doesn't-stick fix: React deps cycle restored old value (2026-05-27)
 
 **Versions covered:** v2.54.71
