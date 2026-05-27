@@ -13,6 +13,12 @@ Standing Rules 5, 7, and 8 below are SUMMARIES. Full application lives in:
 
 ---
 
+## Grok collaboration
+
+When invoking Grok (the advisor / outside-perspective agent), use `bash scripts/grok-prime.sh <prompt-file>` or `bash scripts/grok-prime.sh --task "..."`. The wrapper auto-prepends `docs/GROK_BRIEFING.md` (Standing Rules + hot Gotchas + operator preferences) to every prompt so Grok always knows the rules. Raw `grok --prompt-file X` works but means Grok has to be re-told the rules each time. See `docs/GROK_BRIEFING.md` for what's prepended.
+
+---
+
 ## V2 Monorepo Architecture
 
 Turborepo + npm workspaces. `apps/web/` (Next.js 16) consumes `packages/*` (37 shared packages — `ls packages/` for the live list). Hardware control packages are named after the device family they wrap: `atlas`, `wolfpack`, `crestron`, `bss-blu`, `dbx-zonepro`, `directv`, `firecube`, `ir-control`, `multiview`. Cross-cutting packages: `auth`, `cache-manager`, `circuit-breaker`, `config`, `database`, `logger`, `rate-limiting`, `streaming`, `tv-guide`, `sports-apis`, `validation`, `ui-utils`, `utils`.
