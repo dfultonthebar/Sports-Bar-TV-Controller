@@ -9,6 +9,7 @@ import WolfpackMatrixOutputControl from './WolfpackMatrixOutputControl'
 import AtlasRealtimeMeters from './AtlasRealtimeMeters'
 import DbxZoneControl from './DbxZoneControl'
 import HTDZoneControl from './HTDZoneControl'
+import BartenderEmptyState from './BartenderEmptyState'
 import { logger } from '@sports-bar/logger'
 
 // LocalStorage keys for persisting meter toggle settings
@@ -139,6 +140,38 @@ export default function BartenderRemoteAudioPanel({
   const handleInputToggle = (enabled: boolean) => {
     setInputMetersEnabled(enabled)
     localStorage.setItem(METERS_INPUT_KEY, String(enabled))
+  }
+
+  // Empty-state recovery (v2.54.57). Renders when no audio processor
+  // (Atlas / dbx ZonePRO) has been configured for this location yet.
+  // The parent (apps/web/src/app/remote/page.tsx) leaves `processorIp`
+  // as the empty string when /api/audio-processor returns no drivable
+  // processor — without this card the panel would render a Wolf Pack
+  // matrix output column with no audio control on the right, and the
+  // bartender would have no idea why they can't change zone gain.
+  if (!processorIp) {
+    return (
+      <BartenderEmptyState
+        icon={<Volume2 className="w-12 h-12" strokeWidth={1.5} />}
+        heading="Audio control isn't set up yet"
+        body={
+          <>
+            <p>
+              The audio processor (the box that controls zone volumes and what plays where)
+              hasn&apos;t been connected for this location yet. Until it&apos;s set up, you can&apos;t
+              change zone volume from here.
+            </p>
+            <p>
+              On a fresh install this is normal — the manager needs to add the processor once,
+              then it stays. TVs and channels still work in the meantime.
+            </p>
+          </>
+        }
+        adminUrl="/audio-control"
+        adminLabel="Open Audio Control"
+        managerMessage="The bartender iPad Audio tab is empty — please open Audio Control in admin and connect the audio processor so I can adjust zone volumes."
+      />
+    )
   }
 
   return (
