@@ -7,7 +7,6 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/cards'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
 import { 
@@ -113,36 +112,36 @@ export default function AtlasAIMonitor({
 
   if (loading && !analysis) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
+      <div className="rounded-lg border border-slate-700 bg-slate-800/50 p-6">
+        <div className="mb-4">
+          <h3 className="text-lg font-semibold text-slate-100 flex items-center space-x-2">
             <Brain className="w-5 h-5 text-blue-600" />
             <span>Atlas AI Monitor</span>
             <RefreshCw className="w-4 h-4 animate-spin text-blue-600" />
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
+          </h3>
+        </div>
+        <div>
           <div className="flex items-center justify-center py-8">
             <div className="text-slate-400">Analyzing Atlas processor...</div>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     )
   }
 
   if (error) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
+      <div className="rounded-lg border border-slate-700 bg-slate-800/50 p-6">
+        <div className="mb-4">
+          <h3 className="text-lg font-semibold text-slate-100 flex items-center space-x-2">
             <Brain className="w-5 h-5 text-red-600" />
             <span>Atlas AI Monitor</span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
+          </h3>
+        </div>
+        <div>
           <div className="text-red-600 text-center py-4">
             Error: {error}
-            <Button 
+            <Button
               onClick={fetchAtlasAnalysis}
               className="ml-4"
               size="sm"
@@ -150,25 +149,25 @@ export default function AtlasAIMonitor({
               Retry
             </Button>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     )
   }
 
   return (
     <div className="space-y-6">
       {/* Main Status Card */}
-      <Card>
-        <CardHeader>
+      <div className="rounded-lg border border-slate-700 bg-slate-800/50 p-6">
+        <div className="mb-4">
           <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center space-x-2">
+            <h3 className="text-lg font-semibold text-slate-100 flex items-center space-x-2">
               <Brain className="w-5 h-5 text-blue-600" />
               <span>Atlas AI Monitor</span>
               <Badge className={`${getSeverityColor(analysis?.severity || 'unknown')} border-0`}>
                 {getSeverityIcon(analysis?.severity || 'unknown')}
                 <span className="ml-1">{analysis?.severity?.toUpperCase() || 'UNKNOWN'}</span>
               </Badge>
-            </CardTitle>
+            </h3>
             <div className="flex items-center space-x-2">
               <Button
                 onClick={fetchAtlasAnalysis}
@@ -181,11 +180,11 @@ export default function AtlasAIMonitor({
               </Button>
             </div>
           </div>
-          <CardDescription>
+          <p className="text-sm text-slate-400 mt-1">
             {processorModel} ({processorId}) • Last updated: {lastUpdate.toLocaleTimeString()}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+          </p>
+        </div>
+        <div>
           <div className="text-lg font-medium mb-4">
             {analysis?.summary || 'Analysis unavailable'}
           </div>
@@ -285,25 +284,25 @@ export default function AtlasAIMonitor({
               <span>{analysis?.confidence || 0}%</span>
             </div>
             <div className="mt-1 w-full bg-slate-800 or bg-slate-900 rounded-full h-2">
-              <div 
+              <div
                 className="bg-blue-600 h-2 rounded-full transition-all duration-500"
                 style={{ width: `${analysis?.confidence || 0}%` }}
               />
             </div>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       {/* Audio Pattern Analysis */}
       {analysis?.audioPatterns && analysis.audioPatterns.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
+        <div className="rounded-lg border border-slate-700 bg-slate-800/50 p-6">
+          <div className="mb-4">
+            <h3 className="text-lg font-semibold text-slate-100 flex items-center space-x-2">
               <BarChart3 className="w-5 h-5 text-blue-400" />
               <span>Audio Pattern Analysis</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
+            </h3>
+          </div>
+          <div>
             <div className="space-y-2">
               {analysis.audioPatterns.map((pattern: string, index: number) => (
                 <div key={index} className="bg-blue-900/20 border border-blue-800/40 rounded p-3">
@@ -311,8 +310,8 @@ export default function AtlasAIMonitor({
                 </div>
               ))}
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       )}
     </div>
   )
