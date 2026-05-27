@@ -35,6 +35,50 @@ is the archive.
 
 ---
 
+## v2.54.55 — Grok #4 + #5 + #6: HDMI input unify + Multi-View preview + Schedule tab promotion (2026-05-26)
+
+**Versions covered:** v2.54.55
+**Branch landed:** main
+**Fleet target:** rolling upgrade. No manual step.
+
+Closes the remaining 3 of 6 Grok audit follow-ups (#4, #5, #6 from the original 7-item list). Two parallel agents, both HIGH confidence. Build green (34/34 Turbopack, 19s).
+
+**Grok #4 — HDMI input unify (InteractiveBartenderLayout):**
+- POWER_AND_NETWORK_TVS.md spent paragraphs explaining that bartenders had to bounce to Power tab for HDMI input switching on network-discovered TVs. No more.
+- Added `networkTVs?: NetworkTV[]` prop to `InteractiveBartenderLayout`; parent (`app/remote/page.tsx`) passes it through.
+- When the tapped TV zone matches a network TV with `supportsInput=true`, the modal now shows "Currently on: HDMI 2" prominently above the matrix inputs + a 4-button HDMI 1/2/3/4 row using the same `/api/tv-control/{id}/input` endpoint the Power tab uses. Current input highlighted blue ring, optimistic update on tap.
+- Non-network TVs (cable boxes, Fire TVs) see the modal unchanged (matrix inputs only).
+- The Power tab still works for setup-style flows — nothing broken.
+
+**Grok #5 — Multi-View Quad preview:**
+- `app/remote/page.tsx:1058-1124` — restructured the Quad View toggle into a card with a 140×140px 2×2 preview grid showing the 4 Wolf Pack inputs that will tile when Quad mode is on. Each cell shows input number + truncated friendly label from `inputs.find()`. "● Active" badge when mode=6, purple ring around cells when active.
+- Empty-state fallback "(no preview — multi-view card not configured)" when `card.inputAssignments` is null/incomplete (no crash).
+- Data source: `card.inputAssignments` from `GET /api/wolfpack/multiview` (pre-parsed JSON containing window1-4 as Wolf Pack input numbers, per `packages/multiview/src/types.ts:45`). New `multiViewInputs` state.
+
+**Grok #6 — Schedule out of "More" overflow:**
+- Promoted Schedule to the primary tab strip between Guide and Routing. Order now: Video → Guide → **Schedule** → Routing → Remote → Audio → Music → Lighting → Power → More.
+- Schedule tab uses the existing Clock icon + "Schedule" label (≥44px touch target).
+- Removed Schedule entry from the More sheet. More button itself now only renders when `djControlsEnabled` is true (otherwise nothing to show — auto-hides).
+- `ScheduledGamesPanel` rendering unchanged at activeTab==='schedule' — no further wiring needed.
+- PUTTING_GAMES_ON_TVS.md + PRE_SHIFT_WALKTHROUGH.md teach Schedule as the proactive game-assignment tool; now bartenders can actually find it.
+
+**Cumulative Grok handoff status as of v2.54.55:**
+- v2.54.50 — Grok #1 ✓ (QAEntry retrieval)
+- v2.54.52 — Grok #2 ✓ (Ask AI session history + bug fix)
+- v2.54.53 — Grok #3 ✓ (Ollama-down QA fallback)
+- v2.54.54 — Grok Part 2 P0 ✓ (auth/login Gotcha #1 + bartender touch + dark primitives)
+- v2.54.55 — Grok #4 + #5 + #6 ✓
+
+**Remaining Grok Part 2 P1+** (not in this commit, sequence as operator prioritizes):
+- Card-pattern violations across SystemAdmin / DeviceConfig / Atlas (page-level migration to bordered slate divs)
+- `sports-guide` + `live-status` routes bypassing validate/rate-limit (similar to auth/login Gotcha #1 fix)
+- `packages/validation` vs `packages/config` dedup
+- Seed-empty-UI recovery flow
+- Loading state polish (skeletons on tables/grids)
+- Error boundary expansion (global error.tsx still light-themed)
+
+---
+
 ## v2.54.54 — Grok Part 2 P0: auth/login Gotcha #1 + bartender touch sweep + dark-theme primitives (2026-05-26)
 
 **Versions covered:** v2.54.54
