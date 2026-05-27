@@ -23,6 +23,8 @@ import {
   LayoutGrid,
   MapPin,
   BarChart3,
+  Radio,
+  Cable,
 } from 'lucide-react'
 import Link from 'next/link'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -38,6 +40,8 @@ import { SystemResourceMonitor } from '@/components/system/SystemResourceMonitor
 import LocationSettings from '@/components/LocationSettings'
 import { SystemLogsViewer } from '@/components/SystemLogsViewer'
 import EmbeddedLayoutManager from '@/components/EmbeddedLayoutManager'
+import WatcherHealthPanel from '@/components/admin/WatcherHealthPanel'
+import MatrixConfigPanel from '@/components/admin/MatrixConfigPanel'
 
 import { logger } from '@sports-bar/logger'
 interface Backup {
@@ -82,7 +86,7 @@ interface TestSummary {
   duration: number
 }
 
-const VALID_TABS = ['power', 'location', 'layout', 'logs', 'backup', 'sync', 'tests', 'todos'] as const
+const VALID_TABS = ['power', 'location', 'layout', 'logs', 'backup', 'sync', 'tests', 'todos', 'watchers', 'matrix'] as const
 type TabId = (typeof VALID_TABS)[number]
 
 /**
@@ -608,7 +612,7 @@ export default function SystemAdminPage() {
         <VersionBadge />
         <AuthStatusBanner />
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabId)} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-9 bg-sportsBar-800/50 p-1">
+          <TabsList className="grid w-full grid-cols-10 bg-sportsBar-800/50 p-1">
             <TabsTrigger value="power" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
               <Power className="w-4 h-4 mr-2" />
               Power
@@ -640,6 +644,14 @@ export default function SystemAdminPage() {
             <TabsTrigger value="todos" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
               <ListTodo className="w-4 h-4 mr-2" />
               TODOs
+            </TabsTrigger>
+            <TabsTrigger value="watchers" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
+              <Radio className="w-4 h-4 mr-2" />
+              Watchers
+            </TabsTrigger>
+            <TabsTrigger value="matrix" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
+              <Cable className="w-4 h-4 mr-2" />
+              Matrix
             </TabsTrigger>
           </TabsList>
 
@@ -1312,6 +1324,16 @@ export default function SystemAdminPage() {
                 />
               )}
             </div>
+          </TabsContent>
+
+          {/* Watchers Tab */}
+          <TabsContent value="watchers" className="space-y-6">
+            <WatcherHealthPanel />
+          </TabsContent>
+
+          {/* Matrix Config Tab — CLAUDE.md Gotcha #4 surface */}
+          <TabsContent value="matrix" className="space-y-6">
+            <MatrixConfigPanel />
           </TabsContent>
         </Tabs>
       </main>

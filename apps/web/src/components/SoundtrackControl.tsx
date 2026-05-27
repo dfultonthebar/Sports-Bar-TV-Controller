@@ -2,7 +2,6 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/cards'
 import { Button } from './ui/button'
 import { Badge } from './ui/badge'
 import {
@@ -186,19 +185,19 @@ export default function SoundtrackControl({
 
   if (loading) {
     return (
-      <Card className="bg-gray-800 border-gray-700">
-        <CardContent className="flex items-center justify-center py-8">
+      <div className="rounded-lg border border-slate-700 bg-slate-800/50 p-6">
+        <div className="flex items-center justify-center py-8">
           <RefreshCw className="w-6 h-6 text-slate-500 animate-spin" />
           <span className="ml-2 text-slate-500">Loading Soundtrack...</span>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     )
   }
 
   if (error) {
     return (
-      <Card className="bg-gray-800 border-gray-700">
-        <CardContent className="py-8">
+      <div className="rounded-lg border border-slate-700 bg-slate-800/50 p-6">
+        <div className="py-8">
           <div className="flex items-center justify-center text-red-400">
             <AlertCircle className="w-6 h-6 mr-2" />
             <span>{error}</span>
@@ -208,18 +207,18 @@ export default function SoundtrackControl({
               Retry
             </Button>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     )
   }
 
   if (!selectedPlayer) {
     return (
-      <Card className="bg-gray-800 border-gray-700">
-        <CardContent className="py-8 text-center text-slate-500">
+      <div className="rounded-lg border border-slate-700 bg-slate-800/50 p-6">
+        <div className="py-8 text-center text-slate-500">
           No Soundtrack players found
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     )
   }
 
@@ -277,21 +276,21 @@ export default function SoundtrackControl({
   }
 
   return (
-    <Card className="bg-gray-800 border-gray-700">
-      <CardHeader>
+    <div className="rounded-lg border border-slate-700 bg-slate-800/50 p-6">
+      <div className="mb-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
             <Music className="w-6 h-6 text-purple-400" />
-            <CardTitle className="text-white">Soundtrack Your Brand</CardTitle>
+            <h3 className="text-lg font-semibold text-slate-100">Soundtrack Your Brand</h3>
           </div>
           <Button onClick={loadData} size="sm" variant="ghost">
             <RefreshCw className="w-4 h-4" />
           </Button>
         </div>
-        <CardDescription className="text-slate-500">{zoneName}</CardDescription>
-      </CardHeader>
+        <p className="text-sm text-slate-400 mt-1">{zoneName}</p>
+      </div>
 
-      <CardContent className="space-y-4">
+      <div className="space-y-4">
         {/* Now Playing */}
         {nowPlaying && (
           <div className="bg-gray-700/50 rounded-lg p-4">
@@ -403,7 +402,7 @@ export default function SoundtrackControl({
             {' '}and select a different station for this zone.
           </p>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   )
 }
