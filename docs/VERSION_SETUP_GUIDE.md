@@ -35,6 +35,40 @@ is the archive.
 
 ---
 
+## v2.54.68 — Ask AI button overlap fix + REQUIRED nginx re-run (v2.54.47 follow-up missed) (2026-05-27)
+
+**Versions covered:** v2.54.68
+**Branch landed:** main
+**Fleet target:** rolling upgrade. **REQUIRED PER-BOX**: `sudo bash scripts/setup-bartender-nginx.sh` (this was documented in v2.54.47 ship notes but apparently never run — Holmgren confirmed bug today).
+
+Operator reported two bartender-remote bugs on Holmgren:
+
+**Bug #1 — Ask AI button covers the More button.** The floating button at `fixed bottom-6 right-6` sat directly over the right-most tab button in the bottom tab bar (which is `fixed bottom-0`, ~76px tall). Both at the bottom-right corner = visual stack.
+
+**Fix in `apps/web/src/components/BartenderAskAIButton.tsx:126`**:
+- `bottom-6` (24px) → `bottom-24` (96px) — clears the ~76px tab bar with margin.
+- Same z-50, same min-h-[44px], same purple-600 styling. Single Tailwind class swap.
+
+**Bug #2 — Ask AI not working.** Tapping Ask AI returned a "Couldn't reach the AI: Server returned 4XX" error. Diagnosis traced through:
+- `/api/chat` direct on :3001 returns 401 (correct — auth gate firing; bartender session cookie passes).
+- `/api/chat` via :3002 returns **403** (wrong — nginx access-denied).
+- Root cause: `scripts/setup-bartender-nginx.sh:188` ADDED `/api/chat` to the allow-list in v2.54.47, but the script was never **re-run** on Holmgren after the update. The live `/etc/nginx/sites-available/bartender-remote` had the OLD allow-list (no `/api/chat`).
+
+**Fix applied to Holmgren**: ran `sudo bash scripts/setup-bartender-nginx.sh` — nginx writes the updated site config + reloads. Verified: `/api/chat` via :3002 now returns 401 (matches :3001).
+
+**FLEET-WIDE REMINDER**: v2.54.47's ship notes documented this as a required step but it was apparently missed at other locations too. **Every fleet box should run `sudo bash scripts/setup-bartender-nginx.sh` once** to pick up the v2.54.47 nginx allow-list changes (`/api/chat`, `/api/rag/query`, the SSE timeout bumps). The script is idempotent — safe to re-run.
+
+**v2.54.47 followup gap acknowledged**: the operator-facing process for "per-box manual step" needs to be tighter. Future "REQUIRED MANUAL STEP" entries in VERSION_SETUP_GUIDE need a way to verify they actually got run at each location — ideally automated via auto-update.sh detecting changes to `scripts/setup-bartender-nginx.sh` and re-invoking.
+
+Build green, PM2 restarted clean. Holmgren Ask AI button visible above tab bar + Ask AI chat reachable.
+
+**REQUIRED PER-BOX FOR ALL FLEET**:
+```
+sudo bash /home/ubuntu/Sports-Bar-TV-Controller/scripts/setup-bartender-nginx.sh
+```
+
+---
+
 ## v2.54.67 — More-button regression fix: always render, show "enable in admin" when DJ off (2026-05-27)
 
 **Versions covered:** v2.54.67
