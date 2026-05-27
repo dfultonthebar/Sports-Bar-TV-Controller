@@ -46,6 +46,24 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-27 — v2.54.84 — disk-installer copies kernel+initrd from casper to /boot
+
+**Risk:** GO — zero runtime impact for installed fleet.
+
+**What changed:** the 5th install-bug iteration this week. `disk-installer.sh` Step 4 (squashfs extract) now also copies `/cdrom/casper/vmlinuz` + `initrd` to the target's `/boot/vmlinuz-${KERNEL_VER}` + `/boot/initrd.img-${KERNEL_VER}` with version-matching symlinks. The build script's `mksquashfs -e boot` deliberately excludes /boot/ from the squashfs (live-boot uses /casper/* instead), so the extracted filesystem had no kernel — and `update-grub` referenced non-existent kernel files. Installed VM hung at `Booting from Hard Disk...` for 4+ min with no DHCP. Disk inspection confirmed missing vmlinuz/initrd.
+
+**Where this matters:** new-NUC installs only. Installed fleet boxes never re-run disk-installer.
+
+**Manual steps required:** none. Next-NUC install with attempt-8 ISO will boot through to systemd + first-boot service.
+
+**Rollback:** `git revert <SHA>` — no functional change to revert at any installed location.
+
+**Pattern (5th iteration):** v2.54.76 (parted) + v2.54.79 (unsquashfs) + v2.54.80 (grub-install fatal) + v2.54.81 (5 silent-fail sites) + v2.54.84 (missing kernel). Each handoff in the boot path must have a positive existence check. Currently validated: MBR sig (v2.54.80), kernel file (v2.54.84). Next gap-class candidates: initrd-required modules, systemd unit symlinks, network config presence.
+
+`Checkpoint model: opus`
+
+---
+
 ### 2026-05-27 — v2.54.81 — disk-installer silent-fail sweep (5 critical sites)
 
 **Risk:** GO — zero runtime impact for installed fleet.
