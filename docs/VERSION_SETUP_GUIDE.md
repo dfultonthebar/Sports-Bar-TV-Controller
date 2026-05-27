@@ -35,6 +35,51 @@ is the archive.
 
 ---
 
+## v2.54.49 — Bartender how-tos coverage: 5 new docs + 36 curated Q&A pairs + idempotent seed (2026-05-26)
+
+**Versions covered:** v2.54.49
+**Branch landed:** main
+**Fleet target:** rolling upgrade + per-box `npx tsx scripts/seed-bartender-qa.ts` (now idempotent reseed)
+
+Operator goal: write how-tos for ALL bartender operations. Engaged Grok for outside perspective + 2 Explore subagents (UI surface inventory, voice template reverse-engineering). All 3 converged on the same approach: group by mental model (not per-button), 9 docs total instead of 40 micro-docs or 2 mega-docs.
+
+**Coverage plan** at `docs/bartender-help/PLAN.md` documents the strategy + locked template + voice rules.
+
+**5 new docs** (written by parallel subagents from the plan + relevant UI source files + locked voice):
+- `docs/bartender-help/PUTTING_GAMES_ON_TVS.md` (3,465w) — Guide tab, Schedule tab, AI Suggest, Channel Guide search, one-tap watch, Override-Learn briefly explained
+- `docs/bartender-help/AUDIO_ZONES_AND_GROUPS.md` (3,814w) — proactive zone control (Atlas/DBX/HTD), groups, source switching, banner literacy cross-ref, mic battery tile interpretation
+- `docs/bartender-help/LIGHTING_AND_SCENES.md` (2,840w) — DMX + Commercial scenes, brightness, all-on/off, trivia/game-day setups, two-systems disambiguation
+- `docs/bartender-help/POWER_AND_NETWORK_TVS.md` (3,274w) — bulk power, per-TV power, HDMI input switching, Samsung pairing flow, renaming, dot-color interpretation
+- `docs/bartender-help/PRE_SHIFT_WALKTHROUGH.md` (2,745w) — 5-minute clock-in checklist: Shift Brief → mic batteries → music → audio banners → floor plan → Ask AI follow-up. Includes a "What to read next" reading-order index pointing to the other 8 docs.
+
+**Consolidation pass** (mechanical, in-process after the subagent hit session limit):
+- 3× AI Hub → Ask AI button fixes in AUDIO_ZONES_AND_GROUPS.md (distinct surfaces — AI Hub is /ai-hub admin-only, Ask AI is the floating button on /remote, bartender doc must not send bartenders to /ai-hub)
+- Added "What to read next" reading-order section to PRE_SHIFT_WALKTHROUGH.md before "You did great"
+- Verified zero karaoke-as-canonical instances in all 5 new docs (per Gotcha #13 / `[[feedback-karaoke-uses-byo-mics]]`)
+- Verified escalation footers + manager-text checklists + "you can't break it" reassurance present in all 5
+
+**`scripts/seed-bartender-qa.ts`** — expanded from 17 → 36 curated Q&A pairs. Added 20 new pairs spanning all 5 new docs (4 PUTTING_GAMES, 3 AUDIO_ZONES, 3 LIGHTING, 3 POWER, 3 PRE_SHIFT, 4 general/cross-doc). **CRITICAL FIX:** previous version claimed idempotent via UNIQUE constraint but QAEntry has no UNIQUE on `question`, so re-runs duplicated rows (caught + cleaned at Holmgren: 17 v2.54.48 rows + 36 v2.54.49 rows = 53 with dupes; now 36 clean). New script does `DELETE WHERE sourceType LIKE 'curated_bartender_%'` first, then inserts — true reseed semantics.
+
+**REQUIRED MANUAL STEP per fleet box** (same as v2.54.48 but the new script handles re-runs cleanly):
+```bash
+cd /home/ubuntu/Sports-Bar-TV-Controller && npx tsx scripts/seed-bartender-qa.ts
+```
+Boxes that ran the v2.54.48 version will have 17 dupes; this run deletes them automatically.
+
+**Standing Rule 11 — RAG re-scan**: kicked off post-merge. The 5 new docs need to enter the vector store before the Ask AI button can retrieve them. ~25-40 min per box. Standing Rule 11 ingest helper `scripts/rag-rescan-if-needed.sh` will pick them up automatically on auto-update.
+
+**Followup task list from Grok** (received same session, deferred to v2.54.50+):
+1. QAEntry-first retrieval in `packages/rag-server/src/query-engine.ts` — current vector-store path ignores the seeded QA pairs entirely. Effort M, impact HIGH. **(Highest leverage — unlocks the entire 9-doc + 36-QA investment.)**
+2. BartenderAskAIButton conversation history + sessionId — currently one-shot, no follow-ups. Effort S, impact HIGH.
+3. QAEntry-first fallback when Ollama 5xx/timeout — Shift Brief has fallbackBrief, Ask AI has nothing. Effort M, impact HIGH.
+4. Surface HDMI input selection in Video-tab layout modal (unify the two-power-systems split). Effort S/M, impact HIGH.
+5. Multi-View Quad preview thumbnail before POST. Effort S, impact MED.
+6. Promote Schedule out of "More" overflow tab. Effort S/M, impact MED.
+
+Items 1-3 ship as v2.54.50; items 4-6 as v2.54.51+ pending operator priority.
+
+---
+
 ## v2.54.48 — Grok AI-Hub audit bundle 2: Ask-AI floating button + bartender Q&A seed + AI Hub onboarding (2026-05-26)
 
 **Versions covered:** v2.54.48
