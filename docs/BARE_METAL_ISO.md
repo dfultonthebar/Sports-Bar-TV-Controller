@@ -6,6 +6,12 @@ from USB. Boot the USB, answer prompts, log in.
 For the curl-one-liner path (Ubuntu already installed, you have SSH),
 use `docs/NEW_LOCATION_SETUP.md` instead.
 
+## Live ISO credentials (rare-use, debug only)
+
+When the ISO boots in **Live (No Install)** mode or if the auto-install dispatcher hangs, tty1 will auto-login as `ubuntu` (no password needed since v3.0.1). If for some reason a password prompt appears, the credentials are `ubuntu` / `ubuntu` (live ISO only — these are NOT the credentials on the installed system).
+
+The installed system's `ubuntu` user gets its real password set by `bootstrap-new-location.sh` during the wizard.
+
 ## What you need
 
 - USB stick, 8 GB minimum.
