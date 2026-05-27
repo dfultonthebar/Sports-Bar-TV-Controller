@@ -35,6 +35,39 @@ is the archive.
 
 ---
 
+## v2.54.76 — ISO v3.0.1 attempt-4: parted/mkfs missing in chroot + SSH not enabled post-install (2026-05-27)
+
+**Versions covered:** v2.54.76 (repo) + ISO v3.0.1 attempt-4 (rebuilt artifact)
+**Branch landed:** main
+**Fleet target:** no runtime change for installed fleet. ISO consumers — wait for attempt-4 build to finish (~20 min) then re-download.
+
+VM 200 pre-flight on v3.0.1 attempt-3 (zstd-fixed):
+
+**WHAT WORKED** (v2.54.69 autostart fix is GOOD):
+- ISOLINUX boot → ISO menu → "Install to Disk" picked
+- Disk-installer.service grabbed tty1 BEFORE getty (per the Before/Conflicts pattern)
+- "SPORTS BAR TV CONTROLLER Disk Installer v3.0" banner showed
+- Step 1/7 detected the 30 GB QEMU disk
+- "Type 'YES' to continue" prompt accepted input correctly
+
+**WHAT BROKE — two new ISO bugs found**:
+
+1. **`parted: command not found`** at Step 2/7 (Partitioning). The chroot didn't have parted installed. Also missing: gdisk, e2fsprogs (mkfs.ext4), dosfstools (mkfs.vfat), grub-pc-bin, grub-efi-amd64-bin, shim-signed, rsync.
+
+2. **Operator directive: "make sure that ssh is enabled for iso installed"** — openssh-server was in the chroot but `systemctl enable ssh.service` wasn't run inside the chroot (because systemd isn't running there). Post-install boots would have SSH installed but the service NOT enabled → no SSH on first boot.
+
+**Fixes in `scripts/iso/build-sports-bar-iso.sh`**:
+
+1. **Base packages added** (Step 4 chroot install): parted, gdisk, e2fsprogs, dosfstools, grub-pc-bin, grub-efi-amd64-bin, grub-efi-amd64-signed, shim-signed, rsync. All needed by `disk-installer.sh` (wipefs, parted, mkfs.vfat, mkfs.ext4, sync calls).
+
+2. **SSH service enabled explicitly in chroot**: added `chr "systemctl enable ssh.service"` + `chr "systemctl enable ssh.socket"`. The `chr` helper runs commands inside the chroot — `systemctl enable` writes the symlink directly into `/etc/systemd/system/multi-user.target.wants/` so it persists into the installed system.
+
+3. **NEW `sports-bar-sshkeys.service`** — belt-and-suspenders. Runs `ssh-keygen -A` as a oneshot BEFORE `ssh.service` starts, ONLY when `/etc/ssh/ssh_host_ed25519_key` is missing. Catches the case where openssh-server's postinst hook misses host-key regen on first boot (common after chroot-strip). Installed system always boots with valid host keys.
+
+**Rebuild attempt-4 kicked on Holmgren**. After ~20 min I'll SCP to Proxmox + re-test VM 200. End-to-end expected: install completes Step 2-7 without errors → reboot → installed Ubuntu boots → first-boot-fresh.sh runs → location-setup-wizard available on tty1.
+
+---
+
 ## v2.54.75 — UI polish triple-agent batch: SystemAdmin + DeviceConfig Card→div migration + loading skeletons (2026-05-27)
 
 **Versions covered:** v2.54.75
