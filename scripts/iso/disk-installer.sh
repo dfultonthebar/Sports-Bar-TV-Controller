@@ -360,16 +360,59 @@ step "Step 6/7: Installing GRUB Bootloader"
 # Install GRUB packages in chroot if not present
 chr "DEBIAN_FRONTEND=noninteractive apt-get install -y grub-efi-amd64 grub-pc-bin 2>&1" | tail -5
 
-# Install GRUB to EFI
-chr "grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=sportsbar --recheck 2>&1" || warn "EFI GRUB install failed — trying BIOS fallback"
+# v2.54.80 hardening: track BIOS + EFI success separately. At LEAST ONE must
+# succeed AND we verify the boot signature on disk before considering Step 6
+# done. Previously both calls were `|| warn` — so if both silently failed the
+# script declared success but SeaBIOS / UEFI firmware would find no
+# bootloader. Caught during 2026-05-27 VM 200 install: all 7 steps printed
+# success but VM hung at "Booting from Hard Disk..." after reboot.
 
-# Also install GRUB for BIOS (legacy boot) if disk supports it
-if [[ "$TARGET_DISK" != *"nvme"* ]]; then
-    chr "grub-install --target=i386-pc ${TARGET_DISK} 2>&1" || warn "BIOS GRUB install skipped"
+EFI_OK=0
+BIOS_OK=0
+
+# Install GRUB to EFI (must succeed on UEFI hardware)
+if chr "grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=sportsbar --recheck 2>&1"; then
+    EFI_OK=1
+    log "EFI GRUB installed."
+else
+    warn "EFI GRUB install FAILED"
+fi
+
+# Install GRUB for BIOS legacy boot. Drop the NVMe skip — NVMe disks CAN be
+# legacy-booted via CSM on hardware that supports it (VMs especially).
+if chr "grub-install --target=i386-pc ${TARGET_DISK} 2>&1"; then
+    BIOS_OK=1
+    log "BIOS GRUB installed to ${TARGET_DISK}."
+else
+    warn "BIOS GRUB install FAILED"
+fi
+
+# At least one must have worked.
+if [ "$EFI_OK" = "0" ] && [ "$BIOS_OK" = "0" ]; then
+    err "GRUB install failed for BOTH EFI and BIOS targets. System will not boot."
+    err "Check the chroot log above for the underlying grub-install error."
+    exit 1
 fi
 
 # Generate GRUB config
 chr "update-grub 2>&1" | tail -5
+
+# Verify the MBR boot signature 0x55AA is now present when BIOS was installed.
+# The MBR is the first 512 bytes of the disk; bytes 510-511 must be 55 AA.
+if [ "$BIOS_OK" = "1" ]; then
+    MBR_SIG=$(dd if="${TARGET_DISK}" bs=1 skip=510 count=2 2>/dev/null | xxd -p)
+    if [ "$MBR_SIG" = "55aa" ]; then
+        log "MBR boot signature verified (0x55AA) on ${TARGET_DISK}."
+    else
+        err "MBR boot signature missing on ${TARGET_DISK} (got: ${MBR_SIG:-<empty>}). BIOS boot will FAIL."
+        if [ "$EFI_OK" = "0" ]; then
+            err "EFI also failed — aborting install."
+            exit 1
+        else
+            warn "EFI is in place — system may still boot if firmware supports UEFI."
+        fi
+    fi
+fi
 
 log "GRUB bootloader installed."
 
