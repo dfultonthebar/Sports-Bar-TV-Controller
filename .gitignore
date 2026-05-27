@@ -167,3 +167,6 @@ playwright-report/
 
 # Scout tree dumps (diagnostic, per-Cube — not committed)
 apps/web/data/tree-dumps/
+
+# Agent worktrees (transient subagent workspaces)
+.claude/worktrees/
