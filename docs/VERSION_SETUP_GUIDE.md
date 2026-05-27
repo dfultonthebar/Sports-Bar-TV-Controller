@@ -35,6 +35,38 @@ is the archive.
 
 ---
 
+## v2.54.63 — Proxmox PXE LXC plan + scripts for office NUC pre-provisioning (2026-05-26)
+
+**Versions covered:** v2.54.63
+**Branch landed:** main
+**Fleet target:** no change. **Operator's Proxmox host only** (runs the scripts manually).
+
+Operator has a Proxmox server at home/office and wants to PXE-boot new NUCs from it so they install pre-configured + ship to bars already-set-up.
+
+**NEW `docs/PROXMOX_PXE_SETUP.md`** (130-line operator runbook): architecture, prerequisites, 3-step setup, troubleshooting matrix, future enhancements (multi-version menu, Tailscale Serve integration, unattended install).
+
+**NEW `scripts/proxmox/setup-netboot-lxc.sh`** (163 lines): runs ON the Proxmox host. Creates a Debian 12 LXC named `sports-bar-netboot` (default CTID 200), installs dnsmasq + lighttpd + curl + ipxe inside. Detects template via `pveam`, downloads if missing, configures unprivileged container with DHCP networking, copies iPXE binaries to TFTP root. Reports the LXC IP + next-step command at the end.
+
+**NEW `scripts/proxmox/configure-netboot-menu.sh`** (270 lines): runs INSIDE the netboot LXC. Auto-fetches latest release tag from GitHub, downloads the 2 split ISO parts + sidecars, verifies per-part MD5 + combined SHA256, reassembles into single .iso. Writes iPXE menu under `/var/www/html/menu/sports-bar.ipxe` with install / live-boot / safe-mode / iPXE-shell options. Configures dnsmasq in **proxy-DHCP mode** (doesn't fight existing router DHCP — just adds PXE options + bootfile path). Handles UEFI vs legacy BIOS clients via DHCP option 93 matching. Auto-symlinks `current.iso` so the menu stays stable across updates. Idempotent — re-run when a new release ships. Optional `--release v3.0-YYYY-MM-DD` to pin + `--tailscale-url URL` to skip the 2-part reassembly when Holmgren's Tailscale Serve URL is available.
+
+**Architecture choices**:
+- Proxy-DHCP not full DHCP — augments router, doesn't replace it. Zero router config needed for most home/office setups.
+- LXC not VM — 50 MB RAM idle, 2-sec boot. dnsmasq + lighttpd don't need a full kernel.
+- iPXE not legacy PXELINUX — handles HTTP (not just TFTP), modern UEFI + BIOS, scriptable.
+- HTTP-fetchable menu — operator can edit `/var/www/html/menu/sports-bar.ipxe` without rebuilding the LXC.
+
+**Operator workflow** (after running both scripts):
+1. New NUC arrives at office. One-time BIOS: enable PXE boot + set network first.
+2. Power on NUC plugged into office LAN.
+3. iPXE menu appears → operator picks "Install Sports Bar TV Controller v3.0".
+4. ISO boots over HTTP from LXC → standard install → reboot.
+5. After reboot: first-boot-fresh.sh + location-setup-wizard (v2.54.51+ canonical pipeline).
+6. Ship NUC to bar already-configured.
+
+Both scripts pass `bash -n` syntax check. NOT executed on any operator infrastructure — operator runs them manually on their Proxmox host.
+
+---
+
 ## v2.54.61 — Grok persistent briefing + invocation wrapper (Grok knows the rules every time) (2026-05-26)
 
 **Versions covered:** v2.54.61
