@@ -35,6 +35,40 @@ is the archive.
 
 ---
 
+## v2.54.77 — Atlas/IR Card→div sweep + Watcher Health panel + Matrix Config UI (3 parallel agents) (2026-05-27)
+
+**Versions covered:** v2.54.77
+**Branch landed:** main
+**Fleet target:** rolling upgrade. Three new admin UX surfaces. No runtime change.
+
+**Three parallel agents** ran while the v3.0.1 attempt-4 ISO rebuilt + the VM 200 install test ran end-to-end. All HIGH confidence, all built green (28/28 each).
+
+**Agent A — Extended Card→div migration (7 files, ~290 Card tags removed):**
+- `apps/web/src/components/ir/IRLearningPanel.tsx` (74 Cards)
+- `apps/web/src/components/LogAnalyticsDashboard.tsx` (68)
+- `apps/web/src/components/ir/IRDatabaseSearch.tsx` (44)
+- `apps/web/src/components/AtlasAIMonitor.tsx` (34)
+- `apps/web/src/components/ir/IRDeviceSetup.tsx` (32)
+- `apps/web/src/components/SoundtrackControl.tsx` (20)
+- `apps/web/src/components/AtlasOutputMeters.tsx` (18)
+- 7 unused Card-import lines removed. Net delta: 384 insertions / 417 deletions (slight shrink). Same v2.54.75 recipe — bordered slate divs per SchedulerLogsDashboard exemplar.
+- AtlasProgrammingInterface.tsx (62 Cards) deferred to next batch.
+
+**Agent B — Watcher Health UI**:
+- NEW `apps/web/src/app/api/system/watchers/status/route.ts` (144 lines) — GET endpoint returning `{ sdr, shure, atlas }` each with `{ alive, lastEventAt, lastStartupAt, eventCount24h }`. Reads `sdr_carriers`, `shure_rf_events`, `atlas_priority_events` tables. Graceful fallback to `alive: false` on missing tables (fresh installs). `RateLimitConfigs.DATABASE_READ`.
+- NEW `apps/web/src/components/admin/WatcherHealthPanel.tsx` (285 lines) — three-card responsive grid, green/red status dot, relative-time formatter ("5 min ago"), 30s polling, manual Refresh button (≥44px), Skeleton placeholder on first load, amber inline warning per card when not running.
+- Wired into `/system-admin` as new "Watchers" tab (grid expanded 8→9 cols). Operator can now see live SDR/Shure/Atlas health without SSH.
+
+**Agent C — Matrix Config / Gotcha #4 UI**:
+- NEW `apps/web/src/components/admin/MatrixConfigPanel.tsx` (323 lines) — shows Location | Model | outputOffset | audioOutputCount | Status table. MISMATCH state (amber, single-card with offset≠0) gets a "Fix to 0" button that PATCHes the row + reloads.
+- Extended `apps/web/src/app/api/matrix/config/route.ts` — added PATCH method with Zod validation (`outputOffset` integer 0-256). `requireAuth('ADMIN', { auditAction: 'MATRIX_CONFIG_PATCH' })`. Audit log of previous→new.
+- Wired into `/system-admin` as "Matrix Config" tab (grid expanded 9→10 cols).
+- Closes the operator-visibility gap from CLAUDE.md Gotcha #4 — outputOffset values were only visible via SSH + the runtime `[MATRIX-CONFIG] ⚠` warning in PM2 logs.
+
+**Concurrent in flight (not blocking)**: v3.0.1 attempt-4 ISO install on Proxmox VM 200 — currently at Step 4/7 (extracting filesystem from squashfs, ~5-10 min). The autostart fix + parted-in-chroot + ssh-enabled fixes are all confirmed working end-to-end. Will complete + report.
+
+---
+
 ## v2.54.76 — ISO v3.0.1 attempt-4: parted/mkfs missing in chroot + SSH not enabled post-install (2026-05-27)
 
 **Versions covered:** v2.54.76 (repo) + ISO v3.0.1 attempt-4 (rebuilt artifact)
