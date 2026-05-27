@@ -35,6 +35,30 @@ is the archive.
 
 ---
 
+## v2.54.71 — DJ Source A selection-doesn't-stick fix: React deps cycle restored old value (2026-05-27)
+
+**Versions covered:** v2.54.71
+**Branch landed:** main
+**Fleet target:** rolling upgrade. **Operator-facing fix** — selecting "DJ Audio" in Source A now persists.
+
+Operator after v2.54.70: "i can see the sources for source a but when i select dj audio it keeps patio band selected".
+
+**Root cause** (parallel agent diagnosed, classic React stale-effect-restoration anti-pattern):
+- `apps/web/src/components/DJControlPanel.tsx:62` — `fetchSources` `useCallback` had `selectedDJSource` in its dep array
+- The "load saved state" `useEffect` listed `fetchSources` in ITS dep array
+- So every dropdown change → `setSelectedDJSource(11)` (DJ Audio) → `selectedDJSource` change → `fetchSources` callback identity changes → init `useEffect` sees new `fetchSources` reference → **re-fires** → re-runs `GET /api/settings/dj-mode` → **restores** `djSourceIndex: 4` (Patio Band) from DB → user's pick overwritten ~50ms later
+- The debounced 500ms save never had time to persist DJ Audio first → DB stayed on Patio Band → next reset re-stomped → infinite restore loop
+
+Confirmed via API probe: saved state was `{djSourceIndex: 4, djSourceName: "Patio Band"}`; DJ Audio is at index 11.
+
+**Fix in `apps/web/src/components/DJControlPanel.tsx:62 + :162`**:
+1. Removed `selectedDJSource` from `fetchSources` deps. Added `autoSelectIfUnset` param + `setSelectedDJSource((prev) => prev === null ? djSource.index : prev)` — functional updater avoids stale closure.
+2. Added `initRef` one-shot guard keyed on `${processorId}:${processorIp}` so the init `useEffect` cannot re-run regardless of callback-identity churn. Belt-and-suspenders per `[[feedback-state-machine-belt-suspenders]]`.
+
+Build clean (34/34 tasks), PM2 online, `/api/atlas/sources` returns 200. Operator sees DJ Audio selection stick on next iPad refresh.
+
+---
+
 ## v2.54.70 — DJ Mode audio control fix: picked wrong processor (Shure instead of Atlas) (2026-05-27)
 
 **Versions covered:** v2.54.70
