@@ -10,8 +10,24 @@
 # Usage:
 #   sudo ./build-sports-bar-iso.sh [--skip-snapshot] [--no-upload] [--build-dir /path]
 #
-# Run on: Leg Lamp server ONLY (this server's DB is baked into snapshot mode)
-# DO NOT run on Graystone — that is a separate server, completely unaffected.
+# v2.54.58 (2026-05-26): Snapshot mode is DISABLED in v3.0 (line 470) so the
+# ISO is location-independent and SAFE TO BUILD ON ANY fleet box. The
+# older "Leg Lamp ONLY" warning here was obsolete and removed. The
+# --skip-snapshot flag is now a no-op but kept for backwards-compat.
+#
+# Prerequisites on the build host (the script checks + bails if missing):
+#   debootstrap, xorriso, squashfs-tools, grub-efi-amd64-bin, grub-pc-bin,
+#   mtools, dosfstools, isolinux, syslinux-utils
+# Install with:
+#   sudo apt-get install -y debootstrap xorriso squashfs-tools \
+#       grub-efi-amd64-bin grub-pc-bin mtools dosfstools isolinux syslinux-utils
+#
+# Build duration: ~15-30 min on a modern NUC (debootstrap is the slow part).
+# Disk space needed: ~10GB in $BUILD_DIR (default /home/ubuntu/iso-build).
+#
+# After building, the v2.54.51+ first-boot-fresh.sh + location-setup-wizard
+# handle ALL per-location setup (auth bootstrap, hardware discovery, Gotcha
+# #11 hardening, verify-install gate). See docs/BARE_METAL_ISO.md.
 #
 
 set -euo pipefail
@@ -182,6 +198,24 @@ for candidate in /usr/lib/ISOLINUX/isohdpfx.bin /usr/lib/syslinux/isohdpfx.bin; 
         break
     fi
 done
+
+# v2.54.58: explicit prereq check. Old script let debootstrap/xorriso
+# fail mid-build with cryptic errors. Now bails with one clear apt-get
+# command the operator can copy-paste.
+REQUIRED_PKGS=(debootstrap xorriso squashfs-tools grub-efi-amd64-bin grub-pc-bin mtools dosfstools isolinux syslinux-utils)
+MISSING_PKGS=()
+for pkg in "${REQUIRED_PKGS[@]}"; do
+    if ! dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null | grep -q "install ok installed"; then
+        MISSING_PKGS+=("$pkg")
+    fi
+done
+if [ ${#MISSING_PKGS[@]} -gt 0 ]; then
+    err "Missing build-host packages: ${MISSING_PKGS[*]}"
+    err "Install with:"
+    err "  sudo apt-get install -y ${MISSING_PKGS[*]}"
+    exit 1
+fi
+log "Build-host package prereqs OK."
 
 # Check app source
 if [ ! -d "$APP_SOURCE/.git" ]; then
