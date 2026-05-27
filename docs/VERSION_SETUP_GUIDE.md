@@ -35,6 +35,37 @@ is the archive.
 
 ---
 
+## v2.54.57 — Sports-guide route gates + bartender empty-state recovery (Grok Part 2 P1) (2026-05-26)
+
+**Versions covered:** v2.54.57
+**Branch landed:** main
+**Fleet target:** rolling upgrade. No manual step.
+
+Two more Grok Part 2 P1 findings closed via parallel agents. Both HIGH confidence. Build green 34/34 Turbopack 15s.
+
+**Sports-guide + scheduling route gates (Agent 1):**
+- Audited 16 routes across `apps/web/src/app/api/sports-guide/**` + `apps/web/src/app/api/scheduling/**`. Of those, 12 were already correctly wrapped (rate-limit + validation + sometimes auth) — credit to prior work.
+- **4 real fixes**:
+  - `sports-guide/route.ts` POST: replaced raw `request.text()` + `JSON.parse` (Gotcha #1) with `validateRequestBody(sportsGuideRequest)`.
+  - `sports-guide/update-key/route.ts`: replaced loose `z.record(z.unknown())` + `String(undefined)` coercion bug with `sportsGuideUpdateKey` schema (apiKey min 10 chars, userId required).
+  - `scheduling/input-sources/route.ts` DELETE handler: replaced raw `searchParams.get('id')` with `validateQueryParams(inputSourceDeleteQuery)`.
+  - All 3 new schemas added to `packages/validation/src/schemas.ts` under "// SPORTS GUIDE SCHEMAS — v2.54.57" header + registered in `ValidationSchemas` map.
+- `scheduling/live-status/route.ts` deliberately skipped — called only by `scheduler-service.ts` localhost cron (no UI callers), noted in agent report.
+- All component call sites verified — no breaking shape changes for `SportsGuide.tsx` / `BartenderRemoteControl.tsx` / `SportsGuideConfig.tsx` / etc.
+
+**Bartender empty-state recovery (Agent 2):**
+- NEW `apps/web/src/components/BartenderEmptyState.tsx` — reusable card with icon + heading + 2-3 sentence body + optional amber "partially configured" sub-card + verbatim text-to-manager preview block (so bartenders can read off the message even when clipboard is blocked on insecure-context iPad browsers — AUTH_COOKIE_SECURE=false LAN deployments per CLAUDE.md) + 2 CTAs: "Open admin" (purple, deep-link to admin page) + "Copy message" (slate, clipboard API with check-icon confirmation).
+- Applied to **Video tab** (`InteractiveBartenderLayout.tsx`) → links `/layout-editor`. Distinguishes fresh-install vs partial-config (zone count = 0 with row exists) via amber sub-card.
+- Applied to **Audio tab** (`BartenderRemoteAudioPanel.tsx`) → links `/audio-control`.
+- Applied to **Music tab** (`BartenderMusicControl.tsx`) → links `/soundtrack`.
+- All touch targets ≥48px. Bartender voice ("you didn't do anything wrong") matches the new `app/remote/error.tsx` boundary from v2.54.56.
+- **Audio tab visibility change**: removed `{audioProcessorIp && ...}` guard on the Audio tab button (`app/remote/page.tsx`) so fresh-install bartenders actually see the new empty-state card. Annotated.
+- Tabs that DON'T need this (visibility-guarded — never render empty): Lighting (only renders when configured), DJ (only renders when enabled), Schedule/Guide/Routing/Remote/Power (backed by always-present sources, or already have inline empty cards).
+
+**Closes Gotcha #7 operational pain** (location-data templates blanking real data on merge → empty bartender remote → no recovery path). The 9 bartender how-to docs all assume the Video tab has a layout — empty-state recovery means even mid-merge-mess locations have a clear path forward.
+
+---
+
 ## v2.54.56 — Dark-theme global error page + bartender-grade /remote error boundary (2026-05-26)
 
 **Versions covered:** v2.54.56
