@@ -2,7 +2,6 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/cards'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs'
 import { Input } from './ui/input'
 import { Button } from './ui/button'
@@ -1308,8 +1307,8 @@ export default function AtlasProgrammingInterface() {
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {inputs.map((input) => (
-                        <Card key={input.id} className="border-slate-700 bg-slate-800/50">
-                          <CardHeader className="pb-3">
+                        <div key={input.id} className="bg-slate-800/50 border border-slate-700 rounded-lg p-6">
+                          <div className="pb-3">
                             <div className="flex justify-between items-start">
                               <div className="flex-1">
                                 <Input
@@ -1336,8 +1335,8 @@ export default function AtlasProgrammingInterface() {
                                 <Trash2 className="h-4 w-4" />
                               </Button>
                             </div>
-                          </CardHeader>
-                          <CardContent className="space-y-3">
+                          </div>
+                          <div className="space-y-3">
                             {/* Input Type */}
                             <div>
                               <label className="text-xs text-slate-400 mb-1 block">Type</label>
@@ -1461,8 +1460,8 @@ export default function AtlasProgrammingInterface() {
                                 ))}
                               </div>
                             </div>
-                          </CardContent>
-                        </Card>
+                          </div>
+                        </div>
                       ))}
                     </div>
                   </TabsContent>
@@ -1479,8 +1478,8 @@ export default function AtlasProgrammingInterface() {
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {outputs.map((output) => (
-                        <Card key={output.id} className="border-slate-700 bg-slate-800/50">
-                          <CardHeader className="pb-3">
+                        <div key={output.id} className="bg-slate-800/50 border border-slate-700 rounded-lg p-6">
+                          <div className="pb-3">
                             <div className="flex justify-between items-start">
                               <div className="flex-1">
                                 <Input
@@ -1512,8 +1511,8 @@ export default function AtlasProgrammingInterface() {
                                 <Trash2 className="h-4 w-4" />
                               </Button>
                             </div>
-                          </CardHeader>
-                          <CardContent className="space-y-3">
+                          </div>
+                          <div className="space-y-3">
                             {/* Output Type */}
                             <div>
                               <label className="text-xs text-slate-400 mb-1 block">Type</label>
@@ -1615,8 +1614,8 @@ export default function AtlasProgrammingInterface() {
                                 <span className="text-slate-300">Limiter</span>
                               </label>
                             </div>
-                          </CardContent>
-                        </Card>
+                          </div>
+                        </div>
                       ))}
                     </div>
                   </TabsContent>
@@ -1633,19 +1632,19 @@ export default function AtlasProgrammingInterface() {
 
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                       {scenes.map((scene) => (
-                        <Card key={scene.id} className="border-slate-700 bg-slate-800/50">
-                          <CardHeader>
-                            <CardTitle className="text-lg flex items-center gap-2">
+                        <div key={scene.id} className="bg-slate-800/50 border border-slate-700 rounded-lg p-6">
+                          <div className="pb-4">
+                            <h3 className="text-lg font-semibold text-slate-100 flex items-center gap-2">
                               <Zap className="h-5 w-5 text-yellow-400" />
                               {scene.name}
-                            </CardTitle>
+                            </h3>
                             {scene.description && (
-                              <CardDescription className="text-slate-400">
+                              <p className="text-sm text-slate-400 mt-1">
                                 {scene.description}
-                              </CardDescription>
+                              </p>
                             )}
-                          </CardHeader>
-                          <CardContent className="space-y-3">
+                          </div>
+                          <div className="space-y-3">
                             <div className="text-xs text-slate-400 space-y-1">
                               <div className="flex items-center gap-2">
                                 <Mic className="h-3 w-3" />
@@ -1668,8 +1667,8 @@ export default function AtlasProgrammingInterface() {
                               <Play className="h-4 w-4 mr-2" />
                               Recall Scene
                             </Button>
-                          </CardContent>
-                        </Card>
+                          </div>
+                        </div>
                       ))}
                     </div>
 
@@ -1694,14 +1693,14 @@ export default function AtlasProgrammingInterface() {
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {messages.map((message) => (
-                        <Card key={message.id} className="border-slate-700 bg-slate-800/50">
-                          <CardHeader>
-                            <CardTitle className="text-lg flex items-center gap-2">
+                        <div key={message.id} className="bg-slate-800/50 border border-slate-700 rounded-lg p-6">
+                          <div className="pb-4">
+                            <h3 className="text-lg font-semibold text-slate-100 flex items-center gap-2">
                               <MessageSquare className="h-5 w-5 text-blue-400" />
                               {message.name}
-                            </CardTitle>
-                          </CardHeader>
-                          <CardContent className="space-y-3">
+                            </h3>
+                          </div>
+                          <div className="space-y-3">
                             <div className="text-xs text-slate-400 space-y-1">
                               <div className="flex items-center gap-2">
                                 <Music className="h-3 w-3" />
@@ -1724,8 +1723,8 @@ export default function AtlasProgrammingInterface() {
                               <Play className="h-4 w-4 mr-2" />
                               Play Message
                             </Button>
-                          </CardContent>
-                        </Card>
+                          </div>
+                        </div>
                       ))}
                     </div>
 

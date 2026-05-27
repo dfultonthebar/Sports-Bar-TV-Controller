@@ -35,6 +35,16 @@ is the archive.
 
 ---
 
+## v2.54.88 — refreshed POWER_AND_NETWORK_TVS + WRONG_CHANNEL_ON_TV to match current Video/Power tab UI, no setup required, no runtime change (2026-05-27)
+
+Doc-only refresh. Two stale bartender how-tos updated to reflect the v2.54.85 Video-tab adds: POWER_AND_NETWORK_TVS now leads with what the Power tab is FOR (on/off + reboot, network TVs only), clarifies HDMI button visibility (network TVs only — bars without them never see HDMI buttons), and points at PUTTING_GAMES_ON_TVS_VIDEO_TAB for routing. WRONG_CHANNEL_ON_TV Section 4 (TV is dark) now leads with the Power tab's Power tile + cross-references POWER_AND_NETWORK_TVS for wall-switch / standby specifics. Physical-remote fallback retained for cable/IR TVs. No code touched. No setup required.
+
+---
+
+## v2.54.87 — AtlasProgrammingInterface iterator Cards migration (closes v2.54.82 deferral) + restores text-blue-100 accent on processor form, no setup required, no runtime change (2026-05-27)
+
+---
+
 ## v2.54.86 — disk-installer adds bios_boot partition (THE bug behind SeaBIOS hang despite kernel+grub being correct) (2026-05-27)
 
 **Versions covered:** v2.54.86
