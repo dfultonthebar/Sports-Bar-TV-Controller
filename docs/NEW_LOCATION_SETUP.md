@@ -29,14 +29,20 @@ the auth bootstrap (step 3 below), restart PM2 to load the new env
 auto-update timer steps. None of these are optional for a production
 install.
 
-> **v2.54.51 in-flight:** the ISO + first-boot wizard (`docs/BARE_METAL_ISO.md`)
-> is starting to call `bootstrap-new-location.sh` + `verify-install.sh`
-> + Gotcha #11 hardening automatically as part of the on-screen wizard,
-> so on bare-metal installs the operator only answers prompts (bar name,
-> PINs, optional API key) and the wizard does the rest. Until that ships
-> fleet-wide, the steps below are still required on every curl-one-liner
-> install AND on any ISO install where the wizard prompts you to "finish
-> by hand".
+> **v3.1.0 ISO (v2.54.89+):** the bare-metal install
+> (`docs/BARE_METAL_ISO.md`) is now **fully unattended** — subiquity +
+> curtin handle the OS install with zero prompts, then
+> `sports-bar-first-boot.service` clones the repo and builds, then the
+> `location-setup-wizard` runs `bootstrap-new-location.sh` +
+> `verify-install.sh` + Gotcha #11 hardening automatically on first
+> boot. On bare-metal installs the operator only answers wizard prompts
+> (bar name, PINs, optional API key) and the wizard does the rest. The
+> steps below are still required on every curl-one-liner install. The
+> latest ISO is named
+> `sports-bar-tv-controller-v3.1.0-YYYY-MM-DD.iso`. For VM testing,
+> Proxmox best practice is **OVMF / q35 / virtio-scsi-pci with an EFI
+> disk** (the legacy SeaBIOS / i440fx defaults will boot but lose UEFI
+> firmware updates and trim support).
 
 For an operator who's done this before:
 
