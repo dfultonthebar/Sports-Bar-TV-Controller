@@ -1350,6 +1350,21 @@ main() {
     # and "hardening result" in the same install log, in that order.
     run_gotcha11_hardening
 
+    # PHASE 13: OS hygiene + trim (journald cap, swappiness=10, disable
+    # bloat services, purge old kernels, sweep caches, rotate pre-update
+    # backups). v2.54.60 — idempotent, safe to re-run, no-op if already
+    # in desired state. Non-fatal on failure.
+    print_header "PHASE 13: OS hygiene + trim (optimize-os.sh)"
+    if [ -f scripts/optimize-os.sh ]; then
+        if bash scripts/optimize-os.sh 2>&1 | tee -a "$LOG_FILE"; then
+            print_success "OS hygiene applied (journald, swappiness, services, kernels, caches)"
+        else
+            print_warning "optimize-os.sh reported a non-fatal warning — see log."
+        fi
+    else
+        print_warning "scripts/optimize-os.sh not present in repo — skipping (this is normal on older checkouts)."
+    fi
+
     # Show completion message
     print_final_instructions
 

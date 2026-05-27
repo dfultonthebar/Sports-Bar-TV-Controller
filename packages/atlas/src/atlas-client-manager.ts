@@ -116,13 +116,17 @@ class AtlasClientManager {
       managed.refCount++
       managed.lastUsed = new Date()
 
-      atlasLogger.info('CLIENT_MANAGER', 'Reusing existing Atlas client', {
+      // v2.54.60: demoted info→debug. These fire on EVERY Atlas operation
+      // (~15-30 Hz across the fleet) and produced 5.75 billion lines / 140 GB
+      // in 98 days at Holmgren before the audit caught it. Reuse is normal
+      // operation, not a notable event.
+      atlasLogger.debug('CLIENT_MANAGER', 'Reusing existing Atlas client', {
         key,
         processorId,
         refCount: managed.refCount
       })
 
-      // Reconnect if disconnected
+      // Reconnect if disconnected — keep at info since reconnects are rare + notable
       if (!managed.client.isConnected()) {
         atlasLogger.info('CLIENT_MANAGER', 'Reconnecting existing client', { key })
         await managed.client.connect()
@@ -177,7 +181,10 @@ class AtlasClientManager {
       managed.refCount = Math.max(0, managed.refCount - 1)
       managed.lastUsed = new Date()
       
-      atlasLogger.info('CLIENT_MANAGER', 'Released Atlas client', {
+      // v2.54.60: demoted info→debug (per Release counterpart to Reuse above).
+      // Every Atlas op generates an acquire + release pair; logging both at
+      // INFO doubled the noise that produced the 140 GB log.
+      atlasLogger.debug('CLIENT_MANAGER', 'Released Atlas client', {
         key,
         refCount: managed.refCount
       })
