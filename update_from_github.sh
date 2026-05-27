@@ -3,6 +3,14 @@
 # =============================================================================
 # Sports Bar TV Controller - GitHub Update Script
 # =============================================================================
+# DEPRECATED (v2.54.51+): use scripts/auto-update.sh — this script is kept
+# for backwards compatibility only. The canonical update orchestrator is
+# scripts/auto-update.sh, which has Checkpoint A/B/C Claude-Code review,
+# the schema_migrate phase (bootstrap + drizzle-kit migrate, NOT push),
+# verify-install layers, rollback hooks, and PM2 management with verify.
+# This file is preserved so legacy cron entries and operator muscle memory
+# don't break, but new work should target auto-update.sh.
+# =============================================================================
 # This script safely updates the application from GitHub with proper error
 # handling, PM2 process management, and data preservation.
 #
@@ -465,17 +473,43 @@ build_application() {
 }
 
 # =============================================================================
-# DATABASE SCHEMA PUSH
+# DATABASE SCHEMA MIGRATE (v2.54.51+)
 # =============================================================================
+# Replaces the legacy push_database_schema() which used drizzle-kit push.
+# Push silently aborts on pre-existing indexes (CLAUDE.md Gotcha #6 — caused
+# the 2026-05-20 24h NeighborhoodEvent outage). Migrate applies tracked
+# migration files one-at-a-time and fails LOUD on any SQL error.
+#
+# Kept the legacy function name so any cron entries or other scripts that
+# call push_database_schema continue to work — it now runs the safe path.
 push_database_schema() {
-    log_info "Pushing database schema changes (creating new tables if needed)..."
+    log_info "Bootstrapping drizzle migration markers..."
 
-    if npx drizzle-kit push --config drizzle.config.ts 2>&1 | tee -a "$LOG_FILE"; then
-        log_success "Database schema pushed successfully"
+    if [ -f "$DB_PATH" ]; then
+        if bash "$PROJECT_DIR/scripts/bootstrap-drizzle-migrations.sh" "$DB_PATH" 2>&1 | tee -a "$LOG_FILE"; then
+            log_success "Migration markers bootstrapped"
+        else
+            log_warning "bootstrap-drizzle-migrations.sh failed — proceeding with migrate"
+        fi
     else
-        log_warning "Database schema push failed - new tables may not exist"
-        log_warning "You can retry manually: npx drizzle-kit push --config drizzle.config.ts"
+        log_warning "DB not found at $DB_PATH — skipping bootstrap (migrate will create the DB)"
+    fi
+
+    log_info "Applying pending Drizzle migrations..."
+    if NODE_ENV=development npx drizzle-kit migrate 2>&1 | tee -a "$LOG_FILE"; then
+        log_success "Database migrations applied successfully"
+    else
+        log_warning "drizzle-kit migrate failed - new tables may not exist"
+        log_warning "You can retry manually: NODE_ENV=development npx drizzle-kit migrate"
         # Don't exit - the app may still work with existing tables
+    fi
+
+    # Belt-and-suspenders: ensure-schema.sh adds any tables/columns the
+    # migration files might have missed.
+    if [ -f "$PROJECT_DIR/scripts/ensure-schema.sh" ] && [ -f "$DB_PATH" ]; then
+        log_info "Running ensure-schema.sh (belt-and-suspenders)..."
+        bash "$PROJECT_DIR/scripts/ensure-schema.sh" "$DB_PATH" 2>&1 | tee -a "$LOG_FILE" || \
+            log_warning "ensure-schema.sh reported issues (non-fatal — migrate is the source of truth)"
     fi
 }
 

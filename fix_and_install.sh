@@ -1,6 +1,14 @@
 
 #!/bin/bash
 
+# DEPRECATED — kept for backwards compatibility only.
+# The canonical virgin-install entry points are:
+#   - Curl one-liner: install.sh (root of repo)
+#   - Bare-metal USB: scripts/iso/build-sports-bar-iso.sh (build) → boot ISO
+# See docs/NEW_LOCATION_SETUP.md and docs/BARE_METAL_ISO.md.
+
+echo "⚠️  WARNING: This script is DEPRECATED. Use install.sh or the ISO instead. See docs/NEW_LOCATION_SETUP.md" >&2
+
 # Sports Bar AI Assistant - Fix Yarn Configuration and Install
 echo "🔧 Fixing Yarn Configuration and Installing Sports Bar AI Assistant"
 echo "=================================================================="
