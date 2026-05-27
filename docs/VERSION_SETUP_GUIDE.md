@@ -35,6 +35,39 @@ is the archive.
 
 ---
 
+## v2.54.80 — disk-installer GRUB install: fatal-fail + MBR signature verify + cleanup-chroot helper (2026-05-27)
+
+**Versions covered:** v2.54.80
+**Branch landed:** main
+**Fleet target:** ISO consumers only — next ISO build (v3.0.1 attempt-7) gets the fix. No runtime change for installed fleet.
+
+**Symptom (caught during 2026-05-27 VM 200 install of attempt-6 ISO):** all 7 steps printed `[+] success` and the installer printed `INSTALLATION COMPLETE!`. After reboot the VM hung at SeaBIOS `Booting from Hard Disk...` with no GRUB / no kernel. VM did not appear on the network — guest agent unreachable.
+
+**Root cause:** `disk-installer.sh` Step 6 had `grub-install --target=i386-pc ${TARGET_DISK} 2>&1 || warn "BIOS GRUB install skipped"` — a failure printed a yellow warning and the script continued. Same with the EFI grub-install. With BOTH failing silently and `update-grub` afterwards (which only writes config files, not the MBR bootblock), the script reported success but the boot sector was never programmed. Also, the script SKIPPED BIOS install entirely on NVMe targets, which is wrong — NVMe disks legacy-boot fine via CSM on hardware that supports it.
+
+**Fix:** `scripts/iso/disk-installer.sh` Step 6 now:
+1. Tracks `EFI_OK` + `BIOS_OK` flags independently.
+2. Aborts (`exit 1`) if BOTH fail.
+3. Drops the `[[ "$TARGET_DISK" != *"nvme"* ]]` skip — BIOS install always attempted.
+4. Reads bytes 510-511 of `${TARGET_DISK}` via `dd | xxd -p`; requires `55aa` boot signature post-install when BIOS_OK=1; logs error + aborts if missing AND EFI also failed.
+
+**Required Manual Steps at locations:** NONE. Existing installs aren't affected.
+
+**Required Manual Steps for new-NUC install with attempt-7 ISO:** Same as v3.0.1 — boot from USB, walk through 7-step wizard. Step 6/7 will now LOUDLY fail with `exit 1` if GRUB doesn't take, instead of silently continuing. Operator sees the real error, can recover.
+
+**Bonus shipped same commit:** `scripts/iso/cleanup-chroot.sh` — safe replacement for the `umount -l` + `rm -rf` pattern that hollowed-out the Holmgren host's /dev on 2026-05-27. Unmounts chroot binds in reverse dep order WITHOUT `-l`, verifies nothing remains mounted, then rm. Run as `bash scripts/iso/cleanup-chroot.sh <build-dir>`. See `[[feedback-chroot-lazy-umount-destroys-dev]]` in the operator's memory for full incident.
+
+**Verification:**
+```
+# After attempt-7 builds + installs cleanly on VM 200:
+ssh ubuntu@<vm-ip> "ls /boot/efi/EFI/sportsbar/grubx64.efi && sudo dd if=/dev/sda bs=1 count=2 skip=510 status=none | xxd -p"
+# Expect: file exists, hex output = 55aa
+```
+
+**Pattern reminder (3rd ISO bug class this week):** when `disk-installer.sh` calls ANY operation that programs the disk, do NOT wrap in `|| warn`. Either it works or the install aborts. v2.54.76 caught parted/mkfs missing; v2.54.79 caught unsquashfs missing; v2.54.80 catches silent grub-install failure. Future audit: grep `disk-installer.sh` for `|| warn` and `|| true` — every such site is a candidate silent-fail.
+
+---
+
 ## v2.54.79 — ISO chroot: add squashfs-tools (disk-installer Step 4/7 fix) (2026-05-27)
 
 **Versions covered:** v2.54.79
