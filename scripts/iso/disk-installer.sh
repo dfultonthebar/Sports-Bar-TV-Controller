@@ -270,6 +270,44 @@ unsquashfs -f -d "$MOUNT_DIR" "$SQUASHFS_PATH" 2>&1 | grep -E "^(Parallel|[0-9]+
 
 log "Filesystem extracted."
 
+# v2.54.84: copy kernel + initrd from /cdrom/casper to /boot on target disk.
+# The build script's mksquashfs is invoked with `-e boot` (deliberately
+# excluding /boot/ from the squashfs to keep it small), and the kernel +
+# initrd live separately at /cdrom/casper/vmlinuz + /cdrom/casper/initrd
+# for live-boot purposes. Result: after extraction, the target /boot has
+# only efi/ + grub/ subdirs — no vmlinuz-*, no initrd-*. update-grub
+# generates entries pointing to /boot/vmlinuz-X but the file doesn't
+# exist, so the installed system hangs at SeaBIOS "Booting from Hard
+# Disk..." after GRUB tries to chainload a non-existent kernel.
+# Caught during attempt-7 VM 200 install (2026-05-27): 4+ min after
+# reboot, no kernel messages, no DHCP — disk inspection showed missing
+# vmlinuz/initrd on /boot.
+log "Copying kernel + initrd from casper to /boot..."
+KERNEL_VER=$(ls "${MOUNT_DIR}/usr/lib/modules/" 2>/dev/null | head -1)
+if [ -z "$KERNEL_VER" ]; then
+    err "No kernel modules found in ${MOUNT_DIR}/usr/lib/modules/ — squashfs extract incomplete?"
+    exit 1
+fi
+log "Detected kernel version: $KERNEL_VER"
+
+CASPER_DIR=$(dirname "$SQUASHFS_PATH")
+if [ ! -f "$CASPER_DIR/vmlinuz" ] || [ ! -f "$CASPER_DIR/initrd" ]; then
+    err "Missing kernel/initrd at ${CASPER_DIR}/{vmlinuz,initrd}"
+    err "Live ISO casper directory contents:"
+    ls -la "$CASPER_DIR" >&2 || true
+    exit 1
+fi
+
+cp "$CASPER_DIR/vmlinuz" "${MOUNT_DIR}/boot/vmlinuz-${KERNEL_VER}" || { err "Failed to copy kernel"; exit 1; }
+cp "$CASPER_DIR/initrd"  "${MOUNT_DIR}/boot/initrd.img-${KERNEL_VER}" || { err "Failed to copy initrd"; exit 1; }
+
+# Generic symlinks so /boot/vmlinuz + /boot/initrd.img work for tools that expect them
+ln -sf "vmlinuz-${KERNEL_VER}"     "${MOUNT_DIR}/boot/vmlinuz"
+ln -sf "initrd.img-${KERNEL_VER}"  "${MOUNT_DIR}/boot/initrd.img"
+
+log "Kernel installed: /boot/vmlinuz-${KERNEL_VER} ($(stat -c %s "${MOUNT_DIR}/boot/vmlinuz-${KERNEL_VER}") bytes)"
+log "Initrd installed: /boot/initrd.img-${KERNEL_VER} ($(stat -c %s "${MOUNT_DIR}/boot/initrd.img-${KERNEL_VER}") bytes)"
+
 # ═════════════════════════════════════════════════════════════════════════════
 # STEP 5: Configure Installed System
 # ═════════════════════════════════════════════════════════════════════════════
