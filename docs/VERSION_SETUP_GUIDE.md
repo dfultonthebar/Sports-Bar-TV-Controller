@@ -35,6 +35,29 @@ is the archive.
 
 ---
 
+## v2.54.67 — More-button regression fix: always render, show "enable in admin" when DJ off (2026-05-27)
+
+**Versions covered:** v2.54.67
+**Branch landed:** main
+**Fleet target:** rolling upgrade. **Operator-facing fix** — More overflow button reappears on bartender remote.
+
+Operator reported on Holmgren: "where did the more button go for the other things like the dj mode". Root cause: v2.54.55's More-overflow restructure wrapped the entire More button in `{djControlsEnabled && (...)}` thinking "hide empty button". But at locations with DJ controls disabled OR locations where the operator hadn't enabled them yet, the More button vanished — taking DJ Mode + Override-Learn widget + any future overflow items with it.
+
+**Fix in `apps/web/src/app/remote/page.tsx`** (lines 1419-1434 + 1459-1489):
+- Removed the outer `djControlsEnabled` wrapper from the More button → always renders
+- Inside the More sheet, kept the `djControlsEnabled` gate around the DJ Mode entry but replaced the silent hide with a non-interactive "DJ Mode unavailable — Enable in Admin → Bartender Remote Settings" tile (same 64px min-height, not tappable since there's nothing to tap)
+
+**Design intent preserved**:
+- v2.54.55 intent #1 (promote Schedule to primary) — **preserved** (Schedule stays in primary tab strip)
+- v2.54.55 intent #2 (overflow for less-frequent admin tabs) — **preserved** (DJ Mode stays in overflow)
+- v2.54.55 sub-goal "hide empty button" — **abandoned** (was overcorrection; vanishing the access path broke discovery for any location not running DJ)
+
+**Holmgren effect**: DB has `dj_controls_enabled=true`, so the More button is back to its v2.54.54 state (full tappable DJ entry). Operators at locations with DJ disabled see the button + a clear "how to enable" hint when they tap.
+
+Build green, PM2 restarted clean (no startup errors).
+
+---
+
 ## v2.54.66 — LOGGER FIX: stop silently swallowing Error objects passed as 2nd arg (caused v2.54.65) (2026-05-27)
 
 **Versions covered:** v2.54.66
