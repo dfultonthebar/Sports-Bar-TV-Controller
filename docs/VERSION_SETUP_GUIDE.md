@@ -35,6 +35,31 @@ is the archive.
 
 ---
 
+## v2.54.84 — disk-installer copies kernel+initrd from casper to /boot (THE bug behind "Booting from Hard Disk... forever") (2026-05-27)
+
+**Versions covered:** v2.54.84
+**Branch landed:** main
+**Fleet target:** ISO consumers only — bundled into next ISO build (v3.0.1 attempt-8). No runtime change for installed fleet.
+
+**Symptom (caught during 2026-05-27 VM 200 attempt-7 smoke test):** v2.54.80 GRUB hardening shipped — MBR boot signature verified, GRUB installed for both BIOS and EFI. After install + reboot, VM hung at `Booting from Hard Disk...` with blinking cursor for 4+ minutes, no kernel messages, no DHCP. Disk inspection via Proxmox ZFS volume mount showed `/boot/` contained ONLY `efi/` + `grub/` subdirs — NO `vmlinuz-*` and NO `initrd.img-*`.
+
+**Root cause:** `build-sports-bar-iso.sh` line 687 invokes `mksquashfs` with `-e boot`, which deliberately EXCLUDES the chroot's `/boot/` directory from the squashfs. The kernel + initrd are copied separately to the ISO's `/casper/vmlinuz` + `/casper/initrd` for live-boot purposes. This is correct for live-boot, but `disk-installer.sh` extracted the squashfs without ever copying the kernel/initrd from `/cdrom/casper/` to the installed disk's `/boot/`. update-grub generated entries pointing to `/boot/vmlinuz-X.Y.Z-generic` but the file didn't exist → GRUB hung.
+
+**Fix in `scripts/iso/disk-installer.sh` Step 4 (post-unsquashfs):**
+1. Reads kernel version from `${MOUNT_DIR}/usr/lib/modules/<KERNEL_VER>/` (also validates squashfs extract was complete).
+2. Validates `${CASPER_DIR}/vmlinuz` + `${CASPER_DIR}/initrd` exist.
+3. Copies them to `${MOUNT_DIR}/boot/vmlinuz-${KERNEL_VER}` + `/boot/initrd.img-${KERNEL_VER}`.
+4. Creates `/boot/vmlinuz` + `/boot/initrd.img` symlinks.
+5. Logs file sizes as sanity check.
+
+Every step has explicit error handling — no `|| true` silent failures.
+
+**Required Manual Steps:** none for existing locations. Next-NUC install with the next-built ISO will boot through to systemd + first-boot service correctly.
+
+**Pattern (5th ISO bug iteration this week):** v2.54.76 (parted/mkfs) + v2.54.79 (unsquashfs) + v2.54.80 (grub-install fatal) + v2.54.81 (5 silent-fail sites) + v2.54.84 (missing kernel copy). The bare-metal installer chain is now defensively validated end-to-end. The pattern that surfaced this bug: trace EVERY handoff in the boot path. MBR → GRUB stage 1 → stage 2 → kernel → initrd → systemd → first-boot → PM2. Each handoff must have a positive existence check. v2.54.80 validated MBR; v2.54.84 validates kernel; future hardening can add explicit checks at the remaining links.
+
+---
+
 ## v2.54.82 — AtlasProgrammingInterface root Card→div migration (5 of 9 root blocks; iterator Cards deferred) (2026-05-27)
 
 **Versions covered:** v2.54.82
