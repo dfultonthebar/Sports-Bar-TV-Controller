@@ -35,6 +35,64 @@ is the archive.
 
 ---
 
+## v2.54.53 — Grok #3: QAEntry fallback when Ollama is unreachable (2026-05-26)
+
+**Versions covered:** v2.54.53
+**Branch landed:** main
+**Fleet target:** rolling upgrade. No manual step.
+
+Closes Grok #3, the last of the three v2.54.49 follow-ups. Operational-resilience finding: Shift Brief has a solid `fallbackBrief()` that still emits the mic-status / neighborhood / Atlas-recap lines when Ollama is down; the Ask AI button (which all 9 bartender how-to docs now point at as the universal escape hatch) had nothing — just rendered "Couldn't reach the AI: Server returned 500. Text the manager." That's an operational backslide every doc the wizard ships tells bartenders to use.
+
+**`apps/web/src/app/api/chat/route.ts` `handleNonStreamingChat`:**
+- **Pre-resolve** a curated-QA fallback BEFORE any network call (top of function). Uses `findBestQAMatch(message)` from v2.54.50's helper — cached 5min, second call after `searchDocsViaRag`'s pre-pass is free. Only captures CONFIDENT matches (score ≥0.55) so moderate hits still let Ollama answer in full.
+- **Wrap the Ollama fetch + ok-check in try/catch.** On any failure (network error, 5xx, timeout, abort), check if `qaFallback` was set. If yes: return `NextResponse.json({ response: curatedAnswer + "\n\n---\n*(The AI is offline right now — this is a curated answer from <sourceFile>. If you need more detail, text the manager.)*", sources: [...], model: 'qa-fallback-curated' })`. If no: re-throw so the existing 500 path fires.
+- Same response shape as the normal LLM path so the BartenderAskAIButton consumes it identically (no client changes needed).
+
+**Why only the non-streaming path:** the bartender floating button explicitly sends `stream: false`. The streaming path (used by `/ai-hub` admin chat) is harder to fallback-protect because the SSE is already open by the time Ollama fails — operators get partial output + a clear error in that case, which is acceptable for the admin surface. Future work could add streaming fallback if needed.
+
+**Why only confident matches:** moderate-match (score 0.40-0.55) means the bartender's wording is far enough from a curated question that we shouldn't dump the curated answer at them as the canonical truth — better to surface the LLM error and let them retry or rephrase. Confident match is when we KNOW the curated answer fits.
+
+**End-to-end value:** when Ollama is wedged or unreachable, a bartender asking "the wireless mic isn't working" gets:
+```
+1) Look at the silver box with the antennas (the mic receiver). Are the channel lights green?
+2) Check the mic itself — green light on top, battery indicator showing bars.
+3) ...
+---
+*(The AI is offline right now — this is a curated answer from docs/bartender-help/MIC_NOT_WORKING.md. If you need more detail, text the manager.)*
+```
+
+instead of "Couldn't reach the AI: Server returned 500".
+
+**No fleet manual step.** Build green (34/34 Turbopack, 15s). PM2 restarted at Holmgren.
+
+**WRAPS UP Grok's v2.54.49 follow-up list** (items 1, 2, 3 of the seven). Remaining items 4-6 are UX bugs (HDMI input silo, multi-view preview, More-tab discoverability) — slot into Grok Part 2 (full UI audit) as v2.54.54+.
+
+---
+
+## v2.54.52 — Grok #2: Ask AI button sessionId + history + CRITICAL v2.54.48 bug fix (2026-05-26)
+
+**Versions covered:** v2.54.52
+**Branch landed:** main
+**Fleet target:** rolling upgrade. No manual step.
+
+**CRITICAL BUG FIX caught during Grok #2 implementation:** The v2.54.48 `BartenderAskAIButton` sent `{ messages: [...] }` to `/api/chat`, but the chat route's `ValidationSchemas.aiQuery` requires `{ message: string }` (singular) with `.refine((data) => data.query || data.message)`. The `messages` array got silently dropped by Zod, then the refine fired "Either query or message must be provided" → **HTTP 400 on every Ask AI tap since v2.54.48 shipped**. Operators using the floating button would have seen "Couldn't reach the AI: Server returned 400" on every question. (No bartender feedback yet — the button is new in the field.) Fixed by sending `{ message: q, sessionId, stream: false, enableTools: false }`.
+
+**Grok #2 (session history + sessionId):**
+- `useRef<string>('')` for sessionId, generated on modal open via `crypto.randomUUID()`
+- Sent on every `/api/chat` POST. Chat route persists messages to `chatSessions` table keyed on this ID, replays history on every subsequent request — so follow-ups have full prior context without shipping the message array client-side.
+- Added "New chat" button in modal header (visible only when `messages.length > 0`, ≥44px tap target). Clears local state + regenerates sessionId for a fresh conversation.
+- Modal close → next open reuses the existing sessionId (preserves context until operator explicitly hits "New chat" or page reloads).
+
+**Response shape fix:** Non-streaming chat route returns `{ response, sessionId, sources, model }`. The v2.54.48 code looked for `data.message.content` first (wrong shape). Reordered to `data.response` first → falls back to `message.content` / `answer` for resilience.
+
+**Better error reporting:** v2.54.48 just showed "Server returned 4XX". v2.54.52 includes the first 100 chars of error response body — operator sees the actual problem ("rate limit exceeded", "auth required", etc.).
+
+**No fleet manual step.** Build green (34/34 Turbopack, 15s). PM2 restarted at Holmgren.
+
+**Wraps up Grok #2** from the v2.54.49 follow-up task list. **Grok #3 (QAEntry fallback when Ollama down)** ships next as v2.54.53.
+
+---
+
 ## v2.54.51 — Virgin installer Part 1 P0: DB migrate + Gotcha #11 hardening + auth bootstrap + verify gate (2026-05-26)
 
 **Versions covered:** v2.54.51
