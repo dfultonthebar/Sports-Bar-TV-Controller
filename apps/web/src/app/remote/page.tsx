@@ -1416,21 +1416,23 @@ export default function BartenderRemotePage() {
             <span className="text-xs font-medium">Power</span>
           </button>
 
-          {/* Overflow — DJ in a bottom sheet (Schedule promoted to primary in v2.54.55) */}
-          {djControlsEnabled && (
-            <button
-              onClick={() => setMoreOpen(true)}
-              className={`min-h-[44px] min-w-[44px] flex flex-col items-center justify-center gap-1 px-2 py-2 rounded-xl transition-all ${
-                activeTab === 'dj'
-                  ? 'ring-1 ring-sky-400/50 bg-sky-500/20 text-sky-300 scale-[1.03]'
-                  : 'text-slate-500 hover:text-slate-300'
-              }`}
-              aria-label="More options"
-            >
-              <MoreHorizontal className="h-4 w-4" />
-              <span className="text-xs font-medium">More</span>
-            </button>
-          )}
+          {/* Overflow — DJ in a bottom sheet. Always rendered so admin tabs
+           * stay discoverable (v2.54.67 fix: v2.54.55 hid this whole button
+           * when djControlsEnabled=false, which left Holmgren with no path
+           * to reach DJ Mode or any future overflow item). Inner items are
+           * gated individually; the sheet shows a friendly hint if empty. */}
+          <button
+            onClick={() => setMoreOpen(true)}
+            className={`min-h-[44px] min-w-[44px] flex flex-col items-center justify-center gap-1 px-2 py-2 rounded-xl transition-all ${
+              activeTab === 'dj'
+                ? 'ring-1 ring-sky-400/50 bg-sky-500/20 text-sky-300 scale-[1.03]'
+                : 'text-slate-500 hover:text-slate-300'
+            }`}
+            aria-label="More options"
+          >
+            <MoreHorizontal className="h-4 w-4" />
+            <span className="text-xs font-medium">More</span>
+          </button>
         </div>
       </div>
 
@@ -1458,7 +1460,7 @@ export default function BartenderRemotePage() {
             </div>
             <div className="flex gap-3 flex-wrap">
               {/* Schedule entry removed in v2.54.55 — promoted to primary tab strip */}
-              {djControlsEnabled && (
+              {djControlsEnabled ? (
                 <button
                   onClick={() => {
                     setActiveTab('dj')
@@ -1476,6 +1478,14 @@ export default function BartenderRemotePage() {
                     <span className="text-xs opacity-70">Assignment lock</span>
                   </div>
                 </button>
+              ) : (
+                <div className="flex-1 min-w-[140px] min-h-[64px] flex items-center gap-3 px-4 py-3 rounded-xl border border-slate-700/50 bg-slate-800/30 text-slate-400">
+                  <Music className="h-5 w-5 flex-shrink-0 opacity-50" />
+                  <div className="flex flex-col items-start">
+                    <span className="text-sm font-semibold text-slate-300">DJ Mode unavailable</span>
+                    <span className="text-xs opacity-70">Enable in Admin → Bartender Remote Settings</span>
+                  </div>
+                </div>
               )}
             </div>
           </div>
