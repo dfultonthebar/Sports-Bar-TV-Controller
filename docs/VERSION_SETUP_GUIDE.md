@@ -35,6 +35,36 @@ is the archive.
 
 ---
 
+## v2.54.81 — disk-installer silent-fail sweep (5 critical sites hardened) (2026-05-27)
+
+**Versions covered:** v2.54.81
+**Branch landed:** main
+**Fleet target:** ISO consumers only — bundled into next ISO build (v3.0.1 attempt-8 or whichever follows). No runtime change for installed fleet.
+
+**Followup to v2.54.80's explicit "future audit" promise.** Swept all `|| true` / `2>/dev/null || true` patterns in `disk-installer.sh` and classified each by severity. 5 sites at install-critical or fleet-security steps were silently swallowing failures.
+
+**Fixed:**
+
+| Line | Was | Now | Severity if failure was silent |
+|------|-----|-----|-------------------------------|
+| `partprobe ${TARGET_DISK}` | `2>/dev/null \|\| true` | 1 retry + exit 1 | mkfs fails with confusing error instead of clear partprobe message |
+| `systemctl enable ssh` | `2>/dev/null \|\| true` | exit 1 on fail | Operator locked out of installed box, no SSH on first boot |
+| `dpkg-reconfigure openssh-server` | `2>/dev/null \|\| true` | exit 1 on fail | **Fleet-wide MITM risk** — every install ships with chroot's SSH host keys |
+| `systemd-machine-id-setup` | `2>/dev/null \|\| true` | exit 1 on fail | Duplicate machine-ids break DHCP IDs, journald, dbus across fleet |
+| `systemctl enable sports-bar-first-boot.service` | `2>/dev/null \|\| true` | exit 1 on fail | **CRITICAL** — silent fail = no clone, no PM2, no app. Installed system is bricked even though installer reports success |
+
+**Left as-is (defensive, safe):**
+- Cleanup-trap umount calls (lines 55-61) — best-effort teardown, `|| true` is correct.
+- Info-gathering reads of sysfs / existing-OS detection (lines 95-151) — fallback to defaults is fine.
+- Timezone symlink (323) — cosmetic.
+- Casper / autoremove (430-434) — bloat only, doesn't affect boot.
+
+**Required Manual Steps:** none for existing locations. Next-NUC install with the next-built ISO will surface real errors loudly instead of silently shipping broken installs.
+
+**Pattern note:** v2.54.76 (parted/mkfs missing) + v2.54.79 (unsquashfs missing) + v2.54.80 (grub-install silent fail) + v2.54.81 (5 more silent fails). **The disk-installer.sh script is now defensively "fail loud" at every install-critical site.** Future contributors: do NOT add `|| true` to any new step that touches the disk, programs the bootloader, configures security identity, or enables boot-time services. The `cleanup()` trap is the only place where best-effort suppression is correct.
+
+---
+
 ## v2.54.80 — disk-installer GRUB install: fatal-fail + MBR signature verify + cleanup-chroot helper (2026-05-27)
 
 **Versions covered:** v2.54.80

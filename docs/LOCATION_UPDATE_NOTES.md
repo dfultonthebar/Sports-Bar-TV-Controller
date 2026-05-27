@@ -46,6 +46,28 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-27 — v2.54.81 — disk-installer silent-fail sweep (5 critical sites)
+
+**Risk:** GO — zero runtime impact for installed fleet.
+
+**What changed:** swept `disk-installer.sh` for `|| true` patterns at install-critical steps. Removed silent-fail on 5 sites — partprobe, systemctl enable ssh, dpkg-reconfigure openssh-server, systemd-machine-id-setup, systemctl enable sports-bar-first-boot.service. Each now `exit 1` on failure with a clear error.
+
+**Most important:** `systemctl enable sports-bar-first-boot.service` was silent-fail. If it failed, the installed system would boot cleanly but never clone the app, never start PM2, never serve bartender remote — appears "INSTALLATION COMPLETE!" but produces an empty box. This was likely the next bug we'd hit after v2.54.80 fixed GRUB.
+
+**Where this matters:** new-NUC installs only. Installed fleet boxes never re-run disk-installer.
+
+**Bonus:** `dpkg-reconfigure openssh-server` was silent-fail — meaning if it failed, every fleet install would ship with the SAME SSH host keys baked into the chroot. Fleet-wide MITM risk we'd never have noticed until first network capture. Now fatal.
+
+**Manual steps required:** none. Install pipeline now fails LOUDLY at any disk-touching, bootloader-programming, identity-generating, or boot-service-enabling step.
+
+**Rollback:** `git revert <SHA>` — no functional change to revert at any installed location.
+
+**Pattern (4th iteration this week):** v2.54.76 + v2.54.79 + v2.54.80 + v2.54.81. Disk-installer.sh now systematically loud. Future contributors must NOT add `|| true` to disk/boot/identity steps — only `cleanup()` trap is exempt.
+
+`Checkpoint model: opus`
+
+---
+
 ### 2026-05-27 — v2.54.80 — disk-installer GRUB hardening: fatal-fail + MBR signature verify
 
 **Risk:** GO — zero runtime impact for installed fleet.
