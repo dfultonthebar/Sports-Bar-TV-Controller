@@ -346,14 +346,14 @@ export default function DirecTVRemote({ deviceId, deviceName, ipAddress, port, o
             className="bg-slate-700 hover:bg-slate-600 text-white p-3"
           >
             <ArrowLeft className="w-5 h-5 mr-1" />
-            <span className="text-xs">Back</span>
+            <span className="text-sm">Back</span>
           </Button>
           <Button
             onClick={() => sendCommand('EXIT', 'Exit')}
             className="bg-slate-700 hover:bg-slate-600 text-white p-3"
           >
             <LogOut className="w-5 h-5 mr-1" />
-            <span className="text-xs">Exit</span>
+            <span className="text-sm">Exit</span>
           </Button>
         </div>
 
@@ -395,14 +395,14 @@ export default function DirecTVRemote({ deviceId, deviceName, ipAddress, port, o
             onClick={() => sendCommand('CH_UP', 'Channel Up')}
             className="bg-slate-700 hover:bg-slate-600 text-white p-3"
           >
-            <span className="text-xs mr-1">CH</span>
+            <span className="text-sm mr-1">CH</span>
             <ChevronUp className="w-5 h-5" />
           </Button>
           <Button
             onClick={() => sendCommand('CH_DOWN', 'Channel Down')}
             className="bg-slate-700 hover:bg-slate-600 text-white p-3"
           >
-            <span className="text-xs mr-1">CH</span>
+            <span className="text-sm mr-1">CH</span>
             <ChevronDown className="w-5 h-5" />
           </Button>
         </div>
@@ -445,7 +445,7 @@ export default function DirecTVRemote({ deviceId, deviceName, ipAddress, port, o
         <div className="grid grid-cols-3 gap-2">
           <Button
             onClick={() => sendCommand('SKIP_BACK', 'Skip Back')}
-            className="bg-slate-700 hover:bg-slate-600 text-white p-2 text-xs"
+            className="bg-slate-700 hover:bg-slate-600 text-white p-2 text-sm"
           >
             Skip -30s
           </Button>
@@ -457,7 +457,7 @@ export default function DirecTVRemote({ deviceId, deviceName, ipAddress, port, o
           </Button>
           <Button
             onClick={() => sendCommand('SKIP_FORWARD', 'Skip Forward')}
-            className="bg-slate-700 hover:bg-slate-600 text-white p-2 text-xs"
+            className="bg-slate-700 hover:bg-slate-600 text-white p-2 text-sm"
           >
             Skip +30s
           </Button>
@@ -470,7 +470,7 @@ export default function DirecTVRemote({ deviceId, deviceName, ipAddress, port, o
             className="bg-slate-700 hover:bg-slate-600 text-white p-3"
           >
             <Volume2 className="w-5 h-5" />
-            <span className="ml-1 text-xs">+</span>
+            <span className="ml-1 text-sm">+</span>
           </Button>
           <Button
             onClick={() => sendCommand('MUTE', 'Mute')}
@@ -483,7 +483,7 @@ export default function DirecTVRemote({ deviceId, deviceName, ipAddress, port, o
             className="bg-slate-700 hover:bg-slate-600 text-white p-3"
           >
             <Volume2 className="w-5 h-5" />
-            <span className="ml-1 text-xs">-</span>
+            <span className="ml-1 text-sm">-</span>
           </Button>
         </div>
 
