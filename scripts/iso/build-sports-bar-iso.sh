@@ -621,22 +621,20 @@ mkdir -p "${ISO_STAGING}/casper"
 SQUASH_FILE="${ISO_STAGING}/casper/filesystem.squashfs"
 
 log "Running mksquashfs..."
-# v3.0.1: removed `-Xdict-size 100%` which tried to use ALL available RAM
-# as the XZ dictionary. On Holmgren (31 GB RAM with Ollama resident ~18 GB)
-# this got OOM-killed mid-compression, producing a 611 MB truncated
-# squashfs that initramfs couldn't mount. Bumped block size to 1M (already
-# was) but capped dict-size at 1M (modest, fits in memory tight or loose).
-# Also removed `|| true` after the grep filter — that was SWALLOWING the
-# mksquashfs failure (the grep `|| true` masked a SIGKILL exit code), so
-# the build "succeeded" with a broken squashfs.
-# pipefail (set -o pipefail is on via `set -euo pipefail` at top of script)
-# will now propagate the mksquashfs failure through the pipe.
+# v3.0.1 attempt 1 used XZ which OOM-killed even with -Xdict-size 1M -mem 4G
+# because Holmgren has ~18 GB resident Ollama and XZ's 20-parallel-cores
+# parallelism spiked memory hard during the largest blocks.
+# v3.0.1 attempt 2 (this) switches to zstd compression — the modern Ubuntu
+# casper default. Way lower memory than xz (no big dictionary), faster
+# (~3x), and only ~5% larger output. Plus 4-thread cap so even tight
+# memory boxes can build.
+# pipefail (set -o pipefail) is enforced so a mksquashfs failure propagates.
 set -o pipefail
 mksquashfs "${CHROOT_DIR}" "$SQUASH_FILE" \
-    -comp xz \
+    -comp zstd \
+    -Xcompression-level 19 \
     -b 1M \
-    -Xdict-size 1M \
-    -mem 4G \
+    -processors 4 \
     -noappend \
     -e boot \
     2>&1 | grep -E "^(Parallel|Filesystem|mksquashfs|[0-9]+%|FATAL)" || {
