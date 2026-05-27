@@ -298,6 +298,10 @@ log "chroot environment ready."
 step "Step 3/10: Installing software in chroot"
 
 log "Installing base packages..."
+# v3.0.1: added parted/gdisk/e2fsprogs/dosfstools — disk-installer.sh
+# needs `parted` to partition + `mkfs.ext4` + `mkfs.vfat` to format.
+# These were missing from v3.0 chroot → the install step 2/7 (partitioning)
+# died with "parted: command not found", caught during 2026-05-27 VM pre-flight.
 chr "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     linux-image-generic \
     linux-headers-generic \
@@ -317,6 +321,15 @@ chr "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     iputils-ping \
     iproute2 \
     nmap \
+    parted \
+    gdisk \
+    e2fsprogs \
+    dosfstools \
+    grub-pc-bin \
+    grub-efi-amd64-bin \
+    grub-efi-amd64-signed \
+    shim-signed \
+    rsync \
     2>&1" | tail -20
 
 # adb and cec-utils installed separately (universe, may be named differently)
@@ -394,6 +407,37 @@ cat >> "${CHROOT_DIR}/etc/ssh/sshd_config" << 'EOF'
 PasswordAuthentication yes
 PermitRootLogin no
 EOF
+
+# v3.0.1: explicitly enable ssh.service in the chroot so post-install boots
+# come up with SSH listening. openssh-server's postinst USUALLY enables it,
+# but chroot installation sometimes skips because systemd isn't running
+# inside the chroot to receive the enable. Explicit `systemctl enable` writes
+# the symlink directly into /etc/systemd/system/multi-user.target.wants/.
+chr "systemctl enable ssh.service" || true
+chr "systemctl enable ssh.socket"  || true
+
+# v3.0.1: host keys are stripped at Step 7 cleanup so the installed system
+# can generate fresh ones on first boot. The openssh-server postinst hook
+# regenerates them automatically when sshd starts the first time. Belt-and-
+# suspenders: add a one-shot service that runs `ssh-keygen -A` before sshd
+# starts, in case the postinst hook missed.
+cat > "${CHROOT_DIR}/etc/systemd/system/sports-bar-sshkeys.service" << 'SSHKEY_EOF'
+[Unit]
+Description=Sports Bar TV Controller - Regenerate SSH host keys if missing
+ConditionPathExists=!/etc/ssh/ssh_host_ed25519_key
+Before=ssh.service ssh.socket
+DefaultDependencies=no
+After=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/ssh-keygen -A
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+SSHKEY_EOF
+chr "systemctl enable sports-bar-sshkeys.service" || true
 
 log "System configuration complete."
 
