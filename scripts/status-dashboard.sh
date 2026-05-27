@@ -3,6 +3,10 @@
 # Sports Bar TV Controller — Boot Status Dashboard
 # Displays system/app status in a color-coded terminal dashboard.
 # Refreshes every 5 seconds. Press Ctrl+C or 'q' to exit to shell.
+#
+# OPERATOR HELPER. Run on tty1 / SSH session ad-hoc to see live system
+# state. Not invoked by any other script in the codebase (verified v2.54.64
+# audit) — operator convenience tool.
 # =============================================================================
 
 set -euo pipefail
