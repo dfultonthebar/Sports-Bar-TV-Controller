@@ -115,7 +115,7 @@ ATTEMPTS=0
 SHOTS=0
 while [ $(date +%s) -lt $DEADLINE ]; do
     ATTEMPTS=$((ATTEMPTS + 1))
-    IP=$(px "ip neigh | grep -i '$VM_MAC' | awk '{print \$1}' | head -1" 2>/dev/null || true)
+    IP=$(px "ip -4 neigh | grep -i '$VM_MAC' | awk '{print \$1}' | head -1" 2>/dev/null || true)
     if [ -n "$IP" ]; then
         VM_IP="$IP"
         log "🎉 VM 200 on network at $IP (attempt $ATTEMPTS)"
