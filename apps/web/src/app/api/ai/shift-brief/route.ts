@@ -231,21 +231,25 @@ async function gatherShiftContext() {
       WHERE ne.start_time > ${nowUnix}
         AND nv.is_active = 1
         AND (
-          -- Big venues (stadium / concert hall): 72-hour lookahead,
-          -- 25-mile radius. Concerts and games are planned days out;
-          -- the bartender wants "Heads up: Packers home game this
-          -- weekend" 2-3 days early, not just the same shift. 72h
-          -- chosen as Fri-prep-for-Sun-game horizon.
+          -- v2.54.74: operator directive — "don't need to see anything
+          -- further than 2 miles away from the location in the shift
+          -- brief". Capped BOTH big-venue + small-venue radius at 2 mi.
+          -- Big venues stay on the 72h lookahead horizon (a Lambeau game
+          -- 5 mi away is still worth knowing about — but the operator
+          -- says no). Small venues stay on 12h.
+          --
+          -- This filter applies ONLY to what shows up in the shift-brief
+          -- bullets. The wider-radius data (Ticketmaster 30 mi, Bananas
+          -- whatever) is STILL fetched + stored in NeighborhoodEvent for
+          -- the SDR pre-emptive-strike correlator + AI digest — those
+          -- need wider context to do their jobs.
           (nv.category IN ('stadium', 'concert_hall')
             AND nv.distance_mi IS NOT NULL
-            AND nv.distance_mi <= 25.0
+            AND nv.distance_mi <= 2.0
             AND ne.start_time < ${nowUnix + 72 * 3600})
           OR
-          -- Small venues (bar / restaurant / other): 12-hour lookahead,
-          -- 1-mile radius. Bands at neighbor bars are spontaneous and
-          -- only relevant tonight.
           (nv.category NOT IN ('stadium', 'concert_hall')
-            AND (nv.distance_mi IS NULL OR nv.distance_mi <= 1.0)
+            AND (nv.distance_mi IS NULL OR nv.distance_mi <= 2.0)
             AND ne.start_time < ${twelveHoursLater})
         )
         AND (nv.is_self = 0 OR nv.is_self IS NULL)
