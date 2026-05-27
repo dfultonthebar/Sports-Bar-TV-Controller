@@ -13,6 +13,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Monitor, X, Tv, Grid2X2, Maximize, Power } from 'lucide-react'
 import { logger } from '@sports-bar/logger'
+import BartenderEmptyState from './BartenderEmptyState'
 
 interface Room {
   id: string
@@ -264,6 +265,54 @@ export default function InteractiveBartenderLayout({
     || layout.professionalImageUrl
     || layout.imageUrl
 
+  // Empty-state recovery (v2.54.57). Two failure modes lead a bartender
+  // here:
+  //   1. Fresh install — no BartenderLayout row exists, API returns the
+  //      DEFAULT_LAYOUT with zones=[] and no id.
+  //   2. Botched merge — a `git merge main` into the location branch
+  //      silently overwrote tv-layout.json with main's empty template
+  //      (CLAUDE.md Gotcha #7), and an auto-reseed wiped the DB row's
+  //      zones.
+  // In both cases the bartender opens the iPad and sees a blank Video
+  // tab with no recovery path. We render the same shared empty-state
+  // card so the surface is consistent across Video / Audio / Music.
+  //
+  // We distinguish:
+  //   - no zones AND no layout.id → "never configured" framing
+  //   - no zones BUT layout.id present → "setup started, not finished"
+  //   - has zones but no imageUrl → still legitimate (label-driven
+  //     bartender remote works without a floor plan), so we fall
+  //     through to the main render. Floor plan upload is optional.
+  const noZones = !layout.zones || layout.zones.length === 0
+  if (noZones) {
+    const partiallyConfigured = Boolean(layout.id)
+    return (
+      <BartenderEmptyState
+        icon={<Monitor className="w-12 h-12" strokeWidth={1.5} />}
+        heading="No bar layout configured yet"
+        body={
+          <>
+            <p>
+              This iPad needs a bar layout — the floor plan with TV positions — before you
+              can route games to TVs from here.
+            </p>
+            <p>
+              {partiallyConfigured
+                ? 'Setup was started, but no TVs have been placed on the layout yet.'
+                : 'On a fresh install this is normal. The manager or admin needs to set it up once, then it stays.'}
+            </p>
+          </>
+        }
+        partiallyConfigured={partiallyConfigured}
+        adminUrl="/layout-editor"
+        adminLabel="Open Layout Editor"
+        managerMessage="The bartender iPad shows no TVs on the Video tab — please open Layout Editor in admin and set up the bar layout so I can route games."
+      />
+    )
+  }
+
+  // Has zones but no background image — still usable, but tell the
+  // manager so they can finish the polish step.
   if (!imageUrl) {
     return (
       <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl shadow-2xl p-12 text-center">

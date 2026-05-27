@@ -758,6 +758,45 @@ export const tvBulkPowerSchema = z.object({
 })
 
 // ============================================================================
+// SPORTS GUIDE SCHEMAS — v2.54.57
+// (Grok Part 2 P1 — closing validation/rate-limit gaps on the
+// sports-guide + scheduling surface. Schemas are narrow: each route's
+// actual body/query shape, not generic catch-alls.)
+// ============================================================================
+
+/**
+ * POST /api/sports-guide — optional `days` body field.
+ * Defaults to 7 (server-side), capped at 14 to bound The Rail API call
+ * cost. Body is optional; an empty body or no body at all is valid.
+ * Outer .default({days:7}) ensures missing body resolves to {days:7}
+ * (not just `{}`), which matters because the GET handler proxies to
+ * POST(request) with no body.
+ */
+export const sportsGuideRequestSchema = z.object({
+  days: z.coerce.number().int().min(1).max(14).optional().default(7),
+}).partial().optional().default({ days: 7 })
+
+/**
+ * POST /api/sports-guide/update-key — admin key rotation.
+ * Both apiKey + userId are required; apiKey min 10 chars matches the
+ * apiKeyValueSchema policy; userId is The Rail's numeric/alphanumeric
+ * account id.
+ */
+export const sportsGuideUpdateKeySchema = z.object({
+  apiKey: z.string().min(10, 'API key must be at least 10 characters'),
+  userId: z.string().min(1, 'User ID is required').max(100),
+})
+
+/**
+ * DELETE /api/scheduling/input-sources?id=...
+ * Validates the `id` query param so a typo / missing param 400s cleanly
+ * instead of attempting `db.delete(... where id=null)`.
+ */
+export const inputSourceDeleteQuerySchema = z.object({
+  id: nonEmptyStringSchema.max(100),
+})
+
+// ============================================================================
 // EXPORTS
 // ============================================================================
 
@@ -873,5 +912,10 @@ export const ValidationSchemas = {
   tvVolumeControl: tvVolumeControlSchema,
   tvInputControl: tvInputControlSchema,
   tvPair: tvPairSchema,
-  tvBulkPower: tvBulkPowerSchema
+  tvBulkPower: tvBulkPowerSchema,
+
+  // Sports Guide (v2.54.57)
+  sportsGuideRequest: sportsGuideRequestSchema,
+  sportsGuideUpdateKey: sportsGuideUpdateKeySchema,
+  inputSourceDeleteQuery: inputSourceDeleteQuerySchema,
 }
