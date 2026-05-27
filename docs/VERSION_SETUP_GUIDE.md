@@ -35,6 +35,38 @@ is the archive.
 
 ---
 
+## v2.54.74 — Shift brief: cap RF/neighborhood-event radius at 2 mi + chat route auth removed for bartender path (2026-05-27)
+
+**Versions covered:** v2.54.74
+**Branch landed:** main
+**Fleet target:** rolling upgrade. **Operator-facing fixes** — chat reachable, shift brief filters to nearby only.
+
+**Two operator-directed fixes in one ship.**
+
+### Fix 1 — `/api/chat` auth gate removed for bartender path
+
+Operator: "i see the chat window but asking to log in that should never be a thing on the bartender remote".
+
+The bartender iPad uses `/remote` without ever logging in — every bartender-reachable route on port 3002 is unauthenticated by design, gated by the nginx allow-list. v2.54.45's audit added `requireAuth('STAFF')` to `/api/chat` for DoS hardening, but that made the chat route behave differently from EVERY OTHER bartender route → 401 → "log in" toast.
+
+**Fix in `apps/web/src/app/api/chat/route.ts:192-209`** (parallel agent): removed `requireAuth(request, 'STAFF', { auditAction: 'ai_chat' })`. Kept `withRateLimit(RateLimitConfigs.AI)` + `validateRequestBody(ValidationSchemas.aiQuery)` + nginx allow-list as defense-in-depth. Block comment documents the reversal so the next audit doesn't re-add it.
+
+Verified: `curl -X POST http://localhost:3002/api/chat` (no cookie, stream=true) now returns SSE 200 with RAG sources + Ollama-generated answer.
+
+### Fix 2 — shift brief neighborhood RF radius capped at 2 mi
+
+Operator: "about the rf data don't need to see anything further than 2 miles away from the location in the shift brief".
+
+`apps/web/src/app/api/ai/shift-brief/route.ts` previously used 25 mi for big venues (stadium/concert hall) + 1 mi for small venues. Operator's preference: 2 mi for both.
+
+**Fix at lines ~233-251**: both branches capped at `nv.distance_mi <= 2.0`. Lookahead windows unchanged (72h for big venues, 12h for small).
+
+**Scope clarification** (in inline comment): this ONLY affects the shift-brief BULLETS shown to bartenders. The wider-radius data (Ticketmaster 30 mi, Bananas full radius) is STILL fetched + stored in `NeighborhoodEvent` for downstream consumers: the SDR pre-emptive-strike correlator + AI digest. Those still need the wider context to do their jobs (e.g., correlating an SDR carrier blast with a Lambeau game 5 mi away). Just bartender-facing bullets get tightened.
+
+Build green (post-retry — first build attempt got OOM-killed; Holmgren is memory-tight today with the ISO rebuild also running. Retry succeeded). PM2 restarted clean.
+
+---
+
 ## v2.54.73 — Ask AI "Something hiccuped" crash fix: crypto.randomUUID secure-context (2026-05-27)
 
 **Versions covered:** v2.54.73
