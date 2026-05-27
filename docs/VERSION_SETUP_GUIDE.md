@@ -35,6 +35,20 @@ is the archive.
 
 ---
 
+## v2.54.82 — AtlasProgrammingInterface root Card→div migration (5 of 9 root blocks; iterator Cards deferred) (2026-05-27)
+
+**Versions covered:** v2.54.82
+**Branch landed:** main
+**Fleet target:** all locations (UI only, no behavior change).
+
+Migrated the 5 root-level `<Card>` blocks in `apps/web/src/components/AtlasProgrammingInterface.tsx` to bordered slate `<div>` per `docs/UI_STYLING.md`: processor add/edit form, loading-state card, empty-state dashed card, processor selection card (in `processors.map` but listed as root by the migration plan), and the main "Programming: ..." card wrapping the Inputs/Outputs/Scenes/Messages tabs. The 4 inner per-row iterator Cards (input rows, output rows, scene rows, message rows) are intentionally LEFT ALONE for a follow-up pass — they have their own styling concerns and will be migrated separately. The `Card, CardContent, CardDescription, CardHeader, CardTitle` import is kept because the iterator Cards still use it.
+
+**Required Manual Steps:** None. UI-only, no DB, no env, no runtime change. Auto-update standard rebuild + PM2 restart is sufficient.
+
+**Verification:** `/atlas-config` (admin) → "Add Processor" form, processor list grid, and selected-processor programming panel should all render with the standard `bg-slate-800/50 border border-slate-700 rounded-lg` look — same dark-theme feel as the rest of the dashboard. Tabs inside the selected-processor panel still work.
+
+---
+
 ## v2.54.81 — disk-installer silent-fail sweep (5 critical sites hardened) (2026-05-27)
 
 **Versions covered:** v2.54.81
