@@ -35,6 +35,45 @@ is the archive.
 
 ---
 
+## v2.54.78 — ISO: add Tailscale + Grok CLI to first-boot install (2026-05-27)
+
+**Versions covered:** v2.54.78
+**Branch landed:** main
+**Fleet target:** ISO consumers — next ISO build (v3.0.1 attempt-5+) gets these auto-installed. Existing fleet unaffected.
+
+Operator: "so does our iso include the install of tailscale claude and grok?"
+
+**Audit results (current v3.0.1 attempt-4 ISO):**
+- ✅ Claude CLI — installed in chroot at `build-sports-bar-iso.sh:366` AND in first-boot at `first-boot-fresh.sh:130` (curl claude.ai/install.sh, marked non-fatal)
+- ❌ Tailscale — NOT installed. Operator had to manually run the curl one-liner.
+- ❌ Grok CLI — NOT installed. Same gap.
+
+**Fixes in `scripts/iso/first-boot-fresh.sh`** (post-install path that runs on first reboot after disk-installer):
+
+1. **Grok CLI install** (after the Claude install): `sudo -u ubuntu bash -c "curl -fsSL https://x.ai/cli/install.sh | bash"` — same install pattern as Claude. Drops binaries to `~/.grok/`. Non-fatal — first-boot continues if x.ai is unreachable.
+
+2. **Tailscale install** (full daemon, not just CLI): adds Ubuntu jammy/noble Tailscale apt repo + keyring, `apt-get install -y tailscale`, `systemctl enable --now tailscaled`. Auto-detects codename via `lsb_release -cs`. Non-fatal with explicit fallback instruction in the log if it fails.
+
+3. **Manual auth step**: Tailscale install does NOT run `tailscale up` (that requires interactive browser auth). Logs "To join the Tailnet, run: sudo tailscale up" so the operator sees it in the first-boot log + can act on it after reboot. Could be added to the wizard later (one-liner prompt) but for now operator runs it themselves.
+
+**Recommended for the new bar's NUC**:
+After first boot + wizard, run:
+```
+sudo tailscale up                    # opens auth URL — operator clicks once
+grok --version                       # verify Grok CLI installed
+claude --version                     # verify Claude CLI installed
+```
+
+**Current v3.0.1 attempt-4 ISO** (the one being installed on VM 200 right now) does NOT have tailscale/grok. If the install succeeds, the operator can manually add them post-install:
+```
+sudo bash -c "curl -fsSL https://tailscale.com/install.sh | sh && tailscale up --ssh"
+sudo -u ubuntu bash -c "curl -fsSL https://x.ai/cli/install.sh | bash"
+```
+
+**Next ISO build (v3.0.1 attempt-5)** will have both baked in automatically. Operator can rebuild when convenient — the install pipeline is now proven working end-to-end so subsequent rebuilds are confidence-building, not risk-discovering.
+
+---
+
 ## v2.54.77 — Atlas/IR Card→div sweep + Watcher Health panel + Matrix Config UI (3 parallel agents) (2026-05-27)
 
 **Versions covered:** v2.54.77
