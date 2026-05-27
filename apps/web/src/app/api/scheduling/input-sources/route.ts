@@ -5,7 +5,7 @@ import { eq } from 'drizzle-orm';
 import { logger } from '@sports-bar/logger';
 import { withRateLimit } from '@/lib/rate-limiting/middleware';
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter';
-import { validateRequestBody, ValidationSchemas, z } from '@/lib/validation';
+import { validateRequestBody, validateQueryParams, ValidationSchemas, isValidationError, z } from '@/lib/validation';
 
 // GET - Get all input sources
 export async function GET(request: NextRequest) {
@@ -105,15 +105,12 @@ export async function DELETE(request: NextRequest) {
 
   logger.api.request('DELETE', '/api/scheduling/input-sources');
 
-  const { searchParams } = new URL(request.url);
-  const id = searchParams.get('id');
-
-  if (!id) {
-    return NextResponse.json(
-      { success: false, error: 'Missing id parameter' },
-      { status: 400 }
-    );
-  }
+  // v2.54.57 — replace ad-hoc searchParams.get('id') + presence check with
+  // proper validateQueryParams. Catches typo'd query keys + empty string
+  // values that the old check let through.
+  const queryValidation = validateQueryParams(request, ValidationSchemas.inputSourceDeleteQuery);
+  if (isValidationError(queryValidation)) return queryValidation.error;
+  const { id } = queryValidation.data;
 
   try {
     await db.delete(schema.inputSources).where(eq(schema.inputSources.id, id));
