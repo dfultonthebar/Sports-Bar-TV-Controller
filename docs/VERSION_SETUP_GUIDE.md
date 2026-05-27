@@ -35,6 +35,45 @@ is the archive.
 
 ---
 
+## v2.54.69 — ISO v3.0.1: fix dispatcher autostart + tty1 autologin + recovery bash-profile (2026-05-27)
+
+**Versions covered:** v2.54.69 (repo) + ISO v3.0.1 (rebuilt artifact)
+**Branch landed:** main
+**Fleet target:** no runtime change for installed fleet. **ISO consumers**: download the v3.0.1 ISO instead of v3.0 (the v3.0 dispatcher never fires on boot).
+
+Pre-flight on Proxmox VM 200 yesterday revealed the v3.0 ISO boots to a tty1 login prompt instead of auto-launching disk-installer.sh / first-boot-fresh.sh. Three real root causes (per `feedback_iso_v3_autostart_missing` memory):
+
+**Bug 1 — dispatcher waits for network that never comes:** the v3.0 service had `After=network-online.target Wants=network-online.target`. In any boot path where DHCP fails (which the VM hit), `network-online.target` never fires → dispatcher hangs forever → getty@tty1 fires first → operator sees login prompt.
+
+**Bug 2 — disk-installer service runs AFTER getty:** v3.0 service had `After=multi-user.target`. By the time `multi-user.target` is reached, `getty@tty1.service` has already started + bound /dev/tty1 + shown the login prompt. Disk-installer.service was effectively shadowed.
+
+**Bug 3 — no autologin fallback:** if all else failed, operator landed at a login prompt with casper-overridden credentials they couldn't guess (chroot's `ubuntu:ubuntu` is rewritten by casper at runtime).
+
+**Fixes in `scripts/iso/build-sports-bar-iso.sh` (Step 5)**:
+
+1. **`sports-bar-first-boot.service`** (the fresh-mode dispatcher) — added `ConditionKernelCommandLine=!sports_bar_mode=install` so it only fires when NOT in install mode (so install mode doesn't compete + so install mode doesn't pay the network-wait tax).
+
+2. **`sports-bar-disk-installer.service`** (the install-mode TTY taker) — replaced `After=multi-user.target` with `Before=getty@tty1.service` + `Conflicts=getty@tty1.service`. Now disk-installer.service WINS tty1 before getty gets there. Added `TTYVHangup=yes`, `KillMode=process`, `StandardInput=tty-force` per systemd canonical recipes for tty-grabbing services. No network dependency — disk install doesn't need GitHub access.
+
+3. **NEW `/etc/systemd/system/getty@tty1.service.d/autologin.conf`** — drop-in that makes tty1 auto-login as `ubuntu` (no password). This is the fallback path: if for any reason both dispatchers fail to fire, the operator gets a working shell + the `.bash_profile` recovery net (#4) below.
+
+4. **NEW `/home/ubuntu/.bash_profile`** — recovery net. Runs on every interactive shell start. If `sports_bar_mode=` is in `/proc/cmdline` AND `DONE_MARKER` doesn't exist (= dispatcher hasn't completed), it prints a banner + offers to run `/usr/local/bin/sports-bar-first-boot.sh` manually. Y/n prompt with default Y. Skip-this-session token at `/tmp/.skip-recovery`. Harmless on successful runs (DONE_MARKER blocks re-prompt).
+
+5. **NEW `/etc/issue`** banner — shows live ISO credentials (`ubuntu`/`ubuntu`) before any login prompt + points at `docs/BARE_METAL_ISO.md`. Visible whenever a manual login happens.
+
+6. **`VERSION` bumped from `v3.0` to `v3.0.1`** in the build script so the new artifact has a distinct filename + GitHub Release tag.
+
+**`docs/BARE_METAL_ISO.md`** — added "Live ISO credentials" section above "What you need" so operators know `ubuntu`/`ubuntu` for any debug session AND that autologin handles the normal case.
+
+**v3.0.1 ISO build kicked on Holmgren** as part of this commit. Once it completes (~20-30 min), I scp it to Proxmox + retest on VM 200 (the same VM that exposed the v3.0 bug yesterday). End-to-end target:
+- Install path: BIOS → ISOLINUX → "Install to Disk" → disk-installer takes tty1 → installs → reboot → installed Ubuntu → first-boot-fresh.sh runs (network up now) → location-setup-wizard
+- Live/safe path: same boot → autologin to `ubuntu` → bash_profile detects mode → offers to run dispatcher manually
+- Auth verified by walking the wizard with test PINs.
+
+If the rebuild passes end-to-end, the v3.0.1 ISO replaces v3.0 on GitHub Releases + Holmgren's HTTP serving + the Proxmox netboot LXC menu.
+
+---
+
 ## v2.54.68 — Ask AI button overlap fix + REQUIRED nginx re-run (v2.54.47 follow-up missed) (2026-05-27)
 
 **Versions covered:** v2.54.68
