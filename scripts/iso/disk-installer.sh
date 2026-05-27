@@ -191,12 +191,27 @@ step "Step 2/7: Partitioning ${TARGET_DISK}"
 # Wipe existing partition table
 wipefs -af "$TARGET_DISK" &>/dev/null
 
-# Create GPT partition table with EFI + root
+# v2.54.86: added bios_boot partition (1MB, type ef02). On a GPT-labelled
+# disk being booted in BIOS legacy mode, grub-install --target=i386-pc has
+# no place to embed its core image without a bios_boot partition. Without
+# this, MBR sig 0x55AA is technically present (so v2.54.80's check passes)
+# but GRUB stage 1's pointer to stage 2 is undefined → SeaBIOS hands off to
+# the MBR and the bootloader hangs immediately. Caught during v2.54.84
+# attempt-8 install: kernel + initrd + grub.cfg all correctly populated,
+# UUID matched, but VM hung at SeaBIOS "Booting from Hard Disk..." with
+# no GRUB menu, no kernel.
+#
+# Layout (numbered from 1):
+#   1 = bios_boot   1-2 MiB         (type ef02, no filesystem, for GRUB core)
+#   2 = EFI         2-514 MiB       (fat32, for UEFI boot)
+#   3 = root        514 MiB-end     (ext4, for the system)
 parted -s "$TARGET_DISK" \
     mklabel gpt \
-    mkpart "EFI" fat32 1MiB 513MiB \
-    set 1 esp on \
-    mkpart "root" ext4 513MiB 100%
+    mkpart "bios_boot" 1MiB 2MiB \
+    set 1 bios_grub on \
+    mkpart "EFI" fat32 2MiB 514MiB \
+    set 2 esp on \
+    mkpart "root" ext4 514MiB 100%
 
 sleep 2  # Wait for kernel to re-read partition table
 # v2.54.81: silent-fail removed. If partprobe fails, the kernel doesn't see
@@ -210,15 +225,19 @@ if ! partprobe "$TARGET_DISK"; then
 fi
 sleep 1
 
-# Determine partition names (nvme uses p1/p2, sata uses 1/2)
+# v2.54.86: partition indices shifted by 1 (bios_boot is now part 1).
+# Determine partition names (nvme uses p1/p2/p3, sata uses 1/2/3)
 if [[ "$TARGET_DISK" == *"nvme"* ]]; then
-    EFI_PART="${TARGET_DISK}p1"
-    ROOT_PART="${TARGET_DISK}p2"
+    BIOS_PART="${TARGET_DISK}p1"
+    EFI_PART="${TARGET_DISK}p2"
+    ROOT_PART="${TARGET_DISK}p3"
 else
-    EFI_PART="${TARGET_DISK}1"
-    ROOT_PART="${TARGET_DISK}2"
+    BIOS_PART="${TARGET_DISK}1"
+    EFI_PART="${TARGET_DISK}2"
+    ROOT_PART="${TARGET_DISK}3"
 fi
 
+log "BIOS boot partition: ${BIOS_PART} (1 MiB, for GRUB core image on GPT+BIOS systems)"
 log "EFI partition: ${EFI_PART}"
 log "Root partition: ${ROOT_PART}"
 
