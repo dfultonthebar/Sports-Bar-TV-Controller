@@ -6,10 +6,39 @@ Ubuntu 22.04+ host (typically Intel NUC) with at least 8 GB RAM and LAN
 access to the venue's hardware (matrix, Fire TVs, DirecTV receivers,
 Atlas/BSS/dbx audio processor, IR blasters).
 
-## TL;DR — the whole thing in 9 commands
+## TL;DR — what install.sh does for you, and what you still must do by hand
 
-For an operator who's done this before. Each step has a section below
-with full explanation and troubleshooting.
+This guide covers the curl-one-liner path (clean Ubuntu host, you SSH in
+and run `install.sh`). For the bare-metal USB / ISO path, see
+`docs/BARE_METAL_ISO.md` — it wraps everything below into a guided
+first-boot flow.
+
+**What `install.sh` does automatically:**
+system deps + Node 22 + Ollama + Tailscale + `npm ci` +
+`bootstrap-drizzle-migrations.sh` + `drizzle-kit migrate` +
+`npm run build` + PM2 process registration + Phase 11 verify-install
+health check. After it finishes, the webapp is running on :3001 but
+**login will return "Invalid PIN" because the Location row, AuthPin
+rows, and `LOCATION_ID` binding in `.env` are not seeded yet.** This is
+intentional — the installer ships generic and the operator picks the
+bar name + PINs at bootstrap time.
+
+**What you MUST do manually after `install.sh` exits:**
+the auth bootstrap (step 3 below), restart PM2 to load the new env
+(step 4), and the post-install verify / Nginx / Tailscale / ADB /
+auto-update timer steps. None of these are optional for a production
+install.
+
+> **v2.54.51 in-flight:** the ISO + first-boot wizard (`docs/BARE_METAL_ISO.md`)
+> is starting to call `bootstrap-new-location.sh` + `verify-install.sh`
+> + Gotcha #11 hardening automatically as part of the on-screen wizard,
+> so on bare-metal installs the operator only answers prompts (bar name,
+> PINs, optional API key) and the wizard does the rest. Until that ships
+> fleet-wide, the steps below are still required on every curl-one-liner
+> install AND on any ISO install where the wizard prompts you to "finish
+> by hand".
+
+For an operator who's done this before:
 
 ```bash
 # 1. Get the code (git clone preserves executable bits on scripts/*.sh)
@@ -17,12 +46,17 @@ cd /home/ubuntu
 git clone https://github.com/dfultonthebar/Sports-Bar-TV-Controller.git
 cd Sports-Bar-TV-Controller
 
-# 2. Run the canonical installer (system deps + Node + Ollama + Tailscale +
-#    npm ci + bootstrap-drizzle-migrations.sh + drizzle-kit migrate + npm run build + PM2 + verify-install)
+# 2. Run the canonical installer. Automated: system deps, Node 22, Ollama,
+#    Tailscale, npm ci, bootstrap-drizzle-migrations.sh, drizzle-kit migrate,
+#    npm run build, PM2, verify-install Phase 11.
+#    NOT automated: auth bootstrap (step 3), Nginx, Tailscale auth,
+#    ADB pairing, auto-update timer. install.sh prints a REQUIRED NEXT
+#    STEPS block at the end with the exact command for step 3.
 ./install.sh
 
-# 3. Bootstrap auth (Location row + AuthPin + .env LOCATION_ID binding +
-#    ANTHROPIC_API_KEY for the auto-update Checkpoints)
+# 3. REQUIRED — bootstrap auth (Location row + AuthPin + .env LOCATION_ID
+#    binding + ANTHROPIC_API_KEY for the auto-update Checkpoints). Without
+#    this every login returns "Invalid PIN".
 bash scripts/bootstrap-new-location.sh \
   --name "Your Bar Name" \
   --admin-pin <4-digit-PIN> \
@@ -30,7 +64,7 @@ bash scripts/bootstrap-new-location.sh \
   --anthropic-api-key sk-ant-... \
   --create-branch
 
-# 4. Re-read .env so PM2 picks up LOCATION_ID + AUTH_COOKIE_SECURE
+# 4. REQUIRED — re-read .env so PM2 picks up LOCATION_ID + AUTH_COOKIE_SECURE
 pm2 restart sports-bar-tv-controller --update-env
 
 # 5. Confirm everything is green
@@ -53,7 +87,7 @@ bash scripts/install-auto-update-timer.sh
 sudo loginctl enable-linger ubuntu
 ```
 
-If all 9 succeed, the host is fully set up: webapp on :3001, bartender
+If all 8 succeed, the host is fully set up: webapp on :3001, bartender
 remote on :3002, daily auto-update at 02:30 local. Configure venue
 hardware via the UI (Device Config / Matrix / Audio / Layout) — not by
 hand-editing `apps/web/data/*.json`.

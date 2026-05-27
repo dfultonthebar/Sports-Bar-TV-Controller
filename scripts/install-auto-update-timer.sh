@@ -50,6 +50,31 @@ command -v systemctl >/dev/null 2>&1 || die "systemctl not available"
 [ -x "$AUTO_UPDATE_SCRIPT" ] || die "auto-update.sh not found or not executable at $AUTO_UPDATE_SCRIPT"
 
 # ---------------------------------------------------------------------------
+# Gotcha #11 hardening — single call now covers ALL four items (linger,
+# NVM node symlinks, ollama group perms, proof step). Without linger,
+# the user timer this script installs DIES the moment the operator's SSH
+# session ends — which is the exact failure mode that motivated the
+# hardening script in the first place.
+#
+# Idempotent: re-running on a hardened box is a no-op. Failure here is
+# fatal (vs install.sh where it's a warning) because installing the timer
+# without linger guarantees silent breakage within hours.
+# ---------------------------------------------------------------------------
+HARDENING_SCRIPT="$(dirname "$0")/enforce-gotcha11-hardening.sh"
+if [ -f "$HARDENING_SCRIPT" ]; then
+  info "Applying Gotcha #11 hardening (linger, node, ollama) — required for user timers to survive..."
+  if sudo bash "$HARDENING_SCRIPT"; then
+    info "Hardening applied"
+  else
+    die "enforce-gotcha11-hardening.sh failed (rc=$?). Re-run manually: sudo bash $HARDENING_SCRIPT"
+  fi
+else
+  info "WARNING: $HARDENING_SCRIPT not found — skipping Gotcha #11 hardening"
+  info "  Without linger=yes the timer installed below will DIE when your SSH session ends."
+  info "  Manually run:  sudo loginctl enable-linger ubuntu"
+fi
+
+# ---------------------------------------------------------------------------
 # Schedule resolution: fleet-schedule.json (UTC, stagger-aware) takes
 # precedence over the DB scheduleCron. The fleet file is the source of
 # truth — committed to main, replicated to every location via auto-update
@@ -205,9 +230,8 @@ info "Next scheduled run:"
 systemctl --user show sports-bar-autoupdate.timer -p NextElapseUSecRealtime --value 2>&1 || true
 
 echo
-info "If this host is headless (no active login), also run ONCE (needs sudo):"
-info "  sudo loginctl enable-linger ubuntu"
-info "That lets the user timer fire even when nobody is logged in."
+info "Linger=yes was applied at the top of this script (Gotcha #11 hardening)."
+info "The timer will fire even when nobody is logged in."
 echo
 info "To update the schedule: change it in the Sync tab UI, then re-run"
 info "this installer. The DB is the source of truth; the .timer unit is"

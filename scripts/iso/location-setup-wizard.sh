@@ -127,6 +127,39 @@ prompt_input() {
     fi
 }
 
+# Prompt for a 4-8 digit numeric PIN with confirmation.
+# Required (no default). Echoes the validated PIN to stdout.
+# All prompts/errors go to stderr so the caller can capture the PIN via $(...).
+prompt_pin() {
+    local label="$1"   # e.g. "Admin PIN"
+    local pin1 pin2
+    while true; do
+        read -rsp "  ${label} (4-8 digits): " pin1
+        echo >&2
+        if [[ ! "$pin1" =~ ^[0-9]{4,8}$ ]]; then
+            echo "  PIN must be 4-8 digits (numeric only)." >&2
+            continue
+        fi
+        read -rsp "  Confirm ${label}: " pin2
+        echo >&2
+        if [[ "$pin1" != "$pin2" ]]; then
+            echo "  PINs do not match. Try again." >&2
+            continue
+        fi
+        echo "$pin1"
+        return 0
+    done
+}
+
+# Prompt for an optional secret (skippable with Enter). Echoes to stdout.
+prompt_optional_secret() {
+    local label="$1"
+    local result
+    read -rsp "  ${label} (press Enter to skip): " result
+    echo >&2
+    echo "$result"
+}
+
 prompt_select() {
     local question="$1"
     shift
@@ -1313,6 +1346,96 @@ ENVEOF
     fi
 }
 
+# ─── Auth & Location Identity Bootstrap ─────────────────────────────────────
+#
+# Calls scripts/bootstrap-new-location.sh to:
+#   - create the Location row in production.db
+#   - seed AuthPin rows for ADMIN + STAFF
+#   - write LOCATION_ID + AUTH_COOKIE_SECURE=false to .env
+#   - restart pm2 with --update-env
+#
+# Runs as user 'ubuntu' so .env stays owned by ubuntu (pm2 runs as ubuntu).
+# Without these rows, every login at :3001 returns "Invalid PIN".
+#
+wizard_auth_bootstrap() {
+    local default_name
+    default_name=$(hostname 2>/dev/null || echo "My Sports Bar")
+
+    local BAR_NAME ADMIN_PIN STAFF_PIN ANTHROPIC_KEY
+    local bootstrap_script="${APP_DIR}/scripts/bootstrap-new-location.sh"
+
+    if [[ ! -f "$bootstrap_script" ]]; then
+        err "bootstrap-new-location.sh not found at ${bootstrap_script}"
+        warn "Skipping auth bootstrap — you will not be able to log in until you run it manually."
+        return 1
+    fi
+
+    while true; do
+        BAR_NAME=$(prompt_input "Bar name (human-readable, e.g. 'Lucky's 1313')" "$default_name")
+        ADMIN_PIN=$(prompt_pin "Admin PIN")
+        STAFF_PIN=$(prompt_pin "Staff PIN")
+        ANTHROPIC_KEY=$(prompt_optional_secret "Anthropic API key (sk-ant-...)")
+
+        echo ""
+        info "Running auth bootstrap..."
+        echo ""
+
+        if [[ "$DRY_RUN" == true ]]; then
+            info "DRY RUN: Would run bootstrap-new-location.sh --name '${BAR_NAME}' --admin-pin **** --staff-pin **** --non-interactive"
+            return 0
+        fi
+
+        # Build args. Pipe pins via flags. Keep secret out of process listing
+        # by quoting properly — bash will not expand within the array.
+        local -a args=(
+            --name "$BAR_NAME"
+            --admin-pin "$ADMIN_PIN"
+            --staff-pin "$STAFF_PIN"
+            --non-interactive
+        )
+        if [[ -n "$ANTHROPIC_KEY" ]]; then
+            args+=(--anthropic-api-key "$ANTHROPIC_KEY")
+        fi
+
+        # Run as ubuntu so .env ownership stays correct (pm2 runs as ubuntu).
+        # If wizard isn't running as root (no sudo prefix), fall back to direct call.
+        local rc=0
+        if [[ "$(id -u)" -eq 0 ]]; then
+            sudo -u ubuntu -H bash "$bootstrap_script" "${args[@]}" || rc=$?
+        else
+            bash "$bootstrap_script" "${args[@]}" || rc=$?
+        fi
+
+        if [[ $rc -eq 0 ]]; then
+            echo ""
+            log "✓ Auth bootstrap complete. Admin PIN: ${ADMIN_PIN}"
+            log "  You can now log in at http://${LOCAL_IP:-<IP>}:3001 after the wizard finishes."
+            return 0
+        fi
+
+        echo ""
+        err "Auth bootstrap FAILED with exit code ${rc}."
+        err "See output above for the cause."
+        echo ""
+        echo "  Options:"
+        echo "    1) Retry (re-enter bar name and PINs)"
+        echo "    2) Skip (continue wizard without auth — you cannot log in until bootstrap runs)"
+        echo "    3) Abort wizard"
+        local choice
+        read -rp "  Choice [1]: " choice
+        choice="${choice:-1}"
+        case "$choice" in
+            1) continue ;;
+            2) warn "Skipping auth bootstrap. Run manually later:"
+               warn "  sudo -u ubuntu bash ${bootstrap_script}"
+               return 1 ;;
+            3) err "Wizard aborted by operator at auth bootstrap step."
+               exit 1 ;;
+            *) warn "Invalid choice — retrying."; continue ;;
+        esac
+    done
+}
+
 # ─── Final Verification ─────────────────────────────────────────────────────
 
 wizard_verify() {
@@ -1404,6 +1527,13 @@ main() {
     exec > >(tee -a "$LOG_FILE") 2>&1
 
     print_banner
+
+    # ── Step 0: Auth & Location Identity ─────────────────────────────────
+    # MUST run before anything else that depends on pm2 / .env / DB rows.
+    # Bootstrap creates Location + AuthPin rows and writes LOCATION_ID +
+    # AUTH_COOKIE_SECURE=false to .env. Without this, login at :3001 fails.
+    step "Step 0: Auth & Location Identity"
+    wizard_auth_bootstrap || warn "Auth bootstrap was skipped — login at :3001 will not work until you re-run it."
 
     # ── Step 1: Network ──────────────────────────────────────────────────
     step "Step 1/7: Network Configuration"
@@ -1576,6 +1706,30 @@ NETPLANEOF
 
     # ── Done ─────────────────────────────────────────────────────────────
     wizard_verify
+
+    # ── verify-install gate ──────────────────────────────────────────────
+    # 7-layer health check (pm2, health, metrics, bartender-proxy,
+    # critical_tables + schema_completeness, matrix_config, crash_logs).
+    # Not fatal — wizard already wrote everything; this just tells the
+    # operator whether the box is actually ready to use.
+    local verify_script="${APP_DIR}/scripts/verify-install.sh"
+    if [[ "$DRY_RUN" == true ]]; then
+        info "DRY RUN: Would run verify-install.sh as final gate"
+    elif [[ -f "$verify_script" ]]; then
+        echo ""
+        info "Running install verification..."
+        if bash "$verify_script" --quiet; then
+            log "✓ verify-install PASSED — system is healthy"
+        else
+            warn "⚠ verify-install reported failures. The wizard finished but"
+            warn "  the box may not be fully ready. Re-run:"
+            warn "    bash ${verify_script}"
+            warn "  for details. Most likely cause: a recently-restarted service"
+            warn "  needs another 30 seconds — wait then re-run verify."
+        fi
+    else
+        warn "verify-install.sh not found at ${verify_script} — skipping gate."
+    fi
 
     # Mark as complete
     if [[ "$DRY_RUN" != true ]]; then

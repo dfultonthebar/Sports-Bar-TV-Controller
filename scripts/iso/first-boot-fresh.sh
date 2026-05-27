@@ -9,10 +9,13 @@
 #   1. Regenerates SSH host keys + machine-id (unique per install)
 #   2. Clones the app from GitHub
 #   3. Installs npm dependencies and builds
-#   4. Initializes empty DB schema (Drizzle db:push)
+#   4. Initializes empty DB schema (Drizzle migrate)
 #   5. Starts PM2 and configures it to auto-start on boot
 #   6. Runs new-location-setup.sh for network/logrotate config
-#   7. Marks itself complete (disables the one-shot service)
+#   7. Applies CLAUDE.md Gotcha #11 hardening (linger / NVM symlinks / ollama perms)
+#   8. Runs verify-install.sh and captures summary for the GitHub report
+#   9. Writes a tty1 MOTD pointing the operator to location-setup-wizard.sh
+#  10. Marks itself complete (disables the one-shot service)
 #
 
 set -euo pipefail
@@ -43,7 +46,7 @@ log "Sports Bar TV Controller - Fresh Install First Boot"
 log "============================================================"
 
 # ─── Step 1: Unique system identifiers ───────────────────────────────────────
-log "Step 1/8: Regenerating SSH host keys and machine-id..."
+log "Step 1/10: Regenerating SSH host keys and machine-id..."
 
 rm -f /etc/ssh/ssh_host_*
 dpkg-reconfigure -f noninteractive openssh-server
@@ -68,7 +71,7 @@ if ! dpkg -l rtl8812au-dkms &>/dev/null 2>&1; then
 fi
 
 # ─── Step 2: Wait for network ─────────────────────────────────────────────────
-log "Step 2/8: Waiting for network..."
+log "Step 2/10: Waiting for network..."
 MAX_WAIT=120
 ELAPSED=0
 until curl -fsS --max-time 5 https://github.com &>/dev/null; do
@@ -83,7 +86,7 @@ done
 log "Network is up."
 
 # ─── Step 3: Clone from GitHub ───────────────────────────────────────────────
-log "Step 3/8: Cloning from GitHub..."
+log "Step 3/10: Cloning from GitHub..."
 
 mkdir -p "$UBUNTU_HOME"
 
@@ -97,7 +100,7 @@ fi
 log "Repository ready at $APP_DIR"
 
 # ─── Step 4: Install deps and build ──────────────────────────────────────────
-log "Step 4/8: Installing dependencies and building..."
+log "Step 4/10: Installing dependencies and building..."
 
 # Load NVM / Node from ubuntu user's environment
 export NVM_DIR="$UBUNTU_HOME/.nvm"
@@ -135,18 +138,45 @@ if ! command -v gh &>/dev/null; then
 fi
 
 # ─── Step 5: Initialize database ─────────────────────────────────────────────
-log "Step 5/8: Initializing database (Drizzle db:push)..."
+# v2.54.51+ — Use the canonical migrate flow (matches scripts/auto-update.sh).
+# Replaces drizzle-kit push which silently aborts on pre-existing indexes
+# (CLAUDE.md Gotcha #6). This script runs unattended on first boot of an
+# ISO-installed system, so failures MUST exit non-zero so the systemd
+# oneshot service catches them (set -euo pipefail above takes care of this).
+log "Step 5/10: Initializing database (Drizzle migrate)..."
 
 mkdir -p "$DATA_DIR"
 chown ubuntu:ubuntu "$DATA_DIR"
 
-cd "$APP_DIR"
-sudo -u ubuntu npm run db:push 2>&1 | tail -10
+DB_PATH="$DATA_DIR/production.db"
 
-log "Database schema initialized at $DATA_DIR/production.db"
+cd "$APP_DIR"
+
+# Step 5a: bootstrap migration markers if DB already exists (re-runs of
+# first-boot or upgrade-from-older-ISO scenarios). On a true virgin install
+# the DB doesn't exist yet and bootstrap is skipped — migrate creates it.
+if [ -f "$DB_PATH" ]; then
+    log "  Bootstrapping drizzle migration markers..."
+    sudo -u ubuntu bash "$APP_DIR/scripts/bootstrap-drizzle-migrations.sh" "$DB_PATH" 2>&1 | tail -10
+fi
+
+# Step 5b: apply pending migrations (creates DB on virgin install). Fails
+# loud — non-zero exit propagates via set -e to the systemd service.
+log "  Applying pending Drizzle migrations..."
+sudo -u ubuntu bash -c "cd '$APP_DIR' && NODE_ENV=development npx drizzle-kit migrate" 2>&1 | tail -20
+
+# Step 5c: belt-and-suspenders — ensure-schema.sh adds any tables/columns
+# that migration files might have missed. No-op when migrations are complete.
+if [ -f "$APP_DIR/scripts/ensure-schema.sh" ] && [ -f "$DB_PATH" ]; then
+    log "  Running ensure-schema.sh (belt-and-suspenders)..."
+    sudo -u ubuntu bash "$APP_DIR/scripts/ensure-schema.sh" "$DB_PATH" 2>&1 | tail -10 || \
+        warn "ensure-schema.sh reported issues (non-fatal — migrate is the source of truth)"
+fi
+
+log "Database schema initialized at $DB_PATH"
 
 # ─── Step 6: Start PM2 ───────────────────────────────────────────────────────
-log "Step 6/8: Starting PM2..."
+log "Step 6/10: Starting PM2..."
 
 export PM2_HOME="$UBUNTU_HOME/.pm2"
 
@@ -170,7 +200,7 @@ sudo -u ubuntu pm2 save
 log "PM2 started and configured for auto-start."
 
 # ─── Step 7: New-location setup ───────────────────────────────────────────────
-log "Step 7/8: Running new-location-setup.sh..."
+log "Step 7/10: Running new-location-setup.sh..."
 
 if [ -f "$APP_DIR/scripts/new-location-setup.sh" ]; then
     chmod +x "$APP_DIR/scripts/new-location-setup.sh"
@@ -179,25 +209,86 @@ else
     warn "scripts/new-location-setup.sh not found — skipping."
 fi
 
-# ─── Step 8/8: Setup Wizard Instructions ────────────────────────────────
-log "Step 8/8: Creating setup wizard instructions..."
+# ─── Step 8: Gotcha #11 hardening ────────────────────────────────────────────
+# Applies CLAUDE.md Gotcha #11 fixes (linger=yes for ubuntu, /usr/local/bin
+# NVM symlinks for systemd PATH, ollama group membership + perms). Idempotent.
+# No sudo prefix here — first-boot-fresh.sh already runs as root under the
+# sports-bar-first-boot.service systemd oneshot. The hardening script handles
+# user-context drops internally (e.g. for `loginctl enable-linger ubuntu`).
+# Non-fatal: a failure logs a loud warning but does NOT abort first-boot;
+# the operator can re-run it manually if needed.
+log "Step 8/10: Applying Gotcha #11 hardening (linger / NVM symlinks / ollama perms)..."
+
+HARDEN_EXIT=0
+if [ -f "$APP_DIR/scripts/enforce-gotcha11-hardening.sh" ]; then
+    bash "$APP_DIR/scripts/enforce-gotcha11-hardening.sh" 2>&1 | tail -30 || HARDEN_EXIT=$?
+    if [ "$HARDEN_EXIT" -eq 0 ]; then
+        log "Gotcha #11 hardening applied successfully."
+    else
+        warn "⚠  Gotcha #11 hardening exited $HARDEN_EXIT — re-run manually:"
+        warn "       sudo bash $APP_DIR/scripts/enforce-gotcha11-hardening.sh"
+    fi
+else
+    warn "scripts/enforce-gotcha11-hardening.sh not found — skipping (re-run after next git pull)."
+    HARDEN_EXIT=127
+fi
+
+# ─── Step 9: Verify install ──────────────────────────────────────────────────
+# Captures pass/fail summary into VERIFY_SUMMARY for the GitHub report below.
+# Non-fatal: a verify failure is information for the operator, not a reason
+# to abort first-boot (PM2 is already up; the wizard step still runs).
+log "Step 9/10: Running verify-install.sh --quiet..."
+
+VERIFY_EXIT=0
+VERIFY_SUMMARY="(verify-install.sh not present)"
+if [ -f "$APP_DIR/scripts/verify-install.sh" ]; then
+    # Capture last few lines for the report; show full output in the log.
+    VERIFY_OUTPUT=$(sudo -u ubuntu bash "$APP_DIR/scripts/verify-install.sh" --quiet 2>&1) || VERIFY_EXIT=$?
+    echo "$VERIFY_OUTPUT" | tail -20
+    VERIFY_SUMMARY=$(echo "$VERIFY_OUTPUT" | tail -10)
+    if [ "$VERIFY_EXIT" -eq 0 ]; then
+        log "verify-install.sh PASSED."
+    else
+        warn "verify-install.sh exited $VERIFY_EXIT — review summary above and run manually:"
+        warn "       bash $APP_DIR/scripts/verify-install.sh"
+    fi
+else
+    warn "scripts/verify-install.sh not found — skipping."
+    VERIFY_EXIT=127
+fi
+
+# ─── Step 10/10: Setup wizard MOTD ──────────────────────────────────────────
+# Writes a tty1 MOTD that tells the operator EXACTLY what to do next:
+# log in and run scripts/iso/location-setup-wizard.sh. The wizard collects
+# the bar name + admin/staff PINs and runs bootstrap-new-location.sh —
+# without that, /api/auth/login returns "Invalid PIN" on every attempt
+# (CLAUDE.md "Auth bootstrap" section). Cannot prompt for those values at
+# boot time, so the MOTD is the operator's surface for that handoff.
+log "Step 10/10: Writing setup-wizard MOTD..."
 
 cat > /etc/update-motd.d/99-setup-wizard << 'MOTDEOF'
 #!/bin/bash
 if [ ! -f /var/lib/sports-bar-wizard-done ]; then
     echo ""
-    echo "============================================"
-    echo "  SPORTS BAR TV CONTROLLER - SETUP REQUIRED"
-    echo "============================================"
+    echo "================================================================"
+    echo "  SPORTS BAR TV CONTROLLER — ACTION REQUIRED"
+    echo "================================================================"
     echo ""
-    echo "  Run the setup wizard to configure your devices:"
+    echo "  Log in and run the location setup wizard:"
     echo ""
-    echo "    location-setup-wizard"
+    echo "    bash /opt/sports-bar/scripts/iso/location-setup-wizard.sh"
     echo ""
-    echo "  This will scan your network and configure all"
-    echo "  AV equipment (matrix, TVs, cable boxes, etc.)"
+    echo "  The wizard collects the bar name + admin/staff PINs and runs"
+    echo "  bootstrap-new-location.sh for you."
     echo ""
-    echo "============================================"
+    echo "  Until then, every login at http://<this-IP>:3001 returns"
+    echo "  'Invalid PIN' — that is expected."
+    echo ""
+    echo "  After the wizard:"
+    echo "    Admin UI:     http://<this-IP>:3001"
+    echo "    Bartender UI: http://<this-IP>:3002"
+    echo ""
+    echo "================================================================"
     echo ""
 fi
 MOTDEOF
@@ -207,7 +298,7 @@ chmod +x /etc/update-motd.d/99-setup-wizard
 if ! grep -q "location-setup-wizard" /home/ubuntu/.bashrc 2>/dev/null; then
     echo "" >> /home/ubuntu/.bashrc
     echo "# Sports Bar TV Controller setup wizard" >> /home/ubuntu/.bashrc
-    echo "alias location-setup-wizard='sudo bash /usr/local/bin/location-setup-wizard.sh'" >> /home/ubuntu/.bashrc
+    echo "alias location-setup-wizard='sudo bash /opt/sports-bar/scripts/iso/location-setup-wizard.sh'" >> /home/ubuntu/.bashrc
 fi
 
 # ─── Done ────────────────────────────────────────────────────────────────────
@@ -240,11 +331,18 @@ cat > "$REPORT_FILE" << REPORTEOF
 - Database initialized: $([ -f "$DATA_DIR/production.db" ] && echo "YES" || echo "NO")
 - PM2 running: $(pm2 list 2>/dev/null | grep -c "online" || echo "0") process(es)
 - Ollama installed: $(command -v ollama &>/dev/null && echo "YES" || echo "NO")
+- Gotcha #11 hardening: $([ "$HARDEN_EXIT" -eq 0 ] && echo "PASS" || echo "FAIL (exit=$HARDEN_EXIT)")
+- verify-install.sh: $([ "$VERIFY_EXIT" -eq 0 ] && echo "PASS" || echo "FAIL (exit=$VERIFY_EXIT)")
+
+### Verify Summary
+\`\`\`
+${VERIFY_SUMMARY}
+\`\`\`
 
 ### Improvement Notes
 <!-- Add any issues encountered during first boot -->
 - Review /var/log/sports-bar-first-boot.log for full details
-- Setup wizard has not been run yet
+- Setup wizard has not been run yet — operator must run location-setup-wizard.sh on tty1
 
 ### Log Tail (last 30 lines)
 \`\`\`
