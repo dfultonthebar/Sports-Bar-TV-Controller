@@ -35,6 +35,36 @@ is the archive.
 
 ---
 
+## v2.54.59 — ISO uploader via direct REST (fallback when `gh auth` scope is missing) (2026-05-26)
+
+**Versions covered:** v2.54.59
+**Branch landed:** main
+**Fleet target:** rolling upgrade. No runtime change.
+
+Trigger: operator asked to be able to download the ISO from GitHub. v2.54.58's `upload-github-release.sh` requires `gh auth login` which requires the `read:org` scope. The Personal Access Token in our git remote URL (used for git push all session) has only `repo` scope — sufficient for releases via the REST API but not enough for `gh auth login`.
+
+**NEW `scripts/iso/upload-github-release-curl.sh`**:
+- Direct REST API uploader using curl. Auto-discovers the PAT from `$GITHUB_TOKEN` or extracts from `git remote get-url origin`.
+- Creates the release via `POST /repos/:owner/:repo/releases`, then uploads ISO + .md5 + .sha256 sidecars via `POST uploads.github.com/.../releases/:id/assets`.
+- Idempotent: if the tag already exists (re-build same day), deletes the prior release + tag and re-creates.
+- Defaults: tag = `v3.0-YYYY-MM-DD`, notes pre-filled with the v2.54.51+ canonical pipeline summary + BARE_METAL_ISO.md pointer.
+- Auto-generates md5/sha256 if sidecars don't exist.
+- Reports the release HTML URL + direct-download URL at the end.
+
+**Usage** (after a build finishes):
+```
+bash scripts/iso/upload-github-release-curl.sh /home/ubuntu/iso-build/sports-bar-tv-controller-v3.0-*.iso
+```
+Pulls the token from git remote automatically. Operator can also pass `GITHUB_TOKEN=ghp_...` explicitly.
+
+**Holmgren ISO pre-flight status (in flight at commit time):**
+- Build started 22:28 from `scripts/iso/build-sports-bar-iso.sh --no-upload --build-dir /home/ubuntu/iso-build`
+- Steps 1-7 of 10 complete (debootstrap + chroot + first-boot scripts installed + dispatcher service + snapshot disabled as expected in v3.0).
+- Currently on Step 8/10 (XZ filesystem compression — script warns 20-40 min). 6.6 GB intermediate.
+- After build completes, the new uploader will push the ISO to GitHub Releases automatically. Operator then has a downloadable ISO + .md5 + .sha256 for `dd` to USB.
+
+---
+
 ## v2.54.58 — ISO build script: prereq check + stale header fix + pre-flight kicked (2026-05-26)
 
 **Versions covered:** v2.54.58
