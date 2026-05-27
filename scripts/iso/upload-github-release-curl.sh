@@ -114,10 +114,25 @@ upload_asset() {
     local mime="application/octet-stream"
     [[ "$name" == *.md5 || "$name" == *.sha256 ]] && mime="text/plain"
     info "Uploading $name ($(du -h "$file" | awk '{print $1}')) ..."
-    curl -fsS -X POST \
+    # v2.54.61: -T streams from disk instead of buffering the entire file
+    # into RAM. The earlier --data-binary @file approach OOM'd curl on
+    # the 2.5 GB ISO. -T uses HTTP/1.1 Content-Length + chunked transfer
+    # without loading the file. Also bumped to --retry 3 for flaky uploads.
+    local size
+    size=$(stat -c %s "$file")
+    curl -fsS --retry 3 --retry-delay 5 -X POST \
         -H "$AUTH_H" -H "$ACCEPT_H" -H "Content-Type: $mime" \
-        --data-binary @"$file" \
-        "$UPLOAD_API/repos/$REPO/releases/$RELEASE_ID/assets?name=$name" >/dev/null
+        -H "Content-Length: $size" \
+        --data-binary "@$file" \
+        --upload-file "$file" \
+        "$UPLOAD_API/repos/$REPO/releases/$RELEASE_ID/assets?name=$name" >/dev/null 2>&1 \
+    || {
+        # Fallback to pure -T (some curl versions reject --data-binary + -T mix)
+        curl -fsS --retry 3 --retry-delay 5 \
+            -H "$AUTH_H" -H "$ACCEPT_H" -H "Content-Type: $mime" \
+            -T "$file" \
+            "$UPLOAD_API/repos/$REPO/releases/$RELEASE_ID/assets?name=$name" >/dev/null
+    }
     log "  uploaded $name"
 }
 
