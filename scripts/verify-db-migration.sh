@@ -1,6 +1,15 @@
 #!/bin/bash
-# Verify DB Migration - Tests all critical API flows
-# Run after code updates to ensure nothing is broken
+#
+# Verify DB Migration — Tests all critical API endpoints with curl.
+#
+# Complementary to scripts/verify-install.sh (which checks pm2/health/
+# critical_tables/matrix_config/etc.). This script focuses specifically
+# on API ROUTE responses post-DB-migration to catch shape regressions.
+#
+# OPERATOR HELPER. Not invoked by any automated flow (verified v2.54.64
+# audit). Run ad-hoc after a major DB schema change or auto-update if
+# you want explicit API smoke coverage beyond what verify-install does.
+#
 
 PORT=${1:-3001}
 BASE="http://localhost:$PORT"
