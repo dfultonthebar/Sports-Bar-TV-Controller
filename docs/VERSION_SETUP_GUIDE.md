@@ -35,6 +35,34 @@ is the archive.
 
 ---
 
+## v2.54.56 — Dark-theme global error page + bartender-grade /remote error boundary (2026-05-26)
+
+**Versions covered:** v2.54.56
+**Branch landed:** main
+**Fleet target:** rolling upgrade. No manual step.
+
+Closes one of Grok Part 2 P1's smaller findings: `apps/web/src/app/error.tsx` was rendering a white modal on a dark app (jarring + violated the dark-theme consistency the rest of v2.54.54+v2.54.55 just shipped). Plus added a bartender-specific error boundary at `/remote` so a crash on the iPad shows reassuring bartender-grade copy instead of admin-jargon "Something went wrong!".
+
+**`apps/web/src/app/error.tsx`** (modified):
+- `bg-gray-100` → `bg-slate-950`
+- White modal → `bg-slate-800/50 border border-slate-700` (matches SchedulerLogsDashboard exemplar + the Card primitive fix from v2.54.54)
+- Heading `text-red-600` → `text-red-400` (better contrast on dark)
+- Button → `bg-purple-600 hover:bg-purple-500` (matches Ask AI floating button color), 44px touch target
+- Copy: added a second sentence with operator-friendly recovery hint ("refresh the page or text the manager with what you were doing").
+
+**`apps/web/src/app/remote/error.tsx`** (NEW):
+- Bartender-grade copy: "Something hiccuped" + "You didn't do anything wrong" (matches the "you can't break it" voice the 9 bartender how-to docs use).
+- Explicit reassurance that TVs / audio / lighting keep running while the iPad UI is broken (technically true — the backend keeps running independently of the React tree).
+- Two CTAs: "Try again" (calls `reset`) + "Refresh the page" (`window.location.reload`).
+- Both buttons 44px tap targets, dark theme.
+- This is the first per-route error boundary for /remote. Future enhancement: per-tab boundaries inside /remote so a crash in Audio doesn't bring down Video.
+
+**Why now (vs deferring to a larger v2.54.57 Card-pattern sweep):** the global error page was actively rendering wrong-themed on every uncaught exception. Cheap fix, immediate visual win. The bigger Card-pattern migration across SystemAdmin / DeviceConfig / Atlas can take more deliberate planning + multi-agent waves — separate PR.
+
+**Cumulative session ship (2026-05-26 evening):** v2.54.49 → v2.54.56, 8 versions, ~40 files touched, ALL 6 Grok handoff items + Part 2 P0 + 2 of Part 2 P1 (error boundaries) shipped. Fleet fully propagated. RAG re-scanned.
+
+---
+
 ## v2.54.55 — Grok #4 + #5 + #6: HDMI input unify + Multi-View preview + Schedule tab promotion (2026-05-26)
 
 **Versions covered:** v2.54.55
