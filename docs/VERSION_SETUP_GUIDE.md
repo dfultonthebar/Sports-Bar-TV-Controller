@@ -35,6 +35,36 @@ is the archive.
 
 ---
 
+## v2.54.86 — disk-installer adds bios_boot partition (THE bug behind SeaBIOS hang despite kernel+grub being correct) (2026-05-27)
+
+**Versions covered:** v2.54.86
+**Branch landed:** main
+**Fleet target:** ISO consumers only — bundled into next ISO build (v3.0.1 attempt-9). No runtime change for installed fleet.
+
+**Symptom (caught during 2026-05-27 v2.54.84 attempt-8 smoke test):** v2.54.84 successfully copied kernel + initrd to /boot. Disk inspection confirmed `/boot/vmlinuz-5.15.0-179-generic` + `/boot/initrd.img-5.15.0-179-generic` were present (74 MB + 11 MB). GRUB menuentry was correct: `linux /boot/vmlinuz-5.15.0-179-generic root=UUID=79fd327b-bc32-42dc-8a4b-c728e5a098f7 ro quiet splash`. Root UUID matched blkid output. ALL the v2.54.80 + v2.54.81 + v2.54.84 fixes were in place. **VM still hung at SeaBIOS "Booting from Hard Disk..." for 5+ min with no GRUB menu visible and no kernel boot.**
+
+**Root cause:** the disk has a GPT partition table (per `parted -s ${TARGET_DISK} mklabel gpt`). On a GPT disk being booted in BIOS legacy mode (NOT UEFI), `grub-install --target=i386-pc` needs a **bios_boot partition** (1 MB, type ef02, no filesystem) to embed its core image. Without it, the MBR boot signature 0x55AA IS present (so v2.54.80's check passes), but GRUB stage 1's pointer to stage 2 is undefined. SeaBIOS hands off to the MBR successfully, but the bootloader hangs immediately because stage 2 isn't reachable.
+
+The previous partition layout was 2 partitions (EFI + root). UEFI boot worked because GRUB lives in /boot/efi/EFI/sportsbar/ and is loaded directly by UEFI firmware — but VM 200 (Proxmox q35) defaults to SeaBIOS legacy, not UEFI.
+
+**Fix:** added a bios_boot partition as partition 1 (1-2 MiB), shifted EFI to partition 2, root to partition 3:
+
+```
+1 = bios_boot   1-2 MiB         type ef02, no filesystem (for GRUB core)
+2 = EFI         2-514 MiB       fat32 (for UEFI boot)
+3 = root        514 MiB-end     ext4 (for the system)
+```
+
+Set `bios_grub on` flag on partition 1 (parted's idiom for ef02 GPT type). `grub-install --target=i386-pc ${TARGET_DISK}` now has a place to write the core image. Updated partition-name detection (NVMe p1/p2/p3, SATA 1/2/3).
+
+**Caveat about v2.54.80's MBR check:** the 0x55AA signature check is NECESSARY but not SUFFICIENT. 0x55AA is the generic "this disk is bootable" marker — present on every formatted disk including dd-zeroed ones with that marker manually re-added. A future hardening could read GRUB's identifying bytes from MBR (look for "GRUB" string or specific opcodes in bytes 0-440), but the bios_boot partition fix is the underlying cause; with that in place, GRUB stage 1 has a valid pointer.
+
+**Required Manual Steps:** none for existing locations. Next-NUC install with attempt-9 ISO will boot through GRUB → kernel → systemd → first-boot.
+
+**Pattern (6th ISO bug iteration this week):** v2.54.76 + v2.54.79 + v2.54.80 + v2.54.81 + v2.54.84 + v2.54.86 (this one). The boot path is now defended at every handoff that we know how to check. Remaining gap-classes (unknown unknowns) will surface as attempt-9 runs end-to-end.
+
+---
+
 ## v2.54.85 — 7 new bartender how-tos closing high-frequency audit gaps (2026-05-27)
 
 **Versions covered:** v2.54.85
