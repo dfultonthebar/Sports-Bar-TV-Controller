@@ -35,6 +35,58 @@ is the archive.
 
 ---
 
+## v2.54.51 — Virgin installer Part 1 P0: DB migrate + Gotcha #11 hardening + auth bootstrap + verify gate (2026-05-26)
+
+**Versions covered:** v2.54.51
+**Branch landed:** main
+**Fleet target:** existing fleet is UNAFFECTED at runtime. Changes apply only to install paths (install.sh + ISO + wizard). New location going up this week on bare metal is the target consumer.
+
+Closes Grok handoff Part 1 P0 — `CLAUDE_HANDOFF.md` + `/home/ubuntu/.grok/sessions/.../plan.md`. Shipped via 6 parallel agents (Wave A: 3 fresh writes; Wave B: 3 wire-ins). All 6 reported HIGH confidence. All 10 changed bash scripts pass `bash -n` syntax check.
+
+**Wave A — fresh writes:**
+
+1. **DB migration path (Gotcha #6 safety)** — `install.sh:777-823`, `scripts/iso/first-boot-fresh.sh:137-146`, `update_from_github.sh:467-480` — replaced legacy `drizzle-kit push` with the canonical pair `bootstrap-drizzle-migrations.sh "$DB_PATH"` (idempotent marker bootstrap, skipped if DB doesn't exist for virgin) + `NODE_ENV=development npx drizzle-kit migrate` + belt-and-suspenders `ensure-schema.sh`. Mirrors `scripts/auto-update.sh` Checkpoint schema_migrate. `update_from_github.sh` also got a top-of-file deprecation note pointing at auto-update.sh.
+
+2. **`scripts/enforce-gotcha11-hardening.sh`** (NEW, 288 lines) — idempotent root-required script with 4 functions: `enforce_linger`, `enforce_node_symlinks`, `enforce_ollama_perms`, `proof_all_working`. Distinct exit codes per item (2-5). Auto-detects active NVM node via `~/.nvm/alias/default` → fallback to highest installed (won't rot at next Node major bump). Skips RAG-rescan proof (too expensive for a hardening step) — uses cheap `env -i` clean-PATH probe instead.
+
+3. **Docs sweep** — `docs/NEW_LOCATION_SETUP.md` TL;DR rewritten to honestly split "automatic" vs "manual" steps (was burying the "Invalid PIN until you run bootstrap" reality). `fresh_install.sh`, `install_fixed.sh`, `fix_and_install.sh` got deprecation headers + loud stderr warning + pointers to canonical paths. **NEW `docs/BARE_METAL_ISO.md`** (627w) — operator runbook for the USB → boot → wizard flow.
+
+**Wave B — wire-ins:**
+
+4. **`install.sh`** — added `run_gotcha11_hardening()` function calling the new script as PHASE 12 (after PHASE 11 verify-install). Non-fatal warn on failure. Final banner gets "✓ Gotcha #11 hardening applied" line + auth-bootstrap section renumbered to PHASE 13 (still LOUD operator-required, until ISO/wizard path subsumes it — see #6 below).
+
+5. **`scripts/install-auto-update-timer.sh`** — added hardening call at TOP of script. **FATAL** on failure (timer without linger = silent breakage within hours of SSH disconnect). Replaced the bottom-banner "remember to enable linger" hint with confirmation it was already done.
+
+6. **`scripts/iso/first-boot-fresh.sh`** — added Step 8 (hardening, non-fatal warn), Step 9 (verify-install --quiet as ubuntu, non-fatal), Step 10 (MOTD rewrite). MOTD now states ACTION REQUIRED: log in on tty1 and run `bash /opt/sports-bar/scripts/iso/location-setup-wizard.sh`. GitHub first-boot report appended with hardening + verify status + verify summary block.
+
+7. **`scripts/iso/disk-installer.sh`** — final banner (lines 406-412) rewritten: states first boot auto-applies hardening + verify, directs operator to wizard for auth bootstrap, no more "Invalid PIN" surprise, lists :3001/:3002 URLs.
+
+8. **`scripts/iso/location-setup-wizard.sh`** — added **Step 0 "Auth & Location Identity"** as the FIRST wizard step. Prompts bar name + admin PIN (4-8 digits, confirm twice) + staff PIN + optional Anthropic key. Calls `bootstrap-new-location.sh --non-interactive` with collected values. Retry/skip/abort menu on failure. Added new `prompt_pin` + `prompt_optional_secret` helpers (wizard had no PIN-validating helper). Added HARD verify-install gate before DONE_MARKER touch.
+
+**No runtime change for the existing fleet.** install.sh + ISO scripts don't re-run on running boxes; they're only consumed by NEW installs. v2.54.51's auto-update merge to a running fleet box is a no-op for the install code path.
+
+**End-to-end virgin flow now (target for the new location this week):**
+1. USB boot → ISOLINUX → disk-install → reboot
+2. First boot: clone + build + migrate (Gotcha #6 safe) + hardening (Gotcha #11 closed) + verify gate + MOTD posted to tty1
+3. Operator logs in on tty1, runs `bash /opt/sports-bar/scripts/iso/location-setup-wizard.sh`
+4. Wizard Step 0 collects PINs + calls bootstrap-new-location.sh → Location + AuthPin rows created, .env written, pm2 restarted
+5. Wizard Steps 1-7: network, Ollama, hardware discovery, location branch
+6. Wizard final verify-install gate confirms 7/7 PASS
+7. Operator browses to http://<IP>:3001, logs in with chosen PIN, lands in admin UI
+
+**REQUIRED MANUAL STEP for the existing fleet:** none. The hardening script + new ISO logic only matters for new installs.
+
+**Recommended for NEW location:** test the flow end-to-end on a VM before sending a NUC to the bar. `sudo bash scripts/iso/build-sports-bar-iso.sh --build-dir /tmp/iso-test --no-upload` → boot in qemu/kvm → walk the wizard → verify 7/7. If anything in this v2.54.51 chain has a regression, catch it in the VM, not at the bar.
+
+**Out of scope for v2.54.51** (Grok plan Part 2 — full UI + bug audit is the next sprint):
+- Bartender remote touch-target sweep
+- Dark-theme primitive leaks (Card, Select)
+- auth/login route Gotcha #1 violation
+- packages/validation vs packages/config dedup
+- Seed-empty-UI recovery flow
+
+---
+
 ## v2.54.50 — Grok #1: QAEntry-first retrieval for bartender chat path (2026-05-26)
 
 **Versions covered:** v2.54.50
