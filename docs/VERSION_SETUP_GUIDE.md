@@ -35,6 +35,33 @@ is the archive.
 
 ---
 
+## v2.54.66 — LOGGER FIX: stop silently swallowing Error objects passed as 2nd arg (caused v2.54.65) (2026-05-27)
+
+**Versions covered:** v2.54.66
+**Branch landed:** main
+**Fleet target:** rolling upgrade. **No runtime behavior change for correctly-written log calls.** Buggy call sites (~964 across the codebase) NOW print their error message + stack instead of silently dropping it.
+
+**Why this exists:** v2.54.65 found a bug in `audio-processor/zones/route.ts` that had been broken for weeks — `getAtlasClient` was undefined at runtime, throwing a TypeError, swallowed by `logger.warn('Failed to sync...', err)`. Investigation revealed the logger contract was the trap.
+
+**The trap:** `@sports-bar/logger`'s documented signature is `(message: string, options?: LogOptions)` where options is `{ error?: ..., data?: ..., category?: ... }`. Call sites who pass `err` (a bare Error) as the second arg were silently treated as if they'd passed an empty options object — so `options?.error` was undefined and the actual error message + stack never printed.
+
+**Count of bad-pattern sites in the codebase**: ~964 `logger.X(msg, err)` calls. Fixing one-by-one would take hours and introduce regression risk. Fixed the LOGGER itself instead.
+
+**`packages/logger/src/index.ts:386-410`** — added `normalizeOptions(opts)` to all 5 generic logger methods (debug/info/warn/error/success):
+- If `opts instanceof Error` → wrap as `{ error: opts }` (the silent-swallow case)
+- If `opts` looks like proper `LogOptions` (has `error`/`data`/`category`/etc.) → pass through unchanged
+- Otherwise (raw object / primitive) → wrap as `{ data: opts }` so it's at least visible
+
+Type signature relaxed from `options?: LogOptions` to `options?: LogOptions | unknown` so call sites pass-through TypeScript without compile errors. Backwards-compatible — every correctly-written call still works.
+
+**Verified in-process smoke** (after the classifier-temporary-block cleared): `logger.warn('msg', new Error('X'))` now prints `Error: X` + stack trace. `logger.info('msg', { foo: 'bar' })` now prints `Data: { foo: 'bar' }`. Existing `logger.warn('msg', { error: err })` still works.
+
+**Future debugging unblocked**: any swallowed-error site that catches an exception and logs it will now show the message + stack in PM2 logs. Hidden TypeErrors like the v2.54.65 audio-mute bug surface immediately on the next failure.
+
+**Worth noting**: this doesn't make the buggy call sites GOOD — they're still passing wrong-shaped args. Ideal would be to also codemod all 964 call sites to use the canonical `{ error: err }` form. Deferred — the logger normalization gets us 95% of the value with 1% of the change footprint. Codemod can ship as v2.54.67+ when convenient.
+
+---
+
 ## v2.54.65 — BUG FIX: bartender Audio tab "always muted" — wrong Atlas import path swallowed the sync error (2026-05-27)
 
 **Versions covered:** v2.54.65
