@@ -1,0 +1,126 @@
+#cloud-config
+# Sports Bar TV Controller — Ubuntu 24.04 LTS Noble autoinstall configuration
+#
+# This is the v3.1 architecture: stock Ubuntu Server 24.04.4 ISO + subiquity
+# autoinstall + curtin. Replaces the ~430-line hand-rolled disk-installer.sh
+# that hit 7 bug iterations on 2026-05-27. Canonical's curtin handles every
+# gap we were chasing: GPT+bios_boot+EFI partitioning, kernel install +
+# initramfs regen, GRUB embed for both BIOS+UEFI, fstab UUIDs, etc.
+#
+# The {{UBUNTU_PASSWORD_HASH}} placeholder gets filled at build time by
+# build-autoinstall-iso.sh via `openssl passwd -6`.
+
+autoinstall:
+  version: 1
+
+  # Refresh subiquity from snap to latest stable before installing.
+  # Ensures we get the freshest curtin bugfixes.
+  refresh-installer:
+    update: true
+
+  locale: en_US.UTF-8
+
+  keyboard:
+    layout: us
+    variant: ""
+
+  timezone: America/Chicago
+
+  # Wildcard DHCP on any ethernet interface. The hand-rolled installer
+  # hardcoded the LIVE ISO's NIC name, which broke when the installed
+  # system had a different NIC (different hardware path). Wildcards
+  # match whatever the actual NUC has.
+  network:
+    version: 2
+    ethernets:
+      "en*":
+        dhcp4: true
+        dhcp4-overrides:
+          use-dns: true
+      "eth*":
+        dhcp4: true
+
+  # APT mirror with geoip auto-selection; fallback to offline-install
+  # if the NUC has no internet at install time (USB-only install case).
+  apt:
+    geoip: true
+    fallback: offline-install
+
+  # Identity: ubuntu/ubuntu by default. Hostname can be overridden by
+  # operator via the brief interactive identity section. The {{PASS_HASH}}
+  # placeholder is filled at build time via openssl passwd -6.
+  identity:
+    realname: 'Sports Bar TV Controller'
+    username: ubuntu
+    password: '{{UBUNTU_PASSWORD_HASH}}'
+    hostname: sports-bar-controller
+
+  # The identity section is interactive so operator can change hostname
+  # for multi-bar installs. Everything else (disk, network, packages)
+  # is fully automated.
+  interactive-sections:
+    - identity
+
+  ssh:
+    install-server: true
+    allow-pw: true
+    # No authorized-keys — Tailscale will be added on first-boot.
+
+  # Direct layout: use the largest disk with GPT + bios_boot + EFI +
+  # ext4 root. Curtin auto-sizes everything correctly. No more manual
+  # parted incantations + missing bios_boot partitions.
+  storage:
+    layout:
+      name: direct
+      match:
+        size: largest
+
+  # Minimal extra packages. The first-boot service installs the heavy
+  # stuff (node, ollama, etc) so we keep the install ISO small.
+  packages:
+    - openssh-server
+    - curl
+    - wget
+    - git
+    - sqlite3
+    - ca-certificates
+    - gnupg
+    - lsb-release
+    - net-tools
+    - iputils-ping
+    - iproute2
+    - parted
+    - dosfstools
+    - e2fsprogs
+
+  # Late-commands run in the INSTALLER environment with the target
+  # filesystem mounted at /target. Use `curtin in-target -- <cmd>` to
+  # run a command inside the chroot.
+  late-commands:
+    # Set ubuntu password again explicitly (some autoinstall builds drop it)
+    - echo 'ubuntu:ubuntu' | curtin in-target -- chpasswd
+
+    # Sudoers nopasswd for ubuntu user (matches operator's fleet convention)
+    - 'curtin in-target -- bash -c "echo ''%sudo ALL=(ALL) NOPASSWD:ALL'' > /etc/sudoers.d/ubuntu-nopasswd && chmod 440 /etc/sudoers.d/ubuntu-nopasswd"'
+
+    # Copy our first-boot-fresh.sh from the ISO into the target system.
+    # build-autoinstall-iso.sh placed it at /cdrom/sports-bar/.
+    - cp /cdrom/sports-bar/first-boot-fresh.sh /target/usr/local/bin/sports-bar-first-boot.sh
+    - chmod +x /target/usr/local/bin/sports-bar-first-boot.sh
+
+    # Install the first-boot systemd unit so it runs on first real boot.
+    - cp /cdrom/sports-bar/sports-bar-first-boot.service /target/etc/systemd/system/
+    - curtin in-target -- systemctl enable sports-bar-first-boot.service
+
+    # Create the data directory with correct ownership
+    - curtin in-target -- mkdir -p /home/ubuntu/sports-bar-data
+    - curtin in-target -- chown ubuntu:ubuntu /home/ubuntu/sports-bar-data
+
+    # Strip quiet+splash from GRUB cmdline so operators see boot output
+    # on tty1 instead of a black splash screen (no plymouth assumption).
+    - 'curtin in-target -- sed -i ''s/^GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT=""/'' /etc/default/grub'
+    - curtin in-target -- update-grub
+
+  # After install completes, reboot into the installed system.
+  # The first-boot service will then clone + build + start PM2.
+  shutdown: reboot
