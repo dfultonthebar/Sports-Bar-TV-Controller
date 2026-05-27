@@ -48,6 +48,20 @@ interface MatrixInput {
   label: string
 }
 
+// Subset of the network-TV row needed for the modal-side HDMI control.
+// Mirrors the shape used by app/remote/page.tsx so the parent can pass its
+// `networkTVs` array straight through.
+interface NetworkTV {
+  id: string
+  name?: string | null
+  outputNumber?: number | null
+  ipAddress: string
+  brand: string
+  status: string
+  currentInput?: string | null
+  supportsInput: boolean
+}
+
 interface Props {
   layout: TVLayout
   onInputSelect: (inputNumber: number, outputNumber: number) => void
@@ -60,6 +74,13 @@ interface Props {
     inputLabel: string
   }>
   onRefreshRoutes?: () => Promise<void>
+  /**
+   * Network-discovered TVs (Samsung/Roku/etc). When the tapped zone matches
+   * one of these by outputNumber AND the TV supports input switching, the
+   * modal renders an HDMI 1-4 row so the bartender can change the TV's input
+   * without bouncing to the Power tab.
+   */
+  networkTVs?: NetworkTV[]
 }
 
 export default function InteractiveBartenderLayout({
@@ -68,7 +89,8 @@ export default function InteractiveBartenderLayout({
   currentSources,
   inputs,
   currentChannels = {},
-  onRefreshRoutes
+  onRefreshRoutes,
+  networkTVs = []
 }: Props) {
   const [selectedZone, setSelectedZone] = useState<Zone | null>(null)
   const [multiViewCardId, setMultiViewCardId] = useState<string | null>(null)
@@ -77,6 +99,11 @@ export default function InteractiveBartenderLayout({
   const [imageAspectRatio, setImageAspectRatio] = useState<number>(4 / 3)
   const [powerLoading, setPowerLoading] = useState<number | null>(null) // outputNumber being toggled
   const [powerMessage, setPowerMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  // HDMI input switch state for network-discovered TVs in the modal.
+  // Local optimistic mirror so the highlighted button updates immediately
+  // even though the parent's networkTVs prop may not refresh until next poll.
+  const [hdmiInputLoading, setHdmiInputLoading] = useState<string | null>(null) // `${tvId}-${input}`
+  const [optimisticInputs, setOptimisticInputs] = useState<Record<string, string>>({}) // tvId -> hdmi[1-4]
   const layoutImageRef = useRef<HTMLImageElement>(null)
 
   const rooms = layout.rooms || []
@@ -168,6 +195,40 @@ export default function InteractiveBartenderLayout({
       setPowerMessage({ type: 'error', text: 'Failed to send power command' })
     } finally {
       setPowerLoading(null)
+    }
+  }, [])
+
+  // Find the network TV (if any) bound to a Wolf Pack output.
+  // outputNumber === null/undefined on the TV side means it isn't placed on
+  // the layout yet, so it should never be considered for a zone match.
+  const getNetworkTVForZone = (outputNumber: number): NetworkTV | undefined => {
+    if (!networkTVs.length) return undefined
+    return networkTVs.find(
+      (tv) => tv.outputNumber != null && tv.outputNumber === outputNumber && tv.supportsInput
+    )
+  }
+
+  const handleHdmiInput = useCallback(async (tvId: string, input: string) => {
+    setHdmiInputLoading(`${tvId}-${input}`)
+    setPowerMessage(null)
+    try {
+      const response = await fetch(`/api/tv-control/${tvId}/input`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ input })
+      })
+      const data = await response.json()
+      if (data.success) {
+        setOptimisticInputs((prev) => ({ ...prev, [tvId]: input }))
+        setPowerMessage({ type: 'success', text: `TV switched to ${input.toUpperCase()}` })
+      } else {
+        setPowerMessage({ type: 'error', text: data.error || 'Failed to switch TV input' })
+      }
+    } catch (error) {
+      logger.error('[LAYOUT] TV input switch failed:', error)
+      setPowerMessage({ type: 'error', text: 'Failed to send TV input command' })
+    } finally {
+      setHdmiInputLoading(null)
     }
   }, [])
 
@@ -421,6 +482,58 @@ export default function InteractiveBartenderLayout({
                 {powerMessage.text}
               </div>
             )}
+
+            {/* Network TV HDMI input switcher (only when this zone maps to a
+                network-discovered TV that supports input switching). Keeps the
+                bartender on the Video tab instead of bouncing to Power tab. */}
+            {(() => {
+              const netTV = getNetworkTVForZone(selectedZone.outputNumber)
+              if (!netTV) return null
+              const currentHdmi = optimisticInputs[netTV.id] || netTV.currentInput || null
+              const hdmiOptions = ['hdmi1', 'hdmi2', 'hdmi3', 'hdmi4'] as const
+              return (
+                <div className="px-6 pt-4 pb-2 border-b border-white/10">
+                  <div className="mb-3 flex items-baseline justify-between">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                        TV Input
+                      </p>
+                      <p className="text-base font-bold text-slate-100 mt-0.5">
+                        Currently on:{' '}
+                        <span className="text-blue-300">
+                          {currentHdmi ? currentHdmi.toUpperCase().replace('HDMI', 'HDMI ') : 'Unknown'}
+                        </span>
+                      </p>
+                    </div>
+                    <span className="text-[10px] text-slate-500 uppercase tracking-wide">
+                      {netTV.brand}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400 mb-2">Change TV input</p>
+                  <div className="grid grid-cols-4 gap-2">
+                    {hdmiOptions.map((input) => {
+                      const isCurrent = currentHdmi === input
+                      const isLoading = hdmiInputLoading === `${netTV.id}-${input}`
+                      return (
+                        <button
+                          key={input}
+                          onClick={() => handleHdmiInput(netTV.id, input)}
+                          disabled={isLoading}
+                          className={`py-3 min-h-[44px] rounded-lg text-sm font-semibold transition-colors disabled:opacity-50 border ${
+                            isCurrent
+                              ? 'bg-blue-600 text-white border-blue-400 ring-1 ring-blue-300'
+                              : 'bg-slate-800 hover:bg-blue-600 text-slate-200 hover:text-white border-slate-700'
+                          }`}
+                          aria-label={`Switch TV to ${input.toUpperCase()}`}
+                        >
+                          {isLoading ? '…' : input.replace('hdmi', 'HDMI ')}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })()}
 
             {/* Input List */}
             <div className="p-6 overflow-y-auto max-h-[calc(80vh-120px)]">
