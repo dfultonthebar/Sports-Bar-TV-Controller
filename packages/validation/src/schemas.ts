@@ -612,6 +612,19 @@ export const audioProcessorConfigSchema = z.object({
 })
 
 // ============================================================================
+// ============================================================================
+// AUTH SCHEMAS (v2.54.54 — Grok Part 2 P0, closes auth/login Gotcha #1)
+// ============================================================================
+
+/**
+ * PIN login schema. 4-8 digit numeric string per bootstrap-new-location.sh
+ * pin validation. Used by /api/auth/login + /api/auth/pins (admin) POST.
+ */
+export const authLoginSchema = z.object({
+  pin: z.string().regex(/^\d{4,8}$/, 'PIN must be 4-8 digits'),
+})
+
+// ============================================================================
 // AI & ANALYSIS SCHEMAS
 // ============================================================================
 
@@ -842,6 +855,9 @@ export const ValidationSchemas = {
   deviceConfig: deviceConfigSchema,
   scheduleConfig: scheduleConfigSchema,
   audioProcessorConfig: audioProcessorConfigSchema,
+
+  // Auth
+  authLogin: authLoginSchema,
 
   // AI & Analysis
   aiQuery: aiQuerySchema,
