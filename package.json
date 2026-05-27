@@ -1,6 +1,6 @@
 {
   "name": "sports-bar-tv-controller",
-  "version": "2.54.80",
+  "version": "2.54.81",
   "private": true,
   "packageManager": "npm@10.8.2",
   "workspaces": [
