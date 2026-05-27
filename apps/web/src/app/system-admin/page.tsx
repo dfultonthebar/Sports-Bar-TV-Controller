@@ -33,8 +33,6 @@ import SystemControlPanel from '@/components/SystemControlPanel'
 import TodoList from '@/components/TodoList'
 import TodoForm from '@/components/TodoForm'
 import TodoDetails from '@/components/TodoDetails'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/cards'
-import { Badge } from '@/components/ui/badge'
 import SportsBarLayout from '@/components/SportsBarLayout'
 import { SystemResourceMonitor } from '@/components/system/SystemResourceMonitor'
 import LocationSettings from '@/components/LocationSettings'
@@ -658,20 +656,20 @@ export default function SystemAdminPage() {
 
           {/* Layout Editor Tab */}
           <TabsContent value="layout" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <LayoutGrid className="w-5 h-5" />
+            <div className="rounded-lg border border-slate-700 bg-slate-800/50 p-6">
+              <div className="mb-4">
+                <h3 className="text-lg font-semibold text-slate-100 flex items-center gap-2">
+                  <LayoutGrid className="w-5 h-5 text-blue-400" />
                   TV Layout Editor
-                </CardTitle>
-                <CardDescription>
+                </h3>
+                <p className="text-sm text-slate-400 mt-1">
                   Upload, edit, and configure your bar's TV floor plan layout
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
+                </p>
+              </div>
+              <div>
                 <EmbeddedLayoutManager />
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           </TabsContent>
 
           {/* Logs Tab */}
@@ -834,26 +832,26 @@ export default function SystemAdminPage() {
 
           {/* Config Sync Tab */}
           <TabsContent value="sync" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <GitBranch className="w-5 h-5 text-blue-600" />
+            <div className="rounded-lg border border-slate-700 bg-slate-800/50 p-6">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-100 flex items-center gap-2">
+                  <GitBranch className="w-5 h-5 text-blue-400" />
                   GitHub Configuration Sync
-                </CardTitle>
-                <CardDescription>
+                </h3>
+                <p className="text-sm text-slate-400 mt-1">
                   Manage and sync your Sports Bar configurations
-                </CardDescription>
-              </CardHeader>
-            </Card>
+                </p>
+              </div>
+            </div>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>🚀 Configuration Sync Overview</CardTitle>
-                <CardDescription>
+            <div className="rounded-lg border border-slate-700 bg-slate-800/50 p-6">
+              <div className="mb-4">
+                <h3 className="text-lg font-semibold text-slate-100">🚀 Configuration Sync Overview</h3>
+                <p className="text-sm text-slate-400 mt-1">
                   Your Sports Bar AI Assistant configurations are automatically tracked and can be synced to GitHub
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
+                </p>
+              </div>
+              <div className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="bg-slate-900/40 p-4 rounded-lg border border-slate-700 border-l-4 border-l-blue-500">
                     <h4 className="font-semibold text-white mb-2">📊 Tracked Configurations</h4>
@@ -888,8 +886,8 @@ export default function SystemAdminPage() {
                     </ul>
                   </div>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
 
             <GitHubConfigSync />
 

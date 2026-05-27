@@ -4,7 +4,6 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/cards'
 import { Badge } from '@/components/ui/badge'
 import DirecTVController from '@/components/DirecTVController'
 import FireTVController from '@/components/FireTVController'
@@ -136,19 +135,19 @@ function SectionHeader({
   children?: React.ReactNode
 }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
+    <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-6">
+      <div className="mb-4">
+        <h3 className="text-lg font-semibold text-slate-100 flex items-center gap-2">
           <Icon className={`w-5 h-5 ${iconColor}`} />
           {title}
           {aiEnabled !== undefined && <AiHintBadge enabled={!!aiEnabled} />}
-        </CardTitle>
-        <CardDescription>
+        </h3>
+        <p className="text-sm text-slate-400 mt-1">
           {aiEnabled && aiDescription ? aiDescription : description}
-        </CardDescription>
-      </CardHeader>
-      {children && <CardContent>{children}</CardContent>}
-    </Card>
+        </p>
+      </div>
+      {children && <div className="space-y-2">{children}</div>}
+    </div>
   )
 }
 
@@ -785,12 +784,12 @@ export default function DeviceConfigPage() {
           three buttons + the optional result card don't eat 2 screen
           heights below the active tab. Click the header to expand. */}
       {aiEnhancementsEnabled && (
-        <Card>
-          <CardHeader
-            className="cursor-pointer select-none"
+        <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-6">
+          <div
+            className="cursor-pointer select-none mb-4"
             onClick={() => setQuickActionsOpen((p) => !p)}
           >
-            <CardTitle className="flex items-center justify-between gap-2">
+            <h3 className="text-lg font-semibold text-slate-100 flex items-center justify-between gap-2">
               <span className="flex items-center gap-2">
                 <Zap className="w-5 h-5 text-yellow-400" />
                 Quick AI Actions
@@ -798,15 +797,15 @@ export default function DeviceConfigPage() {
               {quickActionsOpen
                 ? <ChevronUp className="w-4 h-4 text-slate-400" />
                 : <ChevronDown className="w-4 h-4 text-slate-400" />}
-            </CardTitle>
-            <CardDescription>
+            </h3>
+            <p className="text-sm text-slate-400 mt-1">
               {quickActionsOpen
                 ? 'Real AI-powered operations using device performance data and sports context'
                 : 'Click to expand — run full analysis, optimize devices, or view AI insights'}
-            </CardDescription>
-          </CardHeader>
+            </p>
+          </div>
           {quickActionsOpen && (
-          <CardContent className="space-y-4">
+          <div className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <Button
                 variant="outline"
@@ -899,9 +898,9 @@ export default function DeviceConfigPage() {
                 </div>
               </div>
             )}
-          </CardContent>
+          </div>
           )}
-        </Card>
+        </div>
       )}
       </div>
     </SportsBarLayout>
