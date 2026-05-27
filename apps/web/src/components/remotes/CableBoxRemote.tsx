@@ -230,18 +230,17 @@ export default function CableBoxRemote({ deviceId, deviceName, onClose }: CableB
           {channelInput && (
             <div className="bg-blue-500/20 border border-blue-500/30 rounded-lg p-3 text-center w-full transition-opacity">
               <div className="text-2xl font-bold text-blue-400">{channelInput}</div>
-              <div className="flex justify-center space-x-2 mt-2">
+              <div className="flex justify-center gap-2 mt-2">
                 <Button
                   onClick={handleChannelEnter}
-                  size="sm"
-                  className="bg-green-600 hover:bg-green-700"
+                  className="bg-green-600 hover:bg-green-700 min-h-[44px] min-w-[80px] text-sm font-semibold"
                 >
                   Enter
                 </Button>
                 <Button
                   onClick={handleClearChannel}
-                  size="sm"
                   variant="outline"
+                  className="min-h-[44px] min-w-[80px] text-sm font-semibold"
                 >
                   Clear
                 </Button>
@@ -341,7 +340,7 @@ export default function CableBoxRemote({ deviceId, deviceName, onClose }: CableB
             className="bg-slate-700 hover:bg-slate-600 text-white p-3"
           >
             <ArrowLeft className="w-5 h-5 mr-1" />
-            <span className="text-xs">Back</span>
+            <span className="text-sm">Back</span>
           </Button>
           <Button
             onClick={() => sendCommand('EXIT', 'Exit')}
@@ -349,7 +348,7 @@ export default function CableBoxRemote({ deviceId, deviceName, onClose }: CableB
             className="bg-slate-700 hover:bg-slate-600 text-white p-3"
           >
             <LogOut className="w-5 h-5 mr-1" />
-            <span className="text-xs">Exit</span>
+            <span className="text-sm">Exit</span>
           </Button>
         </div>
 
@@ -388,7 +387,7 @@ export default function CableBoxRemote({ deviceId, deviceName, onClose }: CableB
             disabled={loading}
             className="bg-slate-700 hover:bg-slate-600 text-white p-3"
           >
-            <span className="text-xs mr-1">CH</span>
+            <span className="text-sm mr-1">CH</span>
             <ChevronUp className="w-5 h-5" />
           </Button>
           <Button
@@ -396,7 +395,7 @@ export default function CableBoxRemote({ deviceId, deviceName, onClose }: CableB
             disabled={loading}
             className="bg-slate-700 hover:bg-slate-600 text-white p-3"
           >
-            <span className="text-xs mr-1">CH</span>
+            <span className="text-sm mr-1">CH</span>
             <ChevronDown className="w-5 h-5" />
           </Button>
         </div>
@@ -445,7 +444,7 @@ export default function CableBoxRemote({ deviceId, deviceName, onClose }: CableB
           <Button
             onClick={() => sendCommand('SKIP_BACK', 'Skip Back')}
             disabled={loading}
-            className="bg-slate-700 hover:bg-slate-600 text-white p-2 text-xs"
+            className="bg-slate-700 hover:bg-slate-600 text-white p-2 text-sm"
           >
             Skip -10s
           </Button>
@@ -459,7 +458,7 @@ export default function CableBoxRemote({ deviceId, deviceName, onClose }: CableB
           <Button
             onClick={() => sendCommand('SKIP_FORWARD', 'Skip Forward')}
             disabled={loading}
-            className="bg-slate-700 hover:bg-slate-600 text-white p-2 text-xs"
+            className="bg-slate-700 hover:bg-slate-600 text-white p-2 text-sm"
           >
             Skip +30s
           </Button>
@@ -473,7 +472,7 @@ export default function CableBoxRemote({ deviceId, deviceName, onClose }: CableB
             className="bg-slate-700 hover:bg-slate-600 text-white p-3"
           >
             <Volume2 className="w-5 h-5" />
-            <span className="ml-1 text-xs">+</span>
+            <span className="ml-1 text-sm">+</span>
           </Button>
           <Button
             onClick={() => sendCommand('MUTE', 'Mute')}
@@ -488,7 +487,7 @@ export default function CableBoxRemote({ deviceId, deviceName, onClose }: CableB
             className="bg-slate-700 hover:bg-slate-600 text-white p-3"
           >
             <Volume2 className="w-5 h-5" />
-            <span className="ml-1 text-xs">-</span>
+            <span className="ml-1 text-sm">-</span>
           </Button>
         </div>
 

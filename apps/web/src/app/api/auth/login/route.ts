@@ -14,6 +14,7 @@ import { validatePIN, createSession, logAuditAction, AUTH_CONFIG } from '@/lib/a
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { logger } from '@sports-bar/logger'
+import { validateRequestBody, ValidationSchemas, isValidationError } from '@/lib/validation'
 
 export const dynamic = 'force-dynamic'
 
@@ -35,17 +36,15 @@ export async function POST(request: NextRequest) {
   const ipAddress = getIpAddress(request)
   const userAgent = request.headers.get('user-agent') || undefined
 
+  // v2.54.54 (Grok Part 2 P0): canonical validateRequestBody pattern.
+  // Was raw request.json() + manual presence check (Gotcha #1 violation —
+  // also accepted any pin shape including non-strings, leading auth to
+  // bcrypt-compare arbitrary values).
+  const bodyValidation = await validateRequestBody(request, ValidationSchemas.authLogin)
+  if (isValidationError(bodyValidation)) return bodyValidation.error
+  const { pin } = bodyValidation.data
+
   try {
-    const body = await request.json()
-    const { pin } = body
-
-    if (!pin) {
-      return NextResponse.json(
-        { success: false, error: 'PIN is required' },
-        { status: 400 }
-      )
-    }
-
     // Validate PIN
     const pinResult = await validatePIN(pin)
 

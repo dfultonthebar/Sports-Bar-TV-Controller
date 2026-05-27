@@ -239,7 +239,7 @@ export default function InteractiveBartenderLayout({
               <button
                 onClick={toggleMultiView}
                 disabled={multiViewLoading}
-                className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 border ${
+                className={`px-4 py-3 min-h-[44px] rounded-lg text-sm font-bold transition-all flex items-center gap-2 border ${
                   multiViewMode === 6
                     ? 'bg-purple-600/30 text-purple-300 border-purple-500'
                     : 'bg-slate-700/50 text-slate-400 border-white/10 hover:bg-slate-600/50'
@@ -255,7 +255,7 @@ export default function InteractiveBartenderLayout({
                 <button
                   key={room.id}
                   onClick={() => setSelectedRoomFilter(room.id)}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
+                  className={`px-4 py-3 min-h-[44px] rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
                     selectedRoomFilter === room.id
                       ? 'text-white border'
                       : 'text-slate-400 border border-white/10 hover:bg-white/10'
@@ -306,7 +306,7 @@ export default function InteractiveBartenderLayout({
               <button
                 key={zone.id}
                 onClick={() => handleZoneClick(zone)}
-                className="group absolute transition-all duration-300 cursor-pointer hover:z-30"
+                className="group absolute transition-all duration-300 cursor-pointer hover:z-30 min-h-[44px] min-w-[44px] flex items-center justify-center"
                 style={{
                   left: `${zone.x + zone.width / 2}%`,
                   top: `${zone.y + zone.height / 2}%`,
@@ -326,20 +326,20 @@ export default function InteractiveBartenderLayout({
                     borderColor: roomColor ? `${roomColor}80` : (currentInput ? 'rgb(74 222 128 / 0.3)' : 'rgb(255 255 255 / 0.1)')
                   }}
                 >
-                  {/* Room Color Indicator */}
+                  {/* Room Color Indicator - extended tap area for the dot via negative margin */}
                   {roomInfo && (
                     <div
-                      className="absolute -top-1 -right-1 w-3 h-3 rounded-full border border-white shadow-sm"
-                      style={{ backgroundColor: roomColor }}
+                      className="absolute -top-1 -right-1 w-3 h-3 rounded-full border border-white shadow-sm p-3 -m-3 box-content"
+                      style={{ backgroundColor: roomColor, backgroundClip: 'content-box' }}
                       title={roomInfo.name}
                     />
                   )}
                   {/* TV Icon - Compact sizing to prevent overlap */}
                   <div className="relative z-10 p-1.5 sm:p-2 md:p-2 lg:p-2.5 xl:p-2.5 flex flex-col items-center">
                     <Tv className={`w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7 lg:w-8 lg:h-8 xl:w-9 xl:h-9 ${currentInput ? 'text-green-400' : 'text-slate-300 group-hover:text-green-400'}`} />
-                    {/* Current Input Label - Compact text */}
+                    {/* Current Input Label - bumped from text-[8px..xs] to text-xs..sm for arm's-length readability on a dim bar */}
                     {currentInput && (
-                      <div className="mt-0.5 sm:mt-1 md:mt-1 px-1.5 sm:px-2 md:px-2 py-0.5 bg-black/60 rounded text-[8px] sm:text-[9px] md:text-[10px] lg:text-xs font-semibold text-white truncate max-w-[50px] sm:max-w-[60px] md:max-w-[70px] lg:max-w-[80px] xl:max-w-[90px]">
+                      <div className="mt-0.5 sm:mt-1 md:mt-1 px-1.5 sm:px-2 md:px-2 py-0.5 bg-black/60 rounded text-xs sm:text-xs md:text-sm lg:text-sm font-semibold text-white truncate max-w-[50px] sm:max-w-[60px] md:max-w-[70px] lg:max-w-[80px] xl:max-w-[90px]">
                         {currentInput}
                       </div>
                     )}
@@ -440,7 +440,7 @@ export default function InteractiveBartenderLayout({
                     >
                       <div className="relative z-10 flex items-center justify-between">
                         <div>
-                          <div className={`text-xs font-medium mb-1 ${isActive ? 'text-green-300' : 'text-slate-400'}`}>
+                          <div className={`text-sm font-medium mb-1 ${isActive ? 'text-green-300' : 'text-slate-400'}`}>
                             Input {input.channelNumber}
                           </div>
                           <div className={`text-lg font-bold ${isActive ? 'text-white' : 'text-slate-200'}`}>
