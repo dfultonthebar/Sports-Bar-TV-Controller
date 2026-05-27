@@ -46,6 +46,26 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-27 — v2.54.86 — disk-installer adds bios_boot partition (GPT+BIOS boot fix)
+
+**Risk:** GO — zero runtime impact for installed fleet.
+
+**What changed:** the 6th install-bug iteration this week. `disk-installer.sh` Step 2 now creates a `bios_boot` partition (1 MB, type ef02) as partition 1 before EFI (now part 2) + root (now part 3). On GPT disks booted in BIOS legacy mode, `grub-install --target=i386-pc` requires this partition to embed its core image. Without it, the MBR signature 0x55AA was present (v2.54.80 check passed) but GRUB stage 1 had no valid stage-2 pointer → VM hung at SeaBIOS "Booting from Hard Disk..." even though kernel + initrd + grub.cfg were all correctly placed (v2.54.84 + earlier fixes confirmed working at install time via disk inspection).
+
+**Where this matters:** new-NUC installs only. Installed fleet boxes never re-run disk-installer.
+
+**Manual steps required:** none. Next-NUC install with attempt-9 ISO should finally boot all the way through.
+
+**Caveat for the v2.54.80 MBR check:** the 0x55AA signature is necessary but not sufficient validation — it's present on every formatted disk regardless of GRUB. A future hardening pass could read GRUB's identifying bytes from MBR. Not blocking; the bios_boot partition fix addresses the underlying cause.
+
+**Rollback:** `git revert <SHA>` — no functional change to revert at any installed location.
+
+**Pattern (6th iteration this week):** v2.54.76 + v2.54.79 + v2.54.80 + v2.54.81 + v2.54.84 + v2.54.86. Every handoff in the boot chain is now defensively validated where we know how to check it.
+
+`Checkpoint model: opus`
+
+---
+
 ### 2026-05-27 — v2.54.84 — disk-installer copies kernel+initrd from casper to /boot
 
 **Risk:** GO — zero runtime impact for installed fleet.
