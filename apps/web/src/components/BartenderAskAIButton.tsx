@@ -39,6 +39,13 @@ export function BartenderAskAIButton() {
   const [loading, setLoading] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  // v2.54.52 (Grok #2): stable per-modal sessionId. Chat route persists
+  // history to chatSessions table keyed on this ID, then replays it on
+  // every subsequent request — so follow-up questions ("what if it's
+  // yellow?" after "what does the banner mean?") have full prior
+  // context without us shipping the message array client-side. Resets
+  // when the operator closes + reopens the modal (fresh conversation).
+  const sessionIdRef = useRef<string>('')
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -50,7 +57,15 @@ export function BartenderAskAIButton() {
     if (open && inputRef.current) {
       inputRef.current.focus()
     }
+    if (open && !sessionIdRef.current) {
+      sessionIdRef.current = crypto.randomUUID()
+    }
   }, [open])
+
+  function startFresh() {
+    setMessages([])
+    sessionIdRef.current = crypto.randomUUID()
+  }
 
   async function send(text: string) {
     const q = text.trim()
@@ -63,22 +78,31 @@ export function BartenderAskAIButton() {
     const controller = new AbortController()
     const tid = setTimeout(() => controller.abort(), 300_000)
     try {
+      // v2.54.52 BUG FIX: the v2.54.48 ship sent { messages: [...] }
+      // but the chat route's ValidationSchemas.aiQuery requires
+      // { message: string, sessionId?, ... }. Every Ask AI tap was
+      // returning 400 "Either query or message must be provided".
+      // sessionId threads history server-side via chatSessions table.
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          messages: [{ role: 'user', content: q }],
+          message: q,
+          sessionId: sessionIdRef.current,
           stream: false,
+          enableTools: false,
         }),
         signal: controller.signal,
       })
       if (!res.ok) {
-        throw new Error(`Server returned ${res.status}`)
+        const errText = await res.text().catch(() => '')
+        throw new Error(`Server returned ${res.status}${errText ? `: ${errText.slice(0, 100)}` : ''}`)
       }
       const data = await res.json()
+      // Non-streaming chat route returns { response, sources, sessionId, ... }
       const answer =
-        data?.message?.content ||
         data?.response ||
+        data?.message?.content ||
         data?.answer ||
         'No answer came back. Try rephrasing.'
       setMessages((m) => [...m, { role: 'assistant', content: answer }])
@@ -123,14 +147,28 @@ export function BartenderAskAIButton() {
             <MessageSquare className="h-5 w-5 text-purple-400" />
             <h2 className="font-semibold text-white">Ask AI for help</h2>
           </div>
-          <button
-            type="button"
-            onClick={() => setOpen(false)}
-            className="text-slate-400 hover:text-white p-2 -m-2"
-            aria-label="Close"
-          >
-            <X className="h-5 w-5" />
-          </button>
+          <div className="flex items-center gap-1">
+            {messages.length > 0 && (
+              <button
+                type="button"
+                onClick={startFresh}
+                disabled={loading}
+                className="text-xs text-slate-400 hover:text-white px-3 py-2 min-h-[44px] disabled:opacity-50"
+                aria-label="Start new conversation"
+                title="Start new conversation (clears context)"
+              >
+                New chat
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="text-slate-400 hover:text-white p-2 -m-2"
+              aria-label="Close"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
         </div>
 
         {/* Messages */}

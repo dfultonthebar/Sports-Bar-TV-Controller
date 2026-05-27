@@ -855,6 +855,24 @@ async function handleNonStreamingChat(
   sessionId: string | undefined,
   enableTools: boolean
 ): Promise<NextResponse> {
+  // v2.54.53 (Grok #3): pre-resolve a curated-QA fallback before any
+  // network call. If Ollama is down (5xx/timeout/abort) and the
+  // bartender's question matches a confident curated QA, we return
+  // the curated answer directly with a "(AI offline — curated answer)"
+  // note instead of dumping "Server returned 500" on a bartender who
+  // just wants to know how to swap mic batteries. Cache TTL is 5 min
+  // so this second call (after searchDocsViaRag's pre-pass) is free.
+  let qaFallback: { answer: string; sourceFile: string; question: string } | null = null
+  if (looksLikeBartenderQuery(message)) {
+    try {
+      const qa = await findBestQAMatch(message)
+      if (qa && qa.matchType === 'confident') {
+        qaFallback = { answer: qa.answer, sourceFile: qa.sourceFile, question: qa.question }
+      }
+    } catch {
+      // QA pre-resolve is best-effort; failing it must not block chat
+    }
+  }
   // v2.46.3: topK 5→8 — see fact-checker re-grill 2026-05-18
   const relevantDocs = await searchDocsViaRag(message, 8)
   
@@ -919,24 +937,42 @@ NONE of the snippets address the question. Do not refuse on uncertainty.`,
   const nsOllamaTools = enableTools && availableTools.length > 0
     ? convertToOllamaToolsFormat(availableTools)
     : undefined
-  const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: nsModel,
-      messages: [systemMessage, ...messages],
-      stream: false,
-      keep_alive: OLLAMA_KEEP_ALIVE, // v2.50.0 #1: stay resident → warm prefix cache
-      ...(nsOllamaTools ? { tools: nsOllamaTools } : {}), // v2.50.3
-      options: {
-        temperature: 0.3, // v2.46.3: match streaming-path fidelity setting
-        top_p: 0.9,
-      },
-    }),
-  })
-
-  if (!response.ok) {
-    throw new Error(`Ollama API error: ${response.status}`)
+  // v2.54.53 (Grok #3): wrap the Ollama call so a 5xx/timeout doesn't
+  // dump a raw error on a bartender. If we pre-resolved a confident
+  // QA fallback at top-of-function, short-circuit to that. Otherwise
+  // re-throw so the existing catch + 500 response fires.
+  let response: Response
+  try {
+    response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: nsModel,
+        messages: [systemMessage, ...messages],
+        stream: false,
+        keep_alive: OLLAMA_KEEP_ALIVE, // v2.50.0 #1: stay resident → warm prefix cache
+        ...(nsOllamaTools ? { tools: nsOllamaTools } : {}), // v2.50.3
+        options: {
+          temperature: 0.3, // v2.46.3: match streaming-path fidelity setting
+          top_p: 0.9,
+        },
+      }),
+    })
+    if (!response.ok) {
+      throw new Error(`Ollama API error: ${response.status}`)
+    }
+  } catch (err) {
+    if (qaFallback) {
+      logger.warn(`[CHAT API] Ollama unreachable, serving curated QA fallback for "${message.slice(0, 60)}": ${(err as Error)?.message ?? err}`)
+      const fallbackBody = `${qaFallback.answer}\n\n---\n*(The AI is offline right now — this is a curated answer from ${qaFallback.sourceFile}. If you need more detail, text the manager.)*`
+      return NextResponse.json({
+        response: fallbackBody,
+        sessionId: sessionId || 'new',
+        sources: [{ name: qaFallback.sourceFile, score: 1.0, excerpt: qaFallback.question }],
+        model: 'qa-fallback-curated',
+      })
+    }
+    throw err
   }
 
   const data = await response.json()
