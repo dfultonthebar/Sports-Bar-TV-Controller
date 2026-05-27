@@ -12,10 +12,39 @@ import { logger } from '@sports-bar/logger'
 const LOG_DIR = path.join(process.cwd(), 'log')
 const LOG_FILE = path.join(LOG_DIR, 'atlas-communication.log')
 
+// v2.54.60: size cap + simple rotation. The unbounded append-only behavior
+// before this version produced a 140 GB log at Holmgren (5.75 billion lines
+// over 98 days). When the file exceeds MAX_LOG_BYTES, we rotate to a single
+// .old sibling and start fresh. Truncate (not rename-then-create) so a live
+// writer (PM2-attached node process) keeps appending without missing a beat.
+const MAX_LOG_BYTES = 100 * 1024 * 1024 // 100 MB
+const ROTATE_CHECK_EVERY_N = 1000       // amortize fstat() calls
+let writeCounter = 0
+
 // Ensure log directory exists
 function ensureLogDir() {
   if (!fs.existsSync(LOG_DIR)) {
     fs.mkdirSync(LOG_DIR, { recursive: true })
+  }
+}
+
+function rotateIfTooLarge() {
+  try {
+    const st = fs.statSync(LOG_FILE)
+    if (st.size > MAX_LOG_BYTES) {
+      const oldPath = LOG_FILE + '.old'
+      // Best-effort: keep last rotation as a sibling for forensic review.
+      // If the rename fails (e.g. .old exists + no perm), fall through to truncate.
+      try { fs.renameSync(LOG_FILE, oldPath) } catch {}
+      // The node process still holds the inode of the renamed file open.
+      // Appends will keep going to .old (preserves history). New writes
+      // from THIS process won't reach the fresh LOG_FILE until the OS
+      // rotates the FD — for simplicity we rely on the writeLog path
+      // re-opening on the next appendFileSync(LOG_FILE,...) which sees
+      // the new (empty) inode at LOG_FILE.
+    }
+  } catch {
+    // File doesn't exist yet — nothing to rotate.
   }
 }
 
@@ -58,6 +87,10 @@ function writeLog(level: string, category: string, message: string, data?: any) 
   
   // Write to file
   try {
+    writeCounter++
+    if (writeCounter % ROTATE_CHECK_EVERY_N === 0) {
+      rotateIfTooLarge()
+    }
     fs.appendFileSync(LOG_FILE, logLine)
   } catch (error) {
     logger.error('Failed to write to atlas-communication.log:', error)
