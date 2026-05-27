@@ -35,6 +35,43 @@ is the archive.
 
 ---
 
+## v2.54.89 — NEW: subiquity autoinstall ISO architecture (v3.1.0 replaces v3.0.1 hand-rolled) (2026-05-27)
+
+**Versions covered:** v2.54.89 (app-level), v3.1.0 (ISO-level)
+**Branch landed:** main
+**Fleet target:** ISO consumers only. No runtime change for installed fleet.
+
+**Why this exists:** v3.0.1 hand-rolled `disk-installer.sh` hit 7 bug iterations on 2026-05-27 (parted/mkfs/unsquashfs missing in chroot, grub-install silent fail, 5 other silent-fail sites, missing kernel copy, missing bios_boot partition). After research (Grok consult + 2 parallel agents — `feedback-casper-squashfs-excludes-boot` memory + Path D-24 decision), switched architecture:
+
+**OLD (v3.0.1):** `build-sports-bar-iso.sh` debootstraps a 22.04 chroot → mksquashfs → xorriso. `disk-installer.sh` runs on live ISO, manually partitions + unsquashfs-extracts + grub-installs + copies kernel + applies bios_boot fix + ... (430 lines, every line a potential silent-fail).
+
+**NEW (v3.1.0):**
+- `scripts/iso/build-autoinstall-iso.sh` (~220 lines) — downloads stock Ubuntu 24.04.4 server ISO, 7z-extracts, drops `/server/{user-data,meta-data}` (subiquity autoinstall config) + `/sports-bar/{first-boot-fresh.sh,sports-bar-first-boot.service}`, edits grub.cfg with autoinstall kernel arg, repacks with xorriso preserving BIOS+UEFI dual boot.
+- `scripts/iso/autoinstall.yaml.template` (~110 lines) — declarative install config. `storage.layout.name: direct` lets curtin handle GPT+bios_boot+EFI+ext4-root partitioning natively (the v2.54.86 bios_boot fix becomes Canonical's problem). `late-commands` copy our first-boot script into target + enable systemd service. `interactive-sections: [identity]` lets operator change hostname.
+- `scripts/iso/sports-bar-first-boot.service` — systemd unit that runs `first-boot-fresh.sh` on first real boot.
+
+**What curtin handles for free (vs hand-rolled bugs we hit):**
+- GPT partition table with bios_boot + EFI + root (v2.54.86 fix is now built-in)
+- Kernel install + initramfs regeneration with correct target drivers (v2.54.84 + the "missing update-initramfs" gap)
+- GRUB install for BIOS AND UEFI both (v2.54.80 silent-fail)
+- fstab UUIDs (always correct via blkid post-format)
+- systemd-resolved + systemd-networkd properly enabled (the resolv.conf gap)
+- Casper purge (no casper artifacts on installed system)
+
+**Required Manual Steps at build host:** `sudo apt-get install -y p7zip-full xorriso wget openssl` (one-time). Then `bash scripts/iso/build-autoinstall-iso.sh`. Stock ISO is cached at `/home/ubuntu/iso-cache/` for re-builds.
+
+**Deprecated** (kept in git for reference, removed from active path): `scripts/iso/build-sports-bar-iso.sh`, `scripts/iso/disk-installer.sh`. v3.0.x ISOs still build but new locations should use the v3.1.0 path.
+
+**Proxmox VM 200 best-practice settings** (for smoke-testing the autoinstall ISO):
+- BIOS: OVMF (UEFI) — requires `qm set 200 -bios ovmf` + add EFI disk via `qm set 200 -efidisk0 local-zfs:0,format=raw`
+- Machine: q35
+- SCSI: virtio-scsi-pci (or virtio-scsi-single)
+- Disk: scsi0 with `discard=on,cache=writeback`
+- Network: virtio
+- QEMU agent: enabled
+
+---
+
 ## v2.54.88 — refreshed POWER_AND_NETWORK_TVS + WRONG_CHANNEL_ON_TV to match current Video/Power tab UI, no setup required, no runtime change (2026-05-27)
 
 Doc-only refresh. Two stale bartender how-tos updated to reflect the v2.54.85 Video-tab adds: POWER_AND_NETWORK_TVS now leads with what the Power tab is FOR (on/off + reboot, network TVs only), clarifies HDMI button visibility (network TVs only — bars without them never see HDMI buttons), and points at PUTTING_GAMES_ON_TVS_VIDEO_TAB for routing. WRONG_CHANNEL_ON_TV Section 4 (TV is dark) now leads with the Power tab's Power tile + cross-references POWER_AND_NETWORK_TVS for wall-switch / standby specifics. Physical-remote fallback retained for cable/IR TVs. No code touched. No setup required.
