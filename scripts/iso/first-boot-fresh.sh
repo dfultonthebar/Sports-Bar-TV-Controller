@@ -125,9 +125,33 @@ sudo -u ubuntu npm run build 2>&1 | tail -20
 
 log "Build complete."
 
-# Install/update Claude Code CLI (native install)
+# Install/update Claude Code CLI (native install via Anthropic's installer)
 log "Installing Claude Code CLI..."
 sudo -u ubuntu bash -c "curl -fsSL https://claude.ai/install.sh | sh" 2>&1 | tail -5 || warn "Claude Code CLI install failed (non-fatal)"
+
+# v3.0.1 (2026-05-27): Install Grok CLI for AI advisor parity.
+# x.ai's installer drops to ~/.grok/. Same install pattern as Claude.
+log "Installing Grok CLI..."
+sudo -u ubuntu bash -c "curl -fsSL https://x.ai/cli/install.sh | bash" 2>&1 | tail -5 || warn "Grok CLI install failed (non-fatal)"
+
+# v3.0.1 (2026-05-27): Install Tailscale so fleet SSH works out of the box.
+# Operator needs to run `tailscale up` interactively after first boot to
+# authenticate the node into the Tailnet — that requires a browser. The
+# install itself is unattended; the auth is a one-step manual + a printed
+# instruction in the wizard.
+log "Installing Tailscale..."
+if ! command -v tailscale &>/dev/null; then
+    # Add Ubuntu jammy/noble Tailscale repo + key
+    UBUNTU_CODENAME=$(lsb_release -cs 2>/dev/null || echo "jammy")
+    curl -fsSL "https://pkgs.tailscale.com/stable/ubuntu/${UBUNTU_CODENAME}.noarmor.gpg" | tee /usr/share/keyrings/tailscale-archive-keyring.gpg >/dev/null 2>&1
+    curl -fsSL "https://pkgs.tailscale.com/stable/ubuntu/${UBUNTU_CODENAME}.tailscale-keyring.list" | tee /etc/apt/sources.list.d/tailscale.list >/dev/null 2>&1
+    apt-get update -qq 2>&1 | tail -2
+    apt-get install -y tailscale 2>&1 | tail -3 || warn "Tailscale install failed (non-fatal — run 'curl -fsSL https://tailscale.com/install.sh | sh' manually later)"
+    systemctl enable --now tailscaled 2>&1 | tail -3 || true
+    log "Tailscale installed. To join the Tailnet, run: sudo tailscale up"
+else
+    log "Tailscale already installed: $(tailscale version | head -1)"
+fi
 
 # Install GitHub CLI if not already present
 if ! command -v gh &>/dev/null; then
