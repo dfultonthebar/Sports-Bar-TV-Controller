@@ -146,8 +146,12 @@ sudo -u ubuntu npm run build 2>&1 | tail -20
 log "Build complete."
 
 # Install/update Claude Code CLI (native install via Anthropic's installer)
+# v2.55.4: pipe to `bash` not `sh`. Ubuntu's /bin/sh is dash, which chokes
+# on the installer's bash syntax ("Syntax error: \"(\" unexpected" at line 9).
+# Caught during v3.1.0 smoke v8 first-boot. Grok's installer below already
+# uses bash. This was why "Claude Code CLI install failed (non-fatal)".
 log "Installing Claude Code CLI..."
-sudo -u ubuntu bash -c "curl -fsSL https://claude.ai/install.sh | sh" 2>&1 | tail -5 || warn "Claude Code CLI install failed (non-fatal)"
+sudo -u ubuntu bash -c "curl -fsSL https://claude.ai/install.sh | bash" 2>&1 | tail -5 || warn "Claude Code CLI install failed (non-fatal)"
 
 # v3.0.1 (2026-05-27): Install Grok CLI for AI advisor parity.
 # x.ai's installer drops to ~/.grok/. Same install pattern as Claude.
