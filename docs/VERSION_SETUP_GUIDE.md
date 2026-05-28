@@ -35,6 +35,25 @@ is the archive.
 
 ---
 
+## v2.54.99 — CLAUDE.md + BARE_METAL_ISO documents v3.1.0 autoinstall architecture (2026-05-27)
+
+**Versions covered:** v2.54.99
+**Branch landed:** main
+**Fleet target:** No runtime change. Doc-only.
+
+Memorialized the v3.1.0 subiquity autoinstall ISO architecture (v2.54.89-.97) in `CLAUDE.md` so future Claude knows the canonical build path:
+- New section under "Build & Development Commands" → "ISO Build (v3.1.0+ — subiquity autoinstall, CANONICAL)" enumerating active scripts (`build-autoinstall-iso.sh`, `autoinstall.yaml.template`, `sports-bar-first-boot.service`, `smoke-test-autoinstall.sh`, `audit-installed-vm.sh`, `cleanup-chroot.sh`) and marking v3.0.x scripts (`build-sports-bar-iso.sh`, `disk-installer.sh`) DEPRECATED but not deleted.
+- Five new Gotchas (#14-18): grub.cfg quoting (v2.54.92), apt.geoip hangs install (v2.54.95), `shutdown: poweroff` not reboot (v2.54.96), Node+PM2 in late-commands (v2.54.97), DHCP poll ≥15 min (v2.54.97). Each gotcha is a real shipped fix this session — documenting prevents re-discovery.
+- Proxmox VM smoke-test settings recorded (OVMF + EFI disk, q35, virtio-scsi-pci, 16 GB / 4 cores / 100 GB minimum).
+
+`docs/BARE_METAL_ISO.md` already pointed at v3.1.0 as canonical (v2.54.91 refresh). Verified unchanged.
+
+**Required Manual Steps:** None.
+
+**Verification:** `grep -q "ISO Build (v3.1.0" CLAUDE.md && grep -q "### 18\. ISO smoke test" CLAUDE.md`.
+
+---
+
 ## v2.54.98 — new bartender how-to READING_AUDIO_METERS.md (2026-05-27)
 
 **Versions covered:** v2.54.98
