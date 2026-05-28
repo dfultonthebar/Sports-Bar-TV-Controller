@@ -119,6 +119,15 @@ fi
 
 log "  Node: $(node --version), npm: $(npm --version)"
 
+# NOTE on npm version (v2.55.11 investigation): NodeSource Node 22 ships a
+# bundled npm 10.9.7; registry latest is npm 11.x. We deliberately stay on the
+# bundled npm — `npm install -g npm@latest` FAILS on NodeSource Node (arborist
+# self-upgrade hits "Cannot find module 'promise-retry'", confirmed pristine on
+# VM 201 even after a clean nodejs reinstall). The build is verified clean on
+# npm 10.9.7 (npm ci + turbo build, 34/34 tasks). Getting npm 11 would require
+# changing the Node install method off NodeSource (e.g. nodejs.org binary) —
+# tied to the deferred Node-22.22.3 decision. See [[feedback-nodesource-npm-self-upgrade-broken]].
+
 cd "$APP_DIR"
 sudo -u ubuntu npm install --prefer-offline 2>&1 | tail -5
 
