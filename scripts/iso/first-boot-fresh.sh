@@ -122,6 +122,38 @@ log "  Node: $(node --version), npm: $(npm --version)"
 cd "$APP_DIR"
 sudo -u ubuntu npm install --prefer-offline 2>&1 | tail -5
 
+# v2.55.6: generate .env with fresh secrets if absent (gap analysis found NO
+# .env on a fresh install — app ran on defaults but auth/encryption need real
+# secrets). Per-location secrets (LOCATION_ID, API keys, ATLAS_PROCESSOR_IP)
+# are added later by the location-setup-wizard; here we seed the base +
+# crypto secrets so auth + encrypted-credential storage work out of the box.
+if [ ! -f "$APP_DIR/.env" ]; then
+    log "  Generating .env with fresh secrets..."
+    GEN_SECRET() { node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"; }
+    cat > "$APP_DIR/.env" <<ENVEOF
+DATABASE_URL="file:$DATA_DIR/production.db"
+NODE_ENV=production
+PORT=3001
+LOG_LEVEL=info
+AUTH_COOKIE_SECURE=false
+NEXTAUTH_SECRET=$(GEN_SECRET)
+NEXTAUTH_URL=http://localhost:3001
+ENCRYPTION_KEY=$(GEN_SECRET)
+NEXT_SERVER_ACTIONS_ENCRYPTION_KEY=$(GEN_SECRET)
+FIRETV_DEFAULT_PORT=5555
+FIRETV_CONNECTION_TIMEOUT=30000
+FIRETV_KEEP_ALIVE_INTERVAL=30000
+LOCAL_AI_ENABLED=true
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=llama3.1:8b
+# Per-location values (LOCATION_ID, LOCATION_NAME, ATLAS_PROCESSOR_IP, API
+# keys) are appended by scripts/bootstrap-new-location.sh + the setup wizard.
+ENVEOF
+    chown ubuntu:ubuntu "$APP_DIR/.env"
+    chmod 600 "$APP_DIR/.env"
+    log "  .env generated (base + crypto secrets; per-location values via wizard)."
+fi
+
 # v2.55.1: DB MUST exist BEFORE `npm run build`. Next.js "Collecting page
 # data" evaluates API routes at build time; /api/audio-processor (and others)
 # transitively open production.db at module-eval. On a fresh install the DB
@@ -246,6 +278,29 @@ env PATH="$PATH" pm2 startup systemd -u ubuntu --hp "$UBUNTU_HOME" | tail -2
 sudo -u ubuntu pm2 save
 
 log "PM2 started and configured for auto-start."
+
+# ─── Step 6b: Hardware prerequisites (v2.55.6 — gap analysis vs Holmgren) ─────
+# Bake in the hardware-control prereqs so bring-up is debug-free.
+log "Step 6b/10: Hardware prerequisites (groups / SDR blacklist / nginx proxy)..."
+
+# Serial (Wolf Pack + multiview RS-232 over USB) needs dialout; camera needs
+# video; iGPU render group is harmless on no-iGPU VMs. Without dialout the
+# serialport npm module gets EACCES on /dev/ttyUSB*.
+usermod -aG dialout,video,render,plugdev ubuntu 2>&1 | tail -2 || warn "usermod groups failed (non-fatal)"
+log "  ubuntu added to dialout,video,render,plugdev (serial + camera + USB SDR)."
+
+# SDR: blacklist the kernel DVB-USB driver so rtl_power can grab the dongle
+# (the #1 SDR first-install failure — kernel grabs it before user-space).
+if [ -f "$APP_DIR/scripts/setup-sdr.sh" ]; then
+    bash "$APP_DIR/scripts/setup-sdr.sh" 2>&1 | tail -8 || warn "setup-sdr.sh non-fatal issue"
+fi
+
+# Bartender :3002 nginx reverse proxy + admin-route allow-list (fleet std
+# v2.32.57+). Replaces the PM2 bartender-proxy with nginx for the security
+# allow-list (admin pages 403 from :3002). Idempotent; deletes the PM2 proxy.
+if [ -f "$APP_DIR/scripts/setup-bartender-nginx.sh" ]; then
+    bash "$APP_DIR/scripts/setup-bartender-nginx.sh" 2>&1 | tail -10 || warn "setup-bartender-nginx.sh non-fatal — PM2 bartender-proxy remains as fallback"
+fi
 
 # ─── Step 7: New-location setup ───────────────────────────────────────────────
 log "Step 7/10: Running new-location-setup.sh..."
