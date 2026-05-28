@@ -54,6 +54,22 @@ CREATE TABLE IF NOT EXISTS "__drizzle_migrations" (
 );
 SQL
 
+# v2.55.17: this is a ONE-SHOT push→migrate transition tool, but auto-update
+# runs it on EVERY cycle. If the markers table already has rows, the box has
+# already transitioned (or built its DB via drizzle-kit migrate on a fresh
+# install). Re-marking here would stamp NEW, unapplied migration files as
+# "already applied" BEFORE `drizzle-kit migrate` runs — silently skipping real
+# schema changes. This is exactly what broke the v2.55.16 InterferenceAttribution
+# FK migration: bootstrap marked 0001 → migrate saw it "done" → the FK was
+# never dropped. So once ANY marker exists, do nothing and let drizzle-kit
+# migrate own all subsequent migrations.
+EXISTING_ROWS=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM __drizzle_migrations;")
+if [ "${EXISTING_ROWS:-0}" -gt 0 ]; then
+    log "Already bootstrapped (${EXISTING_ROWS} marker row(s)) — no-op. drizzle-kit migrate will apply any new migrations."
+    exit 0
+fi
+log "Empty markers table — performing one-time push→migrate transition (marking existing migrations as already-applied)."
+
 # Pull each migration's tag from the journal, find its SQL file, compute the
 # sha256 hash drizzle expects, and INSERT a marker row if not already there.
 # Drizzle's hash is sha256(sql_file_contents) hex.
