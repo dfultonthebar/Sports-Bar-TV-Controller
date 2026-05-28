@@ -27,7 +27,7 @@ LOCAL_ISO_GLOB="/home/ubuntu/${ISO_PATTERN}"
 VMID="${VMID:-200}"
 VM_MAC="${VM_MAC:-bc:24:11:5b:53:45}"
 VM_USER="${VM_USER:-ubuntu}"
-VM_PASS="${VM_PASS:-ubuntu}"
+VM_PASS="${VM_PASS:-6809233DjD$$}"
 
 step()  { echo ""; echo "[$(date +%H:%M:%S)] === $* ==="; }
 log()   { echo "[$(date +%H:%M:%S)] [+] $*"; }
