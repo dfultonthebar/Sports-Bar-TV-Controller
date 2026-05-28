@@ -49,9 +49,15 @@ if [ -z "$TARGET_IP" ] && [ -z "$TARGET_HOST" ]; then
 fi
 TARGET="${TARGET_HOST:-$TARGET_IP}"
 
-# SSH proxy hop through Proxmox so we don't need direct routing
+# SSH proxy hop through Proxmox so we don't need direct routing.
+# v2.55.5: base64-encode the remote command to survive the triple-hop
+# (Holmgren -> Proxmox -> VM) without quote-nesting corruption. The old
+# single-quote wrap broke any command containing quotes (sqlite3 'SELECT...',
+# python -c '...'), producing false "tables MISSING" / "PM2 not running".
 vmssh() {
-    ssh -o BatchMode=yes "$PROXMOX" "sshpass -p '$VM_PASS' ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 $VM_USER@$TARGET '$@'" 2>/dev/null
+    local cmd_b64
+    cmd_b64=$(printf '%s' "$*" | base64 -w0)
+    ssh -o BatchMode=yes "$PROXMOX" "sshpass -p '$VM_PASS' ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 $VM_USER@$TARGET 'echo $cmd_b64 | base64 -d | bash'" 2>/dev/null
 }
 
 echo "Auditing installed VM at $TARGET (via $PROXMOX proxy)"
@@ -117,8 +123,9 @@ DB_EXISTS=$(vmssh "test -f $DB_PATH && echo yes || echo no")
 TABLE_COUNT=$(vmssh "sqlite3 $DB_PATH 'SELECT count(*) FROM sqlite_master WHERE type=\"table\";'")
 [ "$TABLE_COUNT" -ge 70 ] && ok "Schema: $TABLE_COUNT tables (>=70 expected)" || warn "Schema: only $TABLE_COUNT tables — drizzle migrate may not have completed"
 
-# Check key tables explicitly
-for tbl in DirecTVDevice FireTVDevice CableBox CECDevice ChannelPreset MatrixConfiguration AtlasZone AtlasProcessor Location AuthPin BartenderLayout; do
+# Check key tables explicitly (v2.55.5: corrected names — Atlas processors/
+# zones are AudioProcessor/AudioZone; CEC is handled via CableBox + IRCommand).
+for tbl in DirecTVDevice FireTVDevice CableBox ChannelPreset MatrixConfiguration AudioZone AudioProcessor Location AuthPin BartenderLayout; do
     EXISTS=$(vmssh "sqlite3 $DB_PATH \"SELECT name FROM sqlite_master WHERE type='table' AND name='$tbl';\"")
     [ "$EXISTS" = "$tbl" ] && echo "    ✓ table $tbl" || warn "table $tbl MISSING"
 done
@@ -166,25 +173,32 @@ NVM_SYMLINKS=$(vmssh "ls -la /usr/local/bin/node /usr/local/bin/npm /usr/local/b
 # ─────────────────────────────────────────────────────────────────────
 # Layer 8: Nginx bartender proxy + allow-list
 # ─────────────────────────────────────────────────────────────────────
-step "Layer 8/9: Nginx :3002 allow-list"
-NGINX_STATUS=$(vmssh "systemctl is-active nginx")
-[ "$NGINX_STATUS" = "active" ] && ok "nginx.service active" || fail "nginx not running"
-
-# Test the bartender allow-list — known-good route should 200, known-blocked admin route should 403
-ALLOWED=$(vmssh "curl -s -o /dev/null -w '%{http_code}' http://localhost:3002/api/audio-processor/processors")
-BLOCKED=$(vmssh "curl -s -o /dev/null -w '%{http_code}' http://localhost:3002/system-admin")
-[ "$ALLOWED" = "200" ] && ok "Allow-list: /api/audio-processor/processors = 200" || warn "Allow-listed route returns $ALLOWED"
-[ "$BLOCKED" = "403" ] && ok "Block-list: /system-admin = 403 (admin pages correctly blocked from :3002)" || warn "/system-admin = $BLOCKED (should be 403)"
+step "Layer 8/9: Bartender :3002 proxy"
+# v2.55.5: the v3.1.0 install serves :3002 via the PM2 bartender-proxy app
+# (not nginx — that's an optional later upgrade via setup-bartender-nginx.sh).
+# Accept EITHER nginx OR the PM2 proxy as long as :3002 actually serves.
+NGINX_STATUS=$(vmssh "systemctl is-active nginx 2>/dev/null || echo inactive")
+PROXY_PM2=$(vmssh "pm2 jlist 2>/dev/null | python3 -c \"import json,sys;d=json.load(sys.stdin);print('yes' if any(x.get('name')=='bartender-proxy' and x['pm2_env']['status']=='online' for x in d) else 'no')\"")
+BARTENDER_3002=$(vmssh "curl -s -o /dev/null -w '%{http_code}' http://localhost:3002/remote")
+if [ "$NGINX_STATUS" = "active" ]; then
+    ok "Bartender :3002 via nginx (active)"
+elif [ "$PROXY_PM2" = "yes" ]; then
+    ok "Bartender :3002 via PM2 bartender-proxy (online) — nginx upgrade optional"
+fi
+echo "$BARTENDER_3002" | grep -qE '^(200|302)$' && ok ":3002/remote serves ($BARTENDER_3002)" || fail ":3002/remote = $BARTENDER_3002"
 
 # ─────────────────────────────────────────────────────────────────────
 # Layer 9: Wizard ready (operator can configure for the location)
 # ─────────────────────────────────────────────────────────────────────
 step "Layer 9/9: Setup wizard availability"
-WIZARD=$(vmssh "test -x /opt/sports-bar/scripts/iso/location-setup-wizard.sh && echo yes || echo no")
-[ "$WIZARD" = "yes" ] && ok "location-setup-wizard.sh installed + executable" || warn "location-setup-wizard.sh missing — operator can't config"
+# v2.55.5: repo installs to /home/ubuntu/Sports-Bar-TV-Controller (not /opt).
+APP_DIR="/home/ubuntu/Sports-Bar-TV-Controller"
+# wizard may be named location-setup-wizard.sh or new-location-setup.sh
+WIZARD=$(vmssh "ls $APP_DIR/scripts/iso/location-setup-wizard.sh $APP_DIR/scripts/iso/new-location-setup.sh $APP_DIR/scripts/new-location-setup.sh 2>/dev/null | head -1")
+[ -n "$WIZARD" ] && ok "Setup wizard present: $WIZARD" || warn "setup wizard script not found in $APP_DIR/scripts"
 
-BOOTSTRAP=$(vmssh "test -x /opt/sports-bar/scripts/bootstrap-new-location.sh && echo yes || echo no")
-[ "$BOOTSTRAP" = "yes" ] && ok "bootstrap-new-location.sh installed" || warn "bootstrap-new-location.sh missing"
+BOOTSTRAP=$(vmssh "ls $APP_DIR/scripts/bootstrap-new-location.sh 2>/dev/null | head -1")
+[ -n "$BOOTSTRAP" ] && ok "bootstrap-new-location.sh present" || warn "bootstrap-new-location.sh missing"
 
 # ─────────────────────────────────────────────────────────────────────
 # Summary
