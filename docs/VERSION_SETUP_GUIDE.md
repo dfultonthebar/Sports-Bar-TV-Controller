@@ -35,6 +35,56 @@ is the archive.
 
 ---
 
+## v2.55.8 — PXE netboot fix: kernel+initrd HTTP (sanboot is dead for Ubuntu) (2026-05-28)
+
+**Versions covered:** v2.55.8
+**Branch landed:** main → all 6 location branches
+
+**Required Manual Step (ONLY at the PXE/netboot LXC — not fleet boxes):**
+Re-run the netboot config so the new menu + extracted kernel/initrd land:
+```bash
+pct enter 250   # the sports-bar-netboot LXC on Proxmox
+bash /root/configure-netboot-menu.sh   # extracts casper/{vmlinuz,initrd}+seed, writes kernel+initrd menu, fixes dnsmasq proxy
+exit
+```
+**Verify:** `curl -sI http://<lxc-ip>/casper/vmlinuz` returns 200; the iPXE
+menu's `:install` uses `kernel … url=… cloud-config-url=/dev/null ds=nocloud-net`.
+
+**Why:** `sanboot` of the whole Ubuntu casper ISO never worked (GRUB loads,
+casper can't find the live filesystem — UEFI + BIOS both). Confirmed live on
+Proxmox VM 201. Fix boots vmlinuz+initrd over HTTP, casper fetches the ISO via
+`url=`. dnsmasq proxy also fixed (`pxe-service=`, not `dhcp-boot=`). Full detail:
+CLAUDE.md Gotcha #19 + `docs/PROXMOX_PXE_SETUP.md`. **Fleet boxes: no setup** —
+this only affects new-NUC provisioning via the office PXE server.
+
+## v2.55.7 — fleet password fix: THREE dollar signs (6809233DjD$$$) (2026-05-28)
+
+**Versions covered:** v2.55.7
+**Branch landed:** main → all 6 location branches
+
+**No setup required on existing boxes.** Affects ONLY freshly-installed NUCs
+from the v3.1.0 ISO. v2.55.3 baked `6809233DjD$$` (two $); the real fleet
+password is `6809233DjD$$$` (three $). smoke v9 proved installed VMs rejected
+the fleet password at the console. Fixed in autoinstall chpasswd + identity
+hash (verified via `openssl passwd -6`) + the `$$`→PID expansion trap in the
+smoke/audit test scripts (now `printf '6809233DjD\044\044\044'`). New ISO
+builds (md5 changes) set the correct triple-$ password.
+
+## v2.55.6 — bake hardware prerequisites into the ISO (gap analysis vs Holmgren) (2026-05-27)
+
+**Versions covered:** v2.55.6 (and the v2.55.0–.5 ISO bring-up series: DB-before-build root-cause fix, fleet password, Claude-CLI bash-pipe, IPv6-link-local smoke detection, 9-layer audit)
+**Branch landed:** main → all 6 location branches
+
+**No setup required on existing boxes.** Affects fresh NUC installs. ISO now
+bakes: packages `adb, rtl-sdr, nginx, nmap, arp-scan, sshpass, imagemagick,
+v4l-utils`; first-boot `.env` generation with fresh crypto secrets
+(NEXTAUTH_SECRET/ENCRYPTION_KEY/NEXT_SERVER_ACTIONS_ENCRYPTION_KEY),
+AUTH_COOKIE_SECURE=false, OLLAMA_MODEL=llama3.1:8b; `usermod -aG
+dialout,video,render,plugdev ubuntu`; setup-sdr.sh (DVB blacklist) +
+setup-bartender-nginx.sh. **Per-location post-install (NOT baked):** Ollama
+via `setup-iris-ollama.sh` (needs Intel iGPU), API keys + LOCATION_ID via
+`bootstrap-new-location.sh`, `tailscale up`. Tailscale itself is pre-installed.
+
 ## v2.54.99 — CLAUDE.md + BARE_METAL_ISO documents v3.1.0 autoinstall architecture (2026-05-27)
 
 **Versions covered:** v2.54.99
