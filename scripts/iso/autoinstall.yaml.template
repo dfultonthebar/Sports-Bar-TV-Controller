@@ -133,10 +133,13 @@ autoinstall:
     - curtin in-target -- apt-get install -y nodejs
     - curtin in-target -- npm install -g pm2
 
-    # v2.55.3: set FLEET-STANDARD password (ubuntu / 6809233DjD$$). Single
-    # quotes keep $$ literal. Belt-and-suspenders alongside the hashed
-    # identity.password — some autoinstall builds drop the identity hash.
-    - echo 'ubuntu:6809233DjD$$' | curtin in-target -- chpasswd
+    # v2.55.7: set FLEET-STANDARD password (ubuntu / 6809233DjD$$$ — THREE
+    # dollar signs). Single quotes keep all three $ literal (shell does not
+    # expand inside single quotes, so no PID substitution). Belt-and-suspenders
+    # alongside the hashed identity.password — some autoinstall builds drop the
+    # identity hash. v2.55.3 mistakenly used TWO $; smoke v9 proved installed
+    # VMs rejected the real (triple-$) fleet password.
+    - echo 'ubuntu:6809233DjD$$$' | curtin in-target -- chpasswd
 
     # Sudoers nopasswd for ubuntu user (matches operator's fleet convention)
     - 'curtin in-target -- bash -c "echo ''%sudo ALL=(ALL) NOPASSWD:ALL'' > /etc/sudoers.d/ubuntu-nopasswd && chmod 440 /etc/sudoers.d/ubuntu-nopasswd"'

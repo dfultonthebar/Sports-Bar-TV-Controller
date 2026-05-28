@@ -19,7 +19,10 @@ PROXMOX="${PROXMOX:-root@100.118.54.10}"
 VMID="${VMID:-200}"
 VM_MAC="${VM_MAC:-bc:24:11:5b:53:45}"
 VM_USER="${VM_USER:-ubuntu}"
-VM_PASS="${VM_PASS:-6809233DjD$$}"
+# v2.55.7: fleet password is 6809233DjD$$$ (THREE $). printf octal (\044 = $)
+# avoids the :-default expanding $$ to this script's PID.
+VM_PASS="${VM_PASS:-}"
+[ -z "$VM_PASS" ] && VM_PASS=$(printf '6809233DjD\044\044\044')
 TARGET_IP=""
 TARGET_HOST=""
 
