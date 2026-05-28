@@ -43,11 +43,18 @@ autoinstall:
           name: "en*"
         dhcp4: true
 
-  # APT mirror with geoip auto-selection; fallback to offline-install
-  # if the NUC has no internet at install time (USB-only install case).
+  # v2.54.95: dropped geoip:true — was hanging the install for 30+ min
+  # trying to resolve mirror.country.ubuntu.com via geoip lookup before
+  # finally falling through to offline-install. Hardcoded primary mirror
+  # avoids the resolution attempt entirely. fallback still kicks in if
+  # the NUC has no internet at install time (USB-only install case).
   apt:
-    geoip: true
     fallback: offline-install
+    primary:
+      - arches: [default]
+        uri: http://archive.ubuntu.com/ubuntu
+    disable_components: []
+    preserve_sources_list: false
 
   # Identity: ubuntu/ubuntu, hostname sports-bar-controller. Operator
   # can change hostname AFTER install via the location-setup-wizard
