@@ -394,6 +394,29 @@ const isCECDevice = !iTachAddress && deviceId.startsWith('cable-box')
 const endpoint = isCECDevice ? '/api/cec/cable-box/command' : '/api/ir-devices/send-command'
 ```
 
+## Terminology Conventions (canonical — keep consistent)
+
+After a full-system terminology audit (2026-05-28), these are the canonical
+forms. Most existing variance is *contextually correct* (identifiers vs display
+text serve different purposes) — do NOT mass-rename identifiers. Apply these to
+**new user-facing display text + docs**; leave identifiers, API paths, table
+names, and historical DB/log rows alone.
+
+- **Wolf Pack** (the matrix) — **display text + docs: "Wolf Pack"** (two words).
+  Identifiers stay as-is: package `@sports-bar/wolfpack` (lowercase), types/tables
+  `Wolfpack*` (PascalCase, e.g. `WolfpackMatrixRouting`), API paths
+  `/api/wolfpack/*`, log tags `[WOLFPACK]`/`[MATRIX]`. Never mass-rename these —
+  it breaks imports/routes/tables for zero functional gain.
+- **Audio processors** — brand styling in display: **Atlas** / **AtlasIED**
+  (models `AZM4`/`AZM8`/`AZMP4`/`AZMP8`), **dbx** (lowercase), **ZonePRO**
+  (caps PRO), **BSS** (package `bss-blu`). Don't rewrite historical log/event rows.
+- **Mics** — house Shure wireless system is **"wireless mic" / "paging mic" /
+  "hosted-event mic"** — **NEVER "karaoke mic"** (Gotcha #13; karaoke is BYO).
+  Exception: the neighbor-venue event-category `'karaoke'` in `bananas-scraper.ts`
+  is CORRECT and stays — it classifies *other bars'* karaoke nights as an external
+  RF-interference source (protects our mics). That is not "our system doing
+  karaoke"; it's detecting when someone else's might step on us.
+
 ## Common Gotchas
 
 ### 1. Body Stream Already Consumed
