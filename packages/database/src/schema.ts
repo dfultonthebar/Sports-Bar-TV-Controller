@@ -2971,7 +2971,14 @@ export const neighborhoodEvents = sqliteTable('NeighborhoodEvent', {
 
 export const interferenceAttributions = sqliteTable('InterferenceAttribution', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  rfEventId: text('rf_event_id').notNull().references(() => shureRfEvents.id, { onDelete: 'cascade' }),
+  // v2.55.16: NO FK to shure_rf_events. This column holds an id from EITHER
+  // shure_rf_events (source='shure') OR sdr_carriers (source='sdr') — a
+  // polymorphic reference distinguished by the `source` column. The old
+  // `.references(shureRfEvents.id)` FK assumed enforcement was off in prod,
+  // but it's actually ON, so every SDR-sourced insert (carrier id, not a
+  // shure_rf_events id) failed "FOREIGN KEY constraint failed" — breaking
+  // the entire SDR interference-correlation pass (60+ errors/10h on Holmgren).
+  rfEventId: text('rf_event_id').notNull(),
   neighborhoodEventId: text('neighborhood_event_id').notNull().references(() => neighborhoodEvents.id, { onDelete: 'cascade' }),
   timeDeltaSeconds: integer('time_delta_seconds').notNull(),     // abs(rf_event.detected_at - neighborhood_event.start_time)
   distanceMi: real('distance_mi').notNull(),                     // distance from our bar to event venue (copied from venue.distance_mi at attribution time)
