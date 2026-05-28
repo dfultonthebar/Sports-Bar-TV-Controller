@@ -2,7 +2,9 @@
 
 **Workflow:** new NUC arrives at the office → plugs into the LAN → PXE-boots a menu → pick "Sports Bar TV Controller v3.1" → ISO autoinstalls fully unattended + first-boot wizard runs → operator ships the NUC to the bar already-configured.
 
-**v3.1.0 (2026-05-27)** swapped the ISO from a hand-rolled debootstrap chain to a stock Ubuntu 24.04.4 server ISO + subiquity autoinstall. The PXE menu still HTTP-loads the ISO the same way; only the ISO file name changed (`sports-bar-tv-controller-v3.1.0-YYYY-MM-DD.iso`).
+**v3.1.0 (2026-05-27)** swapped the ISO from a hand-rolled debootstrap chain to a stock Ubuntu 24.04.4 server ISO + subiquity autoinstall.
+
+**v3.1.1 (2026-05-27) — PXE boot method changed (IMPORTANT).** The menu no longer `sanboot`s the whole ISO. `sanboot` of an Ubuntu casper-based live-server ISO is a **dead end**: iPXE registers the ISO as a SAN disk, GRUB loads, but casper then fails with *"Unable to find a medium containing a live file system"* (+ *"can't find command 'grub_platform'"*) — in **both UEFI and legacy BIOS**. The working method (confirmed live on Proxmox VM 201) is to boot `casper/vmlinuz` + `casper/initrd` directly over HTTP and let casper fetch the ISO via the `url=` kernel parameter, with the autoinstall seed served over HTTP (`ds=nocloud-net`). `configure-netboot-menu.sh` now extracts the kernel/initrd/seed from the ISO and generates this menu automatically. Two non-obvious requirements baked in: `cloud-config-url=/dev/null` (mandatory on 24.04 — without it subiquity ignores the seed and drops to the interactive prompt) and `ip=dhcp` (casper needs networking before it can fetch). Target needs ≥4 GB RAM (the ISO is held in a ramdisk).
 
 **One-time setup:** ~30 min. Per-NUC use: one BIOS toggle + one menu pick.
 
@@ -129,4 +131,4 @@ The menu always points at the latest ISO downloaded into the LXC. Old ISOs are k
 
 - **Multi-version menu**: pin v3.1 + dev/test build side-by-side so the operator can boot either
 - **Tailscale Serve integration**: when the operator clicks the Tailscale Serve enablement URL (see Holmgren's status), point the iPXE menu directly at `https://hw-sports-bar-tv-controller.tail-NET.ts.net/iso/...iso` — eliminates the per-update download step on the LXC
-- **Already-unattended as of v3.1.0**: the previous "automated unattended install" entry is no longer a future enhancement — subiquity autoinstall handles disk selection and partitioning declaratively from the autoinstall.yaml baked into the ISO. No kernel cmdline tweaks needed.
+- **Already-unattended as of v3.1.0**: subiquity autoinstall handles disk selection and partitioning declaratively from the autoinstall.yaml baked into the ISO. **v3.1.1 note:** the netboot path DOES require a specific kernel cmdline (`url=` + `cloud-config-url=/dev/null` + `ds=nocloud-net;s=http://…/server/` + `ip=dhcp`) — the earlier "no kernel cmdline tweaks needed" claim was wrong; that's only true for USB/CD boot where casper finds the medium locally.
