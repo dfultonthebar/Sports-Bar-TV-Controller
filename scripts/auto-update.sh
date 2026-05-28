@@ -269,9 +269,24 @@ acquire_lock_or_sweep_stale() {
     # covered the no-PID-file variant.
     #
     # Liveness check via pgrep (not PID file): if no auto-update.sh process
-    # is running anywhere on the system, the lock is truly orphan → sweep.
-    local live_count
-    live_count=$(pgrep -af "[a]uto-update\.sh" 2>/dev/null | grep -v "$$" | wc -l)
+    # OTHER THAN our own invocation is running, the lock is truly orphan → sweep.
+    #
+    # v2.55.14 fix: a single timer-fired run shows up as MULTIPLE processes
+    # (the systemd-spawned shell + the script + subshells). The old
+    # `grep -v "$$"` only excluded the current PID, leaving sibling/parent
+    # processes of THIS SAME run counted → live_count=1 → false "concurrent
+    # run" → exit 75 every night → permanent stall. (All 5 remote boxes hit
+    # this, frozen 154 commits behind, 2026-05-28.) Exclude the entire current
+    # process GROUP so only a genuinely separate invocation counts.
+    local live_count mypgid ppg p
+    mypgid=$(ps -o pgid= -p $$ 2>/dev/null | tr -d ' ')
+    live_count=0
+    for p in $(pgrep -f "[a]uto-update\.sh" 2>/dev/null); do
+      [ "$p" = "$$" ] && continue
+      ppg=$(ps -o pgid= -p "$p" 2>/dev/null | tr -d ' ')
+      [ -n "$mypgid" ] && [ "$ppg" = "$mypgid" ] && continue   # same invocation
+      live_count=$((live_count + 1))
+    done
     if [ "$live_count" -eq 0 ]; then
       log "Lock held but no PID file AND no auto-update.sh process running — orphan lock, sweeping."
       exec 200>&-
