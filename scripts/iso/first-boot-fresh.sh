@@ -121,6 +121,26 @@ log "  Node: $(node --version), npm: $(npm --version)"
 
 cd "$APP_DIR"
 sudo -u ubuntu npm install --prefer-offline 2>&1 | tail -5
+
+# v2.55.1: DB MUST exist BEFORE `npm run build`. Next.js "Collecting page
+# data" evaluates API routes at build time; /api/audio-processor (and others)
+# transitively open production.db at module-eval. On a fresh install the DB
+# doesn't exist yet → build dies with:
+#   Error: Database file not found: /home/ubuntu/sports-bar-data/production.db
+#   Failed to collect page data for /api/audio-processor
+# On Holmgren the DB always existed so the build worked — masked this for the
+# entire v3.x ISO effort. Caught during v3.1.0 smoke v7 (2026-05-27) by SSHing
+# into the installed VM and running the build manually.
+#
+# Fix: run drizzle migrate to create the DB BEFORE building. drizzle-kit only
+# needs the schema + drizzle.config (not the Next build), so this ordering is
+# safe. Step 5 below re-runs migrate idempotently (no-op once tables exist).
+log "  Pre-build: creating database so Next.js page-data collection can open it..."
+mkdir -p "$DATA_DIR"
+chown ubuntu:ubuntu "$DATA_DIR"
+sudo -u ubuntu bash -c "cd '$APP_DIR' && NODE_ENV=development npx drizzle-kit migrate" 2>&1 | tail -15
+
+log "  Building app (DB now present)..."
 sudo -u ubuntu npm run build 2>&1 | tail -20
 
 log "Build complete."
