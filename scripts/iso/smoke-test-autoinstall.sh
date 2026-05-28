@@ -27,7 +27,12 @@ LOCAL_ISO_GLOB="/home/ubuntu/${ISO_PATTERN}"
 VMID="${VMID:-200}"
 VM_MAC="${VM_MAC:-bc:24:11:5b:53:45}"
 VM_USER="${VM_USER:-ubuntu}"
-VM_PASS="${VM_PASS:-6809233DjD$$}"
+# v2.55.7: fleet password is 6809233DjD$$$ (THREE $). Build it via printf octal
+# (\044 = $) — a "${VM_PASS:-6809233DjD$$$}" default would expand $$ to this
+# script's PID (bash expands the word in :-default), producing the WRONG
+# password and false-failing the SSH/PM2 verify even on a healthy install.
+VM_PASS="${VM_PASS:-}"
+[ -z "$VM_PASS" ] && VM_PASS=$(printf '6809233DjD\044\044\044')
 
 step()  { echo ""; echo "[$(date +%H:%M:%S)] === $* ==="; }
 log()   { echo "[$(date +%H:%M:%S)] [+] $*"; }
