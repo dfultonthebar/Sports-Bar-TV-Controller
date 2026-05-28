@@ -80,8 +80,12 @@ autoinstall:
       match:
         size: largest
 
-  # Minimal extra packages. The first-boot service installs the heavy
-  # stuff (node, ollama, etc) so we keep the install ISO small.
+  # v2.55.0: added build-essential + python3 + dependencies needed by npm
+  # to compile native modules. better-sqlite3 (used heavily in our app) ships
+  # via npm and needs g++/make/python3-dev to build its native bindings
+  # during `npm install`. Without these, first-boot's `npm install` step
+  # fails with "no output files found for task @sports-bar/*#build" warnings
+  # then exits 1. Caught during v2.54.97 smoke v6 build failure.
   packages:
     - openssh-server
     - curl
@@ -97,6 +101,13 @@ autoinstall:
     - parted
     - dosfstools
     - e2fsprogs
+    # native-module build dependencies (better-sqlite3, serialport, etc):
+    - build-essential
+    - python3
+    - python3-dev
+    - python3-pip
+    - pkg-config
+    - libudev-dev
 
   # Late-commands run in the INSTALLER environment with the target
   # filesystem mounted at /target. Use `curtin in-target -- <cmd>` to
