@@ -76,8 +76,8 @@ if [ -n "$ZFS_DATASET" ]; then
     log "Destroying ZFS dataset $ZFS_DATASET for fresh install..."
     px "qm set $VMID -delete scsi0 2>&1 | tail -2"
     px "zfs destroy $ZFS_DATASET 2>&1 | tail -2 || true"
-    log "Re-allocating fresh 30G disk with discard+writeback..."
-    px "qm set $VMID -scsi0 local-zfs:30,format=raw,discard=on,cache=writeback,ssd=1 2>&1 | tail -3"
+    log "Re-allocating fresh 100G disk with discard+writeback (was 30G — too tight)..."
+    px "qm set $VMID -scsi0 local-zfs:100,format=raw,discard=on,cache=writeback,ssd=1 2>&1 | tail -3"
 fi
 
 log "Attaching autoinstall ISO + setting boot order ide2->scsi0..."
@@ -113,18 +113,23 @@ VM_IP=""
 DEADLINE=$(( $(date +%s) + 1800 ))
 ATTEMPTS=0
 SHOTS=0
+# v2.54.96: detect install-complete via VM power-off (autoinstall.yaml has
+# shutdown: poweroff). Then swap boot order + start fresh. This breaks the
+# previous install-loop where shutdown:reboot + ISO-still-in-boot-order =
+# subiquity restarts and corrupts disk if interrupted.
+INSTALL_DONE=0
 while [ $(date +%s) -lt $DEADLINE ]; do
     ATTEMPTS=$((ATTEMPTS + 1))
-    IP=$(px "ip -4 neigh | grep -i '$VM_MAC' | awk '{print \$1}' | head -1" 2>/dev/null || true)
-    if [ -n "$IP" ]; then
-        VM_IP="$IP"
-        log "🎉 VM 200 on network at $IP (attempt $ATTEMPTS)"
+    STATUS=$(px "qm status $VMID 2>&1 | awk '{print \$2}'" 2>/dev/null || true)
+    if [ "$STATUS" = "stopped" ]; then
+        log "🎉 VM 200 powered off — autoinstall complete (attempt $ATTEMPTS)"
+        INSTALL_DONE=1
         break
     fi
-    # Periodic screendump for debugging if install hangs
+    # Periodic screendump for debugging
     if [ $((ATTEMPTS % 12)) -eq 0 ]; then
         SHOTS=$((SHOTS + 1))
-        log "  attempt $ATTEMPTS — no VM yet (capturing screen $SHOTS)"
+        log "  attempt $ATTEMPTS — VM still running (status=$STATUS), capturing screen $SHOTS"
         px "echo screendump /tmp/smoke-vm${VMID}-${SHOTS}.ppm | qm monitor $VMID > /dev/null" 2>/dev/null || true
         scp -o BatchMode=yes "$PROXMOX:/tmp/smoke-vm${VMID}-${SHOTS}.ppm" "$SCREENDUMP_DIR/" 2>/dev/null || true
         which convert >/dev/null 2>&1 && convert "$SCREENDUMP_DIR/smoke-vm${VMID}-${SHOTS}.ppm" "$SCREENDUMP_DIR/smoke-vm${VMID}-${SHOTS}.png" 2>/dev/null || true
@@ -132,9 +137,32 @@ while [ $(date +%s) -lt $DEADLINE ]; do
     sleep 30
 done
 
-if [ -z "$VM_IP" ]; then
-    err "VM 200 never appeared on network within 30 min"
+if [ "$INSTALL_DONE" = "0" ]; then
+    err "VM 200 never powered off within 30 min — install hung"
     err "Screendumps in $SCREENDUMP_DIR"
+    exit 1
+fi
+
+# Detach ISO + boot order to scsi0 + start fresh
+log "Detaching ISO + setting boot order to scsi0 + starting installed system..."
+px "qm set $VMID -ide2 none,media=cdrom 2>&1 | tail -2"
+px "qm set $VMID -boot order=scsi0 2>&1 | tail -2"
+px "qm start $VMID 2>&1 | tail -2"
+
+log "Waiting for installed system DHCP (up to 5 min)..."
+VM_IP=""
+for i in $(seq 1 30); do
+    sleep 10
+    IP=$(px "ip -4 neigh | grep -i '$VM_MAC' | awk '{print \$1}' | head -1" 2>/dev/null || true)
+    if [ -n "$IP" ]; then
+        VM_IP="$IP"
+        log "🎉 Installed system on network at $IP"
+        break
+    fi
+done
+
+if [ -z "$VM_IP" ]; then
+    err "Installed system never got DHCP after boot"
     exit 1
 fi
 

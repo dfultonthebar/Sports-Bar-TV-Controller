@@ -126,6 +126,13 @@ autoinstall:
     - 'curtin in-target -- sed -i ''s/^GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT=""/'' /etc/default/grub'
     - curtin in-target -- update-grub
 
-  # After install completes, reboot into the installed system.
-  # The first-boot service will then clone + build + start PM2.
-  shutdown: reboot
+  # v2.54.96: POWEROFF not reboot. With reboot, if ISO is still in the
+  # boot order ahead of the installed disk, the VM/NUC re-loads subiquity
+  # and re-runs the autoinstall in a loop, eventually corrupting the disk
+  # if interrupted mid-loop. With poweroff, the VM shuts down cleanly;
+  # operator (or smoke test) detects the power-off, removes the ISO,
+  # then powers back on into the installed system.
+  #
+  # On real NUC installs: operator removes USB stick after power-off,
+  # then powers on. No risk of re-running the installer.
+  shutdown: poweroff
