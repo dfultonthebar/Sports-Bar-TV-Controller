@@ -97,6 +97,30 @@ npm run test:coverage       # Generate coverage report
 - Integration tests: `tests/integration/*.test.ts`
 - Test scenarios: `tests/scenarios/*.test.ts`
 
+### ISO Build (v3.1.0+ — subiquity autoinstall, CANONICAL)
+
+Bare-metal install media for new locations. **v3.1.0 replaces the hand-rolled v3.0.x installer.** Stock Ubuntu 24.04.4 Server ISO + subiquity autoinstall + curtin handle all partitioning, kernel, initramfs, GRUB BIOS+UEFI — pain we kept reinventing badly.
+
+**Build:**
+```bash
+sudo apt-get install -y p7zip-full xorriso wget openssl   # one-time
+bash scripts/iso/build-autoinstall-iso.sh                  # 15-30 min
+bash scripts/iso/smoke-test-autoinstall.sh                 # end-to-end VM verify (optional)
+bash scripts/iso/audit-installed-vm.sh <vmid>              # 9-layer post-install audit
+```
+
+**Active scripts** (`scripts/iso/`):
+- `build-autoinstall-iso.sh` (~220 lines) — downloads stock ISO, 7z-extracts, drops autoinstall config + first-boot service, edits grub.cfg, xorriso-repacks
+- `autoinstall.yaml.template` — declarative subiquity user-data; curtin handles partitioning natively
+- `sports-bar-first-boot.service` — systemd oneshot, runs `first-boot-fresh.sh` (clone → build → PM2) on first boot
+- `smoke-test-autoinstall.sh` — Proxmox VM 200 end-to-end install + Playwright HTTP verify
+- `audit-installed-vm.sh` — 9-layer production-readiness check post-install
+- `cleanup-chroot.sh` — safe debootstrap teardown helper (carried over from v3.0.x)
+
+**DEPRECATED — do not extend** (kept in repo for git history only): `build-sports-bar-iso.sh` (debootstrap from scratch, ~700 lines), `disk-installer.sh` (~430 lines, hit 7 silent-fail bugs in one day). The 4-iteration v3.1.0 vs 7-iteration v3.0.x pain memorialized the rule: **always use the distribution's installer (subiquity/preseed/kickstart), never hand-roll.** See `feedback-use-canonical-installer-not-hand-rolled` memory + `docs/BARE_METAL_ISO.md`.
+
+**Proxmox VM settings for smoke test** (VM 200 reference): BIOS OVMF + EFI disk (`qm set <id> -efidisk0 local-zfs:0,efitype=4m,pre-enrolled-keys=1`), machine q35, virtio-scsi-pci with `discard=on,cache=writeback,ssd=1`, virtio network, QEMU agent enabled. Min 16 GB RAM / 4 cores / 100 GB disk (4 GB/30 GB was too tight in 2026-05-27 testing).
+
 ## High-Level Architecture
 
 ### Next.js 16 App Router Architecture
@@ -531,6 +555,41 @@ llama3.1:8b ignores prompt rules like "do not rephrase" and "use EXACTLY as writ
 Standing operator rule (caught mid-doc-write 2026-05-19): the bar's house Shure wireless system is NEVER used for karaoke. Karaoke crews bring their own (BYO) wireless rigs. The house wireless is for paging, hosted events (trivia, MC, in-house entertainment), and the manager's announcement mic. v2.53.7+v2.53.8 fixed ~21 references across `RF_INTERFERENCE_FOR_BARTENDERS.md` + `MIC_NOT_WORKING.md` where "karaoke mic" or "Karaoke" as a channel-label example implied bartenders manage karaoke via the house Shure. They don't.
 
 **When writing bartender-facing content:** use "wireless mic" generic / "page mic" / "hosted-event mic" — never "karaoke mic" as canonical. Acceptable uses: karaoke as a busy-night context ("on a busy karaoke + game night, expect more paging"), or honest disambiguation ("note: karaoke at the bar uses BYO mics, not the house system"). Full guidance in `[[feedback-karaoke-uses-byo-mics]]`.
+
+### 14. ISO build (v3.1.0) — grub.cfg kernel cmdline must be QUOTED, not backslash-escaped
+
+When `build-autoinstall-iso.sh` edits `boot/grub/grub.cfg` to add the autoinstall kernel arg, **use the quoted form `"ds=nocloud;s=/cdrom/server/"`**, NOT the backslash-escape form `ds=nocloud\;s=/cdrom/server/`. The `awk -v` interpolation in the build script strips backslashes silently, leaving `ds=nocloud` alone in the final kernel cmdline — subiquity then ignores the autoinstall config and falls back to the interactive installer. v2.54.92 fix. Any future edit to the grub.cfg injection logic must keep the semicolon inside double quotes.
+
+### 15. ISO build (v3.1.0) — `apt.geoip: true` hangs the unattended install indefinitely
+
+In `autoinstall.yaml.template`, set apt config explicitly:
+```yaml
+apt:
+  fallback: offline-install
+  primary:
+    - arches: [default]
+      uri: "http://archive.ubuntu.com/ubuntu"
+```
+**Never use `geoip: true`.** Subiquity's geoip lookup tries `geoip.ubuntu.com` over DNS, which on a fresh ISO boot before systemd-resolved is fully up takes 60+ min of timeout-and-retry loops while the install stalls with no visible error. v2.54.95 fix. If a future template change reintroduces `geoip: true`, the install will appear hung on "Mirror selection" forever.
+
+### 16. ISO build (v3.1.0) — `shutdown: poweroff`, not `reboot`
+
+In `autoinstall.yaml.template` top-level: `shutdown: poweroff` (not `reboot`). With `reboot` and the USB still inserted, the BIOS boot-order hits the ISO again, subiquity restarts the install, and if the operator pulls the USB mid-second-install the disk corrupts. poweroff stops the VM/box cleanly so the operator removes USB → powers on → boots the installed system. v2.54.96 fix.
+
+### 17. ISO build (v3.1.0) — install Node 22 + PM2 in `late-commands`, not first-boot
+
+`first-boot-fresh.sh` assumes Node + npm + pm2 are already on PATH when it runs. The subiquity image ships neither, so install them via `late-commands` in `autoinstall.yaml.template`:
+```yaml
+late-commands:
+  - curtin in-target --target=/target -- bash -c 'curl -fsSL https://deb.nodesource.com/setup_22.x | bash -'
+  - curtin in-target --target=/target -- apt-get install -y nodejs
+  - curtin in-target --target=/target -- npm install -g pm2
+```
+v2.54.97 fix. If installing Node in first-boot instead, the box boots, first-boot service fires, `npm` is not found, service fails, and the box silently never reaches PM2.
+
+### 18. ISO smoke test — Proxmox DHCP arp lag means polling needs ≥15 min, not 5
+
+`smoke-test-autoinstall.sh` post-install poll for the VM's DHCP lease has to wait ≥15 minutes. Proxmox's arp cache doesn't show the new lease until systemd-networkd brings up the interface AND outbound traffic flows (~60-90s after kernel boot — first systemd-resolved query, NTP sync, etc.). v2.54.97 fix. A 5-minute poll loop reports "VM never got DHCP" while the VM is actually running fine.
 
 ## Development Workflow
 
