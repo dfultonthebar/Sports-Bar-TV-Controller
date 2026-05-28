@@ -193,6 +193,14 @@ async function gatherRawCounts(locationId: string): Promise<RawCounts> {
 
   let upcomingEvents24h: UpcomingEvent[] = []
   try {
+    // v2.55.15: cap upcoming-event relevance to RF_MIC_RELEVANT_RADIUS_MI.
+    // The Ticketmaster scraper pulls a 30-mi radius for general awareness,
+    // but wireless mics / ENG rigs only step on our UHF band from a mile or
+    // two away — a stadium game 30 mi out has ZERO RF relevance and was a
+    // false positive in the digest (operator caught the Timber Rattlers @30mi).
+    // Venues with unknown distance (NULL) are excluded — we can't claim RF
+    // relevance we can't confirm.
+    const RF_MIC_RELEVANT_RADIUS_MI = 2.0
     upcomingEvents24h = await db.all<UpcomingEvent>(sql`
       SELECT
         ne.artist_name,
@@ -207,6 +215,8 @@ async function gatherRawCounts(locationId: string): Promise<RawCounts> {
         AND aip.location_id = ${locationId}
       WHERE ne.start_time > ${nowSec}
         AND ne.start_time < ${nowSec + 24 * 3600}
+        AND nv.distance_mi IS NOT NULL
+        AND nv.distance_mi <= ${RF_MIC_RELEVANT_RADIUS_MI}
       ORDER BY ne.start_time ASC
       LIMIT 10
     `)
