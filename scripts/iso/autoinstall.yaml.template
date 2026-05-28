@@ -108,6 +108,16 @@ autoinstall:
     - python3-pip
     - pkg-config
     - libudev-dev
+    # v2.55.6: hardware-control prerequisites (gap analysis vs Holmgren).
+    # Baked in so hardware bring-up is debug-free on day one.
+    - adb              # Fire TV cube ADB control (BLOCKER for Fire TV)
+    - rtl-sdr          # SDR spectrum monitor — rtl_power binary (§7b)
+    - nginx            # bartender :3002 reverse proxy + allow-list (fleet std)
+    - nmap             # device discovery (Wolf Pack / DirecTV / Fire TV scan)
+    - arp-scan         # device discovery
+    - sshpass          # fleet SSH automation + trigger scripts
+    - imagemagick      # screenshot / layout image processing
+    - v4l-utils        # camera (OBSBOT) enumeration
 
   # Late-commands run in the INSTALLER environment with the target
   # filesystem mounted at /target. Use `curtin in-target -- <cmd>` to
