@@ -44,11 +44,12 @@ OUTPUT_ISO_NAME="sports-bar-tv-controller-${VERSION}-$(date +%Y-%m-%d).iso"
 OUTPUT_ISO="/home/ubuntu/${OUTPUT_ISO_NAME}"
 ISO_CACHE_DIR="/home/ubuntu/iso-cache"
 
-# v2.55.3: default to the FLEET-STANDARD password (operator rule: every box
-# is ubuntu / 6809233DjD$$). Single-quoted so the $$ stays literal (not PID).
+# v2.55.7: default to the FLEET-STANDARD password (operator rule: every box
+# is ubuntu / 6809233DjD$$$ — THREE dollar signs). Single-quoted so all three
+# $ stay literal (not PID). v2.55.3 used two $ by mistake.
 # Override with --password for one-off test builds.
 UBUNTU_PASSWORD="${UBUNTU_PASSWORD:-}"
-[ -z "$UBUNTU_PASSWORD" ] && UBUNTU_PASSWORD='6809233DjD$$'
+[ -z "$UBUNTU_PASSWORD" ] && UBUNTU_PASSWORD='6809233DjD$$$'
 SKIP_DOWNLOAD=false
 
 # ─── Arg parsing ───────────────────────────────────────────────────────────
