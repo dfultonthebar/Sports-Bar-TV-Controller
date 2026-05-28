@@ -102,6 +102,16 @@ autoinstall:
   # filesystem mounted at /target. Use `curtin in-target -- <cmd>` to
   # run a command inside the chroot.
   late-commands:
+    # v2.54.97: install Node.js 22 from NodeSource into the target system.
+    # first-boot-fresh.sh assumed Node was pre-installed (errored "Node.js
+    # not found. The ISO should have pre-installed Node 22" otherwise).
+    # NodeSource setup_22.x adds the apt repo + key; apt-get install nodejs
+    # pulls in Node 22 LTS. Doing this in late-commands means the installed
+    # system has Node 22 ready when first-boot.service fires.
+    - curtin in-target -- bash -c 'curl -fsSL https://deb.nodesource.com/setup_22.x | bash -'
+    - curtin in-target -- apt-get install -y nodejs
+    - curtin in-target -- npm install -g pm2
+
     # Set ubuntu password again explicitly (some autoinstall builds drop it)
     - echo 'ubuntu:ubuntu' | curtin in-target -- chpasswd
 

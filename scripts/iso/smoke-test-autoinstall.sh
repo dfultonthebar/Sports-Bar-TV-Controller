@@ -149,15 +149,18 @@ px "qm set $VMID -ide2 none,media=cdrom 2>&1 | tail -2"
 px "qm set $VMID -boot order=scsi0 2>&1 | tail -2"
 px "qm start $VMID 2>&1 | tail -2"
 
-log "Waiting for installed system DHCP (up to 5 min)..."
+log "Waiting for installed system DHCP (up to 15 min — systemd-networkd + first-boot)..."
 VM_IP=""
-for i in $(seq 1 30); do
+for i in $(seq 1 90); do
     sleep 10
     IP=$(px "ip -4 neigh | grep -i '$VM_MAC' | awk '{print \$1}' | head -1" 2>/dev/null || true)
     if [ -n "$IP" ]; then
         VM_IP="$IP"
-        log "🎉 Installed system on network at $IP"
+        log "🎉 Installed system on network at $IP (after $((i*10))s)"
         break
+    fi
+    if [ $((i % 30)) -eq 0 ]; then
+        log "  ... still waiting at $((i*10))s elapsed (first-boot may be cloning/building app)"
     fi
 done
 
