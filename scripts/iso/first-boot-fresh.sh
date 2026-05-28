@@ -388,7 +388,7 @@ if [ ! -f /var/lib/sports-bar-wizard-done ]; then
     echo ""
     echo "  Log in and run the location setup wizard:"
     echo ""
-    echo "    bash /opt/sports-bar/scripts/iso/location-setup-wizard.sh"
+    echo "    bash /home/ubuntu/Sports-Bar-TV-Controller/scripts/iso/location-setup-wizard.sh"
     echo ""
     echo "  The wizard collects the bar name + admin/staff PINs and runs"
     echo "  bootstrap-new-location.sh for you."
@@ -410,7 +410,7 @@ chmod +x /etc/update-motd.d/99-setup-wizard
 if ! grep -q "location-setup-wizard" /home/ubuntu/.bashrc 2>/dev/null; then
     echo "" >> /home/ubuntu/.bashrc
     echo "# Sports Bar TV Controller setup wizard" >> /home/ubuntu/.bashrc
-    echo "alias location-setup-wizard='sudo bash /opt/sports-bar/scripts/iso/location-setup-wizard.sh'" >> /home/ubuntu/.bashrc
+    echo "alias location-setup-wizard='sudo bash /home/ubuntu/Sports-Bar-TV-Controller/scripts/iso/location-setup-wizard.sh'" >> /home/ubuntu/.bashrc
 fi
 
 # ─── Done ────────────────────────────────────────────────────────────────────
