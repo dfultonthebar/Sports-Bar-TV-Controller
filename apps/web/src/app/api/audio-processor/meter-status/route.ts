@@ -7,6 +7,7 @@ import { findMany, findUnique, findFirst, create, update, updateMany, deleteReco
 import { schema } from '@/db'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
+import { atlasMeterManager } from '@/lib/atlas-meter-manager'
 
 import { logger } from '@sports-bar/logger'
 import { z } from 'zod'
@@ -32,39 +33,109 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Get all input meters for the processor with current levels
-    const inputMeters = await findMany('audioInputMeters', {
-      where: eq(schema.audioInputMeters.processorId, processorId),
-      orderBy: asc(schema.audioInputMeters.inputNumber),
-      limit: 1000
-    })
+    // v2.54.93: read live meters from atlasMeterManager (UDP cache) instead
+    // of the never-populated audioInputMeters DB table. Mirrors the working
+    // pattern at /api/atlas/input-meters. Subscribes to meters on first call
+    // (lazy init, idempotent).
+    //
+    // Why: the DB-table-backed path was speculative infra that never had a
+    // writer. Meter readings only exist in the in-memory atlasMeterManager
+    // singleton (UDP port 3131 push from Atlas, cached per-processor IP).
+    // The bartender UI calling this endpoint was getting empty arrays
+    // forever, blocking sound-check meter visibility during live events
+    // (e.g. 2026-05-27 acoustic band on Patio Band Input 4).
+    const processor = await findFirst('audioProcessors', {
+      where: eq(schema.audioProcessors.id, processorId)
+    }) as any
 
-    // Add status indicators based on levels
-    const metersWithStatus = inputMeters.map(meter => {
+    if (!processor) {
+      return NextResponse.json({ error: 'Processor not found' }, { status: 404 })
+    }
+
+    // Only Atlas processors have live meters via UDP (Shure SLX-D etc are different)
+    if (processor.processorType !== 'atlas') {
+      return NextResponse.json({ inputMeters: [], note: 'Live meters only available for Atlas processors' })
+    }
+
+    const processorIp = processor.ipAddress
+    const inputCount = processor.inputs || 14
+
+    // Ensure subscription (lazy init, idempotent per atlasMeterManager.isSubscribed)
+    if (!atlasMeterManager.isSubscribed(processorIp)) {
+      logger.info(`[METER-STATUS] Subscribing to meters for ${processorIp}...`)
+      await atlasMeterManager.subscribeToMeters(
+        `processor-${processorIp}`,
+        processorIp,
+        inputCount,
+        processor.outputs || 8,
+        8 // groups
+      )
+    }
+
+    const rawMeters = atlasMeterManager.getInputMeters(processorIp, inputCount)
+
+    // v2.54.94: fetch Atlas source labels (SourceName_X) and overlay onto
+    // meter data — bartender UI was showing generic "Input 1"..."Input 14"
+    // instead of "Pavillion Band" / "MIC 1" / "Patio Band" etc. Mirrors
+    // the working pattern at /api/atlas/input-meters lines 50-90 using the
+    // shared persistent client (no new TCP connection).
+    let nameResults: any[] = []
+    try {
+      const { getAtlasClient, releaseAtlasClient } = await import('@/lib/atlas-client-manager')
+      const { HARDWARE_CONFIG } = await import('@/lib/hardware-config')
+      const client = await getAtlasClient(
+        `processor-${processorIp}`,
+        { ipAddress: processorIp, tcpPort: HARDWARE_CONFIG.atlas.tcpPort, timeout: 5000 }
+      )
+      const namePromises = []
+      for (let i = 0; i < inputCount; i++) {
+        namePromises.push(
+          client.sendCommand({ method: 'get', param: `SourceName_${i}`, format: 'str' })
+            .catch(() => null)
+        )
+      }
+      nameResults = await Promise.all(namePromises)
+      releaseAtlasClient(processorIp, HARDWARE_CONFIG.atlas.tcpPort)
+    } catch (e) {
+      logger.warn('[METER-STATUS] Could not fetch Atlas source names, using generic labels', e)
+    }
+
+    // Adapt to the shape the bartender UI's existing component expects
+    // (mimics the old DB-row shape with extra status indicators).
+    const WARN = -20  // dB
+    const DANGER = -3 // dB
+    const metersWithStatus = rawMeters.map((m, idx) => {
+      const currentLevel = m.level
       let status = 'normal'
       let statusColor = 'green'
-      
-      if (meter.currentLevel !== null) {
-        if (meter.currentLevel > meter.dangerThreshold) {
-          status = 'danger'
-          statusColor = 'red'
-        } else if (meter.currentLevel > meter.warningThreshold) {
-          status = 'warning'
-          statusColor = 'yellow'
-        }
+      if (currentLevel > DANGER) {
+        status = 'danger'
+        statusColor = 'red'
+      } else if (currentLevel > WARN) {
+        status = 'warning'
+        statusColor = 'yellow'
       }
-      
-      // Check if data is stale (no updates in 30 seconds)
-      const isStale = meter.lastUpdate ? 
-        (new Date().getTime() - new Date(meter.lastUpdate).getTime()) > 30000 : 
-        true
-      
+      // Extract Atlas label (overlay onto meter); fall back to cached + generic
+      let name = m.name || `Input ${m.index + 1}`
+      const nr = nameResults[idx]
+      if (nr?.result && Array.isArray(nr.result) && nr.result[0]?.str) {
+        name = nr.result[0].str
+      }
       return {
-        ...meter,
+        id: `meter_${m.index}`,
+        processorId,
+        inputNumber: m.index + 1,
+        name,
+        currentLevel,
+        peakLevel: m.peak,
+        warningThreshold: WARN,
+        dangerThreshold: DANGER,
+        clipping: m.clipping,
+        lastUpdate: new Date().toISOString(),
         status,
         statusColor,
-        isStale,
-        isReceiving: !isStale && meter.currentLevel !== null
+        isStale: false,
+        isReceiving: true
       }
     })
 
