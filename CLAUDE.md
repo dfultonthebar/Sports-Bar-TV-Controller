@@ -591,6 +591,25 @@ v2.54.97 fix. If installing Node in first-boot instead, the box boots, first-boo
 
 `smoke-test-autoinstall.sh` post-install poll for the VM's DHCP lease has to wait ≥15 minutes. Proxmox's arp cache doesn't show the new lease until systemd-networkd brings up the interface AND outbound traffic flows (~60-90s after kernel boot — first systemd-resolved query, NTP sync, etc.). v2.54.97 fix. A 5-minute poll loop reports "VM never got DHCP" while the VM is actually running fine.
 
+### 19. PXE netboot — `sanboot` the whole ISO is a DEAD END for Ubuntu; boot kernel+initrd over HTTP instead
+
+`scripts/proxmox/configure-netboot-menu.sh` used to `sanboot http://…/current.iso` (boot the whole ISO as a SAN disk). This **never worked for Ubuntu's casper-based live-server ISO**: iPXE registers the ISO as SAN device 0x80, GRUB loads, but casper then fails with *"Unable to find a medium containing a live file system"* (+ *"can't find command 'grub_platform'"*) — in **both UEFI and legacy BIOS**. (`sanboot`-whole-ISO works for some OSes, not Ubuntu casper.) v3.1.1 fix (confirmed live on Proxmox VM 201, 2026-05-27).
+
+**Working method** — boot `casper/vmlinuz` + `casper/initrd` directly over HTTP, let casper fetch the ISO via the `url=` kernel param:
+```
+:install
+kernel http://LXC/casper/vmlinuz
+initrd http://LXC/casper/initrd
+imgargs vmlinuz initrd=initrd ip=dhcp url=http://LXC/iso/current.iso autoinstall cloud-config-url=/dev/null ds=nocloud-net;s=http://LXC/server/ ---
+boot
+```
+Three non-obvious requirements (each cost an iteration):
+1. **`cloud-config-url=/dev/null` is MANDATORY on 24.04** — without it subiquity ignores the `ds=` seed and drops to the interactive language prompt. (Not needed on 22.04.)
+2. **`ip=dhcp`** — casper must have networking before it can fetch `url=`.
+3. **Serve the seed over HTTP at `/server/`** (`ds=nocloud-net;s=http://…/server/`, trailing slash) — the ISO-baked `ds=nocloud;s=/cdrom/server/` does NOT apply once the ISO is fetched via `url=`. `meta-data` must return HTTP 200 even if empty. Target needs ≥4 GB RAM (ISO held in ramdisk). Semicolon is NOT escaped in the iPXE line.
+
+**dnsmasq proxy-DHCP gotcha (same fix commit):** in PROXY mode dnsmasq uses `pxe-service=` for the firmware boot stage, NOT `dhcp-boot=` (which is silently ignored under proxy → `PXE-E16: No valid offer received`). `dhcp-boot=` only works in authoritative DHCP mode. `configure-netboot-menu.sh` now extracts kernel/initrd/seed from the ISO on every run and emits both fixes.
+
 ## Development Workflow
 
 ### Standing Rules (MUST follow in every session)
