@@ -46,6 +46,24 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-28 — v2.55.6–v2.55.9 — ISO hardware-prereqs + triple-$ password + PXE netboot fix
+
+**Risk:** GO — **zero runtime impact for installed fleet boxes.** Every change in this batch is ISO-build / new-NUC-provisioning side. No app code, no schema, no PM2 service touched.
+
+**What changed:**
+- **v2.55.6** — baked hardware prereqs into the autoinstall ISO (packages `adb, rtl-sdr, nginx, nmap, arp-scan, sshpass, imagemagick, v4l-utils`; first-boot `.env` generation with fresh crypto secrets; `usermod -aG dialout,video,render,plugdev`; setup-sdr.sh + setup-bartender-nginx.sh). Closes the gap analysis vs Holmgren so new NUCs need minimal debugging.
+- **v2.55.7** — fleet password fixed to `6809233DjD$$$` (THREE $, was two). Fixed the `$$`→PID expansion trap in smoke/audit test scripts.
+- **v2.55.8** — PXE netboot fix: `sanboot`-the-whole-ISO never worked for Ubuntu casper (UEFI+BIOS both); now boots kernel+initrd over HTTP with casper fetching the ISO via `url=`. `configure-netboot-menu.sh` reworked; dnsmasq proxy fixed (`pxe-service=` not `dhcp-boot=`). Verified live on Proxmox VM 201. CLAUDE.md Gotcha #19.
+- **v2.55.9** — VERSION_SETUP_GUIDE entries for the above.
+
+**Where this matters:** new-NUC provisioning only (USB ISO + office PXE server). Installed fleet boxes never re-run the ISO/installer.
+
+**Manual steps required (PXE server LXC only):** re-run `bash /root/configure-netboot-menu.sh` inside the netboot LXC so the new kernel+initrd menu + extracted casper files land. Fleet boxes: nothing. Full prescriptive steps in VERSION_SETUP_GUIDE.md v2.55.6–.8.
+
+**Rollback:** revert the relevant commit; previous ISO builds are archived. No fleet-side state to undo.
+
+**Affected files:** `scripts/iso/*`, `scripts/proxmox/configure-netboot-menu.sh`, `docs/PROXMOX_PXE_SETUP.md`, `docs/VERSION_SETUP_GUIDE.md`, `CLAUDE.md`.
+
 ### 2026-05-27 — v2.54.86 — disk-installer adds bios_boot partition (GPT+BIOS boot fix)
 
 **Risk:** GO — zero runtime impact for installed fleet.
