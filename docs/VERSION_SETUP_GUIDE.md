@@ -35,6 +35,20 @@ is the archive.
 
 ---
 
+## v2.54.98 — new bartender how-to READING_AUDIO_METERS.md (2026-05-27)
+
+**Versions covered:** v2.54.98
+**Branch landed:** main
+**Fleet target:** No runtime change. Doc-only.
+
+New bartender-grade how-to at `docs/bartender-help/READING_AUDIO_METERS.md` covering the live Audio tab meters fixed in v2.54.94 (per-input dB levels with Atlas labels — Pavillion Band, MIC 1/2, Juke box, Patio Band, VIP Band, Matrix 1/2/3, DJ Audio). Explains sweet-spot range (-20 to -10 dB), green/yellow/red color cues, sound-check workflow, paging-mic diagnostic, downstream recovery paths. Cross-links MIC_NOT_WORKING / WRONG_CHANNEL_ON_TV / POWER_AND_NETWORK_TVS / MUSIC_OR_AUDIO_PROBLEM.
+
+**Required Manual Steps:** None.
+
+**Verification:** `test -f docs/bartender-help/READING_AUDIO_METERS.md && grep -q "Real-time Audio Meters" docs/bartender-help/READING_AUDIO_METERS.md`.
+
+---
+
 ## v2.54.91 — install docs refresh for v3.1.0 autoinstall (2026-05-27)
 
 **Versions covered:** v2.54.91
