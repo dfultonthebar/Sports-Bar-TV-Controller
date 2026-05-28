@@ -149,23 +149,42 @@ px "qm set $VMID -ide2 none,media=cdrom 2>&1 | tail -2"
 px "qm set $VMID -boot order=scsi0 2>&1 | tail -2"
 px "qm start $VMID 2>&1 | tail -2"
 
-log "Waiting for installed system DHCP (up to 15 min — systemd-networkd + first-boot)..."
+# v2.55.1: detect the installed system via its IPv6 LINK-LOCAL address, not
+# Proxmox arp. The VM talks to the gateway (192.168.200.1), not to Proxmox
+# (192.168.200.253), so Proxmox's `ip -4 neigh` NEVER gets a v4 entry for
+# the VM — the old detection false-failed every run even when the install
+# succeeded. The IPv6 link-local is deterministic from the MAC (EUI-64):
+# we SSH to it via %vmbr4 and ask the VM for its own routed IPv4.
+#
+# Compute link-local from MAC bc:24:11:5b:53:45 → fe80::be24:11ff:fe5b:5345
+# (flip 7th bit of 1st octet, insert ff:fe in the middle).
+compute_ll() {
+    local mac="$1"
+    IFS=':' read -r o1 o2 o3 o4 o5 o6 <<< "$mac"
+    local flipped=$(printf '%02x' $(( 0x$o1 ^ 0x02 )))
+    echo "fe80::${flipped}${o2}:${o3}ff:fe${o4}:${o5}${o6}"
+}
+VM_LL="$(compute_ll "$VM_MAC")%vmbr0"
+log "VM IPv6 link-local: $VM_LL"
+
+log "Waiting for installed system + first-boot (up to 20 min — clone+migrate+build+pm2)..."
 VM_IP=""
-for i in $(seq 1 90); do
+for i in $(seq 1 120); do
     sleep 10
-    IP=$(px "ip -4 neigh | grep -i '$VM_MAC' | awk '{print \$1}' | head -1" 2>/dev/null || true)
+    # SSH to VM via link-local; ask it for its own routed IPv4
+    IP=$(px "sshpass -p '$VM_PASS' ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 ubuntu@$VM_LL \"ip -4 addr show | grep 'inet ' | grep -v 127.0.0.1 | awk '{print \\\$2}' | cut -d/ -f1 | head -1\"" 2>/dev/null || true)
     if [ -n "$IP" ]; then
         VM_IP="$IP"
         log "🎉 Installed system on network at $IP (after $((i*10))s)"
         break
     fi
     if [ $((i % 30)) -eq 0 ]; then
-        log "  ... still waiting at $((i*10))s elapsed (first-boot may be cloning/building app)"
+        log "  ... still waiting at $((i*10))s (first-boot clone+migrate+build+pm2 takes 12-18 min)"
     fi
 done
 
 if [ -z "$VM_IP" ]; then
-    err "Installed system never got DHCP after boot"
+    err "Installed system never reachable via SSH after 20 min"
     exit 1
 fi
 
