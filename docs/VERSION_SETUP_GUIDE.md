@@ -35,6 +35,37 @@ is the archive.
 
 ---
 
+## v2.55.20 — Phase 1 of self-monitoring architecture: pre-push docs-gate + HOOK_COVERAGE map (2026-06-09)
+
+**Versions covered:** v2.55.20
+**Branch landed:** main → all 6 location branches
+
+**Required Manual Step (per clone, one-time, on any box where someone might `git push`):**
+```bash
+cd /home/ubuntu/Sports-Bar-TV-Controller
+git config core.hooksPath .githooks
+```
+After this, every `git push` runs `.githooks/pre-push`. Verify with:
+```bash
+git config core.hooksPath   # must print: .githooks
+```
+**Fleet boxes don't push to main** (auto-update is pull-only), so this is only needed where development happens (Holmgren primarily). Done on Holmgren as part of this release.
+
+**Why:** Phase 1 of the seven-pattern self-monitoring architecture (see `docs/HOOK_COVERAGE.md`). Standing Rule 8 ("contribute to VERSION_SETUP_GUIDE every release") was honor-system — when I forgot, the fleet went undocumented. The pre-push hook now mechanically blocks pushes to `origin/main` with non-trivial code but no doc update (VERSION_SETUP_GUIDE / LOCATION_UPDATE_NOTES / CLAUDE.md / HOOK_COVERAGE).
+
+**Trivial files** that don't require a doc update on their own: `package.json` (version bump), `.gitignore`, `.claude/hooks/*.sh`. Everything else triggers the gate.
+
+**Emergency bypass:** `git push --no-verify` (genuine emergencies; record a no-op entry here anyway, that's friction-free).
+
+**Heartbeat:** every fire writes `/tmp/sports-bar-pre-push-hook.log`. Silent absence = hook didn't run, not "all clear."
+
+**Also new in this release:**
+- `docs/HOOK_COVERAGE.md` — coverage map of every Standing Rule + Gotcha → enforcing mechanism → status (✅ / 🟡 / ❌). The single source of truth for "what's mechanically enforced vs honor-system" and the planning doc for Phases 2–6.
+
+**No fleet runtime impact** — git hook only fires on `git push`. The PM2 app isn't touched.
+
+---
+
 ## v2.55.8 — PXE netboot fix: kernel+initrd HTTP (sanboot is dead for Ubuntu) (2026-05-28)
 
 **Versions covered:** v2.55.8
