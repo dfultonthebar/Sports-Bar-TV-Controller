@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+# .githooks/pre-push — Block pushes to origin/main without doc updates.
+#
+# Standing Rule 8 mechanical enforcement (CLAUDE.md): every version bump to
+# main MUST land alongside an entry in docs/VERSION_SETUP_GUIDE.md (or
+# LOCATION_UPDATE_NOTES.md, or CLAUDE.md, or HOOK_COVERAGE.md). This used to
+# be honor-system — I forgot it enough times that it became a recurring
+# session symptom — so we mechanically gate it now.
+#
+# Install: git config core.hooksPath .githooks
+# Bypass:  git push --no-verify   (genuine emergency only)
+#
+# Heartbeat: every fire appends a row to /tmp/sports-bar-pre-push-hook.log
+# so silent passes are still auditable — without a heartbeat we'd have no way
+# to tell the hook didn't fire vs. fired-and-allowed (Phase 1 of the
+# self-monitoring architecture: every watcher proves it ran).
+
+set -u
+
+REMOTE="${1:-}"
+URL="${2:-}"
+LOG=/tmp/sports-bar-pre-push-hook.log
+
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] pre-push fired remote=$REMOTE url=$URL" >> "$LOG" 2>/dev/null || true
+
+exit_code=0
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  # Only enforce for pushes to refs/heads/main on the remote
+  if [[ "$remote_ref" != "refs/heads/main" ]]; then
+    echo "  → skip non-main ref: $remote_ref" >> "$LOG" 2>/dev/null || true
+    continue
+  fi
+
+  # Branch deletion (local sha all zeros)
+  if [[ "$local_sha" =~ ^0+$ ]]; then
+    continue
+  fi
+
+  # New branch on remote (remote sha all zeros): everything from local_sha is new
+  if [[ "$remote_sha" =~ ^0+$ ]]; then
+    range="$local_sha"
+  else
+    range="$remote_sha..$local_sha"
+  fi
+
+  changed=$(git diff --name-only "$range" 2>/dev/null)
+  if [ -z "$changed" ]; then
+    echo "  → empty diff for $range" >> "$LOG" 2>/dev/null || true
+    continue
+  fi
+
+  # Trivial files that don't require a docs entry on their own:
+  #   package.json (version bump line)
+  #   .gitignore
+  #   .claude/hooks/*.sh (Claude Code policy hooks themselves)
+  non_trivial=$(echo "$changed" | grep -vE '^(package\.json$|\.gitignore$|\.claude/hooks/[^/]+\.sh$)' || true)
+
+  if [ -z "$non_trivial" ]; then
+    echo "  → trivial-only push, no docs required" >> "$LOG" 2>/dev/null || true
+    continue
+  fi
+
+  # Accept any of these as "docs updated":
+  docs_updated=$(echo "$changed" | grep -E '^(docs/VERSION_SETUP_GUIDE\.md|docs/LOCATION_UPDATE_NOTES\.md|CLAUDE\.md|docs/HOOK_COVERAGE\.md)$' || true)
+
+  if [ -n "$docs_updated" ]; then
+    echo "  → docs updated: $(echo "$docs_updated" | tr '\n' ' ')" >> "$LOG" 2>/dev/null || true
+    continue
+  fi
+
+  # Block.
+  cat >&2 <<'BLOCK'
+
+╭───────────────────────────────────────────────────────────────────────╮
+│ ✗ pre-push BLOCKED — Standing Rule 8 (docs-not-updated)               │
+╰───────────────────────────────────────────────────────────────────────╯
+
+The push to origin/main contains non-trivial code changes but does NOT
+update any of the documentation files we mechanically require:
+
+  • docs/VERSION_SETUP_GUIDE.md   (per-version setup instructions)
+  • docs/LOCATION_UPDATE_NOTES.md (per-release GO/CAUTION/STOP risk)
+  • CLAUDE.md                     (architecture / gotchas / standing rules)
+  • docs/HOOK_COVERAGE.md         (rule → enforcer → status map)
+
+BLOCK
+  echo "Non-trivial files in this push range (first 10):" >&2
+  echo "$non_trivial" | head -10 | sed 's|^|  - |' >&2
+  cat >&2 <<'BLOCK'
+
+Fix: add (or amend) an entry — even a 2-line "no setup required" note in
+VERSION_SETUP_GUIDE.md is enough to clear the gate. Then re-push.
+
+Emergency bypass (genuinely no doc applies): git push --no-verify
+
+BLOCK
+
+  echo "  → BLOCKED: non-trivial push without docs update" >> "$LOG" 2>/dev/null || true
+  exit_code=1
+done
+
+exit $exit_code
