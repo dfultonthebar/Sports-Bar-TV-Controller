@@ -35,6 +35,32 @@ is the archive.
 
 ---
 
+## v2.55.36 — Graystone webpack opt-in: source .env before deciding --webpack (closes #334) (2026-06-10)
+
+**Versions covered:** v2.55.36 — closes task #334
+**Branch landed:** main → all 6 location branches
+**Required Manual Step:** **None.** Pure rebuild fix; auto-update pulls + the new wrapper handles it.
+
+**Why:** v2.55.29 put `NEXT_USE_WEBPACK=1` in Graystone's `.env` and changed `apps/web/package.json`'s build to `next build ${NEXT_USE_WEBPACK:+--webpack}`. But bash substitution happens at npm-script-parse time, BEFORE the .env file is loaded. Result: Graystone's env var was invisible during builds, every fleet propagation rebuilt with Turbopack, OOM'd at exit 137. Workaround was rsync-the-prebuilt-.next from Holmgren — proven 4+ times but adds friction every propagation.
+
+**Fix:** `apps/web/package.json` `build` script is now `node ../../scripts/web-build.js`. The wrapper:
+1. Reads `<repo-root>/.env` synchronously (best-effort — absence is fine)
+2. Loads any var into `process.env` UNLESS the parent shell already set it (parent wins)
+3. Appends `--webpack` to the `next build` arg list when `NEXT_USE_WEBPACK` is `1` or `true`
+4. Spawns `npx next build [args]` from `apps/web/` with `stdio=inherit` so output streams identically to the old form
+5. Surfaces a one-line `[web-build]` log so build logs say what was sourced
+
+**Behavior verified:**
+- Holmgren (NEXT_USE_WEBPACK unset): default Turbopack build, ~11 sec (no change)
+- Holmgren with `NEXT_USE_WEBPACK=1 node scripts/web-build.js`: switches to `▲ Next.js 16.2.6 (webpack)`
+- Wrapper sourced 35 vars from .env on its standalone test run
+
+**Side benefit:** `NEXT_BUILD_ARGS` env var is now supported for ad-hoc build-arg injection (e.g. `NEXT_BUILD_ARGS="--debug" npm run build`).
+
+**Graystone validation:** propagation runs now build successfully without rsync-workaround. Holmgren's pre-built .next rsync is no longer the only path for Graystone updates.
+
+---
+
 ## v2.55.32 — Shift-brief: stop hallucinating NFL games in June + 3 research hooks (2026-06-09)
 
 **Versions covered:** v2.55.32
