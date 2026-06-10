@@ -86,21 +86,19 @@ echo
 # ─── Step 0: Prereq check ──────────────────────────────────────────────────
 step "Step 0/6: Prerequisite check"
 MISSING=()
-# v2.55.28: added unsquashfs + mksquashfs (squashfs-tools) for the Step 2b
-# slim-pass that purges snapd/bluez/cups/fwupd/cloud-init from the live
-# installer's squashfs. Without this the ISO ships at 3.2 GB and overflows
-# GitHub's 2 GB release-asset cap (task #326).
-for tool in 7z xorriso wget openssl unsquashfs mksquashfs; do
+# v2.55.30: removed unsquashfs + mksquashfs — Step 2b no longer chroot-purges
+# the squashfs (pool/ delete alone is enough to hit the GitHub 2 GB cap).
+for tool in 7z xorriso wget openssl; do
     if ! command -v "$tool" >/dev/null 2>&1; then
         MISSING+=("$tool")
     fi
 done
 if [ ${#MISSING[@]} -gt 0 ]; then
     err "Missing tools: ${MISSING[*]}"
-    err "Install with: sudo apt-get install -y p7zip-full xorriso wget openssl squashfs-tools"
+    err "Install with: sudo apt-get install -y p7zip-full xorriso wget openssl"
     exit 1
 fi
-log "All build tools present: 7z xorriso wget openssl unsquashfs mksquashfs"
+log "All build tools present: 7z xorriso wget openssl"
 
 # Also need our two payload files
 PAYLOAD_FIRST_BOOT="${SCRIPT_DIR}/first-boot-fresh.sh"
@@ -170,31 +168,37 @@ else
     exit 1
 fi
 
-# ─── Step 2b: Slim ISO — strip pool/ + chroot-purge squashfs bloat ────────
-# v2.55.28 — close task #326. Stock Ubuntu Server 24.04.4 ISO is 3.2 GB which
-# overflows GitHub's 2 GB release-asset cap and forces split releases. Two
-# levers, in priority order:
+# ─── Step 2b: Slim ISO — strip pool/ to fit GitHub 2 GB release-asset cap ──
 #
-#  1. pool/ entire deletion (~1.0-1.3 GB). The pool exists for offline-install
-#     fallback when there is no internet during the install. We ALWAYS have
-#     internet at first-boot (we apt-get nodejs / clone from GitHub) so the
-#     pool is vestigial for us. Pair with apt.fallback: continue-anyway in
-#     autoinstall.yaml.template so subiquity doesn't stall waiting for offline
-#     debs.
+# Stock Ubuntu Server 24.04.4 ISO is 3.2 GB. Empirically (post-7z extract):
+#   pool/                                                       ~1.5 GB
+#   casper/ubuntu-server-minimal.ubuntu-server.installer.squashfs  671 MB
+#   casper/ubuntu-server-minimal.ubuntu-server.installer.generic-hwe.squashfs 267 MB
+#   casper/ubuntu-server-minimal.ubuntu-server.installer.generic.squashfs    256 MB
+#   casper/ubuntu-server-minimal.squashfs                          159 MB
+#   casper/ubuntu-server-minimal.ubuntu-server.squashfs            142 MB
+#   casper/{hwe-,}initrd                                          ~150 MB
+#   casper/{hwe-,}vmlinuz                                         ~30 MB
 #
-#  2. chroot-purge snapd / bluez / cups / fwupd / cloud-init from the live
-#     installer's squashfs (~80 MB compressed savings). scripts/optimize-os.sh
-#     already removes these POST-install; we just push that work upstream so
-#     they're never in the ISO in the first place.
+# v2.55.28 attempted two levers (pool delete + chroot-purge live squashfs).
+# The chroot-purge picked the wrong squashfs candidate (the layered diff
+# at 142 MB has no /proc /sys /dev mount-point dirs → chroot bind failed).
+# v2.55.30 simplification: pool delete ALONE gets us to ~1.7 GB, well under
+# the 1900 MB cap. Drop the chroot-purge — the operational complexity
+# (squashfs candidate priority, chroot bind safety, mksquashfs OOM risk)
+# is not worth ~80 MB of additional savings.
 #
-# Recovery: if the slim build is broken, set ISO_SLIM=0 in env to fall back to
-# the unmodified flow. The cd-prefix-style escape valve.
-step "Step 2b/6: Slim ISO (pool strip + squashfs purge for GitHub 2 GB cap)"
+# The pool/ exists for offline-install fallback. We always have internet
+# at first-boot (NodeSource apt + GitHub clone), so it is vestigial. Pair
+# with `apt.fallback: continue-anyway` in autoinstall.yaml.template so
+# subiquity does NOT stall waiting for the absent offline debs.
+#
+# Recovery / escape valve: ISO_SLIM=0 skips this step entirely.
+step "Step 2b/6: Slim ISO (pool strip — GitHub 2 GB cap)"
 
 if [ "${ISO_SLIM:-1}" = "0" ]; then
     log "ISO_SLIM=0 — skipping slim pass (debug mode)"
 else
-    # Part 1: Remove pool/ entirely. ~1.0-1.3 GB saved.
     if [ -d "${BUILD_DIR}/source-files/pool" ]; then
         POOL_SIZE=$(du -sh "${BUILD_DIR}/source-files/pool" | cut -f1)
         log "Removing pool/ (${POOL_SIZE}) — offline-install fallback unused (internet required for first-boot)"
@@ -204,70 +208,20 @@ else
         log "pool/ already absent — skipping"
     fi
 
-    # Part 2: Chroot-purge live-installer squashfs. Locate the squashfs (path
-    # varies by Ubuntu Server release — try both modern + legacy names).
-    SQUASHFS_PATH=""
-    for candidate in \
-        "${BUILD_DIR}/source-files/casper/ubuntu-server-minimal.ubuntu-server.squashfs" \
-        "${BUILD_DIR}/source-files/casper/filesystem.squashfs"; do
-        [ -f "$candidate" ] && { SQUASHFS_PATH="$candidate"; break; }
-    done
+    # Re-checksum md5sum.txt — Ubuntu's casper-md5check verifies file integrity
+    # at boot. Stripping pool/ leaves orphan entries in md5sum.txt; casper's
+    # integrity check would fail. Rewrite to only include files we still ship.
+    # (Optional — casper-md5check only fires when the kernel cmdline includes
+    # `integrity-check`, which our autoinstall config does not. Skip for now;
+    # if a future cmdline change re-enables it, the recipe is:
+    #   cd "${BUILD_DIR}/source-files" && \
+    #   sudo find . -type f \( -name "md5sum.txt" -o -name boot.catalog \) \
+    #     -prune -o -type f -print0 | xargs -0 md5sum > /tmp/m && \
+    #   sudo mv /tmp/m md5sum.txt
+    # )
 
-    if [ -z "$SQUASHFS_PATH" ]; then
-        warn "No squashfs found at expected casper paths — skipping squashfs purge"
-    else
-        SQUASH_WORK="${BUILD_DIR}/squashfs-root"
-        SQUASH_SIZE_BEFORE=$(du -sh "$SQUASHFS_PATH" | cut -f1)
-        log "Unsquashing ${SQUASHFS_PATH} (${SQUASH_SIZE_BEFORE}) — takes 3-5 min..."
-        sudo unsquashfs -d "$SQUASH_WORK" "$SQUASHFS_PATH" >/dev/null
-
-        log "Chroot-purging snapd bluez cups fwupd cloud-init + transitive deps..."
-        # Bind-mounts needed for apt to run inside the chroot.
-        sudo mount --bind /proc    "${SQUASH_WORK}/proc"
-        sudo mount --bind /sys     "${SQUASH_WORK}/sys"
-        sudo mount --bind /dev     "${SQUASH_WORK}/dev"
-        sudo mount --bind /dev/pts "${SQUASH_WORK}/dev/pts"
-
-        # Trap to guarantee unmount even on error. NEVER `umount -l` — see
-        # [[feedback-chroot-lazy-umount-destroys-dev]] (lazy unmount + rm -rf
-        # destroys host /dev nodes through the still-attached bind).
-        squash_cleanup() {
-            sudo umount "${SQUASH_WORK}/dev/pts" 2>/dev/null || true
-            sudo umount "${SQUASH_WORK}/dev"     2>/dev/null || true
-            sudo umount "${SQUASH_WORK}/sys"     2>/dev/null || true
-            sudo umount "${SQUASH_WORK}/proc"    2>/dev/null || true
-        }
-        trap squash_cleanup EXIT
-
-        # Direct chroot apt-get purge (NOT `curtin in-target --` per Launchpad
-        # bug #1946609 — curtin path fails on snapd's postinst unmount step
-        # with "resource busy"; direct chroot works).
-        sudo chroot "$SQUASH_WORK" apt-get purge -y --autoremove \
-            snapd bluez cups cups-browsed cups-common \
-            fwupd fwupd-signed libfwupd2 \
-            cloud-init \
-            2>&1 | grep -E '(Removing|Purging|freed)' | head -40 || true
-
-        squash_cleanup
-        trap - EXIT
-
-        log "Re-squashing (xz, takes 5-10 min)..."
-        sudo rm -f "${SQUASHFS_PATH}.bak"
-        sudo mv "$SQUASHFS_PATH" "${SQUASHFS_PATH}.bak"
-        sudo mksquashfs "$SQUASH_WORK" "$SQUASHFS_PATH" \
-            -comp xz -Xbcj x86 -b 1M -no-progress >/dev/null
-        SQUASH_SIZE_AFTER=$(du -sh "$SQUASHFS_PATH" | cut -f1)
-        log "Squashfs: ${SQUASH_SIZE_BEFORE} → ${SQUASH_SIZE_AFTER}"
-        sudo rm -rf "$SQUASH_WORK" "${SQUASHFS_PATH}.bak"
-
-        # Refresh filesystem.size manifest if present (casper reads it for
-        # ramdisk sizing during the live boot).
-        SIZE_MANIFEST="$(dirname "$SQUASHFS_PATH")/filesystem.size"
-        if [ -f "$SIZE_MANIFEST" ]; then
-            sudo unsquashfs -lln "$SQUASHFS_PATH" 2>/dev/null | tail -1 | awk '{print $3}' > /tmp/squashfs-size 2>/dev/null || true
-            [ -s /tmp/squashfs-size ] && sudo cp /tmp/squashfs-size "$SIZE_MANIFEST" || true
-        fi
-    fi
+    SLIM_AFTER=$(du -sh "${BUILD_DIR}/source-files" | cut -f1)
+    log "build dir after slim pass: ${SLIM_AFTER} (target: ≤1.9 GB for GitHub asset cap)"
 fi
 
 # ─── Step 3: Build autoinstall.yaml from template ──────────────────────────
