@@ -20,6 +20,7 @@ set -u
 REMOTE="${1:-}"
 URL="${2:-}"
 LOG=/tmp/sports-bar-pre-push-hook.log
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 
 # Redact credentials embedded in URL: https://user:token@host → https://***@host
 # (v2.55.21 — Phase 1 of this hook caught its own log capturing a GitHub PAT
@@ -53,6 +54,18 @@ while read -r local_ref local_sha remote_ref remote_sha; do
   if [ -z "$changed" ]; then
     echo "  → empty diff for $range" >> "$LOG" 2>/dev/null || true
     continue
+  fi
+
+  # Phase 4 (v2.55.27) — Grok critical-path soft review.
+  # If the diff touches schema / drizzle / auto-update / iso / proxmox /
+  # other high-risk paths, run an independent Grok review. Soft block:
+  # FINDING shows the output + requires --no-verify or GROK_PREPUSH_DISABLE=1
+  # to bypass. CLEAN or "no critical paths matched" → silent pass.
+  if [[ -x "$REPO_ROOT/scripts/grok-prepush-review.sh" ]]; then
+    if ! bash "$REPO_ROOT/scripts/grok-prepush-review.sh" "$remote_sha" "$local_sha"; then
+      echo "  → BLOCKED by grok-prepush-review (see output above)" >> "$LOG" 2>/dev/null || true
+      exit_code=1
+    fi
   fi
 
   # Trivial files that don't require a docs entry on their own:

@@ -35,6 +35,63 @@ is the archive.
 
 ---
 
+## v2.55.27 — Phase 4: Grok critical-path pre-push review (2026-06-09)
+
+**Versions covered:** v2.55.27
+**Branch landed:** main
+**Required Manual Step:** **None on dev machines.** Hook lives in repo + `core.hooksPath` is already configured. **No fleet action** — location boxes never push to main, so Phase 4 is dev-machine-only.
+
+**What ships:**
+- `scripts/grok-prepush-review.sh` (~165 lines, executable) — orchestrates the review.
+- `.githooks/pre-push` — calls the review script after the empty-diff check, before the docs-gate. Order matters for the bypass story: a `--no-verify` bypass skips both checks; a docs-only push with no critical paths skips Grok via the early `exit 0` in `grok-prepush-review.sh`.
+
+**13 critical-path globs** trigger the review (anything not in this list is silent-skip):
+```
+packages/database/src/schema.ts
+apps/web/src/db/schema.ts
+drizzle/**
+scripts/auto-update.sh
+scripts/bootstrap-drizzle-migrations.sh
+scripts/verify-install.sh
+scripts/iso/**
+scripts/proxmox/**
+apps/web/src/instrumentation.ts
+apps/web/next.config.js
+ecosystem.config.js
+.githooks/pre-push
+scripts/grok-prepush-review.sh
+```
+
+**Review mechanics:**
+- Grok is briefed via `scripts/grok-prime.sh` (auto-prepends Standing Rules + Gotchas from `docs/GROK_BRIEFING.md`).
+- Diff truncated to 32 KB to stay inside Grok's useful window (per `[[feedback-llm-context-overflow]]`).
+- Recent commit messages on the changed files are included so Grok has intent signal (distinguishes "this DROP TABLE is intentional cleanup" from "this is an accident").
+- Auto-injected gotcha hints based on which paths fired (e.g. drizzle changes → cite Gotcha #6 + #5).
+- Mandatory CLEAN/FINDING first-word verdict for machine parsing.
+- 120 sec timeout — if Grok stalls, soft-warn and allow push.
+- Per-day SHA cache at `/tmp/grok-prepush-cache.json` — re-pushing the same range in one day doesn't re-burn Grok.
+
+**Soft-block semantics:**
+- CLEAN → silent pass, log only.
+- FINDING → print Grok's output to stderr + exit 1. Bypass: `git push --no-verify` OR `GROK_PREPUSH_DISABLE=1 git push`.
+- TIMEOUT → soft-warn, allow push, log.
+- `grok` CLI absent → silent-skip (degraded mode). Same for any environment where Grok isn't installed.
+
+**Logs:**
+- `/tmp/sports-bar-grok-prepush.log` — every fire (verdict + range + matched files).
+- `/tmp/grok-prepush-cache.json` — per-day cache.
+
+**Standalone test:**
+```bash
+bash scripts/grok-prepush-review.sh <remote_sha> <local_sha>
+```
+
+**Rollout:** repo-tracked + `core.hooksPath` is the standard install step. Every developer machine that's already run that command picks up Phase 4 automatically on next `git pull`. No retroactive action.
+
+**Why this matters:** v2.55.25 shipped a `bartender_layout_rooms` check that tripped 4/5 remote fleet boxes during initial verify because my SQL referenced a non-existent `data` JSON column. The check errored silently and returned empty for everything. This is exactly the failure-mode Phase 4 is designed to catch — a Grok second-opinion on schema/SQL diffs would have called out "your SQL references `data` but the schema doesn't have that column" before the push went out and triggered the regression cascade on fleet auto-update.
+
+---
+
 ## v2.55.26 — Phase 3 follow-up: refine `bartender_layout_rooms` to referential-integrity (2026-06-09)
 
 **Versions covered:** v2.55.26
