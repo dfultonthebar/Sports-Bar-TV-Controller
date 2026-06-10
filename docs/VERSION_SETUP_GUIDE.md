@@ -35,6 +35,78 @@ is the archive.
 
 ---
 
+## v2.55.40 — Override-learn fix: window by expected_free_at, not allocated_at (2026-06-10)
+
+**Versions covered:** v2.55.40
+**Branch landed:** main → all 6 location branches
+**Required Manual Step:** **None.** Code-only change to `/api/matrix/route` POST handler. No schema migration, no env var, no PM2 ecosystem change.
+
+**Why (severity HIGH — silent failure class):**
+Override-learn (`apps/web/src/app/api/matrix/route/route.ts`, v2.18.0) is the
+mechanism that teaches `pattern-analyzer.ts` from bartender corrections —
+when a bartender manually re-routes a TV during an active scheduled
+allocation, the allocation's `tv_output_ids` gets patched so the next
+hour's pattern analysis reflects the corrected room layout.
+
+The previous WHERE clause was `AND a.allocated_at >= ${windowStart}` with
+`windowStart = now - 600` (10 minutes). But `bartender-schedule` sets
+`allocated_at = tuneAtUnix` (the **game start time**, not the allocation
+creation time — see `apps/web/src/app/api/schedules/bartender-schedule/route.ts:340`).
+
+Concrete failure: 7:00 PM NFL kickoff schedules an allocation with
+`allocated_at = 7:00 PM unix`. Bartender notices a wrong TV at 7:15 PM
+(normal game-watch behavior) and manually re-routes. Override-learn
+computes `windowStart = 7:05 PM`, so the allocation's `allocated_at` of
+7:00 PM is LESS than windowStart — the row is excluded from the query,
+no SchedulerLog row is written, the allocation's `tv_output_ids` stays
+stale, and pattern-analyzer never sees the correction.
+
+This silently dropped EVERY routing correction made more than ~10 minutes
+after game start at EVERY location. It has been broken since v2.18.0
+(months) and is the most likely reason the operator has reported the
+pattern-analyzer learning quality feels "thin."
+
+**Fix:**
+- Replace `windowStart` calc + `a.allocated_at >= ${windowStart}` with
+  `nowUnix = Math.floor(Date.now()/1000)` + `a.expected_free_at >= ${nowUnix}`.
+- `expected_free_at` is the estimated game end time + buffer (set when the
+  allocation is created, `packages/database/src/schema.ts:1567`, `notNull`).
+  Any allocation whose game has NOT yet ended qualifies for override-learn —
+  exactly the population we want.
+- Status filter `('active','pending','tuning')` keeps the override scoped to
+  actually-live allocations (no learning from completed/canceled).
+- Comment block updated to reflect the new semantics and explain the bug
+  the fix closes.
+
+**Verification at a location after this lands:**
+
+1. Wait until a long scheduled game is live (3h NFL works well).
+2. ≥30 minutes after `allocated_at`, have the bartender manually re-route
+   via `/api/matrix/route` with `source='bartender'` (channel guide → cable
+   box pick on the bartender remote does this).
+3. Check the override-learn log row was written:
+   ```bash
+   sqlite3 /home/ubuntu/sports-bar-data/production.db \
+     "SELECT created_at, level, operation, message FROM scheduler_logs \
+      WHERE component='override-learn' ORDER BY created_at DESC LIMIT 1;"
+   ```
+   Should show the override (level=`info`, or `warn` if a home-team game).
+4. Confirm the allocation row was patched:
+   ```bash
+   sqlite3 /home/ubuntu/sports-bar-data/production.db \
+     "SELECT id, tv_output_ids, tv_count, updated_at \
+      FROM input_source_allocations \
+      ORDER BY updated_at DESC LIMIT 5;"
+   ```
+   The targeted allocation's `tv_output_ids` should reflect the bartender's
+   change (add or remove the manipulated output).
+
+**Sanity check completed pre-merge:** `grep -rn 'allocated_at >=\|allocatedAt >='`
+across the repo returns ONLY this file — no other consumer relied on the
+10-minute `allocated_at` semantics. The change is local to one route.
+
+---
+
 ## v2.55.38 — Dedicated scheduling log file + bartender-schedule POST instrumentation (2026-06-10)
 
 **Versions covered:** v2.55.38
