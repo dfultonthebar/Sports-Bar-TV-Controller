@@ -35,6 +35,34 @@ is the archive.
 
 ---
 
+## v2.55.32 — Shift-brief: stop hallucinating NFL games in June + 3 research hooks (2026-06-09)
+
+**Versions covered:** v2.55.32
+**Branch landed:** main → all 6 location branches
+**Required Manual Step:** **None.** Code + prompt changes; auto-update pulls them, PM2 picks them up.
+
+**Three fixes bundled:**
+
+### A. Shift-brief LLM hallucination — Gotcha #12 strikes again
+
+Operator caught: "shift brief showing nfl games in june???" The brief was listing "Chicago Bears @ Minnesota Vikings", "Green Bay Packers @ Detroit Lions", "Wisconsin Badgers @ Northwestern Wildcats" — all impossible (NFL season is Sep-Feb, CFB also off). DB had the right data (15 MLB + 1 NBA + 2 WNBA + 1 PGA + 1 LPGA in next 24h, zero NFL). llama3.1:8b was hallucinating Green-Bay-relevant teams because the venue context primed it.
+
+Fix per Gotcha #12 / `[[feedback-llm-server-built-verbatim]]`: server-build the "Home-team games" + "Other games" sections, feed them as PRE-WRITTEN sections, tell the LLM to include them VERBATIM. Same pattern as the existing mic-status bullet and Atlas-priority recap.
+
+Plus: bumped the upcoming-games window from 12h → 18h so an end-of-night brief (fired at 23:00) still surfaces the next-day noon games (which start ~12:10 PM CDT, just past a 12h window).
+
+Plus: a new `pendingResyncBullet` showing pending mic resync state from `shure_pending_resync` table (the v2.55.31 workflow). High-priority bullet so the bartender doesn't pick up a mic that won't transmit.
+
+### B. ~/.ssh/config heartbeat / fleet-status correction
+
+`/api/fleet/status` has a 5-min in-memory cache. After SSH-propagation merged location branches via `git push` to origin, the cached snapshot still showed v2.55.22 stuck-state. PM2 restart busts the cache. Documented for future debugging — if the brief shows wrong "TELL OWNER stuck" lines after a fleet propagation, restart PM2 (or wait 5 min for natural cache expiry).
+
+### C. Three research hooks (Grok web-tools tuning task #333 in flight)
+
+`.claude/hooks/pre-bash-research.sh`, `.claude/hooks/user-prompt-research.sh`, `.claude/hooks/post-taskcreate-research.sh` ship + wired into `.claude/settings.local.json`. Pattern-detection works (atlas / shure / wolfpack / iTach / firetv / directv / crestron / bss / dbx / multiview / rtl-sdr / soundtrack / epson). Grok web-tools backend tuning tracked as task #333 — until that completes the hooks skip-inject for empty/no-research responses (no context pollution).
+
+---
+
 ## v2.55.31 — Wireless-mic freq change + bartender resync banner (closes #331) (2026-06-09)
 
 **Versions covered:** v2.55.31 — closes task #331
