@@ -35,6 +35,35 @@ is the archive.
 
 ---
 
+## v2.55.42 — Scheduling logger: AI Suggest + override-learn paths instrumented (2026-06-10)
+
+**Versions covered:** v2.55.42
+**Branch landed:** main → all 6 location branches
+**Required Manual Step:** **None.** Pure additive logging; PM2 restart picks up the new instrumentation.
+
+**Why:** v2.55.38 wired `scheduling-logger.ts` into the manual bartender-schedule POST. This closes the AI half of the coverage so the same log file (`/home/ubuntu/sports-bar-data/logs/scheduling-YYYY-MM-DD.log`) carries the AI Suggest decision trail + override-learn audit alongside the manual schedules.
+
+**What's wired:**
+- `/api/scheduling/ai-suggest` GET handler: logs `source='ai'` for the trigger (`action='attempt'`), Ollama timeout (`tune_fail` HTTP 504 with note about RAM pressure / model eviction), Ollama unavailable (`tune_fail` HTTP 503), suggestions-returned (`allocation_created` with rejection count + patterns-consulted count), and uncaught exceptions (`tune_fail` HTTP 500).
+- `/api/matrix/route` POST handler (the override-learn write site at line 244): mirrors every override-learn SchedulerLog row into the dedicated scheduling log as `source='override-learn', action='allocation_updated'`. Home-team overrides log at `level='warn'`, non-home at `level='info'` — matches the SchedulerLog severity convention.
+
+**Operator usage:** the scheduling log now carries a single grep-able view of all paths:
+```bash
+# Brewers re-routes today across all sources (manual + AI + override-learn):
+grep -i brewers /home/ubuntu/sports-bar-data/logs/scheduling-$(date +%F).log
+
+# Watch live as a game-day shift unfolds:
+tail -f /home/ubuntu/sports-bar-data/logs/scheduling-$(date +%F).log
+
+# All AI Suggest decisions today:
+grep "AI" /home/ubuntu/sports-bar-data/logs/scheduling-$(date +%F).log
+```
+
+**Per-team routing pattern tracking** (operator-asked): confirmed already running. `scheduling_patterns` table has `pattern_type='team_routing'` rows like `{"team":"Milwaukee Brewers","preferredInput":"Cable Box 1","preferredOutputs":[13,9,16,19,20,18,26,33,1,4,10,12,3,7,6,14,27,43],"frequency":12}`. `packages/scheduler/src/pattern-analyzer.ts` analyzes `input_source_allocations.tv_output_ids` hourly. AI Suggest consults these when recommending routes.
+
+**Still TODO** (next instrumentation pass): auto-reallocator (`packages/scheduler/src/auto-reallocator.ts`) — when the background service preempts/replaces allocations.
+
+---
 ## v2.55.41 — Scheduler tune OR-gate fix: HTTP 200 with {success:false} no longer flips allocation to 'active' (2026-06-10)
 
 **Versions covered:** v2.55.41

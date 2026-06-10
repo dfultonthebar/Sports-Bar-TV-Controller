@@ -16,6 +16,10 @@ import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { validateQueryParams, z } from '@/lib/validation'
 import { HARDWARE_CONFIG } from '@/lib/hardware-config'
+import {
+  logSchedulingEvent,
+  newSchedulingRequestId,
+} from '@/lib/scheduling-logger'
 import { resolveChannelsForGame } from '@/lib/network-channel-resolver'
 
 const OLLAMA_URL = `${HARDWARE_CONFIG.ollama.baseUrl}/api/generate`
@@ -1289,6 +1293,20 @@ export async function GET(request: NextRequest) {
 
   if (!queryValidation.success) return queryValidation.error
 
+  // v2.55.42 — scheduling-logger instrumentation (closes the AI half of the
+  // dedicated-log coverage). Manual path was wired in v2.55.38; this adds
+  // source='ai' visibility so the operator can grep
+  // /home/ubuntu/sports-bar-data/logs/scheduling-YYYY-MM-DD.log for the
+  // AI's decision trail alongside the bartender's manual schedules.
+  const aiReqId = newSchedulingRequestId()
+  await logSchedulingEvent({
+    level: 'info',
+    source: 'ai',
+    action: 'attempt',
+    requestId: aiReqId,
+    note: 'AI Suggest invoked — about to load games, inputs, patterns',
+  })
+
   try {
     // v2.32.100 — Load input sources FIRST so the streaming catalog fetch
     // can scope to this venue's actual Fire TV inputs. Cable/satellite
@@ -1415,6 +1433,17 @@ export async function GET(request: NextRequest) {
     } catch (err: any) {
       if (err.name === 'AbortError') {
         logger.error(`[AI-SUGGEST] Ollama request timed out after ${Math.round(OLLAMA_TIMEOUT_MS / 1000)}s`)
+        await logSchedulingEvent({
+          level: 'error',
+          source: 'ai',
+          action: 'tune_fail',
+          requestId: aiReqId,
+          outcome: {
+            httpStatus: 504,
+            errorMessage: `Ollama timed out after ${Math.round(OLLAMA_TIMEOUT_MS / 1000)}s`,
+          },
+          note: 'AI suggestion aborted — Ollama unresponsive (may be RAM-pressured, model evicted, or service down)',
+        })
         return NextResponse.json(
           { success: false, error: 'AI suggestion timed out. Ollama may be busy or unavailable.', suggestions: [] },
           { status: 504 }
@@ -1422,6 +1451,14 @@ export async function GET(request: NextRequest) {
       }
 
       logger.error('[AI-SUGGEST] Ollama unavailable:', err)
+      await logSchedulingEvent({
+        level: 'error',
+        source: 'ai',
+        action: 'tune_fail',
+        requestId: aiReqId,
+        outcome: { httpStatus: 503, errorMessage: err.message },
+        note: `Ollama at ${HARDWARE_CONFIG.ollama.baseUrl} unreachable`,
+      })
       return NextResponse.json(
         {
           success: false,
@@ -1474,6 +1511,15 @@ export async function GET(request: NextRequest) {
       rejections: rejections.length,
     })
 
+    await logSchedulingEvent({
+      level: 'info',
+      source: 'ai',
+      action: 'allocation_created',  // semantically: AI proposed N allocations; operator's approve flow creates them
+      requestId: aiReqId,
+      outcome: { httpStatus: 200 },
+      note: `AI returned ${suggestions.length} suggestion(s) for ${games.length} game(s) (${rejections.length} rejections, ${inputSources.length} inputs avail, ${patterns.length} learned patterns consulted). Operator will approve via /api/schedules/bartender-schedule.`,
+    })
+
     return NextResponse.json({
       success: true,
       suggestions,
@@ -1488,6 +1534,14 @@ export async function GET(request: NextRequest) {
     })
   } catch (error: any) {
     logger.api.error('GET', '/api/scheduling/ai-suggest', error)
+    await logSchedulingEvent({
+      level: 'error',
+      source: 'ai',
+      action: 'tune_fail',
+      requestId: aiReqId,
+      outcome: { httpStatus: 500, errorMessage: error.message },
+      note: 'AI Suggest threw uncaught — see PM2 stack',
+    })
     return NextResponse.json(
       { success: false, error: 'Failed to generate scheduling suggestions', details: error.message },
       { status: 500 }

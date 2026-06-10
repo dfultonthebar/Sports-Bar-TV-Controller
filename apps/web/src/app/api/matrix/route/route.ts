@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { logger } from '@sports-bar/logger'
 import { routeMatrix } from '@/lib/matrix-control'
+import { logSchedulingEvent } from '@/lib/scheduling-logger'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { z } from 'zod'
@@ -263,6 +264,30 @@ export async function POST(request: NextRequest) {
           })
 
           logger.info(`[OVERRIDE-LEARN] ${msg}`)
+
+          // v2.55.42 — mirror override-learn into the dedicated scheduling
+          // log so the operator can grep one file for the full team-routing
+          // story (manual schedules + AI suggestions + override-learn).
+          // Best-effort: failures don't block the matrix route itself.
+          await logSchedulingEvent({
+            level: isHomeTeam ? 'warn' : 'info',
+            source: 'override-learn',
+            action: 'allocation_updated',
+            game: {
+              home: row.home_team_name ?? undefined,
+              away: row.away_team_name ?? undefined,
+              league: row.league ?? undefined,
+            },
+            targets: {
+              tvOutputIds: newList,
+              inputSourceId: row.input_source_id ?? undefined,
+            },
+            outcome: {
+              allocationId: row.allocation_id,
+              status: 'active',
+            },
+            note: `bartender ${action} output ${outputNum} on team=${team}${isHomeTeam ? ' (HOME TEAM)' : ''} — prev=[${tvList.join(',')}] → new=[${newList.join(',')}]`,
+          })
         }
       } catch (learnError: any) {
         logger.warn(`[OVERRIDE-LEARN] Failed to record override: ${learnError.message}`)
