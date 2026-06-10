@@ -94,7 +94,8 @@ These fire for **any** developer pushing the repo — Claude, the operator manua
 
 | Hook | Catches | Status |
 |---|---|---|
-| `pre-push` | Push to `origin main` containing non-trivial code without a docs update (VERSION_SETUP_GUIDE / LOCATION_UPDATE_NOTES / CLAUDE.md / HOOK_COVERAGE) | ✅ |
+| `pre-push` (docs gate, v2.55.20) | Push to `origin main` containing non-trivial code without a docs update (VERSION_SETUP_GUIDE / LOCATION_UPDATE_NOTES / CLAUDE.md / HOOK_COVERAGE) | ✅ |
+| `pre-push` (Grok critical-path review, v2.55.27) | Push to `origin main` touching schema / drizzle / auto-update / verify-install / iso / proxmox / instrumentation / next.config / ecosystem.config / the hook itself — runs an independent Grok review for non-obvious failure modes | ✅ |
 
 ### Install on a new clone
 
@@ -130,7 +131,7 @@ Every `pre-push` fire — whether it allowed or blocked — writes a row to `/tm
 |---|---|---|
 | ~~**Phase 2**~~ ✅ **Phase 2a shipped (v2.55.23)** — Autonomous error-watch service | systemd-user unit (`sports-bar-error-watch.service`) tails PM2 error logs against 8 signatures, writes to `error_watch_events` DB table with 30s per-signature dedup + 5-min heartbeat | Faster detection on Gotchas #2 / #11 (would have caught the v2.55.16 FK-DrizzleError spam, the auto-update lock self-deadlock, post-deploy crash loops) within minutes instead of hours. **Phase 2b (TODO):** UI surface for unacknowledged events + admin notification when a never-before-seen signature lands |
 | ~~**Phase 3**~~ ✅ **Phase 3 shipped (v2.55.25)** — Liveness assertions tied to fixed bugs | 8 new layers in `verify-install.sh`: `linger_enabled`, `autoupdate_timer_fresh`, `migration_markers_consistent`, `error_watch_alive`, `bartender_layout_rooms`, `atlas_drop_watcher_alive`, `atlas_priority_watcher_alive`, `node_symlink_present`. Each runs in <1 sec; total verify pass is 3 sec on Holmgren | Gotchas #6 / #8 / #11 (3 sub-checks) — turns prose-only safety nets into asserted gates that fail-loud at every auto-update. Holmgren passes 16/16. |
-| **Phase 4** — Auto-grok on critical-path diffs | Pre-push soft block: if push touches schema / drizzle / auto-update / iso / proxmox / configure-netboot, run `grok-prime.sh` on the diff | Standing Rules 3 + 10 (independent review for risky changes) |
+| ~~**Phase 4**~~ ✅ **Phase 4 shipped (v2.55.27), hardened (v2.55.29)** — Auto-grok on critical-path diffs | `scripts/grok-prepush-review.sh` invoked by `.githooks/pre-push` when the push touches 13 critical-path globs. v2.55.29 hardened: (1) printf-from-vars prompt (shell-injection-safe), (2) `VERDICT: CLEAN/FINDING` mandate + multi-format parser (with INCONCLUSIVE fallback that soft-blocks), (3) timeout fails CLOSED for drizzle/schema/auto-update paths, (4) `GROK_PREPUSH_NO_SELF_REVIEW=1` escape for iterating on the hook itself. 120s timeout, per-day SHA cache, auto-injected gotcha hints. Soft block: FINDING requires `--no-verify` or `GROK_PREPUSH_DISABLE=1`. Auto-degrades if `grok` CLI is absent. | Standing Rules 3 + 10 (independent review on the highest-risk changes — schema migrations + auto-update path + ISO build) |
 | **Phase 5** — Detect→fix→gate pipeline | Watch service flags a known-trivial signature (typo, lint, dep patch) → Claude worktree-fixes → verify-install → auto-merges; critical path queued for operator | Gotchas #2 / #12 (auto-fix recurring small issues) |
 | **Phase 6** — Worktree-by-default for risky operations | `scripts/auto-update.sh` and drizzle migration runs operate from a worktree | Standing Rule 3 (never break the running app) |
 
