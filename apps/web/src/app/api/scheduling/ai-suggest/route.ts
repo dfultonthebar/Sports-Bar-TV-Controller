@@ -403,7 +403,7 @@ async function fetchStreamingCatalogCandidates(
 async function loadSchedulingPatterns(): Promise<SchedulingPattern[]> {
   try {
     const rows = await db.all(
-      sql`SELECT * FROM scheduling_patterns ORDER BY observation_count DESC LIMIT 100`
+      sql`SELECT * FROM scheduling_patterns ORDER BY observation_count DESC, confidence DESC LIMIT 100`
     ) as SchedulingPattern[]
     logger.info(`[AI-SUGGEST] Loaded ${rows.length} scheduling patterns`)
     return rows

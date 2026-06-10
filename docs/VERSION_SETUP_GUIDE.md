@@ -1,3 +1,21 @@
+## v2.55.45 — pattern-analyzer: observation_count atomic increment (AI Suggest ranking fixed) (2026-06-10)
+
+**Versions covered:** v2.55.45 — scheduler audit Green #3 (HIGH)
+**Branch landed:** main
+**Required Manual Step:** None. PM2 restart picks it up. observation_count starts climbing on the next pattern-analyzer run (hourly).
+
+**Why:** AI Suggest's pattern loader does `ORDER BY observation_count DESC LIMIT 100`, but `scheduling_patterns.observation_count` was stuck at DEFAULT 1 forever — so the 100-row cap returned patterns in undefined order and the highest-signal team_routing patterns (e.g. the Brewers row with frequency=12) could be silently cut off. The root cause was NOT "the column is never written" — it was that pattern-analyzer used `INSERT OR REPLACE`, which is a DELETE + reinsert that resets observation_count to its column DEFAULT on every run.
+
+**Fix:** all 6 upsert sites in `packages/scheduler/src/pattern-analyzer.ts` converted from `INSERT OR REPLACE` to `INSERT ... ON CONFLICT(pattern_type, pattern_key) DO UPDATE SET ... observation_count = COALESCE(observation_count, 0) + 1, last_observed = excluded.last_observed`. Atomic increment (safe across concurrent analyzer runs — no JS read-modify-write). The ON CONFLICT update preserves the existing row + its observation_count instead of wiping it.
+
+Also: `apps/web/src/app/api/scheduling/ai-suggest/route.ts` loader is now `ORDER BY observation_count DESC, confidence DESC` — compound so a tie on observation_count breaks toward the higher-confidence pattern.
+
+The fallback DDL (`CREATE_SCHEDULING_PATTERNS_TABLE`) was brought column-compatible with drizzle/0000_baseline.sql (added observation_count, first_observed, last_observed, is_stale, last_analyzed_at) so a dev DB created via that path behaves identically.
+
+**Verify:** run the pattern analyzer twice (or wait two hourly cycles), then `SELECT pattern_key, observation_count FROM scheduling_patterns WHERE pattern_type='team_routing' ORDER BY observation_count DESC LIMIT 5` — counts should be climbing above 1.
+
+---
+
 # Version Setup Guide
 
 **Purpose:** This file tells Claude (and operators) what each version
