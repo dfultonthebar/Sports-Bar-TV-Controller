@@ -1317,10 +1317,13 @@ wizard_ollama() {
 
     # v2.55.49 (Lime Kiln audit): the upstream install above is CPU-only (~3 tok/s).
     # On Intel Iris Xe boxes the fleet standard is the IPEX-LLM build (~14 tok/s) via
-    # setup-iris-ollama.sh. Offer it when an Intel GPU platform is detected; the
-    # script itself re-checks clinfo and refuses on AMD/Nvidia, so this is safe.
+    # setup-iris-ollama.sh. Offer it when an Intel GPU is present; the script
+    # itself installs clinfo + re-validates and refuses on AMD/Nvidia, so this is
+    # safe. Detect via `lspci` (always present) rather than `clinfo` — clinfo is
+    # NOT installed on a fresh ISO box, so a clinfo-gated check would silently
+    # skip the offer on exactly the Intel boxes it's meant for (Lime Kiln audit).
     local iris_script="${APP_DIR}/scripts/setup-iris-ollama.sh"
-    if [[ -f "$iris_script" ]] && command -v clinfo &>/dev/null && clinfo 2>/dev/null | grep -qi 'Intel'; then
+    if [[ -f "$iris_script" ]] && lspci 2>/dev/null | grep -i 'VGA\|Display\|3D' | grep -qi 'Intel'; then
         echo ""
         if prompt_yes_no "Intel iGPU detected — switch Ollama to the GPU-accelerated IPEX build (~14 tok/s vs ~3)?" "y"; then
             if [[ "$DRY_RUN" == true ]]; then
