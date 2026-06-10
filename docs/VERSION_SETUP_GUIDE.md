@@ -35,6 +35,30 @@ is the archive.
 
 ---
 
+## v2.55.41 — Scheduler tune OR-gate fix: HTTP 200 with {success:false} no longer flips allocation to 'active' (2026-06-10)
+
+**Versions covered:** v2.55.41
+**Branch landed:** main → all 6 location branches
+**Required Manual Step:** **None.** Code-only fix; no schema, no env, no PM2 ecosystem changes. Auto-update rebuilds, restarts, done.
+
+**Why:** RED team triage of the Greenville Brewers "didn't switch" symptom traced the most likely root cause to `packages/scheduler/src/scheduler-service.ts:1146`. The branch was `if (result.success || response.ok) { ... mark allocation 'active' ... }`. The tune endpoint at `/api/channel-presets/tune` returns HTTP 200 with `{success:false, error:'Cable box not found'}` for soft failures (device not found, device offline, channel missing, etc.). The OR short-circuited on `response.ok=true` and ran the success path — allocation status flipped to `'active'`, `input_sources.currentlyAllocated=true`, and Wolf Pack matrix routing fired for the wrong channel. The cable box never tuned, but the system claimed success. Bartender saw a green 'Scheduled' tile, nothing actually switched, no error surfaced anywhere. Fires across every scheduling path: manual, ai, auto, override-learn.
+
+**Fix:** strict success check.
+
+- `packages/scheduler/src/scheduler-service.ts` — replaced `if (result.success || response.ok)` with `if (result?.success === true)`. The previous `response.ok` fallback is split into an explicit `malformedOk` branch (HTTP 200 with no explicit `success` flag — neither true nor false): we log a `WARN` via `schedulerLogger.warn()` + `logger.warn()` and fall through to the existing failure path. The existing `else { schedulerLogger.log({ level: 'error', ... }) }` block at the bottom of the if-chain handles both the soft-fail `{success:false}` AND the malformed-200 cases — no new failure-handling code, just a stricter entry condition. Added a success-path `schedulerLogger.info` so the operator can see "Tune confirmed by API: success=true for allocation X" in the dedicated scheduling log when a tune actually worked.
+
+**Verify** (post-update, optional — operator-facing smoke):
+1. Holmgren: `curl -s -X POST http://localhost:3001/api/channel-presets/tune -H 'Content-Type: application/json' -d '{"channelNumber":"5","deviceType":"cable","cableBoxId":"nonexistent"}'` — confirm response is HTTP 200 with `{success:false, error:'…'}` body. (This is the shape the OR-gate misread.)
+2. Create a test allocation pointing at a nonexistent device, wait one scheduler tick (~60s).
+3. `sqlite3 /home/ubuntu/sports-bar-data/production.db "SELECT id, status FROM input_source_allocations WHERE id='<test-alloc-id>'"` — status MUST remain `'pending'` or transition to `'failed'`, never `'active'`.
+4. `sqlite3 /home/ubuntu/sports-bar-data/production.db "SELECT currentlyAllocated, currentChannel FROM input_sources WHERE id='<input-source-id>'"` — `currentlyAllocated` must remain 0/false; `currentChannel` must NOT be the test channel.
+5. `pm2 logs sports-bar-tv-controller --lines 50 | grep SCHEDULER` — expect `❌ Failed to tune …` line, NOT `✅ Successfully tuned …`.
+6. `tail /home/ubuntu/sports-bar-data/logs/scheduling-*.log` — expect a `tune` row with `success: false` and the error verbatim from the API response.
+
+**Blast radius:** every scheduled tune across every code path (manual / ai-suggested / auto-reallocated / override-learned) routes through this single branch. Fix is 2 lines of structural change + 3 new log lines. Expected positive effect: silent total failures (green tile, nothing switched, no error surfaced) stop. The remaining "didn't switch" symptoms after this lands will fall into one of the previously-known buckets (game not in `game_schedules`, network unreachable, IR emitter unplugged), all of which now produce visible error logs.
+
+---
+
 ## v2.55.38 — Dedicated scheduling log file + bartender-schedule POST instrumentation (2026-06-10)
 
 **Versions covered:** v2.55.38
