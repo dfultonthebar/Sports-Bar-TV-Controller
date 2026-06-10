@@ -86,6 +86,8 @@ echo
 # ─── Step 0: Prereq check ──────────────────────────────────────────────────
 step "Step 0/6: Prerequisite check"
 MISSING=()
+# v2.55.30: removed unsquashfs + mksquashfs — Step 2b no longer chroot-purges
+# the squashfs (pool/ delete alone is enough to hit the GitHub 2 GB cap).
 for tool in 7z xorriso wget openssl; do
     if ! command -v "$tool" >/dev/null 2>&1; then
         MISSING+=("$tool")
@@ -164,6 +166,62 @@ else
     err "Expected [BOOT] dir in extracted ISO — not found"
     ls -la source-files/ | head
     exit 1
+fi
+
+# ─── Step 2b: Slim ISO — strip pool/ to fit GitHub 2 GB release-asset cap ──
+#
+# Stock Ubuntu Server 24.04.4 ISO is 3.2 GB. Empirically (post-7z extract):
+#   pool/                                                       ~1.5 GB
+#   casper/ubuntu-server-minimal.ubuntu-server.installer.squashfs  671 MB
+#   casper/ubuntu-server-minimal.ubuntu-server.installer.generic-hwe.squashfs 267 MB
+#   casper/ubuntu-server-minimal.ubuntu-server.installer.generic.squashfs    256 MB
+#   casper/ubuntu-server-minimal.squashfs                          159 MB
+#   casper/ubuntu-server-minimal.ubuntu-server.squashfs            142 MB
+#   casper/{hwe-,}initrd                                          ~150 MB
+#   casper/{hwe-,}vmlinuz                                         ~30 MB
+#
+# v2.55.28 attempted two levers (pool delete + chroot-purge live squashfs).
+# The chroot-purge picked the wrong squashfs candidate (the layered diff
+# at 142 MB has no /proc /sys /dev mount-point dirs → chroot bind failed).
+# v2.55.30 simplification: pool delete ALONE gets us to ~1.7 GB, well under
+# the 1900 MB cap. Drop the chroot-purge — the operational complexity
+# (squashfs candidate priority, chroot bind safety, mksquashfs OOM risk)
+# is not worth ~80 MB of additional savings.
+#
+# The pool/ exists for offline-install fallback. We always have internet
+# at first-boot (NodeSource apt + GitHub clone), so it is vestigial. Pair
+# with `apt.fallback: continue-anyway` in autoinstall.yaml.template so
+# subiquity does NOT stall waiting for the absent offline debs.
+#
+# Recovery / escape valve: ISO_SLIM=0 skips this step entirely.
+step "Step 2b/6: Slim ISO (pool strip — GitHub 2 GB cap)"
+
+if [ "${ISO_SLIM:-1}" = "0" ]; then
+    log "ISO_SLIM=0 — skipping slim pass (debug mode)"
+else
+    if [ -d "${BUILD_DIR}/source-files/pool" ]; then
+        POOL_SIZE=$(du -sh "${BUILD_DIR}/source-files/pool" | cut -f1)
+        log "Removing pool/ (${POOL_SIZE}) — offline-install fallback unused (internet required for first-boot)"
+        sudo rm -rf "${BUILD_DIR}/source-files/pool"
+        log "pool/ removed"
+    else
+        log "pool/ already absent — skipping"
+    fi
+
+    # Re-checksum md5sum.txt — Ubuntu's casper-md5check verifies file integrity
+    # at boot. Stripping pool/ leaves orphan entries in md5sum.txt; casper's
+    # integrity check would fail. Rewrite to only include files we still ship.
+    # (Optional — casper-md5check only fires when the kernel cmdline includes
+    # `integrity-check`, which our autoinstall config does not. Skip for now;
+    # if a future cmdline change re-enables it, the recipe is:
+    #   cd "${BUILD_DIR}/source-files" && \
+    #   sudo find . -type f \( -name "md5sum.txt" -o -name boot.catalog \) \
+    #     -prune -o -type f -print0 | xargs -0 md5sum > /tmp/m && \
+    #   sudo mv /tmp/m md5sum.txt
+    # )
+
+    SLIM_AFTER=$(du -sh "${BUILD_DIR}/source-files" | cut -f1)
+    log "build dir after slim pass: ${SLIM_AFTER} (target: ≤1.9 GB for GitHub asset cap)"
 fi
 
 # ─── Step 3: Build autoinstall.yaml from template ──────────────────────────
