@@ -41,6 +41,7 @@ import LocationSettings from '@/components/LocationSettings'
 import { SystemLogsViewer } from '@/components/SystemLogsViewer'
 import EmbeddedLayoutManager from '@/components/EmbeddedLayoutManager'
 import WatcherHealthPanel from '@/components/admin/WatcherHealthPanel'
+import ErrorWatchPanel from '@/components/admin/ErrorWatchPanel'
 import MatrixConfigPanel from '@/components/admin/MatrixConfigPanel'
 
 import { logger } from '@sports-bar/logger'
@@ -1329,6 +1330,7 @@ export default function SystemAdminPage() {
           {/* Watchers Tab */}
           <TabsContent value="watchers" className="space-y-6">
             <WatcherHealthPanel />
+            <ErrorWatchPanel />
           </TabsContent>
 
           {/* Matrix Config Tab — CLAUDE.md Gotcha #4 surface */}

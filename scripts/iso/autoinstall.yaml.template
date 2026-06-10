@@ -46,10 +46,17 @@ autoinstall:
   # v2.54.95: dropped geoip:true — was hanging the install for 30+ min
   # trying to resolve mirror.country.ubuntu.com via geoip lookup before
   # finally falling through to offline-install. Hardcoded primary mirror
-  # avoids the resolution attempt entirely. fallback still kicks in if
-  # the NUC has no internet at install time (USB-only install case).
+  # avoids the resolution attempt entirely.
+  #
+  # v2.55.28 (task #326): fallback flipped offline-install → continue-anyway
+  # because build-autoinstall-iso.sh Step 2b now deletes pool/ entirely
+  # (~1 GB savings to fit GitHub 2 GB asset cap). Without continue-anyway,
+  # subiquity would stall trying to mount the missing pool when a transient
+  # network blip causes apt to fall back. Our first-boot script requires
+  # internet anyway (NodeSource apt + GitHub clone) so the offline path is
+  # vestigial.
   apt:
-    fallback: offline-install
+    fallback: continue-anyway
     primary:
       - arches: [default]
         uri: http://archive.ubuntu.com/ubuntu
