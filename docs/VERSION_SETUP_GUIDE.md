@@ -35,6 +35,407 @@ is the archive.
 
 ---
 
+## v2.55.31 — Wireless-mic freq change + bartender resync banner (closes #331) (2026-06-09)
+
+**Versions covered:** v2.55.31 — closes task #331
+**Branch landed:** main → all 6 location branches
+**Required Manual Step:** **None on existing boxes.** Pure additive: new table (drizzle 0003) + 3 new API routes + new React banner component. Auto-update pulls, migrate runs, PM2 restart picks it up.
+
+**Why:** Holmgren's SDR detected continuous 24/7 carrier activity directly on top of both Shure mic channels:
+- Ch1 was 485.325 MHz; SDR cluster at 485.060-485.570 MHz with -55 dBm peaks
+- Ch2 was 483.450 MHz; SDR cluster at 483.454-484.165 MHz with -55 dBm peaks
+
+Probable source: neighbor venue (Stadium View / Anduzzi's) wireless mic system. Weekend peaks (Sat 84k events, Sun 77k events) confirm the venue-pattern. Holmgren's mics weren't being knocked out (no `rf_interference` events) but operating in a noisy band.
+
+Cleanest available freqs per 7-day SDR scoring: 503.000, 506.000, 508.500 MHz — all 100% quiet, never crossed carrier threshold. Picked 503 + 508.5 (5.5 MHz separation, plenty intermod margin).
+
+**Workflow that ships:**
+
+1. Admin calls **POST `/api/shure-rf/queue-freq-change`** with `{receiverId, channel, newFreqMhz}`. Endpoint:
+   - Reads current freq from `shureSlxdClientManager` cache
+   - INSERTs row into `shure_pending_resync` (channel, old_khz, new_khz, set_at)
+   - Sends `< SET <ch> FREQUENCY <khz> >` to the receiver via `client.setFrequencyMhz()`
+   - Auto-cancels any prior unverified row on the same channel
+   - Returns 502 + rolls back row if SET fails
+2. Bartender Audio tab polls **GET `/api/shure-rf/pending-resync`** every 5 sec. For each pending row, renders a yellow `ShureResyncBanner` card with channel + old freq + new freq + IR-sync instructions. Banner sits ABOVE `ShureMicStatusPanel` in `AtlasZoneControl.tsx`. Wrapped in `<SafeBoundary>`.
+3. Operator powers on the matching transmitter, holds it near the receiver's IR port, presses SYNC. TX transmits on new freq.
+4. **`shure-rf-watcher.ts`** evaluates each incoming SAMPLE frame. When `TX_MODEL != UNKNOWN` AND `TX_BATT_BARS` is in 0-5 (valid range, not 255 sentinel) AND audio is not silent AND `state.frequencyMhz` matches the pending row's `new_freq_khz`, UPDATE-sets `verified_at`. Wrapped in try/catch for pre-migration boxes.
+5. Banner clears automatically on its next 5-sec poll.
+
+**Cancel path:** **POST `/api/shure-rf/cancel-resync`** with `{id, reason}` — marks `canceled_at` so the banner clears without verification. Does NOT revert the receiver freq (operator must either re-queue OR manually move it back).
+
+**Validation on Holmgren (this commit's first use):**
+- Sent SET 1 FREQUENCY 503000 + SET 2 FREQUENCY 508500
+- Receiver echoed `< REP 1 FREQUENCY 0503000 >` and `< REP 2 FREQUENCY 0508500 >` correctly
+- `< REP <ch> GROUP_CHANNEL {--,--} >` also echoed (the documented gotcha: SET FREQUENCY blanks the front-panel group/channel display to Manual)
+- Seeded `shure_pending_resync` rows manually (since the API endpoint is ADMIN-gated and inline curl bypassed auth)
+- Playwright verified the bartender Audio tab shows two amber banner cards with all the right freqs and instructions
+- Watcher auto-verify pending operator IR-sync of transmitters
+
+**Schema diff** — one new table:
+```sql
+CREATE TABLE shure_pending_resync (
+  id TEXT PRIMARY KEY,
+  receiver_id TEXT NOT NULL,
+  channel INTEGER NOT NULL,
+  old_freq_khz INTEGER NOT NULL,
+  new_freq_khz INTEGER NOT NULL,
+  set_at INTEGER NOT NULL,
+  verified_at INTEGER,           -- NULL = pending; non-NULL = TX active on new freq
+  canceled_at INTEGER,           -- NULL = active; non-NULL = abandoned
+  notes TEXT
+);
+```
+
+**Re-using at other locations:** the workflow is location-agnostic. Any location with a Shure SLX-D in the AudioProcessor table can use the same endpoints. After auto-update applies drizzle 0003 + PM2 restart, the admin RF panel can call queue-freq-change for that location's receiver.
+
+---
+
+## v2.55.30 — ISO slim fix: drop the broken chroot-purge, pool/-delete is enough (closes #326) (2026-06-09)
+
+**Versions covered:** v2.55.30 — properly closes task #326
+**Branch landed:** main
+**Required Manual Step:** **None.** ISO build script change; affects the next `bash scripts/iso/build-autoinstall-iso.sh` invocation.
+
+**Why this is a follow-up to v2.55.28:** v2.55.28 attempted TWO size-reduction levers — pool/ delete + chroot-purge of snapd/bluez/cups/fwupd/cloud-init from the live-installer squashfs. The chroot-purge picked the WRONG squashfs candidate (`ubuntu-server-minimal.ubuntu-server.squashfs` is a 142 MB layered diff with no `/proc /sys /dev` mount-point dirs → the bind mount failed → `set -e` aborted Step 2b with no host /dev damage but also no usable output). Caught by general-purpose agent build validation.
+
+**The math (verified empirically — `du -sh` on the v2.55.28 build dir post-pool-delete):**
+
+| Component | Stock | After pool delete |
+|---|---|---|
+| `pool/` (offline-install debs) | ~1.5 GB | (deleted) |
+| `casper/*.squashfs` files | ~1.4 GB | unchanged |
+| `casper/{,hwe-}initrd` + vmlinuz | ~180 MB | unchanged |
+| Other ISO assets | ~200 MB | unchanged |
+| **Total build dir** | **~3.2 GB** | **~1.7 GB** |
+| **Final ISO output (xorriso)** | **3.2 GB** | **1.69 GB** |
+
+So **pool/ delete alone gets us under the 1900 MB cap with 200 MB headroom.** The chroot-purge step was attempting to squeeze ~80 MB more, but was not actually needed AND introduced real complexity (squashfs candidate priority, chroot bind safety, mksquashfs OOM risk, host /dev exposure via lazy unmount).
+
+**v2.55.30 simplification:**
+1. Step 2b drops the chroot-purge block entirely. Only pool/ delete remains.
+2. Prereq check drops `unsquashfs` + `mksquashfs` (no longer used).
+3. `ISO_SLIM=0` escape valve preserved.
+4. `apt.fallback: continue-anyway` in autoinstall.yaml.template stays (still correct — pool/ is gone).
+
+**Verified on Holmgren build host:**
+```
+ISO:  /home/ubuntu/sports-bar-tv-controller-v3.1.0-2026-06-09.iso
+Size: 1688 MB (1.7 GB)
+Cap:  1900 MB
+GATE: ✅ PASS  (212 MB headroom under cap)
+```
+
+Build runtime: 10 sec (with cached stock ISO + cached build dir). First-build-fresh: ~5 min total (vs ~25 min stock pre-slim due to download).
+
+**If a future Ubuntu point release pushes the post-pool-delete size over 1.9 GB** (unlikely but possible if Canonical bundles more in casper), the path forward is one of:
+- Switch to `mksquashfs -comp zstd -Xcompression-level 22` on a single squashfs (smaller than the default xz with right tuning)
+- Drop the `hwe-` kernel variant from `casper/` (only needed if installing on hardware that requires HWE — most server boxes don't)
+- Bring back a CORRECT chroot-purge targeting `ubuntu-server-minimal.squashfs` (the base layer with full rootfs, NOT the `.ubuntu-server.` diff layer)
+
+**Lesson recorded:** "two levers" plans should sequence the simpler one first AND validate it alone before adding complexity. v2.55.28 shipped both levers together; the broken complex one masked the fact that the simple one was sufficient.
+
+---
+
+## v2.55.29 — Phase 4 hardening + Graystone Turbopack opt-out + SSH log-cleanup (2026-06-09)
+
+**Versions covered:** v2.55.29
+**Branch landed:** main → all 6 location branches
+
+**Three independent fixes bundled:**
+
+### A. Phase 4 (Grok pre-push) hardening — 4 issues from v2.55.27 self-review
+
+Closes the four issues task #329 surfaced when Phase 4 reviewed its own first commit:
+
+1. **Shell-injection-safe prompt assembly** — original unquoted heredoc would re-evaluate `$(...)` and backticks embedded in the diff content. A malicious or even accidental commit message containing `` `rm -rf /` `` could execute. Switched to a sequence of `printf '%s\n' "$var"` calls (data, never re-parsed).
+2. **Robust verdict extraction** — original `awk 'NF{print $1}' | tr -d '*:'` was fooled by Markdown formatting (`**CLEAN**!`, narrative preamble like "Reviewing this carefully..."). Prompt now mandates an explicit `VERDICT: CLEAN` or `VERDICT: FINDING` line. Parser scans first 30 lines for that, falls back to bare `\b(CLEAN|FINDING)\b` word match, treats unparseable response as `INCONCLUSIVE` → soft block (NOT silent allow). Unit-tested across 7 input shapes including the prior cache failure mode.
+3. **Timeout fails CLOSED on highest-risk paths** — drizzle/, schema.ts, auto-update.sh, bootstrap-drizzle-migrations.sh now hard-block on Grok timeout instead of soft-warn. Other critical paths still soft-warn (avoid permanent block when Grok API is flaky).
+4. **GROK_PREPUSH_NO_SELF_REVIEW=1 escape valve** — when iterating on the hook itself, every fix triggers a fresh review of the fix → potentially unbounded loop. With this env var set, skips Grok IF the only matched paths are the hook itself.
+
+**Bypass story unchanged:** `git push --no-verify` OR `GROK_PREPUSH_DISABLE=1 git push`.
+
+### B. Graystone Turbopack OOM workaround (closes task #328 root cause)
+
+Root cause (researched by feature-dev:code-explorer agent): on a 15 GB box, Turbopack's parallel module-graph compilation exceeds the V8 default ~4 GB heap, and the `NODE_OPTIONS=--max-old-space-size=2048` set in `ecosystem.config.js` only applies to the PM2 runtime process — NOT to the `next build` child process. Result: every build on Graystone OOMs at exit 137, even with 8.8 GB available + 8 GB swap.
+
+Fix: opt-in webpack build path via `NEXT_USE_WEBPACK=1` env var. Webpack streams compilation to disk and uses dramatically less peak memory.
+
+**Changes:**
+- `apps/web/package.json` `build` script: `"next build"` → `"next build ${NEXT_USE_WEBPACK:+--webpack}"`. Bash parameter expansion: when `NEXT_USE_WEBPACK` is set, append `--webpack`; when unset, no-op. Other 5 fleet boxes (32 GB RAM) keep Turbopack via the absent env var.
+- Graystone's `.env` set: `NEXT_USE_WEBPACK=1` + `NODE_OPTIONS=--max-old-space-size=4096`.
+
+**Verified on Graystone:** full webpack build completed in 3 min (vs OOM at exit 137 on Turbopack). `.next/BUILD_ID` present, 1.1 GB built artifacts. PM2 restart, health 200, error-watch responding. App at v2.55.26.
+
+**Per-location consideration:** to apply elsewhere, write `NEXT_USE_WEBPACK=1` to the box's `.env`. Only consider for boxes with <16 GB RAM (the 32 GB boxes build cleanly under Turbopack in 14 sec).
+
+**Required Manual Step on Graystone:** done as part of this release. **Other locations:** none.
+
+### C. SSH log-cleanup via ~/.ssh/config
+
+The `Warning: Permanently added '<ip>' (ED25519) to the list of known hosts.` line appeared on every fleet SSH/scp invocation, cluttering output. The warning was harmless (we already discard the key via `UserKnownHostsFile=/dev/null`) but blew up log readability.
+
+Fix: a `~/.ssh/config` Host stanza for all 6 fleet IPs and MagicDNS names that sets `LogLevel ERROR` alongside the existing `StrictHostKeyChecking no` + `UserKnownHostsFile /dev/null`. Default `ConnectTimeout 15` + `ServerAliveInterval 30` (keeps long-running build-on-remote alive).
+
+This is a per-user config; future dev-machine setups should mirror it (see `/home/ubuntu/.ssh/config` for the template).
+
+---
+
+## v2.55.28 — ISO slim pass: 3.2 GB → ~1.8 GB to fit GitHub 2 GB cap (task #326) (2026-06-09)
+
+**Versions covered:** v2.55.28 — closes task #326
+**Branch landed:** main
+**Required Manual Step on build host:**
+```bash
+sudo apt-get install -y squashfs-tools  # if not already present
+```
+Then re-run the standard build:
+```bash
+bash scripts/iso/build-autoinstall-iso.sh
+bash scripts/iso/smoke-test-autoinstall.sh  # size gate now enforced at Phase 1
+```
+
+**Why:** the stock Ubuntu 24.04.4 Server ISO is 3.2 GB. Our pure-pass-through build at v3.1.0 left the output at essentially the same size — well above GitHub's 2 GB release-asset cap. That forced split distribution and friction. Task #326 closed.
+
+**Two levers (independent, both active by default):**
+
+1. **`pool/` deletion (~1.0-1.3 GB savings)** — the Ubuntu pool exists for offline-install fallback when there's no internet during install. We ALWAYS have internet at first-boot (apt-get nodejs + GitHub clone), so the pool is vestigial. Paired with `apt.fallback: continue-anyway` in `autoinstall.yaml.template` so subiquity doesn't stall waiting for offline debs.
+2. **Squashfs chroot-purge of snapd/bluez/cups/fwupd/cloud-init (~80 MB compressed)** — `scripts/optimize-os.sh` already removes these POST-install; this pushes that work upstream so they're never in the ISO. `apt-get purge -y --autoremove` runs in the live-installer's chroot via direct `chroot $work apt-get purge` (NOT `curtin in-target --` per Launchpad bug #1946609 — curtin's path fails on snapd's postinst unmount with "resource busy"; direct chroot works).
+
+**Combined estimate:** 3.2 GB → ~1.8-2.0 GB. Size gate in `smoke-test-autoinstall.sh` Phase 1 hard-fails the smoke test if the ISO exceeds 1900 MB (100 MB headroom under the 2 GB cap).
+
+**Recovery / escape valve:** `ISO_SLIM=0 bash scripts/iso/build-autoinstall-iso.sh` skips Step 2b entirely. Use if any of the chroot/squashfs steps regress on a new Ubuntu point release. Smoke-test cap override: `ISO_SIZE_CAP_MB=2200 bash scripts/iso/smoke-test-autoinstall.sh`.
+
+**Chroot safety:** the chroot cleanup uses a `trap squash_cleanup EXIT` with plain `sudo umount` (NEVER `umount -l` per `[[feedback-chroot-lazy-umount-destroys-dev]]` — lazy unmount before `rm -rf` of the chroot dir recurses through the still-attached `/dev` bind and deletes host device nodes. ~2h incident on 2026-05-27).
+
+**Verify the slim pass worked:** the build log prints `Squashfs: <before> → <after>` and `pool/ removed`. The smoke-test enforces the size gate at Phase 1 before SCP to Proxmox. Post-install verification (Phase 7 of smoke-test) confirms `snapd` is absent on the installed system via `dpkg -l snapd | grep -c '^ii'` = 0.
+
+**Lesson:** an ISO build that exceeds a third-party distribution cap silently changes the deployment story (one asset → split downloads → operator confusion at install time). Worth gating in the smoke-test, not as a post-hoc audit. The new Phase 1b gate is the enforcer.
+
+---
+
+## v2.55.27 — Phase 4: Grok critical-path pre-push review (2026-06-09)
+
+**Versions covered:** v2.55.27
+**Branch landed:** main
+**Required Manual Step:** **None on dev machines.** Hook lives in repo + `core.hooksPath` is already configured. **No fleet action** — location boxes never push to main, so Phase 4 is dev-machine-only.
+
+**What ships:**
+- `scripts/grok-prepush-review.sh` (~165 lines, executable) — orchestrates the review.
+- `.githooks/pre-push` — calls the review script after the empty-diff check, before the docs-gate. Order matters for the bypass story: a `--no-verify` bypass skips both checks; a docs-only push with no critical paths skips Grok via the early `exit 0` in `grok-prepush-review.sh`.
+
+**13 critical-path globs** trigger the review (anything not in this list is silent-skip):
+```
+packages/database/src/schema.ts
+apps/web/src/db/schema.ts
+drizzle/**
+scripts/auto-update.sh
+scripts/bootstrap-drizzle-migrations.sh
+scripts/verify-install.sh
+scripts/iso/**
+scripts/proxmox/**
+apps/web/src/instrumentation.ts
+apps/web/next.config.js
+ecosystem.config.js
+.githooks/pre-push
+scripts/grok-prepush-review.sh
+```
+
+**Review mechanics:**
+- Grok is briefed via `scripts/grok-prime.sh` (auto-prepends Standing Rules + Gotchas from `docs/GROK_BRIEFING.md`).
+- Diff truncated to 32 KB to stay inside Grok's useful window (per `[[feedback-llm-context-overflow]]`).
+- Recent commit messages on the changed files are included so Grok has intent signal (distinguishes "this DROP TABLE is intentional cleanup" from "this is an accident").
+- Auto-injected gotcha hints based on which paths fired (e.g. drizzle changes → cite Gotcha #6 + #5).
+- Mandatory CLEAN/FINDING first-word verdict for machine parsing.
+- 120 sec timeout — if Grok stalls, soft-warn and allow push.
+- Per-day SHA cache at `/tmp/grok-prepush-cache.json` — re-pushing the same range in one day doesn't re-burn Grok.
+
+**Soft-block semantics:**
+- CLEAN → silent pass, log only.
+- FINDING → print Grok's output to stderr + exit 1. Bypass: `git push --no-verify` OR `GROK_PREPUSH_DISABLE=1 git push`.
+- TIMEOUT → soft-warn, allow push, log.
+- `grok` CLI absent → silent-skip (degraded mode). Same for any environment where Grok isn't installed.
+
+**Logs:**
+- `/tmp/sports-bar-grok-prepush.log` — every fire (verdict + range + matched files).
+- `/tmp/grok-prepush-cache.json` — per-day cache.
+
+**Standalone test:**
+```bash
+bash scripts/grok-prepush-review.sh <remote_sha> <local_sha>
+```
+
+**Rollout:** repo-tracked + `core.hooksPath` is the standard install step. Every developer machine that's already run that command picks up Phase 4 automatically on next `git pull`. No retroactive action.
+
+**Why this matters:** v2.55.25 shipped a `bartender_layout_rooms` check that tripped 4/5 remote fleet boxes during initial verify because my SQL referenced a non-existent `data` JSON column. The check errored silently and returned empty for everything. This is exactly the failure-mode Phase 4 is designed to catch — a Grok second-opinion on schema/SQL diffs would have called out "your SQL references `data` but the schema doesn't have that column" before the push went out and triggered the regression cascade on fleet auto-update.
+
+---
+
+## v2.55.26 — Phase 3 follow-up: refine `bartender_layout_rooms` to referential-integrity (2026-06-09)
+
+**Versions covered:** v2.55.26
+**Branch landed:** main → all 6 location branches
+**Required Manual Step:** **None.** Same file (`scripts/verify-install.sh`) — refined check semantics.
+
+**Why:** v2.55.25's `bartender_layout_rooms` layer FAIL'd on 4/5 remote fleet boxes during initial verify (Greenville, LegLamp, Lucky's, Appleton — but NOT Holmgren or Graystone). Investigation: those locations are single-room bars with empty `rooms` arrays and zones that don't reference any room IDs. That's NOT a Gotcha #8 violation — it's a normal single-room setup.
+
+**The actual Gotcha #8 risk** is when zones REFERENCE a room ID that doesn't exist in `rooms[]` — that breaks the filter-tab UI with orphan references. Empty `rooms[]` with zones that don't reference rooms is operationally fine.
+
+**New check semantics:** parse the active layout's zones + rooms via SQLite's `json_each`, look for orphan references (zone.room not in rooms[].id). FAIL only on a real orphan. Otherwise PASS with a category label:
+- `clean` (rooms present + zones reference them + all refs resolve)
+- `N rooms / 0 refs` (multi-room layout but no zones reference yet — admin still configuring)
+- `single-room bar` (no rooms + no refs — Lucky's-style setup)
+
+**Effect after this fix:**
+- Holmgren / Graystone still PASS 16/16 (no change — they had healthy multi-room layouts)
+- 4 single-room remote boxes go from FAIL→PASS (correctly classified)
+- A real Gotcha #8 — orphan room reference — still hard-fails with the specific orphan ID printed for the operator to act on
+
+**Lesson recorded:** runtime referential-integrity checks must distinguish "configured differently" from "configured wrong." A naive "is column empty?" check trips honest variation across fleet — the Phase 4 (Grok pre-push) gate is exactly what should have caught this before the v2.55.25 fleet propagation. Until Phase 4 ships, mandate-run-on-fleet-data before commit for any new verify-install layer that touches SQL.
+
+**Verify after auto-update:** same as v2.55.25 (`bash scripts/verify-install.sh`). All 6 fleet boxes should PASS 16/16 after this lands.
+
+---
+
+## v2.55.25 — Phase 3 self-monitoring: 8 verify-install assertion layers (+ cd-prefix hook fix) (2026-06-09)
+
+**Versions covered:** v2.55.25
+**Branch landed:** main → all 6 location branches
+**Required Manual Step:** **None on existing boxes.** `scripts/verify-install.sh` is invoked by `auto-update.sh` on every cycle — the new layers run automatically the next time auto-update fires.
+
+**What ships (8 new verify-install layers):**
+
+Each turns a previously-🟡 "doc-only" Gotcha into a fail-loud asserted check. All 8 run in <1 sec; total verify pass is 3 sec on Holmgren.
+
+| Exit code | Layer | Gotcha | What it asserts |
+|---|---|---|---|
+| 18 | `linger_enabled` | #11 | `loginctl show-user ubuntu` returns `Linger=yes` |
+| 19 | `autoupdate_timer_fresh` | #11 | newest `auto-update-*.log` is <26h old (24h cadence + 2h grace) |
+| 20 | `migration_markers_consistent` | #6 | `SELECT COUNT(*) FROM __drizzle_migrations` equals `ls drizzle/*.sql \| wc -l` |
+| 21 | `error_watch_alive` | Phase 2a | newest `error_watch_events.kind='heartbeat'` row is <720s old |
+| 22 | `bartender_layout_rooms` | #8 | active `BartenderLayout.rooms` is non-empty JSON |
+| 23 | `atlas_drop_watcher_alive` | watcher | newest `atlas_drop_events` row is <7d old (warn-only) |
+| 24 | `atlas_priority_watcher_alive` | watcher | newest `atlas_priority_events` row is <7d old (warn-only) |
+| 25 | `node_symlink_present` | #11 | `/usr/bin/{node,npm,npx}` OR `/usr/local/bin/{node,npm,npx}` all exist |
+
+**Plus one Claude Code hook fix:**
+
+`.claude/hooks/pre-fleet-ssh-cd.sh` — broadened the regex. Previous version only caught `ssh ... bash scripts/...` payloads. Today's session hit the cd-prefix bug 5× with `ssh ... git branch`, `ssh ... npm run build`, `ssh ... cat package.json` — none matched the old regex. New regex catches any of `git|npm|npx|pnpm|yarn|drizzle-kit|bash scripts/|cat|head|tail|less package.json|python3 -c.*package.json|pm2 (start|restart|reload) (ecosystem|sports-bar)`. Has the `--i-know-what-im-doing` escape hatch consistent with `pre-destructive-block.sh`.
+
+**Verify after auto-update:**
+```bash
+# Run verify-install standalone:
+bash /home/ubuntu/Sports-Bar-TV-Controller/scripts/verify-install.sh
+
+# Expect: PASS (16/16 checks, Ns) — or a fail with a specific exit code that
+# points at one of the 18-25 codes above, each with a fix path printed in the
+# log message.
+
+# JSON form for the Sync-tab API:
+bash /home/ubuntu/Sports-Bar-TV-Controller/scripts/verify-install.sh --json | python3 -m json.tool
+```
+
+**One real finding during dev:** Holmgren's `BartenderLayout.rooms` check originally failed because my SQL used a non-existent `data` JSON column (the actual schema has a top-level `rooms` column). The query errored silently and returned empty. Fixed mid-build by reading the actual schema. Lesson: every new SQL-based layer needs at least one fleet-data-shape verification before commit, not just schema-time inference. This is exactly the failure mode Phase 4 (Grok pre-push review on schema/SQL diffs) is designed to catch.
+
+**Applies to:** all locations.
+**First seen:** built + verified at Holmgren on 2026-06-09 (16/16 PASS after the BartenderLayout fix).
+
+---
+
+## v2.55.24 — Phase 2b: error-watch admin UI surface (2026-06-09)
+
+**Versions covered:** v2.55.24
+**Branch landed:** main → all 6 location branches
+**Required Manual Step:** **None on existing boxes.** Pure additive — new route + new component + one-line wiring in `system-admin/page.tsx`. Auto-update pulls the code; PM2 restart picks it up.
+
+**What ships:**
+- `apps/web/src/app/api/error-watch/route.ts` — GET endpoint reading `error_watch_events`. Query params: `windowHours` (1-168, default 24), `signature` (filter to one), `kind` (filter to one), `limit` (1-1000, default 200). Returns `{summary: {heartbeatFreshSec, latestStartupAt, errorCountWindow, signatureCounts[]}, events[]}`. On missing-table (fresh box pre-migration) returns 200 with empty payload — same degrade pattern as `/api/system/watchers/status`.
+- `apps/web/src/components/admin/ErrorWatchPanel.tsx` — `<SafeBoundary>`-wrapped panel with three sections: status header (heartbeat badge + last boot + window chips), signature breakdown (horizontal bars, click-to-filter), recent events table (with kind/signature chips + sample text). Polls `/api/error-watch` every 30 sec.
+- Wired into `apps/web/src/app/system-admin/page.tsx` Watchers tab, below the existing `WatcherHealthPanel`.
+
+**Heartbeat freshness threshold:** 700 sec (2× the default `HEARTBEAT_INTERVAL_SEC=300` from Phase 2a). Anything older shows a red "heartbeat Ns ago" badge; fresh shows a pulsing green badge.
+
+**SafeBoundary wrap:** the panel is brand-new; per `[[feedback-safeboundary-for-new-panels]]` a render crash inside it shows a tiny inline failure card instead of escalating to the global error boundary for the entire system-admin page.
+
+**Verify after auto-update:**
+```bash
+# UI:
+# Navigate to /system-admin → Watchers tab → "Error Watch" section
+# should show: green heartbeat badge (Xs ago, X < 600s)
+#              signature breakdown if any errors caught
+#              recent events table
+#
+# API:
+curl -s 'http://localhost:3001/api/error-watch?windowHours=24' | python3 -m json.tool | head -25
+# expect: success=true, heartbeatFreshSec < 600, signatureCounts array
+```
+
+**Applies to:** all locations.
+**Verified:** built clean (`npm run build` 14s, no errors), API returns real data (heartbeat 35s fresh, 3 errors in window with correct signature breakdown), Playwright rendered the panel with all sections present on Holmgren.
+
+---
+
+## v2.55.23 — Phase 2a: autonomous error-watch service (2026-06-09)
+
+**Versions covered:** v2.55.23
+**Branch landed:** main → all 6 location branches
+
+**Why:** Phase 2 of the self-monitoring architecture from `docs/HOOK_COVERAGE.md`. The PM2 error log is the highest-density signal for things that broke in production (FK constraint failures, unhandled rejections, `ECONNREFUSED`, missing modules). Until now nothing watched it — operators only noticed errors when something user-visible broke. v2.55.16's FK-constraint spam ran for hours before someone glanced at logs. The auto-update lock self-deadlock (v2.55.14) was only caught after the audit script noticed the timer hadn't fired in 2 days. This watcher closes the gap.
+
+**What ships:**
+1. **`error_watch_events` table** (drizzle migration `0002_error_watch_events.sql`) — `id`, `kind` ∈ {`startup`,`heartbeat`,`error`}, `signature`, `sample` (200 char), `source_file`, `detected_at` (unix seconds). 3 indexes: `detected_at`, `(signature, detected_at)`, `(kind, detected_at)`.
+2. **`scripts/watchers/error-watch.sh`** — bash watcher tailing `/home/ubuntu/.pm2/logs/sports-bar-tv-controller-error*.log` with `tail -n 0 -F` (rotation-safe). Pattern library: `error_level`, `unhandled_rejection`, `fk_constraint`, `econn_refused`, `etimedout`, `module_not_found`, `type_error`, `exception`. 30s per-signature dedup window in memory. 5-min heartbeat from a background sub-shell so "no recent rows" cleanly means "watcher dead" not "no errors."
+3. **`scripts/watchers/sports-bar-error-watch.service`** — systemd-user unit. `Restart=always`, 15s back-off. `WantedBy=default.target`. Requires `Linger=yes` on the `ubuntu` user (Gotcha #11) — already in place at every location since v2.50-ish.
+
+**Required Manual Step on each fleet box (Holmgren done as part of this release):**
+```bash
+cd /home/ubuntu/Sports-Bar-TV-Controller
+# 1. apply the migration (already pulled by auto-update)
+npx drizzle-kit migrate
+# 2. install the systemd unit
+mkdir -p ~/.config/systemd/user/
+cp scripts/watchers/sports-bar-error-watch.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now sports-bar-error-watch.service
+# 3. verify
+systemctl --user status sports-bar-error-watch.service --no-pager | head -10
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "SELECT kind, signature, datetime(detected_at,'unixepoch','localtime') FROM error_watch_events ORDER BY detected_at DESC LIMIT 3;"
+# expect: a row with kind='startup' from when you just enabled it
+```
+
+**Verify signature capture (optional sanity check):**
+```bash
+echo "$(date -u +%FT%TZ) [TEST] TypeError: marker $$" >> /home/ubuntu/.pm2/logs/sports-bar-tv-controller-error.log
+sleep 3
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "SELECT kind, signature, sample FROM error_watch_events WHERE sample LIKE '%marker%';"
+# expect: kind='error', signature='type_error'
+```
+
+**Querying what the watcher caught (for an audit / morning-after pattern check):**
+```bash
+# Most-recent errors of each signature in the last 24h:
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "SELECT signature, COUNT(*) AS n, MAX(datetime(detected_at,'unixepoch','localtime')) AS most_recent \
+   FROM error_watch_events \
+   WHERE kind='error' AND detected_at >= strftime('%s','now')-86400 \
+   GROUP BY signature ORDER BY n DESC;"
+
+# Heartbeat freshness (last row should be within 5 min):
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "SELECT datetime(detected_at,'unixepoch','localtime') FROM error_watch_events WHERE kind='heartbeat' ORDER BY detected_at DESC LIMIT 1;"
+```
+
+**Operational note:** the dedup window is intentionally short (30s) — we want frequency information ("ECONNREFUSED hit 40 times" is the same finding regardless of whether it was 40 lines back-to-back or one every minute). For per-event drill-down, fall back to the raw PM2 error log; this table is for sentinel/trend use, not log replacement.
+
+**Phase 2b (deferred):** UI surface on the SystemAdmin page showing unacknowledged events + a notification when a never-before-seen signature lands. The DB structure already supports this — Phase 2a was deliberately backend-only so the watcher proves out in production before any UI consumes it.
+
+**Applies to:** all locations.
+**First seen:** built + verified at Holmgren on 2026-06-09.
+
+---
+
 ## v2.55.22 — Node 22.22.2 → 22.22.3 (security release, NodeSource unblocked) (2026-06-09)
 
 **Versions covered:** v2.55.22 — closes task #262
