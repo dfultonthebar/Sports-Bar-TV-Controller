@@ -35,6 +35,24 @@ is the archive.
 
 ---
 
+## v2.55.47 — first-boot sets git identity (fixes Location Backup on fresh ISO box) (2026-06-10)
+
+**Versions covered:** v2.55.47
+**Branch landed:** main
+**Required Manual Step on EXISTING fresh-ISO boxes that haven't run bootstrap-new-location.sh yet:**
+```bash
+git config --global user.name "Sports Bar TV Controller"
+git config --global user.email "dfultonthebar@github.com"
+```
+
+**Why:** Lime Kiln (first v3.1.0 ISO install in production, 2026-06-10) hit `Backup failed: ... Author identity unknown ... unable to auto-detect email address (got 'ubuntu@sports-bar-controller.(none)')` on the operator's very first Location Backup attempt. The Location Backup feature (`/api/location/backup`) does a `git commit` to snapshot location data, but a fresh ISO box has NO git user.name/user.email configured, so git can't author the commit. `bootstrap-new-location.sh` DOES set the identity (line ~253) but that's a LATER per-location step — the backup feature is reachable from the moment the box boots, before bootstrap runs.
+
+**Fix:** `scripts/iso/first-boot-fresh.sh` now sets the fleet-standard git identity (`Sports Bar TV Controller <dfultonthebar@github.com>`) immediately after the clone, so it's present from first boot regardless of whether bootstrap has run. Global config (`--global`) so it covers any repo the box touches.
+
+**Verify on a fresh box:** `git config --global --get user.email` returns `dfultonthebar@github.com`, and a Location Backup from System Admin succeeds (commits to `backup/location-data/` on the location branch).
+
+---
+
 ## v2.55.42 — Scheduling logger: AI Suggest + override-learn paths instrumented (2026-06-10)
 
 **Versions covered:** v2.55.42
