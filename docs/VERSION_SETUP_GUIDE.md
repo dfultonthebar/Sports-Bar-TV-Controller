@@ -35,6 +35,39 @@ is the archive.
 
 ---
 
+## v2.55.24 — Phase 2b: error-watch admin UI surface (2026-06-09)
+
+**Versions covered:** v2.55.24
+**Branch landed:** main → all 6 location branches
+**Required Manual Step:** **None on existing boxes.** Pure additive — new route + new component + one-line wiring in `system-admin/page.tsx`. Auto-update pulls the code; PM2 restart picks it up.
+
+**What ships:**
+- `apps/web/src/app/api/error-watch/route.ts` — GET endpoint reading `error_watch_events`. Query params: `windowHours` (1-168, default 24), `signature` (filter to one), `kind` (filter to one), `limit` (1-1000, default 200). Returns `{summary: {heartbeatFreshSec, latestStartupAt, errorCountWindow, signatureCounts[]}, events[]}`. On missing-table (fresh box pre-migration) returns 200 with empty payload — same degrade pattern as `/api/system/watchers/status`.
+- `apps/web/src/components/admin/ErrorWatchPanel.tsx` — `<SafeBoundary>`-wrapped panel with three sections: status header (heartbeat badge + last boot + window chips), signature breakdown (horizontal bars, click-to-filter), recent events table (with kind/signature chips + sample text). Polls `/api/error-watch` every 30 sec.
+- Wired into `apps/web/src/app/system-admin/page.tsx` Watchers tab, below the existing `WatcherHealthPanel`.
+
+**Heartbeat freshness threshold:** 700 sec (2× the default `HEARTBEAT_INTERVAL_SEC=300` from Phase 2a). Anything older shows a red "heartbeat Ns ago" badge; fresh shows a pulsing green badge.
+
+**SafeBoundary wrap:** the panel is brand-new; per `[[feedback-safeboundary-for-new-panels]]` a render crash inside it shows a tiny inline failure card instead of escalating to the global error boundary for the entire system-admin page.
+
+**Verify after auto-update:**
+```bash
+# UI:
+# Navigate to /system-admin → Watchers tab → "Error Watch" section
+# should show: green heartbeat badge (Xs ago, X < 600s)
+#              signature breakdown if any errors caught
+#              recent events table
+#
+# API:
+curl -s 'http://localhost:3001/api/error-watch?windowHours=24' | python3 -m json.tool | head -25
+# expect: success=true, heartbeatFreshSec < 600, signatureCounts array
+```
+
+**Applies to:** all locations.
+**Verified:** built clean (`npm run build` 14s, no errors), API returns real data (heartbeat 35s fresh, 3 errors in window with correct signature breakdown), Playwright rendered the panel with all sections present on Holmgren.
+
+---
+
 ## v2.55.23 — Phase 2a: autonomous error-watch service (2026-06-09)
 
 **Versions covered:** v2.55.23
