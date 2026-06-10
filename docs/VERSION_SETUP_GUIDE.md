@@ -35,6 +35,23 @@ is the archive.
 
 ---
 
+## v2.55.37 — Cleanup: commit accumulated dev helpers + new hooks/skills (2026-06-10)
+
+**Versions covered:** v2.55.37
+**Branch landed:** main → all 6 location branches
+**Required Manual Step:** **None.** Tracked-file housekeeping; no runtime change.
+
+**What's now tracked that wasn't before:**
+- `.claude/hooks/stop-parallel-tasks.sh` — Stop-hook suggesting `/parallel-tasks` when 2+ pending tasks could fan out
+- `.claude/skills/parallel-tasks.md` — Skill doc codifying the worktree-fan-out pattern (used today to ship #330/#332/#333 in parallel)
+- `scripts/iso/smoke-test-vm200.sh` — Earlier ISO smoke harness for Proxmox VM 200
+- `scripts/verify-audio-meters.ts` + `scripts/verify-audio-meters-expanded.ts` — Playwright UI verifiers for the Audio tab live meters
+
+**What's removed:**
+- `scripts/capture-sdr-panel.ts` — replaced by `/api/sdr/peak-stats` + `ShureSdrSpectrumPanel.tsx` long ago; the standalone capture script was dead code.
+
+---
+
 ## v2.55.36 — Graystone webpack opt-in: source .env before deciding --webpack (closes #334) (2026-06-10)
 
 **Versions covered:** v2.55.36 — closes task #334
