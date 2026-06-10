@@ -1020,27 +1020,32 @@ check_auth_bootstrap_complete() {
     local env_file="/home/ubuntu/Sports-Bar-TV-Controller/.env"
     local location_id=""
     [ -f "$env_file" ] && location_id=$(grep -E '^LOCATION_ID=' "$env_file" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'")
-    local pin_active
-    pin_active=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM AuthPin WHERE isActive=1;" 2>/dev/null || echo "ERR")
-    if [ "$pin_active" = "ERR" ]; then
-        # AuthPin table itself unqueryable → a schema problem, owned by
-        # check_schema_completeness, not this readiness check.
-        log_warn "AuthPin table not queryable — skipping (schema_completeness owns this)"
-        record "auth_bootstrap_complete" 1 "AuthPin not queryable"
-        return 0
-    fi
+
+    # The real readiness test is the BINDING: at least one ACTIVE AuthPin must
+    # reference the .env LOCATION_ID, or login returns "Invalid PIN". This holds
+    # regardless of id FORMAT — a legacy box whose id is the literal
+    # "default-location" (e.g. Graystone) with PINs bound to it is fully
+    # functional and MUST pass. (An earlier draft rejected "default-location"
+    # outright per a Grok suggestion; that false-FAILed working fleet boxes —
+    # Lime Kiln audit follow-up. What matters is the binding, not the id string.)
+    local location_id_trimmed pin_bound=""
+    location_id_trimmed=$(printf '%s' "$location_id" | tr -d '[:space:]')
 
     local problem=""
-    # Treat the ecosystem.config.js fallback "default-location" and whitespace-only
-    # values as un-bootstrapped: the app starts with that placeholder but no AuthPin
-    # row references it, so login still returns "Invalid PIN" (Grok follow-up).
-    local location_id_trimmed
-    location_id_trimmed=$(printf '%s' "$location_id" | tr -d '[:space:]')
-    if [ -z "$location_id_trimmed" ] || [ "$location_id_trimmed" = "default-location" ]; then
-        problem="LOCATION_ID unset/placeholder in .env (got '${location_id}')"
-    fi
-    if [ "$pin_active" -le 0 ] 2>/dev/null; then
-        problem="${problem:+$problem; }AuthPin active-count=0"
+    if [ -z "$location_id_trimmed" ]; then
+        problem="LOCATION_ID blank in .env"
+    else
+        pin_bound=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM AuthPin WHERE isActive=1 AND locationId='${location_id_trimmed}';" 2>/dev/null || echo "ERR")
+        if [ "$pin_bound" = "ERR" ]; then
+            # AuthPin table itself unqueryable → a schema problem, owned by
+            # check_schema_completeness, not this readiness check.
+            log_warn "AuthPin table not queryable — skipping (schema_completeness owns this)"
+            record "auth_bootstrap_complete" 1 "AuthPin not queryable"
+            return 0
+        fi
+        if [ "$pin_bound" -le 0 ] 2>/dev/null; then
+            problem="no active AuthPin bound to LOCATION_ID '${location_id_trimmed}'"
+        fi
     fi
 
     if [ -n "$problem" ]; then
@@ -1053,8 +1058,8 @@ check_auth_bootstrap_complete() {
         record "auth_bootstrap_complete" 0 "$problem"
         return 27
     fi
-    log_pass "Auth bootstrap complete (LOCATION_ID set, AuthPin active=${pin_active})"
-    record "auth_bootstrap_complete" 1 "LOCATION_ID set, AuthPin active=${pin_active}"
+    log_pass "Auth bootstrap complete (LOCATION_ID='${location_id_trimmed}', AuthPin bound=${pin_bound})"
+    record "auth_bootstrap_complete" 1 "LOCATION_ID set, AuthPin bound=${pin_bound}"
     return 0
 }
 

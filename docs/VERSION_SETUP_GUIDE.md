@@ -35,6 +35,17 @@ is the archive.
 
 ---
 
+## v2.55.50–51 — verify-install auth check: bind to LOCATION_ID, not id format; wizard lspci (2026-06-10)
+
+**Versions covered:** v2.55.50, v2.55.51
+**Branch landed:** main → all 6 location branches
+**Required Manual Step:** None. These correct two follow-ups to v2.55.49.
+
+- **v2.55.51 (IMPORTANT correctness)** — `check_auth_bootstrap_complete` originally rejected `LOCATION_ID=default-location` as "un-bootstrapped" (a speculative Grok suggestion). That was WRONG for the real fleet: **Graystone runs functionally with `LOCATION_ID=default-location`** and both AuthPins bound to that id — login works fine, but the check false-FAILed it (17/18 in interactive mode). The check now tests the BINDING — `SELECT COUNT(*) FROM AuthPin WHERE isActive=1 AND locationId=<.env LOCATION_ID>` ≥ 1 — which is the actual "will login work?" condition, independent of whether the id is a UUID or the literal `default-location`. No rollback risk ever existed (the check is WARN-only in `--json`/auto-update mode), but the interactive FAIL was a false alarm. All boxes now PASS 18/18.
+- **v2.55.50** — wizard's IPEX-Ollama offer detects Intel via `lspci` instead of `clinfo` (clinfo isn't installed on a fresh ISO box, so the offer silently skipped on the Intel iGPU boxes it targets; confirmed live on Lime Kiln = Iris Xe).
+
+---
+
 ## v2.55.49 — Lime Kiln fresh-ISO audit: install-completeness + backup data-leak fixes (2026-06-10)
 
 **Versions covered:** v2.55.49
