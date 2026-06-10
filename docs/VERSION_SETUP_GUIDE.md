@@ -35,6 +35,162 @@ is the archive.
 
 ---
 
+## v2.55.48 — Scheduler+channel-guide audit merge: v2.55.43-46 landed (2026-06-10)
+
+**Versions covered:** v2.55.48 (merge commit superseding the four audit fix branches v2.55.43-46)
+**Branch landed:** main → all 6 location branches
+**Required Manual Step:** None beyond the standard auto-update → rebuild → PM2 restart cycle.
+
+**What this rolls up:** the Red/Blue/White/Purple/Green/Orange/Grok team audit of the scheduling + channel guide systems (follow-up to the v2.55.39-41 audit). Four fixes, each independently committed, Orange-probed (all SECURE-BY-DESIGN), and Grok-reviewed per-diff:
+
+- **v2.55.43 (CRITICAL)** — `auto-reallocator.ts` OR-gate. v2.55.41 fixed the tune-success gate in scheduler-service.ts but missed the IDENTICAL `if (response.ok)` pattern at TWO auto-reallocator sites (revert path + tune-back-to-default path). HTTP 200 with `{success:false}` marked the TV reverted while the box never moved. Now `result.success === true` strictly + malformedOk WARN fall-through. Orange: SECURE-BY-DESIGN (no double-.json(), fall-through reaches failure branch). Grok: CLEAN.
+- **v2.55.44 (HIGH)** — channel-guide local-override dedup compared TEXT `ChannelPreset.channelNumber` vs INTEGER `local_channel_overrides.channelNumber` with strict `===`, never matched → Brewers ch 308 appeared twice. Fixed 3 dedup guards with String() normalization. **Grok layer-1 caught a deeper bug all 6 teams + Orange missed:** the injection ALSO emitted raw integers into `channel.number`/`channelNumber`, so the bartender component's `preset.channelNumber === prog.channel.number` (string===number) silently dropped carriage-deal override rows — the Brewers game could vanish ENTIRELY. Fixed by String()-ing the injection writes too.
+- **v2.55.45 (HIGH)** — `pattern-analyzer.ts` used `INSERT OR REPLACE` (delete+reinsert) which reset `observation_count` to DEFAULT 1 every hourly run, making AI Suggest's `ORDER BY observation_count DESC` ranking meaningless. All 6 upsert sites converted to `INSERT ... ON CONFLICT DO UPDATE` with atomic `observation_count = COALESCE(observation_count,0)+1`. ai-suggest loader now compound `ORDER BY observation_count DESC, confidence DESC`. Orange confirmed the UNIQUE(pattern_type,pattern_key) constraint exists in all 3 places (no unbounded-growth risk). Grok: CLEAN.
+- **v2.55.46 (HIGH)** — override-learn window. v2.55.40 changed from a 10-min `allocated_at` gate to `expected_free_at`, which killed learning once a game ran past its estimatedEnd (extra innings, OT, rain delay). Added `OR a.status = 'active'` so active allocations stay learnable until the auto-reallocator flips them completed at real game end. Orange confirmed the v2.55.43×v2.55.46 stale-active cross-interaction does NOT materialize (endAllocation writes status='completed' BEFORE the revert call). Grok: CLEAN.
+
+**Per-team routing tracking** (operator-asked during the audit): confirmed `scheduling_patterns.pattern_type='team_routing'` already captures `{team, preferredInput, preferredOutputs[], frequency}` per team. v2.55.45's fix makes the observation_count ranking that feeds AI Suggest finally meaningful.
+
+**Live regression test:** Greenville Brewers @ 20:05 tonight exercises v43 (revert gate), v44 (ch 308 guide), v46 (extra-innings override-learn) directly. Watch `/home/ubuntu/sports-bar-data/logs/scheduling-2026-06-10.log`.
+
+---
+
+## v2.55.46 — Override-learn stays open through overtime / extra innings (2026-06-10)
+
+**Versions covered:** v2.55.43–v2.55.46
+**Branch landed:** main → all 6 location branches
+**Required Manual Step:** **None.** Code-only fix; the normal auto-update rebuild + PM2 restart picks it up.
+
+**Why (operator terms):** when a game runs PAST its scheduled end — extra
+innings on a Brewers game, overtime, a rain delay — the system used to stop
+learning from bartender corrections the moment the *estimated* end time
+passed. So if a bartender moved the game to different TVs during extras,
+that correction was silently ignored by the pattern learner, even though
+that late-game window is exactly when corrections happen most. MLB extra
+innings are routine; this gap dropped real learning signal.
+
+**What changed:** `/api/matrix/route`'s override-learn allocation query now
+keeps the learning window open **while the allocation is still active OR
+its expected end time has not passed**. The auto-reallocator marks the
+allocation `completed` at the real game end, which closes the window
+naturally — no fixed clock cutoff.
+
+**Verify at a location** (after a game that went long): bartender re-routes
+during overtime should produce an override-learn row:
+```bash
+grep "override-learn" /home/ubuntu/sports-bar-data/logs/scheduling-$(date +%F).log
+# or: sqlite3 /home/ubuntu/sports-bar-data/production.db \
+#   "SELECT created_at, message FROM SchedulerLog WHERE component='override-learn' ORDER BY created_at DESC LIMIT 5"
+```
+
+---
+
+## v2.55.45 — pattern-analyzer: observation_count atomic increment (AI Suggest ranking fixed) (2026-06-10)
+
+**Versions covered:** v2.55.45 — scheduler audit Green #3 (HIGH)
+**Branch landed:** main
+**Required Manual Step:** None. PM2 restart picks it up. observation_count starts climbing on the next pattern-analyzer run (hourly).
+
+**Why:** AI Suggest's pattern loader does `ORDER BY observation_count DESC LIMIT 100`, but `scheduling_patterns.observation_count` was stuck at DEFAULT 1 forever — so the 100-row cap returned patterns in undefined order and the highest-signal team_routing patterns (e.g. the Brewers row with frequency=12) could be silently cut off. The root cause was NOT "the column is never written" — it was that pattern-analyzer used `INSERT OR REPLACE`, which is a DELETE + reinsert that resets observation_count to its column DEFAULT on every run.
+
+**Fix:** all 6 upsert sites in `packages/scheduler/src/pattern-analyzer.ts` converted from `INSERT OR REPLACE` to `INSERT ... ON CONFLICT(pattern_type, pattern_key) DO UPDATE SET ... observation_count = COALESCE(observation_count, 0) + 1, last_observed = excluded.last_observed`. Atomic increment (safe across concurrent analyzer runs — no JS read-modify-write). The ON CONFLICT update preserves the existing row + its observation_count instead of wiping it.
+
+Also: `apps/web/src/app/api/scheduling/ai-suggest/route.ts` loader is now `ORDER BY observation_count DESC, confidence DESC` — compound so a tie on observation_count breaks toward the higher-confidence pattern.
+
+The fallback DDL (`CREATE_SCHEDULING_PATTERNS_TABLE`) was brought column-compatible with drizzle/0000_baseline.sql (added observation_count, first_observed, last_observed, is_stale, last_analyzed_at) so a dev DB created via that path behaves identically.
+
+**Verify:** run the pattern analyzer twice (or wait two hourly cycles), then `SELECT pattern_key, observation_count FROM scheduling_patterns WHERE pattern_type='team_routing' ORDER BY observation_count DESC LIMIT 5` — counts should be climbing above 1.
+
+---
+
+## v2.55.44 — Channel guide: fix dead local-override dedup (duplicate ch-308 rows) (2026-06-10)
+
+**Versions covered:** v2.55.44
+**Branch landed:** main → all 6 location branches
+**Required Manual Step:** **None.** Pure bug fix; standard rebuild + PM2 restart via auto-update.
+
+**Why:** The channel-guide local-override dedup compared `p.channel?.number`
+(TEXT, from Rail/preset data) against `override.channelNumber` (INTEGER, from
+`local_channel_overrides`) with strict `===` — string-vs-number never matches,
+so the dedup was dead code. A Brewers game on ch 308 (BallyWIPlus, the WI RSN
+split) could appear TWICE in the bartender's channel guide: once from the Rail
+Media station-alias match, once from the local-override injection. Affects any
+location running Brewers games (Holmgren, Greenville at minimum).
+
+**Fix:** `apps/web/src/app/api/channel-guide/route.ts` — `String()`-normalize
+both sides at all three preset/override channel-number comparison boundaries
+(override-row filter, override-injection dedup, game_schedules-injection dedup).
+
+**Verification (game-day):** `POST /api/channel-guide` with
+`{"deviceType":"cable"}` during a Brewers broadcast window — each ch-308
+matchup must appear once, and no program `id` starting with `local-308-` should
+share homeTeam+awayTeam+gameTime with a Rail-sourced ch-308 program.
+
+---
+
+## v2.55.43 — auto-reallocator OR-gate fix: v2.55.41 missed two sibling sites (2026-06-10)
+
+**Versions covered:** v2.55.43 — scheduler audit Green #1 (CRITICAL)
+**Branch landed:** main
+**Required Manual Step:** None. PM2 restart picks it up.
+
+**Why:** v2.55.41 fixed the tune-success OR-gate in scheduler-service.ts (the Greenville Brewers "didn't switch" bug). The Red/Blue/White/Purple scheduling audit found the IDENTICAL bug pattern in `packages/scheduler/src/auto-reallocator.ts` at TWO sites the v2.55.41 patch never touched:
+
+1. **Revert path (~line 597):** when a game ends and the auto-reallocator reverts a TV to its default source, `if (routeResponse.ok)` treated any HTTP 200 as a successful revert — even an HTTP 200 with `{success:false}` body. The allocation was already marked completed by endAllocation(), so the TV silently stayed on the dead game feed while a green "reverted" row logged.
+2. **Tune-back-to-default path (~line 884):** same `if (tuneResponse.ok)` on the cable/satellite tune-back. `/api/channel-presets/tune` returns HTTP 200 with `{success:false}` for soft failures (box offline, channel missing) — these were logged as "Tuned back to default" while the box never moved.
+
+**Fix:** both sites now use `result.success === true` strictly, with a `malformedOk` branch (HTTP 200 + missing success flag → loud WARN + fall through to failure). Mirrors scheduler-service.ts:1156-1159 exactly. A third `response.ok` at line 439 (GET /api/settings/default-sources config load) is correctly NOT changed — it's a config read, not a routing command; failure safely skips revert.
+
+**Verify:** during a game-end revert where the cable box is offline, confirm the scheduler log shows `revert ... treating as failure` (WARN) rather than a success row, and the allocation is NOT silently marked reverted.
+
+---
+
+## v2.55.47 — first-boot sets git identity (fixes Location Backup on fresh ISO box) (2026-06-10)
+
+**Versions covered:** v2.55.47
+**Branch landed:** main
+**Required Manual Step on EXISTING fresh-ISO boxes that haven't run bootstrap-new-location.sh yet:**
+```bash
+git config --global user.name "Sports Bar TV Controller"
+git config --global user.email "dfultonthebar@github.com"
+```
+
+**Why:** Lime Kiln (first v3.1.0 ISO install in production, 2026-06-10) hit `Backup failed: ... Author identity unknown ... unable to auto-detect email address (got 'ubuntu@sports-bar-controller.(none)')` on the operator's very first Location Backup attempt. The Location Backup feature (`/api/location/backup`) does a `git commit` to snapshot location data, but a fresh ISO box has NO git user.name/user.email configured, so git can't author the commit. `bootstrap-new-location.sh` DOES set the identity (line ~253) but that's a LATER per-location step — the backup feature is reachable from the moment the box boots, before bootstrap runs.
+
+**Fix:** `scripts/iso/first-boot-fresh.sh` now sets the fleet-standard git identity (`Sports Bar TV Controller <dfultonthebar@github.com>`) immediately after the clone, so it's present from first boot regardless of whether bootstrap has run. Global config (`--global`) so it covers any repo the box touches.
+
+**Verify on a fresh box:** `git config --global --get user.email` returns `dfultonthebar@github.com`, and a Location Backup from System Admin succeeds (commits to `backup/location-data/` on the location branch).
+
+---
+
+## v2.55.42 — Scheduling logger: AI Suggest + override-learn paths instrumented (2026-06-10)
+
+**Versions covered:** v2.55.42
+**Branch landed:** main → all 6 location branches
+**Required Manual Step:** **None.** Pure additive logging; PM2 restart picks up the new instrumentation.
+
+**Why:** v2.55.38 wired `scheduling-logger.ts` into the manual bartender-schedule POST. This closes the AI half of the coverage so the same log file (`/home/ubuntu/sports-bar-data/logs/scheduling-YYYY-MM-DD.log`) carries the AI Suggest decision trail + override-learn audit alongside the manual schedules.
+
+**What's wired:**
+- `/api/scheduling/ai-suggest` GET handler: logs `source='ai'` for the trigger (`action='attempt'`), Ollama timeout (`tune_fail` HTTP 504 with note about RAM pressure / model eviction), Ollama unavailable (`tune_fail` HTTP 503), suggestions-returned (`allocation_created` with rejection count + patterns-consulted count), and uncaught exceptions (`tune_fail` HTTP 500).
+- `/api/matrix/route` POST handler (the override-learn write site at line 244): mirrors every override-learn SchedulerLog row into the dedicated scheduling log as `source='override-learn', action='allocation_updated'`. Home-team overrides log at `level='warn'`, non-home at `level='info'` — matches the SchedulerLog severity convention.
+
+**Operator usage:** the scheduling log now carries a single grep-able view of all paths:
+```bash
+# Brewers re-routes today across all sources (manual + AI + override-learn):
+grep -i brewers /home/ubuntu/sports-bar-data/logs/scheduling-$(date +%F).log
+
+# Watch live as a game-day shift unfolds:
+tail -f /home/ubuntu/sports-bar-data/logs/scheduling-$(date +%F).log
+
+# All AI Suggest decisions today:
+grep "AI" /home/ubuntu/sports-bar-data/logs/scheduling-$(date +%F).log
+```
+
+**Per-team routing pattern tracking** (operator-asked): confirmed already running. `scheduling_patterns` table has `pattern_type='team_routing'` rows like `{"team":"Milwaukee Brewers","preferredInput":"Cable Box 1","preferredOutputs":[13,9,16,19,20,18,26,33,1,4,10,12,3,7,6,14,27,43],"frequency":12}`. `packages/scheduler/src/pattern-analyzer.ts` analyzes `input_source_allocations.tv_output_ids` hourly. AI Suggest consults these when recommending routes.
+
+**Still TODO** (next instrumentation pass): auto-reallocator (`packages/scheduler/src/auto-reallocator.ts`) — when the background service preempts/replaces allocations.
+
+---
 ## v2.55.41 — Scheduler tune OR-gate fix: HTTP 200 with {success:false} no longer flips allocation to 'active' (2026-06-10)
 
 **Versions covered:** v2.55.41

@@ -368,11 +368,14 @@ export async function POST(request: NextRequest) {
 
             // Loop kept for compatibility with original "for each override"
             // structure — but we now resolve via the helper above.
-            for (const override of localOverrideRows.filter(o => o.channelNumber === channelNumberInt)) {
+            // String()-normalize both sides: override.channelNumber is INTEGER in
+            // the DB while preset/Rail channel numbers are TEXT — strict-equal
+            // across that boundary never matches (dead dedup → duplicate rows).
+            for (const override of localOverrideRows.filter(o => String(o.channelNumber) === String(channelNumberInt))) {
 
               // Check if this game already has a program entry on ch 308
               const alreadyHas308 = programs.some(p =>
-                p.channel?.number === override.channelNumber &&
+                String(p.channel?.number) === String(override.channelNumber) &&
                 p.homeTeam === homeTeam && p.awayTeam === awayTeam &&
                 p.gameTime === listing.time
               )
@@ -402,11 +405,21 @@ export async function POST(request: NextRequest) {
                 channel: {
                   id: `local-${override.channelNumber}`,
                   name: override.channelName,
-                  number: override.channelNumber,
+                  // v2.55.44 Grok-review follow-up: emit channel number as a
+                  // STRING to match every other emission path (Rail, resolver,
+                  // game_schedules all carry ChannelPreset.channelNumber which
+                  // is TEXT). local_channel_overrides.channelNumber is an
+                  // INTEGER column — emitting it raw made
+                  // EnhancedChannelGuideBartenderRemote.tsx:961's
+                  // `preset.channelNumber === prog.channel.number` (string ===
+                  // number) silently fail for carriage-deal overrides whose
+                  // channelName doesn't match a preset name, dropping the row
+                  // (e.g. Brewers ch 308 vanishing from the guide entirely).
+                  number: String(override.channelNumber),
                   type: deviceType,
                   cost: 'subscription',
                   platforms: ['Cable'],
-                  channelNumber: override.channelNumber,
+                  channelNumber: String(override.channelNumber),
                   deviceType,
                   station: override.channelName,
                   presetName: override.channelName,
@@ -565,8 +578,10 @@ export async function POST(request: NextRequest) {
 
           // Dedupe: skip if we already have a Rail program for this channel at this time
           // for the same matchup
+          // String()-normalize: existing programs may carry a numeric channel
+          // number (local-override injection) while preset channelNumber is TEXT.
           const dupe = programs.some(p =>
-            p.channel?.number === resolvedPreset!.channelNumber &&
+            String(p.channel?.number) === String(resolvedPreset!.channelNumber) &&
             p.homeTeam === game.homeTeamName &&
             p.awayTeam === game.awayTeamName
           )
