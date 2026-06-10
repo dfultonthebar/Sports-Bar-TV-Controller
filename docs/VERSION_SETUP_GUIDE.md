@@ -35,75 +35,27 @@ is the archive.
 
 ---
 
-## v2.55.40 — Override-learn fix: window by expected_free_at, not allocated_at (2026-06-10)
+## v2.55.41 — Scheduler tune OR-gate fix: HTTP 200 with {success:false} no longer flips allocation to 'active' (2026-06-10)
 
-**Versions covered:** v2.55.40
+**Versions covered:** v2.55.41
 **Branch landed:** main → all 6 location branches
-**Required Manual Step:** **None.** Code-only change to `/api/matrix/route` POST handler. No schema migration, no env var, no PM2 ecosystem change.
+**Required Manual Step:** **None.** Code-only fix; no schema, no env, no PM2 ecosystem changes. Auto-update rebuilds, restarts, done.
 
-**Why (severity HIGH — silent failure class):**
-Override-learn (`apps/web/src/app/api/matrix/route/route.ts`, v2.18.0) is the
-mechanism that teaches `pattern-analyzer.ts` from bartender corrections —
-when a bartender manually re-routes a TV during an active scheduled
-allocation, the allocation's `tv_output_ids` gets patched so the next
-hour's pattern analysis reflects the corrected room layout.
+**Why:** RED team triage of the Greenville Brewers "didn't switch" symptom traced the most likely root cause to `packages/scheduler/src/scheduler-service.ts:1146`. The branch was `if (result.success || response.ok) { ... mark allocation 'active' ... }`. The tune endpoint at `/api/channel-presets/tune` returns HTTP 200 with `{success:false, error:'Cable box not found'}` for soft failures (device not found, device offline, channel missing, etc.). The OR short-circuited on `response.ok=true` and ran the success path — allocation status flipped to `'active'`, `input_sources.currentlyAllocated=true`, and Wolf Pack matrix routing fired for the wrong channel. The cable box never tuned, but the system claimed success. Bartender saw a green 'Scheduled' tile, nothing actually switched, no error surfaced anywhere. Fires across every scheduling path: manual, ai, auto, override-learn.
 
-The previous WHERE clause was `AND a.allocated_at >= ${windowStart}` with
-`windowStart = now - 600` (10 minutes). But `bartender-schedule` sets
-`allocated_at = tuneAtUnix` (the **game start time**, not the allocation
-creation time — see `apps/web/src/app/api/schedules/bartender-schedule/route.ts:340`).
+**Fix:** strict success check.
 
-Concrete failure: 7:00 PM NFL kickoff schedules an allocation with
-`allocated_at = 7:00 PM unix`. Bartender notices a wrong TV at 7:15 PM
-(normal game-watch behavior) and manually re-routes. Override-learn
-computes `windowStart = 7:05 PM`, so the allocation's `allocated_at` of
-7:00 PM is LESS than windowStart — the row is excluded from the query,
-no SchedulerLog row is written, the allocation's `tv_output_ids` stays
-stale, and pattern-analyzer never sees the correction.
+- `packages/scheduler/src/scheduler-service.ts` — replaced `if (result.success || response.ok)` with `if (result?.success === true)`. The previous `response.ok` fallback is split into an explicit `malformedOk` branch (HTTP 200 with no explicit `success` flag — neither true nor false): we log a `WARN` via `schedulerLogger.warn()` + `logger.warn()` and fall through to the existing failure path. The existing `else { schedulerLogger.log({ level: 'error', ... }) }` block at the bottom of the if-chain handles both the soft-fail `{success:false}` AND the malformed-200 cases — no new failure-handling code, just a stricter entry condition. Added a success-path `schedulerLogger.info` so the operator can see "Tune confirmed by API: success=true for allocation X" in the dedicated scheduling log when a tune actually worked.
 
-This silently dropped EVERY routing correction made more than ~10 minutes
-after game start at EVERY location. It has been broken since v2.18.0
-(months) and is the most likely reason the operator has reported the
-pattern-analyzer learning quality feels "thin."
+**Verify** (post-update, optional — operator-facing smoke):
+1. Holmgren: `curl -s -X POST http://localhost:3001/api/channel-presets/tune -H 'Content-Type: application/json' -d '{"channelNumber":"5","deviceType":"cable","cableBoxId":"nonexistent"}'` — confirm response is HTTP 200 with `{success:false, error:'…'}` body. (This is the shape the OR-gate misread.)
+2. Create a test allocation pointing at a nonexistent device, wait one scheduler tick (~60s).
+3. `sqlite3 /home/ubuntu/sports-bar-data/production.db "SELECT id, status FROM input_source_allocations WHERE id='<test-alloc-id>'"` — status MUST remain `'pending'` or transition to `'failed'`, never `'active'`.
+4. `sqlite3 /home/ubuntu/sports-bar-data/production.db "SELECT currentlyAllocated, currentChannel FROM input_sources WHERE id='<input-source-id>'"` — `currentlyAllocated` must remain 0/false; `currentChannel` must NOT be the test channel.
+5. `pm2 logs sports-bar-tv-controller --lines 50 | grep SCHEDULER` — expect `❌ Failed to tune …` line, NOT `✅ Successfully tuned …`.
+6. `tail /home/ubuntu/sports-bar-data/logs/scheduling-*.log` — expect a `tune` row with `success: false` and the error verbatim from the API response.
 
-**Fix:**
-- Replace `windowStart` calc + `a.allocated_at >= ${windowStart}` with
-  `nowUnix = Math.floor(Date.now()/1000)` + `a.expected_free_at >= ${nowUnix}`.
-- `expected_free_at` is the estimated game end time + buffer (set when the
-  allocation is created, `packages/database/src/schema.ts:1567`, `notNull`).
-  Any allocation whose game has NOT yet ended qualifies for override-learn —
-  exactly the population we want.
-- Status filter `('active','pending','tuning')` keeps the override scoped to
-  actually-live allocations (no learning from completed/canceled).
-- Comment block updated to reflect the new semantics and explain the bug
-  the fix closes.
-
-**Verification at a location after this lands:**
-
-1. Wait until a long scheduled game is live (3h NFL works well).
-2. ≥30 minutes after `allocated_at`, have the bartender manually re-route
-   via `/api/matrix/route` with `source='bartender'` (channel guide → cable
-   box pick on the bartender remote does this).
-3. Check the override-learn log row was written:
-   ```bash
-   sqlite3 /home/ubuntu/sports-bar-data/production.db \
-     "SELECT created_at, level, operation, message FROM scheduler_logs \
-      WHERE component='override-learn' ORDER BY created_at DESC LIMIT 1;"
-   ```
-   Should show the override (level=`info`, or `warn` if a home-team game).
-4. Confirm the allocation row was patched:
-   ```bash
-   sqlite3 /home/ubuntu/sports-bar-data/production.db \
-     "SELECT id, tv_output_ids, tv_count, updated_at \
-      FROM input_source_allocations \
-      ORDER BY updated_at DESC LIMIT 5;"
-   ```
-   The targeted allocation's `tv_output_ids` should reflect the bartender's
-   change (add or remove the manipulated output).
-
-**Sanity check completed pre-merge:** `grep -rn 'allocated_at >=\|allocatedAt >='`
-across the repo returns ONLY this file — no other consumer relied on the
-10-minute `allocated_at` semantics. The change is local to one route.
+**Blast radius:** every scheduled tune across every code path (manual / ai-suggested / auto-reallocated / override-learned) routes through this single branch. Fix is 2 lines of structural change + 3 new log lines. Expected positive effect: silent total failures (green tile, nothing switched, no error surfaced) stop. The remaining "didn't switch" symptoms after this lands will fall into one of the previously-known buckets (game not in `game_schedules`, network unreachable, IR emitter unplugged), all of which now produce visible error logs.
 
 ---
 
