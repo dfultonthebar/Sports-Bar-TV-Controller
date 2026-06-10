@@ -35,6 +35,35 @@ is the archive.
 
 ---
 
+## v2.55.22 — Node 22.22.2 → 22.22.3 (security release, NodeSource unblocked) (2026-06-09)
+
+**Versions covered:** v2.55.22 — closes task #262
+**Branch landed:** main → all 6 location branches
+
+**Why:** Node 22.22.3 is a Node.js security release (crypto null-pointer-deref fix among others). It was tracked as #262 since 2026-05-27 because NodeSource lagged 2+ weeks publishing it; we deliberately waited for the NodeSource apt repo (rather than bypass to nodejs.org binary) to keep fleet install methods consistent. NodeSource published `22.22.3-1nodesource1` on or before 2026-06-09 — task unblocked.
+
+**Risk:** patch release within Node 22 → no `NODE_MODULE_VERSION` change → **no native module ABI break** → no better-sqlite3 rebuild required ([[feedback-node-major-upgrade-gotchas]] doesn't apply here, it covers major bumps).
+
+**Required Manual Step on each fleet box (Holmgren done as part of this release):**
+```bash
+sudo apt-get update -qq
+sudo apt-get install -y nodejs              # 22.22.2 → 22.22.3
+node --version                              # verify
+pm2 restart sports-bar-tv-controller --update-env
+sleep 5 && curl -s -o /dev/null -w '%{http_code}\n' http://localhost:3001/api/health
+# expect: 200
+```
+
+**Blip:** ~10–30s while PM2 reloads the app under the new Node binary. Bartender remote returns 5xx briefly.
+
+**Fleet rollout:** can run in parallel across the 5 remote boxes via Tailscale SSH (each box independent). At a minimum schedule it before tonight's auto-update cycles fire so the assertion gates run against the new Node. Or fold into a manual fleet trigger now.
+
+**Verify after:** `node --version` returns `v22.22.3` AND PM2 shows `restart_time` incremented by 1 AND `:3001/api/health` returns 200.
+
+**Done on Holmgren as part of this release** — verified PM2 picked up the new binary, both ports back to 200 on the first health-check attempt.
+
+---
+
 ## v2.55.21 — Phase 1 hardening: redact creds in pre-push log + fix destructive-block false positive (2026-06-09)
 
 **Versions covered:** v2.55.21
