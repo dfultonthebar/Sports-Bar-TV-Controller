@@ -35,6 +35,52 @@ is the archive.
 
 ---
 
+## v2.55.35 — Research hooks: fix Grok invocation so additionalContext is real (closes #333) (2026-06-09)
+
+**Versions covered:** v2.55.35 — closes task #333
+**Branch landed:** main → all 6 location branches
+**Required Manual Step:** **None.** Pure shell-script fix in `.claude/hooks/lib/research-helpers.sh`. No DB / env / restart needed; hooks reload from disk each invocation. The 24h research cache at `/tmp/sports-bar-research-cache/` will repopulate naturally on first cache-miss after the fix lands (or wipe it once to force).
+
+**Why:** v2.55.32 shipped three research hooks (`pre-bash-research.sh`, `user-prompt-research.sh`, `post-taskcreate-research.sh`) backed by `lib/research-helpers.sh`. The intent: when Claude is about to run a hardware-related command, pre-fetch a 300-word vendor-doc dossier via Grok web search and inject it as `additionalContext`. First probe on `shure-slxd` came back `"(no specific research available for shure-slxd)"` — the whole research pipeline was effectively dead.
+
+**Root cause:** the Grok invocation was
+
+```bash
+timeout 60 grok --headless --always-approve --prompt-file "$prompt_file"
+```
+
+`--headless` is **NOT a real `grok` CLI flag** (verified via `grok --help` 2026-06-09 — full flag list has no `--headless`; only `--prompt-file` / `-p` / `--permission-mode` / `--output-format`). With an unknown flag passed, `grok` printed an error to stderr (swallowed by `2>/dev/null`) and exited, OR launched the interactive TUI with no web tools enabled — either way returned empty stdout. The fallback path then cached `NO_RESEARCH_AVAILABLE` for 24h, locking in the dead state for every subsequent invocation.
+
+**Fix:**
+
+```bash
+timeout 90 grok --permission-mode auto --prompt-file "$prompt_file"
+```
+
+`--permission-mode auto` is the same form `scripts/grok-prime.sh` uses for the Phase 4 pre-push critical-path review (which works correctly), and which all interactive `grok` calls in this codebase use. It auto-approves tool execution including web search + web fetch, so Grok can actually hit vendor docs / GitHub issues / Reddit. Timeout bumped 60→90s because web-search adds latency vs cached LLM-only answers.
+
+Verified by wiping `/tmp/sports-bar-research-cache/` and re-running `research_hardware "shure-slxd"`: returned 278 words of real prose including https://www.shure.com/en-US/docs/guide/SLXD, https://github.com/bitfocus/companion-module-shure-wireless/issues/54, and https://github.com/karlcswanson/micboard/issues/47 — exactly the kind of context the hooks were designed to inject.
+
+**Why NOT `scripts/grok-prime.sh`:** that wrapper prepends `docs/GROK_BRIEFING.md` (~5 KB) to every call. Useful for deep audits where Standing Rules need to govern Grok's recommendations; overkill for a 300-word per-hardware lookup that just needs the web tool. Direct `grok --permission-mode auto` keeps each cached entry small and tight.
+
+**Verification commands at a location:**
+
+```bash
+# Confirm a Grok lookup returns real prose (not the placeholder)
+rm -rf /tmp/sports-bar-research-cache/
+cd /home/ubuntu/Sports-Bar-TV-Controller
+. .claude/hooks/lib/research-helpers.sh && research_hardware "shure-slxd" | head -5
+# Should NOT match: "no specific research available"
+# Should contain: a URL (https://...) and vendor specifics
+
+# Confirm the pre-bash hook injects useful additionalContext
+echo '{"tool_input":{"command":"python3 /tmp/atlas-test.py"}}' | bash .claude/hooks/pre-bash-research.sh | jq -r '.hookSpecificOutput.additionalContext' | head -5
+```
+
+**RAG re-scan:** triggered automatically by `scripts/rag-rescan-if-needed.sh` since this commit touches `docs/VERSION_SETUP_GUIDE.md`.
+
+---
+
 ## v2.55.31 — Wireless-mic freq change + bartender resync banner (closes #331) (2026-06-09)
 
 **Versions covered:** v2.55.31 — closes task #331
