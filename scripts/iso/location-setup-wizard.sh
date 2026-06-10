@@ -1314,6 +1314,52 @@ wizard_ollama() {
     echo ""
     log "Installed models:"
     ollama list 2>/dev/null || true
+
+    # v2.55.49 (Lime Kiln audit): the upstream install above is CPU-only (~3 tok/s).
+    # On Intel Iris Xe boxes the fleet standard is the IPEX-LLM build (~14 tok/s) via
+    # setup-iris-ollama.sh. Offer it when an Intel GPU platform is detected; the
+    # script itself re-checks clinfo and refuses on AMD/Nvidia, so this is safe.
+    local iris_script="${APP_DIR}/scripts/setup-iris-ollama.sh"
+    if [[ -f "$iris_script" ]] && command -v clinfo &>/dev/null && clinfo 2>/dev/null | grep -qi 'Intel'; then
+        echo ""
+        if prompt_yes_no "Intel iGPU detected — switch Ollama to the GPU-accelerated IPEX build (~14 tok/s vs ~3)?" "y"; then
+            if [[ "$DRY_RUN" == true ]]; then
+                info "DRY RUN: Would run setup-iris-ollama.sh"
+            else
+                info "Running setup-iris-ollama.sh (replaces the upstream CPU service)..."
+                bash "$iris_script" 2>&1 | tail -12 || warn "setup-iris-ollama.sh reported an issue — Ollama still works on CPU; re-run manually later."
+            fi
+        fi
+    fi
+}
+
+# ─── Auto-update timer ──────────────────────────────────────────────────────
+# v2.55.49 (Lime Kiln audit): a fresh ISO box shipped with NO auto-update timer
+# unit installed, so it would never receive code/security/schema updates — and
+# verify-install grandfathered that as a silent PASS (now fixed). Install the
+# timer at wizard time. install-auto-update-timer.sh self-gates: it dies cleanly
+# if auto_update_state.schedule_cron is empty (operator hasn't enabled auto-update
+# in the Sync tab yet) and also runs the Gotcha #11 linger hardening. Non-fatal
+# either way — we just surface the exact next step.
+wizard_autoupdate_timer() {
+    local timer_script="${APP_DIR}/scripts/install-auto-update-timer.sh"
+    echo ""
+    if [[ "$DRY_RUN" == true ]]; then
+        info "DRY RUN: Would run install-auto-update-timer.sh"
+        return 0
+    fi
+    if [[ ! -f "$timer_script" ]]; then
+        warn "install-auto-update-timer.sh not found — enable auto-update later via the Sync tab."
+        return 0
+    fi
+    info "Installing the auto-update timer..."
+    if bash "$timer_script" 2>&1 | tail -8; then
+        log "✓ Auto-update timer installed."
+    else
+        warn "Auto-update timer NOT installed yet (schedule not configured)."
+        warn "  Enable it: System Admin → Sync tab → turn on Auto Update + set a schedule, then run:"
+        warn "    bash ${timer_script}"
+    fi
 }
 
 # ─── .env Configuration ─────────────────────────────────────────────────────
@@ -1703,6 +1749,7 @@ NETPLANEOF
 
     wizard_ollama
     wizard_location
+    wizard_autoupdate_timer
 
     # ── Done ─────────────────────────────────────────────────────────────
     wizard_verify

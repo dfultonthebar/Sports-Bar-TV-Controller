@@ -35,6 +35,24 @@ is the archive.
 
 ---
 
+## v2.55.49 — Lime Kiln fresh-ISO audit: install-completeness + backup data-leak fixes (2026-06-10)
+
+**Versions covered:** v2.55.49
+**Branch landed:** main → all 6 location branches
+**Required Manual Step:** None for EXISTING boxes — all 6 are already bootstrapped (LOCATION_ID set, AuthPin≥1, auto-update timer installed), so they PASS the two new verify-install checks in both `--json` and interactive mode. **For any NEW fresh-ISO box**, the per-location bootstrap is now ENFORCED rather than silently optional (see below).
+
+**What this rolls up:** the Red/Blue/White/Purple team audit (+ Grok final review) of the newest fleet box "Lime Kiln" (installed from the v3.1.0 subiquity-autoinstall ISO). The box was OS/app-healthy (verify 17/17, health 200) but had install-completeness gaps the old verify-install silently passed, plus a real fleet-wide data-leak vector. Fixes:
+
+- **CRITICAL (data-leak) — Location Backup route** (`apps/web/src/app/api/location/backup/route.ts`): previously did `git add` → `git commit` → `git push origin $(git branch --show-current)`. On a `main`-branch box (every fresh ISO box) that pushes a full per-location DB dump (35 tables) to `origin/main` → propagates to every location on next merge. Fixed: (1) ADMIN session gate on POST, (2) **branch-guard** — refuses commit/push unless current branch starts with `location/` (writes the backup locally + returns a warning instead), (3) `git add -f` since `apps/web/backup/` is now gitignored, (4) `.gitignore` entry for `apps/web/backup/`. `GET /api/location/backup-status` also ADMIN-gated (was leaking locationId/name/branch to any LAN caller). UI (`LocationSettings.tsx`) now honors the `warning` field instead of always claiming "Pushed to branch".
+- **HIGH (false-green) — verify-install.sh**: added `check_auth_bootstrap_complete` (#18) — FAILs (interactive) when AuthPin active-count=0 OR LOCATION_ID is blank/`default-location`; and refactored `check_autoupdate_timer_fresh` to FAIL when the timer **unit file** is missing (was grandfathered as PASS on "no logs yet"). **Both take a non-fatal WARN path in `--json` mode** so a not-yet-bootstrapped box being manually updated never triggers an auto-update rollback (auto-update.sh rolls back on any non-zero verify exit). TOTAL 17→18.
+- **MED (turnkey) — ISO automation**: `first-boot-fresh.sh` now uses `npm ci` (not `npm install --prefer-offline`, which mutated package-lock.json → dirty tree on main). `location-setup-wizard.sh` now (a) offers the IPEX-LLM `setup-iris-ollama.sh` build when an Intel iGPU is detected (was CPU-only ~3 tok/s), and (b) runs `install-auto-update-timer.sh` at wizard end (self-gates on `schedule_cron`; prints Sync-tab guidance if not yet configured).
+
+**Verification:** `bash scripts/verify-install.sh` should show `18/18` on a bootstrapped box. On a fresh box pre-bootstrap, interactive mode now FAILs `auth_bootstrap_complete` + `autoupdate_timer_fresh` with the exact fix commands — that is the intended new signal, not a regression.
+
+**Grok verdict:** GO — no correctness blockers, rollback-hazard design sound, zero fleet regression confirmed across all 6 bootstrapped boxes.
+
+---
+
 ## v2.55.48 — Scheduler+channel-guide audit merge: v2.55.43-46 landed (2026-06-10)
 
 **Versions covered:** v2.55.48 (merge commit superseding the four audit fix branches v2.55.43-46)

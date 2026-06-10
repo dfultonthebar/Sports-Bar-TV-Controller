@@ -585,6 +585,27 @@ check_autoupdate_timer_fresh() {
     local now_epoch
     now_epoch=$(date +%s)
 
+    # Unit-file existence FIRST (Lime Kiln audit 2026-06-10): the freshness
+    # checks below grandfather "no logs yet" as PASS, which silently masked a
+    # box where the timer was NEVER installed (so it can never auto-update at
+    # all — no security patches, no schema migrations). Distinguish "installed
+    # but not fired yet" from "never installed".
+    # In --json/auto-update mode this is a non-fatal WARN (a fresh box being
+    # manually updated before its timer is installed must not trigger a
+    # rollback). In interactive mode it is a hard FAIL so an installer can't
+    # read a green board on a box that will never update itself.
+    local timer_unit="/home/ubuntu/.config/systemd/user/sports-bar-autoupdate.timer"
+    if [ ! -f "$timer_unit" ]; then
+        if [ "$JSON" -eq 1 ]; then
+            log_warn "auto-update timer unit file missing — run: bash scripts/install-auto-update-timer.sh"
+            record "autoupdate_timer_fresh" 1 "WARN: unit file missing (run install-auto-update-timer.sh)"
+            return 0
+        fi
+        log_fail "auto-update timer unit file missing ($timer_unit) — this box will NEVER auto-update (no security patches, no schema migrations). Run: bash scripts/install-auto-update-timer.sh"
+        record "autoupdate_timer_fresh" 0 "unit file missing"
+        return 19
+    fi
+
     # Prefer sidecar (v2.55.33+): captures every attempt including NOOP.
     if [ -f "$sidecar" ]; then
         local attempted_at
@@ -904,7 +925,7 @@ check_shure_pending_resync_table_present() {
 # code when only one check failed (helps the auto-updater decide what to roll
 # back), but always run every check so the operator sees the full picture.
 # ---------------------------------------------------------------------------
-TOTAL=17
+TOTAL=18
 PASSED=0
 FAILED_NAMES=""
 FIRST_FAIL_CODE=0
@@ -978,6 +999,65 @@ check_matrix_config() {
     return 0
 }
 
+# Check 27 (Lime Kiln audit 2026-06-10): auth bootstrap completeness.
+# verify-install historically checked runtime health (PM2/HTTP/schema) but not
+# deployment completeness — a fresh ISO box passed 17/17 while AuthPin=0 and
+# LOCATION_ID was blank, i.e. every login returns "Invalid PIN". The box is
+# health=200 but operationally dead. This converts that silent green into a
+# visible signal.
+#
+# json/auto-update mode → non-fatal WARN (bootstrap state is orthogonal to
+# whether a code update applied; must never trigger a rollback). Interactive
+# mode → hard FAIL so an operator/installer can't trust a green board on an
+# unloggable box.
+check_auth_bootstrap_complete() {
+    log_info "Checking auth bootstrap completeness (AuthPin + LOCATION_ID)..."
+    if [ ! -f "$DB_PATH" ]; then
+        log_warn "Production DB not found — skipping auth bootstrap check"
+        record "auth_bootstrap_complete" 1 "DB absent"
+        return 0
+    fi
+    local env_file="/home/ubuntu/Sports-Bar-TV-Controller/.env"
+    local location_id=""
+    [ -f "$env_file" ] && location_id=$(grep -E '^LOCATION_ID=' "$env_file" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'")
+    local pin_active
+    pin_active=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM AuthPin WHERE isActive=1;" 2>/dev/null || echo "ERR")
+    if [ "$pin_active" = "ERR" ]; then
+        # AuthPin table itself unqueryable → a schema problem, owned by
+        # check_schema_completeness, not this readiness check.
+        log_warn "AuthPin table not queryable — skipping (schema_completeness owns this)"
+        record "auth_bootstrap_complete" 1 "AuthPin not queryable"
+        return 0
+    fi
+
+    local problem=""
+    # Treat the ecosystem.config.js fallback "default-location" and whitespace-only
+    # values as un-bootstrapped: the app starts with that placeholder but no AuthPin
+    # row references it, so login still returns "Invalid PIN" (Grok follow-up).
+    local location_id_trimmed
+    location_id_trimmed=$(printf '%s' "$location_id" | tr -d '[:space:]')
+    if [ -z "$location_id_trimmed" ] || [ "$location_id_trimmed" = "default-location" ]; then
+        problem="LOCATION_ID unset/placeholder in .env (got '${location_id}')"
+    fi
+    if [ "$pin_active" -le 0 ] 2>/dev/null; then
+        problem="${problem:+$problem; }AuthPin active-count=0"
+    fi
+
+    if [ -n "$problem" ]; then
+        if [ "$JSON" -eq 1 ]; then
+            log_warn "Auth not bootstrapped — $problem (run bootstrap-new-location.sh)"
+            record "auth_bootstrap_complete" 1 "WARN: $problem (run bootstrap-new-location.sh)"
+            return 0
+        fi
+        log_fail "Auth not bootstrapped — $problem. Login returns 'Invalid PIN'. Run: bash scripts/bootstrap-new-location.sh --name '<Bar Name>' --admin-pin <PIN> --staff-pin <PIN>; then pm2 restart sports-bar-tv-controller --update-env"
+        record "auth_bootstrap_complete" 0 "$problem"
+        return 27
+    fi
+    log_pass "Auth bootstrap complete (LOCATION_ID set, AuthPin active=${pin_active})"
+    record "auth_bootstrap_complete" 1 "LOCATION_ID set, AuthPin active=${pin_active}"
+    return 0
+}
+
 run_check check_pm2             "pm2_online"
 run_check check_health_http     "health_http"
 run_check check_metrics_http    "metrics_http"
@@ -996,6 +1076,7 @@ run_check check_atlas_drop_watcher_alive     "atlas_drop_watcher_alive"
 run_check check_atlas_priority_watcher_alive "atlas_priority_watcher_alive"
 run_check check_node_symlink_present         "node_symlink_present"
 run_check check_shure_pending_resync_table_present "shure_pending_resync_table_present"
+run_check check_auth_bootstrap_complete      "auth_bootstrap_complete"
 
 END_EPOCH=$(date +%s)
 DURATION=$((END_EPOCH - START_EPOCH))

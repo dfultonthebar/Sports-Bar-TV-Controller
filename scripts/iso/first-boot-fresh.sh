@@ -143,7 +143,12 @@ log "  Node: $(node --version), npm: $(npm --version)"
 # tied to the deferred Node-22.22.3 decision. See [[feedback-nodesource-npm-self-upgrade-broken]].
 
 cd "$APP_DIR"
-sudo -u ubuntu npm install --prefer-offline 2>&1 | tail -5
+# v2.55.49 (Lime Kiln audit): use `npm ci`, not `npm install`. On a fresh clone
+# `npm install --prefer-offline` mutated package-lock.json (observed dirty on
+# Lime Kiln's main working tree — a stray-commit risk on the shared template).
+# `npm ci` installs strictly from the committed lock and FAILS LOUD on drift
+# instead of silently rewriting it. Build is verified clean on npm ci (line 141).
+sudo -u ubuntu npm ci 2>&1 | tail -5
 
 # v2.55.6: generate .env with fresh secrets if absent (gap analysis found NO
 # .env on a fresh install — app ran on defaults but auth/encryption need real
