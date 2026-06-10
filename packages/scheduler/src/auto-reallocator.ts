@@ -596,7 +596,45 @@ class AutoReallocator {
             }),
           });
 
-          if (routeResponse.ok) {
+          // v2.55.43 — OR-gate sibling fix (same class as scheduler-service
+          // v2.55.41). Previously: `if (routeResponse.ok)`. An HTTP 200 with
+          // `{success:false}` body (or a body drifted off the
+          // {success:true|false} contract) was treated as a successful revert
+          // — the allocation is already marked completed/reverted by
+          // endAllocation(), so the TV silently stayed on the dead game feed
+          // with a green "reverted" log row. Treat success as
+          // `result.success===true` strictly.
+          const revertResult = await routeResponse.json().catch(() => ({} as any));
+          const revertSucceeded = revertResult?.success === true;
+          const malformedOk = !revertSucceeded && routeResponse.ok && revertResult?.success !== false;
+
+          if (malformedOk) {
+            // HTTP 200 but no explicit success flag — neither a clear success
+            // nor an explicit failure. Log loudly so we catch any route
+            // endpoint that drifts off the {success:true|false, ...} contract;
+            // then fall through to the failure branch so we DON'T log the TV
+            // as reverted based on a weak signal.
+            await schedulerLogger.warn(
+              'auto-reallocator',
+              'revert',
+              `Route returned HTTP 200 but no success flag — treating as failure for TV ${outputNumber} (${outputLabel}): ${JSON.stringify(revertResult)}`,
+              cid,
+              {
+                inputSourceId: inputSource.id,
+                allocationId: allocation.id,
+                metadata: {
+                  ...baseMeta(),
+                  reason: 'tv_route_malformed_ok',
+                  outputNumber,
+                  outputLabel,
+                  httpStatus: routeResponse.status,
+                },
+              }
+            );
+            logger.warn(`[AUTO-REALLOC] ⚠️ Route returned HTTP 200 but no success flag for TV ${outputNumber} (${outputLabel}): ${JSON.stringify(revertResult)}`);
+          }
+
+          if (revertSucceeded) {
             await schedulerLogger.info(
               'auto-reallocator',
               'revert',
@@ -619,11 +657,10 @@ class AutoReallocator {
               `[AUTO-REALLOC] Game ended, reverting TV ${outputNumber} (${outputLabel}) to default: ${defaultSource.inputLabel || 'input ' + defaultSource.inputNumber} (input ${defaultSource.inputNumber})`
             );
           } else {
-            const errorData = await routeResponse.json().catch(() => ({ error: 'Unknown error' }));
             await schedulerLogger.warn(
               'auto-reallocator',
               'revert',
-              `Failed to revert TV ${outputNumber} (${outputLabel}): ${errorData.error || routeResponse.statusText}`,
+              `Failed to revert TV ${outputNumber} (${outputLabel}): ${revertResult.error || routeResponse.statusText}`,
               cid,
               {
                 inputSourceId: inputSource.id,
@@ -634,12 +671,12 @@ class AutoReallocator {
                   outputNumber,
                   outputLabel,
                   httpStatus: routeResponse.status,
-                  routeError: errorData.error || routeResponse.statusText,
+                  routeError: revertResult.error || routeResponse.statusText,
                 },
               }
             );
             logger.warn(
-              `[AUTO-REALLOC] Failed to revert TV ${outputNumber} (${outputLabel}) to default: ${errorData.error || routeResponse.statusText}`
+              `[AUTO-REALLOC] Failed to revert TV ${outputNumber} (${outputLabel}) to default: ${revertResult.error || routeResponse.statusText}`
             );
           }
         } catch (routeError: any) {
@@ -847,7 +884,40 @@ class AutoReallocator {
                 body: JSON.stringify(tunePayload),
               });
 
-              if (tuneResponse.ok) {
+              // v2.55.43 — OR-gate sibling fix (same class as scheduler-service
+              // v2.55.41, which fixed THIS SAME endpoint's contract on the tune
+              // path). /api/channel-presets/tune returns HTTP 200 with
+              // `{success:false, error:'…'}` for soft failures (box offline,
+              // channel missing). Previously `if (tuneResponse.ok)` set
+              // cableBoxTuned=true and logged "Tuned back to default" while the
+              // box never moved. Treat success as `result.success===true`
+              // strictly; HTTP 200 with a missing flag logs loud and falls to
+              // the failure path.
+              const tuneResult = await tuneResponse.json().catch(() => ({} as any));
+              const tuneSucceeded = tuneResult?.success === true;
+              const tuneMalformedOk = !tuneSucceeded && tuneResponse.ok && tuneResult?.success !== false;
+
+              if (tuneMalformedOk) {
+                await schedulerLogger.warn(
+                  'auto-reallocator',
+                  'revert',
+                  `Tune returned HTTP 200 but no success flag — treating as failure for ${inputSource.name}: ${JSON.stringify(tuneResult)}`,
+                  cid,
+                  {
+                    inputSourceId: inputSource.id,
+                    channelNumber: cableBoxDefault.channelNumber,
+                    metadata: {
+                      ...baseMeta(),
+                      reason: `${inputSource.type}_tune_malformed_ok`,
+                      httpStatus: tuneResponse.status,
+                      sourceType: inputSource.type,
+                    },
+                  }
+                );
+                logger.warn(`[AUTO-REALLOC] ⚠️ Tune returned HTTP 200 but no success flag for ${inputSource.name}: ${JSON.stringify(tuneResult)}`);
+              }
+
+              if (tuneSucceeded) {
                 cableBoxTuned = true;
                 const label = cableBoxDefault.channelName
                   ? `${cableBoxDefault.channelNumber} (${cableBoxDefault.channelName})`
@@ -880,13 +950,12 @@ class AutoReallocator {
                 );
               } else {
                 cableBoxTuned = false;
-                const errorData = await tuneResponse.json().catch(() => ({ error: 'Unknown error' }));
                 await schedulerLogger.error(
                   'auto-reallocator',
                   'revert',
                   `Failed to tune ${inputSource.name} back to default channel`,
                   cid,
-                  new Error(errorData.error || tuneResponse.statusText),
+                  new Error(tuneResult.error || tuneResponse.statusText),
                   {
                     inputSourceId: inputSource.id,
                     channelNumber: cableBoxDefault.channelNumber,
@@ -894,13 +963,13 @@ class AutoReallocator {
                       ...baseMeta(),
                       reason: `${inputSource.type}_tune_failed`,
                       httpStatus: tuneResponse.status,
-                      tuneError: errorData.error || tuneResponse.statusText,
+                      tuneError: tuneResult.error || tuneResponse.statusText,
                       sourceType: inputSource.type,
                     },
                   }
                 );
                 logger.warn(
-                  `[AUTO-REALLOC] Failed to tune ${inputSource.name} back to default channel: ${errorData.error || tuneResponse.statusText}`
+                  `[AUTO-REALLOC] Failed to tune ${inputSource.name} back to default channel: ${tuneResult.error || tuneResponse.statusText}`
                 );
               }
             } catch (tuneError: any) {
