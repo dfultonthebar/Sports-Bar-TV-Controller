@@ -35,6 +35,36 @@ is the archive.
 
 ---
 
+## v2.55.46 — Override-learn stays open through overtime / extra innings (2026-06-10)
+
+**Versions covered:** v2.55.43–v2.55.46
+**Branch landed:** main → all 6 location branches
+**Required Manual Step:** **None.** Code-only fix; the normal auto-update rebuild + PM2 restart picks it up.
+
+**Why (operator terms):** when a game runs PAST its scheduled end — extra
+innings on a Brewers game, overtime, a rain delay — the system used to stop
+learning from bartender corrections the moment the *estimated* end time
+passed. So if a bartender moved the game to different TVs during extras,
+that correction was silently ignored by the pattern learner, even though
+that late-game window is exactly when corrections happen most. MLB extra
+innings are routine; this gap dropped real learning signal.
+
+**What changed:** `/api/matrix/route`'s override-learn allocation query now
+keeps the learning window open **while the allocation is still active OR
+its expected end time has not passed**. The auto-reallocator marks the
+allocation `completed` at the real game end, which closes the window
+naturally — no fixed clock cutoff.
+
+**Verify at a location** (after a game that went long): bartender re-routes
+during overtime should produce an override-learn row:
+```bash
+grep "override-learn" /home/ubuntu/sports-bar-data/logs/scheduling-$(date +%F).log
+# or: sqlite3 /home/ubuntu/sports-bar-data/production.db \
+#   "SELECT created_at, message FROM SchedulerLog WHERE component='override-learn' ORDER BY created_at DESC LIMIT 5"
+```
+
+---
+
 ## v2.55.42 — Scheduling logger: AI Suggest + override-learn paths instrumented (2026-06-10)
 
 **Versions covered:** v2.55.42

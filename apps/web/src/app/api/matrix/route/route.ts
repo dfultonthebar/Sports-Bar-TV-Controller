@@ -162,11 +162,17 @@ export async function POST(request: NextRequest) {
     // Override-learn: when a bartender changes a route during an active
     // scheduled allocation (game has not yet ended), patch that allocation's
     // tv_output_ids so the hourly pattern-analyzer learns from the correction.
-    // The window is bounded by expected_free_at (estimated game end + buffer)
-    // rather than allocated_at — bartender corrections frequently happen 10+
-    // minutes after game start (allocated_at = tuneAtUnix = game start time),
-    // and the previous "allocated_at >= now-600" gate silently excluded every
-    // such correction, dropping the strongest pattern-learning signal.
+    // The window is open while the allocation is still active OR
+    // expected_free_at has not passed — NOT bounded by allocated_at.
+    // Bartender corrections frequently happen 10+ minutes after game start
+    // (allocated_at = tuneAtUnix = game start time), and the old
+    // "allocated_at >= now-600" gate silently excluded every such correction,
+    // dropping the strongest pattern-learning signal (fixed v2.55.40).
+    // The OR-status-active leg covers games that run PAST their estimated end
+    // (extra innings, overtime, rain delay): expected_free_at < now there,
+    // but the allocation is still status='active' until the auto-reallocator
+    // marks it completed at real game end — which closes the window naturally
+    // (added v2.55.46).
     // Home-team overrides (Brewers/Bucks/Badgers/etc. from HomeTeam table)
     // are logged at warn level so operators can filter to the strongest
     // signals.
@@ -195,7 +201,7 @@ export async function POST(request: NextRequest) {
           LEFT JOIN MatrixInput mi ON mi.id = s.matrix_input_id
           LEFT JOIN game_schedules g ON g.id = a.game_schedule_id
           WHERE a.status IN ('active','pending','tuning')
-            AND a.expected_free_at >= ${nowUnix}
+            AND (a.expected_free_at >= ${nowUnix} OR a.status = 'active')
         `) as Array<{
           allocation_id: string
           input_source_id: string
