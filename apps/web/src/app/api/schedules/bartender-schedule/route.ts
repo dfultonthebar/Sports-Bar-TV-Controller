@@ -221,10 +221,81 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // If still not found, fail explicitly rather than silently creating a phantom game row
+    // Synthetic-row fallback (v2.55.39): if the ESPN sync hasn't imported this
+    // game (MILB Timber Rattlers, USFL, indie leagues, future Rail-only
+    // sources), create a `game_schedules` row from the channel-guide-supplied
+    // data so the allocation can proceed. Previously this path returned 404
+    // and the bartender saw nothing but a tiny toast — Holmgren operators hit
+    // it twice on 2026-06-10 trying to schedule the Timber Rattlers game.
+    //
+    // The synthetic row uses a `rail-<ts>-<home>-<away>` espnEventId so it
+    // is (a) unique (the schema requires that), (b) easily distinguishable
+    // from a real ESPN sync row, and (c) tolerated by the auto-reallocator
+    // (scheduler-service.ts:1428 already handles non-ESPN espnEventId
+    // prefixes via the `bartender-` precedent).
+    if (!gameSchedule) {
+      const synthId = crypto.randomUUID()
+      const syntheticEventId =
+        `rail-${Date.now()}-` +
+        `${gameInfo.homeTeam.replace(/\W/g, '').slice(0, 12)}-` +
+        `${gameInfo.awayTeam.replace(/\W/g, '').slice(0, 12)}`
+
+      const leagueLabel = gameInfo.league ?? 'unknown'
+      const seasonYear = new Date(gameInfo.startTime).getFullYear()
+
+      const syntheticRow = {
+        id: synthId,
+        espnEventId: syntheticEventId,
+        espnCompetitionId: syntheticEventId,
+        sport: leagueLabel,
+        league: leagueLabel,
+        homeTeamEspnId: '',
+        awayTeamEspnId: '',
+        homeTeamName: gameInfo.homeTeam,
+        awayTeamName: gameInfo.awayTeam,
+        scheduledStart: startTimeUnix,
+        estimatedEnd: endTimeUnix,
+        status: 'scheduled',
+        seasonType: 2,
+        seasonYear,
+        broadcastNetworks: JSON.stringify([]),
+        syncSource: 'rail-synthetic',
+        createdAt: nowUnix,
+        updatedAt: nowUnix,
+      }
+
+      await db.insert(schema.gameSchedules).values(syntheticRow)
+      // Re-read from DB so downstream code sees full row defaults applied.
+      gameSchedule = await db.select().from(schema.gameSchedules)
+        .where(eq(schema.gameSchedules.id, synthId))
+        .get()
+
+      logger.info(
+        `[BARTENDER-SCHEDULE] Created synthetic game_schedules row ${synthId} ` +
+        `for non-ESPN game: ${gameInfo.awayTeam} @ ${gameInfo.homeTeam} ` +
+        `(league=${leagueLabel}, espnEventId=${syntheticEventId})`
+      )
+      await logSchedulingEvent({
+        level: 'info',
+        source: 'manual',
+        action: 'game_lookup_synthetic',
+        requestId: reqId,
+        game: {
+          home: gameInfo.homeTeam,
+          away: gameInfo.awayTeam,
+          league: gameInfo.league ?? undefined,
+          startLocal: gameInfo.startTime,
+        },
+        outcome: { allocationId: synthId },
+        note: `created synthetic game row (no ESPN match) — espnEventId=${syntheticEventId}`,
+      })
+    }
+
+    // Belt-and-suspenders: if both the lookup and the synthetic insert somehow
+    // left gameSchedule null, fail explicitly rather than crashing downstream.
     if (!gameSchedule) {
       const gameTime = new Date(gameInfo.startTime).toLocaleString()
-      const msg = `No matching game schedule found for ${gameInfo.awayTeam} @ ${gameInfo.homeTeam} at ${gameTime}. The MLB/sports sync may not have imported this game yet.`
+      const msg = `Failed to find or create game schedule for ${gameInfo.awayTeam} @ ${gameInfo.homeTeam} at ${gameTime}.`
       logger.warn(`[BARTENDER-SCHEDULE] ${msg}`)
       await logSchedulingEvent({
         level: 'warn',
@@ -237,12 +308,12 @@ export async function POST(request: NextRequest) {
           league: gameInfo.league ?? undefined,
           startLocal: gameInfo.startTime,
         },
-        outcome: { httpStatus: 404, errorMessage: msg },
-        note: 'most likely cause: league not covered by ESPN sync (MILB, USFL, indie leagues) — Rail Media surfaces the game in the channel guide but bartender-schedule needs it in game_schedules',
+        outcome: { httpStatus: 500, errorMessage: msg },
+        note: 'synthetic-row insert succeeded but DB re-read returned no row — investigate',
       })
       return NextResponse.json(
         { success: false, error: msg },
-        { status: 404 }
+        { status: 500 }
       )
     }
     await logSchedulingEvent({

@@ -42,6 +42,9 @@ export type SchedulingAction =
   | 'attempt'             // request received, before any lookup
   | 'game_lookup_ok'      // matched a game_schedules row
   | 'game_lookup_fail'    // 404 / no match found (the silent-fail class)
+  | 'game_lookup_synthetic' // no ESPN match — synthesized a game_schedules row
+                            // from channel-guide data (MILB / USFL / indie /
+                            // any non-ESPN-covered Rail source) — v2.55.39
   | 'allocation_created'  // input_source_allocations row inserted
   | 'allocation_updated'  // PATCH on an existing allocation
   | 'allocation_canceled'

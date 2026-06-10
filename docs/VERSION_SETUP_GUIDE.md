@@ -35,6 +35,48 @@ is the archive.
 
 ---
 
+## v2.55.39 — Synthetic game_schedules row fallback unblocks non-ESPN games (MILB / USFL / indie) (2026-06-10)
+
+**Versions covered:** v2.55.39
+**Branch landed:** main → all 6 location branches
+**Required Manual Step:** **None.** Pure code change. No schema migration (existing `game_schedules` columns cover the synthetic row). New `'game_lookup_synthetic'` log action type appears in `/home/ubuntu/sports-bar-data/logs/scheduling-YYYY-MM-DD.log` on first use.
+
+**Why:** The v2.55.38 instrumentation surfaced the exact silent-fail predicted in that release's follow-up note. Holmgren bartenders tried to schedule the Timber Rattlers game twice this morning (07:25 and 07:38 CT); both attempts returned `404 No matching game schedule found` because MILB is not in the ESPN sync (`instrumentation.ts:177-224` ESPN_SYNC_LEAGUES = MLB/NBA/NHL/NFL/CFB/MCBB/WCBB). The channel guide surfaced the game via Rail Media — the bartender saw it, picked it, and got a silent toast. Verified live failure today; affects every location any time Rail surfaces a non-ESPN game.
+
+**Fix:** `apps/web/src/app/api/schedules/bartender-schedule/route.ts` — after the lookup-by-ESPN-ID, lookup-by-teams-and-time, and special-broadcast fallbacks all miss, insert a synthetic `game_schedules` row from the channel-guide-supplied `gameInfo` instead of returning 404. The synthetic row uses:
+
+- `espnEventId = rail-<unix-ms>-<home12>-<away12>` (unique per the schema's notNull+unique constraint; distinguishable from real ESPN IDs at-a-glance and via prefix match)
+- `syncSource = 'rail-synthetic'` (so analytics can split learned vs synthetic origins)
+- `sport = league = gameInfo.league ?? 'unknown'`
+- `seasonType = 2` (regular season — best default for in-season Rail surfaces)
+- `seasonYear = year-of-startTime`
+- `broadcastNetworks = '[]'` (channel binding happens at the allocation level — `channelNumber` on the allocation row)
+- empty `homeTeamEspnId` / `awayTeamEspnId` (the schema has them as notNull text — empty string clears the NOT NULL gate without faking an ESPN ID)
+
+The auto-reallocator (`packages/scheduler/src/auto-reallocator.ts` via `scheduler-service.ts:1428`) already tolerates non-ESPN espnEventIds (`bartender-` prefix precedent), so synthetic rows flow through end-to-end with no further changes.
+
+A new SchedulingAction enum value `'game_lookup_synthetic'` is added to `apps/web/src/lib/scheduling-logger.ts` so the v2.55.38 log surface distinguishes synthetic-row paths from real ESPN matches.
+
+**Operator usage:**
+```bash
+# Watch for synthetic-row events at game-time today:
+grep game_lookup_synthetic /home/ubuntu/sports-bar-data/logs/scheduling-$(date +%F).log
+
+# Confirm a synthetic row was created in the DB:
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "SELECT id, espn_event_id, league, home_team_name, away_team_name, datetime(scheduled_start,'unixepoch','localtime') AS start_local FROM game_schedules WHERE espn_event_id LIKE 'rail-%' ORDER BY created_at DESC LIMIT 10;"
+```
+
+**Verification at Holmgren (Timber Rattlers tonight 17:00 CT):**
+1. After deploy, tail `scheduling-2026-06-10.log` while bartender re-schedules the Timber Rattlers game.
+2. Expect: `action=attempt` → `action=game_lookup_synthetic` (NEW) → `action=allocation_created`.
+3. At 17:00 CT, cable box 1 tunes to channel 10.
+4. `SELECT … WHERE espn_event_id LIKE 'rail-%'` returns the new row.
+
+**No rollback risk path** — if synthesizing fails for any reason (DB write error, missing required field), the existing belt-and-suspenders block returns 500 with `'synthetic-row insert succeeded but DB re-read returned no row'` so the operator gets a distinguishable error from the old 404.
+
+---
+
 ## v2.55.38 — Dedicated scheduling log file + bartender-schedule POST instrumentation (2026-06-10)
 
 **Versions covered:** v2.55.38
