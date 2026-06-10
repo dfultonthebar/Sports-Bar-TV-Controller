@@ -1,3 +1,20 @@
+## v2.55.43 — auto-reallocator OR-gate fix: v2.55.41 missed two sibling sites (2026-06-10)
+
+**Versions covered:** v2.55.43 — scheduler audit Green #1 (CRITICAL)
+**Branch landed:** main
+**Required Manual Step:** None. PM2 restart picks it up.
+
+**Why:** v2.55.41 fixed the tune-success OR-gate in scheduler-service.ts (the Greenville Brewers "didn't switch" bug). The Red/Blue/White/Purple scheduling audit found the IDENTICAL bug pattern in `packages/scheduler/src/auto-reallocator.ts` at TWO sites the v2.55.41 patch never touched:
+
+1. **Revert path (~line 597):** when a game ends and the auto-reallocator reverts a TV to its default source, `if (routeResponse.ok)` treated any HTTP 200 as a successful revert — even an HTTP 200 with `{success:false}` body. The allocation was already marked completed by endAllocation(), so the TV silently stayed on the dead game feed while a green "reverted" row logged.
+2. **Tune-back-to-default path (~line 884):** same `if (tuneResponse.ok)` on the cable/satellite tune-back. `/api/channel-presets/tune` returns HTTP 200 with `{success:false}` for soft failures (box offline, channel missing) — these were logged as "Tuned back to default" while the box never moved.
+
+**Fix:** both sites now use `result.success === true` strictly, with a `malformedOk` branch (HTTP 200 + missing success flag → loud WARN + fall through to failure). Mirrors scheduler-service.ts:1156-1159 exactly. A third `response.ok` at line 439 (GET /api/settings/default-sources config load) is correctly NOT changed — it's a config read, not a routing command; failure safely skips revert.
+
+**Verify:** during a game-end revert where the cable box is offline, confirm the scheduler log shows `revert ... treating as failure` (WARN) rather than a success row, and the allocation is NOT silently marked reverted.
+
+---
+
 # Version Setup Guide
 
 **Purpose:** This file tells Claude (and operators) what each version
