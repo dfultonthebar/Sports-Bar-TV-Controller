@@ -35,6 +35,70 @@ is the archive.
 
 ---
 
+## v2.55.41 — Scheduler tune OR-gate fix: HTTP 200 with {success:false} no longer flips allocation to 'active' (2026-06-10)
+
+**Versions covered:** v2.55.41
+**Branch landed:** main → all 6 location branches
+**Required Manual Step:** **None.** Code-only fix; no schema, no env, no PM2 ecosystem changes. Auto-update rebuilds, restarts, done.
+
+**Why:** RED team triage of the Greenville Brewers "didn't switch" symptom traced the most likely root cause to `packages/scheduler/src/scheduler-service.ts:1146`. The branch was `if (result.success || response.ok) { ... mark allocation 'active' ... }`. The tune endpoint at `/api/channel-presets/tune` returns HTTP 200 with `{success:false, error:'Cable box not found'}` for soft failures (device not found, device offline, channel missing, etc.). The OR short-circuited on `response.ok=true` and ran the success path — allocation status flipped to `'active'`, `input_sources.currentlyAllocated=true`, and Wolf Pack matrix routing fired for the wrong channel. The cable box never tuned, but the system claimed success. Bartender saw a green 'Scheduled' tile, nothing actually switched, no error surfaced anywhere. Fires across every scheduling path: manual, ai, auto, override-learn.
+
+**Fix:** strict success check.
+
+- `packages/scheduler/src/scheduler-service.ts` — replaced `if (result.success || response.ok)` with `if (result?.success === true)`. The previous `response.ok` fallback is split into an explicit `malformedOk` branch (HTTP 200 with no explicit `success` flag — neither true nor false): we log a `WARN` via `schedulerLogger.warn()` + `logger.warn()` and fall through to the existing failure path. The existing `else { schedulerLogger.log({ level: 'error', ... }) }` block at the bottom of the if-chain handles both the soft-fail `{success:false}` AND the malformed-200 cases — no new failure-handling code, just a stricter entry condition. Added a success-path `schedulerLogger.info` so the operator can see "Tune confirmed by API: success=true for allocation X" in the dedicated scheduling log when a tune actually worked.
+
+**Verify** (post-update, optional — operator-facing smoke):
+1. Holmgren: `curl -s -X POST http://localhost:3001/api/channel-presets/tune -H 'Content-Type: application/json' -d '{"channelNumber":"5","deviceType":"cable","cableBoxId":"nonexistent"}'` — confirm response is HTTP 200 with `{success:false, error:'…'}` body. (This is the shape the OR-gate misread.)
+2. Create a test allocation pointing at a nonexistent device, wait one scheduler tick (~60s).
+3. `sqlite3 /home/ubuntu/sports-bar-data/production.db "SELECT id, status FROM input_source_allocations WHERE id='<test-alloc-id>'"` — status MUST remain `'pending'` or transition to `'failed'`, never `'active'`.
+4. `sqlite3 /home/ubuntu/sports-bar-data/production.db "SELECT currentlyAllocated, currentChannel FROM input_sources WHERE id='<input-source-id>'"` — `currentlyAllocated` must remain 0/false; `currentChannel` must NOT be the test channel.
+5. `pm2 logs sports-bar-tv-controller --lines 50 | grep SCHEDULER` — expect `❌ Failed to tune …` line, NOT `✅ Successfully tuned …`.
+6. `tail /home/ubuntu/sports-bar-data/logs/scheduling-*.log` — expect a `tune` row with `success: false` and the error verbatim from the API response.
+
+**Blast radius:** every scheduled tune across every code path (manual / ai-suggested / auto-reallocated / override-learned) routes through this single branch. Fix is 2 lines of structural change + 3 new log lines. Expected positive effect: silent total failures (green tile, nothing switched, no error surfaced) stop. The remaining "didn't switch" symptoms after this lands will fall into one of the previously-known buckets (game not in `game_schedules`, network unreachable, IR emitter unplugged), all of which now produce visible error logs.
+
+---
+
+## v2.55.38 — Dedicated scheduling log file + bartender-schedule POST instrumentation (2026-06-10)
+
+**Versions covered:** v2.55.38
+**Branch landed:** main → all 6 location branches
+**Required Manual Step:** **None.** New log file appears on first scheduling event. Existing PM2 log mirrors stay (no behavior change to existing observers).
+
+**Why:** Two silent failures hit this morning:
+- **Holmgren Timber Rattlers** — bartender picked the game from the channel guide, selected cable box 1, nothing happened. The bartender-schedule POST returned 404 with `No matching game schedule found for Great Lakes Loons @ Wisconsin Timber Rattlers ... The MLB/sports sync may not have imported this game yet.` Root cause: **MILB (Minor League Baseball) is not in the ESPN sync** (CLAUDE.md §9 lists MLB/NBA/NHL/NFL/CFB/MCBB/WCBB only). The channel guide surfaced the game via Rail Media; bartender-schedule requires it in `game_schedules`. Result: silent UI failure (just a tiny toast) with the only trace a buried `[WARN]` in the main PM2 log.
+- **Greenville Brewers** — operator reports "they tried to schedule the brewers game a few times and it didn't switch and when they hit the manual schedule it didn't work." Cannot triage without the bartender's POST being visible. Last logged Greenville allocation was last night's Brewers game (status: completed) — no record of today's attempts.
+
+**Fix:** new dedicated scheduling log file pattern, mirroring the proven shure-rf-logger.ts shape.
+
+- `apps/web/src/lib/scheduling-logger.ts` — daily-rotating file at `/home/ubuntu/sports-bar-data/logs/scheduling-YYYY-MM-DD.log`. 30-day retention. Columns: `ISO_TS | LEVEL | SOURCE | ACTION | requestId | game | targets | outcome | note`. Mirrors through `@sports-bar/logger` so PM2 still surfaces.
+- `apps/web/src/app/api/schedules/bartender-schedule/route.ts` POST handler: logs `attempt` at entry, `game_lookup_ok` or `game_lookup_fail` at the lookup gate, `allocation_created` on success, `tune_fail` on uncaught exception. Each event includes a `requestId` for correlation.
+
+**Sources** the logger covers (taxonomy):
+- `manual` — bartender remote / channel guide selections (just wired)
+- `ai` — AI Suggest approval flow (next pass)
+- `auto` — auto-reallocator decisions (next pass)
+- `override-learn` — bartender-side manual override on a live TV (next pass)
+
+**Actions** (taxonomy):
+`attempt | game_lookup_ok | game_lookup_fail | allocation_created | allocation_updated | allocation_canceled | conflict_detected | route_command | route_ok | route_fail | tune_complete | tune_fail`
+
+**Operator usage:**
+```bash
+# Today's scheduling activity:
+tail -f /home/ubuntu/sports-bar-data/logs/scheduling-$(date +%F).log
+
+# Just the failures:
+grep -E 'WARN|ERROR|game_lookup_fail|tune_fail' /home/ubuntu/sports-bar-data/logs/scheduling-*.log
+
+# Just for a specific team:
+grep -i brewers /home/ubuntu/sports-bar-data/logs/scheduling-*.log
+```
+
+**Known follow-up (will be tracked by the audit):** The MILB / Timber Rattlers case is a real product gap — the channel guide can show a game we can't actually schedule. Either ESPN sync needs MILB coverage OR the bartender-schedule route needs to accept channel-guide-sourced games and create a phantom `game_schedules` row at scheduling time. To be decided by the v2.55.39 audit pass (Red/Blue/White/Green teams + Grok review).
+
+---
+
 ## v2.55.37 — Cleanup: commit accumulated dev helpers + new hooks/skills (2026-06-10)
 
 **Versions covered:** v2.55.37

@@ -1143,7 +1143,57 @@ class SchedulerService {
           const result = await response.json();
           const tuneDurationMs = Date.now() - tuneStartTime;
 
-          if (result.success || response.ok) {
+          // v2.55.41 — OR-gate bug fix. Previously: `if (result.success || response.ok)`.
+          // The tune endpoint returns HTTP 200 with `{success:false, error:'…'}` for soft
+          // failures (e.g. cable box not found, device offline, channel missing). The OR
+          // fell through to response.ok=true and flipped the allocation to 'active' +
+          // mirrored currentlyAllocated onto input_sources + fired Wolf Pack routing for
+          // the WRONG channel. Bartender saw a green 'Scheduled' tile, nothing actually
+          // switched, no error surfaced. Single most likely cause of the Greenville
+          // Brewers 'didn't switch' symptom — every code path (manual, ai, auto,
+          // override-learn) routes through here. Treat success as `result.success===true`
+          // strictly; treat HTTP 200 with missing/false success as a failure.
+          const tuneSucceeded = result?.success === true;
+          const malformedOk = !tuneSucceeded && response.ok && result?.success !== false;
+
+          if (malformedOk) {
+            // HTTP 200 but no explicit success flag — neither a clear success nor an
+            // explicit failure. Log loudly so we catch any tune endpoint that drifts
+            // off the {success:true|false, ...} contract; then fall through to the
+            // failure branch so we DON'T flip the allocation to 'active' based on a
+            // weak signal.
+            await schedulerLogger.warn(
+              'scheduler-service',
+              'tune',
+              `Tune returned HTTP 200 but no success flag — treating as failure for allocation ${allocation.id}: ${JSON.stringify(result)}`,
+              correlationId,
+              {
+                gameId: game.id,
+                inputSourceId: inputSource.id,
+                allocationId: allocation.id,
+                channelNumber: allocation.channelNumber,
+                deviceType: allocation.inputSourceType as 'cable' | 'directv' | 'firetv',
+                durationMs: tuneDurationMs,
+              }
+            );
+            logger.warn(`[SCHEDULER] ⚠️ Tune returned HTTP 200 but no success flag: ${JSON.stringify(result)}`);
+          }
+
+          if (tuneSucceeded) {
+            await schedulerLogger.info(
+              'scheduler-service',
+              'tune',
+              `Tune confirmed by API: success=true for allocation ${allocation.id}`,
+              correlationId,
+              {
+                gameId: game.id,
+                inputSourceId: inputSource.id,
+                allocationId: allocation.id,
+                channelNumber: allocation.channelNumber,
+                deviceType: allocation.inputSourceType as 'cable' | 'directv' | 'firetv',
+              }
+            );
+
             // Update allocation status to 'active'
             await db.update(schema.inputSourceAllocations)
               .set({
