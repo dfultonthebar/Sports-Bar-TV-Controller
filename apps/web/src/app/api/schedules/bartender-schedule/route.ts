@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db, schema } from '@/db'
 import { eq, and, or, gte, lte, inArray } from 'drizzle-orm'
 import { logger } from '@sports-bar/logger'
+import {
+  logSchedulingEvent,
+  newSchedulingRequestId,
+} from '@/lib/scheduling-logger'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { z } from 'zod'
@@ -60,6 +64,34 @@ export async function POST(request: NextRequest) {
   if (isValidationError(bodyValidation)) return bodyValidation.error
 
   const { deviceId, deviceType, deviceName, channelNumber, channelName, gameInfo, tuneAt, inputSourceId, tvOutputIds, deepLink } = bodyValidation.data
+
+  // v2.55.38 — dedicated scheduling log file. Operator requested 2026-06-10
+  // after Greenville Brewers + Holmgren Timber Rattlers both failed silently
+  // (the bartender's POST produced a 404 or a thrown error that surfaced
+  // only as a small toast in the UI; main PM2 log had it buried among
+  // unrelated lines). Now: every scheduling action (manual + AI + auto)
+  // hits /home/ubuntu/sports-bar-data/logs/scheduling-YYYY-MM-DD.log with
+  // a stable column layout the operator can grep.
+  const reqId = newSchedulingRequestId()
+  await logSchedulingEvent({
+    level: 'info',
+    source: 'manual',
+    action: 'attempt',
+    requestId: reqId,
+    game: {
+      home: gameInfo.homeTeam,
+      away: gameInfo.awayTeam,
+      league: gameInfo.league ?? undefined,
+      startLocal: gameInfo.startTime,
+    },
+    targets: {
+      tvOutputIds: tvOutputIds ?? undefined,
+      inputSourceId: inputSourceId ?? undefined,
+      inputSourceType: deviceType ?? undefined,
+      channelNumber: channelNumber ?? undefined,
+    },
+    note: `device=${deviceName ?? deviceId ?? '-'} tuneAt=${tuneAt}`,
+  })
 
   try {
     // 1. Find or get an input source
@@ -194,11 +226,37 @@ export async function POST(request: NextRequest) {
       const gameTime = new Date(gameInfo.startTime).toLocaleString()
       const msg = `No matching game schedule found for ${gameInfo.awayTeam} @ ${gameInfo.homeTeam} at ${gameTime}. The MLB/sports sync may not have imported this game yet.`
       logger.warn(`[BARTENDER-SCHEDULE] ${msg}`)
+      await logSchedulingEvent({
+        level: 'warn',
+        source: 'manual',
+        action: 'game_lookup_fail',
+        requestId: reqId,
+        game: {
+          home: gameInfo.homeTeam,
+          away: gameInfo.awayTeam,
+          league: gameInfo.league ?? undefined,
+          startLocal: gameInfo.startTime,
+        },
+        outcome: { httpStatus: 404, errorMessage: msg },
+        note: 'most likely cause: league not covered by ESPN sync (MILB, USFL, indie leagues) — Rail Media surfaces the game in the channel guide but bartender-schedule needs it in game_schedules',
+      })
       return NextResponse.json(
         { success: false, error: msg },
         { status: 404 }
       )
     }
+    await logSchedulingEvent({
+      level: 'info',
+      source: 'manual',
+      action: 'game_lookup_ok',
+      requestId: reqId,
+      game: {
+        home: gameSchedule.homeTeamName,
+        away: gameSchedule.awayTeamName,
+        league: gameSchedule.league ?? undefined,
+      },
+      outcome: { allocationId: gameSchedule.id },
+    })
 
     // 3. Check if there's already a pending allocation for this game on this input
     const existingAllocation = await db.select().from(schema.inputSourceAllocations)
@@ -293,6 +351,30 @@ export async function POST(request: NextRequest) {
 
     logger.info(`[BARTENDER-SCHEDULE] Created allocation: ${allocation.id} for ${inputSource.name} to ch ${channelNumber} at ${tuneAt}`)
 
+    await logSchedulingEvent({
+      level: 'info',
+      source: 'manual',
+      action: 'allocation_created',
+      requestId: reqId,
+      game: {
+        home: gameSchedule.homeTeamName,
+        away: gameSchedule.awayTeamName,
+        league: gameSchedule.league ?? undefined,
+      },
+      targets: {
+        tvOutputIds: tvOutputIds ?? undefined,
+        inputSourceId: inputSource.id,
+        inputSourceType: deviceType ?? undefined,
+        channelNumber: channelNumber ?? undefined,
+      },
+      outcome: {
+        status: 'pending',
+        allocationId: allocation.id,
+        httpStatus: 200,
+      },
+      note: `tuneAt=${tuneAt} (will fire when scheduler-service sweeps)`,
+    })
+
     return NextResponse.json({
       success: true,
       message: `Scheduled ${inputSource.name || deviceName} to tune to ${channelName || `channel ${channelNumber}`} at ${new Date(tuneAt).toLocaleTimeString()}`,
@@ -304,6 +386,19 @@ export async function POST(request: NextRequest) {
     })
   } catch (error: any) {
     logger.error('[BARTENDER-SCHEDULE] Error creating schedule:', error)
+    await logSchedulingEvent({
+      level: 'error',
+      source: 'manual',
+      action: 'tune_fail',
+      requestId: reqId,
+      game: {
+        home: gameInfo.homeTeam,
+        away: gameInfo.awayTeam,
+        league: gameInfo.league ?? undefined,
+      },
+      outcome: { httpStatus: 500, errorMessage: error.message },
+      note: 'unexpected exception in bartender-schedule POST — see PM2 stack',
+    })
     return NextResponse.json(
       { success: false, error: error.message },
       { status: 500 }

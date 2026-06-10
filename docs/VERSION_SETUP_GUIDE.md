@@ -35,6 +35,46 @@ is the archive.
 
 ---
 
+## v2.55.38 — Dedicated scheduling log file + bartender-schedule POST instrumentation (2026-06-10)
+
+**Versions covered:** v2.55.38
+**Branch landed:** main → all 6 location branches
+**Required Manual Step:** **None.** New log file appears on first scheduling event. Existing PM2 log mirrors stay (no behavior change to existing observers).
+
+**Why:** Two silent failures hit this morning:
+- **Holmgren Timber Rattlers** — bartender picked the game from the channel guide, selected cable box 1, nothing happened. The bartender-schedule POST returned 404 with `No matching game schedule found for Great Lakes Loons @ Wisconsin Timber Rattlers ... The MLB/sports sync may not have imported this game yet.` Root cause: **MILB (Minor League Baseball) is not in the ESPN sync** (CLAUDE.md §9 lists MLB/NBA/NHL/NFL/CFB/MCBB/WCBB only). The channel guide surfaced the game via Rail Media; bartender-schedule requires it in `game_schedules`. Result: silent UI failure (just a tiny toast) with the only trace a buried `[WARN]` in the main PM2 log.
+- **Greenville Brewers** — operator reports "they tried to schedule the brewers game a few times and it didn't switch and when they hit the manual schedule it didn't work." Cannot triage without the bartender's POST being visible. Last logged Greenville allocation was last night's Brewers game (status: completed) — no record of today's attempts.
+
+**Fix:** new dedicated scheduling log file pattern, mirroring the proven shure-rf-logger.ts shape.
+
+- `apps/web/src/lib/scheduling-logger.ts` — daily-rotating file at `/home/ubuntu/sports-bar-data/logs/scheduling-YYYY-MM-DD.log`. 30-day retention. Columns: `ISO_TS | LEVEL | SOURCE | ACTION | requestId | game | targets | outcome | note`. Mirrors through `@sports-bar/logger` so PM2 still surfaces.
+- `apps/web/src/app/api/schedules/bartender-schedule/route.ts` POST handler: logs `attempt` at entry, `game_lookup_ok` or `game_lookup_fail` at the lookup gate, `allocation_created` on success, `tune_fail` on uncaught exception. Each event includes a `requestId` for correlation.
+
+**Sources** the logger covers (taxonomy):
+- `manual` — bartender remote / channel guide selections (just wired)
+- `ai` — AI Suggest approval flow (next pass)
+- `auto` — auto-reallocator decisions (next pass)
+- `override-learn` — bartender-side manual override on a live TV (next pass)
+
+**Actions** (taxonomy):
+`attempt | game_lookup_ok | game_lookup_fail | allocation_created | allocation_updated | allocation_canceled | conflict_detected | route_command | route_ok | route_fail | tune_complete | tune_fail`
+
+**Operator usage:**
+```bash
+# Today's scheduling activity:
+tail -f /home/ubuntu/sports-bar-data/logs/scheduling-$(date +%F).log
+
+# Just the failures:
+grep -E 'WARN|ERROR|game_lookup_fail|tune_fail' /home/ubuntu/sports-bar-data/logs/scheduling-*.log
+
+# Just for a specific team:
+grep -i brewers /home/ubuntu/sports-bar-data/logs/scheduling-*.log
+```
+
+**Known follow-up (will be tracked by the audit):** The MILB / Timber Rattlers case is a real product gap — the channel guide can show a game we can't actually schedule. Either ESPN sync needs MILB coverage OR the bartender-schedule route needs to accept channel-guide-sourced games and create a phantom `game_schedules` row at scheduling time. To be decided by the v2.55.39 audit pass (Red/Blue/White/Green teams + Grok review).
+
+---
+
 ## v2.55.37 — Cleanup: commit accumulated dev helpers + new hooks/skills (2026-06-10)
 
 **Versions covered:** v2.55.37
