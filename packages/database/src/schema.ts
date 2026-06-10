@@ -3063,3 +3063,30 @@ export const errorWatchEvents = sqliteTable('error_watch_events', {
   signatureIdx: index('error_watch_events_signature_idx').on(table.signature, table.detectedAt),
   kindIdx: index('error_watch_events_kind_idx').on(table.kind, table.detectedAt),
 }))
+
+// shure_pending_resync — operator-queued receiver-side frequency changes
+// that need a manual IR-sync of the transmitter to take effect on the
+// mic. Lifecycle: row INSERTed when operator calls /api/shure-rf/queue-
+// freq-change → bartender Audio tab shows a "Mic N needs re-sync" banner
+// while verified_at IS NULL → shure-rf-watcher.ts UPDATE-sets verified_at
+// when the receiver's sample frames show a real TX_MODEL (i.e. not
+// UNKNOWN) with active signal at the new frequency. Operator can
+// canceled_at-set the row via /api/shure-rf/cancel-resync to abandon a
+// pending change (banner clears without verification).
+//
+// freq stored as 6-digit kHz to match the wire protocol (485325 =
+// 485.325 MHz; SLX-D's `< SET 1 FREQUENCY 503000 >` format).
+export const shurePendingResync = sqliteTable('shure_pending_resync', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  receiverId: text('receiver_id').notNull(),
+  channel: integer('channel').notNull(),
+  oldFreqKhz: integer('old_freq_khz').notNull(),
+  newFreqKhz: integer('new_freq_khz').notNull(),
+  setAt: integer('set_at').notNull().$defaultFn(() => Math.floor(Date.now() / 1000)),
+  verifiedAt: integer('verified_at'),     // NULL = pending; non-NULL = TX active on new freq
+  canceledAt: integer('canceled_at'),     // NULL = active; non-NULL = abandoned
+  notes: text('notes'),
+}, (table) => ({
+  activeIdx: index('shure_pending_resync_active_idx').on(table.receiverId, table.channel, table.verifiedAt, table.canceledAt),
+  setAtIdx: index('shure_pending_resync_set_at_idx').on(table.setAt),
+}))
