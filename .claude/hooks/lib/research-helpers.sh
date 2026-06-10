@@ -90,9 +90,17 @@ return exactly the line "NO_RESEARCH_AVAILABLE" and nothing else.
 RESEARCH
 
   local result
-  # Use --headless for one-shot non-interactive mode; web tools enabled (no
-  # --no-tools — Grok's web search is the whole point of these hooks).
-  result=$(timeout 60 grok --headless --always-approve --prompt-file "$prompt_file" 2>/dev/null || true)
+  # --permission-mode auto = single-turn headless w/ web tools enabled.
+  # (The earlier --headless --always-approve form was invalid — --headless
+  # is not a real grok flag. grok would then go into interactive-TUI mode
+  # with no web tools and return the "no specific research" fallback on
+  # every call. Verified via `grok --help` and a live test on shure-slxd
+  # that returned real prose + URLs once we switched to --permission-mode
+  # auto. v2.55.35 fix; see VERSION_SETUP_GUIDE entry.)
+  # We deliberately do NOT use scripts/grok-prime.sh here — that prepends
+  # docs/GROK_BRIEFING.md (~5 KB) which is overkill for a 300-word lookup
+  # and wastes context per cache-miss.
+  result=$(timeout 90 grok --permission-mode auto --prompt-file "$prompt_file" 2>/dev/null || true)
   rm -f "$prompt_file"
 
   if [ -z "$result" ] || echo "$result" | grep -q "NO_RESEARCH_AVAILABLE"; then
