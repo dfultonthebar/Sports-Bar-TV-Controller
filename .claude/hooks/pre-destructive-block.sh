@@ -46,15 +46,23 @@ If you really must: append --i-know-what-im-doing to override."
 fi
 
 # 2. git push --force / -f targeting origin main
-if echo "$cmd" | grep -qE 'git[[:space:]]+push' && \
-   echo "$cmd" | grep -qE '(-f($|[[:space:]])|--force(\b|$)|--force-with-lease)' && \
-   echo "$cmd" | grep -qE '\borigin[[:space:]/]+main\b|\borigin[[:space:]]+HEAD:main\b'; then
+# v2.55.21 fix: same false-positive class as rm-rf below — earlier this was
+# "command has git push AND command has -f AND command has origin main"
+# anywhere, which hits when an unrelated `rm -f` appears inside the COMMIT
+# MESSAGE of a benign `git push origin main`. Split on shell separators and
+# only flag a piece that's actually a `git push` invocation with --force in
+# its own args.
+IFS=$';|&\n' read -d '' -ra _gp_parts < <(printf '%s\0' "$cmd")
+for _gp_part in "${_gp_parts[@]}"; do
+  echo "$_gp_part" | grep -qE '(^|[[:space:]])git[[:space:]]+push' || continue
+  echo "$_gp_part" | grep -qE '(^|[[:space:]])(-f|--force|--force-with-lease)([[:space:]]|=|$)' || continue
+  echo "$_gp_part" | grep -qE '\borigin[[:space:]/]+main\b|\borigin[[:space:]]+HEAD:main\b' || continue
   deny "BLOCKED: git push --force to origin main
 
 Force-pushing main rewrites history that all 6 location branches + the fleet auto-update depend on. Boxes that already merged the prior history would diverge and require manual recovery.
 
 If recovering from a destructive accident: append --i-know-what-im-doing to override."
-fi
+done
 
 # 3. git reset --hard
 if at_cmd_start 'git[[:space:]]+reset' && \
@@ -67,15 +75,20 @@ If intentional: append --i-know-what-im-doing to override."
 fi
 
 # 4. rm -rf under repo or production data dir
-# Match: rm -rf (or -fr, -Rf, -r -f) followed somewhere by an absolute path
-# into /home/ubuntu/Sports-Bar-TV-Controller or /home/ubuntu/sports-bar-data.
-if echo "$cmd" | grep -qE '(^|[[:space:];&|`(])rm[[:space:]]+-[a-zA-Z]*[rRfF][a-zA-Z]*' && \
-   echo "$cmd" | grep -qE '/home/ubuntu/(Sports-Bar-TV-Controller|sports-bar-data)(/|[[:space:]]|$)'; then
+# Split the command on shell separators ( ; && || | ) and check EACH piece
+# independently. Earlier this was "command has rm AND command has the
+# protected path anywhere" — which false-positive'd when an unrelated `cd
+# /home/ubuntu/Sports-Bar-TV-Controller && rm -f /tmp/junk` got blocked
+# because the protected path appeared in the cd, not the rm. v2.55.21 fix.
+IFS=$';|&\n' read -d '' -ra _parts < <(printf '%s\0' "$cmd")
+for _part in "${_parts[@]}"; do
+  echo "$_part" | grep -qE '(^|[[:space:]])rm[[:space:]]+-[a-zA-Z]*[rRfF][a-zA-Z]*' || continue
+  echo "$_part" | grep -qE '/home/ubuntu/(Sports-Bar-TV-Controller|sports-bar-data)(/|[[:space:]]|$)' || continue
   deny "BLOCKED: rm -rf under /home/ubuntu/Sports-Bar-TV-Controller or /home/ubuntu/sports-bar-data
 
 The repo is Holmgren's live working tree (production deploy). sports-bar-data holds the production SQLite DB + logs + caches. Recursive deletion here = data loss + service loss.
 
 If you really must (clean rebuild etc): append --i-know-what-im-doing to override."
-fi
+done
 
 exit 0
