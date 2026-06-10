@@ -72,7 +72,12 @@ export async function GET(request: NextRequest) {
 
 async function gatherShiftContext() {
   const nowUnix = Math.floor(Date.now() / 1000)
-  const twelveHoursLater = nowUnix + 12 * 3600
+  // v2.55.32 — was 12 hours. Bumped to 18h so an end-of-night brief
+  // (fired at 23:00) still surfaces the next-day noon games (which
+  // start ~12:10 PM CDT, just past a 12h window). 18h catches them
+  // without leaking 2-day-out content. Same lookback discipline as
+  // the 8-item cap downstream.
+  const twelveHoursLater = nowUnix + 18 * 3600
 
   const homeTeams = await db.select({ name: schema.homeTeams.teamName })
     .from(schema.homeTeams)
@@ -192,6 +197,29 @@ async function gatherShiftContext() {
     }
   } catch {
     // shure_rf_events table missing — no Shure setup. Skip mic line.
+  }
+
+  // v2.55.32 — Pending Shure mic resync bullet (task #331 follow-up).
+  // If an admin queued a receiver-side freq change via /api/shure-rf/
+  // queue-freq-change and the operator hasn't IR-synced the matching
+  // transmitter yet, the brief should call it out. Otherwise the
+  // bartender starts a shift, picks up the mic, presses talk, and
+  // hears nothing — because the TX is still on the old freq.
+  let pendingResyncBullet: string | null = null
+  try {
+    const pendingRows = await db.all<{ channel: number; new_freq_khz: number }>(sql`
+      SELECT channel, new_freq_khz FROM shure_pending_resync
+      WHERE verified_at IS NULL AND canceled_at IS NULL
+      ORDER BY channel
+    `)
+    if (pendingRows.length > 0) {
+      const channelList = pendingRows.map((r) =>
+        `ch${r.channel} (${(r.new_freq_khz / 1000).toFixed(3)} MHz)`,
+      ).join(', ')
+      pendingResyncBullet = `WIRELESS MIC RESYNC NEEDED: ${channelList} ${pendingRows.length === 1 ? 'needs' : 'need'} an IR sync — power on the transmitter${pendingRows.length === 1 ? '' : 's'}, hold ${pendingRows.length === 1 ? 'it' : 'each one'} near the receiver's IR port, press SYNC. Will not transmit on the right frequency until done.`
+    }
+  } catch {
+    // shure_pending_resync table missing — pre-v2.55.31 box. Skip.
   }
 
   // Upcoming neighborhood gigs in next 12h. Join to
@@ -463,6 +491,7 @@ async function gatherShiftContext() {
     fleetAlerts,
     // v2.52.16 — mic status + neighborhood RF risk for the brief
     micStatusLine,
+    pendingResyncBullet,
     upcomingMicRisks,
     // v2.53.6 — last 24h Atlas priority recap (mic activity summary)
     atlasPriorityRecap,
@@ -576,6 +605,29 @@ function buildPrompt(ctx: any): string {
     ? (ctx.homeTeamNames || []).join(', ')
     : '(no home teams configured for this bar)'
 
+  // v2.55.32 — server-build the Home-team + Other-games sections verbatim
+  // because llama3.1:8b was hallucinating "Bears @ Vikings" and "Packers
+  // @ Lions" in June (no NFL season) when given just a games list. Even
+  // with the explicit list and a "use the matchup string VERBATIM" rule,
+  // the model substituted Green-Bay-relevant teams (the venue is Holmgren
+  // Way Bar — primed by the bar context). Per Gotcha #12 / memory
+  // feedback-llm-server-built-verbatim, the only reliable fix is to
+  // pre-build the lines server-side and feed them as PRE-WRITTEN sections.
+  const homeGamesList = (ctx.upcomingGames || []).filter((g: any) => g.isHomeTeam)
+  const otherGamesList = (ctx.upcomingGames || []).filter((g: any) => !g.isHomeTeam).slice(0, 4)
+
+  const homeGamesSection = homeGamesList.length > 0
+    ? `Home-team games tonight:\n${homeGamesList.map((g: any) =>
+        `- ${g.startLocal}: ${g.matchup} (${g.network})`,
+      ).join('\n')}`
+    : 'Home-team games tonight: none.'
+
+  const otherGamesSection = otherGamesList.length > 0
+    ? `Other games:\n${otherGamesList.map((g: any) =>
+        `- ${g.startLocal}: ${g.matchup} (${g.network})`,
+      ).join('\n')}`
+    : 'Other games: none in the next 12 hours.'
+
   return `You are the shift manager at ${ctx.venueName}, a sports bar. Write a VERY concise (under 130 words) pre-shift brief for the bartender coming on. Current time: ${ctx.now}.
 
 Our home teams (for THIS bar — anything not in this list is NOT a home-team game): ${homeTeamList}
@@ -592,9 +644,24 @@ ${failures}
 Sister-location health (TELL THE OWNER if any are stuck):
 ${fleet}
 
+Home-team games section — PRE-WRITTEN, include EXACTLY as shown as its
+own section in the brief. Do NOT rephrase, do NOT add games not in this
+list, do NOT swap teams, do NOT add networks not shown:
+${homeGamesSection}
+
+Other-games section — PRE-WRITTEN, include EXACTLY as shown as its own
+section in the brief. Do NOT rephrase, do NOT add games not in this list,
+do NOT substitute teams (even teams from this bar's home-team list), do
+NOT change "Away @ Home" order:
+${otherGamesSection}
+
 Wireless mic status bullet — this is PRE-WRITTEN as a complete bullet,
 include it EXACTLY as shown, no prefix, no rephrasing:
 ${micBullet}
+
+${ctx.pendingResyncBullet
+  ? `Pending mic resync bullet — PRE-WRITTEN, include EXACTLY as shown as its own bullet near the top of the brief. This is a HIGH-PRIORITY operational alert — the bartender MUST see it. Do NOT rephrase, do NOT shorten:\n- ${ctx.pendingResyncBullet}`
+  : ''}
 
 Neighborhood-event heads-up bullets — these are PRE-WRITTEN and you
 MUST include each one in the brief EXACTLY AS WRITTEN, on its own line,
@@ -612,10 +679,9 @@ ${atlasDropBullet
   : ''}
 
 Format:
-- Start with a one-line headline for the biggest game tonight. If a home-team game (one with [HOME TEAM] flag in the games list above) is tonight, headline that. Otherwise pick the biggest networks game (ESPN/ABC/FOX/etc.).
-- Under "Home-team games tonight:", list ONLY games from the upcoming-games block that have BOTH a matchup string AND a time AND the [HOME TEAM] flag. The "Our home teams" list at the top is for identifying WHICH teams are home teams during matching — it is NOT a list of games. DO NOT list a team there unless that exact team appears in an actual scheduled game above. If zero upcoming games have the [HOME TEAM] flag, write exactly "Home-team games tonight: none." and nothing else under that heading.
-- Under "Other games:", list any non-home games from the list above (up to 4).
-- Use the matchup string VERBATIM as provided (do not invent teams or change "Away @ Home" order).
+- Start with a one-line headline for the biggest game tonight. If a home-team game appears in the Home-team games section, headline that. Otherwise pick the biggest networks game (ESPN/ABC/FOX/etc.) from the Other-games section. If both sections say "none", write "No games scheduled tonight."
+- Include the PRE-WRITTEN Home-team games section EXACTLY as provided above (under its "Home-team games tonight:" heading or its "none" sentinel). Do NOT regenerate it. Do NOT add teams not in that section.
+- Include the PRE-WRITTEN Other-games section EXACTLY as provided above (under its "Other games:" heading or its "none" sentinel). Do NOT regenerate it. Do NOT add teams not in that section.
 - Mention any recent failures the bartender should pre-test.
 - Include the pre-written mic-status bullet VERBATIM as one of the bullets. Do not add a prefix like "Wireless mic status:" — the bullet already starts with "Mic status:".
 - For neighborhood-event heads-up bullets, include them VERBATIM (see the dedicated section above). Do not rephrase. Do not change "Friday (May 22)" to "tonight". Do not merge multiple bullets into one.
@@ -664,6 +730,10 @@ function fallbackBrief(ctx: any): string {
   // v2.52.16 — mic status + neighborhood RF risk in the fallback
   if (ctx.micStatusLine) {
     lines.push(ctx.micStatusLine)
+  }
+  // v2.55.32 — pending mic resync in the LLM-less fallback path too.
+  if (ctx.pendingResyncBullet) {
+    lines.push(ctx.pendingResyncBullet)
   }
   if ((ctx.upcomingMicRisks ?? []).length > 0) {
     const relevant = ctx.upcomingMicRisks.filter(
