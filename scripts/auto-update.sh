@@ -166,6 +166,32 @@ log() {
   echo "[$ts][AUTO-UPDATE] $*" | tee -a "$LOG_FILE"
 }
 
+# v2.55.33 — Last-attempt sidecar for verify-install Layer 19 freshness check.
+# On NOOP runs (e.g. origin/main already merged) no new log file is created,
+# so log-mtime makes the timer look stuck even when systemctl shows it fired.
+# Always-touch this sidecar at every exit path (noop/success/fail) so the
+# layer's freshness signal is "did the timer run", not "did it produce a log".
+# Atomic write via mv to avoid partial reads on race with verify-install.
+update_last_attempt_sidecar() {
+  local outcome="${1:-unknown}"
+  local sidecar="$DATA_DIR/.auto-update-last-attempt.json"
+  local tmp
+  local run_id
+  run_id=$(basename "${LOG_FILE:-auto-update-${RUN_TS:-unknown}.log}" .log)
+  [ -d "$DATA_DIR" ] || return 0
+  tmp=$(mktemp "$DATA_DIR/.auto-update-last-attempt.json.XXXXXX" 2>/dev/null) || return 0
+  {
+    printf '{\n'
+    printf '  "attempted_at": %d,\n' "$(date +%s)"
+    printf '  "attempted_at_iso": "%s",\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    printf '  "outcome": "%s",\n' "$outcome"
+    printf '  "runId": "%s",\n' "$run_id"
+    printf '  "triggeredBy": "%s",\n' "${TRIGGERED_BY:-unknown}"
+    printf '  "branch": "%s"\n' "${BRANCH:-unknown}"
+    printf '}\n'
+  } > "$tmp" 2>/dev/null && mv -f "$tmp" "$sidecar" 2>/dev/null || rm -f "$tmp" 2>/dev/null
+}
+
 step() {
   CURRENT_STEP="$1"
   log "=== STEP: $CURRENT_STEP ==="
@@ -192,6 +218,7 @@ fail() {
       "http://localhost:3001/api/auto-update/failures" -d "$payload" >/dev/null 2>&1 || true
   fi
 
+  update_last_attempt_sidecar "fail"
   exit "${2:-4}"
 }
 
@@ -772,6 +799,7 @@ if [ "$TRIGGERED_BY" = "cron" ]; then
   ENABLED=$(sql "SELECT enabled FROM auto_update_state WHERE id=1;" 2>/dev/null || echo "0")
   if [ "$ENABLED" != "1" ]; then
     log "auto_update_state.enabled=$ENABLED (cron invocation); exiting early"
+    update_last_attempt_sidecar "noop"
     exit 0
   fi
 fi
@@ -846,6 +874,7 @@ if git merge-base --is-ancestor "$TARGET_SHA" HEAD 2>/dev/null; then
   history_update_result "pass" "no update available"
   state_update "pass" "no update available"
   write_summary_json "pass" "no update available"
+  update_last_attempt_sidecar "noop"
   exit 0
 fi
 
@@ -873,6 +902,7 @@ if [ -f "$CANARY_CFG" ]; then
       history_update_result "pass" "skipped — canary $CANARY_BRANCH has not blessed any commit"
       state_update "pass" "skipped — waiting on canary"
       write_summary_json "pass" "skipped — waiting on canary"
+      update_last_attempt_sidecar "noop"
       exit 0
     fi
     BLESSED_SHA=$(printf '%s' "$BLESS_JSON" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{console.log(JSON.parse(s).blessedCommitSha||'')}catch(e){console.log('')}})" 2>/dev/null || echo "")
@@ -883,6 +913,7 @@ if [ -f "$CANARY_CFG" ]; then
       history_update_result "pass" "skipped — canary not yet on target commit"
       state_update "pass" "skipped — waiting on canary catch-up"
       write_summary_json "pass" "skipped — canary not yet on target commit"
+      update_last_attempt_sidecar "noop"
       exit 0
     fi
     NOW_UNIX=$(date +%s)
@@ -893,6 +924,7 @@ if [ -f "$CANARY_CFG" ]; then
       history_update_result "pass" "skipped — canary soak in progress (${AGE_MIN}/${CANARY_MIN_AGE_MIN}min)"
       state_update "pass" "skipped — canary soaking"
       write_summary_json "pass" "skipped — canary soaking ${AGE_MIN}/${CANARY_MIN_AGE_MIN}min"
+      update_last_attempt_sidecar "noop"
       exit 0
     fi
     log "Canary gate: passed — $CANARY_BRANCH blessed $TARGET_SHA ${AGE_MIN}min ago (≥${CANARY_MIN_AGE_MIN}min required)"
@@ -970,6 +1002,7 @@ if [ "$DRY_RUN" -eq 1 ]; then
   history_update_result "pass" "dry-run stopped after checkpoint A"
   state_update "pass" "dry-run"
   write_summary_json "pass" "dry-run — no changes made"
+  update_last_attempt_sidecar "noop"
   exit 0
 fi
 
@@ -1776,4 +1809,5 @@ write_summary_json "$FINAL_RESULT" "$FINAL_MSG"
 DURATION=$(( $(date +%s) - RUN_STARTED_EPOCH ))
 log "SUCCESS: updated $BRANCH from $PRE_MERGE_SHA to $POST_MERGE_SHA in ${DURATION}s"
 log "Log file: $LOG_FILE"
+update_last_attempt_sidecar "success"
 exit 0
