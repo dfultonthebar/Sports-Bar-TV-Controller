@@ -21,7 +21,12 @@ REMOTE="${1:-}"
 URL="${2:-}"
 LOG=/tmp/sports-bar-pre-push-hook.log
 
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] pre-push fired remote=$REMOTE url=$URL" >> "$LOG" 2>/dev/null || true
+# Redact credentials embedded in URL: https://user:token@host → https://***@host
+# (v2.55.21 — Phase 1 of this hook caught its own log capturing a GitHub PAT
+# in cleartext; never log the raw URL again, even to /tmp.)
+URL_SAFE=$(printf '%s' "$URL" | sed -E 's#(https?://)[^/@[:space:]]+@#\1***@#g')
+
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] pre-push fired remote=$REMOTE url=$URL_SAFE" >> "$LOG" 2>/dev/null || true
 
 exit_code=0
 
