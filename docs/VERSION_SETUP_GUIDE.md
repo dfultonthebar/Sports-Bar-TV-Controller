@@ -35,6 +35,31 @@ is the archive.
 
 ---
 
+## v2.55.44 — Channel guide: fix dead local-override dedup (duplicate ch-308 rows) (2026-06-10)
+
+**Versions covered:** v2.55.44
+**Branch landed:** main → all 6 location branches
+**Required Manual Step:** **None.** Pure bug fix; standard rebuild + PM2 restart via auto-update.
+
+**Why:** The channel-guide local-override dedup compared `p.channel?.number`
+(TEXT, from Rail/preset data) against `override.channelNumber` (INTEGER, from
+`local_channel_overrides`) with strict `===` — string-vs-number never matches,
+so the dedup was dead code. A Brewers game on ch 308 (BallyWIPlus, the WI RSN
+split) could appear TWICE in the bartender's channel guide: once from the Rail
+Media station-alias match, once from the local-override injection. Affects any
+location running Brewers games (Holmgren, Greenville at minimum).
+
+**Fix:** `apps/web/src/app/api/channel-guide/route.ts` — `String()`-normalize
+both sides at all three preset/override channel-number comparison boundaries
+(override-row filter, override-injection dedup, game_schedules-injection dedup).
+
+**Verification (game-day):** `POST /api/channel-guide` with
+`{"deviceType":"cable"}` during a Brewers broadcast window — each ch-308
+matchup must appear once, and no program `id` starting with `local-308-` should
+share homeTeam+awayTeam+gameTime with a Rail-sourced ch-308 program.
+
+---
+
 ## v2.55.42 — Scheduling logger: AI Suggest + override-learn paths instrumented (2026-06-10)
 
 **Versions covered:** v2.55.42
