@@ -1,21 +1,3 @@
-## v2.55.45 — pattern-analyzer: observation_count atomic increment (AI Suggest ranking fixed) (2026-06-10)
-
-**Versions covered:** v2.55.45 — scheduler audit Green #3 (HIGH)
-**Branch landed:** main
-**Required Manual Step:** None. PM2 restart picks it up. observation_count starts climbing on the next pattern-analyzer run (hourly).
-
-**Why:** AI Suggest's pattern loader does `ORDER BY observation_count DESC LIMIT 100`, but `scheduling_patterns.observation_count` was stuck at DEFAULT 1 forever — so the 100-row cap returned patterns in undefined order and the highest-signal team_routing patterns (e.g. the Brewers row with frequency=12) could be silently cut off. The root cause was NOT "the column is never written" — it was that pattern-analyzer used `INSERT OR REPLACE`, which is a DELETE + reinsert that resets observation_count to its column DEFAULT on every run.
-
-**Fix:** all 6 upsert sites in `packages/scheduler/src/pattern-analyzer.ts` converted from `INSERT OR REPLACE` to `INSERT ... ON CONFLICT(pattern_type, pattern_key) DO UPDATE SET ... observation_count = COALESCE(observation_count, 0) + 1, last_observed = excluded.last_observed`. Atomic increment (safe across concurrent analyzer runs — no JS read-modify-write). The ON CONFLICT update preserves the existing row + its observation_count instead of wiping it.
-
-Also: `apps/web/src/app/api/scheduling/ai-suggest/route.ts` loader is now `ORDER BY observation_count DESC, confidence DESC` — compound so a tie on observation_count breaks toward the higher-confidence pattern.
-
-The fallback DDL (`CREATE_SCHEDULING_PATTERNS_TABLE`) was brought column-compatible with drizzle/0000_baseline.sql (added observation_count, first_observed, last_observed, is_stale, last_analyzed_at) so a dev DB created via that path behaves identically.
-
-**Verify:** run the pattern analyzer twice (or wait two hourly cycles), then `SELECT pattern_key, observation_count FROM scheduling_patterns WHERE pattern_type='team_routing' ORDER BY observation_count DESC LIMIT 5` — counts should be climbing above 1.
-
----
-
 # Version Setup Guide
 
 **Purpose:** This file tells Claude (and operators) what each version
@@ -53,28 +35,33 @@ is the archive.
 
 ---
 
-## v2.55.44 — Channel guide: fix dead local-override dedup (duplicate ch-308 rows) (2026-06-10)
+## v2.55.46 — Override-learn stays open through overtime / extra innings (2026-06-10)
 
-**Versions covered:** v2.55.44
+**Versions covered:** v2.55.43–v2.55.46
 **Branch landed:** main → all 6 location branches
-**Required Manual Step:** **None.** Pure bug fix; standard rebuild + PM2 restart via auto-update.
+**Required Manual Step:** **None.** Code-only fix; the normal auto-update rebuild + PM2 restart picks it up.
 
-**Why:** The channel-guide local-override dedup compared `p.channel?.number`
-(TEXT, from Rail/preset data) against `override.channelNumber` (INTEGER, from
-`local_channel_overrides`) with strict `===` — string-vs-number never matches,
-so the dedup was dead code. A Brewers game on ch 308 (BallyWIPlus, the WI RSN
-split) could appear TWICE in the bartender's channel guide: once from the Rail
-Media station-alias match, once from the local-override injection. Affects any
-location running Brewers games (Holmgren, Greenville at minimum).
+**Why (operator terms):** when a game runs PAST its scheduled end — extra
+innings on a Brewers game, overtime, a rain delay — the system used to stop
+learning from bartender corrections the moment the *estimated* end time
+passed. So if a bartender moved the game to different TVs during extras,
+that correction was silently ignored by the pattern learner, even though
+that late-game window is exactly when corrections happen most. MLB extra
+innings are routine; this gap dropped real learning signal.
 
-**Fix:** `apps/web/src/app/api/channel-guide/route.ts` — `String()`-normalize
-both sides at all three preset/override channel-number comparison boundaries
-(override-row filter, override-injection dedup, game_schedules-injection dedup).
+**What changed:** `/api/matrix/route`'s override-learn allocation query now
+keeps the learning window open **while the allocation is still active OR
+its expected end time has not passed**. The auto-reallocator marks the
+allocation `completed` at the real game end, which closes the window
+naturally — no fixed clock cutoff.
 
-**Verification (game-day):** `POST /api/channel-guide` with
-`{"deviceType":"cable"}` during a Brewers broadcast window — each ch-308
-matchup must appear once, and no program `id` starting with `local-308-` should
-share homeTeam+awayTeam+gameTime with a Rail-sourced ch-308 program.
+**Verify at a location** (after a game that went long): bartender re-routes
+during overtime should produce an override-learn row:
+```bash
+grep "override-learn" /home/ubuntu/sports-bar-data/logs/scheduling-$(date +%F).log
+# or: sqlite3 /home/ubuntu/sports-bar-data/production.db \
+#   "SELECT created_at, message FROM SchedulerLog WHERE component='override-learn' ORDER BY created_at DESC LIMIT 5"
+```
 
 ---
 
