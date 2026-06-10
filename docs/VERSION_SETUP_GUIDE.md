@@ -35,45 +35,75 @@ is the archive.
 
 ---
 
-## v2.55.39 — Synthetic game_schedules row fallback unblocks non-ESPN games (MILB / USFL / indie) (2026-06-10)
+## v2.55.40 — Override-learn fix: window by expected_free_at, not allocated_at (2026-06-10)
 
-**Versions covered:** v2.55.39
+**Versions covered:** v2.55.40
 **Branch landed:** main → all 6 location branches
-**Required Manual Step:** **None.** Pure code change. No schema migration (existing `game_schedules` columns cover the synthetic row). New `'game_lookup_synthetic'` log action type appears in `/home/ubuntu/sports-bar-data/logs/scheduling-YYYY-MM-DD.log` on first use.
+**Required Manual Step:** **None.** Code-only change to `/api/matrix/route` POST handler. No schema migration, no env var, no PM2 ecosystem change.
 
-**Why:** The v2.55.38 instrumentation surfaced the exact silent-fail predicted in that release's follow-up note. Holmgren bartenders tried to schedule the Timber Rattlers game twice this morning (07:25 and 07:38 CT); both attempts returned `404 No matching game schedule found` because MILB is not in the ESPN sync (`instrumentation.ts:177-224` ESPN_SYNC_LEAGUES = MLB/NBA/NHL/NFL/CFB/MCBB/WCBB). The channel guide surfaced the game via Rail Media — the bartender saw it, picked it, and got a silent toast. Verified live failure today; affects every location any time Rail surfaces a non-ESPN game.
+**Why (severity HIGH — silent failure class):**
+Override-learn (`apps/web/src/app/api/matrix/route/route.ts`, v2.18.0) is the
+mechanism that teaches `pattern-analyzer.ts` from bartender corrections —
+when a bartender manually re-routes a TV during an active scheduled
+allocation, the allocation's `tv_output_ids` gets patched so the next
+hour's pattern analysis reflects the corrected room layout.
 
-**Fix:** `apps/web/src/app/api/schedules/bartender-schedule/route.ts` — after the lookup-by-ESPN-ID, lookup-by-teams-and-time, and special-broadcast fallbacks all miss, insert a synthetic `game_schedules` row from the channel-guide-supplied `gameInfo` instead of returning 404. The synthetic row uses:
+The previous WHERE clause was `AND a.allocated_at >= ${windowStart}` with
+`windowStart = now - 600` (10 minutes). But `bartender-schedule` sets
+`allocated_at = tuneAtUnix` (the **game start time**, not the allocation
+creation time — see `apps/web/src/app/api/schedules/bartender-schedule/route.ts:340`).
 
-- `espnEventId = rail-<unix-ms>-<home12>-<away12>` (unique per the schema's notNull+unique constraint; distinguishable from real ESPN IDs at-a-glance and via prefix match)
-- `syncSource = 'rail-synthetic'` (so analytics can split learned vs synthetic origins)
-- `sport = league = gameInfo.league ?? 'unknown'`
-- `seasonType = 2` (regular season — best default for in-season Rail surfaces)
-- `seasonYear = year-of-startTime`
-- `broadcastNetworks = '[]'` (channel binding happens at the allocation level — `channelNumber` on the allocation row)
-- empty `homeTeamEspnId` / `awayTeamEspnId` (the schema has them as notNull text — empty string clears the NOT NULL gate without faking an ESPN ID)
+Concrete failure: 7:00 PM NFL kickoff schedules an allocation with
+`allocated_at = 7:00 PM unix`. Bartender notices a wrong TV at 7:15 PM
+(normal game-watch behavior) and manually re-routes. Override-learn
+computes `windowStart = 7:05 PM`, so the allocation's `allocated_at` of
+7:00 PM is LESS than windowStart — the row is excluded from the query,
+no SchedulerLog row is written, the allocation's `tv_output_ids` stays
+stale, and pattern-analyzer never sees the correction.
 
-The auto-reallocator (`packages/scheduler/src/auto-reallocator.ts` via `scheduler-service.ts:1428`) already tolerates non-ESPN espnEventIds (`bartender-` prefix precedent), so synthetic rows flow through end-to-end with no further changes.
+This silently dropped EVERY routing correction made more than ~10 minutes
+after game start at EVERY location. It has been broken since v2.18.0
+(months) and is the most likely reason the operator has reported the
+pattern-analyzer learning quality feels "thin."
 
-A new SchedulingAction enum value `'game_lookup_synthetic'` is added to `apps/web/src/lib/scheduling-logger.ts` so the v2.55.38 log surface distinguishes synthetic-row paths from real ESPN matches.
+**Fix:**
+- Replace `windowStart` calc + `a.allocated_at >= ${windowStart}` with
+  `nowUnix = Math.floor(Date.now()/1000)` + `a.expected_free_at >= ${nowUnix}`.
+- `expected_free_at` is the estimated game end time + buffer (set when the
+  allocation is created, `packages/database/src/schema.ts:1567`, `notNull`).
+  Any allocation whose game has NOT yet ended qualifies for override-learn —
+  exactly the population we want.
+- Status filter `('active','pending','tuning')` keeps the override scoped to
+  actually-live allocations (no learning from completed/canceled).
+- Comment block updated to reflect the new semantics and explain the bug
+  the fix closes.
 
-**Operator usage:**
-```bash
-# Watch for synthetic-row events at game-time today:
-grep game_lookup_synthetic /home/ubuntu/sports-bar-data/logs/scheduling-$(date +%F).log
+**Verification at a location after this lands:**
 
-# Confirm a synthetic row was created in the DB:
-sqlite3 /home/ubuntu/sports-bar-data/production.db \
-  "SELECT id, espn_event_id, league, home_team_name, away_team_name, datetime(scheduled_start,'unixepoch','localtime') AS start_local FROM game_schedules WHERE espn_event_id LIKE 'rail-%' ORDER BY created_at DESC LIMIT 10;"
-```
+1. Wait until a long scheduled game is live (3h NFL works well).
+2. ≥30 minutes after `allocated_at`, have the bartender manually re-route
+   via `/api/matrix/route` with `source='bartender'` (channel guide → cable
+   box pick on the bartender remote does this).
+3. Check the override-learn log row was written:
+   ```bash
+   sqlite3 /home/ubuntu/sports-bar-data/production.db \
+     "SELECT created_at, level, operation, message FROM scheduler_logs \
+      WHERE component='override-learn' ORDER BY created_at DESC LIMIT 1;"
+   ```
+   Should show the override (level=`info`, or `warn` if a home-team game).
+4. Confirm the allocation row was patched:
+   ```bash
+   sqlite3 /home/ubuntu/sports-bar-data/production.db \
+     "SELECT id, tv_output_ids, tv_count, updated_at \
+      FROM input_source_allocations \
+      ORDER BY updated_at DESC LIMIT 5;"
+   ```
+   The targeted allocation's `tv_output_ids` should reflect the bartender's
+   change (add or remove the manipulated output).
 
-**Verification at Holmgren (Timber Rattlers tonight 17:00 CT):**
-1. After deploy, tail `scheduling-2026-06-10.log` while bartender re-schedules the Timber Rattlers game.
-2. Expect: `action=attempt` → `action=game_lookup_synthetic` (NEW) → `action=allocation_created`.
-3. At 17:00 CT, cable box 1 tunes to channel 10.
-4. `SELECT … WHERE espn_event_id LIKE 'rail-%'` returns the new row.
-
-**No rollback risk path** — if synthesizing fails for any reason (DB write error, missing required field), the existing belt-and-suspenders block returns 500 with `'synthetic-row insert succeeded but DB re-read returned no row'` so the operator gets a distinguishable error from the old 404.
+**Sanity check completed pre-merge:** `grep -rn 'allocated_at >=\|allocatedAt >='`
+across the repo returns ONLY this file — no other consumer relied on the
+10-minute `allocated_at` semantics. The change is local to one route.
 
 ---
 
