@@ -35,6 +35,51 @@ is the archive.
 
 ---
 
+## v2.55.25 — Phase 3 self-monitoring: 8 verify-install assertion layers (+ cd-prefix hook fix) (2026-06-09)
+
+**Versions covered:** v2.55.25
+**Branch landed:** main → all 6 location branches
+**Required Manual Step:** **None on existing boxes.** `scripts/verify-install.sh` is invoked by `auto-update.sh` on every cycle — the new layers run automatically the next time auto-update fires.
+
+**What ships (8 new verify-install layers):**
+
+Each turns a previously-🟡 "doc-only" Gotcha into a fail-loud asserted check. All 8 run in <1 sec; total verify pass is 3 sec on Holmgren.
+
+| Exit code | Layer | Gotcha | What it asserts |
+|---|---|---|---|
+| 18 | `linger_enabled` | #11 | `loginctl show-user ubuntu` returns `Linger=yes` |
+| 19 | `autoupdate_timer_fresh` | #11 | newest `auto-update-*.log` is <26h old (24h cadence + 2h grace) |
+| 20 | `migration_markers_consistent` | #6 | `SELECT COUNT(*) FROM __drizzle_migrations` equals `ls drizzle/*.sql \| wc -l` |
+| 21 | `error_watch_alive` | Phase 2a | newest `error_watch_events.kind='heartbeat'` row is <720s old |
+| 22 | `bartender_layout_rooms` | #8 | active `BartenderLayout.rooms` is non-empty JSON |
+| 23 | `atlas_drop_watcher_alive` | watcher | newest `atlas_drop_events` row is <7d old (warn-only) |
+| 24 | `atlas_priority_watcher_alive` | watcher | newest `atlas_priority_events` row is <7d old (warn-only) |
+| 25 | `node_symlink_present` | #11 | `/usr/bin/{node,npm,npx}` OR `/usr/local/bin/{node,npm,npx}` all exist |
+
+**Plus one Claude Code hook fix:**
+
+`.claude/hooks/pre-fleet-ssh-cd.sh` — broadened the regex. Previous version only caught `ssh ... bash scripts/...` payloads. Today's session hit the cd-prefix bug 5× with `ssh ... git branch`, `ssh ... npm run build`, `ssh ... cat package.json` — none matched the old regex. New regex catches any of `git|npm|npx|pnpm|yarn|drizzle-kit|bash scripts/|cat|head|tail|less package.json|python3 -c.*package.json|pm2 (start|restart|reload) (ecosystem|sports-bar)`. Has the `--i-know-what-im-doing` escape hatch consistent with `pre-destructive-block.sh`.
+
+**Verify after auto-update:**
+```bash
+# Run verify-install standalone:
+bash /home/ubuntu/Sports-Bar-TV-Controller/scripts/verify-install.sh
+
+# Expect: PASS (16/16 checks, Ns) — or a fail with a specific exit code that
+# points at one of the 18-25 codes above, each with a fix path printed in the
+# log message.
+
+# JSON form for the Sync-tab API:
+bash /home/ubuntu/Sports-Bar-TV-Controller/scripts/verify-install.sh --json | python3 -m json.tool
+```
+
+**One real finding during dev:** Holmgren's `BartenderLayout.rooms` check originally failed because my SQL used a non-existent `data` JSON column (the actual schema has a top-level `rooms` column). The query errored silently and returned empty. Fixed mid-build by reading the actual schema. Lesson: every new SQL-based layer needs at least one fleet-data-shape verification before commit, not just schema-time inference. This is exactly the failure mode Phase 4 (Grok pre-push review on schema/SQL diffs) is designed to catch.
+
+**Applies to:** all locations.
+**First seen:** built + verified at Holmgren on 2026-06-09 (16/16 PASS after the BartenderLayout fix).
+
+---
+
 ## v2.55.24 — Phase 2b: error-watch admin UI surface (2026-06-09)
 
 **Versions covered:** v2.55.24
