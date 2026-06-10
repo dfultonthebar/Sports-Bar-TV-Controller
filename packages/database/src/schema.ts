@@ -3039,3 +3039,27 @@ export const artistInterferenceProfiles = sqliteTable('ArtistInterferenceProfile
   // multiple times is idempotent.
   uniqueArtistLocation: uniqueIndex('ArtistInterferenceProfile_artist_location_unique').on(table.artistNormalized, table.locationId),
 }))
+
+// v2.55.23+ — Phase 2 of the self-monitoring architecture (HOOK_COVERAGE.md).
+// Autonomous error-watch service tails the PM2 error log + grep-matches against
+// a signature library, writing one row per detection. Also writes a 'heartbeat'
+// row every N min so silence means "watcher died" not "all clear" — exactly the
+// caveat baked into pattern #1: a watcher with no heartbeat is invisible
+// when it dies. Plus 'startup' rows so the watcher proves it actually
+// initialized on a fresh boot.
+//
+// kind: 'error' | 'heartbeat' | 'startup'
+// signature: human-readable label of which signature matched, or
+//   'watcher_alive' for heartbeat, or 'service_start' for startup
+export const errorWatchEvents = sqliteTable('error_watch_events', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  kind: text('kind').notNull(),
+  signature: text('signature').notNull(),
+  sample: text('sample').notNull().default(''), // first ~200 chars of matched line, sanitized
+  sourceFile: text('source_file'),               // basename of PM2 log file
+  detectedAt: integer('detected_at').notNull().$defaultFn(() => Math.floor(Date.now() / 1000)),
+}, (table) => ({
+  detectedAtIdx: index('error_watch_events_detected_at_idx').on(table.detectedAt),
+  signatureIdx: index('error_watch_events_signature_idx').on(table.signature, table.detectedAt),
+  kindIdx: index('error_watch_events_kind_idx').on(table.kind, table.detectedAt),
+}))

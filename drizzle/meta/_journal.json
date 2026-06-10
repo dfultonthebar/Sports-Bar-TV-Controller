@@ -15,6 +15,13 @@
       "when": 1779995668333,
       "tag": "0001_relax_interference_attribution_rf_fk",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1781050559482,
+      "tag": "0002_error_watch_events",
+      "breakpoints": true
     }
   ]
 }

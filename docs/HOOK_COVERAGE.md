@@ -120,7 +120,7 @@ Every `pre-push` fire — whether it allowed or blocked — writes a row to `/tm
 | `shure-rf-watcher` | UNKNOWN-TX-type carriers on mic channels (ghost RF) + low battery | `event_type='startup'` + heartbeat every 20s while active | ✅ |
 | `sdr-watcher` | Wide-band RF carriers above threshold (UHF mic band + TV broadcast) | `event_type='heartbeat'` rows every 30s while active carrier | ✅ |
 | `scheduler-service` | Periodic jobs (interference correlator, preemptive strike, RF pattern digest, ESPN sync, neighborhood event scrapers) | `SchedulerLog` row per fire | ✅ |
-| **app-level error-watch** | PM2 error log tailing for `[ERROR]` / `UnhandledPromiseRejection` / `FOREIGN KEY constraint` / `ECONNREFUSED` patterns | — | ❌ **(Phase 2 target)** |
+| **app-level error-watch** | PM2 error log tailing for `[ERROR]` / `UnhandledPromiseRejection` / `FOREIGN KEY constraint` / `ECONNREFUSED` / `ETIMEDOUT` / `Cannot find module` / `TypeError:` / `Exception` | `kind='heartbeat'` row every 300s + `kind='startup'` on service start | ✅ **(Phase 2a, v2.55.23)** |
 
 ---
 
@@ -128,7 +128,7 @@ Every `pre-push` fire — whether it allowed or blocked — writes a row to `/tm
 
 | Phase | Adds | Converts these 🟡 → ✅ |
 |---|---|---|
-| **Phase 2** — Autonomous error-watch service | systemd-user unit tailing PM2 + DB-backed `error_watch_events` + heartbeat | Faster detection on Gotchas #2 / #11 (would have caught the v2.55.16 FK-DrizzleError spam, the auto-update lock self-deadlock, post-deploy crash loops) within minutes instead of hours |
+| ~~**Phase 2**~~ ✅ **Phase 2a shipped (v2.55.23)** — Autonomous error-watch service | systemd-user unit (`sports-bar-error-watch.service`) tails PM2 error logs against 8 signatures, writes to `error_watch_events` DB table with 30s per-signature dedup + 5-min heartbeat | Faster detection on Gotchas #2 / #11 (would have caught the v2.55.16 FK-DrizzleError spam, the auto-update lock self-deadlock, post-deploy crash loops) within minutes instead of hours. **Phase 2b (TODO):** UI surface for unacknowledged events + admin notification when a never-before-seen signature lands |
 | **Phase 3** — Liveness assertions tied to fixed bugs | New layers in `verify-install.sh` (FK present? bootstrap markers consistent? auto-update lock age? watcher heartbeats fresh?) + 15-min schedule | Most 🟡 doc-only Gotchas in §Common Gotchas — turns "documented" into "asserted" |
 | **Phase 4** — Auto-grok on critical-path diffs | Pre-push soft block: if push touches schema / drizzle / auto-update / iso / proxmox / configure-netboot, run `grok-prime.sh` on the diff | Standing Rules 3 + 10 (independent review for risky changes) |
 | **Phase 5** — Detect→fix→gate pipeline | Watch service flags a known-trivial signature (typo, lint, dep patch) → Claude worktree-fixes → verify-install → auto-merges; critical path queued for operator | Gotchas #2 / #12 (auto-fix recurring small issues) |
