@@ -35,6 +35,22 @@ is the archive.
 
 ---
 
+## v2.55.21 — Phase 1 hardening: redact creds in pre-push log + fix destructive-block false positive (2026-06-09)
+
+**Versions covered:** v2.55.21
+**Branch landed:** main → all 6 location branches
+**Required Manual Step:** **None on existing boxes.** Pure patch.
+
+**Two hot fixes uncovered by Phase 1 itself, captured immediately so the patterns hold:**
+
+1. **`.githooks/pre-push` was logging the full push URL to `/tmp/sports-bar-pre-push-hook.log`**, including any embedded `https://USER:TOKEN@github.com/...` credentials. Phase 1's very first real push at v2.55.20 captured the operator's GitHub Personal Access Token in cleartext (the log was wiped immediately + the token should be considered burned and rotated). Now redacts: `https://x:y@host` → `https://***@host` via sed before any logging happens. Pipe-tested with a fake token; log shows `***`.
+
+2. **`.claude/hooks/pre-destructive-block.sh` rm-rf check false-positive'd** when the Bash command had a `cd /home/ubuntu/Sports-Bar-TV-Controller` prefix AND an unrelated `rm -f /tmp/something` in the same command line. The old check was "command contains rm AND command contains protected path anywhere" — the cd's path satisfied the second clause. Fix: split the command on shell separators (`;` `&&` `||` `|`) and check each piece independently so the protected-path requirement applies only to the rm's own arguments. Pipe-tested both axes (false-positive cleared; real `rm -rf /home/ubuntu/Sports-Bar-TV-Controller/...` still blocked).
+
+**Meta-lesson for the architecture doc:** Phase 1 went live and within 60 seconds (a) caught a real secret leak (good), (b) exposed a false positive in a sibling hook (also good — fast feedback is the point). Both fixes were caught by tooling that was already in place (the small-LLM verify-edit hook spotted the missing `done` mid-edit) and verified against the authoritative tool (`bash -n`) per pattern #5's "the linter is the arbiter" discipline. Working as designed.
+
+---
+
 ## v2.55.20 — Phase 1 of self-monitoring architecture: pre-push docs-gate + HOOK_COVERAGE map (2026-06-09)
 
 **Versions covered:** v2.55.20
