@@ -99,6 +99,20 @@ fi
 
 log "Repository ready at $APP_DIR"
 
+# v2.55.47 — set the fleet-standard git identity IMMEDIATELY after clone.
+# Without this, ANY in-app git operation that commits (the Location Backup
+# feature at /api/location/backup, auto-update heartbeat commits, etc.)
+# fails with "Author identity unknown / unable to auto-detect email address
+# (got 'ubuntu@<hostname>.(none)')". bootstrap-new-location.sh also sets
+# this (line ~253), but that's a LATER per-location step — the backup
+# feature is reachable from the moment the box boots, before bootstrap runs.
+# First-seen: Lime Kiln 2026-06-10, fresh ISO box, operator hit it on the
+# very first Location Backup attempt. Global config so it covers any repo.
+log "Configuring fleet-standard git identity..."
+sudo -u ubuntu git config --global user.name "Sports Bar TV Controller"
+sudo -u ubuntu git config --global user.email "dfultonthebar@github.com"
+log "  git identity: Sports Bar TV Controller <dfultonthebar@github.com>"
+
 # ─── Step 4: Install deps and build ──────────────────────────────────────────
 log "Step 4/10: Installing dependencies and building..."
 
