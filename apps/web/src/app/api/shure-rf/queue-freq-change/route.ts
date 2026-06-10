@@ -117,32 +117,52 @@ export async function POST(request: NextRequest) {
   // Cancel any previously-pending resync on this channel before inserting
   // the new one — otherwise the bartender sees two banners for the same
   // channel and the watcher has two open rows to satisfy.
-  await db
-    .update(schema.shurePendingResync)
-    .set({ canceledAt: Math.floor(Date.now() / 1000), notes: 'superseded by new queue request' })
-    .where(
-      and(
-        eq(schema.shurePendingResync.receiverId, receiverId),
-        eq(schema.shurePendingResync.channel, channel),
-        isNull(schema.shurePendingResync.verifiedAt),
-        isNull(schema.shurePendingResync.canceledAt),
-      ),
-    )
-    .run()
+  //
+  // Both the UPDATE (pre-cancel) and the INSERT below are wrapped in
+  // try/catch so a missing `shure_pending_resync` table (drizzle 0003
+  // not yet applied on this box) returns a CLEAR 503 with a fix-path,
+  // not a generic 500. Parallel to the watcher's defensive catch in
+  // shure-rf-watcher.ts. Phase 4 hardening.
+  let pendingId: string | null = null
+  try {
+    await db
+      .update(schema.shurePendingResync)
+      .set({ canceledAt: Math.floor(Date.now() / 1000), notes: 'superseded by new queue request' })
+      .where(
+        and(
+          eq(schema.shurePendingResync.receiverId, receiverId),
+          eq(schema.shurePendingResync.channel, channel),
+          isNull(schema.shurePendingResync.verifiedAt),
+          isNull(schema.shurePendingResync.canceledAt),
+        ),
+      )
+      .run()
 
-  // INSERT pending row.
-  const inserted = await db
-    .insert(schema.shurePendingResync)
-    .values({
-      receiverId,
-      channel,
-      oldFreqKhz,
-      newFreqKhz,
-      notes: notes ?? null,
-    })
-    .returning({ id: schema.shurePendingResync.id })
-    .all()
-  const pendingId = inserted[0]?.id ?? null
+    // INSERT pending row.
+    const inserted = await db
+      .insert(schema.shurePendingResync)
+      .values({
+        receiverId,
+        channel,
+        oldFreqKhz,
+        newFreqKhz,
+        notes: notes ?? null,
+      })
+      .returning({ id: schema.shurePendingResync.id })
+      .all()
+    pendingId = inserted[0]?.id ?? null
+  } catch (err) {
+    logger.warn(
+      `[QUEUE-FREQ-CHANGE] shure_pending_resync write failed: ${(err as Error).message}`,
+    )
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'shure_pending_resync table not present — apply migration drizzle 0003 then retry',
+      },
+      { status: 503 },
+    )
+  }
 
   // Send the SET to the receiver. setFrequencyMhz handles the
   // MHz → 6-digit kHz conversion + frame wrapping. Fire-and-forget per
@@ -156,8 +176,60 @@ export async function POST(request: NextRequest) {
       autoReconnect: true,
     })
     await client.setFrequencyMhz(channel, newFreqMhz)
+
+    // Post-SET confirmation (Phase 4 hardening). The Shure protocol
+    // silently drops malformed/out-of-range SET frames — no NAK exists
+    // (packages/shure-slxd/README.md gotchas). We dwell ~300ms for the
+    // receiver to emit a REP echo, then read the manager cache. If the
+    // cached frequency doesn't move to within rounding tolerance of the
+    // requested value, the SET was rejected — roll back the pending row
+    // and return 502 so the operator gets immediate feedback instead of
+    // a stale banner that never clears.
+    await new Promise((r) => setTimeout(r, 300))
+    let confirmedMhz: number | undefined
+    try {
+      const snapAfter = shureSlxdClientManager.getSnapshot(receiverId)
+      const chAfter = snapAfter?.channels?.find((c) => c.channel === channel)
+      confirmedMhz = chAfter?.frequencyMhz
+    } catch (err) {
+      logger.warn(
+        `[QUEUE-FREQ-CHANGE] post-SET snapshot read failed for ${receiverId} ch${channel}: ${(err as Error).message}`,
+      )
+    }
+    // ±0.001 MHz tolerance covers the 6-digit kHz rounding (frequencyMhz
+    // is stored as kHz/1000 so single-kHz steps round to .001 MHz exactly).
+    if (confirmedMhz === undefined || Math.abs(confirmedMhz - newFreqMhz) >= 0.002) {
+      if (pendingId) {
+        try {
+          await db
+            .update(schema.shurePendingResync)
+            .set({
+              canceledAt: Math.floor(Date.now() / 1000),
+              notes: 'receiver did not accept SET',
+            })
+            .where(eq(schema.shurePendingResync.id, pendingId))
+            .run()
+        } catch (rollbackErr) {
+          logger.warn(
+            `[QUEUE-FREQ-CHANGE] could not roll back pendingId=${pendingId}: ${(rollbackErr as Error).message}`,
+          )
+        }
+      }
+      const observed = confirmedMhz === undefined ? 'unknown (no cached state)' : `${confirmedMhz} MHz`
+      logger.error(
+        `[QUEUE-FREQ-CHANGE] ${processor.name} ch${channel}: receiver did not accept SET — requested ${newFreqMhz} MHz, observed ${observed}`,
+      )
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Receiver did not accept SET — requested ${newFreqMhz} MHz, observed ${observed}. Confirm front-panel "Allow Third-Party Controls" is enabled and the freq is within the receiver's band.`,
+        },
+        { status: 502 },
+      )
+    }
+
     logger.info(
-      `[QUEUE-FREQ-CHANGE] ${processor.name} ch${channel}: ${oldFreqKhz / 1000} MHz → ${newFreqMhz} MHz queued (pendingId=${pendingId})`,
+      `[QUEUE-FREQ-CHANGE] ${processor.name} ch${channel}: ${oldFreqKhz / 1000} MHz → ${newFreqMhz} MHz queued + confirmed (pendingId=${pendingId})`,
     )
   } catch (err) {
     // Roll back the insert if we couldn't actually reach the receiver —
