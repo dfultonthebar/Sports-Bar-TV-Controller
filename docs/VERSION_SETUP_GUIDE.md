@@ -35,6 +35,67 @@ is the archive.
 
 ---
 
+## v2.55.23 — Phase 2a: autonomous error-watch service (2026-06-09)
+
+**Versions covered:** v2.55.23
+**Branch landed:** main → all 6 location branches
+
+**Why:** Phase 2 of the self-monitoring architecture from `docs/HOOK_COVERAGE.md`. The PM2 error log is the highest-density signal for things that broke in production (FK constraint failures, unhandled rejections, `ECONNREFUSED`, missing modules). Until now nothing watched it — operators only noticed errors when something user-visible broke. v2.55.16's FK-constraint spam ran for hours before someone glanced at logs. The auto-update lock self-deadlock (v2.55.14) was only caught after the audit script noticed the timer hadn't fired in 2 days. This watcher closes the gap.
+
+**What ships:**
+1. **`error_watch_events` table** (drizzle migration `0002_error_watch_events.sql`) — `id`, `kind` ∈ {`startup`,`heartbeat`,`error`}, `signature`, `sample` (200 char), `source_file`, `detected_at` (unix seconds). 3 indexes: `detected_at`, `(signature, detected_at)`, `(kind, detected_at)`.
+2. **`scripts/watchers/error-watch.sh`** — bash watcher tailing `/home/ubuntu/.pm2/logs/sports-bar-tv-controller-error*.log` with `tail -n 0 -F` (rotation-safe). Pattern library: `error_level`, `unhandled_rejection`, `fk_constraint`, `econn_refused`, `etimedout`, `module_not_found`, `type_error`, `exception`. 30s per-signature dedup window in memory. 5-min heartbeat from a background sub-shell so "no recent rows" cleanly means "watcher dead" not "no errors."
+3. **`scripts/watchers/sports-bar-error-watch.service`** — systemd-user unit. `Restart=always`, 15s back-off. `WantedBy=default.target`. Requires `Linger=yes` on the `ubuntu` user (Gotcha #11) — already in place at every location since v2.50-ish.
+
+**Required Manual Step on each fleet box (Holmgren done as part of this release):**
+```bash
+cd /home/ubuntu/Sports-Bar-TV-Controller
+# 1. apply the migration (already pulled by auto-update)
+npx drizzle-kit migrate
+# 2. install the systemd unit
+mkdir -p ~/.config/systemd/user/
+cp scripts/watchers/sports-bar-error-watch.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now sports-bar-error-watch.service
+# 3. verify
+systemctl --user status sports-bar-error-watch.service --no-pager | head -10
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "SELECT kind, signature, datetime(detected_at,'unixepoch','localtime') FROM error_watch_events ORDER BY detected_at DESC LIMIT 3;"
+# expect: a row with kind='startup' from when you just enabled it
+```
+
+**Verify signature capture (optional sanity check):**
+```bash
+echo "$(date -u +%FT%TZ) [TEST] TypeError: marker $$" >> /home/ubuntu/.pm2/logs/sports-bar-tv-controller-error.log
+sleep 3
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "SELECT kind, signature, sample FROM error_watch_events WHERE sample LIKE '%marker%';"
+# expect: kind='error', signature='type_error'
+```
+
+**Querying what the watcher caught (for an audit / morning-after pattern check):**
+```bash
+# Most-recent errors of each signature in the last 24h:
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "SELECT signature, COUNT(*) AS n, MAX(datetime(detected_at,'unixepoch','localtime')) AS most_recent \
+   FROM error_watch_events \
+   WHERE kind='error' AND detected_at >= strftime('%s','now')-86400 \
+   GROUP BY signature ORDER BY n DESC;"
+
+# Heartbeat freshness (last row should be within 5 min):
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "SELECT datetime(detected_at,'unixepoch','localtime') FROM error_watch_events WHERE kind='heartbeat' ORDER BY detected_at DESC LIMIT 1;"
+```
+
+**Operational note:** the dedup window is intentionally short (30s) — we want frequency information ("ECONNREFUSED hit 40 times" is the same finding regardless of whether it was 40 lines back-to-back or one every minute). For per-event drill-down, fall back to the raw PM2 error log; this table is for sentinel/trend use, not log replacement.
+
+**Phase 2b (deferred):** UI surface on the SystemAdmin page showing unacknowledged events + a notification when a never-before-seen signature lands. The DB structure already supports this — Phase 2a was deliberately backend-only so the watcher proves out in production before any UI consumes it.
+
+**Applies to:** all locations.
+**First seen:** built + verified at Holmgren on 2026-06-09.
+
+---
+
 ## v2.55.22 — Node 22.22.2 → 22.22.3 (security release, NodeSource unblocked) (2026-06-09)
 
 **Versions covered:** v2.55.22 — closes task #262
