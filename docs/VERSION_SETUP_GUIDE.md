@@ -1,20 +1,3 @@
-## v2.55.43 — auto-reallocator OR-gate fix: v2.55.41 missed two sibling sites (2026-06-10)
-
-**Versions covered:** v2.55.43 — scheduler audit Green #1 (CRITICAL)
-**Branch landed:** main
-**Required Manual Step:** None. PM2 restart picks it up.
-
-**Why:** v2.55.41 fixed the tune-success OR-gate in scheduler-service.ts (the Greenville Brewers "didn't switch" bug). The Red/Blue/White/Purple scheduling audit found the IDENTICAL bug pattern in `packages/scheduler/src/auto-reallocator.ts` at TWO sites the v2.55.41 patch never touched:
-
-1. **Revert path (~line 597):** when a game ends and the auto-reallocator reverts a TV to its default source, `if (routeResponse.ok)` treated any HTTP 200 as a successful revert — even an HTTP 200 with `{success:false}` body. The allocation was already marked completed by endAllocation(), so the TV silently stayed on the dead game feed while a green "reverted" row logged.
-2. **Tune-back-to-default path (~line 884):** same `if (tuneResponse.ok)` on the cable/satellite tune-back. `/api/channel-presets/tune` returns HTTP 200 with `{success:false}` for soft failures (box offline, channel missing) — these were logged as "Tuned back to default" while the box never moved.
-
-**Fix:** both sites now use `result.success === true` strictly, with a `malformedOk` branch (HTTP 200 + missing success flag → loud WARN + fall through to failure). Mirrors scheduler-service.ts:1156-1159 exactly. A third `response.ok` at line 439 (GET /api/settings/default-sources config load) is correctly NOT changed — it's a config read, not a routing command; failure safely skips revert.
-
-**Verify:** during a game-end revert where the cable box is offline, confirm the scheduler log shows `revert ... treating as failure` (WARN) rather than a success row, and the allocation is NOT silently marked reverted.
-
----
-
 # Version Setup Guide
 
 **Purpose:** This file tells Claude (and operators) what each version
@@ -52,21 +35,28 @@ is the archive.
 
 ---
 
-## v2.55.47 — first-boot sets git identity (fixes Location Backup on fresh ISO box) (2026-06-10)
+## v2.55.44 — Channel guide: fix dead local-override dedup (duplicate ch-308 rows) (2026-06-10)
 
-**Versions covered:** v2.55.47
-**Branch landed:** main
-**Required Manual Step on EXISTING fresh-ISO boxes that haven't run bootstrap-new-location.sh yet:**
-```bash
-git config --global user.name "Sports Bar TV Controller"
-git config --global user.email "dfultonthebar@github.com"
-```
+**Versions covered:** v2.55.44
+**Branch landed:** main → all 6 location branches
+**Required Manual Step:** **None.** Pure bug fix; standard rebuild + PM2 restart via auto-update.
 
-**Why:** Lime Kiln (first v3.1.0 ISO install in production, 2026-06-10) hit `Backup failed: ... Author identity unknown ... unable to auto-detect email address (got 'ubuntu@sports-bar-controller.(none)')` on the operator's very first Location Backup attempt. The Location Backup feature (`/api/location/backup`) does a `git commit` to snapshot location data, but a fresh ISO box has NO git user.name/user.email configured, so git can't author the commit. `bootstrap-new-location.sh` DOES set the identity (line ~253) but that's a LATER per-location step — the backup feature is reachable from the moment the box boots, before bootstrap runs.
+**Why:** The channel-guide local-override dedup compared `p.channel?.number`
+(TEXT, from Rail/preset data) against `override.channelNumber` (INTEGER, from
+`local_channel_overrides`) with strict `===` — string-vs-number never matches,
+so the dedup was dead code. A Brewers game on ch 308 (BallyWIPlus, the WI RSN
+split) could appear TWICE in the bartender's channel guide: once from the Rail
+Media station-alias match, once from the local-override injection. Affects any
+location running Brewers games (Holmgren, Greenville at minimum).
 
-**Fix:** `scripts/iso/first-boot-fresh.sh` now sets the fleet-standard git identity (`Sports Bar TV Controller <dfultonthebar@github.com>`) immediately after the clone, so it's present from first boot regardless of whether bootstrap has run. Global config (`--global`) so it covers any repo the box touches.
+**Fix:** `apps/web/src/app/api/channel-guide/route.ts` — `String()`-normalize
+both sides at all three preset/override channel-number comparison boundaries
+(override-row filter, override-injection dedup, game_schedules-injection dedup).
 
-**Verify on a fresh box:** `git config --global --get user.email` returns `dfultonthebar@github.com`, and a Location Backup from System Admin succeeds (commits to `backup/location-data/` on the location branch).
+**Verification (game-day):** `POST /api/channel-guide` with
+`{"deviceType":"cable"}` during a Brewers broadcast window — each ch-308
+matchup must appear once, and no program `id` starting with `local-308-` should
+share homeTeam+awayTeam+gameTime with a Rail-sourced ch-308 program.
 
 ---
 
