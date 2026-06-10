@@ -35,6 +35,62 @@ is the archive.
 
 ---
 
+## v2.55.31 — Wireless-mic freq change + bartender resync banner (closes #331) (2026-06-09)
+
+**Versions covered:** v2.55.31 — closes task #331
+**Branch landed:** main → all 6 location branches
+**Required Manual Step:** **None on existing boxes.** Pure additive: new table (drizzle 0003) + 3 new API routes + new React banner component. Auto-update pulls, migrate runs, PM2 restart picks it up.
+
+**Why:** Holmgren's SDR detected continuous 24/7 carrier activity directly on top of both Shure mic channels:
+- Ch1 was 485.325 MHz; SDR cluster at 485.060-485.570 MHz with -55 dBm peaks
+- Ch2 was 483.450 MHz; SDR cluster at 483.454-484.165 MHz with -55 dBm peaks
+
+Probable source: neighbor venue (Stadium View / Anduzzi's) wireless mic system. Weekend peaks (Sat 84k events, Sun 77k events) confirm the venue-pattern. Holmgren's mics weren't being knocked out (no `rf_interference` events) but operating in a noisy band.
+
+Cleanest available freqs per 7-day SDR scoring: 503.000, 506.000, 508.500 MHz — all 100% quiet, never crossed carrier threshold. Picked 503 + 508.5 (5.5 MHz separation, plenty intermod margin).
+
+**Workflow that ships:**
+
+1. Admin calls **POST `/api/shure-rf/queue-freq-change`** with `{receiverId, channel, newFreqMhz}`. Endpoint:
+   - Reads current freq from `shureSlxdClientManager` cache
+   - INSERTs row into `shure_pending_resync` (channel, old_khz, new_khz, set_at)
+   - Sends `< SET <ch> FREQUENCY <khz> >` to the receiver via `client.setFrequencyMhz()`
+   - Auto-cancels any prior unverified row on the same channel
+   - Returns 502 + rolls back row if SET fails
+2. Bartender Audio tab polls **GET `/api/shure-rf/pending-resync`** every 5 sec. For each pending row, renders a yellow `ShureResyncBanner` card with channel + old freq + new freq + IR-sync instructions. Banner sits ABOVE `ShureMicStatusPanel` in `AtlasZoneControl.tsx`. Wrapped in `<SafeBoundary>`.
+3. Operator powers on the matching transmitter, holds it near the receiver's IR port, presses SYNC. TX transmits on new freq.
+4. **`shure-rf-watcher.ts`** evaluates each incoming SAMPLE frame. When `TX_MODEL != UNKNOWN` AND `TX_BATT_BARS` is in 0-5 (valid range, not 255 sentinel) AND audio is not silent AND `state.frequencyMhz` matches the pending row's `new_freq_khz`, UPDATE-sets `verified_at`. Wrapped in try/catch for pre-migration boxes.
+5. Banner clears automatically on its next 5-sec poll.
+
+**Cancel path:** **POST `/api/shure-rf/cancel-resync`** with `{id, reason}` — marks `canceled_at` so the banner clears without verification. Does NOT revert the receiver freq (operator must either re-queue OR manually move it back).
+
+**Validation on Holmgren (this commit's first use):**
+- Sent SET 1 FREQUENCY 503000 + SET 2 FREQUENCY 508500
+- Receiver echoed `< REP 1 FREQUENCY 0503000 >` and `< REP 2 FREQUENCY 0508500 >` correctly
+- `< REP <ch> GROUP_CHANNEL {--,--} >` also echoed (the documented gotcha: SET FREQUENCY blanks the front-panel group/channel display to Manual)
+- Seeded `shure_pending_resync` rows manually (since the API endpoint is ADMIN-gated and inline curl bypassed auth)
+- Playwright verified the bartender Audio tab shows two amber banner cards with all the right freqs and instructions
+- Watcher auto-verify pending operator IR-sync of transmitters
+
+**Schema diff** — one new table:
+```sql
+CREATE TABLE shure_pending_resync (
+  id TEXT PRIMARY KEY,
+  receiver_id TEXT NOT NULL,
+  channel INTEGER NOT NULL,
+  old_freq_khz INTEGER NOT NULL,
+  new_freq_khz INTEGER NOT NULL,
+  set_at INTEGER NOT NULL,
+  verified_at INTEGER,           -- NULL = pending; non-NULL = TX active on new freq
+  canceled_at INTEGER,           -- NULL = active; non-NULL = abandoned
+  notes TEXT
+);
+```
+
+**Re-using at other locations:** the workflow is location-agnostic. Any location with a Shure SLX-D in the AudioProcessor table can use the same endpoints. After auto-update applies drizzle 0003 + PM2 restart, the admin RF panel can call queue-freq-change for that location's receiver.
+
+---
+
 ## v2.55.30 — ISO slim fix: drop the broken chroot-purge, pool/-delete is enough (closes #326) (2026-06-09)
 
 **Versions covered:** v2.55.30 — properly closes task #326
