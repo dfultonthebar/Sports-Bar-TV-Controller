@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Volume2, VolumeX, Minus, Plus, Mic, AlertTriangle, Radio } from 'lucide-react'
 import ShureMicStatusPanel from './ShureMicStatusPanel'
+import ShureResyncBanner from './ShureResyncBanner'
 import LiveMicChips from './LiveMicChips'
 import { logger } from '@sports-bar/logger'
 
@@ -291,6 +292,9 @@ export default function AtlasZoneControl({
           hot before they go live, not only when someone is speaking
           loud enough to cross the Atlas priority threshold. */}
       <LiveMicChips />
+      {/* v2.55.31 task #331 — operator-queued wireless-mic freq change
+          warning. Renders nothing when no pending resync is in flight. */}
+      <ShureResyncBanner />
       {/* Shure wireless mic status tile — full per-channel detail
           (RSSI dBm, runtime, frequency). Renders nothing if no Shure
           receiver configured. */}

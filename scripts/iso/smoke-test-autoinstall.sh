@@ -50,8 +50,22 @@ LOCAL_ISO=$(ls -t $LOCAL_ISO_GLOB 2>/dev/null | head -1)
 ISO_NAME=$(basename "$LOCAL_ISO")
 LOCAL_MD5=$(md5sum "$LOCAL_ISO" | awk '{print $1}')
 LOCAL_SIZE=$(stat -c %s "$LOCAL_ISO")
-log "Local ISO:  $LOCAL_ISO ($((LOCAL_SIZE/1024/1024)) MB)"
+LOCAL_SIZE_MB=$((LOCAL_SIZE/1024/1024))
+log "Local ISO:  $LOCAL_ISO (${LOCAL_SIZE_MB} MB)"
 log "Local md5:  $LOCAL_MD5"
+
+# v2.55.28 (task #326): hard size gate — GitHub release-asset cap is 2 GB.
+# An ISO that exceeds this would force split releases and break the single-
+# download install story. Default cap: 1900 MB (100 MB headroom).
+# Override: ISO_SIZE_CAP_MB=N (env), or 0 to disable.
+ISO_SIZE_CAP_MB="${ISO_SIZE_CAP_MB:-1900}"
+if [ "$ISO_SIZE_CAP_MB" -gt 0 ] && [ "$LOCAL_SIZE_MB" -gt "$ISO_SIZE_CAP_MB" ]; then
+    err "ISO is ${LOCAL_SIZE_MB} MB — exceeds size cap (${ISO_SIZE_CAP_MB} MB)"
+    err "Run build-autoinstall-iso.sh again — the slim pass (Step 2b, ISO_SLIM=1) should bring this under 2 GB"
+    err "Or override the cap: ISO_SIZE_CAP_MB=$((LOCAL_SIZE_MB + 100)) bash $0"
+    exit 1
+fi
+log "Size gate PASS (${LOCAL_SIZE_MB} MB ≤ ${ISO_SIZE_CAP_MB} MB)"
 
 # ─────────────────────────────────────────────────────────────────
 # Phase 2: SCP to Proxmox (skip if md5 already matches)
