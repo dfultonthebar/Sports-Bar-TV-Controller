@@ -35,6 +35,39 @@ is the archive.
 
 ---
 
+## v2.55.28 — ISO slim pass: 3.2 GB → ~1.8 GB to fit GitHub 2 GB cap (task #326) (2026-06-09)
+
+**Versions covered:** v2.55.28 — closes task #326
+**Branch landed:** main
+**Required Manual Step on build host:**
+```bash
+sudo apt-get install -y squashfs-tools  # if not already present
+```
+Then re-run the standard build:
+```bash
+bash scripts/iso/build-autoinstall-iso.sh
+bash scripts/iso/smoke-test-autoinstall.sh  # size gate now enforced at Phase 1
+```
+
+**Why:** the stock Ubuntu 24.04.4 Server ISO is 3.2 GB. Our pure-pass-through build at v3.1.0 left the output at essentially the same size — well above GitHub's 2 GB release-asset cap. That forced split distribution and friction. Task #326 closed.
+
+**Two levers (independent, both active by default):**
+
+1. **`pool/` deletion (~1.0-1.3 GB savings)** — the Ubuntu pool exists for offline-install fallback when there's no internet during install. We ALWAYS have internet at first-boot (apt-get nodejs + GitHub clone), so the pool is vestigial. Paired with `apt.fallback: continue-anyway` in `autoinstall.yaml.template` so subiquity doesn't stall waiting for offline debs.
+2. **Squashfs chroot-purge of snapd/bluez/cups/fwupd/cloud-init (~80 MB compressed)** — `scripts/optimize-os.sh` already removes these POST-install; this pushes that work upstream so they're never in the ISO. `apt-get purge -y --autoremove` runs in the live-installer's chroot via direct `chroot $work apt-get purge` (NOT `curtin in-target --` per Launchpad bug #1946609 — curtin's path fails on snapd's postinst unmount with "resource busy"; direct chroot works).
+
+**Combined estimate:** 3.2 GB → ~1.8-2.0 GB. Size gate in `smoke-test-autoinstall.sh` Phase 1 hard-fails the smoke test if the ISO exceeds 1900 MB (100 MB headroom under the 2 GB cap).
+
+**Recovery / escape valve:** `ISO_SLIM=0 bash scripts/iso/build-autoinstall-iso.sh` skips Step 2b entirely. Use if any of the chroot/squashfs steps regress on a new Ubuntu point release. Smoke-test cap override: `ISO_SIZE_CAP_MB=2200 bash scripts/iso/smoke-test-autoinstall.sh`.
+
+**Chroot safety:** the chroot cleanup uses a `trap squash_cleanup EXIT` with plain `sudo umount` (NEVER `umount -l` per `[[feedback-chroot-lazy-umount-destroys-dev]]` — lazy unmount before `rm -rf` of the chroot dir recurses through the still-attached `/dev` bind and deletes host device nodes. ~2h incident on 2026-05-27).
+
+**Verify the slim pass worked:** the build log prints `Squashfs: <before> → <after>` and `pool/ removed`. The smoke-test enforces the size gate at Phase 1 before SCP to Proxmox. Post-install verification (Phase 7 of smoke-test) confirms `snapd` is absent on the installed system via `dpkg -l snapd | grep -c '^ii'` = 0.
+
+**Lesson:** an ISO build that exceeds a third-party distribution cap silently changes the deployment story (one asset → split downloads → operator confusion at install time). Worth gating in the smoke-test, not as a post-hoc audit. The new Phase 1b gate is the enforcer.
+
+---
+
 ## v2.55.27 — Phase 4: Grok critical-path pre-push review (2026-06-09)
 
 **Versions covered:** v2.55.27
