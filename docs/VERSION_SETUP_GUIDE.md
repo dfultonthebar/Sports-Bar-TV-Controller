@@ -35,6 +35,50 @@ is the archive.
 
 ---
 
+## v2.55.29 — Phase 4 hardening + Graystone Turbopack opt-out + SSH log-cleanup (2026-06-09)
+
+**Versions covered:** v2.55.29
+**Branch landed:** main → all 6 location branches
+
+**Three independent fixes bundled:**
+
+### A. Phase 4 (Grok pre-push) hardening — 4 issues from v2.55.27 self-review
+
+Closes the four issues task #329 surfaced when Phase 4 reviewed its own first commit:
+
+1. **Shell-injection-safe prompt assembly** — original unquoted heredoc would re-evaluate `$(...)` and backticks embedded in the diff content. A malicious or even accidental commit message containing `` `rm -rf /` `` could execute. Switched to a sequence of `printf '%s\n' "$var"` calls (data, never re-parsed).
+2. **Robust verdict extraction** — original `awk 'NF{print $1}' | tr -d '*:'` was fooled by Markdown formatting (`**CLEAN**!`, narrative preamble like "Reviewing this carefully..."). Prompt now mandates an explicit `VERDICT: CLEAN` or `VERDICT: FINDING` line. Parser scans first 30 lines for that, falls back to bare `\b(CLEAN|FINDING)\b` word match, treats unparseable response as `INCONCLUSIVE` → soft block (NOT silent allow). Unit-tested across 7 input shapes including the prior cache failure mode.
+3. **Timeout fails CLOSED on highest-risk paths** — drizzle/, schema.ts, auto-update.sh, bootstrap-drizzle-migrations.sh now hard-block on Grok timeout instead of soft-warn. Other critical paths still soft-warn (avoid permanent block when Grok API is flaky).
+4. **GROK_PREPUSH_NO_SELF_REVIEW=1 escape valve** — when iterating on the hook itself, every fix triggers a fresh review of the fix → potentially unbounded loop. With this env var set, skips Grok IF the only matched paths are the hook itself.
+
+**Bypass story unchanged:** `git push --no-verify` OR `GROK_PREPUSH_DISABLE=1 git push`.
+
+### B. Graystone Turbopack OOM workaround (closes task #328 root cause)
+
+Root cause (researched by feature-dev:code-explorer agent): on a 15 GB box, Turbopack's parallel module-graph compilation exceeds the V8 default ~4 GB heap, and the `NODE_OPTIONS=--max-old-space-size=2048` set in `ecosystem.config.js` only applies to the PM2 runtime process — NOT to the `next build` child process. Result: every build on Graystone OOMs at exit 137, even with 8.8 GB available + 8 GB swap.
+
+Fix: opt-in webpack build path via `NEXT_USE_WEBPACK=1` env var. Webpack streams compilation to disk and uses dramatically less peak memory.
+
+**Changes:**
+- `apps/web/package.json` `build` script: `"next build"` → `"next build ${NEXT_USE_WEBPACK:+--webpack}"`. Bash parameter expansion: when `NEXT_USE_WEBPACK` is set, append `--webpack`; when unset, no-op. Other 5 fleet boxes (32 GB RAM) keep Turbopack via the absent env var.
+- Graystone's `.env` set: `NEXT_USE_WEBPACK=1` + `NODE_OPTIONS=--max-old-space-size=4096`.
+
+**Verified on Graystone:** full webpack build completed in 3 min (vs OOM at exit 137 on Turbopack). `.next/BUILD_ID` present, 1.1 GB built artifacts. PM2 restart, health 200, error-watch responding. App at v2.55.26.
+
+**Per-location consideration:** to apply elsewhere, write `NEXT_USE_WEBPACK=1` to the box's `.env`. Only consider for boxes with <16 GB RAM (the 32 GB boxes build cleanly under Turbopack in 14 sec).
+
+**Required Manual Step on Graystone:** done as part of this release. **Other locations:** none.
+
+### C. SSH log-cleanup via ~/.ssh/config
+
+The `Warning: Permanently added '<ip>' (ED25519) to the list of known hosts.` line appeared on every fleet SSH/scp invocation, cluttering output. The warning was harmless (we already discard the key via `UserKnownHostsFile=/dev/null`) but blew up log readability.
+
+Fix: a `~/.ssh/config` Host stanza for all 6 fleet IPs and MagicDNS names that sets `LogLevel ERROR` alongside the existing `StrictHostKeyChecking no` + `UserKnownHostsFile /dev/null`. Default `ConnectTimeout 15` + `ServerAliveInterval 30` (keeps long-running build-on-remote alive).
+
+This is a per-user config; future dev-machine setups should mirror it (see `/home/ubuntu/.ssh/config` for the template).
+
+---
+
 ## v2.55.28 — ISO slim pass: 3.2 GB → ~1.8 GB to fit GitHub 2 GB cap (task #326) (2026-06-09)
 
 **Versions covered:** v2.55.28 — closes task #326

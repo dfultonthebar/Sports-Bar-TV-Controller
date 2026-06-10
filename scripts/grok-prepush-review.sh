@@ -6,8 +6,26 @@
 # file. Runs Grok over the diff for an independent-review second opinion
 # before allowing the push to proceed.
 #
-# Soft block: shows Grok's finding and requires --no-verify or
-# GROK_PREPUSH_DISABLE=1 to bypass.
+# v2.55.29 hardening (task #329 — 4 fixes from the v2.55.27 self-review):
+#   1. Build the Grok prompt via printf-from-vars (no unquoted heredoc).
+#      The original heredoc would re-evaluate `$(...)` or backticks
+#      embedded in the diff content as bash commands. Switched to
+#      a quoted heredoc template + python placeholder substitution,
+#      which is shell-injection-safe.
+#   2. Robust verdict extraction. Prior `awk 'NF{print $1}'` was fooled
+#      by Markdown formatting (**CLEAN!**, FINDING:, narrative
+#      preamble). Now uses `grep -m1 -oE '\b(CLEAN|FINDING)\b'` which
+#      finds the verdict ANYWHERE in the first 20 lines.
+#   3. Timeout fails CLOSED for the highest-risk paths (drizzle/,
+#      schema.ts, auto-update.sh, bootstrap-drizzle-migrations.sh). A
+#      Grok call that times out on these now blocks instead of
+#      soft-warning. Other critical paths still soft-warn on timeout.
+#   4. GROK_PREPUSH_NO_SELF_REVIEW=1 escape for iterating on the hook
+#      itself — without it, every fix to grok-prepush-review.sh
+#      triggers a fresh review of the fix, which can iterate unbounded.
+#
+# Soft block (other paths): shows Grok's finding and requires --no-verify
+# or GROK_PREPUSH_DISABLE=1 to bypass.
 #
 # Standalone test:
 #   bash scripts/grok-prepush-review.sh <remote_sha> <local_sha>
@@ -81,6 +99,28 @@ matched_files=$(echo "$matched_files" | sort -u | grep . || true)
 
 if [[ -z "$matched_files" ]]; then
   exit 0  # Nothing critical changed — silent pass.
+fi
+
+# v2.55.29 fix #4: self-review escape valve. When iterating on the hook
+# itself, every fix triggers a fresh Grok review of the fix → potentially
+# unbounded loop. GROK_PREPUSH_NO_SELF_REVIEW=1 skips Grok IF the only
+# matched paths are the hook itself.
+if [[ "${GROK_PREPUSH_NO_SELF_REVIEW:-}" == "1" ]]; then
+  hook_only=$(echo "$matched_files" | grep -vE '^(\.githooks/pre-push|scripts/grok-prepush-review\.sh)$' || true)
+  if [[ -z "$hook_only" ]]; then
+    echo "  [grok-prepush] GROK_PREPUSH_NO_SELF_REVIEW=1 — skipping self-review of hook-only changes" >&2
+    exit 0
+  fi
+fi
+
+# v2.55.29 fix #3: classify whether timeout should fail-closed or
+# soft-warn. The highest-risk paths land schema/auto-update changes
+# directly on the fleet — a silent allow on Grok timeout there is
+# unacceptable. Other critical paths (UI config, hook) soft-warn so a
+# flaky Grok API doesn't permanently block work.
+TIMEOUT_FAILS_CLOSED=0
+if echo "$matched_files" | grep -qE '^(drizzle/|packages/database/src/schema\.ts|apps/web/src/db/schema\.ts|scripts/auto-update\.sh|scripts/bootstrap-drizzle-migrations\.sh)'; then
+  TIMEOUT_FAILS_CLOSED=1
 fi
 
 # ─── Cache check: same SHA pair already reviewed today? ──────────────
@@ -172,43 +212,51 @@ echo "$matched_files" | grep -qE "ecosystem\.config|next\.config|instrumentation
 TMP_PROMPT=$(mktemp /tmp/grok-prepush-prompt-XXXXXX.md)
 trap 'rm -f "$TMP_PROMPT"' EXIT
 
-cat > "$TMP_PROMPT" <<PROMPT
-## Pre-Push Critical-Path Review
-
-You are reviewing a diff that, if pushed, will land on origin/main and
-auto-deploy to every fleet box on the next auto-update cycle.
-
-**Your job:** Find non-obvious failure modes that would SILENTLY bite production.
-Start your response with **CLEAN** (if you find nothing concerning) or
-**FINDING** (if you find something). Be specific — cite file:line. Skip
-style / preference / naming feedback.
-
-### Relevant Gotchas to check first
-${GOTCHA_HINT:-(none auto-detected — use judgment from the diff)}
-
-### Critical-path files changed in this push (the diff below is scoped to these)
-$(echo "$matched_files" | sed 's/^/- /')
-
-### All files changed in this push (broader context — ${ALL_CHANGED_COUNT} total)
-\`\`\`
-$(echo "$ALL_CHANGED" | head -50 | sed 's/^/  /')
-$([ "$ALL_CHANGED_COUNT" -gt 50 ] && echo "  …and $((ALL_CHANGED_COUNT - 50)) more" || true)
-\`\`\`
-Hint: if a critical-path change is shipped alongside an obviously-unrelated change in the broader file list, that itself is worth flagging as suspicious.
-
-### Recent commits on these files (intent signal)
-\`\`\`
-${RECENT_COMMITS:-(no prior commits on these files in the last 8)}
-\`\`\`
-
-### Diff (truncated to 32KB)
-\`\`\`diff
-${DIFF_CONTENT}
-\`\`\`
-
-Is there a non-obvious failure mode in this change that would silently bite production?
-Be specific. If you find nothing, say **CLEAN** as your first word.
-PROMPT
+# v2.55.29 fix #1: shell-injection-safe prompt assembly.
+# Original heredoc was unquoted, so `$(…)` or backticks in the diff
+# content would be evaluated by bash. A commit message containing
+# "see `rm -rf /` here" would have caused command injection inside the
+# pre-push hook. Now use printf with quoted args (data, never re-parsed).
+# The mandated machine-readable verdict line is added below.
+{
+  printf '%s\n' "## Pre-Push Critical-Path Review"
+  printf '\n'
+  printf '%s\n' "You are reviewing a diff that, if pushed, will land on origin/main and"
+  printf '%s\n' "auto-deploy to every fleet box on the next auto-update cycle."
+  printf '\n'
+  printf '%s\n' "**Your job:** Find non-obvious failure modes that would SILENTLY bite production."
+  printf '%s\n' "Be specific — cite file:line. Skip style / preference / naming feedback."
+  printf '\n'
+  printf '%s\n' "**IMPORTANT — machine-readable verdict.** On a line BY ITSELF in your response, include exactly one of:"
+  printf '%s\n' "  \`VERDICT: CLEAN\`   (no critical issues found)"
+  printf '%s\n' "  \`VERDICT: FINDING\` (one or more critical issues found)"
+  printf '%s\n' "Put the line FIRST in your response. Then explain (if FINDING) below it."
+  printf '\n'
+  printf '%s\n' "### Relevant Gotchas to check first"
+  printf '%s\n' "${GOTCHA_HINT:-(none auto-detected — use judgment from the diff)}"
+  printf '\n'
+  printf '%s\n' "### Critical-path files changed in this push (the diff below is scoped to these)"
+  printf '%s\n' "$matched_files" | sed 's/^/- /'
+  printf '\n'
+  printf '%s\n' "### All files changed in this push (broader context — ${ALL_CHANGED_COUNT} total)"
+  printf '%s\n' '```'
+  printf '%s\n' "$ALL_CHANGED" | head -50 | sed 's/^/  /'
+  [ "$ALL_CHANGED_COUNT" -gt 50 ] && printf '%s\n' "  …and $((ALL_CHANGED_COUNT - 50)) more"
+  printf '%s\n' '```'
+  printf '%s\n' "Hint: if a critical-path change is shipped alongside an obviously-unrelated change in the broader file list, that itself is worth flagging as suspicious."
+  printf '\n'
+  printf '%s\n' "### Recent commits on these files (intent signal)"
+  printf '%s\n' '```'
+  printf '%s\n' "${RECENT_COMMITS:-(no prior commits on these files in the last 8)}"
+  printf '%s\n' '```'
+  printf '\n'
+  printf '%s\n' "### Diff"
+  printf '%s\n' '```diff'
+  printf '%s' "$DIFF_CONTENT"
+  printf '\n%s\n' '```'
+  printf '\n'
+  printf '%s\n' "Remember: VERDICT: CLEAN or VERDICT: FINDING as the FIRST line of your response."
+} > "$TMP_PROMPT"
 
 # ─── Run Grok with timeout ──────────────────────────────────────────
 # Use the wrapper so the standing-rules briefing gets auto-prepended.
@@ -217,12 +265,40 @@ GROK_EXIT=0
 GROK_OUTPUT=$(timeout "$TIMEOUT" bash "$REPO_ROOT/scripts/grok-prime.sh" "$TMP_PROMPT" 2>/dev/null) || GROK_EXIT=$?
 
 if [[ $GROK_EXIT -eq 124 ]]; then
-  echo "  [grok-prepush] Grok timed out after ${TIMEOUT}s — soft-warn, allowing push" >&2
+  # v2.55.29 fix #3: highest-risk paths fail CLOSED on timeout, not soft-warn.
+  # A Grok timeout on a drizzle/schema/auto-update diff is exactly the case
+  # we DON'T want to wave through silently.
+  if [[ "$TIMEOUT_FAILS_CLOSED" == "1" ]]; then
+    echo "" >&2
+    echo "  [grok-prepush] Grok timed out after ${TIMEOUT}s on a HIGH-RISK path (drizzle/schema/auto-update)." >&2
+    echo "  Failing CLOSED — silent allow is unacceptable for these paths." >&2
+    echo "" >&2
+    echo "  Bypass: git push --no-verify   (only after manually validating the diff is safe)" >&2
+    echo "  Or: GROK_PREPUSH_DISABLE=1 git push   (if Grok is genuinely unavailable)" >&2
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] TIMEOUT-BLOCKED range=$RANGE files=$(echo "$matched_files" | tr '\n' ',')" >> "$GROK_LOG"
+    exit 1
+  fi
+  echo "  [grok-prepush] Grok timed out after ${TIMEOUT}s — soft-warn, allowing push (no high-risk paths in this diff)" >&2
   echo "[$(date '+%Y-%m-%d %H:%M:%S')] TIMEOUT range=$RANGE files=$(echo "$matched_files" | tr '\n' ',')" >> "$GROK_LOG"
   exit 0
 fi
 
-FIRST_WORD=$(echo "$GROK_OUTPUT" | awk 'NF{print $1; exit}' | tr -d '*' | tr -d ':')
+# v2.55.29 fix #2: robust verdict extraction. Earlier `awk NF{print $1}`
+# extracted whatever appeared first (often `**FINDING**:` → `FINDING`
+# after stripping `*` and `:`, but also vulnerable to narrative
+# preamble like `Reviewing this diff…`). Now: scan first 30 lines for
+# the mandated `VERDICT: CLEAN` or `VERDICT: FINDING` line. Fall back
+# to a bare `CLEAN`/`FINDING` word match if Grok ignored the format.
+# If neither pattern matches (the previous-cache failure mode), treat
+# as inconclusive → exit 1 (better safe than silent-allow).
+FIRST_WORD=$(echo "$GROK_OUTPUT" | head -30 | grep -m1 -oE 'VERDICT:[[:space:]]+(CLEAN|FINDING)' | grep -oE '(CLEAN|FINDING)' || true)
+if [[ -z "$FIRST_WORD" ]]; then
+  # Grok ignored the VERDICT: format. Try the bare-word fallback.
+  FIRST_WORD=$(echo "$GROK_OUTPUT" | head -30 | grep -m1 -oE '\b(CLEAN|FINDING)\b' || true)
+fi
+if [[ -z "$FIRST_WORD" ]]; then
+  FIRST_WORD="INCONCLUSIVE"
+fi
 
 # ─── Cache result ─────────────────────────────────────────────────────
 SUMMARY_ESCAPED=$(echo "$GROK_OUTPUT" | head -8 | python3 -c "import sys, json; print(json.dumps(sys.stdin.read()))" 2>/dev/null || echo '""')
@@ -239,6 +315,32 @@ echo "[$(date '+%Y-%m-%d %H:%M:%S')] verdict=${FIRST_WORD} range=$RANGE files=$(
 if [[ "$FIRST_WORD" == "CLEAN" ]]; then
   echo "  [grok-prepush] Grok: CLEAN — no critical issues found" >&2
   exit 0
+fi
+
+if [[ "$FIRST_WORD" == "INCONCLUSIVE" ]]; then
+  # Grok responded but didn't follow the verdict protocol. Treat as
+  # FINDING by default (better safe than silent-allow) but show what
+  # Grok DID say so the operator can decide.
+  cat >&2 <<'BLOCK'
+
+╭───────────────────────────────────────────────────────────────────────╮
+│  grok-prepush INCONCLUSIVE — Grok did not return VERDICT: CLEAN/FINDING│
+╰───────────────────────────────────────────────────────────────────────╯
+
+Grok's actual response is below — interpret it manually. Treating as a
+soft block by default (silent-allow on an unparseable verdict is the
+exact pattern that bit Phase 4 v1 at the v2.55.28 push).
+
+BLOCK
+  echo "$GROK_OUTPUT" >&2
+  cat >&2 <<BLOCK
+
+Full output logged to: $GROK_LOG
+To push anyway:           git push --no-verify
+To suppress this check:   GROK_PREPUSH_DISABLE=1 git push
+
+BLOCK
+  exit 1
 fi
 
 # ─── FINDING: show output and soft-block ─────────────────────────────
