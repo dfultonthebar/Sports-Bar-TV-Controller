@@ -6,7 +6,7 @@
  * individual per-tune corrections into durable recommendations.
  *
  * Input signal: the override-learn hook in /api/matrix/route writes one
- * SchedulerLog row per bartender correction within 10 min of a scheduled
+ * SchedulerLog row per bartender correction while the allocation is still active (expected_free_at has not passed; was "within 10 min" pre-v2.55.40)
  * allocation — add/remove of an output from an active game's
  * tv_output_ids. Tonight at Lucky's 1313, TV 11 was added to a Brewers
  * allocation then removed — one row each, both tagged as home-team

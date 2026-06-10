@@ -158,17 +158,21 @@ export async function POST(request: NextRequest) {
       // Don't fail the request if tracking fails
     }
 
-    // Override-learn: when a bartender changes a route within 10 min of an
-    // active scheduled allocation, patch that allocation's tv_output_ids so
-    // the hourly pattern-analyzer learns from the correction (the bartender
-    // knows the room better than whoever originally scheduled the TVs).
+    // Override-learn: when a bartender changes a route during an active
+    // scheduled allocation (game has not yet ended), patch that allocation's
+    // tv_output_ids so the hourly pattern-analyzer learns from the correction.
+    // The window is bounded by expected_free_at (estimated game end + buffer)
+    // rather than allocated_at — bartender corrections frequently happen 10+
+    // minutes after game start (allocated_at = tuneAtUnix = game start time),
+    // and the previous "allocated_at >= now-600" gate silently excluded every
+    // such correction, dropping the strongest pattern-learning signal.
     // Home-team overrides (Brewers/Bucks/Badgers/etc. from HomeTeam table)
     // are logged at warn level so operators can filter to the strongest
     // signals.
     if (source === 'bartender') {
       try {
         const { sql } = await import('drizzle-orm')
-        const windowStart = Math.floor(Date.now() / 1000) - 600 // 10 min
+        const nowUnix = Math.floor(Date.now() / 1000)
 
         const recent = await db.all(sql`
           SELECT
@@ -190,7 +194,7 @@ export async function POST(request: NextRequest) {
           LEFT JOIN MatrixInput mi ON mi.id = s.matrix_input_id
           LEFT JOIN game_schedules g ON g.id = a.game_schedule_id
           WHERE a.status IN ('active','pending','tuning')
-            AND a.allocated_at >= ${windowStart}
+            AND a.expected_free_at >= ${nowUnix}
         `) as Array<{
           allocation_id: string
           input_source_id: string
