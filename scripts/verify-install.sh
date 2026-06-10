@@ -665,13 +665,16 @@ check_error_watch_alive() {
     return 21
 }
 
-# Check 22: Gotcha #8 — BartenderLayout has rooms.
-# Without a populated rooms array, the bartender Video tab can't show
-# the room-filter tabs. Holmgren shipped without this for ~24h in v2.11.0.
+# Check 22: Gotcha #8 — BartenderLayout referential integrity for rooms.
+# FAIL only when zones REFERENCE room IDs that don't exist in the rooms
+# array — that's the actual operational problem (broken filter UI). An
+# empty rooms array with zones that don't reference any rooms is a
+# single-room bar — operationally fine. Initial naive check (just
+# "rooms empty?") tripped 4/5 remote boxes in v2.55.25 dev because
+# Lucky's / LegLamp / single-room bars legitimately have empty rooms.
 check_bartender_layout_rooms() {
-    log_info "Checking BartenderLayout rooms (Gotcha #8)..."
+    log_info "Checking BartenderLayout rooms referential integrity (Gotcha #8)..."
     if [ ! -f "$DB_PATH" ]; then
-        log_warn "Production DB not found — skipping bartender_layout_rooms check"
         record "bartender_layout_rooms" 1 "DB absent"
         return 0
     fi
@@ -682,27 +685,66 @@ check_bartender_layout_rooms() {
         record "bartender_layout_rooms" 1 "table absent"
         return 0
     fi
-    # The 'rooms' column has been a top-level text/JSON since v2.11.0.
-    # Earlier hypothesis about a `data` JSON column was wrong (no such column
-    # exists). Empty rooms shows as either '[]' or NULL.
-    local rooms_json
-    rooms_json=$(sqlite3 "$DB_PATH" "SELECT rooms FROM BartenderLayout WHERE isActive=1 ORDER BY isDefault DESC, displayOrder ASC LIMIT 1;" 2>/dev/null || echo "")
-    # Treat empty string, NULL, '[]', '{}' as "no rooms". Anything longer is real data.
-    if [ -z "$rooms_json" ] || [ "$rooms_json" = "null" ] || [ "$rooms_json" = "[]" ] || [ "$rooms_json" = "{}" ]; then
-        # Some fresh installs have no BartenderLayout row at all — also fine
-        local row_count
-        row_count=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM BartenderLayout;" 2>/dev/null || echo "0")
-        if [ "$row_count" -eq 0 ]; then
-            log_warn "No BartenderLayout row yet (fresh install) — pass"
-            record "bartender_layout_rooms" 1 "no layout configured"
-            return 0
-        fi
-        log_fail "BartenderLayout has no rooms (Gotcha #8) — bartender remote Video tab won't show room-filter tabs. Add rooms via System Admin → Layout."
-        record "bartender_layout_rooms" 0 "rooms empty/null"
+    local row_count
+    row_count=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM BartenderLayout;" 2>/dev/null || echo "0")
+    if [ "$row_count" -eq 0 ]; then
+        log_warn "No BartenderLayout row yet — pass"
+        record "bartender_layout_rooms" 1 "no layout configured"
+        return 0
+    fi
+
+    # Pull active layout's zones + rooms. Use json_extract to count zone
+    # references vs declared rooms. The query is fast (single-row scan).
+    # Returns "zones_with_room_ref|rooms_declared|first_orphan_id" — orphan
+    # is a zone.room that has no matching rooms[].id (referential integrity break).
+    local result
+    result=$(sqlite3 "$DB_PATH" "
+WITH layout AS (
+  SELECT zones, rooms FROM BartenderLayout
+  WHERE isActive=1
+  ORDER BY isDefault DESC, displayOrder ASC LIMIT 1
+),
+zone_refs AS (
+  SELECT DISTINCT json_extract(value, '\$.room') AS room_id
+  FROM layout, json_each(layout.zones)
+  WHERE json_extract(value, '\$.room') IS NOT NULL
+    AND json_extract(value, '\$.room') != ''
+),
+room_ids AS (
+  SELECT json_extract(value, '\$.id') AS room_id
+  FROM layout, json_each(layout.rooms)
+),
+orphans AS (
+  SELECT zr.room_id FROM zone_refs zr
+  LEFT JOIN room_ids ri ON ri.room_id = zr.room_id
+  WHERE ri.room_id IS NULL
+)
+SELECT
+  (SELECT COUNT(*) FROM zone_refs) || '|' ||
+  (SELECT COUNT(*) FROM room_ids) || '|' ||
+  COALESCE((SELECT room_id FROM orphans LIMIT 1), '');
+" 2>/dev/null || echo "0|0|")
+    local zones_with_ref="${result%%|*}"
+    local rest="${result#*|}"
+    local rooms_decl="${rest%%|*}"
+    local first_orphan="${rest#*|}"
+
+    if [ -n "$first_orphan" ] && [ "$first_orphan" != "" ]; then
+        log_fail "BartenderLayout has zones referencing room ID '$first_orphan' but rooms[] array is missing it — bartender Video tab room-filter will show a broken/missing tab. Reconcile rooms or strip the orphan reference. (Gotcha #8)"
+        record "bartender_layout_rooms" 0 "orphan room ref: $first_orphan"
         return 22
     fi
-    log_pass "BartenderLayout rooms present"
-    record "bartender_layout_rooms" 1 "ok"
+
+    if [ "$zones_with_ref" -gt 0 ]; then
+        log_pass "BartenderLayout rooms OK ($rooms_decl rooms, $zones_with_ref zones reference them, no orphans)"
+        record "bartender_layout_rooms" 1 "$rooms_decl rooms / $zones_with_ref refs / clean"
+    elif [ "$rooms_decl" -gt 0 ]; then
+        log_pass "BartenderLayout has $rooms_decl rooms declared (no zones reference them yet — single-zone setup or new layout)"
+        record "bartender_layout_rooms" 1 "$rooms_decl rooms / 0 refs"
+    else
+        log_pass "BartenderLayout single-room bar (no rooms declared, no zone references) — operationally fine"
+        record "bartender_layout_rooms" 1 "single-room bar"
+    fi
     return 0
 }
 

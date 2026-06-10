@@ -35,6 +35,32 @@ is the archive.
 
 ---
 
+## v2.55.26 — Phase 3 follow-up: refine `bartender_layout_rooms` to referential-integrity (2026-06-09)
+
+**Versions covered:** v2.55.26
+**Branch landed:** main → all 6 location branches
+**Required Manual Step:** **None.** Same file (`scripts/verify-install.sh`) — refined check semantics.
+
+**Why:** v2.55.25's `bartender_layout_rooms` layer FAIL'd on 4/5 remote fleet boxes during initial verify (Greenville, LegLamp, Lucky's, Appleton — but NOT Holmgren or Graystone). Investigation: those locations are single-room bars with empty `rooms` arrays and zones that don't reference any room IDs. That's NOT a Gotcha #8 violation — it's a normal single-room setup.
+
+**The actual Gotcha #8 risk** is when zones REFERENCE a room ID that doesn't exist in `rooms[]` — that breaks the filter-tab UI with orphan references. Empty `rooms[]` with zones that don't reference rooms is operationally fine.
+
+**New check semantics:** parse the active layout's zones + rooms via SQLite's `json_each`, look for orphan references (zone.room not in rooms[].id). FAIL only on a real orphan. Otherwise PASS with a category label:
+- `clean` (rooms present + zones reference them + all refs resolve)
+- `N rooms / 0 refs` (multi-room layout but no zones reference yet — admin still configuring)
+- `single-room bar` (no rooms + no refs — Lucky's-style setup)
+
+**Effect after this fix:**
+- Holmgren / Graystone still PASS 16/16 (no change — they had healthy multi-room layouts)
+- 4 single-room remote boxes go from FAIL→PASS (correctly classified)
+- A real Gotcha #8 — orphan room reference — still hard-fails with the specific orphan ID printed for the operator to act on
+
+**Lesson recorded:** runtime referential-integrity checks must distinguish "configured differently" from "configured wrong." A naive "is column empty?" check trips honest variation across fleet — the Phase 4 (Grok pre-push) gate is exactly what should have caught this before the v2.55.25 fleet propagation. Until Phase 4 ships, mandate-run-on-fleet-data before commit for any new verify-install layer that touches SQL.
+
+**Verify after auto-update:** same as v2.55.25 (`bash scripts/verify-install.sh`). All 6 fleet boxes should PASS 16/16 after this lands.
+
+---
+
 ## v2.55.25 — Phase 3 self-monitoring: 8 verify-install assertion layers (+ cd-prefix hook fix) (2026-06-09)
 
 **Versions covered:** v2.55.25
