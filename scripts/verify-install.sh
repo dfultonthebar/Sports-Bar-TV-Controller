@@ -568,12 +568,42 @@ check_linger_enabled() {
 }
 
 # Check 19: Gotcha #11 — auto-update timer fired in the last 26h.
-# The timer runs every ~24h; a 1h grace covers cadence drift. Stale logs
-# mean the timer is stuck (probably one of: Linger=no, conflict trap, NVM
+# The timer runs every ~24h; a 1h grace covers cadence drift. Stale signal
+# means the timer is stuck (probably one of: Linger=no, conflict trap, NVM
 # PATH gap, ollama perms — see Gotcha #11 §audit recipe).
+#
+# v2.55.33 — Prefer the .auto-update-last-attempt.json sidecar's attempted_at
+# field. NOOP runs (origin/main already merged) don't create a new log file
+# so log-mtime stays old even when the timer fired successfully — caught on
+# Appleton 2026-06-09. Fall back to log-mtime when the sidecar is absent
+# (pre-v2.55.33 boxes during rollout).
 check_autoupdate_timer_fresh() {
     log_info "Checking auto-update timer freshness (Gotcha #11)..."
-    local log_dir="/home/ubuntu/sports-bar-data/update-logs"
+    local data_dir="/home/ubuntu/sports-bar-data"
+    local sidecar="$data_dir/.auto-update-last-attempt.json"
+    local log_dir="$data_dir/update-logs"
+    local now_epoch
+    now_epoch=$(date +%s)
+
+    # Prefer sidecar (v2.55.33+): captures every attempt including NOOP.
+    if [ -f "$sidecar" ]; then
+        local attempted_at
+        attempted_at=$(python3 -c "import json,sys; d=json.load(open('$sidecar')); print(int(d.get('attempted_at',0)))" 2>/dev/null || echo "0")
+        if [ -n "$attempted_at" ] && [ "$attempted_at" -gt 0 ] 2>/dev/null; then
+            local age=$(( now_epoch - attempted_at ))
+            if [ "$age" -lt 93600 ]; then
+                log_pass "Last auto-update attempt $((age / 3600))h old via sidecar (<26h)"
+                record "autoupdate_timer_fresh" 1 "sidecar age=${age}s"
+                return 0
+            fi
+            log_fail "Last auto-update attempt $((age / 3600))h old via sidecar — timer may be stuck (Gotcha #11). Check: systemctl --user list-timers sports-bar-autoupdate.timer"
+            record "autoupdate_timer_fresh" 0 "sidecar age=${age}s"
+            return 19
+        fi
+        log_warn "Sidecar present but attempted_at unreadable — falling back to log-mtime"
+    fi
+
+    # Fallback (pre-v2.55.33 boxes): log-mtime check.
     if [ ! -d "$log_dir" ]; then
         log_warn "Auto-update log dir missing — fresh install or never ran (treating as pass)"
         record "autoupdate_timer_fresh" 1 "log dir absent (fresh install)"
@@ -588,15 +618,15 @@ check_autoupdate_timer_fresh() {
     fi
     local last_epoch
     last_epoch=$(date -r "$last_log" +%s 2>/dev/null || echo "0")
-    local age=$(( $(date +%s) - last_epoch ))
+    local age=$(( now_epoch - last_epoch ))
     # 26h = 24h cadence + 2h grace (auto-update timer + occasional clock drift)
     if [ "$age" -lt 93600 ]; then
-        log_pass "Last auto-update log is $((age / 3600))h old (<26h)"
-        record "autoupdate_timer_fresh" 1 "age=${age}s"
+        log_pass "Last auto-update log is $((age / 3600))h old (<26h, log-mtime fallback)"
+        record "autoupdate_timer_fresh" 1 "log-mtime age=${age}s"
         return 0
     fi
     log_fail "Last auto-update log is $((age / 3600))h old — timer may be stuck (Gotcha #11). Check: systemctl --user list-timers sports-bar-autoupdate.timer"
-    record "autoupdate_timer_fresh" 0 "age=${age}s"
+    record "autoupdate_timer_fresh" 0 "log-mtime age=${age}s"
     return 19
 }
 

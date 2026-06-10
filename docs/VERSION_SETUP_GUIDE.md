@@ -35,6 +35,36 @@ is the archive.
 
 ---
 
+## v2.55.33 — verify-install Layer 19 reads sidecar, not log-mtime (closes #330) (2026-06-09)
+
+**Versions covered:** v2.55.33 — closes task #330
+**Branch landed:** main → all 6 location branches
+**Required Manual Step:** **None.** Pure additive: `auto-update.sh` writes a new sidecar at every exit path; `verify-install.sh` Layer 19 prefers it and keeps the old log-mtime check as fallback. First auto-update after this lands creates the sidecar; the next verify-install run uses it.
+
+**Why:** Phase 3's `autoupdate_timer_fresh` layer (verify-install Layer 19, Gotcha #11) used log-file mtime in `/home/ubuntu/sports-bar-data/update-logs/` as the freshness signal. On NOOP runs (auto-update.sh exits early because origin/main is already merged into the location branch), no new log file is created → mtime stays old → layer false-positives "timer stale >26h" even though the timer fired successfully. Caught on Appleton 2026-06-09: timer fired 17 min ago per systemctl, log-mtime check showed 24h old.
+
+**What changed:**
+
+1. **`scripts/auto-update.sh`** — new `update_last_attempt_sidecar()` helper writes `/home/ubuntu/sports-bar-data/.auto-update-last-attempt.json` with `{attempted_at, attempted_at_iso, outcome, runId, triggeredBy, branch}`. Called from every exit path: NOOP (already-merged, canary skips, cron-disabled, dry-run) → `outcome="noop"`; success exit → `outcome="success"`; `fail()` → `outcome="fail"`. Atomic write via `mktemp + mv`.
+
+2. **`scripts/verify-install.sh`** `check_autoupdate_timer_fresh()` — tries the sidecar's `attempted_at` field first; falls back to log-file mtime when the sidecar is absent (pre-v2.55.33 boxes during rollout). Same 26h threshold (93600 sec). Same return code 19 on stale.
+
+**Verification at a location:**
+
+```bash
+# After v2.55.33 lands, the next auto-update run will create the sidecar.
+bash scripts/auto-update.sh --triggered-by=manual_cli 2>&1 | tail -3
+cat /home/ubuntu/sports-bar-data/.auto-update-last-attempt.json
+# Should show outcome "noop" (or "success" if new commits) with attempted_at
+# within seconds of `date +%s`.
+
+bash scripts/verify-install.sh --quiet
+# Layer 19 (autoupdate_timer_fresh) should pass with "sidecar age=Ns"
+# in the recorded reason field.
+```
+
+---
+
 ## v2.55.31 — Wireless-mic freq change + bartender resync banner (closes #331) (2026-06-09)
 
 **Versions covered:** v2.55.31 — closes task #331
