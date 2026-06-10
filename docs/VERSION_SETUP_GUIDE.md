@@ -35,6 +35,32 @@ is the archive.
 
 ---
 
+## v2.55.34 — Phase 4 hardening for queue-freq-change (closes #332) (2026-06-09)
+
+**Versions covered:** v2.55.34 — closes task #332
+**Branch landed:** main → all 6 location branches
+**Required Manual Step:** **None on existing boxes.** Pure hardening on top of v2.55.31. Auto-update pulls + PM2 restart picks it up.
+
+**Why:** Phase 4 Grok review of v2.55.31 flagged 3 hardening items beyond the silent-catch fix that already shipped:
+
+1. **Post-SET confirmation** — Shure SLX-D silently drops malformed/out-of-range SET frames (no NAK in protocol). Without a confirmation read the bartender sees a banner that will never clear because the receiver never moved. `POST /api/shure-rf/queue-freq-change` now dwells ~300ms after `client.setFrequencyMhz()`, reads back the manager cache via `shureSlxdClientManager.getSnapshot()`, and compares to the requested freq with ±0.001 MHz rounding tolerance (`abs diff < 0.002 MHz`). Mismatch → roll back the pending row (`UPDATE … SET canceled_at=…, notes='receiver did not accept SET'`), return 502 with a clear message naming the observed freq and pointing the operator at the third-party-controls front-panel gate.
+2. **INSERT-side defense** — the pre-cancel `UPDATE` and the `INSERT … RETURNING` for the new pending row are now wrapped in a single try/catch. If the `shure_pending_resync` table is missing (drizzle 0003 not yet applied), `logger.warn` with `[QUEUE-FREQ-CHANGE]` prefix and return 503 `{success:false, error:'shure_pending_resync table not present — apply migration drizzle 0003 then retry'}` instead of a generic 500. Parallel to the watcher's existing defensive catch.
+3. **verify-install.sh layer 26** — `shure_pending_resync_table_present` runs after `node_symlink_present`. `sqlite3 "$DB_PATH" "SELECT 1 FROM sqlite_master WHERE type='table' AND name='shure_pending_resync' LIMIT 1;"` — pass if non-empty, fail with `cd /home/ubuntu/Sports-Bar-TV-Controller && npx drizzle-kit migrate` fix-path. Bumped `TOTAL=16 → TOTAL=17`. Belt-and-suspenders enforcement for the Gotcha #6 class (documented gotchas aren't enough — they need a runtime gate).
+
+**Files touched:**
+- `apps/web/src/app/api/shure-rf/queue-freq-change/route.ts` — post-SET confirmation block + INSERT-side try/catch
+- `scripts/verify-install.sh` — new `check_shure_pending_resync_table_present` function + `run_check` registration + `TOTAL=17`
+
+**Things unchanged (per task constraints):** auth gate, rate-limit config, cancel-resync route, pending-resync route, drizzle 0003 migration.
+
+**Verify on a box after auto-update:**
+```bash
+bash scripts/verify-install.sh --quiet && echo OK
+# expect: "Verify-install: 17/17 OK"
+```
+
+---
+
 ## v2.55.31 — Wireless-mic freq change + bartender resync banner (closes #331) (2026-06-09)
 
 **Versions covered:** v2.55.31 — closes task #331

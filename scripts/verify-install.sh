@@ -844,12 +844,37 @@ check_node_symlink_present() {
     return 25
 }
 
+# Check 26: drizzle 0003 migration applied — shure_pending_resync table
+# present. The v2.55.31 freq-change workflow + /api/shure-rf/queue-freq-change
+# both write to this table; without the migration the route returns 503 and
+# the bartender resync banner never shows. Belt-and-suspenders for the
+# Gotcha #6 class (documented gotcha vs enforced gate — feedback-documented-
+# gotchas-need-enforcement).
+check_shure_pending_resync_table_present() {
+    log_info "Checking shure_pending_resync table present (drizzle 0003)..."
+    if [ ! -f "$DB_PATH" ]; then
+        log_fail "Database file not found at ${DB_PATH}"
+        record "shure_pending_resync_table_present" 0 "no db file"
+        return 26
+    fi
+    local found
+    found=$(sqlite3 "$DB_PATH" "SELECT 1 FROM sqlite_master WHERE type='table' AND name='shure_pending_resync' LIMIT 1;" 2>/dev/null || echo "")
+    if [ -n "$found" ]; then
+        log_pass "shure_pending_resync table present"
+        record "shure_pending_resync_table_present" 1 "present"
+        return 0
+    fi
+    log_fail "shure_pending_resync table MISSING (drizzle 0003 not applied). Run: cd /home/ubuntu/Sports-Bar-TV-Controller && npx drizzle-kit migrate"
+    record "shure_pending_resync_table_present" 0 "missing"
+    return 26
+}
+
 # ---------------------------------------------------------------------------
 # Run all checks. Track first-failure exit code so we can return a specific
 # code when only one check failed (helps the auto-updater decide what to roll
 # back), but always run every check so the operator sees the full picture.
 # ---------------------------------------------------------------------------
-TOTAL=16
+TOTAL=17
 PASSED=0
 FAILED_NAMES=""
 FIRST_FAIL_CODE=0
@@ -940,6 +965,7 @@ run_check check_bartender_layout_rooms       "bartender_layout_rooms"
 run_check check_atlas_drop_watcher_alive     "atlas_drop_watcher_alive"
 run_check check_atlas_priority_watcher_alive "atlas_priority_watcher_alive"
 run_check check_node_symlink_present         "node_symlink_present"
+run_check check_shure_pending_resync_table_present "shure_pending_resync_table_present"
 
 END_EPOCH=$(date +%s)
 DURATION=$((END_EPOCH - START_EPOCH))
