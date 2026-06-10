@@ -35,6 +35,52 @@ is the archive.
 
 ---
 
+## v2.55.30 — ISO slim fix: drop the broken chroot-purge, pool/-delete is enough (closes #326) (2026-06-09)
+
+**Versions covered:** v2.55.30 — properly closes task #326
+**Branch landed:** main
+**Required Manual Step:** **None.** ISO build script change; affects the next `bash scripts/iso/build-autoinstall-iso.sh` invocation.
+
+**Why this is a follow-up to v2.55.28:** v2.55.28 attempted TWO size-reduction levers — pool/ delete + chroot-purge of snapd/bluez/cups/fwupd/cloud-init from the live-installer squashfs. The chroot-purge picked the WRONG squashfs candidate (`ubuntu-server-minimal.ubuntu-server.squashfs` is a 142 MB layered diff with no `/proc /sys /dev` mount-point dirs → the bind mount failed → `set -e` aborted Step 2b with no host /dev damage but also no usable output). Caught by general-purpose agent build validation.
+
+**The math (verified empirically — `du -sh` on the v2.55.28 build dir post-pool-delete):**
+
+| Component | Stock | After pool delete |
+|---|---|---|
+| `pool/` (offline-install debs) | ~1.5 GB | (deleted) |
+| `casper/*.squashfs` files | ~1.4 GB | unchanged |
+| `casper/{,hwe-}initrd` + vmlinuz | ~180 MB | unchanged |
+| Other ISO assets | ~200 MB | unchanged |
+| **Total build dir** | **~3.2 GB** | **~1.7 GB** |
+| **Final ISO output (xorriso)** | **3.2 GB** | **1.69 GB** |
+
+So **pool/ delete alone gets us under the 1900 MB cap with 200 MB headroom.** The chroot-purge step was attempting to squeeze ~80 MB more, but was not actually needed AND introduced real complexity (squashfs candidate priority, chroot bind safety, mksquashfs OOM risk, host /dev exposure via lazy unmount).
+
+**v2.55.30 simplification:**
+1. Step 2b drops the chroot-purge block entirely. Only pool/ delete remains.
+2. Prereq check drops `unsquashfs` + `mksquashfs` (no longer used).
+3. `ISO_SLIM=0` escape valve preserved.
+4. `apt.fallback: continue-anyway` in autoinstall.yaml.template stays (still correct — pool/ is gone).
+
+**Verified on Holmgren build host:**
+```
+ISO:  /home/ubuntu/sports-bar-tv-controller-v3.1.0-2026-06-09.iso
+Size: 1688 MB (1.7 GB)
+Cap:  1900 MB
+GATE: ✅ PASS  (212 MB headroom under cap)
+```
+
+Build runtime: 10 sec (with cached stock ISO + cached build dir). First-build-fresh: ~5 min total (vs ~25 min stock pre-slim due to download).
+
+**If a future Ubuntu point release pushes the post-pool-delete size over 1.9 GB** (unlikely but possible if Canonical bundles more in casper), the path forward is one of:
+- Switch to `mksquashfs -comp zstd -Xcompression-level 22` on a single squashfs (smaller than the default xz with right tuning)
+- Drop the `hwe-` kernel variant from `casper/` (only needed if installing on hardware that requires HWE — most server boxes don't)
+- Bring back a CORRECT chroot-purge targeting `ubuntu-server-minimal.squashfs` (the base layer with full rootfs, NOT the `.ubuntu-server.` diff layer)
+
+**Lesson recorded:** "two levers" plans should sequence the simpler one first AND validate it alone before adding complexity. v2.55.28 shipped both levers together; the broken complex one masked the fact that the simple one was sufficient.
+
+---
+
 ## v2.55.29 — Phase 4 hardening + Graystone Turbopack opt-out + SSH log-cleanup (2026-06-09)
 
 **Versions covered:** v2.55.29
