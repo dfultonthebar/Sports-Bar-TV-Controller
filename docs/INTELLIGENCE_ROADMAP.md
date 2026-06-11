@@ -34,3 +34,67 @@ MLB `statsapi.mlb.com` (free, no key) returns **structured local-RSN-per-game** 
 
 ## One-line priority
 Ship `HardwareResult` + OR-gate sweep + guide drop logging now; wire `DistributionEngine` shadow next; league APIs enrich `game_schedules` only after drop logs prove where ESPN fails; touch guide consolidation last.
+
+---
+
+## Phase 2 — beyond Waves 1-5: reliability + trust + utilization (added 2026-06-11)
+
+Grounded by a code-explorer pass + Grok after the Wave-2 shadow shipped. The first
+shadow data point (LLM chasing obscure streaming while the engine nailed the marquee
+MLB game to 23 TVs) is the strongest possible signal these investments pay off on the
+primary flip. **Two buckets: ship-now reliability (no flip dependency) and trust-
+builders that gate the flip.**
+
+### SHIP NOW (no flip dependency, hardens reliability + the shadow data)
+
+- **Wave 3.5 — health-aware assignment (TOP — same bug class as the OR-gate fix).**
+  `StateReader.getAvailableInputs()` (`state-reader.ts:227`) computes `isAvailable`
+  from `isSchedulingEnabled` + manual-override ONLY — it never joins device online
+  status. So the engine can assign a game to an OFFLINE cable box / Fire TV → tune
+  silently fails → wrong channel + green tile (the Greenville Brewers symptom).
+  Join real liveness (`fireTVDevices.isOnline` via firetv-connection-manager; matrix/
+  IR families need a liveness signal — may only be reliable for Fire TV initially).
+  **TRAP:** only exclude on a RELIABLE "definitely offline" signal — false-excluding
+  a working device (e.g. transient blip, or an IR cable box with no liveness probe)
+  gives a game zero screens, worse than today. Default to include-on-unknown.
+  Stretch: cross-device-type fallback (Brewers on cable ch308 AND a Fire TV app — if
+  the box is dead, use the Fire TV). Value HIGH · M (check) / L (fallback) · pairs with Wave 3.
+- **Wave 3.6 — contention notification.** When games > inputs, low-priority games get
+  ZERO screens silently. `reasoning[]` already has the data (`distribution-engine.ts`
+  minTVsMet=false) — surface a "N games had no screen" line in the bartender Game Plan.
+  Value HIGH · **S**. (Multiview/quad-card integration is a separate XL — do NOT
+  conflate; multiview consumes 4 inputs/card, wiring-specific like outputOffset.)
+- **Wave 3.7 — persist engine reasoning to SchedulerLog.** Engine "why" only goes to
+  PM2 buffer today — not queryable. Write structured rows (`component='distribution-
+  engine'`, op `assign`/`drop`, metadata {game, priority, assignedTVs, minTVsRequired,
+  reason}) like the guide drop-logging. Value MED-HIGH · **S**. Foundation for trust.
+
+### GATED ON THE PRIMARY FLIP (#346)
+
+- **Wave 6 — engine learning loops.** The DistributionEngine reads NO learned prefs;
+  the LLM reads `scheduling_patterns` (team→input/output, built from bartender
+  overrides — "Packers on the big wall TVs"). Feed `preferredInputId`/`preferredOutputs`
+  in as a scoring bias (reuse the 3+ override-digester threshold; emulate, don't copy,
+  `lib/ai/distribution-optimizer.ts`). THE thing that makes the deterministic engine
+  genuinely *better* than the LLM, not just faster. Value HIGH · M.
+- **Wave 7 — bartender-facing "why" (server-built per Gotcha #12).** One-line rationale
+  per suggestion ("Packers home → 20 TVs; cable ch6; you've put them here 12× before").
+  Build the string in TS, never let the LLM paraphrase ([[feedback-llm-server-built-verbatim]]).
+  Value HIGH · S-M · critical for trusting the new primary.
+
+### LATER / HIGHER-RISK
+- **Wave 8 — end-of-game re-allocation.** Freed input → re-tune for queued overflow.
+  `auto-reallocator.ts:1155 activatePendingAllocations` only flips DB status today, no
+  tune. Value HIGH · M.
+- **Predictive pre-tune sequencing** (route-then-tune) — LOW-MED · S, after health stabilizes.
+- **Multiview contention resolver** — XL, wiring-specific, post-flip only.
+
+### Phase-2 traps (Grok + code-explorer)
+- Health: include-on-unknown; never false-exclude a working device. IR cable boxes have
+  no liveness probe — health-awareness is initially Fire-TV-mostly.
+- Learning: don't let pattern bias override the home-team minTV floor.
+- Explanations: server-build, never LLM-paraphrase (Gotcha #12).
+- Two distribution codepaths (`lib/ai/distribution-optimizer` already learns; the
+  scheduler `distribution-engine` does not) — converge or keep signals aligned post-flip.
+- Don't promote primary until health + learning + explanations land, or the shadow's
+  "strong signal" becomes operator pain.
