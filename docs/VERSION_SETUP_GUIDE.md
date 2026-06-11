@@ -35,6 +35,18 @@ is the archive.
 
 ---
 
+## v2.55.52 — Demote two operational log-spam ERRORs to WARN (2026-06-10)
+
+**Versions covered:** v2.55.52
+**Branch landed:** main → all 6 location branches
+**Required Manual Step:** None. Pure log-level changes; no behavior change.
+
+Fleet error scan found two ERROR-level log-spam sources (both operational states wrongly logged as application faults, tripping the error-watch every cycle):
+- **`bulk-power/route.ts`** — a TV with no `macAddress` fails Wake-on-LAN power-on and logged ERROR on every bulk-power cycle (Greenville TV 20 = 85 ERROR rows/24h). The missing-MAC case is a CONFIG GAP, now logged at WARN; genuine failures still ERROR. (Config-side: add the TV's MAC so WoL actually works.)
+- **`firetv-health-monitor.ts`** — "Device X has been down for N minutes" logged ERROR; an AV endpoint (Atmosphere TV, Epson projector, a TV off after close) being unreachable is operational, not a fault (Holmgren Atmosphere = 34 ERROR rows/24h flapping off-hours). Now WARN; the `alertsSent` dedup still fires once per down-period.
+
+---
+
 ## v2.55.50–51 — verify-install auth check: bind to LOCATION_ID, not id format; wizard lspci (2026-06-10)
 
 **Versions covered:** v2.55.50, v2.55.51
