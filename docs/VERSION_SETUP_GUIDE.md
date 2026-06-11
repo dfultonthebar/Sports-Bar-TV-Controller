@@ -35,6 +35,22 @@ is the archive.
 
 ---
 
+## v2.55.53 — MAC auto-discovery for network TVs (2026-06-10)
+
+**Versions covered:** v2.55.53
+**Branch landed:** main → all 6 location branches
+**Required Manual Step:** None. New capability; no config required.
+
+A `NetworkTVDevice` with no `macAddress` can't do Wake-on-LAN power-on (and logs a warning every bulk-power cycle — see v2.55.52). The box can now read the MAC straight off the LAN instead of hand-entering it:
+- **`apps/web/src/lib/mac-discovery.ts`** — `resolveMacForIp(ip)` pings once to populate the kernel ARP/neighbor cache, then reads the MAC back via `ip neigh show` (fallback `/proc/net/arp`). `backfillMissingMacs()` fills every TV missing a MAC. Same-LAN + Linux only; deterministic (no LLM).
+- **`POST /api/tv-control/detect-macs`** — on-demand backfill (optional `{deviceId}`). Admin-only surface (device-config, port 3001) — NOT in the bartender :3002 allow-list (not needed).
+- **`instrumentation.ts`** — scheduled backfill 60s after boot + every 30 min, so a TV self-populates its MAC the moment it's powered on and reachable.
+- **UI** — "Detect MACs" button on the TV Network Discovery panel (Device Config).
+
+**Effect at Greenville:** once TV 20 (10.40.10.20, currently MAC-less) is powered on, the next scheduled run (or the button) fills its MAC automatically → WoL power-on starts working and the v2.55.52 warning stops for good.
+
+---
+
 ## v2.55.52 — Demote two operational log-spam ERRORs to WARN (2026-06-10)
 
 **Versions covered:** v2.55.52
