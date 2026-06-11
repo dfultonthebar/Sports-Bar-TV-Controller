@@ -236,6 +236,10 @@ async function main() {
 
   console.log('\n5. Processing + indexing in batches of 5...')
   const batchSize = 5
+  // Yield the iGPU between batches so interactive Ollama requests (AI Suggest,
+  // shift-brief) aren't starved behind the whole scan (see scan-system-docs.ts /
+  // Holmgren 2026-06-11). 1.2s default; tune via RAG_SCAN_BATCH_DELAY_MS.
+  const batchDelayMs = Number(process.env.RAG_SCAN_BATCH_DELAY_MS ?? 1200)
   let totalChunks = 0
   let totalDocs = 0
   const errors: string[] = []
@@ -255,6 +259,9 @@ async function main() {
     }
     const pct = Math.round(((i + batch.length) / files.length) * 100)
     console.log(`    progress ${i + batch.length}/${files.length} (${pct}%) — chunks=${totalChunks}`)
+    if (batchDelayMs > 0 && i + batchSize < files.length) {
+      await new Promise(resolve => setTimeout(resolve, batchDelayMs))
+    }
   }
 
   // Restore the original supported-extensions list so other things

@@ -35,6 +35,22 @@ is the archive.
 
 ---
 
+## v2.55.55 — RAG rescan yields the iGPU so it can't starve AI Suggest (2026-06-11)
+
+**Versions covered:** v2.55.55
+**Branch landed:** main → all 6 location branches
+**Required Manual Step:** None. Script-only change — no app rebuild needed; the next rescan on each box uses the throttled scripts.
+
+**Root cause (Holmgren 2026-06-11):** AI Suggest timed out (300s) because a doc-commit RAG rescan (`scan-system-docs.ts`, Standing Rule 11) was running during pre-shift. The single Intel iGPU serializes Ollama work, so the scan's back-to-back `nomic-embed-text` embeddings monopolized the queue and the `llama3.1:8b` AI Suggest generation got starved. Compounded by AI Suggest's `num_predict: 2048` (~220s even uncontended).
+
+**Fix:**
+- `scan-system-docs.ts` + `scan-code-docs.ts` now `await` a per-batch delay (`RAG_SCAN_BATCH_DELAY_MS`, default 1200ms) so the iGPU queue gets gaps an interactive request can slip into — max wait drops from "the whole remaining scan" to ~one batch.
+- `rag-rescan-if-needed.sh` runs the scans under `nice -n 19 ionice -c3` (belt-and-suspenders for CPU/IO).
+
+**Note (not changed):** AI Suggest's `num_predict: 2048` is inherently near the 300s budget at ~9 tok/s. If timeouts recur even with rescans throttled, the follow-up is to trim it. The keep_alive=-1 multi-model residency ([[feedback-ollama-ram-pressure]]) is unchanged — only the embedding model + llama3.1:8b are pinned (~5.6 GB), within budget on a 31 GB box.
+
+---
+
 ## v2.55.54 — Shift-brief: make the LLM-error log diagnosable (2026-06-11)
 
 **Versions covered:** v2.55.54
