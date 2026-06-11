@@ -1123,6 +1123,11 @@ function parseOllamaResponse(
     const inBatchClaims = new Map<string, Array<{ start: number; end: number; gameId: string }>>()
 
     const finalSuggestions: AISuggestion[] = []
+    // Wave 2 shadow (#2): the home-team pad below mutates sug.suggestedOutputs to
+    // minTVs in place. Snapshot each padded suggestion's ORGANIC outputs (keyed by
+    // gameId) so the shadow comparison isn't inflated to Jaccard 1.0 on home games.
+    // Internal only — never serialized into the response.
+    const prePadByGameId = new Map<string, number[]>()
     for (const sug of suggestions) {
       const gameIdx = parseInt(sug.gameId.replace('game-', ''), 10)
       const origGame = games[gameIdx]
@@ -1298,6 +1303,7 @@ function parseOllamaResponse(
             logger.info(
               `[AI-SUGGEST] Home-team pad: ${rule.teamName} (${origGame.awayTeam} @ ${origGame.homeTeam}) — LLM gave ${sug.suggestedOutputs.length} TVs, padded to ${padded.length} (rule minTVs=${rule.minTVs})`,
             )
+            prePadByGameId.set(sug.gameId, [...sug.suggestedOutputs]) // Wave 2 shadow (#2): organic, pre-pad
             sug.suggestedOutputs = padded
             sug.reasoning = `${sug.reasoning} [auto-padded to ${padded.length} TVs per ${rule.teamName} home-team rule]`
           }
@@ -1307,11 +1313,11 @@ function parseOllamaResponse(
       finalSuggestions.push(sug)
     }
 
-    return { suggestions: finalSuggestions, rejections }
+    return { suggestions: finalSuggestions, rejections, prePadByGameId }
   } catch (err: any) {
     logger.error(`[AI-SUGGEST] Failed to parse Ollama JSON response: ${err.message}`)
     logger.debug(`[AI-SUGGEST] Raw response: ${raw.substring(0, 500)}`)
-    return { suggestions: [], rejections: [] }
+    return { suggestions: [], rejections: [], prePadByGameId: new Map<string, number[]>() }
   }
 }
 
@@ -1512,7 +1518,7 @@ export async function GET(request: NextRequest) {
     logger.info(`[AI-SUGGEST] Ollama raw response (${ollamaResponse.length} chars): ${ollamaResponse.slice(0, 2000)}`)
 
     // 4. Parse response into structured suggestions
-    const { suggestions, rejections } = parseOllamaResponse(ollamaResponse, filteredGames, inputSources, homeTeamRules, tvOutputs.length)
+    const { suggestions, rejections, prePadByGameId } = parseOllamaResponse(ollamaResponse, filteredGames, inputSources, homeTeamRules, tvOutputs.length)
 
     // v2.27.1: Persist rejection telemetry so operators can see WHY the LLM
     // dropped suggestions (zero outputs, in-batch collision, existing booking,
@@ -1563,7 +1569,7 @@ export async function GET(request: NextRequest) {
     // in the background and log a diff vs the LLM plan. setTimeout(0) defers it
     // past this return so it never adds latency; the runner never throws.
     if (AI_SUGGEST_SOLVER === 'shadow') {
-      const shadowArgs = { requestId: aiReqId, filteredGames, inputSources, tvOutputs, llmSuggestions: suggestions }
+      const shadowArgs = { requestId: aiReqId, filteredGames, inputSources, tvOutputs, llmSuggestions: suggestions, prePadByGameId }
       setTimeout(() => { void runAiSuggestSolverShadow(shadowArgs) }, 0)
     }
 

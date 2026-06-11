@@ -13,10 +13,23 @@
  * after the response is sent); match games by CONTENT KEY (home@away), not
  * array index (the engine sorts by priority, the LLM list includes streaming);
  * scope to the cable/directv slice (the engine doesn't model streaming inputs).
+ *
+ * Audit (wf_bf9a3b6b) corrections folded in:
+ *  #1 (CRITICAL) input identity: input_sources.matrixInputId is unreliable — at
+ *     some locations it holds the matrix channelNumber directly, at others a UUID
+ *     FK to MatrixInput.id, and it is NULL on fresh installs. The engine filters
+ *     on MatrixInput.channelNumber (StateReader sets inputNumber from it). Resolve
+ *     robustly via MatrixInput (both lineages), else the diff is garbage.
+ *  #2 (HIGH) home-team padding mutates suggestedOutputs in place BEFORE we read it,
+ *     so home-game Jaccard would be ~1.0 (both padded to minTVs). Compare against
+ *     the LLM's PRE-PAD organic outputs (passed in prePadByGameId).
+ *  #3 (MED) compare inputs by channel NUMBER (engine inputNumber vs the LLM input's
+ *     resolved channelNumber), not engine label vs input_sources.name.
  */
 import { promises as fs } from 'fs'
 import { existsSync, mkdirSync } from 'fs'
 import path from 'path'
+import { db, schema } from '@/db'
 import { getDistributionEngine } from '@/lib/scheduler/distribution-engine'
 import type { GameInfo } from '@/lib/scheduler/priority-calculator'
 import { logger } from '@sports-bar/logger'
@@ -28,11 +41,15 @@ export interface ShadowInputs {
   filteredGames: any[]   // the SAME list buildPrompt/parse saw (1-based gameIndex)
   inputSources: any[]
   tvOutputs: any[]
-  llmSuggestions: any[]  // { gameIndex, suggestedInput, suggestedOutputs[], ... }
+  llmSuggestions: any[]  // AISuggestion[] { gameId, homeTeam, awayTeam, suggestedInput, suggestedOutputs[], ... }
+  /** gameId → the LLM's ORGANIC outputs before home-team padding (#2) */
+  prePadByGameId?: Map<string, number[]>
 }
 
 const gameKey = (home: any, away: any): string =>
   `${String(away || '').toLowerCase().trim()}@${String(home || '').toLowerCase().trim()}`
+
+const norm = (s: any): string => String(s || '').toLowerCase().trim()
 
 function jaccard(a: number[], b: number[]): number {
   const sa = new Set(a), sb = new Set(b)
@@ -45,7 +62,7 @@ function jaccard(a: number[], b: number[]): number {
 
 export async function runAiSuggestSolverShadow(inp: ShadowInputs): Promise<void> {
   try {
-    const { requestId, filteredGames, inputSources, tvOutputs, llmSuggestions } = inp
+    const { requestId, filteredGames, inputSources, tvOutputs, llmSuggestions, prePadByGameId } = inp
 
     // cable/directv slice only — the engine doesn't model streaming inputs.
     const cableDirectvGames = filteredGames.filter(g => g.channelNumber || g.directvChannel)
@@ -64,10 +81,41 @@ export async function runAiSuggestSolverShadow(inp: ShadowInputs): Promise<void>
       directvChannel: g.directvChannel || undefined,
     }))
 
-    const allowedInputs = inputSources
-      .filter(s => s.type === 'cable' || s.type === 'directv' || s.type === 'satellite')
-      .map(s => Number(s.matrixInputId))
-      .filter(n => Number.isFinite(n))
+    // --- #1: resolve input identity the way the engine does (MatrixInput.channelNumber) ---
+    // input_sources.matrixInputId is unreliable (channelNumber at some sites, a UUID
+    // FK to MatrixInput.id at others, NULL on fresh installs). Build both lookups and
+    // resolve each cable/directv source to its matrix channel number.
+    const matrixRows = await db.select().from(schema.matrixInputs)
+    const channelById = new Map<string, number>()
+    const validChannels = new Set<number>()
+    for (const mi of matrixRows as any[]) {
+      const ch = Number(mi.channelNumber)
+      if (Number.isFinite(ch)) {
+        validChannels.add(ch)
+        if (mi.id != null) channelById.set(String(mi.id), ch)
+      }
+    }
+    const resolveChannel = (s: any): number | null => {
+      const raw = s?.matrixInputId
+      if (raw == null || raw === '') return null
+      if (channelById.has(String(raw))) return channelById.get(String(raw))!   // UUID FK lineage
+      const n = Number(raw)
+      if (Number.isFinite(n) && validChannels.has(n)) return n                 // direct-channelNumber lineage
+      return null
+    }
+
+    const nameToChannel = new Map<string, number>() // input_sources.name → channel (#3 comparison)
+    const allowedInputsArr: number[] = []
+    let unresolvedInputs = 0
+    for (const s of inputSources) {
+      if (s.type !== 'cable' && s.type !== 'directv' && s.type !== 'satellite') continue
+      const ch = resolveChannel(s)
+      if (ch == null) { unresolvedInputs++; continue }
+      allowedInputsArr.push(ch)
+      if (s.name) nameToChannel.set(norm(s.name), ch)
+    }
+    const allowedInputs = [...new Set(allowedInputsArr)]
+
     const allowedOutputs = tvOutputs
       .map(o => Number(o.channelNumber))
       .filter(n => Number.isFinite(n))
@@ -78,18 +126,25 @@ export async function runAiSuggestSolverShadow(inp: ShadowInputs): Promise<void>
     })
 
     // Index the LLM suggestions by game content key (gameIndex → filteredGames).
-    // If the LLM proposed the same game on >1 input (alternates), keep the one
-    // with the most outputs as the primary for comparison.
-    const llmByKey = new Map<string, { input: string | null; outputs: number[] }>()
+    // #2: use the PRE-PAD organic outputs (home-team padding mutated the post-pad
+    // copy to minTVs, which would make home-game Jaccard a meaningless 1.0). If the
+    // same game appears on >1 input (alternates), keep the one with the most outputs.
+    const llmByKey = new Map<string, { inputCh: number | null; inputName: string | null; outputs: number[] }>()
     for (const s of llmSuggestions || []) {
-      const idx = (s.gameIndex || 0) - 1
-      const g = filteredGames[idx]
-      if (!g) continue
-      const k = gameKey(g.homeTeam, g.awayTeam)
-      const outs = Array.isArray(s.suggestedOutputs) ? s.suggestedOutputs.map(Number).filter(Number.isFinite) : []
+      // AISuggestion carries homeTeam/awayTeam + gameId directly — match by content
+      // key (no fragile index), and read PRE-PAD organic outputs by gameId (#2).
+      const k = gameKey(s.homeTeam, s.awayTeam)
+      if (k === '@') continue
+      const organic = prePadByGameId?.get(s.gameId)
+      const rawOuts = Array.isArray(organic) ? organic : s.suggestedOutputs
+      const outs = Array.isArray(rawOuts) ? rawOuts.map(Number).filter(Number.isFinite) : []
       const prev = llmByKey.get(k)
       if (!prev || outs.length > prev.outputs.length) {
-        llmByKey.set(k, { input: s.suggestedInput ?? null, outputs: outs })
+        llmByKey.set(k, {
+          inputCh: s.suggestedInput ? (nameToChannel.get(norm(s.suggestedInput)) ?? null) : null,
+          inputName: s.suggestedInput ?? null,
+          outputs: outs,
+        })
       }
     }
 
@@ -100,24 +155,26 @@ export async function runAiSuggestSolverShadow(inp: ShadowInputs): Promise<void>
     for (const ga of plan.games) {
       const k = gameKey(ga.game.homeTeam, ga.game.awayTeam)
       engineKeys.add(k)
-      const engineInput = ga.assignments[0]?.inputLabel ?? null
+      const engineInputCh = ga.assignments[0]?.inputNumber ?? null
+      const engineInputLabel = ga.assignments[0]?.inputLabel ?? null
       const engineOutputs = ga.assignments.map(a => a.outputNumber)
       if (ga.minTVsMet) engineMinMet++
       const llm = llmByKey.get(k)
       if (!llm) {
         onlyEngine++
-        perGame.push({ key: k, llm: false, engineInput, engineOutCount: engineOutputs.length, engineMinMet: ga.minTVsMet })
+        perGame.push({ key: k, llm: false, engineInputCh, engineInputLabel, engineOutCount: engineOutputs.length, engineMinMet: ga.minTVsMet })
         continue
       }
       comparable++
-      const inputsAgree = !!engineInput && !!llm.input && engineInput.toLowerCase() === llm.input.toLowerCase()
+      // #3: compare by channel number (label vs name was a false 0%).
+      const inputsAgree = engineInputCh != null && llm.inputCh != null && engineInputCh === llm.inputCh
       if (inputsAgree) inputMatches++
       const jac = jaccard(engineOutputs, llm.outputs)
       jaccSum += jac
       perGame.push({
         key: k,
         isHome: (ga.priority as any)?.isHomeTeamGame ?? null,
-        engineInput, llmInput: llm.input, inputsAgree,
+        engineInputCh, llmInputCh: llm.inputCh, llmInputName: llm.inputName, inputsAgree,
         engineOutCount: engineOutputs.length, llmOutCount: llm.outputs.length,
         jaccard: Number(jac.toFixed(2)),
         engineMinMet: ga.minTVsMet,
@@ -133,12 +190,15 @@ export async function runAiSuggestSolverShadow(inp: ShadowInputs): Promise<void>
       onlyEngine,
       onlyLLM,
       engineMinMet,
+      unresolvedInputs,
+      allowedInputCount: allowedInputs.length,
     }
 
     logger.info(
       `[AI-SUGGEST-SOLVER:SHADOW ${requestId}] inputAgree=${comparison.inputAgreementPct}% ` +
       `avgJaccard=${comparison.avgJaccard} engineGames=${comparison.engineGames} llmGames=${comparison.llmGames} ` +
-      `onlyEngine=${onlyEngine} onlyLLM=${onlyLLM} engineMinMet=${engineMinMet}`
+      `onlyEngine=${onlyEngine} onlyLLM=${onlyLLM} engineMinMet=${engineMinMet} ` +
+      `allowedInputs=${allowedInputs.length} unresolvedInputs=${unresolvedInputs}`
     )
 
     // Persistent daily log for multi-day fleet comparison before the primary flip.
