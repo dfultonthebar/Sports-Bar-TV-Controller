@@ -180,7 +180,15 @@ export async function runAiSuggestSolverShadow(inp: ShadowInputs): Promise<void>
         engineMinMet: ga.minTVsMet,
       })
     }
-    const onlyLLM = [...llmByKey.keys()].filter(k => !engineKeys.has(k)).length
+    // Record the games the LLM picked that the engine didn't, so the 7-day
+    // review (#346) is self-contained — e.g. "LLM chose niche streaming events
+    // while the engine prioritized the marquee MLB cable game".
+    const onlyLLMKeys = [...llmByKey.keys()].filter(k => !engineKeys.has(k))
+    const onlyLLM = onlyLLMKeys.length
+    for (const k of onlyLLMKeys) {
+      const llm = llmByKey.get(k)!
+      perGame.push({ key: k, engine: false, llmInputCh: llm.inputCh, llmInputName: llm.inputName, llmOutCount: llm.outputs.length })
+    }
 
     const comparison = {
       inputAgreementPct: comparable ? Math.round((100 * inputMatches) / comparable) : 0,
