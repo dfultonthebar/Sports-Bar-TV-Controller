@@ -957,11 +957,17 @@ export default function EnhancedChannelGuideBartenderRemote() {
       // Filter and map - only show channels that have a preset configured
       filtered = filtered
         .map((prog): GameListing | null => {
-          // Find matching preset by channel name or number
+          // Find matching preset by channel name or number.
+          // Wave 1b-i: String()-normalize BOTH sides. preset.channelNumber is
+          // TEXT from the DB; prog.channel.number has historically been a number
+          // from some injection paths — a bare === silently dropped the row (the
+          // client half of the Brewers ch308 / TEXT-vs-INTEGER class; the server
+          // half was fixed in v2.55.44). This fix only ADDS back rows that were
+          // previously nulled — it never removes a row.
           const matchingPreset = channelPresets.find(preset =>
             preset.deviceType === presetDeviceType &&
             (preset.name.toLowerCase() === prog.channel.name.toLowerCase() ||
-             preset.channelNumber === prog.channel.number)
+             String(preset.channelNumber) === String(prog.channel.number ?? (prog.channel as any).channelNumber))
           )
 
           if (matchingPreset) {

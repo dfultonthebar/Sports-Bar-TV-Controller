@@ -10,6 +10,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { getSportsGuideApi } from '@/lib/sportsGuideApi'
+import { DropTracker } from '@/lib/channel-guide/drop-tracker'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { db, schema } from '@/db'
@@ -201,6 +202,13 @@ export async function POST(request: NextRequest) {
 
 
   const requestId = Math.random().toString(36).substring(7)
+  // Wave 1b-i: per-game drop observability. Pure logging, changes no output.
+  // Per-game detail gated behind ?debugDrops=1 (non-bartender calls) or
+  // CHANNEL_GUIDE_DROP_DEBUG=true so normal iPad traffic stays quiet.
+  const dropTracker = new DropTracker()
+  const dropDebug =
+    request.nextUrl.searchParams.get('debugDrops') === '1' ||
+    process.env.CHANNEL_GUIDE_DROP_DEBUG === 'true'
   logInfo(`========== CHANNEL GUIDE REQUEST [${requestId}] ==========`)
 
   try {
@@ -548,6 +556,13 @@ export async function POST(request: NextRequest) {
             }
             if (!resolvedStreamingApp) {
               gsSkippedNoChannel++
+              dropTracker.drop({
+                source: 'gs-stream',
+                game: `${game.awayTeamName} @ ${game.homeTeamName}`,
+                reason: 'gs-stream-no-app',
+                triedNetworks: broadcastNetworks,
+                startTime: new Date(game.scheduledStart * 1000).toISOString(),
+              })
               continue
             }
           } else {
@@ -559,6 +574,16 @@ export async function POST(request: NextRequest) {
             const resolvedForDevice = presetDeviceType === 'directv' ? resolution.directv : resolution.cable
             if (!resolvedForDevice) {
               gsSkippedNoChannel++
+              // Wave 1b-i: the broadcast_networks we TRIED but couldn't resolve to
+              // a channel — the exact Brewers-ch308 / Wave-4 signal.
+              dropTracker.drop({
+                source: presetDeviceType === 'directv' ? 'gs-directv' : 'gs-cable',
+                game: `${game.awayTeamName} @ ${game.homeTeamName}`,
+                reason: 'gs-no-channel',
+                triedNetworks: broadcastNetworks,
+                triedChannel: game.primaryNetwork ?? null,
+                startTime: new Date(game.scheduledStart * 1000).toISOString(),
+              })
               continue
             }
             resolvedPreset = {
@@ -587,6 +612,12 @@ export async function POST(request: NextRequest) {
           )
           if (dupe) {
             gsSkippedDupe++
+            dropTracker.drop({
+              source: presetDeviceType === 'directv' ? 'gs-directv' : 'gs-cable',
+              game: `${game.awayTeamName} @ ${game.homeTeamName}`,
+              reason: 'gs-dupe',
+              triedChannel: resolvedPreset!.channelNumber,
+            })
             continue
           }
 
@@ -1666,6 +1697,13 @@ export async function POST(request: NextRequest) {
             league: program.league,
             channel: program.channel?.name
           })
+          dropTracker.drop({
+            source: 'preset-filter',
+            game: program.awayTeam && program.homeTeam ? `${program.awayTeam} @ ${program.homeTeam}` : (program.channel?.name || 'unknown'),
+            reason: 'preset-filter',
+            triedChannel: channelNumber ?? null,
+            startTime: program.startTime ?? null,
+          })
         }
 
         return isInPreset
@@ -1701,6 +1739,15 @@ export async function POST(request: NextRequest) {
         presetFiltered: true,
         presetChannelCount: presetChannels.size
       }
+    }
+
+    // Wave 1b-i: one structured reconciliation line per request — turns
+    // "a game is missing" from a 1700-line guessing game into a logged event
+    // with the reason + the broadcast_networks tried. Per-game detail only
+    // when ?debugDrops=1 / CHANNEL_GUIDE_DROP_DEBUG=true.
+    const recon = dropTracker.summarize(requestId, presetFilteredPrograms.length, dropDebug)
+    if (dropDebug) {
+      ;(response as any).debug = { dropped: recon.dropped, byReason: recon.byReason, sample: recon.sample }
     }
 
     logInfo(`========== REQUEST COMPLETE [${requestId}] ==========`)
