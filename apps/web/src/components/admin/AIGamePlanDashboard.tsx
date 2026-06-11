@@ -408,6 +408,7 @@ export default function AIGamePlanDashboard() {
     setExecuting(true)
     setError(null)
     setSuccess(null)
+    setUnservedGames([])  // clear stale banner before a fresh run
 
     try {
       const response = await fetch('/api/schedules/execute', {
