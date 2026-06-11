@@ -15,6 +15,8 @@ import { getTeamMatcher } from '@/lib/scheduler/team-name-matcher'
 import { getPriorityCalculator } from '@/lib/scheduler/priority-calculator'
 import { getDistributionEngine } from '@/lib/scheduler/distribution-engine'
 import { getStateReader } from '@/lib/scheduler/state-reader'
+import { schedulerLogger } from '@sports-bar/scheduler'
+import { randomUUID } from 'crypto'
 import type { GameInfo } from '@/lib/scheduler/priority-calculator'
 import { espnScoreboardAPI } from '@/lib/sports-apis/espn-scoreboard-api'
 import { parseHardwareResult } from '@sports-bar/utils'
@@ -618,6 +620,47 @@ async function findHomeTeamGames(homeTeamIds: string[], schedule: any, allowedOu
         `[AI_SCHEDULER] Distribution plan created: ${distributionPlan.games.length} games, ` +
         `${distributionPlan.summary.assignedTVs}/${distributionPlan.summary.totalTVs} TVs assigned`
       );
+
+      // Wave 3.7: persist the engine's per-game assign/drop reasoning to
+      // SchedulerLog so "why did the Bucks game get no screen last Tuesday?" is a
+      // query (SchedulerLogsDashboard, component='distribution-engine'), not PM2
+      // log archaeology. Wave 3.6: collect under-served/no-screen games to surface
+      // back to the operator. Best-effort — never block the schedule execution.
+      const planCorrelationId = randomUUID();
+      const unservedGames: Array<{ game: string; assignedTVs: number; minTVsRequired: number; reason: string }> = [];
+      try {
+        for (const ga of distributionPlan.games) {
+          const label = `${ga.game.awayTeam} @ ${ga.game.homeTeam}`;
+          const assignedTVs = ga.assignments.length;
+          const ctx = {
+            metadata: JSON.stringify({
+              game: label,
+              league: ga.game.league ?? null,
+              priority: ga.priority?.finalScore ?? null,
+              isHomeTeam: (ga.priority as any)?.isHomeTeamGame ?? null,
+              assignedTVs,
+              minTVsRequired: ga.minTVsRequired,
+              minTVsMet: ga.minTVsMet,
+              inputs: [...new Set(ga.assignments.map((a) => a.inputLabel))],
+            }),
+          };
+          if (assignedTVs === 0) {
+            unservedGames.push({ game: label, assignedTVs, minTVsRequired: ga.minTVsRequired, reason: 'no available screen (all matching inputs busy/unavailable)' });
+            await schedulerLogger.warn('distribution-engine', 'distribute', `No screen: ${label} got 0/${ga.minTVsRequired} TVs`, planCorrelationId, ctx);
+          } else if (!ga.minTVsMet) {
+            unservedGames.push({ game: label, assignedTVs, minTVsRequired: ga.minTVsRequired, reason: 'below minimum TVs' });
+            await schedulerLogger.warn('distribution-engine', 'distribute', `Under-served: ${label} got ${assignedTVs}/${ga.minTVsRequired} TVs`, planCorrelationId, ctx);
+          } else {
+            await schedulerLogger.info('distribution-engine', 'distribute', `Assigned ${assignedTVs} TVs to ${label}`, planCorrelationId, ctx);
+          }
+        }
+        if (unservedGames.length > 0) {
+          logger.warn(`[AI_SCHEDULER] ${unservedGames.length} game(s) under-served/no-screen: ${unservedGames.map((u) => u.game).join(', ')}`);
+        }
+      } catch (logErr: any) {
+        logger.warn(`[AI_SCHEDULER] engine reasoning log failed (non-fatal): ${logErr?.message || logErr}`);
+      }
+      (result as any).unservedGames = unservedGames;
 
       // Transform distribution plan into output assignments format
       for (const gameAssignment of distributionPlan.games) {
