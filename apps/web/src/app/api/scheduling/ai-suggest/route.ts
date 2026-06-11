@@ -21,6 +21,7 @@ import {
   newSchedulingRequestId,
 } from '@/lib/scheduling-logger'
 import { logLlmPerf } from '@/lib/llm-perf-logger'
+import { runAiSuggestSolverShadow } from '@/lib/scheduling/ai-suggest-solver-shadow'
 import { resolveChannelsForGame } from '@/lib/network-channel-resolver'
 
 const OLLAMA_URL = `${HARDWARE_CONFIG.ollama.baseUrl}/api/generate`
@@ -34,6 +35,12 @@ const OLLAMA_MODEL = HARDWARE_CONFIG.ollama.model
 // slow iGPUs (Graystone ~6.7 tok/s) hit the 300s timeout at 2048. logLlmPerf
 // records real eval_count + done_reason so this gets set from data.
 const OLLAMA_NUM_PREDICT = HARDWARE_CONFIG.ollama.numPredict
+// Wave 2 (intelligence roadmap): deterministic DistributionEngine solver.
+// off (default) = LLM only, no engine call. shadow = also run the engine after
+// the response is sent and LOG a diff (no output change). primary (later patch)
+// = engine plan is the answer, LLM optional for reasoning. Env-tunable per box;
+// in ecosystem.config.js, needs pm2 delete+start (Gotcha #2).
+const AI_SUGGEST_SOLVER = (process.env.AI_SUGGEST_SOLVER || 'off').toLowerCase()
 
 // ---------- types ----------
 
@@ -1551,6 +1558,14 @@ export async function GET(request: NextRequest) {
       outcome: { httpStatus: 200 },
       note: `AI returned ${suggestions.length} suggestion(s) for ${games.length} game(s) (${rejections.length} rejections, ${inputSources.length} inputs avail, ${patterns.length} learned patterns consulted). Operator will approve via /api/schedules/bartender-schedule.`,
     })
+
+    // Wave 2 SHADOW: after building the response, run the deterministic engine
+    // in the background and log a diff vs the LLM plan. setTimeout(0) defers it
+    // past this return so it never adds latency; the runner never throws.
+    if (AI_SUGGEST_SOLVER === 'shadow') {
+      const shadowArgs = { requestId: aiReqId, filteredGames, inputSources, tvOutputs, llmSuggestions: suggestions }
+      setTimeout(() => { void runAiSuggestSolverShadow(shadowArgs) }, 0)
+    }
 
     return NextResponse.json({
       success: true,
