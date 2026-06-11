@@ -632,17 +632,19 @@ async function findHomeTeamGames(homeTeamIds: string[], schedule: any, allowedOu
         for (const ga of distributionPlan.games) {
           const label = `${ga.game.awayTeam} @ ${ga.game.homeTeam}`;
           const assignedTVs = ga.assignments.length;
+          // Pass the raw object — SchedulerLogger.log() JSON.stringifies metadata
+          // itself; pre-stringifying here would double-encode it in the DB.
           const ctx = {
-            metadata: JSON.stringify({
+            metadata: {
               game: label,
               league: ga.game.league ?? null,
               priority: ga.priority?.finalScore ?? null,
-              isHomeTeam: (ga.priority as any)?.isHomeTeamGame ?? null,
+              isHomeTeam: ga.priority?.isHomeTeamGame ?? null,
               assignedTVs,
               minTVsRequired: ga.minTVsRequired,
               minTVsMet: ga.minTVsMet,
               inputs: [...new Set(ga.assignments.map((a) => a.inputLabel))],
-            }),
+            },
           };
           if (assignedTVs === 0) {
             unservedGames.push({ game: label, assignedTVs, minTVsRequired: ga.minTVsRequired, reason: 'no available screen (all matching inputs busy/unavailable)' });
