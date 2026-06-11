@@ -35,6 +35,23 @@ is the archive.
 
 ---
 
+## v2.55.56 — LLM perf logging + per-box num_predict/timeout (2026-06-11)
+
+**Versions covered:** v2.55.56
+**Branch landed:** main → all 6 location branches
+**Required Manual Step (slow boxes only):** Graystone (~6.7 tok/s iGPU) — set `OLLAMA_TIMEOUT_MS=420000` in `.env` + `pm2 delete && pm2 start ecosystem.config.js` (Gotcha #2). Already applied 2026-06-11. Other boxes need nothing (defaults: timeout 300000, num_predict 2048).
+
+**Why:** AI Suggest timed out on Holmgren (RAG-scan contention, fixed in v2.55.55) — but the deeper question was whether `num_predict: 2048` is even right per box. Generation time ≈ num_predict ÷ tok_s; Holmgren ~11 tok/s (2048 → ~183s ✓) vs Graystone ~6.7 (2048 → ~306s ✗ over the 300s timeout). `num_predict` is only a CEILING though — we had no data on real output sizes because AI Suggest discarded `eval_count`/`done_reason`.
+
+**What shipped:**
+- **`lib/llm-perf-logger.ts`** (new) — `logLlmPerf()` writes one line per Ollama generation to `/home/ubuntu/sports-bar-data/logs/llm-perf-YYYY-MM-DD.log`: feature, model, box, `out` (real output tokens), `prompt` tokens, `done` (`stop`=natural / `length`=**truncated at cap**), `cap`, real-world `tok_s`, `total_ms`, outcome (ok/timeout/error). Mirrors to `[LLM-PERF]` in PM2; truncations log at WARN.
+- **AI Suggest** (`callOllama`) + **shift-brief** (`generateBriefViaOllama`) call it. AI Suggest's `num_predict` is now `HARDWARE_CONFIG.ollama.numPredict`.
+- **`hardware-config.ts`** — `ollama.timeout` now reads `OLLAMA_TIMEOUT_MS` (default 300000); new `ollama.numPredict` reads `OLLAMA_NUM_PREDICT` (default 2048). Both per-box env-tunable.
+
+**Next:** after a few days, `grep ai-suggest llm-perf-*.log` per box → read the `out` p95 + `done` distribution → set `OLLAMA_NUM_PREDICT` (and timeout) per box from real numbers. If any `[TRUNCATED@cap]` appears, suggestions are silently incomplete and the cap must go UP, not down.
+
+---
+
 ## v2.55.55 — RAG rescan yields the iGPU so it can't starve AI Suggest (2026-06-11)
 
 **Versions covered:** v2.55.55

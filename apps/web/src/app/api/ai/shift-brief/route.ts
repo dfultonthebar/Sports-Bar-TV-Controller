@@ -6,6 +6,7 @@ import { logger } from '@sports-bar/logger'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { HARDWARE_CONFIG } from '@/lib/hardware-config'
+import { logLlmPerf } from '@/lib/llm-perf-logger'
 
 // v2.52.20 (audit security #2): sanitize free-form scraper-sourced
 // strings before LLM interpolation. Bananas Entertainment + venue
@@ -515,6 +516,8 @@ async function gatherShiftContext() {
 
 async function generateBriefViaOllama(ctx: any): Promise<string> {
   const prompt = buildPrompt(ctx)
+  const startedAt = Date.now()
+  const SHIFT_BRIEF_NUM_PREDICT = 320
   const resp = await fetch(`${HARDWARE_CONFIG.ollama.baseUrl}/api/generate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -530,7 +533,7 @@ async function generateBriefViaOllama(ctx: any): Promise<string> {
       // section before the Atlas line could render; 280 still cut the
       // tail; 320 reliably fits the full brief).
       keep_alive: -1,
-      options: { temperature: 0.2, num_predict: 320 },
+      options: { temperature: 0.2, num_predict: SHIFT_BRIEF_NUM_PREDICT },
     }),
     signal: AbortSignal.timeout(90_000),
   })
@@ -538,6 +541,16 @@ async function generateBriefViaOllama(ctx: any): Promise<string> {
     throw new Error(`Ollama returned ${resp.status}`)
   }
   const data = await resp.json()
+  void logLlmPerf({
+    feature: 'shift-brief',
+    model: HARDWARE_CONFIG.ollama.model,
+    totalMs: Date.now() - startedAt,
+    evalCount: data.eval_count,
+    promptEvalCount: data.prompt_eval_count,
+    doneReason: data.done_reason,
+    numPredict: SHIFT_BRIEF_NUM_PREDICT,
+    outcome: 'ok',
+  })
   return (data.response || '').trim()
 }
 

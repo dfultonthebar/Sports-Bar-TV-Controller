@@ -20,6 +20,7 @@ import {
   logSchedulingEvent,
   newSchedulingRequestId,
 } from '@/lib/scheduling-logger'
+import { logLlmPerf } from '@/lib/llm-perf-logger'
 import { resolveChannelsForGame } from '@/lib/network-channel-resolver'
 
 const OLLAMA_URL = `${HARDWARE_CONFIG.ollama.baseUrl}/api/generate`
@@ -29,6 +30,10 @@ const OLLAMA_URL = `${HARDWARE_CONFIG.ollama.baseUrl}/api/generate`
 // to avoid aborts during legitimate generation.
 const OLLAMA_TIMEOUT_MS = Math.max(HARDWARE_CONFIG.ollama.timeout, 300000) // ≥ 300s
 const OLLAMA_MODEL = HARDWARE_CONFIG.ollama.model
+// Output-token ceiling (env OLLAMA_NUM_PREDICT, default 2048). Per-box tunable:
+// slow iGPUs (Graystone ~6.7 tok/s) hit the 300s timeout at 2048. logLlmPerf
+// records real eval_count + done_reason so this gets set from data.
+const OLLAMA_NUM_PREDICT = HARDWARE_CONFIG.ollama.numPredict
 
 // ---------- types ----------
 
@@ -528,6 +533,7 @@ async function loadTVOutputs() {
 async function callOllama(prompt: string): Promise<string> {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), OLLAMA_TIMEOUT_MS)
+  const startedAt = Date.now()
 
   try {
     const response = await fetch(OLLAMA_URL, {
@@ -540,7 +546,9 @@ async function callOllama(prompt: string): Promise<string> {
         format: 'json',
         options: {
           temperature: 0.3,
-          num_predict: 2048,
+          // Output-token ceiling — per-box env-tunable (OLLAMA_NUM_PREDICT).
+          // num_predict is only a CAP; logLlmPerf records the real eval_count.
+          num_predict: OLLAMA_NUM_PREDICT,
         },
       }),
       signal: controller.signal,
@@ -551,7 +559,31 @@ async function callOllama(prompt: string): Promise<string> {
     }
 
     const data = await response.json()
+    // Record real throughput so num_predict + timeout can be tuned from data.
+    void logLlmPerf({
+      feature: 'ai-suggest',
+      model: OLLAMA_MODEL,
+      totalMs: Date.now() - startedAt,
+      evalCount: data.eval_count,
+      promptEvalCount: data.prompt_eval_count,
+      doneReason: data.done_reason,
+      numPredict: OLLAMA_NUM_PREDICT,
+      outcome: 'ok',
+    })
     return data.response || ''
+  } catch (err: any) {
+    const isTimeout = err?.name === 'TimeoutError' || err?.name === 'AbortError'
+    void logLlmPerf({
+      feature: 'ai-suggest',
+      model: OLLAMA_MODEL,
+      totalMs: Date.now() - startedAt,
+      numPredict: OLLAMA_NUM_PREDICT,
+      outcome: isTimeout ? 'timeout' : 'error',
+      note: isTimeout
+        ? `aborted at OLLAMA_TIMEOUT_MS=${OLLAMA_TIMEOUT_MS}ms — likely num_predict too high for this box's tok/s, or Ollama contended`
+        : (err?.message || err?.name || 'unknown'),
+    })
+    throw err
   } finally {
     clearTimeout(timeout)
   }
