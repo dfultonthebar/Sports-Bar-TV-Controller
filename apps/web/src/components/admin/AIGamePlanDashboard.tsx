@@ -154,6 +154,8 @@ export default function AIGamePlanDashboard() {
   const [showGamePlan, setShowGamePlan] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+  // Wave 3.6: games the engine couldn't give enough (or any) screens
+  const [unservedGames, setUnservedGames] = useState<Array<{ game: string; assignedTVs: number; minTVsRequired: number; reason: string }>>([])
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null)
 
   // Channel presets for display
@@ -418,12 +420,17 @@ export default function AIGamePlanDashboard() {
       })
 
       const result = await response.json()
+      // The execute route wraps its payload as { result: {...} }; older paths
+      // returned it flat. Read defensively so success/tvsControlled/unservedGames
+      // resolve either way.
+      const payload = result.result ?? result
 
-      if (result.success) {
-        setSuccess(`Plan executed! ${result.tvsControlled || 0} TVs updated.`)
+      if (payload.success) {
+        setSuccess(`Plan executed! ${payload.tvsControlled || 0} TVs updated.`)
+        setUnservedGames(Array.isArray(payload.unservedGames) ? payload.unservedGames : [])
         await loadGamePlan()
       } else {
-        setError(result.error || 'Failed to execute plan')
+        setError(payload.error || result.error || 'Failed to execute plan')
       }
     } catch (err: any) {
       setError(err.message || 'Failed to execute plan')
@@ -561,6 +568,32 @@ export default function AIGamePlanDashboard() {
             <button onClick={() => setSuccess(null)} className="ml-auto">
               <X className="w-4 h-4" />
             </button>
+          </div>
+        )}
+        {/* Wave 3.6: games that got no/under-minimum screens (contention) */}
+        {unservedGames.length > 0 && (
+          <div className="bg-yellow-900/30 border border-yellow-700 rounded-lg p-4">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-yellow-400 mt-0.5 flex-shrink-0" />
+              <div className="flex-1">
+                <p className="font-medium text-yellow-200">
+                  {unservedGames.length} game{unservedGames.length > 1 ? 's' : ''} didn&apos;t get enough screens
+                </p>
+                <p className="text-sm text-yellow-300/80 mb-2">
+                  Not enough free inputs/TVs for every game — lower-priority games were dropped or under-served. Free up an input or reduce TV minimums if these matter.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {unservedGames.map((u, i) => (
+                    <span key={i} className="text-xs bg-yellow-900/50 border border-yellow-700/60 rounded px-2 py-1 text-yellow-100">
+                      {u.game} — {u.assignedTVs}/{u.minTVsRequired} TVs ({u.reason})
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <button onClick={() => setUnservedGames([])} className="ml-auto">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         )}
 

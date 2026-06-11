@@ -353,6 +353,7 @@ async function executeSchedule(schedule: any, allowedOutputs?: number[]) {
         result.details.games = gamesResult.games;
         result.channelsSet = gamesResult.channelsSet || 0;
         result.tvsControlled = gamesResult.tvsControlled || 0;  // Copy TVs controlled count
+        result.unservedGames = (gamesResult as any).unservedGames || [];  // Wave 3.6: propagate no-screen games to the response
         aiSchedulerExecuted = gamesResult.aiSchedulerExecuted || false; // Check if AI handled execution
       }
     }
