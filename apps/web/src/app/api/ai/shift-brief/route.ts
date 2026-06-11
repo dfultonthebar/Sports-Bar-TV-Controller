@@ -51,7 +51,17 @@ export async function GET(request: NextRequest) {
     cachedBrief = { text: brief, generatedAt: Date.now() }
     return NextResponse.json({ success: true, brief, generatedAt: cachedBrief.generatedAt, fromCache: false })
   } catch (error: any) {
-    logger.error('[SHIFT-BRIEF] Error:', error)
+    // Build an always-informative reason. A bare AbortSignal.timeout rejection
+    // (or any DOMException) frequently has an EMPTY `.message`, which is why this
+    // previously logged "[SHIFT-BRIEF] Error:" with nothing after it — completely
+    // undiagnosable. Name the timeout case explicitly and fall back through
+    // message → cause.message → name so the log is never blank.
+    const errName = error?.name || 'Error'
+    const reason =
+      errName === 'TimeoutError' || errName === 'AbortError'
+        ? 'Ollama request timed out after 90s (model not resident or box under load)'
+        : error?.message || error?.cause?.message || errName
+    logger.error(`[SHIFT-BRIEF] LLM generation failed: ${reason}`, error)
     // Degrade gracefully — still return something useful without the LLM
     try {
       const context = await gatherShiftContext()
@@ -60,10 +70,11 @@ export async function GET(request: NextRequest) {
         brief: fallbackBrief(context),
         generatedAt: Date.now(),
         fromCache: false,
-        llmError: error.message,
+        llmError: reason,
       })
     } catch (e: any) {
-      return NextResponse.json({ success: false, error: e.message }, { status: 500 })
+      logger.error(`[SHIFT-BRIEF] Fallback also failed (context gather): ${e?.message || e?.name || 'unknown'}`, e)
+      return NextResponse.json({ success: false, error: e?.message || 'shift-brief failed' }, { status: 500 })
     }
   }
 }

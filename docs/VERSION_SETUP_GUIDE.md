@@ -35,6 +35,16 @@ is the archive.
 
 ---
 
+## v2.55.54 — Shift-brief: make the LLM-error log diagnosable (2026-06-11)
+
+**Versions covered:** v2.55.54
+**Branch landed:** main → all 6 location branches
+**Required Manual Step:** None.
+
+`/api/ai/shift-brief` caught LLM-generation failures with `logger.error('[SHIFT-BRIEF] Error:', error)`. When the Ollama call hit its `AbortSignal.timeout(90s)`, the rejection is a `TimeoutError`/`AbortError`/DOMException whose `.message` is empty — so the log read `[SHIFT-BRIEF] Error:` with nothing after it (seen overnight at Holmgren, undiagnosable). Now the catch builds an always-informative reason: timeout/abort → "Ollama request timed out after 90s (model not resident or box under load)"; otherwise `message → cause.message → name`. The `llmError` field in the degraded response carries the same reason, and the inner fallback failure is logged too. Behavior unchanged — the brief still degrades to `fallbackBrief()`; only the diagnostics improved. Tonight's logs will name the real cause (almost certainly an Ollama timeout under load).
+
+---
+
 ## v2.55.53 — MAC auto-discovery for network TVs (2026-06-10)
 
 **Versions covered:** v2.55.53
