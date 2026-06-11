@@ -1141,21 +1141,20 @@ class SchedulerService {
             })
           });
 
-          const result = await response.json();
+          // v2.55.41 OR-gate fix, now routed through the shared parseHardwareResult
+          // helper (Wave-1 "one place" invariant — the inline copy used to drift from
+          // the matrix/audio route sites). The tune endpoint returns HTTP 200 with
+          // {success:false,error:'…'} for soft failures (cable box not found, device
+          // offline, channel missing); a raw `result.success || response.ok` flipped
+          // the allocation to 'active' + mirrored currentlyAllocated + fired Wolf Pack
+          // routing for the WRONG channel while the bartender saw a green tile. Every
+          // path (manual/ai/auto/override-learn) routes through here — the single most
+          // likely cause of the Greenville-Brewers 'didn't switch'. success===true only.
+          const tuneHw = await parseHardwareResult(response);
+          const result = tuneHw.body; // alias so downstream result.* references are unchanged
           const tuneDurationMs = Date.now() - tuneStartTime;
-
-          // v2.55.41 — OR-gate bug fix. Previously: `if (result.success || response.ok)`.
-          // The tune endpoint returns HTTP 200 with `{success:false, error:'…'}` for soft
-          // failures (e.g. cable box not found, device offline, channel missing). The OR
-          // fell through to response.ok=true and flipped the allocation to 'active' +
-          // mirrored currentlyAllocated onto input_sources + fired Wolf Pack routing for
-          // the WRONG channel. Bartender saw a green 'Scheduled' tile, nothing actually
-          // switched, no error surfaced. Single most likely cause of the Greenville
-          // Brewers 'didn't switch' symptom — every code path (manual, ai, auto,
-          // override-learn) routes through here. Treat success as `result.success===true`
-          // strictly; treat HTTP 200 with missing/false success as a failure.
-          const tuneSucceeded = result?.success === true;
-          const malformedOk = !tuneSucceeded && response.ok && result?.success !== false;
+          const tuneSucceeded = tuneHw.ok;
+          const malformedOk = tuneHw.malformedOk;
 
           if (malformedOk) {
             // HTTP 200 but no explicit success flag — neither a clear success nor an

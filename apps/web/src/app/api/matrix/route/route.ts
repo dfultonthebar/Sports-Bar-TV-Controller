@@ -28,7 +28,12 @@ export async function POST(request: NextRequest) {
     // rejected by the enum, causing silent revert failure (the calling code
     // logged "revert complete" even though every matrix route was 400'd
     // before reaching the Wolf Pack).
-    source: z.enum(['bartender', 'ai_scheduler', 'manual', 'system', 'auto-reallocator']).optional().default('bartender'),
+    // 'manual_schedule' added (Wave 1, intelligence roadmap) — the
+    // execute-single-game path (AIGamePlanModal, ScheduledGamesPanel) sends
+    // source='manual_schedule'. Previously rejected by the enum, so EVERY
+    // routing call from that path returned HTTP 400 and silently failed with
+    // tvsControlled=0 — the TV never changed, with zero diagnostic.
+    source: z.enum(['bartender', 'ai_scheduler', 'manual', 'manual_schedule', 'system', 'auto-reallocator']).optional().default('bartender'),
     bartenderId: z.string().optional(),
   })
 

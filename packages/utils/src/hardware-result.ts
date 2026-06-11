@@ -36,9 +36,14 @@ export async function parseHardwareResult(response: Response): Promise<HardwareR
   const ok = body?.success === true
   // HTTP 200, not an explicit success, and NOT an explicit failure → contract drift.
   const malformedOk = !ok && response.ok && body?.success !== false
+  // Use `!= null` (not `||`) so an endpoint returning {success:false, error:''}
+  // doesn't silently drop the empty-string error and fall through to 'HTTP N'.
   const error = ok
     ? undefined
-    : body?.error ||
-      (malformedOk ? 'HTTP 200 but no success flag (contract drift)' : `HTTP ${status}`)
+    : body?.error != null
+      ? String(body.error)
+      : malformedOk
+        ? 'HTTP 200 but no success flag (contract drift)'
+        : `HTTP ${status}`
   return { ok, malformedOk, status, body, error }
 }

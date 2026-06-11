@@ -17,6 +17,7 @@ import { getDistributionEngine } from '@/lib/scheduler/distribution-engine'
 import { getStateReader } from '@/lib/scheduler/state-reader'
 import type { GameInfo } from '@/lib/scheduler/priority-calculator'
 import { espnScoreboardAPI } from '@/lib/sports-apis/espn-scoreboard-api'
+import { parseHardwareResult } from '@sports-bar/utils'
 // POST - Execute a schedule immediately
 export async function POST(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.DATABASE_WRITE)
@@ -418,14 +419,23 @@ async function executeSchedule(schedule: any, allowedOutputs?: number[]) {
               })
             });
 
-            if (routeResponse.ok) {
+            // OR-gate fix: /api/matrix/route returns HTTP 200 with {success:false}
+            // on a soft hardware failure. A raw response.ok would increment
+            // channelsSet AND fire changeChannel() for a route that never landed
+            // — issuing a cable/DirecTV tune for the wrong (unrouted) TV. Strict
+            // success===true only; malformed-OK (contract drift) logs loud and is
+            // treated as a FAILURE.
+            const routeHw = await parseHardwareResult(routeResponse);
+            if (routeHw.ok) {
               result.channelsSet++;
 
               // Send channel change command to input device
               await changeChannel(input, channel);
             } else {
-              const errorData = await routeResponse.json().catch(() => ({ error: 'Unknown error' }));
-              result.errors.push(`Failed to route ${output.label}: ${errorData.error || 'Unknown error'}`);
+              if (routeHw.malformedOk) {
+                logger.warn(`[SCHEDULE] ⚠️ Matrix route returned HTTP 200 but no success flag (contract drift) for ${output.label}: ${JSON.stringify(routeHw.body)} — treating as FAILURE`);
+              }
+              result.errors.push(`Failed to route ${output.label}: ${routeHw.error || 'Unknown error'}`);
             }
           } catch (error: any) {
             result.errors.push(`Error setting channel for ${output.label}: ${error.message}`);
@@ -779,8 +789,16 @@ async function findHomeTeamGames(homeTeamIds: string[], schedule: any, allowedOu
             })
           });
 
-          if (!routeResponse.ok) {
-            logger.warn(`[AI_SCHEDULER] Failed to route output ${routeCmd.outputNumber} (${routeCmd.zoneName}) to input ${routeCmd.inputNumber}`);
+          // OR-gate fix: a raw response.ok would inflate tvsControlled on a
+          // soft hardware failure (HTTP 200 + {success:false}). Strict
+          // success===true only; malformed-OK (contract drift) logs loud and
+          // is treated as a FAILURE.
+          const routeHw = await parseHardwareResult(routeResponse);
+          if (!routeHw.ok) {
+            if (routeHw.malformedOk) {
+              logger.warn(`[AI_SCHEDULER] ⚠️ Matrix route returned HTTP 200 but no success flag (contract drift) for output ${routeCmd.outputNumber} (${routeCmd.zoneName}) → input ${routeCmd.inputNumber}: ${JSON.stringify(routeHw.body)} — treating as FAILURE`);
+            }
+            logger.warn(`[AI_SCHEDULER] Failed to route output ${routeCmd.outputNumber} (${routeCmd.zoneName}) to input ${routeCmd.inputNumber}: ${routeHw.error}`);
           } else {
             logger.info(`[AI_SCHEDULER] Routed output ${routeCmd.outputNumber} (${routeCmd.zoneName}) to input ${routeCmd.inputNumber} (channel ${tunedInputs.get(routeCmd.inputNumber)})`);
             result.tvsControlled++;
