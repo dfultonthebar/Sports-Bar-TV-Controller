@@ -7,6 +7,7 @@
 
 import { db, schema, eq, and, findMany } from '@sports-bar/database'
 import { logger } from '@sports-bar/logger'
+import { parseHardwareResult } from '@sports-bar/utils'
 import { schedulerLogger } from './scheduler-logger'
 import { probeAllDirecTVTuned } from './directv-probe'
 import { runFiretvAppSyncSweep } from './firetv-app-sync'
@@ -1284,11 +1285,20 @@ class SchedulerService {
                         }),
                       });
 
-                      if (routeResponse.ok) {
+                      // OR-gate fix (Wave 1, intelligence roadmap): a raw
+                      // `if (routeResponse.ok)` here treated HTTP 200 +
+                      // {success:false} as a routed TV — the allocation was
+                      // already flipped to 'active' above, so the TV silently
+                      // stayed on the wrong feed. Strict success===true only;
+                      // malformed-OK (contract drift) logs loud and is a failure.
+                      const routeHw = await parseHardwareResult(routeResponse);
+                      if (routeHw.ok) {
                         logger.info(`[SCHEDULER] ✅ Routed matrix input ${matrixInput} → output ${outputNumber}`);
                       } else {
-                        const routeResult = await routeResponse.json().catch(() => ({}));
-                        logger.error(`[SCHEDULER] ❌ Failed to route matrix input ${matrixInput} → output ${outputNumber}: ${routeResult.error || routeResponse.statusText}`);
+                        if (routeHw.malformedOk) {
+                          logger.warn(`[SCHEDULER] ⚠️ Matrix route returned HTTP 200 but no success flag (contract drift) input ${matrixInput} → output ${outputNumber}: ${JSON.stringify(routeHw.body)} — treating as FAILURE`);
+                        }
+                        logger.error(`[SCHEDULER] ❌ Failed to route matrix input ${matrixInput} → output ${outputNumber}: ${routeHw.error}`);
                       }
                     } catch (routeError: any) {
                       logger.error(`[SCHEDULER] ❌ Error routing matrix input ${matrixInput} → output ${outputNumber}:`, { error: routeError });
@@ -1345,11 +1355,14 @@ class SchedulerService {
                           }),
                         });
 
-                        if (audioResponse.ok) {
+                        const audioHw = await parseHardwareResult(audioResponse);
+                        if (audioHw.ok) {
                           logger.info(`[SCHEDULER] ✅ Audio zone ${zoneNumber} → source ${allocation.audioSourceIndex}`);
                         } else {
-                          const audioResult = await audioResponse.json().catch(() => ({}));
-                          logger.error(`[SCHEDULER] ❌ Failed to switch audio zone ${zoneNumber}: ${(audioResult as any).error || audioResponse.statusText}`);
+                          if (audioHw.malformedOk) {
+                            logger.warn(`[SCHEDULER] ⚠️ Audio switch returned HTTP 200 but no success flag (contract drift) zone ${zoneNumber}: ${JSON.stringify(audioHw.body)} — treating as FAILURE`);
+                          }
+                          logger.error(`[SCHEDULER] ❌ Failed to switch audio zone ${zoneNumber}: ${audioHw.error}`);
                         }
                       } catch (audioError: any) {
                         logger.error(`[SCHEDULER] ❌ Error switching audio zone ${zoneNumber}:`, { error: audioError });
