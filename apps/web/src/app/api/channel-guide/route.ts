@@ -944,6 +944,7 @@ export async function POST(request: NextRequest) {
           const dupeKey = `${row.app}::${row.contentTitle}`
           if (seenInCatalog.has(dupeKey)) {
             catSkippedDupe++
+            dropTracker.drop({ source: 'catalog', game: `${row.app}: ${row.contentTitle}`, reason: 'catalog-dupe' })
             continue
           }
           seenInCatalog.add(dupeKey)
@@ -953,6 +954,7 @@ export async function POST(request: NextRequest) {
             const tier = detectEspnTier(row.contentTitle, !!row.isLive)
             if (tier && !deviceSubscribedTiers.has(tier)) {
               catSkippedNoSubscription++
+              dropTracker.drop({ source: 'catalog', game: `${row.app}: ${row.contentTitle}`, reason: 'catalog-tier-paywall', triedChannel: tier })
               continue
             }
           }
@@ -977,6 +979,7 @@ export async function POST(request: NextRequest) {
             // Game is over — don't include it. Same behavior as cable/sat
             // path which filters status='completed'/'final' rows out.
             catSkippedCompleted++
+            dropTracker.drop({ source: 'catalog', game: `${row.app}: ${row.contentTitle}`, reason: 'catalog-completed' })
             continue
           }
 
@@ -995,6 +998,7 @@ export async function POST(request: NextRequest) {
           if (row.isLive && !scheduleMatch &&
               (nowSec - row.capturedAt) > STALE_LIVE_SECONDS) {
             catSkippedCompleted++
+            dropTracker.drop({ source: 'catalog', game: `${row.app}: ${row.contentTitle}`, reason: 'catalog-stale-live' })
             continue
           }
 
@@ -1362,14 +1366,32 @@ export async function POST(request: NextRequest) {
               bestPref = pref
             }
           }
-          if (!matchedApp) { gsStreamSkippedNoApp++; continue }
+          if (!matchedApp) {
+            gsStreamSkippedNoApp++
+            dropTracker.drop({
+              source: 'gs-stream',
+              game: `${game.awayTeamName} @ ${game.homeTeamName}`,
+              reason: 'gs-stream-no-app',
+              triedNetworks: broadcastNetworks,
+              startTime: new Date(game.scheduledStart * 1000).toISOString(),
+            })
+            continue
+          }
 
           // Dedup against catalog-injected programs for same teams
           const dupe = programs.some(p =>
             p.homeTeam?.toLowerCase() === game.homeTeamName.toLowerCase() &&
             p.awayTeam?.toLowerCase() === game.awayTeamName.toLowerCase()
           )
-          if (dupe) { gsStreamSkippedDupe++; continue }
+          if (dupe) {
+            gsStreamSkippedDupe++
+            dropTracker.drop({
+              source: 'gs-stream',
+              game: `${game.awayTeamName} @ ${game.homeTeamName}`,
+              reason: 'gs-stream-dupe',
+            })
+            continue
+          }
 
           const appChannelId = `stream-${matchedApp.replace(/\s+/g, '-').toLowerCase()}`
           let appChan = channels.get(appChannelId)
@@ -1663,7 +1685,17 @@ export async function POST(request: NextRequest) {
       if (program.isLive) return true // never filter live-now games on age
       if (program.startTime) {
         const gameStart = new Date(program.startTime)
-        return gameStart >= twoHoursAgo
+        const keep = gameStart >= twoHoursAgo
+        if (!keep) {
+          dropTracker.drop({
+            source: 'age-filter',
+            game: program.awayTeam && program.homeTeam ? `${program.awayTeam} @ ${program.homeTeam}` : (program.channel?.name || 'unknown'),
+            reason: 'age-filter',
+            triedChannel: program.channel?.channelNumber ?? program.channel?.number ?? null,
+            startTime: program.startTime,
+          })
+        }
+        return keep
       }
       return true // Keep programs without startTime
     })
