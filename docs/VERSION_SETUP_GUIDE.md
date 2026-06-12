@@ -35,6 +35,14 @@ is the archive.
 
 ---
 
+## v2.55.70 — complete Wave 1a OR-gate sweep (auto-reallocator) (2026-06-11)
+
+**Versions covered:** v2.55.70
+**Branch landed:** main → fleet via auto-update (overnight, no mid-game restart)
+**No setup required.** Behavior-preserving refactor: routes auto-reallocator.ts's revert + tune-back paths through the shared `parseHardwareResult` helper instead of hand-rolled `malformedOk` logic (the 2 sites a 6-team audit found the v2.55.57 Wave 1a sweep had missed). Same `{success:true}` contract, centralized in one place. No DB, no env, no manual step.
+
+---
+
 ## v2.55.56 — LLM perf logging + per-box num_predict/timeout (2026-06-11)
 
 **Versions covered:** v2.55.56
