@@ -35,6 +35,14 @@ is the archive.
 
 ---
 
+## v2.55.71 — override-digester idempotency + timestamp fix (2026-06-11)
+
+**Versions covered:** v2.55.71
+**Branch landed:** main → fleet via auto-update (overnight)
+**No setup required.** Bug fix: override-digest was re-emitting an identical `recommend` SchedulerLog row for every stable pattern on every hourly run (~720/month/pattern); now only emits when a pattern is new or has strengthened. Also fixes firstSeen/lastSeen (was run-time, now real event timestamps). No DB migration; existing duplicate rows are harmless history and stop accumulating after deploy.
+
+---
+
 ## v2.55.70 — complete Wave 1a OR-gate sweep (auto-reallocator) (2026-06-11)
 
 **Versions covered:** v2.55.70
