@@ -6,6 +6,7 @@
 
 import { db, schema, eq, and, lte, gte, lt, desc, or, inArray, isNull, isNotNull } from '@sports-bar/database'
 import { logger } from '@sports-bar/logger'
+import { parseHardwareResult } from '@sports-bar/utils'
 import { schedulerLogger } from './scheduler-logger'
 
 const API_PORT = process.env.PORT || 3001
@@ -603,10 +604,12 @@ class AutoReallocator {
           // — the allocation is already marked completed/reverted by
           // endAllocation(), so the TV silently stayed on the dead game feed
           // with a green "reverted" log row. Treat success as
-          // `result.success===true` strictly.
-          const revertResult = await routeResponse.json().catch(() => ({} as any));
-          const revertSucceeded = revertResult?.success === true;
-          const malformedOk = !revertSucceeded && routeResponse.ok && revertResult?.success !== false;
+          // `result.success===true` strictly. v2.55.70 — routed through the
+          // shared parseHardwareResult helper so the contract lives in ONE place.
+          const revertHw = await parseHardwareResult(routeResponse);
+          const revertResult = revertHw.body;
+          const revertSucceeded = revertHw.ok;
+          const malformedOk = revertHw.malformedOk;
 
           if (malformedOk) {
             // HTTP 200 but no explicit success flag — neither a clear success
@@ -892,10 +895,12 @@ class AutoReallocator {
               // cableBoxTuned=true and logged "Tuned back to default" while the
               // box never moved. Treat success as `result.success===true`
               // strictly; HTTP 200 with a missing flag logs loud and falls to
-              // the failure path.
-              const tuneResult = await tuneResponse.json().catch(() => ({} as any));
-              const tuneSucceeded = tuneResult?.success === true;
-              const tuneMalformedOk = !tuneSucceeded && tuneResponse.ok && tuneResult?.success !== false;
+              // the failure path. v2.55.70 — routed through the shared
+              // parseHardwareResult helper so the contract lives in ONE place.
+              const tuneHw = await parseHardwareResult(tuneResponse);
+              const tuneResult = tuneHw.body;
+              const tuneSucceeded = tuneHw.ok;
+              const tuneMalformedOk = tuneHw.malformedOk;
 
               if (tuneMalformedOk) {
                 await schedulerLogger.warn(
