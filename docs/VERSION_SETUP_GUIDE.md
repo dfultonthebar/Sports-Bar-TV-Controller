@@ -35,6 +35,15 @@ is the archive.
 
 ---
 
+## v2.55.73 + v2.55.75 — Wolf Pack: per-IP HTTP session mutex + route over TCP (2026-06-11)
+
+**Versions covered:** v2.55.73 (code), v2.55.75 (docs)
+**Branch landed:** main → fleet via auto-update
+**Code (v2.55.73, no setup):** per-IP serialization of Wolf Pack HTTP sessions (`acquireWolfPackHttpLock`) so the bartender Video-tab route-state READ can't run concurrently with a scheduler route WRITE. Auto-applies fleet-wide.
+**Per-location operational step (the actual un-route fix):** any location whose Wolf Pack routes over **HTTP** uses the `o2ox` TOGGLE, which disconnects an already-set output when re-sent (intermittent black TV when the Video tab opens). **Fix = flip that box to TCP** (Holmgren precedent): `sqlite3 /home/ubuntu/sports-bar-data/production.db "UPDATE MatrixConfiguration SET protocol='TCP' WHERE protocol='HTTP';"` — config is read fresh per route, so NO restart needed; rollback is the same UPDATE back to `'HTTP'`. Confirm TCP is open (no password) on that unit first. **Applied 2026-06-11 to Stoneyard Greenville + Appleton.** Validate by a real TV switch. Full rationale: `[[feedback-wolfpack-tcp-not-http-routing]]`. (The shelved HTTP-`o2o`-idempotent code alternative lives on branch `wip/wolfpack-o2o-idempotent`, not shipped.)
+
+---
+
 ## v2.55.72 — override-learn must not patch future pending allocations (2026-06-11)
 
 **Versions covered:** v2.55.72
