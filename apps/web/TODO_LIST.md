@@ -10,6 +10,26 @@ Last Updated: 6/11/2026, 11:20:41 PM
 
 ## 📋 Planned
 
+### Wave 2 primary flip — review 7-day shadow data, decide AI Suggest engine-as-primary
+
+- **ID**: `b42efdad-e1f1-4d43-92a9-bc7d84101a6d`
+- **Priority**: MEDIUM
+- **Status**: PLANNED
+- **Category**: Intelligence Roadmap
+- **Description**: AI_SUGGEST_SOLVER=shadow live on Holmgren gathering engine-vs-LLM diffs. After ~7 days clean diffs, flip to primary (deterministic DistributionEngine becomes the answer; LLM -> reasoning-only on llama3.2:3b). First data points favor the engine (LLM returned 0 games / 6 unresolved inputs).
+- **Created**: 6/12/2026, 4:20:41 AM
+- **Updated**: 6/11/2026, 11:20:41 PM
+
+### Wave 6 + 7 — engine learning loops + bartender-facing why
+
+- **ID**: `fa199683-2237-4c34-a426-b99deae10b84`
+- **Priority**: MEDIUM
+- **Status**: PLANNED
+- **Category**: Intelligence Roadmap
+- **Description**: Engine learns the bar (Packers on the big wall TVs) via scheduling_patterns bias; one-line server-built rationale per suggestion. Gated on the Wave 2 primary flip.
+- **Created**: 6/12/2026, 4:20:41 AM
+- **Updated**: 6/11/2026, 11:20:41 PM
+
 ### Flip Leg Lamp Wolf Pack to TCP (latent o2ox un-route bug)
 
 - **ID**: `647fa14c-6664-4d5a-8c80-22d205e200c1`
@@ -42,8 +62,8 @@ Last Updated: 6/11/2026, 11:20:41 PM
 
 ---
 
-**Total TODOs**: 2
-- Planned: 1
+**Total TODOs**: 4
+- Planned: 3
 - In Progress: 1
 - Testing: 0
 - Complete: 0
