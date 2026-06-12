@@ -118,6 +118,16 @@ Last Updated: 6/11/2026, 11:21:08 PM
 
 ## ✅ Complete
 
+### v2.55.71 — override-digester dedup recommendations + real timestamps
+
+- **ID**: `f9290aca-3371-4c23-9d5c-ea48a243049f`
+- **Priority**: MEDIUM
+- **Status**: COMPLETE
+- **Category**: Scheduler
+- **Description**: Was re-emitting identical recommendation rows every hourly run (~720/mo/pattern) and stamping firstSeen/lastSeen with run-time. Fixed both.
+- **Created**: 6/12/2026, 4:21:08 AM
+- **Updated**: 6/11/2026, 11:21:08 PM
+
 ### Greenville + Appleton Wolf Pack un-route fix (flip to TCP)
 
 - **ID**: `de20d7e6-e985-4bf1-99c1-df621dd9663a`
@@ -128,10 +138,30 @@ Last Updated: 6/11/2026, 11:21:08 PM
 - **Created**: 6/12/2026, 4:21:08 AM
 - **Updated**: 6/11/2026, 11:21:08 PM
 
+### v2.55.73 — Wolf Pack per-IP HTTP session mutex
+
+- **ID**: `274fb0b3-6042-4df2-a2e9-245f42155d98`
+- **Priority**: HIGH
+- **Status**: COMPLETE
+- **Category**: Hardware/Matrix
+- **Description**: Serializes Video-tab route-state READ vs scheduler route WRITE so concurrent HTTP sessions cannot stale-read and toggle a good route off. Fleet-wide; guards the HTTP read/verify path even on TCP boxes.
+- **Created**: 6/12/2026, 4:21:08 AM
+- **Updated**: 6/11/2026, 11:21:08 PM
+
+### v2.55.72 — override-learn no longer rewrites future games + data repair
+
+- **ID**: `a9183012-cba8-42da-8d44-fb5f3b770652`
+- **Priority**: HIGH
+- **Status**: COMPLETE
+- **Category**: Scheduler
+- **Description**: Bartender tonight-only TV tweak was silently rewriting tomorrow/Friday pre-scheduled allocations on the same input. Added allocated_at<=now lower bound. Repaired 3 corrupted future Holmgren allocations (Brewers x2, Timber Rattlers).
+- **Created**: 6/12/2026, 4:21:08 AM
+- **Updated**: 6/11/2026, 11:21:08 PM
+
 ---
 
-**Total TODOs**: 11
+**Total TODOs**: 14
 - Planned: 9
 - In Progress: 1
 - Testing: 0
-- Complete: 1
+- Complete: 4
