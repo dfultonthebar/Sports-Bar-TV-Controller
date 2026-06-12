@@ -35,6 +35,18 @@ is the archive.
 
 ---
 
+## v2.55.76–v2.55.79 — System Admin TODO list: usability + error-bot auto-file (2026-06-11)
+
+**Versions covered:** v2.55.76 (FLEET_STATUS refresh), v2.55.77 (todo sort), v2.55.78 (todo filter), v2.55.79 (error-watch auto-file)
+**Branch landed:** main → fleet via auto-update
+**No setup required.** Operator wants the System Admin → Todos tab as the source of truth for project work.
+- v2.55.77: list now sorts **needs-work to the top** (semantic IN_PROGRESS→PLANNED→TESTING→COMPLETE, CRITICAL→HIGH→MEDIUM→LOW), was alphabetical.
+- v2.55.78: "All Priorities"/"All Status" filters now actually show everything (fixed a stale-closure bug where the dropdown fetched the *previous* filter value).
+- v2.55.79: **the error-watch bot now auto-files a TODO** when it matches an error signature in the PM2 logs — deduped to one open TODO per signature (re-files if it recurs after being marked COMPLETE). New endpoint `POST /api/error-watch/todo`; `scripts/watchers/error-watch.sh` calls it. **The watcher must restart to pick up the new script** (auto-update's PM2 restart cycle handles this; on a box you're hands-on with, restart the error-watch watcher). Category `Error Watch`, priority CRITICAL for integrity-class signatures else HIGH.
+**Standing rule (Claude):** log every work item/fix we do or schedule on this list, mark COMPLETE when shipped+verified. See `[[feedback-log-work-to-system-admin-todos]]`.
+
+---
+
 ## v2.55.73 + v2.55.75 — Wolf Pack: per-IP HTTP session mutex + route over TCP (2026-06-11)
 
 **Versions covered:** v2.55.73 (code), v2.55.75 (docs)
