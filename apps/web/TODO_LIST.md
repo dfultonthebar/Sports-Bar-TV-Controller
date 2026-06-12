@@ -138,6 +138,26 @@ Last Updated: 6/11/2026, 11:21:08 PM
 - **Created**: 6/12/2026, 4:21:08 AM
 - **Updated**: 6/11/2026, 11:21:08 PM
 
+### 6-team adversarial audit of intelligence roadmap (v2.55.57-69) -> GO
+
+- **ID**: `fdf3edbe-9dd1-461f-a545-117449cd5c11`
+- **Priority**: MEDIUM
+- **Status**: COMPLETE
+- **Category**: Audit
+- **Description**: Red/Blue/White/Purple/Green/Orange + per-finding verify. Verdict GO; only finding (auto-reallocator OR-gate) fixed in v2.55.70. Survived the session-limit window via TaskStop + resume.
+- **Created**: 6/12/2026, 4:21:08 AM
+- **Updated**: 6/11/2026, 11:21:08 PM
+
+### v2.55.76 — FLEET_STATUS refresh + matrix-protocol audit
+
+- **ID**: `21a505b8-dab4-4e0f-a09c-9c738a03b837`
+- **Priority**: LOW
+- **Status**: COMPLETE
+- **Category**: Docs
+- **Description**: Updated stale versions (was v2.54.x, actually v2.55.69-75), added Lime Kiln (7th box), recorded card layouts + per-box matrix protocol. Found Leg Lamp is the lone HTTP holdout (-> task to flip).
+- **Created**: 6/12/2026, 4:21:08 AM
+- **Updated**: 6/11/2026, 11:21:08 PM
+
 ### Greenville + Appleton Wolf Pack un-route fix (flip to TCP)
 
 - **ID**: `de20d7e6-e985-4bf1-99c1-df621dd9663a`
@@ -170,8 +190,8 @@ Last Updated: 6/11/2026, 11:21:08 PM
 
 ---
 
-**Total TODOs**: 15
+**Total TODOs**: 17
 - Planned: 9
 - In Progress: 1
 - Testing: 0
-- Complete: 5
+- Complete: 7
