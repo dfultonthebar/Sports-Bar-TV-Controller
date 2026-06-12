@@ -35,6 +35,15 @@ is the archive.
 
 ---
 
+## v2.55.72 — override-learn must not patch future pending allocations (2026-06-11)
+
+**Versions covered:** v2.55.72
+**Branch landed:** main → fleet via auto-update (overnight)
+**No code setup required.** Bug fix: the override-learn window (matrix/route/route.ts) had no `allocated_at <= now` lower bound, so a bartender's tonight-only TV tweak silently rewrote FUTURE pending allocations (tomorrow's/Friday's pre-scheduled games on the same input source) and triple-logged the override. Added the lower bound.
+**Per-location data check (recommended):** locations that pre-schedule future games AND do heavy same-day bartender overrides may have already-corrupted future allocations. Detect: `SELECT id, channel_number, tv_output_ids, datetime(allocated_at,'unixepoch','localtime') FROM input_source_allocations WHERE allocated_at > unixepoch('now') AND updated_at >= unixepoch('now','-1 day') AND status IN ('pending','active','tuning');` — any future-dated row touched today is suspect. Reconstruct the pre-bug set from the override-learn SchedulerLog `prevOutputs` chain (first prev = original). Holmgren's 3 corrupted rows were repaired 2026-06-11 (backup at `sports-bar-data/override-learn-future-corruption-backup-2026-06-11.sql`).
+
+---
+
 ## v2.55.71 — override-digester idempotency + timestamp fix (2026-06-11)
 
 **Versions covered:** v2.55.71
