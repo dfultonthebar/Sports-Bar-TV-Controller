@@ -128,6 +128,16 @@ Last Updated: 6/11/2026, 11:21:08 PM
 - **Created**: 6/12/2026, 4:21:08 AM
 - **Updated**: 6/11/2026, 11:21:08 PM
 
+### v2.55.70 — auto-reallocator OR-gate sweep -> parseHardwareResult
+
+- **ID**: `20ee22e2-a118-498f-97a4-1fb88bcae24d`
+- **Priority**: MEDIUM
+- **Status**: COMPLETE
+- **Category**: Scheduler
+- **Description**: Routed the 2 hand-rolled malformedOk sites through the shared helper (completes the Wave 1a sweep the 6-team audit flagged).
+- **Created**: 6/12/2026, 4:21:08 AM
+- **Updated**: 6/11/2026, 11:21:08 PM
+
 ### Greenville + Appleton Wolf Pack un-route fix (flip to TCP)
 
 - **ID**: `de20d7e6-e985-4bf1-99c1-df621dd9663a`
@@ -160,8 +170,8 @@ Last Updated: 6/11/2026, 11:21:08 PM
 
 ---
 
-**Total TODOs**: 14
+**Total TODOs**: 15
 - Planned: 9
 - In Progress: 1
 - Testing: 0
-- Complete: 4
+- Complete: 5
