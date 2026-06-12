@@ -70,14 +70,64 @@ function httpRequest(options: {
 }
 
 /**
+ * Per-IP serialization for Wolf Pack HTTP sessions.
+ *
+ * The Wolf Pack `o2ox` command is a TOGGLE, and its firmware coordinates
+ * session state poorly across CONCURRENT HTTP sessions — especially on
+ * multi-card chassis (WP-36X36 with 4-output daughter cards at Greenville /
+ * Appleton), where two simultaneous PHPSESSID sessions make a route-state
+ * READ return a stale value. The scheduler / auto-reallocator's route WRITE
+ * then pre-checks against that stale value, fires the toggle against an
+ * already-correct route, and CLEARS it — the TV goes black. The real-world
+ * trigger is the bartender Video tab's `loadCurrentRoutes()` GET opening a
+ * second session while a scheduled route write is in flight.
+ *
+ * Fix: serialize EVERY Wolf Pack HTTP session per IP so a read and a write
+ * never overlap on the firmware. Promise-chain mutex; the returned release()
+ * resolves the next waiter. Hoisted to globalThis + Symbol.for() because
+ * Next.js bundles each route handler separately, so a module-private map would
+ * be per-bundle, not per-process (Gotcha #10) — and the Video-tab GET and the
+ * scheduler POST run in DIFFERENT route bundles, which is exactly the pair we
+ * must serialize.
+ */
+function acquireWolfPackHttpLock(ipAddress: string): Promise<() => void> {
+  const KEY = Symbol.for('@sports-bar/wolfpack/http-session-locks')
+  const g = globalThis as any
+  if (!g[KEY]) g[KEY] = new Map<string, Promise<void>>()
+  const locks: Map<string, Promise<void>> = g[KEY]
+  const prev = locks.get(ipAddress) ?? Promise.resolve()
+  let release!: () => void
+  const next = new Promise<void>(resolve => { release = resolve })
+  locks.set(ipAddress, prev.then(() => next))
+  return prev.then(() => release)
+}
+
+/**
  * Sends an HTTP command to the Wolf Pack matrix via its web API.
  * The HTTP API uses 0-based indices for both input and output.
  * This function accepts 0-based indices directly.
  *
  * Uses Node's native http module instead of fetch() to avoid
  * Next.js fetch interception that breaks session-based auth.
+ *
+ * Serialized per-IP (see acquireWolfPackHttpLock) so it never runs concurrently
+ * with a queryWolfpackRouteState() read on the same Wolf Pack.
  */
 export async function sendHTTPCommand(
+  ipAddress: string,
+  input0Based: number,
+  output0Based: number,
+  credentials?: { username: string; password: string }
+): Promise<RoutingResult> {
+  const release = await acquireWolfPackHttpLock(ipAddress)
+  try {
+    return await sendHTTPCommandInner(ipAddress, input0Based, output0Based, credentials)
+  } finally {
+    release()
+  }
+}
+
+async function sendHTTPCommandInner(
   ipAddress: string,
   input0Based: number,
   output0Based: number,
@@ -552,6 +602,21 @@ async function sendUDPCommand(
  * was exactly because failures were silently returning an empty state.
  */
 export async function queryWolfpackRouteState(
+  config: Pick<MatrixConfiguration, 'ipAddress' | 'credentials'>
+): Promise<number[]> {
+  // Serialized per-IP (see acquireWolfPackHttpLock): this READ must never open
+  // a second concurrent Wolf Pack session while a sendHTTPCommand() WRITE is in
+  // flight, or the firmware returns stale route state and the write toggles a
+  // good route off (TV goes black — the Greenville/Appleton Video-tab symptom).
+  const release = await acquireWolfPackHttpLock(config.ipAddress)
+  try {
+    return await queryWolfpackRouteStateInner(config)
+  } finally {
+    release()
+  }
+}
+
+async function queryWolfpackRouteStateInner(
   config: Pick<MatrixConfiguration, 'ipAddress' | 'credentials'>
 ): Promise<number[]> {
   const creds = config.credentials || { username: 'admin', password: 'admin' }
