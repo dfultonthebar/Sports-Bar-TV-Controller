@@ -83,6 +83,15 @@ tail -n 0 -F $LOG_GLOB 2>/dev/null | while IFS= read -r raw; do
       fi
       LAST_SEEN[$sig]=$now
       db_insert "error" "$sig" "$line" "$LOG_GLOB"
+      # Auto-file a deduped TODO so the error surfaces on System Admin → Todos.
+      # Best-effort + non-blocking; the endpoint dedups by signature (one open
+      # TODO per signature) and pulls the sample from error_watch_events itself,
+      # so we only need to send the safe signature label (no JSON escaping). Hits
+      # the app on 127.0.0.1:3001 directly (not the :3002 bartender proxy, so no
+      # Nginx allow-list entry needed).
+      curl -s -m 5 -X POST "http://127.0.0.1:${APP_PORT:-3001}/api/error-watch/todo" \
+        -H 'Content-Type: application/json' \
+        -d "{\"signature\":\"$sig\"}" >/dev/null 2>&1 || true
     fi
   done
 done
