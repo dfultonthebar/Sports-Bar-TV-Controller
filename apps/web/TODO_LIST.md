@@ -30,6 +30,26 @@ Last Updated: 6/11/2026, 11:20:41 PM
 - **Created**: 6/12/2026, 4:20:41 AM
 - **Updated**: 6/11/2026, 11:20:41 PM
 
+### Graystone — upgrade RAM to 64GB (2x32GB DDR4-3200 SODIMM)
+
+- **ID**: `aa5f7f93-e58e-450d-bba5-38cd273b3cc2`
+- **Priority**: MEDIUM
+- **Status**: PLANNED
+- **Category**: Hardware
+- **Description**: Graystone is fleet-smallest at 15GB; build OOMs unless Ollama evicted + heap-capped. 64GB removes the constraint.
+- **Created**: 6/12/2026, 4:20:41 AM
+- **Updated**: 6/11/2026, 11:20:41 PM
+
+### Wave 1b-ii — channel-guide canonical dedup key
+
+- **ID**: `f0fd5f06-8217-4ead-bf9e-2be4296e825e`
+- **Priority**: LOW
+- **Status**: PLANNED
+- **Category**: Intelligence Roadmap
+- **Description**: One String-normalized dedup key across the 6 injection paths (drop logging already shipped v2.55.59).
+- **Created**: 6/12/2026, 4:20:41 AM
+- **Updated**: 6/11/2026, 11:20:41 PM
+
 ### Flip Leg Lamp Wolf Pack to TCP (latent o2ox un-route bug)
 
 - **ID**: `647fa14c-6664-4d5a-8c80-22d205e200c1`
@@ -62,8 +82,8 @@ Last Updated: 6/11/2026, 11:20:41 PM
 
 ---
 
-**Total TODOs**: 4
-- Planned: 3
+**Total TODOs**: 6
+- Planned: 5
 - In Progress: 1
 - Testing: 0
 - Complete: 0
