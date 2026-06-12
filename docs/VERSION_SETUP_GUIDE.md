@@ -35,6 +35,16 @@ is the archive.
 
 ---
 
+## v2.55.82 — Wave 3 / 3b: routeAndVerify helper (2026-06-12)
+
+**Branch landed:** main → fleet via auto-update
+**No setup required — new code, not yet wired into the tune path (3c does that).** Adds `packages/scheduler/src/route-verify.ts`: read the Wolf Pack route back after a route command and confirm the targeted output actually carries the input we sent. Exported `checkRouteMatch` / `verifyAndRetryRoute` / `runVerifyLoop` / `persistVerifyState`.
+- **Advisory only** (Standing Rule 3): never throws into the tune path, never rolls back an allocation. A failed verify sets `verify_state='failed'` + `verify_error` and is surfaced for escalation (3e).
+- **outputOffset = NONE in the compare** (the subtle part): the scheduler's send (`routeMatrix`) applies no offset, so verify mirrors it — `routingArray[outputNumber-1] === matrixInput-1`. Adding `+outputOffset` (as a literal reading of Gotcha #4 suggested) would FALSE-ALARM on multi-card boxes like Graystone (+32 belongs only to the Atlas audio path `routeWolfpackToMatrix`, which the scheduler never uses). Confirmed empirically against live Holmgren o2ox. Full reasoning in the file header.
+- **Test:** `npx tsx scripts/test-route-verify.ts` — 26 assertions (index/off-by-one + 5 orchestration outcomes), all pass with injected mocks, no hardware.
+
+---
+
 ## v2.55.81 — Wave 3 / 3a: allocation verify columns (2026-06-12)
 
 **Branch landed:** main → fleet via auto-update

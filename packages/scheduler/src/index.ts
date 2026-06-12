@@ -200,3 +200,12 @@ export {
 
 // v2.52.14: Tier 3 — Daily Ollama-powered RF Pattern Digest
 export { generateRfPatternDigest } from './rf-pattern-digest'
+
+// v2.55.82: Wave 3/3b — closed-loop matrix route verification (advisory)
+export {
+  checkRouteMatch,
+  verifyAndRetryRoute,
+  persistVerifyState,
+  type VerifyState,
+  type RouteVerifyResult,
+} from './route-verify'
