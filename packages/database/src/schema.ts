@@ -1596,6 +1596,25 @@ export const inputSourceAllocations = sqliteTable('input_source_allocations', {
   allocationQuality: text('allocation_quality'), // 'optimal', 'suboptimal', 'degraded'
   qualityNotes: text('quality_notes'), // explanation of quality rating
 
+  // Closed-loop verification (v2.55.81+ — Wave 3 routeAndVerify)
+  // After a tune/route command is acked, the scheduler reads the device
+  // state back (matrix route via queryWolfpackRouteState, DirecTV via
+  // getTuned, Fire TV via getCurrentApp) and records whether the TV is
+  // ACTUALLY showing the intended input. ADVISORY ONLY — a failed verify
+  // logs loud + escalates but never blocks/rolls back the tune (Standing
+  // Rule 3). Verify lives in its OWN column, NOT a `status` value, so a
+  // stuck verify can never strand the allocation lifecycle (still
+  // pending/active/completed). verifyState: 'unverified' (default, never
+  // checked) | 'verified' (read-back matched) | 'failed' (read-back
+  // mismatched after retries) | 'unsupported' (device type has no
+  // read-back path). verifyAttempts counts route/tune retries the verifier
+  // triggered. verifyError holds the last mismatch detail for the
+  // escalation surface.
+  verifiedAt: integer('verified_at'), // Unix timestamp of last verify pass (NULL = never verified)
+  verifyState: text('verify_state').notNull().default('unverified'),
+  verifyAttempts: integer('verify_attempts').notNull().default(0),
+  verifyError: text('verify_error'),
+
   // Metadata
   createdAt: integer('created_at').notNull().default(sql`(strftime('%s', 'now'))`), // Unix timestamp
   updatedAt: integer('updated_at').notNull().default(sql`(strftime('%s', 'now'))`), // Unix timestamp

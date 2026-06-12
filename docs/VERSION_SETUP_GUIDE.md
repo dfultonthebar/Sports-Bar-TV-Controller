@@ -35,6 +35,16 @@ is the archive.
 
 ---
 
+## v2.55.81 — Wave 3 / 3a: allocation verify columns (2026-06-12)
+
+**Branch landed:** main → fleet via auto-update
+**Schema migration — runs automatically.** First sub-step of Wave 3 `routeAndVerify` (closed-loop tune verification). Adds 4 additive columns to `input_source_allocations`: `verified_at` (int), `verify_state` (text NOT NULL default `'unverified'`), `verify_attempts` (int NOT NULL default 0), `verify_error` (text). Migration `drizzle/0004_allocation_verify_columns.sql`.
+- **No manual step:** auto-update runs `bootstrap-drizzle-migrations.sh` + `drizzle-kit migrate` (Gotcha #6 — NOT push). All four are `ADD COLUMN` with defaults, so the ALTER is instant on a live SQLite DB and existing rows backfill to `unverified`/`0`. No code consumes the columns yet (the verifier helper lands in 3b), so the running build keeps working unchanged before/after the migration.
+- **Verify:** `sqlite3 production.db "PRAGMA table_info(input_source_allocations)" | grep verif` shows columns 25–28; `verify-install.sh` `schema_completeness` layer passes.
+- **Trap honored:** verify state lives in its OWN column, never a `status` value — a stuck verify can't strand the allocation lifecycle (status stays pending/active/completed).
+
+---
+
 ## v2.55.76–v2.55.79 — System Admin TODO list: usability + error-bot auto-file (2026-06-11)
 
 **Versions covered:** v2.55.76 (FLEET_STATUS refresh), v2.55.77 (todo sort), v2.55.78 (todo filter), v2.55.79 (error-watch auto-file)
