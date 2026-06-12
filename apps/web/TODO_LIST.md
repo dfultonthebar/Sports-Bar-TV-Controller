@@ -40,6 +40,16 @@ Last Updated: 6/11/2026, 11:20:41 PM
 - **Created**: 6/12/2026, 4:20:41 AM
 - **Updated**: 6/11/2026, 11:20:41 PM
 
+### Lime Kiln — clean-boot health pass + hardware install
+
+- **ID**: `59037066-c40d-4626-9168-97599f9b3190`
+- **Priority**: MEDIUM
+- **Status**: PLANNED
+- **Category**: Deployment
+- **Description**: 7th box, fresh v3.1.0 ISO, currently offline/pre-deploy (Tailscale 100.89.6.80). Health pass before hardware install; admin PIN 7819.
+- **Created**: 6/12/2026, 4:20:41 AM
+- **Updated**: 6/11/2026, 11:20:41 PM
+
 ### Wave 1b-ii — channel-guide canonical dedup key
 
 - **ID**: `f0fd5f06-8217-4ead-bf9e-2be4296e825e`
@@ -47,6 +57,26 @@ Last Updated: 6/11/2026, 11:20:41 PM
 - **Status**: PLANNED
 - **Category**: Intelligence Roadmap
 - **Description**: One String-normalized dedup key across the 6 injection paths (drop logging already shipped v2.55.59).
+- **Created**: 6/12/2026, 4:20:41 AM
+- **Updated**: 6/11/2026, 11:20:41 PM
+
+### Greenville — verify TV 20 MAC auto-fills when powered on
+
+- **ID**: `48e7f290-e7ca-40c3-a190-4d43e1367724`
+- **Priority**: LOW
+- **Status**: PLANNED
+- **Category**: Hardware
+- **Description**: Samsung TV-20 (10.40.10.20) L2-offline; MAC auto-discovery (ARP-after-ping, v2.55.53) should populate when the TV is physically restored.
+- **Created**: 6/12/2026, 4:20:41 AM
+- **Updated**: 6/11/2026, 11:20:41 PM
+
+### Tune per-box OLLAMA_NUM_PREDICT from LLM-PERF data
+
+- **ID**: `a4671ca3-65d9-4840-8dc5-c5410aa623cc`
+- **Priority**: LOW
+- **Status**: PLANNED
+- **Category**: AI/Perf
+- **Description**: Use the v2.55.56 LLM perf logging to set per-box num_predict/timeout (Graystone slowest at ~170s).
 - **Created**: 6/12/2026, 4:20:41 AM
 - **Updated**: 6/11/2026, 11:20:41 PM
 
@@ -82,8 +112,8 @@ Last Updated: 6/11/2026, 11:20:41 PM
 
 ---
 
-**Total TODOs**: 6
-- Planned: 5
+**Total TODOs**: 9
+- Planned: 8
 - In Progress: 1
 - Testing: 0
 - Complete: 0
