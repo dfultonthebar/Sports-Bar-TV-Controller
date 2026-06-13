@@ -32,7 +32,10 @@ const API_TIMEOUT_MS = Number(process.env.MCP_API_TIMEOUT_MS) || 10_000
 // code/diagnostic work to Claude. Full path because the gateway's spawn env
 // may not include ~/.local/bin on PATH.
 const CLAUDE_BIN = process.env.CLAUDE_BIN || '/home/ubuntu/.local/bin/claude'
-const CLAUDE_TIMEOUT_MS = Number(process.env.MCP_CLAUDE_TIMEOUT_MS) || 180_000
+// 300s default: a deep multi-file investigation in plan mode regularly exceeds
+// 180s (proven 2026-06-13 — a channel-guide dedup investigation hit the old
+// 180s cap and the delegation fell back to the caller). Env-overridable.
+const CLAUDE_TIMEOUT_MS = Number(process.env.MCP_CLAUDE_TIMEOUT_MS) || 300_000
 const REPO_ROOT = process.env.REPO_ROOT || process.cwd()
 
 /**
