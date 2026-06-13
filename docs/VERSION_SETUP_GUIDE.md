@@ -35,6 +35,25 @@ is the archive.
 
 ---
 
+## v2.56.0 — Hermes Agent Phase 1a: `@sports-bar/mcp` observe gateway (2026-06-13)
+
+**Branch landed:** main → fleet via auto-update
+**New package `@sports-bar/mcp`** — a stdio MCP server exposing the system to Hermes Agent as
+**read-only observe tools** (Phase 1a: `get_system_health`, `list_open_todos`). Thin adapters over the
+existing audited HTTP APIs; nothing writes hardware. Adds dep `@modelcontextprotocol/sdk@^1.0.0`
+(pure-JS, no native build). No-op `build` script (runs via `tsx`, like scheduler/services).
+- **Auto-applied:** `npm ci` on auto-update installs the new dep; the package is inert unless Hermes
+  Agent is installed on the box and registered to it. The web build is unaffected (nothing imports it).
+- **Per-box manual step (only where Hermes Agent is installed — Holmgren so far):** register the server:
+  `hermes mcp add sports-bar --command /home/ubuntu/Sports-Bar-TV-Controller/packages/mcp/start.sh`
+  (answer `Y` to the enable-tools prompt). This writes to `~/.hermes/config.yaml` (per-box runtime
+  config, NOT in the repo). A future `scripts/setup-hermes-agent.sh` will automate it.
+- **Model note:** tool-using turns need **Grok or a 14B local** — `hermes3:8b` is too weak (prints the
+  tool-call as text instead of invoking it). Proven end-to-end via Grok: agent → `get_system_health` →
+  `/api/system/health` → correct live answer. Full context: `[[project-hermes-agent-adoption]]`.
+
+---
+
 ## v2.55.82 — Wave 3 / 3b: routeAndVerify helper (2026-06-12)
 
 **Branch landed:** main → fleet via auto-update
