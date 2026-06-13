@@ -35,6 +35,17 @@ is the archive.
 
 ---
 
+## v2.57.1 — Hermes Phase 2c: watcher auto-files todos (Atlas drop) (2026-06-13)
+
+**Branch landed:** main → fleet via auto-update
+**No setup required.** The Atlas drop-watcher now auto-files a deduped maintenance todo (via
+`POST /api/maintenance-todo`, source `watcher`) when it records an **unexplained** zone volume drop —
+the events a human should investigate. One todo per processor/zone/day; explained drops (a bartender
+changed it) don't file. Fire-and-forget — a todo-file failure never affects the watcher. The same
+pattern extends to the Shure-RF and SDR watchers next; this ships the representative integration.
+
+---
+
 ## v2.57.0 — Hermes Phase 2: agent guardrail layer (propose + audited todo-write) (2026-06-13)
 
 **Branch landed:** main → fleet via auto-update
