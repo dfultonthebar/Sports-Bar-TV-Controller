@@ -1,6 +1,13 @@
 /**
  * route-verify.ts — Wave 3 / 3b: closed-loop matrix route verification.
  *
+ * STATUS: helper only — NOT yet wired into the scheduler's tune path. Wave 3c
+ * wires `verifyAndRetryRoute` + `persistVerifyState` into scheduler-service.ts's
+ * route loop (deliberately held for an off-hours canary, since 3c also changes
+ * TCP route success-determination). Until then these exports have no production
+ * callers (only `scripts/test-route-verify.ts`). The flow described below is
+ * what 3c will do.
+ *
  * After the scheduler issues a Wolf Pack route command and the command is
  * ACKed (parseHardwareResult.ok), this module reads the route state back off
  * the hardware and confirms the targeted output is ACTUALLY carrying the input

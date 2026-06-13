@@ -35,6 +35,24 @@ is the archive.
 
 ---
 
+## v2.56.2 — audit fixes for Phase 1 (2026-06-13)
+
+**Branch landed:** main → fleet via auto-update
+**No setup required.** Fixes from the 3-agent adversarial audit of today's work:
+- **CRITICAL:** `get_atlas_status` read `drops?.events` / `.zone` but `/api/atlas-drops` returns
+  `{drops:[{zone_number,zone_name}]}` — so it ALWAYS reported "no drops" (was hiding 14 real ones).
+  Fixed to `drops?.drops` + `zone_name`. Verified e2e via Grok.
+- **Security:** `get_firetv_status` no longer emits internal LAN IPs into the LLM context (matters with
+  cloud Grok). And `/api/system/health` no longer returns `details`/`stack` in its 500 body (could carry
+  the Soundtrack API key; full stack still server-logged) — pre-existing, made reachable via MCP.
+- **Efficiency:** `get_atlas_status` now runs its two reads with `Promise.all`.
+- The two arg-taking MCP tools keep `inputSchema as any` — empirically re-confirmed TS2589 returns at
+  SDK 1.29 + zod 4 without it (an audit agent claimed it was removable; it is not). Handler args stay
+  explicitly typed.
+- Clarified `route-verify.ts` header: helper is NOT yet wired into the scheduler (Wave 3c does that).
+
+---
+
 ## v2.56.1 — Hermes Agent Phase 1b: 6 more observe tools (2026-06-13)
 
 **Branch landed:** main → fleet via auto-update

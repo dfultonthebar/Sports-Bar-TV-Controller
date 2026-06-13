@@ -176,9 +176,9 @@ server.registerTool(
       'Explain what a specific TV output is currently showing: which matrix input feeds it. ' +
       'Use when asked "what is on TV/output N?" or "why is TV N showing the wrong thing?". ' +
       'Pass the logical output number (outputOffset is already applied in the route read-back).',
-    // `as any` defeats a known TS2589 deep-instantiation between the MCP SDK's
-    // registerTool generics and zod v4; runtime validation is unaffected. The
-    // handler args are annotated explicitly below to restore type safety.
+    // `as any` defeats a real TS2589 deep-instantiation between the MCP SDK registerTool
+    // generics and zod v4 (empirically confirmed: removing it reintroduces TS2589 here). Runtime
+    // validation is unaffected; the handler args are annotated explicitly below to keep type safety.
     inputSchema: { outputNumber: z.number().int().min(1).describe('The TV/matrix output number, 1-based') } as any,
   },
   async ({ outputNumber }: { outputNumber: number }) => {
@@ -242,7 +242,11 @@ server.registerTool(
   },
   async () => {
     try {
-      const prio = await apiGet('/api/atlas-priority?active=true').catch(() => null)
+      // Both reads are independent — run them concurrently (each has its own timeout).
+      const [prio, drops] = await Promise.all([
+        apiGet('/api/atlas-priority?active=true').catch(() => null),
+        apiGet('/api/atlas-drops').catch(() => null),
+      ])
       const lines: string[] = []
       if (prio?.active) {
         lines.push(
@@ -252,12 +256,14 @@ server.registerTool(
       } else {
         lines.push('No active Atlas priority/page event.')
       }
-      const drops = await apiGet('/api/atlas-drops').catch(() => null)
-      const dropEvents: any[] = Array.isArray(drops?.events) ? drops.events : Array.isArray(drops) ? drops : []
-      const realDrops = dropEvents.filter((d) => String(d?.event_type ?? d?.eventType) !== 'startup')
+      // /api/atlas-drops returns { success, count, drops: [{ zone_number, zone_name, ... }] }
+      // ordered most-recent-first. (Earlier this read drops?.events / .zone — wrong keys, so it
+      // always reported zero drops; fixed per the v2.56.2 audit.)
+      const dropRows: any[] = Array.isArray(drops?.drops) ? drops.drops : []
       lines.push(
-        realDrops.length
-          ? `Recent zone drop events: ${realDrops.length} (most recent on zone ${realDrops[0]?.zone ?? '?'}).`
+        dropRows.length
+          ? `Recent zone drop events: ${drops?.count ?? dropRows.length} ` +
+              `(most recent on zone ${dropRows[0]?.zone_name ?? dropRows[0]?.zone_number ?? '?'}).`
           : 'No recent zone drop events.',
       )
       return ok(lines.join('\n'))
@@ -283,7 +289,9 @@ server.registerTool(
       if (!devices.length) return ok('No Fire TV devices configured.')
       const lines = devices.map((d) => {
         const online = d?.isOnline === true || d?.status === 'online'
-        return `${d.name ?? d.id} (${d.ipAddress ?? '?'}): ${online ? 'online' : 'offline'}` +
+        // Deliberately omit ipAddress — no need to push internal LAN topology into the LLM
+        // context (the agent may be cloud-backed Grok). Name + status + input is enough to diagnose.
+        return `${d.name ?? d.id}: ${online ? 'online' : 'offline'}` +
           `${d.inputChannel ? `, feeds matrix input ${d.inputChannel}` : ''}` +
           `${d.disabled ? ' [disabled]' : ''}`
       })
@@ -303,7 +311,7 @@ server.registerTool(
       'notes, package READMEs) and get a grounded answer with sources. Use this to look up HOW the ' +
       'system works or how to fix something (e.g. "how does outputOffset work?", "how do I learn an ' +
       'IR code?") instead of guessing. This is how the agent teaches itself the system on demand.',
-    // `as any`: see the TS2589 note on explain_tv_output above.
+    // `as any`: see the TS2589 note on explain_tv_output above (confirmed needed at SDK 1.29 + zod 4).
     inputSchema: {
       query: z.string().min(1).max(1000).describe('The question to look up in the system docs'),
       tech: z.string().optional().describe('Optional tech-tag filter, e.g. "cec", "matrix", "shure"'),
