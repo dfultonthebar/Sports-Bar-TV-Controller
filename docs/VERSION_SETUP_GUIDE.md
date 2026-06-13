@@ -35,6 +35,25 @@ is the archive.
 
 ---
 
+## v2.57.6 — expand Hermes skills (3 custom + YouTube) (2026-06-13)
+
+**Branch landed:** main → fleet via auto-update
+**Per-box install where Hermes runs** (the custom skills are version-controlled in `hermes/skills/`; the
+YouTube skill is a hub install). Adds Hermes Agent skills that operationalize the MCP tools:
+- `hermes/skills/sports-bar-investigate` — delegate deep code/diagnostic questions or a todo's fix plan to
+  Claude Code via `ask_claude_code`; relay + file the plan (operator-brain → builder workflow).
+- `hermes/skills/sports-bar-shift-check` — on-demand pre-shift readiness audit chaining the observe tools.
+- `hermes/skills/sports-bar-rf-response` — wireless/paging-mic RF interference diagnosis + response (never
+  autonomously changes a freq — propose + human-confirm).
+- (existing `sports-bar-troubleshooting` from v2.56.3 — reactive "X is broken" diagnostics.)
+- **YouTube:** `hermes skills install lobehub/youtube-summarizer-pro` (community) — Hermes can summarize a
+  YouTube URL. (A `youtube-content` skill also ships built-in.)
+- **Per-box install:** `cp -r hermes/skills/sports-bar-* ~/.hermes/skills/ && hermes skills install
+  lobehub/youtube-summarizer-pro`. Bake into the future `setup-hermes-agent.sh`. Skills are thin (orchestrate
+  tools + `search_system_docs`); RAG stays the single doc source. `hermes/` is OUTSIDE the RAG-indexed paths.
+
+---
+
 ## v2.57.5 — `ask_claude_code` durable unattended auth (2026-06-13)
 
 **Branch landed:** main → fleet via auto-update
