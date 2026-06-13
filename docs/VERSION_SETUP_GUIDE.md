@@ -35,6 +35,25 @@ is the archive.
 
 ---
 
+## v2.56.3 — teach Hermes the system: SOUL.md + troubleshooting skill (2026-06-13)
+
+**Branch landed:** main → fleet via auto-update
+**New repo dir `hermes/`** (deliberately OUTSIDE the RAG-indexed paths so it can't create a
+doc-divergence loop — the plan's guardrail): version-controlled Hermes Agent templates.
+- `hermes/SOUL.md` — Hermes' standing identity: it IS the operator agent for THIS install (not a generic
+  LLM); its 8 MCP observe tools + the directive to USE them (and `search_system_docs` to look things up
+  rather than guess); the bartender-vs-operator register rules; anti-hallucination/anti-inversion
+  grounding; the must-never-get-wrong gotchas (outputOffset, IR-only cable boxes, wireless/paging-mic ≠
+  karaoke). Adapted from the proven in-app chat system prompt.
+- `hermes/skills/sports-bar-troubleshooting/SKILL.md` — thin diagnostic playbooks (wrong/black TV, mic,
+  audio drop, todos) that orchestrate the MCP tools + `search_system_docs`. No duplicated doc content.
+- **Per-box manual step (where Hermes Agent is installed — Holmgren so far):**
+  `cp hermes/SOUL.md ~/.hermes/SOUL.md && cp -r hermes/skills/sports-bar-troubleshooting ~/.hermes/skills/`.
+  A future `scripts/setup-hermes-agent.sh` will automate it. SOUL.md loads fresh every message (no restart).
+- Verified via Grok: agent self-identifies as the operator AI, knows outputOffset, references the tools.
+
+---
+
 ## v2.56.2 — audit fixes for Phase 1 (2026-06-13)
 
 **Branch landed:** main → fleet via auto-update
