@@ -35,6 +35,22 @@ is the archive.
 
 ---
 
+## v2.57.2 — Hermes Phase 3a: confirm-action backend (one-tap confirm) (2026-06-13)
+
+**Branch landed:** main → fleet via auto-update
+**No setup required.** New endpoint `POST /api/agent/confirm-action` — the human-only execution path for a
+proposal the agent made via `propose_action`. The agent CANNOT call it (it's not an MCP tool); only a UI
+Confirm button (a deliberate human tap) does. Whitelisted: `route_tv {input,output}` → `/api/matrix/route`
+(source `manual`); `tune_channel {channelNumber,deviceType,deviceId}` → `/api/channel-presets/tune`.
+Rate-limited HARDWARE; every execution audited to `agent_tool_invocations` (`confirm_action:<action>`).
+- This is the backend the Phase-3b bartender Confirm button calls. There is still **no autonomous-write
+  path** — propose (agent) → confirm (human) → deterministic API.
+- **Phase 3b (the bartender iPad UI confirm button)** is NOT in this release — it touches the
+  operator-locked bartender remote and needs a deployed build + Playwright verification on the live iPad
+  (an off-hours task). Build-verified (35/35).
+
+---
+
 ## v2.57.1 — Hermes Phase 2c: watcher auto-files todos (Atlas drop) (2026-06-13)
 
 **Branch landed:** main → fleet via auto-update
