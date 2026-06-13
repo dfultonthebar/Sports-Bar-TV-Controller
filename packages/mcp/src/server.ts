@@ -38,6 +38,27 @@ const CLAUDE_BIN = process.env.CLAUDE_BIN || '/home/ubuntu/.local/bin/claude'
 const CLAUDE_TIMEOUT_MS = Number(process.env.MCP_CLAUDE_TIMEOUT_MS) || 300_000
 const REPO_ROOT = process.env.REPO_ROOT || process.cwd()
 
+/** Read a single var out of the repo .env (the per-box secret store). Best-effort. */
+function readRepoEnv(name: string): string | undefined {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const txt = require('node:fs').readFileSync(`${REPO_ROOT}/.env`, 'utf8') as string
+    const m = txt.match(new RegExp(`^${name}=(.*)$`, 'm'))
+    return m ? m[1].trim().replace(/^["']|["']$/g, '') : undefined
+  } catch {
+    return undefined
+  }
+}
+
+// Inject the never-expiring ANTHROPIC_API_KEY (already in the repo .env for
+// auto-update's checkpoints) into the claude -p spawn so the bridge keeps
+// working UNATTENDED — no dependency on the interactive-login OAuth token
+// (~/.claude/.credentials.json), which can eventually need re-auth. Scoped to
+// the claude subprocess only (not Hermes-wide). Set MCP_CLAUDE_USE_OAUTH=true
+// to opt out and use the subscription OAuth (free) instead of the pay-per-call key.
+const CLAUDE_API_KEY =
+  process.env.MCP_CLAUDE_USE_OAUTH === 'true' ? undefined : readRepoEnv('ANTHROPIC_API_KEY')
+
 /**
  * Run Claude Code headlessly in READ-ONLY plan mode (no edits/commits/mutating
  * bash). The question is passed as an argv element (no shell), so it can't be
@@ -49,7 +70,12 @@ function runClaude(question: string): Promise<{ ok: boolean; text: string }> {
     try {
       child = spawn(CLAUDE_BIN, ['-p', question, '--permission-mode', 'plan'], {
         cwd: REPO_ROOT,
-        env: { ...process.env, PATH: `/home/ubuntu/.local/bin:${process.env.PATH || ''}` },
+        env: {
+          ...process.env,
+          PATH: `/home/ubuntu/.local/bin:${process.env.PATH || ''}`,
+          // Durable unattended auth — see CLAUDE_API_KEY above.
+          ...(CLAUDE_API_KEY ? { ANTHROPIC_API_KEY: CLAUDE_API_KEY } : {}),
+        },
       })
     } catch (e) {
       return resolve({ ok: false, text: `Could not start Claude: ${(e as Error).message}` })

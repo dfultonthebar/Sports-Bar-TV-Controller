@@ -35,6 +35,30 @@ is the archive.
 
 ---
 
+## v2.57.5 — `ask_claude_code` durable unattended auth (2026-06-13)
+
+**Branch landed:** main → fleet via auto-update
+**No setup required** (the key already exists per-box). `runClaude` now reads `ANTHROPIC_API_KEY` from the
+repo `.env` (the same one auto-update's checkpoints use) and injects it **into the `claude -p` spawn only**
+(not Hermes-wide). This makes the Hermes↔Claude bridge work **unattended forever** — it no longer depends
+on the interactive-login OAuth token (`~/.claude/.credentials.json`), which can eventually need re-auth.
+- **Scoped + opt-out:** the key reaches only the `claude` subprocess. Set `MCP_CLAUDE_USE_OAUTH=true` to
+  use the subscription OAuth (free) instead of the pay-per-call API key.
+- **Cost note:** `claude -p` now bills the **same `ANTHROPIC_API_KEY` as auto-update checkpoints** — so a
+  burst of `ask_claude_code` calls shares that credit pool (heavy use could deplete it and break BOTH the
+  bridge and auto-update). `ask_claude_code` is operator-driven + low-volume, so this is minor — but watch
+  credits (`[[feedback-anthropic-credits-block-auto-update]]`). No secret is committed (the key stays in
+  the gitignored `.env`); the code just reads the existing per-box key. Verified: `KEY_PATH_OK` via the
+  key-injected `claude -p`.
+
+### Also: gateway default model → Grok (runtime, per-box; bake into setup-hermes-agent.sh)
+For the **autonomous** gateway-Hermes to use its MCP tools (incl. `ask_claude_code`) when *you* aren't
+driving it, its default model must be tool-capable. `hermes config set model.provider xai-oauth` +
+`model.default grok-4`. (`hermes3:8b` can't tool-call.) Cheap `--no-agent` cron monitoring is unaffected;
+the in-app bartender chat (`qwen2.5:14b`) is unaffected. Proven autonomous: `CLAUDE_VIA_HERMES_OK`.
+
+---
+
 ## v2.57.3 — Hermes ↔ Claude Code bridge: `ask_claude_code` MCP tool (2026-06-13)
 
 **Branch landed:** main → fleet via auto-update
