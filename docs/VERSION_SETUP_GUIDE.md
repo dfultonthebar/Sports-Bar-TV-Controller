@@ -35,6 +35,22 @@ is the archive.
 
 ---
 
+## v2.56.1 — Hermes Agent Phase 1b: 6 more observe tools (2026-06-13)
+
+**Branch landed:** main → fleet via auto-update
+**No setup beyond v2.56.0.** Adds six read-only tools to the `@sports-bar/mcp` server:
+`get_matrix_routes`, `explain_tv_output` (arg: outputNumber), `get_shure_rf_status`, `get_atlas_status`,
+`get_firetv_status`, `search_system_docs` (RAG — args query/tech). Still thin adapters over existing
+audited APIs; nothing writes hardware. All 8 tools proven end-to-end via Grok (explain_tv_output(20) →
+"input 11"; mics connected; outputOffset doc lookup correct).
+- Aligned the package's `zod` range to `^4.0.0` (repo is on zod v4.4.3). The two arg-taking tools cast
+  `inputSchema as any` to defeat a known TS2589 deep-instantiation between the MCP SDK generics and zod
+  v4 — runtime validation is unaffected, handler args are explicitly typed.
+- If a box already registered `sports-bar` (v2.56.0), the new tools appear automatically (registered as
+  "all tools enabled"); no re-`add` needed. Verify with `hermes mcp test sports-bar` → "Tools discovered: 8".
+
+---
+
 ## v2.56.0 — Hermes Agent Phase 1a: `@sports-bar/mcp` observe gateway (2026-06-13)
 
 **Branch landed:** main → fleet via auto-update

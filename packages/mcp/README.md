@@ -30,10 +30,16 @@ stream and must not be polluted).
 | Tool | Reads | Notes |
 |------|-------|-------|
 | `get_system_health` | `GET /api/system/health` | Overall status + any device not online / with issues. First step for "is everything working?" |
-| `list_open_todos` | `GET /api/todos` | Open (non-COMPLETE) System Admin todos, needs-work first. Read-only. |
+| `list_open_todos` | `GET /api/todos` | Open (non-COMPLETE) System Admin todos, needs-work first. |
+| `get_matrix_routes` | `GET /api/matrix/routes` | Live Wolf Pack routes (output ← input). Logical outputs (outputOffset applied). |
+| `explain_tv_output` | `GET /api/matrix/routes` | Arg `outputNumber`: which input feeds that TV. |
+| `get_shure_rf_status` | `GET /api/shure-rf/status` | Wireless/paging-mic receivers: per-channel connect/freq/gain/band. |
+| `get_atlas_status` | `GET /api/atlas-priority`, `/api/atlas-drops` | Active priority/page events + recent zone drops. |
+| `get_firetv_status` | `GET /api/firetv-devices` | Fire TV roster: online/offline + matrix input fed. |
+| `search_system_docs` | `POST /api/rag/query` | Args `query`, optional `tech`: grounded answer + sources from the system docs (RAG). How the agent teaches itself on demand. |
 
-_Planned (later Phase 1 commits): `get_matrix_routes`, `get_shure_rf_status`, `get_atlas_status`,
-`get_firetv_apps`, `explain_tv_output` (outputOffset-aware), `search_system_docs` (RAG)._
+All read-only. Write tools (later phases) use a `propose_action` pattern → human one-tap confirm → the
+existing deterministic audited API; never an autonomous hardware command.
 
 ## Model note (important)
 

@@ -21,6 +21,7 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
+import { z } from 'zod'
 
 const APP_PORT = process.env.APP_PORT || '3001'
 const BASE = `http://127.0.0.1:${APP_PORT}`
@@ -36,6 +37,24 @@ async function apiGet(path: string): Promise<any> {
       signal: ctrl.signal,
     })
     if (!res.ok) throw new Error(`GET ${path} → HTTP ${res.status}`)
+    return await res.json()
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/** POST a JSON body to an app API path. Longer timeout — RAG generation can take a few seconds. */
+async function apiPost(path: string, body: unknown): Promise<any> {
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), Math.max(API_TIMEOUT_MS, 30_000))
+  try {
+    const res = await fetch(`${BASE}${path}`, {
+      method: 'POST',
+      headers: { accept: 'application/json', 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: ctrl.signal,
+    })
+    if (!res.ok) throw new Error(`POST ${path} → HTTP ${res.status}`)
     return await res.json()
   } finally {
     clearTimeout(timer)
@@ -124,12 +143,202 @@ server.registerTool(
   },
 )
 
+// ── get_matrix_routes ─────────────────────────────────────────────────────
+server.registerTool(
+  'get_matrix_routes',
+  {
+    description:
+      'Read-only list of the live Wolf Pack matrix routes (which input each TV output is showing). ' +
+      'Use to answer "what is on the TVs?", "what input feeds output N?", or to start diagnosing a ' +
+      'wrong/black TV. Output numbers are the logical TV output numbers (outputOffset already applied).',
+  },
+  async () => {
+    try {
+      const r = await apiGet('/api/matrix/routes')
+      const routes: any[] = Array.isArray(r?.routes) ? r.routes : []
+      const active = routes.filter((x) => x?.isActive !== false)
+      if (!active.length) return ok('No active matrix routes reported.')
+      const lines = active
+        .sort((a, b) => (a.outputNum ?? 0) - (b.outputNum ?? 0))
+        .map((x) => `Output ${x.outputNum} ← input ${x.inputNum}`)
+      return ok(`Live matrix routes (source: ${r?.source ?? '?'}):\n${lines.join('\n')}`)
+    } catch (e) {
+      return fail(`Could not read matrix routes: ${(e as Error).message}`)
+    }
+  },
+)
+
+// ── explain_tv_output ─────────────────────────────────────────────────────
+server.registerTool(
+  'explain_tv_output',
+  {
+    description:
+      'Explain what a specific TV output is currently showing: which matrix input feeds it. ' +
+      'Use when asked "what is on TV/output N?" or "why is TV N showing the wrong thing?". ' +
+      'Pass the logical output number (outputOffset is already applied in the route read-back).',
+    // `as any` defeats a known TS2589 deep-instantiation between the MCP SDK's
+    // registerTool generics and zod v4; runtime validation is unaffected. The
+    // handler args are annotated explicitly below to restore type safety.
+    inputSchema: { outputNumber: z.number().int().min(1).describe('The TV/matrix output number, 1-based') } as any,
+  },
+  async ({ outputNumber }: { outputNumber: number }) => {
+    try {
+      const r = await apiGet('/api/matrix/routes')
+      const routes: any[] = Array.isArray(r?.routes) ? r.routes : []
+      const match = routes.find((x) => Number(x?.outputNum) === Number(outputNumber) && x?.isActive !== false)
+      if (!match) {
+        return ok(`Output ${outputNumber} has no active route reported — it may be unrouted, off, or settling.`)
+      }
+      return ok(`Output ${outputNumber} is currently fed by matrix input ${match.inputNum}.`)
+    } catch (e) {
+      return fail(`Could not explain output ${outputNumber}: ${(e as Error).message}`)
+    }
+  },
+)
+
+// ── get_shure_rf_status ───────────────────────────────────────────────────
+server.registerTool(
+  'get_shure_rf_status',
+  {
+    description:
+      'Read-only status of the Shure wireless/paging-mic receivers: per-channel connection, ' +
+      'frequency, audio gain, and band. Use to answer "are the mics working?", "what frequency is ' +
+      'the mic on?", or when interference/ghosting is suspected. (Plain wireless/paging mics — never "karaoke".)',
+  },
+  async () => {
+    try {
+      const r = await apiGet('/api/shure-rf/status')
+      const receivers: any[] = Array.isArray(r?.receivers) ? r.receivers : []
+      if (!receivers.length) return ok('No Shure receivers configured.')
+      const out: string[] = []
+      for (const rx of receivers) {
+        out.push(
+          `${rx.receiverName ?? rx.receiverId} (${rx.model ?? '?'}, band ${rx.rfBand ?? '?'}): ` +
+            `${rx.connected ? 'connected' : 'NOT connected'}`,
+        )
+        for (const ch of (Array.isArray(rx.channels) ? rx.channels : []) as any[]) {
+          out.push(
+            `  • ${ch.channelName ?? `ch ${ch.channel}`}: ` +
+              `${ch.frequency ? `${ch.frequency} ` : ''}gain ${ch.audioGainDb ?? '?'}dB` +
+              `${ch.audioOutSwitch ? `, out=${ch.audioOutSwitch}` : ''}`,
+          )
+        }
+      }
+      return ok(out.join('\n'))
+    } catch (e) {
+      return fail(`Could not read Shure RF status: ${(e as Error).message}`)
+    }
+  },
+)
+
+// ── get_atlas_status ──────────────────────────────────────────────────────
+server.registerTool(
+  'get_atlas_status',
+  {
+    description:
+      'Read-only Atlas audio status: whether a priority/page event is active (mics keying, zones ' +
+      'overridden) and any recent zone volume "drop" events. Use when asked "is a mic live?", ' +
+      '"did the audio drop?", or "why did a zone go quiet?".',
+  },
+  async () => {
+    try {
+      const prio = await apiGet('/api/atlas-priority?active=true').catch(() => null)
+      const lines: string[] = []
+      if (prio?.active) {
+        lines.push(
+          `Priority ACTIVE: mics [${(prio.activeMics ?? []).join(', ') || 'none named'}], ` +
+            `overridden zones [${(prio.overriddenZones ?? []).join(', ') || 'none'}].`,
+        )
+      } else {
+        lines.push('No active Atlas priority/page event.')
+      }
+      const drops = await apiGet('/api/atlas-drops').catch(() => null)
+      const dropEvents: any[] = Array.isArray(drops?.events) ? drops.events : Array.isArray(drops) ? drops : []
+      const realDrops = dropEvents.filter((d) => String(d?.event_type ?? d?.eventType) !== 'startup')
+      lines.push(
+        realDrops.length
+          ? `Recent zone drop events: ${realDrops.length} (most recent on zone ${realDrops[0]?.zone ?? '?'}).`
+          : 'No recent zone drop events.',
+      )
+      return ok(lines.join('\n'))
+    } catch (e) {
+      return fail(`Could not read Atlas status: ${(e as Error).message}`)
+    }
+  },
+)
+
+// ── get_firetv_status ─────────────────────────────────────────────────────
+server.registerTool(
+  'get_firetv_status',
+  {
+    description:
+      'Read-only roster of Fire TV streaming devices with online/offline status and which matrix ' +
+      'input each feeds. Use to answer "are the Fire TVs up?" or to find which device drives a TV. ' +
+      'Does not poll the live foreground app (that is a slower per-device action).',
+  },
+  async () => {
+    try {
+      const r = await apiGet('/api/firetv-devices')
+      const devices: any[] = Array.isArray(r?.devices) ? r.devices : []
+      if (!devices.length) return ok('No Fire TV devices configured.')
+      const lines = devices.map((d) => {
+        const online = d?.isOnline === true || d?.status === 'online'
+        return `${d.name ?? d.id} (${d.ipAddress ?? '?'}): ${online ? 'online' : 'offline'}` +
+          `${d.inputChannel ? `, feeds matrix input ${d.inputChannel}` : ''}` +
+          `${d.disabled ? ' [disabled]' : ''}`
+      })
+      return ok(`Fire TV devices:\n${lines.join('\n')}`)
+    } catch (e) {
+      return fail(`Could not read Fire TV devices: ${(e as Error).message}`)
+    }
+  },
+)
+
+// ── search_system_docs ────────────────────────────────────────────────────
+server.registerTool(
+  'search_system_docs',
+  {
+    description:
+      'Search this system\'s own documentation (CLAUDE.md, runbooks, hardware refs, per-location ' +
+      'notes, package READMEs) and get a grounded answer with sources. Use this to look up HOW the ' +
+      'system works or how to fix something (e.g. "how does outputOffset work?", "how do I learn an ' +
+      'IR code?") instead of guessing. This is how the agent teaches itself the system on demand.',
+    // `as any`: see the TS2589 note on explain_tv_output above.
+    inputSchema: {
+      query: z.string().min(1).max(1000).describe('The question to look up in the system docs'),
+      tech: z.string().optional().describe('Optional tech-tag filter, e.g. "cec", "matrix", "shure"'),
+    } as any,
+  },
+  async ({ query, tech }: { query: string; tech?: string }) => {
+    try {
+      const body: Record<string, unknown> = { query }
+      if (tech) body.tech = tech
+      const r = await apiPost('/api/rag/query', body)
+      const answer = r?.answer ?? r?.result?.answer ?? ''
+      const sources: any[] = r?.sources ?? r?.result?.sources ?? []
+      const srcList = sources
+        .slice(0, 5)
+        .map((s) => `- ${s?.filename ?? s?.filepath ?? 'unknown'}`)
+        .join('\n')
+      return ok(
+        `${answer || '(no answer generated)'}` +
+          (srcList ? `\n\nSources:\n${srcList}` : ''),
+      )
+    } catch (e) {
+      return fail(`Could not search system docs: ${(e as Error).message}`)
+    }
+  },
+)
+
 async function main() {
   const transport = new StdioServerTransport()
   await server.connect(transport)
   // stdio server runs until the client disconnects; no stdout logging (it would
   // corrupt the JSON-RPC stream — diagnostics go to stderr only).
-  process.stderr.write('[sports-bar-mcp] connected (stdio) — tools: get_system_health, list_open_todos\n')
+  process.stderr.write(
+    '[sports-bar-mcp] connected (stdio) — 8 read-only tools: get_system_health, list_open_todos, ' +
+      'get_matrix_routes, explain_tv_output, get_shure_rf_status, get_atlas_status, get_firetv_status, search_system_docs\n',
+  )
 }
 
 main().catch((e) => {
