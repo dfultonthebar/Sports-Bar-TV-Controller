@@ -35,6 +35,23 @@ is the archive.
 
 ---
 
+## v2.57.3 — Hermes ↔ Claude Code bridge: `ask_claude_code` MCP tool (2026-06-13)
+
+**Branch landed:** main → fleet via auto-update
+**No setup required.** Adds an 11th tool to `@sports-bar/mcp`: **`ask_claude_code`** — lets the Hermes
+agent delegate deep code/diagnostic questions to **Claude Code** (the coding agent on the same box).
+Completes the agent team: Hermes = always-on operator brain; Claude = on-demand builder/analyst.
+- **READ-ONLY by design:** spawns `claude -p "<question>" --permission-mode plan` — Claude reads the real
+  repo + system to analyze/explain/draft a plan, but **cannot edit, commit, or run mutating commands**.
+  A mutating "task mode" is deliberately NOT exposed.
+- **Safe spawn:** the question is passed as an argv element (no shell → no injection), full path to the
+  `claude` binary, 180 s timeout, output truncated, audited to `agent_tool_invocations` like every tool.
+- **Already live where Hermes is installed** (the MCP server runs from source via `tsx`, no rebuild).
+  Proven e2e via Grok: Hermes → `ask_claude_code` → Claude read `verify-install.sh` → accurate answer
+  relayed, 19.7 s. Requires the `claude` CLI present + authed on the box (it is, fleet-wide).
+
+---
+
 ## v2.57.2 — Hermes Phase 3a: confirm-action backend (one-tap confirm) (2026-06-13)
 
 **Branch landed:** main → fleet via auto-update

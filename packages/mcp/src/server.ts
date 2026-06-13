@@ -21,11 +21,52 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
+import { spawn } from 'node:child_process'
 import { z } from 'zod'
 
 const APP_PORT = process.env.APP_PORT || '3001'
 const BASE = `http://127.0.0.1:${APP_PORT}`
 const API_TIMEOUT_MS = Number(process.env.MCP_API_TIMEOUT_MS) || 10_000
+
+// Claude Code CLI (Anthropic's coding agent) — lets Hermes delegate deep
+// code/diagnostic work to Claude. Full path because the gateway's spawn env
+// may not include ~/.local/bin on PATH.
+const CLAUDE_BIN = process.env.CLAUDE_BIN || '/home/ubuntu/.local/bin/claude'
+const CLAUDE_TIMEOUT_MS = Number(process.env.MCP_CLAUDE_TIMEOUT_MS) || 180_000
+const REPO_ROOT = process.env.REPO_ROOT || process.cwd()
+
+/**
+ * Run Claude Code headlessly in READ-ONLY plan mode (no edits/commits/mutating
+ * bash). The question is passed as an argv element (no shell), so it can't be
+ * injected. Returns Claude's answer text (truncated).
+ */
+function runClaude(question: string): Promise<{ ok: boolean; text: string }> {
+  return new Promise((resolve) => {
+    let child
+    try {
+      child = spawn(CLAUDE_BIN, ['-p', question, '--permission-mode', 'plan'], {
+        cwd: REPO_ROOT,
+        env: { ...process.env, PATH: `/home/ubuntu/.local/bin:${process.env.PATH || ''}` },
+      })
+    } catch (e) {
+      return resolve({ ok: false, text: `Could not start Claude: ${(e as Error).message}` })
+    }
+    let out = ''
+    let err = ''
+    const timer = setTimeout(() => {
+      child.kill('SIGKILL')
+      resolve({ ok: false, text: `Claude timed out after ${CLAUDE_TIMEOUT_MS / 1000}s` })
+    }, CLAUDE_TIMEOUT_MS)
+    child.stdout?.on('data', (d) => { out += d.toString() })
+    child.stderr?.on('data', (d) => { err += d.toString() })
+    child.on('error', (e) => { clearTimeout(timer); resolve({ ok: false, text: `Could not run Claude: ${e.message}` }) })
+    child.on('close', (code) => {
+      clearTimeout(timer)
+      const text = (out.trim() || err.trim() || '(no output)').slice(0, 6000)
+      resolve({ ok: code === 0, text })
+    })
+  })
+}
 
 /** GET an app API path as JSON, with a hard timeout so a hung route can't hang the tool. */
 async function apiGet(path: string): Promise<any> {
@@ -453,16 +494,41 @@ registerAuditedTool(
   },
 )
 
+// ── ask_claude_code (delegate to Claude Code — read-only/advisory) ──
+registerAuditedTool(
+  'ask_claude_code',
+  {
+    description:
+      'Ask Claude Code (Anthropic\'s coding agent, running on this same box) a question or to analyze ' +
+      'something — it reads the actual codebase + system to answer. READ-ONLY (plan mode): Claude will ' +
+      'investigate and explain / recommend / draft a plan, but will NOT make changes, commits, or run ' +
+      'mutating commands. Use this for deep code or diagnostic questions beyond your observe tools, or to ' +
+      'get a concrete fix plan for something you found. Returns Claude\'s answer (can take up to ~3 min).',
+    // `as any`: TS2589 (MCP SDK + zod v4).
+    inputSchema: {
+      question: z
+        .string()
+        .min(1)
+        .max(4000)
+        .describe('The question or task for Claude Code (it has the full repo + system context)'),
+    } as any,
+  },
+  async ({ question }: { question: string }) => {
+    const r = await runClaude(question)
+    return r.ok ? ok(r.text) : fail(r.text)
+  },
+)
+
 async function main() {
   const transport = new StdioServerTransport()
   await server.connect(transport)
   // stdio server runs until the client disconnects; no stdout logging (it would
   // corrupt the JSON-RPC stream — diagnostics go to stderr only).
   process.stderr.write(
-    '[sports-bar-mcp] connected (stdio) — 10 tools (8 read-only observe + create_maintenance_todo ' +
-      '[guarded write] + propose_action [no-exec]): get_system_health, list_open_todos, get_matrix_routes, ' +
-      'explain_tv_output, get_shure_rf_status, get_atlas_status, get_firetv_status, search_system_docs, ' +
-      'create_maintenance_todo, propose_action\n',
+    '[sports-bar-mcp] connected (stdio) — 11 tools (8 observe + create_maintenance_todo [guarded write] ' +
+      '+ propose_action [no-exec] + ask_claude_code [delegate to Claude, read-only]): get_system_health, ' +
+      'list_open_todos, get_matrix_routes, explain_tv_output, get_shure_rf_status, get_atlas_status, ' +
+      'get_firetv_status, search_system_docs, create_maintenance_todo, propose_action, ask_claude_code\n',
   )
 }
 

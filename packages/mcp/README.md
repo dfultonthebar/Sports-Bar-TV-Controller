@@ -39,6 +39,7 @@ stream and must not be polluted).
 | `search_system_docs` | `POST /api/rag/query` | Args `query`, optional `tech`: grounded answer + sources from the system docs (RAG). How the agent teaches itself on demand. |
 | `create_maintenance_todo` | `POST /api/maintenance-todo` | Phase 2 — guarded WRITE. Args `title`, `description?`, `priority?`. Files a reviewable todo (source `ai-chat`, deduped). The only write this gateway permits; never touches hardware. |
 | `propose_action` | (none — pure) | Phase 2 — returns a PROPOSAL for a human to confirm; **never executes**. Args `action` (`route_tv`/`tune_channel`), `params`. Maps to the deterministic API call a human/UI then runs. |
+| `ask_claude_code` | spawns `claude -p … --permission-mode plan` | Delegate to Claude Code (the coding agent on this box). **READ-ONLY** (plan mode): Claude reads the real codebase + system to analyze / explain / draft a plan — never edits, commits, or runs mutating commands. Arg `question`. Lets Hermes (operator brain) hand deep code/diagnostic work to Claude (builder). Spawned via argv (no shell injection), 180 s cap, audited. |
 
 Read tools + `propose_action` never write anything. `create_maintenance_todo` only appends a reviewable
 todo. **No tool here ever issues an autonomous hardware command** — hardware changes always go through a
