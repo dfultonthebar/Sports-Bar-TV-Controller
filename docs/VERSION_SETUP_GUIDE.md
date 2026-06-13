@@ -35,6 +35,26 @@ is the archive.
 
 ---
 
+## v2.57.0 — Hermes Phase 2: agent guardrail layer (propose + audited todo-write) (2026-06-13)
+
+**Branch landed:** main → fleet via auto-update
+**Schema migration — runs automatically** (`drizzle/0005_agent_tool_invocations.sql`, additive CREATE TABLE
++ 2 indexes; auto-update's `drizzle-kit migrate` applies it). The agent brain can now safely *act* — but
+only by proposing (a human confirms) or appending a reviewable todo. Nothing here issues an autonomous
+hardware command.
+- **New table `agent_tool_invocations`** + endpoint `POST /api/agent/tool-log`: every MCP tool call is
+  fire-and-forget audited (tool, args, result summary, surface, error). Accountability trail.
+- **New endpoint `POST /api/maintenance-todo`**: general source-tagged todo creator (deduped by key),
+  reused by the agent AND (Phase 2c) by watchers.
+- **MCP server now 10 tools**: + `create_maintenance_todo` (guarded write — files a reviewable todo,
+  source `ai-chat`) and `propose_action` (returns a proposal mapped to the deterministic API call;
+  **never executes** — verified e2e via Grok). All 8 existing tools are now audited.
+- **No setup beyond the migration.** Optional env `MCP_SURFACE` (default `operator`) tags audit rows;
+  the Phase-3 bartender bridge will set it to `bartender`. Verified: audit-table data path + propose_action
+  e2e; endpoints build-verified (a full HTTP e2e lands when a box rebuilds to this version).
+
+---
+
 ## v2.56.4 — CRITICAL: stale auto-update timer no longer rolls back a healthy update (2026-06-13)
 
 **Branch landed:** main → fleet via auto-update

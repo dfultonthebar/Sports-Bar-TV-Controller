@@ -3109,3 +3109,23 @@ export const shurePendingResync = sqliteTable('shure_pending_resync', {
   activeIdx: index('shure_pending_resync_active_idx').on(table.receiverId, table.channel, table.verifiedAt, table.canceledAt),
   setAtIdx: index('shure_pending_resync_set_at_idx').on(table.setAt),
 }))
+
+// agent_tool_invocations (v2.57.0, Hermes Phase 2) — audit trail of every tool
+// the agent brain (via the @sports-bar/mcp gateway) invokes. The MCP server
+// fire-and-forget POSTs one row per tool call to /api/agent/tool-log. This is
+// the accountability layer: proposals + todo-writes especially must leave a
+// record (who/what/when), and read tools are logged too so an operator can see
+// exactly what the agent looked at. Nothing here authorizes a hardware write —
+// it only records intent + result.
+export const agentToolInvocations = sqliteTable('agent_tool_invocations', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  tool: text('tool').notNull(),                 // tool name, e.g. 'get_system_health', 'propose_action'
+  args: text('args'),                           // JSON string of the tool arguments (may be null/empty)
+  resultSummary: text('result_summary'),        // first ~500 chars of the tool's text result
+  surface: text('surface').notNull().default('unknown'), // 'operator' | 'bartender' | 'unknown'
+  isError: integer('is_error', { mode: 'boolean' }).notNull().default(false),
+  createdAt: integer('created_at').notNull().$defaultFn(() => Math.floor(Date.now() / 1000)),
+}, (table) => ({
+  toolIdx: index('agent_tool_invocations_tool_created_at_idx').on(table.tool, table.createdAt),
+  createdAtIdx: index('agent_tool_invocations_created_at_idx').on(table.createdAt),
+}))

@@ -71,8 +71,48 @@ function fail(text: string) {
 
 const server = new McpServer({ name: 'sports-bar', version: '1.0.0' })
 
+// Which surface is driving this MCP session — 'operator' (CLI / Grok) by default;
+// the bartender web bridge (Phase 3) sets MCP_SURFACE=bartender. Recorded on every audit row.
+const MCP_SURFACE = process.env.MCP_SURFACE || 'operator'
+
+// Bound reference so registerAuditedTool can wrap the real method without a
+// global-replace catching the wrapper's own call (which would recurse).
+const _registerTool = server.registerTool.bind(server)
+
+/** Fire-and-forget audit of a tool invocation to /api/agent/tool-log. Never blocks or throws. */
+function logInvocation(tool: string, args: unknown, resultText: string, isError: boolean): void {
+  const hasArgs = !!args && typeof args === 'object' && Object.keys(args as object).length > 0
+  apiPost('/api/agent/tool-log', {
+    tool,
+    args: hasArgs ? args : undefined,
+    resultSummary: (resultText || '').slice(0, 500),
+    surface: MCP_SURFACE,
+    isError,
+  }).catch(() => {
+    /* audit is best-effort; a logging failure must never affect the tool */
+  })
+}
+
+/** registerTool + automatic audit of every invocation (intent + result). */
+function registerAuditedTool(
+  name: string,
+  config: any,
+  handler: (args: any) => Promise<any>,
+): void {
+  const hasInput = !!config?.inputSchema
+  _registerTool(name, config, async (a: any) => {
+    // For inputSchema tools the SDK passes validated args first; for zero-arg
+    // tools the first param is the request `extra`, so treat args as empty.
+    const args = hasInput ? a : {}
+    const res = await handler(args)
+    const text = res?.content?.[0]?.text ?? ''
+    logInvocation(name, hasInput ? args : {}, text, res?.isError === true)
+    return res
+  })
+}
+
 // ── get_system_health ─────────────────────────────────────────────────────
-server.registerTool(
+registerAuditedTool(
   'get_system_health',
   {
     description:
@@ -114,7 +154,7 @@ server.registerTool(
 )
 
 // ── list_open_todos ───────────────────────────────────────────────────────
-server.registerTool(
+registerAuditedTool(
   'list_open_todos',
   {
     description:
@@ -144,7 +184,7 @@ server.registerTool(
 )
 
 // ── get_matrix_routes ─────────────────────────────────────────────────────
-server.registerTool(
+registerAuditedTool(
   'get_matrix_routes',
   {
     description:
@@ -169,7 +209,7 @@ server.registerTool(
 )
 
 // ── explain_tv_output ─────────────────────────────────────────────────────
-server.registerTool(
+registerAuditedTool(
   'explain_tv_output',
   {
     description:
@@ -197,7 +237,7 @@ server.registerTool(
 )
 
 // ── get_shure_rf_status ───────────────────────────────────────────────────
-server.registerTool(
+registerAuditedTool(
   'get_shure_rf_status',
   {
     description:
@@ -232,7 +272,7 @@ server.registerTool(
 )
 
 // ── get_atlas_status ──────────────────────────────────────────────────────
-server.registerTool(
+registerAuditedTool(
   'get_atlas_status',
   {
     description:
@@ -274,7 +314,7 @@ server.registerTool(
 )
 
 // ── get_firetv_status ─────────────────────────────────────────────────────
-server.registerTool(
+registerAuditedTool(
   'get_firetv_status',
   {
     description:
@@ -303,7 +343,7 @@ server.registerTool(
 )
 
 // ── search_system_docs ────────────────────────────────────────────────────
-server.registerTool(
+registerAuditedTool(
   'search_system_docs',
   {
     description:
@@ -338,14 +378,91 @@ server.registerTool(
   },
 )
 
+// ── create_maintenance_todo (guarded WRITE — the only write this gateway permits) ──
+registerAuditedTool(
+  'create_maintenance_todo',
+  {
+    description:
+      'Create a REVIEWABLE maintenance/work TODO on the System Admin → Todos list (tagged source ' +
+      '"ai-chat"). Use this when you spot something that needs fixing or following up. This is the ONLY ' +
+      'write this gateway permits, and it only adds a todo for a human to review — it never touches ' +
+      'hardware. Deduped by title so repeats collapse into one open item.',
+    // `as any`: TS2589 (MCP SDK + zod v4), same as the other arg tools.
+    inputSchema: {
+      title: z.string().min(1).max(200).describe('Short todo title'),
+      description: z.string().max(2000).optional().describe('Details / context for the operator'),
+      priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']).optional().describe('Priority (default MEDIUM)'),
+    } as any,
+  },
+  async ({ title, description, priority }: { title: string; description?: string; priority?: string }) => {
+    try {
+      const dedupeKey = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80)
+      const r = await apiPost('/api/maintenance-todo', {
+        title,
+        description,
+        priority,
+        source: 'ai-chat',
+        dedupeKey,
+      })
+      if (r?.created === false) return ok(`A todo for "${title}" is already open — not duplicated.`)
+      return ok(`Filed todo: "${title}" (${priority || 'MEDIUM'}). It's on the System Admin → Todos list for review.`)
+    } catch (e) {
+      return fail(`Could not create todo: ${(e as Error).message}`)
+    }
+  },
+)
+
+// ── propose_action (returns a proposal for a HUMAN to confirm — NEVER executes) ──
+registerAuditedTool(
+  'propose_action',
+  {
+    description:
+      'Propose a hardware action for a HUMAN to confirm — this tool does NOT execute anything. Use it ' +
+      'when you want to recommend a concrete change. It returns the exact change plus the API call that ' +
+      'would apply it; a person (or the confirm button in the UI) runs it. You CANNOT route TVs or tune ' +
+      'channels directly — always propose. Supported: route_tv {input, output}; tune_channel ' +
+      '{channelNumber, deviceId}.',
+    // `as any`: TS2589 (MCP SDK + zod v4).
+    inputSchema: {
+      action: z.enum(['route_tv', 'tune_channel']).describe('The action to propose'),
+      params: z
+        .record(z.any())
+        .describe('route_tv needs {input, output}; tune_channel needs {channelNumber, deviceId}'),
+    } as any,
+  },
+  async ({ action, params }: { action: string; params: Record<string, any> }) => {
+    const p = params || {}
+    if (action === 'route_tv') {
+      if (p.input == null || p.output == null) return fail('route_tv needs params {input, output}.')
+      return ok(
+        `PROPOSAL (not executed): route TV output ${p.output} to input ${p.input}.\n` +
+          `To apply, a human confirms → POST /api/matrix/route {"input":${p.input},"output":${p.output}}.\n` +
+          `I cannot execute this myself — it requires a human one-tap confirm.`,
+      )
+    }
+    if (action === 'tune_channel') {
+      if (!p.channelNumber || !p.deviceId) return fail('tune_channel needs params {channelNumber, deviceId}.')
+      return ok(
+        `PROPOSAL (not executed): tune ${p.deviceId} to channel ${p.channelNumber}.\n` +
+          `To apply, a human confirms → POST /api/channel-presets/tune ` +
+          `{"channelNumber":"${p.channelNumber}","deviceId":"${p.deviceId}"}.\n` +
+          `I cannot execute this myself — it requires a human one-tap confirm.`,
+      )
+    }
+    return fail(`Unsupported action "${action}". Supported: route_tv {input,output}, tune_channel {channelNumber,deviceId}.`)
+  },
+)
+
 async function main() {
   const transport = new StdioServerTransport()
   await server.connect(transport)
   // stdio server runs until the client disconnects; no stdout logging (it would
   // corrupt the JSON-RPC stream — diagnostics go to stderr only).
   process.stderr.write(
-    '[sports-bar-mcp] connected (stdio) — 8 read-only tools: get_system_health, list_open_todos, ' +
-      'get_matrix_routes, explain_tv_output, get_shure_rf_status, get_atlas_status, get_firetv_status, search_system_docs\n',
+    '[sports-bar-mcp] connected (stdio) — 10 tools (8 read-only observe + create_maintenance_todo ' +
+      '[guarded write] + propose_action [no-exec]): get_system_health, list_open_todos, get_matrix_routes, ' +
+      'explain_tv_output, get_shure_rf_status, get_atlas_status, get_firetv_status, search_system_docs, ' +
+      'create_maintenance_todo, propose_action\n',
   )
 }
 

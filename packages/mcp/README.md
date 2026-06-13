@@ -37,9 +37,18 @@ stream and must not be polluted).
 | `get_atlas_status` | `GET /api/atlas-priority`, `/api/atlas-drops` | Active priority/page events + recent zone drops. |
 | `get_firetv_status` | `GET /api/firetv-devices` | Fire TV roster: online/offline + matrix input fed. |
 | `search_system_docs` | `POST /api/rag/query` | Args `query`, optional `tech`: grounded answer + sources from the system docs (RAG). How the agent teaches itself on demand. |
+| `create_maintenance_todo` | `POST /api/maintenance-todo` | Phase 2 — guarded WRITE. Args `title`, `description?`, `priority?`. Files a reviewable todo (source `ai-chat`, deduped). The only write this gateway permits; never touches hardware. |
+| `propose_action` | (none — pure) | Phase 2 — returns a PROPOSAL for a human to confirm; **never executes**. Args `action` (`route_tv`/`tune_channel`), `params`. Maps to the deterministic API call a human/UI then runs. |
 
-All read-only. Write tools (later phases) use a `propose_action` pattern → human one-tap confirm → the
-existing deterministic audited API; never an autonomous hardware command.
+Read tools + `propose_action` never write anything. `create_maintenance_todo` only appends a reviewable
+todo. **No tool here ever issues an autonomous hardware command** — hardware changes always go through a
+human one-tap confirm against the existing deterministic, audited API.
+
+## Audit (Phase 2)
+
+Every tool invocation is fire-and-forget logged to `agent_tool_invocations` (via `POST /api/agent/tool-log`):
+tool, args, result summary, `surface` (`operator` by default; the bartender web bridge sets
+`MCP_SURFACE=bartender`), and error flag. Audit failures never affect the tool result.
 
 ## Model note (important)
 
