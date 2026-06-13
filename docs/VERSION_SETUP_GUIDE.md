@@ -35,6 +35,26 @@ is the archive.
 
 ---
 
+## v2.56.4 — CRITICAL: stale auto-update timer no longer rolls back a healthy update (2026-06-13)
+
+**Branch landed:** main → fleet via auto-update
+**No setup required — fixes a fleet-wide infinite-rollback trap.** In `verify-install.sh`, the
+`autoupdate_timer_fresh` layer was a hard FAIL (exit 19) when the timer's last-attempt sidecar/log was
+stale (>26h). During an auto-update, that FAIL triggers a full ROLLBACK — even though the update built
+green and the app is healthy. But a successful update can't freshen the *timer*, so a box whose timer
+went stale (e.g. after a prior wedge) gets stuck: every update succeeds + healthy → verify fails on the
+stale timer → rollback → still stale → repeat forever.
+- **Caught at Appleton 2026-06-13:** verify reported `17/18 passed, failed=[autoupdate_timer_fresh]
+  (sidecar age=214258s)` — the one stale-timer check rolled back an otherwise-perfect update.
+- **Fix:** the two stale-timer branches now follow the SAME pattern the unit-file-missing case already
+  used — **non-fatal WARN in `--json`/auto-update mode** (so it never rolls back a healthy build),
+  **hard FAIL only in interactive mode** (so an operator auditing a box still sees the stuck timer).
+- **Effect:** once a stale box merges this fix (the merge happens before the verify step, so the very
+  update that pulls it benefits), its update completes instead of rolling back. Related: Gotcha #11,
+  `[[feedback-auto-update-failure-modes]]`.
+
+---
+
 ## v2.56.3 — teach Hermes the system: SOUL.md + troubleshooting skill (2026-06-13)
 
 **Branch landed:** main → fleet via auto-update

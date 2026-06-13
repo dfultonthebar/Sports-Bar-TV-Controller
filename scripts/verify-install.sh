@@ -617,6 +617,21 @@ check_autoupdate_timer_fresh() {
                 record "autoupdate_timer_fresh" 1 "sidecar age=${age}s"
                 return 0
             fi
+            # A stale timer means "this box hasn't been auto-updating," which is
+            # worth surfacing — but it is NOT a reason to ROLL BACK a freshly-built,
+            # healthy update. In --json/auto-update mode this MUST be a non-fatal
+            # WARN, exactly like the unit-file-missing case above: otherwise a box
+            # whose timer went stale gets an infinite-rollback trap — every update
+            # builds green + healthy, then verify fails on the stale timer (which a
+            # successful update can't freshen) → rollback → still stale → repeat.
+            # (Appleton 2026-06-13: 17/18 layers passed, this one failure rolled
+            # back a good build.) Interactive runs still hard-FAIL so an operator
+            # auditing a box sees the stuck timer.
+            if [ "$JSON" -eq 1 ]; then
+                log_warn "Last auto-update attempt $((age / 3600))h old via sidecar — timer may be stuck (Gotcha #11), NOT failing the update (a stale timer doesn't make THIS build bad). Check: systemctl --user list-timers sports-bar-autoupdate.timer"
+                record "autoupdate_timer_fresh" 1 "WARN: sidecar age=${age}s (stale timer — non-fatal in update flow)"
+                return 0
+            fi
             log_fail "Last auto-update attempt $((age / 3600))h old via sidecar — timer may be stuck (Gotcha #11). Check: systemctl --user list-timers sports-bar-autoupdate.timer"
             record "autoupdate_timer_fresh" 0 "sidecar age=${age}s"
             return 19
@@ -644,6 +659,14 @@ check_autoupdate_timer_fresh() {
     if [ "$age" -lt 93600 ]; then
         log_pass "Last auto-update log is $((age / 3600))h old (<26h, log-mtime fallback)"
         record "autoupdate_timer_fresh" 1 "log-mtime age=${age}s"
+        return 0
+    fi
+    # Same non-fatal-in-update-flow rule as the sidecar branch above (the
+    # log-mtime fallback for pre-v2.55.33 boxes): never roll back a healthy
+    # build over a stale-timer signal.
+    if [ "$JSON" -eq 1 ]; then
+        log_warn "Last auto-update log is $((age / 3600))h old — timer may be stuck (Gotcha #11), NOT failing the update. Check: systemctl --user list-timers sports-bar-autoupdate.timer"
+        record "autoupdate_timer_fresh" 1 "WARN: log-mtime age=${age}s (stale timer — non-fatal in update flow)"
         return 0
     fi
     log_fail "Last auto-update log is $((age / 3600))h old — timer may be stuck (Gotcha #11). Check: systemctl --user list-timers sports-bar-autoupdate.timer"
