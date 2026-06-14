@@ -35,6 +35,31 @@ is the archive.
 
 ---
 
+## v2.58.1 — Phase 3-5: IT/ops persona refresh + skills wired + primary mode (2026-06-14)
+
+**Branch landed:** main → fleet via auto-update
+**Per-box install where Hermes runs.** Updates `hermes/SOUL.md` (the agent persona, loaded into the system
+prompt) to reflect the now-shipped capabilities and stop the failure loops seen in the Telegram session:
+- **Action tools documented:** `propose_action`, `create_maintenance_todo`, `ask_claude_code` (the old SOUL
+  said "no write tools yet" — outdated since the MCP gateway shipped).
+- **Delegate-to-Claude rule:** deep code/system changes go to `ask_claude_code` (one clear request, wait —
+  don't spam retries); the operator is not the agent's shell.
+- **Self-management fix:** the restart command is `hermes gateway restart` (NOT `hermes restart`, which
+  errors — root cause of the "asking 400 times to restart" loop); restarting terminates the current turn, so
+  hand restarts to Claude instead of self-restarting mid-task. Honcho memory is the (already-live) cloud
+  store — there is NO self-hosted honcho server to start (that path is a dead end).
+- **Skills index:** the persona now names its skill playbooks so it reaches for them by name.
+- **Phase 4/5 status:** skills already `enabled` in the active profile; periodic monitoring already covered by
+  the existing `sports-bar-anomaly-alert` (every 2h) + `sports-bar-morning-brief` crons, so NO duplicate
+  `fleet-heartbeat` cron was added (skill stays on-demand). The persona IS the single primary mode; Honcho
+  cross-session persistence is live (verified: "retrieved N existing messages" in the gateway log).
+- **Per-box install:** `cp hermes/SOUL.md ~/.hermes/SOUL.md && hermes gateway restart` (SOUL is cached in
+  the system prompt — a gateway restart is required to load an edit; do it when no operator turn is in flight).
+- **Outstanding (operator action):** `hermes-self-backup-to-github` cron needs a private repo + fine-grained
+  PAT before it can be wired (`gh` is not authed on the boxes) — the skill documents the exact steps.
+
+---
+
 ## v2.58.0 — Phase 2: 5 Hermes operating skills mined from YouTube (2026-06-14)
 
 **Branch landed:** main → fleet via auto-update
