@@ -35,6 +35,28 @@ is the archive.
 
 ---
 
+## v2.61.0 — auto-update.sh: stop `pull --rebase` tangle (fleet-wide root cause) (2026-06-14)
+
+**Branch landed:** main → fleet. **No manual setup** (code-only) — but see the fleet recovery note below.
+**Root cause fixed:** `scripts/auto-update.sh` did `git pull --rebase origin <branch>` before pushing (two
+sites: the main push path ~line 1790 + the heartbeat path ~line 454). Against a badly-diverged origin (frozen
+for weeks) the rebase replays the box's local commits and gets STUCK in a 70+ commit interactive rebase,
+silently leaving the working tree **detached on old code**. On 2026-06-14 this had frozen **the entire fleet**
+— every location box stuck-rebase, every `origin/location/*` frozen at 2.55.48, boxes auto-updating locally
+but never pushing (and still serving fine, since PM2 runs the built `.next` regardless of git state).
+- **Fix:** push first; on rejection reconcile by **merge (`-X ours`), never rebase** — keeps the box's
+  authoritative content, records origin's history so the retry push fast-forwards, aborts cleanly if even the
+  merge conflicts (push is non-fatal). Heartbeat path: push-or-skip, no rebase.
+- **Detection added (Hermes):** `~/.hermes/scripts/fleet-update-monitor.sh` + cron `fleet-update-watch`
+  (every 6h) — SSHes each location box, flags stuck-rebase / origin-frozen divergence / health≠200 / rollback /
+  unreachable, and on any problem calls `ask_claude_code` for the remediation, files a deduped todo, and
+  Telegram-alerts. This is what would have caught the freeze weeks ago.
+- **One-time fleet recovery (per stuck box, 2026-06-14):** `git rebase --abort` (unstick, non-destructive) →
+  bring current → `git push --force-with-lease` to reconcile the stale single-consumer origin → verify health.
+  Appleton done first (2.60.0). After reconcile, the fixed script keeps origin in sync going forward.
+
+---
+
 ## v2.60.0 — Wave 3c: closed-loop matrix route verify + Wolf Pack TCP-close fix (2026-06-14)
 
 **Branch landed:** main → fleet via auto-update.
