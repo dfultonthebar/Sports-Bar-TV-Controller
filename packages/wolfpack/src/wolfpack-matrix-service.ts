@@ -70,14 +70,64 @@ function httpRequest(options: {
 }
 
 /**
+ * Per-IP serialization for Wolf Pack HTTP sessions.
+ *
+ * The Wolf Pack `o2ox` command is a TOGGLE, and its firmware coordinates
+ * session state poorly across CONCURRENT HTTP sessions — especially on
+ * multi-card chassis (WP-36X36 with 4-output daughter cards at Greenville /
+ * Appleton), where two simultaneous PHPSESSID sessions make a route-state
+ * READ return a stale value. The scheduler / auto-reallocator's route WRITE
+ * then pre-checks against that stale value, fires the toggle against an
+ * already-correct route, and CLEARS it — the TV goes black. The real-world
+ * trigger is the bartender Video tab's `loadCurrentRoutes()` GET opening a
+ * second session while a scheduled route write is in flight.
+ *
+ * Fix: serialize EVERY Wolf Pack HTTP session per IP so a read and a write
+ * never overlap on the firmware. Promise-chain mutex; the returned release()
+ * resolves the next waiter. Hoisted to globalThis + Symbol.for() because
+ * Next.js bundles each route handler separately, so a module-private map would
+ * be per-bundle, not per-process (Gotcha #10) — and the Video-tab GET and the
+ * scheduler POST run in DIFFERENT route bundles, which is exactly the pair we
+ * must serialize.
+ */
+function acquireWolfPackHttpLock(ipAddress: string): Promise<() => void> {
+  const KEY = Symbol.for('@sports-bar/wolfpack/http-session-locks')
+  const g = globalThis as any
+  if (!g[KEY]) g[KEY] = new Map<string, Promise<void>>()
+  const locks: Map<string, Promise<void>> = g[KEY]
+  const prev = locks.get(ipAddress) ?? Promise.resolve()
+  let release!: () => void
+  const next = new Promise<void>(resolve => { release = resolve })
+  locks.set(ipAddress, prev.then(() => next))
+  return prev.then(() => release)
+}
+
+/**
  * Sends an HTTP command to the Wolf Pack matrix via its web API.
  * The HTTP API uses 0-based indices for both input and output.
  * This function accepts 0-based indices directly.
  *
  * Uses Node's native http module instead of fetch() to avoid
  * Next.js fetch interception that breaks session-based auth.
+ *
+ * Serialized per-IP (see acquireWolfPackHttpLock) so it never runs concurrently
+ * with a queryWolfpackRouteState() read on the same Wolf Pack.
  */
 export async function sendHTTPCommand(
+  ipAddress: string,
+  input0Based: number,
+  output0Based: number,
+  credentials?: { username: string; password: string }
+): Promise<RoutingResult> {
+  const release = await acquireWolfPackHttpLock(ipAddress)
+  try {
+    return await sendHTTPCommandInner(ipAddress, input0Based, output0Based, credentials)
+  } finally {
+    release()
+  }
+}
+
+async function sendHTTPCommandInner(
   ipAddress: string,
   input0Based: number,
   output0Based: number,
@@ -379,15 +429,25 @@ async function sendTCPCommand(
   const net = require('net')
 
   return new Promise((resolve) => {
-    let responseReceived = false
+    // Wave 3c TCP-close fix: single `resolved` guard + guaranteed destroy() on
+    // every exit path (mirrors sendUDPCommand). Prevents the 'data'-then-'close'
+    // double-resolve and the leaked half-open socket on 'error' that the verify
+    // loop's rapid re-issue would otherwise accumulate. Result VALUES unchanged.
+    let resolved = false
     let response = ''
+    let client: any
 
-    const client = net.createConnection({ port, host: ipAddress }, () => {
+    const finish = (result: RoutingResult) => {
+      if (resolved) return
+      resolved = true
+      try { client?.destroy() } catch { /* socket already gone */ }
+      resolve(result)
+    }
+
+    client = net.createConnection({ port, host: ipAddress }, () => {
       logger.info(`TCP Connected to Wolfpack at ${ipAddress}:${port}`)
-      // Add \r\n for proper Telnet/TCP protocol
-      const commandWithLineEnding = command + '\r\n'
       logger.info(`Sending command: "${command}" (with \\r\\n)`)
-      client.write(commandWithLineEnding)
+      client.write(command + '\r\n')
     })
 
     client.setTimeout(10000) // 10 second timeout
@@ -395,61 +455,31 @@ async function sendTCPCommand(
     client.on('data', (data: Buffer) => {
       response += data.toString()
       logger.info(`Wolfpack TCP response: ${response}`)
-
-      // Check for response completion
       if (response.includes('OK') || response.includes('ERR') || response.includes('Error')) {
-        responseReceived = true
-        client.end()
-
-        // Wolfpack returns "OK" for success, "ERR" for failure
         if (response.includes('OK')) {
-          resolve({
-            success: true,
-            response: response.trim(),
-            command
-          })
+          finish({ success: true, response: response.trim(), command })
         } else {
           logger.error(`Wolfpack command failed: ${response}`)
-          resolve({
-            success: false,
-            error: `Command failed: ${response.trim()}`,
-            response: response.trim(),
-            command
-          })
+          finish({ success: false, error: `Command failed: ${response.trim()}`, response: response.trim(), command })
         }
       }
     })
 
     client.on('timeout', () => {
       logger.error(`TCP connection timeout. Response so far: "${response}"`)
-      client.destroy()
-      resolve({
-        success: false,
-        error: `Command timeout (10000ms). Response: ${response}`,
-        response: response.trim(),
-        command
-      })
+      finish({ success: false, error: `Command timeout (10000ms). Response: ${response}`, response: response.trim(), command })
     })
 
     client.on('error', (err: Error) => {
       logger.error('TCP connection error:', { error: err.message })
-      resolve({
-        success: false,
-        error: `TCP error: ${err.message}`,
-        command
-      })
+      finish({ success: false, error: `TCP error: ${err.message}`, command })
     })
 
     client.on('close', () => {
-      if (!responseReceived && response.length > 0) {
-        logger.info(`Connection closed. Response received: "${response}"`)
-        // If we got some response but no explicit OK/ERR, consider it based on content
-        resolve({
-          success: response.length > 0,
-          response: response.trim(),
-          command
-        })
-      }
+      // Fallback only when the device closed without an in-band OK/ERR — preserve
+      // the prior "any response byte = success" semantic.
+      logger.info(`Connection closed. Response received: "${response}"`)
+      finish({ success: response.length > 0, response: response.trim(), command })
     })
   })
 }
@@ -552,6 +582,21 @@ async function sendUDPCommand(
  * was exactly because failures were silently returning an empty state.
  */
 export async function queryWolfpackRouteState(
+  config: Pick<MatrixConfiguration, 'ipAddress' | 'credentials'>
+): Promise<number[]> {
+  // Serialized per-IP (see acquireWolfPackHttpLock): this READ must never open
+  // a second concurrent Wolf Pack session while a sendHTTPCommand() WRITE is in
+  // flight, or the firmware returns stale route state and the write toggles a
+  // good route off (TV goes black — the Greenville/Appleton Video-tab symptom).
+  const release = await acquireWolfPackHttpLock(config.ipAddress)
+  try {
+    return await queryWolfpackRouteStateInner(config)
+  } finally {
+    release()
+  }
+}
+
+async function queryWolfpackRouteStateInner(
   config: Pick<MatrixConfiguration, 'ipAddress' | 'credentials'>
 ): Promise<number[]> {
   const creds = config.credentials || { username: 'admin', password: 'admin' }

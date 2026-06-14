@@ -10,8 +10,24 @@
 # Usage:
 #   sudo ./build-sports-bar-iso.sh [--skip-snapshot] [--no-upload] [--build-dir /path]
 #
-# Run on: Leg Lamp server ONLY (this server's DB is baked into snapshot mode)
-# DO NOT run on Graystone — that is a separate server, completely unaffected.
+# v2.54.58 (2026-05-26): Snapshot mode is DISABLED in v3.0 (line 470) so the
+# ISO is location-independent and SAFE TO BUILD ON ANY fleet box. The
+# older "Leg Lamp ONLY" warning here was obsolete and removed. The
+# --skip-snapshot flag is now a no-op but kept for backwards-compat.
+#
+# Prerequisites on the build host (the script checks + bails if missing):
+#   debootstrap, xorriso, squashfs-tools, grub-efi-amd64-bin, grub-pc-bin,
+#   mtools, dosfstools, isolinux, syslinux-utils
+# Install with:
+#   sudo apt-get install -y debootstrap xorriso squashfs-tools \
+#       grub-efi-amd64-bin grub-pc-bin mtools dosfstools isolinux syslinux-utils
+#
+# Build duration: ~15-30 min on a modern NUC (debootstrap is the slow part).
+# Disk space needed: ~10GB in $BUILD_DIR (default /home/ubuntu/iso-build).
+#
+# After building, the v2.54.51+ first-boot-fresh.sh + location-setup-wizard
+# handle ALL per-location setup (auth bootstrap, hardware discovery, Gotcha
+# #11 hardening, verify-install gate). See docs/BARE_METAL_ISO.md.
 #
 
 set -euo pipefail
@@ -32,7 +48,7 @@ step() { echo -e "\n${BOLD}${GREEN}=== $* ===${NC}"; }
 
 # ─── Configuration ────────────────────────────────────────────────────────────
 BUILD_DATE=$(date +%Y-%m-%d)
-VERSION="v3.0"
+VERSION="v3.0.1"
 ISO_NAME="sports-bar-tv-controller-${VERSION}-${BUILD_DATE}.iso"
 
 BUILD_DIR="${BUILD_DIR:-/home/ubuntu/iso-build}"
@@ -183,6 +199,24 @@ for candidate in /usr/lib/ISOLINUX/isohdpfx.bin /usr/lib/syslinux/isohdpfx.bin; 
     fi
 done
 
+# v2.54.58: explicit prereq check. Old script let debootstrap/xorriso
+# fail mid-build with cryptic errors. Now bails with one clear apt-get
+# command the operator can copy-paste.
+REQUIRED_PKGS=(debootstrap xorriso squashfs-tools grub-efi-amd64-bin grub-pc-bin mtools dosfstools isolinux syslinux-utils)
+MISSING_PKGS=()
+for pkg in "${REQUIRED_PKGS[@]}"; do
+    if ! dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null | grep -q "install ok installed"; then
+        MISSING_PKGS+=("$pkg")
+    fi
+done
+if [ ${#MISSING_PKGS[@]} -gt 0 ]; then
+    err "Missing build-host packages: ${MISSING_PKGS[*]}"
+    err "Install with:"
+    err "  sudo apt-get install -y ${MISSING_PKGS[*]}"
+    exit 1
+fi
+log "Build-host package prereqs OK."
+
 # Check app source
 if [ ! -d "$APP_SOURCE/.git" ]; then
     err "App source not found at $APP_SOURCE (expected a git repo)"
@@ -264,6 +298,13 @@ log "chroot environment ready."
 step "Step 3/10: Installing software in chroot"
 
 log "Installing base packages..."
+# v3.0.1: added parted/gdisk/e2fsprogs/dosfstools — disk-installer.sh
+# needs `parted` to partition + `mkfs.ext4` + `mkfs.vfat` to format.
+# These were missing from v3.0 chroot → the install step 2/7 (partitioning)
+# died with "parted: command not found", caught during 2026-05-27 VM pre-flight.
+# v2.54.79: added squashfs-tools — disk-installer.sh uses `unsquashfs` to
+# extract /cdrom/casper/filesystem.squashfs onto the target disk. Without it
+# Step 4/7 silently hangs forever (caught during attempt-4 VM pre-flight).
 chr "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     linux-image-generic \
     linux-headers-generic \
@@ -283,6 +324,16 @@ chr "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     iputils-ping \
     iproute2 \
     nmap \
+    parted \
+    gdisk \
+    e2fsprogs \
+    dosfstools \
+    grub-pc-bin \
+    grub-efi-amd64-bin \
+    grub-efi-amd64-signed \
+    shim-signed \
+    rsync \
+    squashfs-tools \
     2>&1" | tail -20
 
 # adb and cec-utils installed separately (universe, may be named differently)
@@ -361,6 +412,37 @@ PasswordAuthentication yes
 PermitRootLogin no
 EOF
 
+# v3.0.1: explicitly enable ssh.service in the chroot so post-install boots
+# come up with SSH listening. openssh-server's postinst USUALLY enables it,
+# but chroot installation sometimes skips because systemd isn't running
+# inside the chroot to receive the enable. Explicit `systemctl enable` writes
+# the symlink directly into /etc/systemd/system/multi-user.target.wants/.
+chr "systemctl enable ssh.service" || true
+chr "systemctl enable ssh.socket"  || true
+
+# v3.0.1: host keys are stripped at Step 7 cleanup so the installed system
+# can generate fresh ones on first boot. The openssh-server postinst hook
+# regenerates them automatically when sshd starts the first time. Belt-and-
+# suspenders: add a one-shot service that runs `ssh-keygen -A` before sshd
+# starts, in case the postinst hook missed.
+cat > "${CHROOT_DIR}/etc/systemd/system/sports-bar-sshkeys.service" << 'SSHKEY_EOF'
+[Unit]
+Description=Sports Bar TV Controller - Regenerate SSH host keys if missing
+ConditionPathExists=!/etc/ssh/ssh_host_ed25519_key
+Before=ssh.service ssh.socket
+DefaultDependencies=no
+After=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/ssh-keygen -A
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+SSHKEY_EOF
+chr "systemctl enable sports-bar-sshkeys.service" || true
+
 log "System configuration complete."
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -416,13 +498,16 @@ esac
 DISPATCHER_EOF
 chmod +x "${CHROOT_DIR}/usr/local/bin/sports-bar-first-boot.sh"
 
-# Systemd one-shot service
+# Systemd one-shot service for FRESH mode (no install — runs first-boot-fresh.sh).
+# v3.0.1: only fires when sports_bar_mode=fresh AND disk-installer mode is NOT active.
+# Network IS required for fresh mode (clones from GitHub) — keep network-online wait.
 cat > "${CHROOT_DIR}/etc/systemd/system/sports-bar-first-boot.service" << 'SERVICE_EOF'
 [Unit]
-Description=Sports Bar TV Controller First Boot Setup
+Description=Sports Bar TV Controller First Boot Setup (fresh mode)
 After=network-online.target
 Wants=network-online.target
 ConditionPathExists=!/var/lib/sports-bar-first-boot-done
+ConditionKernelCommandLine=!sports_bar_mode=install
 
 [Service]
 Type=oneshot
@@ -439,21 +524,29 @@ SERVICE_EOF
 # Enable the service
 chr "systemctl enable sports-bar-first-boot.service"
 
-# Disk installer service (interactive on tty1, for install mode)
+# Disk installer service — v3.0.1 FIX: must take over tty1 BEFORE getty does,
+# OR the operator sees the login prompt instead of the installer. Before+Conflicts
+# on getty@tty1.service is the systemd-canonical way to grab a TTY at boot.
+# No network dependency — disk install doesn't need GitHub access.
 cat > "${CHROOT_DIR}/etc/systemd/system/sports-bar-disk-installer.service" << 'DISKEOF'
 [Unit]
 Description=Sports Bar TV Controller - Disk Installer
-After=multi-user.target
 ConditionKernelCommandLine=sports_bar_mode=install
+ConditionPathExists=!/var/lib/sports-bar-first-boot-done
+Before=getty@tty1.service
+Conflicts=getty@tty1.service
 
 [Service]
-Type=oneshot
+Type=idle
 ExecStart=/usr/local/bin/disk-installer.sh
-StandardInput=tty
+StandardInput=tty-force
 StandardOutput=tty
 StandardError=tty
 TTYPath=/dev/tty1
 TTYReset=yes
+TTYVHangup=yes
+KillMode=process
+IgnoreSIGPIPE=no
 RemainAfterExit=yes
 
 [Install]
@@ -461,6 +554,75 @@ WantedBy=multi-user.target
 DISKEOF
 
 chr "systemctl enable sports-bar-disk-installer.service"
+
+# v3.0.1: tty1 autologin as `ubuntu` for the LIVE / safe-mode paths. Without
+# this, an operator who picks "Live (No Install)" lands at a login prompt with
+# casper-overridden credentials they don't know — unrecoverable. Autologin
+# means they get a shell + the ~/.bash_profile safety net (below) can offer
+# next-step actions.
+mkdir -p "${CHROOT_DIR}/etc/systemd/system/getty@tty1.service.d"
+cat > "${CHROOT_DIR}/etc/systemd/system/getty@tty1.service.d/autologin.conf" << 'AUTOLOGIN_EOF'
+[Service]
+ExecStart=
+ExecStart=-/sbin/agetty --autologin ubuntu --noclear %I $TERM
+AUTOLOGIN_EOF
+
+# v3.0.1: ubuntu user's .bash_profile recovery net. If the operator ends up at
+# a shell because the dispatcher didn't fire (network failure, etc.), this
+# detects sports_bar_mode= on the cmdline and offers to run the installer.
+# Harmless on subsequent logins — guarded by the DONE_MARKER check.
+cat > "${CHROOT_DIR}/home/ubuntu/.bash_profile" << 'BASHPROFILE_EOF'
+# v3.0.1 first-boot recovery net. See scripts/iso/build-sports-bar-iso.sh.
+if [ -t 0 ] && [ -t 1 ] && [ -f /usr/local/bin/sports-bar-first-boot.sh ] && [ ! -f /var/lib/sports-bar-first-boot-done ]; then
+    MODE=$(grep -oP 'sports_bar_mode=\K\S+' /proc/cmdline 2>/dev/null || echo "")
+    if [ -n "$MODE" ]; then
+        echo
+        echo "════════════════════════════════════════════════════════════════════"
+        echo " Sports Bar TV Controller — First-Boot Recovery"
+        echo "════════════════════════════════════════════════════════════════════"
+        echo " Detected mode: $MODE"
+        echo " The dispatcher service didn't auto-run (usually a network timeout)."
+        echo
+        echo " To start the install/setup manually, run:"
+        echo "   sudo /usr/local/bin/sports-bar-first-boot.sh"
+        echo
+        echo " To skip recovery this session:"
+        echo "   touch /tmp/.skip-recovery   (one shell session only)"
+        echo "════════════════════════════════════════════════════════════════════"
+        echo
+        if [ ! -f /tmp/.skip-recovery ]; then
+            read -r -p "Run the installer now? [Y/n] " ans
+            case "$ans" in
+                ""|y|Y|yes|YES) sudo /usr/local/bin/sports-bar-first-boot.sh ;;
+                *) echo "Skipping. Run later with: sudo /usr/local/bin/sports-bar-first-boot.sh" ;;
+            esac
+        fi
+    fi
+fi
+BASHPROFILE_EOF
+chr "chown ubuntu:ubuntu /home/ubuntu/.bash_profile"
+
+# v3.0.1: /etc/issue banner so the LIVE-boot user sees credentials even before
+# any login. Replaces the default Ubuntu issue.
+cat > "${CHROOT_DIR}/etc/issue" << 'ISSUE_EOF'
+
+╔══════════════════════════════════════════════════════════════════╗
+║  Sports Bar TV Controller — Live ISO                             ║
+║                                                                  ║
+║  This system will auto-login as 'ubuntu' on tty1.                ║
+║  If asked for a password manually: ubuntu / ubuntu               ║
+║                                                                  ║
+║  Picked Install from the menu? The disk-installer should be      ║
+║  running on tty1 — if you see this banner instead, the           ║
+║  recovery net at login will offer to start it.                   ║
+║                                                                  ║
+║  Pre-install docs: docs/BARE_METAL_ISO.md                        ║
+╚══════════════════════════════════════════════════════════════════╝
+
+\s \r \l
+
+ISSUE_EOF
+
 
 log "First-boot and disk-installer services installed and enabled."
 
@@ -507,13 +669,42 @@ mkdir -p "${ISO_STAGING}/casper"
 SQUASH_FILE="${ISO_STAGING}/casper/filesystem.squashfs"
 
 log "Running mksquashfs..."
+# v3.0.1 attempt 1 used XZ which OOM-killed even with -Xdict-size 1M -mem 4G
+# because Holmgren has ~18 GB resident Ollama and XZ's 20-parallel-cores
+# parallelism spiked memory hard during the largest blocks.
+# v3.0.1 attempt 2 (this) switches to zstd compression — the modern Ubuntu
+# casper default. Way lower memory than xz (no big dictionary), faster
+# (~3x), and only ~5% larger output. Plus 4-thread cap so even tight
+# memory boxes can build.
+# pipefail (set -o pipefail) is enforced so a mksquashfs failure propagates.
+set -o pipefail
 mksquashfs "${CHROOT_DIR}" "$SQUASH_FILE" \
-    -comp xz \
+    -comp zstd \
+    -Xcompression-level 19 \
     -b 1M \
-    -Xdict-size 100% \
+    -processors 4 \
     -noappend \
     -e boot \
-    2>&1 | grep -E "^(Parallel|Filesystem|mksquashfs|[0-9]+%)" || true
+    2>&1 | grep -E "^(Parallel|Filesystem|mksquashfs|[0-9]+%|FATAL)" || {
+        rc=$?
+        # grep exits 1 if no match — that's OK if mksquashfs produced no matching lines.
+        # But if mksquashfs itself failed, the pipefail above caught it; exit here.
+        if [ "$rc" -gt 1 ]; then
+            err "mksquashfs failed (rc=$rc) — chroot may be too large for available RAM, or out of disk space. Try: free -h; df -h"
+            exit 1
+        fi
+    }
+set +o pipefail
+
+# Sanity check: a real Ubuntu chroot squashfs should be at least 500 MB.
+# (v3.0 squashfs was ~2 GB; v3.0.1 with build-script changes only should be
+# similar size. If we see <500 MB, the chroot or mksquashfs was incomplete.)
+SQUASH_BYTES=$(stat -c %s "$SQUASH_FILE")
+if [ "$SQUASH_BYTES" -lt 500000000 ]; then
+    err "Squashfs is suspiciously small: $SQUASH_BYTES bytes (<500 MB). Chroot likely incomplete."
+    err "Check chroot package count: dpkg -l --root=${CHROOT_DIR} | wc -l (should be 400+)"
+    exit 1
+fi
 
 SQUASH_SIZE=$(du -h "$SQUASH_FILE" | cut -f1)
 log "Squashfs created: $SQUASH_FILE ($SQUASH_SIZE)"

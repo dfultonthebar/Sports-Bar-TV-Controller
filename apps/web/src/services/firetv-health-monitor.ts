@@ -42,16 +42,21 @@ class FireTVHealthMonitor {
   }
 
   /**
-   * Get singleton instance
-   * Uses global object to prevent Next.js from creating multiple instances
+   * Get singleton instance.
+   *
+   * v2.54.45 (Grok audit pass 3 MED) — was using plain `global.__fireTVHealthMonitor`
+   * which is collision-prone (any other package using `__fireTV*` on global
+   * would clobber). Switched to `Symbol.for()` namespaced registry per Gotcha
+   * #10 canonical pattern. Holds 5 separate Maps + monitorInterval; a split
+   * here = duplicate reconnect timers + duplicate alert spam.
    */
   public static getInstance(): FireTVHealthMonitor {
-    // Use global object to ensure singleton across module contexts
-    const globalAny = global as any
-    if (!globalAny.__fireTVHealthMonitor) {
-      globalAny.__fireTVHealthMonitor = new FireTVHealthMonitor()
+    const KEY = Symbol.for('@sports-bar/firetv/FireTVHealthMonitor.instance')
+    const g = globalThis as any
+    if (!g[KEY]) {
+      g[KEY] = new FireTVHealthMonitor()
     }
-    return globalAny.__fireTVHealthMonitor
+    return g[KEY] as FireTVHealthMonitor
   }
 
   /**
@@ -313,7 +318,17 @@ class FireTVHealthMonitor {
       this.clearDownTime(device.id)
 
     } catch (error: any) {
-      logger.error(`[HEALTH MONITOR] ❌ Reconnection failed for ${device.name}:`, error.message)
+      // Same demote pattern as firetv-connection-manager.ts: first failure logs
+      // ERROR (real signal), repeat failures DEBUG (device is intentionally
+      // powered off — Atmosphere TV during signage-off hours, Epson projector
+      // after-hours, Fire TV between schedule windows). The `attempts` value
+      // here is the attempt number ALREADY incremented by scheduleReconnection,
+      // so attempts===1 is the first try; attempts>1 is a repeat.
+      if (attempts <= 1) {
+        logger.error(`[HEALTH MONITOR] ❌ Reconnection failed for ${device.name}:`, error.message)
+      } else {
+        logger.debug(`[HEALTH MONITOR] Reconnect attempt ${attempts} failed for ${device.name} (device may be powered off): ${error.message}`)
+      }
       this.updateHealthStatus(device, false, error.message)
 
       // Schedule another attempt if we haven't exceeded max attempts
@@ -426,8 +441,14 @@ class FireTVHealthMonitor {
         const health = this.healthStatus.get(deviceId)
         const deviceName = health?.deviceName || deviceId
 
-        logger.error(`[HEALTH MONITOR] 🚨 ALERT: Device ${deviceName} has been down for ${Math.floor(downTime / 1000 / 60)} minutes`)
-        logger.error(`[HEALTH MONITOR] Last error: ${health?.error || 'Unknown'}`)
+        // WARN, not ERROR: an AV endpoint (Atmosphere TV, Epson projector, a TV
+        // powered off after close) being unreachable is an OPERATIONAL state, not
+        // an application fault. Logging it at ERROR spammed the error log + tripped
+        // error-watch every time a TV flapped (Holmgren's Atmosphere TV = 34
+        // ERROR rows/24h when powered down off-hours). The alertsSent dedup still
+        // fires this once per down-period.
+        logger.warn(`[HEALTH MONITOR] Device ${deviceName} has been down for ${Math.floor(downTime / 1000 / 60)} minutes`)
+        logger.warn(`[HEALTH MONITOR] Last error: ${health?.error || 'Unknown'}`)
 
         // Mark alert as sent
         this.alertsSent.add(deviceId)

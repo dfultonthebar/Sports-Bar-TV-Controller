@@ -40,7 +40,15 @@ export const HARDWARE_CONFIG = {
     // Operators on the Iris Xe path should keep llama3.1:8b until the
     // IPEX-LLM stack supports newer model families.
     model: process.env.OLLAMA_MODEL || 'llama3.1:8b',
-    timeout: 300000,
+    // v2.55.56 — timeout + output-token ceiling are now per-box env-tunable.
+    // Generation time ≈ num_predict / tok_s. Box iGPU throughput varies
+    // (Holmgren ~11 tok/s, Graystone ~6.7), so the default 2048-token cap is
+    // ~183s on a fast box but ~306s on Graystone — over the 300s timeout. A
+    // slow box sets OLLAMA_TIMEOUT_MS higher and/or OLLAMA_NUM_PREDICT lower.
+    // [LLM-PERF] logs (llm-perf-YYYY-MM-DD.log) capture real eval_count +
+    // done_reason so these get set from data, not guesses.
+    timeout: Number(process.env.OLLAMA_TIMEOUT_MS) || 300000,
+    numPredict: Number(process.env.OLLAMA_NUM_PREDICT) || 2048,
   },
   venue: {
     timezone: 'America/Chicago',

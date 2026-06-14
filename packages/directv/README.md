@@ -15,7 +15,7 @@
 
 **Protocol / port:** HTTP **8080** (SHEF API); SSDP **1900** multicast on `239.255.255.250` for discovery. Defined in `src/constants.ts` → `DIRECTV_CONFIG`.
 
-**Used by:** `apps/web` DirecTV API routes (channel tuning, guide retrieval); `@sports-bar/scheduler` for game-time channel selection. Wraps `axios` + `node-ssdp`.
+**Used by:** `apps/web` DirecTV API routes (channel tuning, guide retrieval); `@sports-bar/scheduler` for game-time channel selection. Wraps `axios` + a custom in-package SSDP client (`src/ssdp-client.ts`, pure-dgram UDP multicast on 239.255.255.250:1900) — replaced `node-ssdp` in v2.54.35 to close `ip@<=2.0.1` HIGH CVE.
 
 **Gotchas:**
 - Device IPs/ports are loaded from `apps/web/data/directv-devices.json` for guide fetching (known tech debt — CLAUDE.md Gotcha #5). Other paths read from the `DirecTVDevice` DB table.

@@ -1596,6 +1596,25 @@ export const inputSourceAllocations = sqliteTable('input_source_allocations', {
   allocationQuality: text('allocation_quality'), // 'optimal', 'suboptimal', 'degraded'
   qualityNotes: text('quality_notes'), // explanation of quality rating
 
+  // Closed-loop verification (v2.55.81+ — Wave 3 routeAndVerify)
+  // After a tune/route command is acked, the scheduler reads the device
+  // state back (matrix route via queryWolfpackRouteState, DirecTV via
+  // getTuned, Fire TV via getCurrentApp) and records whether the TV is
+  // ACTUALLY showing the intended input. ADVISORY ONLY — a failed verify
+  // logs loud + escalates but never blocks/rolls back the tune (Standing
+  // Rule 3). Verify lives in its OWN column, NOT a `status` value, so a
+  // stuck verify can never strand the allocation lifecycle (still
+  // pending/active/completed). verifyState: 'unverified' (default, never
+  // checked) | 'verified' (read-back matched) | 'failed' (read-back
+  // mismatched after retries) | 'unsupported' (device type has no
+  // read-back path). verifyAttempts counts route/tune retries the verifier
+  // triggered. verifyError holds the last mismatch detail for the
+  // escalation surface.
+  verifiedAt: integer('verified_at'), // Unix timestamp of last verify pass (NULL = never verified)
+  verifyState: text('verify_state').notNull().default('unverified'),
+  verifyAttempts: integer('verify_attempts').notNull().default(0),
+  verifyError: text('verify_error'),
+
   // Metadata
   createdAt: integer('created_at').notNull().default(sql`(strftime('%s', 'now'))`), // Unix timestamp
   updatedAt: integer('updated_at').notNull().default(sql`(strftime('%s', 'now'))`), // Unix timestamp
@@ -2755,6 +2774,37 @@ export const shureRfEvents = sqliteTable('shure_rf_events', {
   receiverIdx: index('shure_rf_events_receiver_idx').on(table.receiverId, table.channel, table.detectedAt),
 }))
 
+// v2.52.14: daily RF Pattern Digest. Tier 3 of the SDR AI integration.
+// A scheduler job runs once per day, pulls 24h of sdr_carriers,
+// shure_rf_events, and matched NeighborhoodEvent rows, formats a
+// structured prompt for Ollama qwen2.5:14b, and stores the LLM
+// summary here. The bartender Audio tab reads the latest row.
+//
+// Bartender-grade output — plain language, no jargon. Example:
+//   "The band at Anduzzi's tonight (DJ Casey) tends to use freqs near
+//    your Mic 2. The SDR has been seeing strong activity at 484-485 MHz
+//    on the past 3 Fridays around 9pm. Consider moving Mic 2 to
+//    491 MHz before showtime."
+//
+// structured_findings is a JSON blob with the LLM's parsed
+// recommendations + raw counts (for the UI to render badges/charts
+// instead of just the prose).
+export const rfPatternDigest = sqliteTable('rf_pattern_digest', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  locationId: text('location_id').notNull(),
+  periodStart: integer('period_start').notNull(),
+  periodEnd: integer('period_end').notNull(),
+  summaryText: text('summary_text').notNull(),
+  structuredFindings: text('structured_findings'),
+  modelUsed: text('model_used').notNull(),
+  promptTokenCount: integer('prompt_token_count'),
+  completionTokenCount: integer('completion_token_count'),
+  generationMs: integer('generation_ms'),
+  generatedAt: integer('generated_at').notNull().$defaultFn(() => Math.floor(Date.now() / 1000)),
+}, (table) => ({
+  locationIdx: index('rf_pattern_digest_location_idx').on(table.locationId, table.generatedAt),
+}))
+
 export const schedulingPreferences = sqliteTable('scheduling_preferences', {
   id: text('id').primaryKey(),
   preferenceType: text('preference_type').notNull(),
@@ -2940,7 +2990,14 @@ export const neighborhoodEvents = sqliteTable('NeighborhoodEvent', {
 
 export const interferenceAttributions = sqliteTable('InterferenceAttribution', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  rfEventId: text('rf_event_id').notNull().references(() => shureRfEvents.id, { onDelete: 'cascade' }),
+  // v2.55.16: NO FK to shure_rf_events. This column holds an id from EITHER
+  // shure_rf_events (source='shure') OR sdr_carriers (source='sdr') — a
+  // polymorphic reference distinguished by the `source` column. The old
+  // `.references(shureRfEvents.id)` FK assumed enforcement was off in prod,
+  // but it's actually ON, so every SDR-sourced insert (carrier id, not a
+  // shure_rf_events id) failed "FOREIGN KEY constraint failed" — breaking
+  // the entire SDR interference-correlation pass (60+ errors/10h on Holmgren).
+  rfEventId: text('rf_event_id').notNull(),
   neighborhoodEventId: text('neighborhood_event_id').notNull().references(() => neighborhoodEvents.id, { onDelete: 'cascade' }),
   timeDeltaSeconds: integer('time_delta_seconds').notNull(),     // abs(rf_event.detected_at - neighborhood_event.start_time)
   distanceMi: real('distance_mi').notNull(),                     // distance from our bar to event venue (copied from venue.distance_mi at attribution time)
@@ -2950,12 +3007,22 @@ export const interferenceAttributions = sqliteTable('InterferenceAttribution', {
   // 'correlation_v1' = the algorithmic time+distance match. 'manual' =
   // operator marked it. Future: 'ml_v2' if we add a learned model.
   attributionMethod: text('attribution_method').notNull().default('correlation_v1'),
+  // v2.52.12: 'shure' for events from shure_rf_events table, 'sdr' for
+  // events from sdr_carriers table. Allows the correlator to feed
+  // BOTH detection sources into ArtistInterferenceProfile — when both
+  // independently see RF activity at a venue's event time, confidence
+  // is materially higher than either source alone. The FK in
+  // rf_event_id is informal (FK enforcement off in prod sqlite); the
+  // referenced ID lives in whichever table source points to.
+  source: text('source').notNull().default('shure'),
   createdAt: integer('created_at').notNull().$defaultFn(() => Math.floor(Date.now() / 1000)),
 }, (table) => ({
   rfEventIdx: index('InterferenceAttribution_rfEvent_idx').on(table.rfEventId),
   neighborhoodEventIdx: index('InterferenceAttribution_neighborhoodEvent_idx').on(table.neighborhoodEventId),
+  sourceIdx: index('InterferenceAttribution_source_idx').on(table.source),
   // One attribution per (rf_event, neighborhood_event) pair — re-running
-  // the correlation engine is idempotent.
+  // the correlation engine is idempotent. rf_event IDs are UUIDs from
+  // either shure_rf_events or sdr_carriers (no collision risk).
   uniqueAttribution: uniqueIndex('InterferenceAttribution_rfEvent_neighborhoodEvent_unique').on(table.rfEventId, table.neighborhoodEventId),
 }))
 
@@ -2990,4 +3057,75 @@ export const artistInterferenceProfiles = sqliteTable('ArtistInterferenceProfile
   // One profile per (artist, location) — running the profile builder
   // multiple times is idempotent.
   uniqueArtistLocation: uniqueIndex('ArtistInterferenceProfile_artist_location_unique').on(table.artistNormalized, table.locationId),
+}))
+
+// v2.55.23+ — Phase 2 of the self-monitoring architecture (HOOK_COVERAGE.md).
+// Autonomous error-watch service tails the PM2 error log + grep-matches against
+// a signature library, writing one row per detection. Also writes a 'heartbeat'
+// row every N min so silence means "watcher died" not "all clear" — exactly the
+// caveat baked into pattern #1: a watcher with no heartbeat is invisible
+// when it dies. Plus 'startup' rows so the watcher proves it actually
+// initialized on a fresh boot.
+//
+// kind: 'error' | 'heartbeat' | 'startup'
+// signature: human-readable label of which signature matched, or
+//   'watcher_alive' for heartbeat, or 'service_start' for startup
+export const errorWatchEvents = sqliteTable('error_watch_events', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  kind: text('kind').notNull(),
+  signature: text('signature').notNull(),
+  sample: text('sample').notNull().default(''), // first ~200 chars of matched line, sanitized
+  sourceFile: text('source_file'),               // basename of PM2 log file
+  detectedAt: integer('detected_at').notNull().$defaultFn(() => Math.floor(Date.now() / 1000)),
+}, (table) => ({
+  detectedAtIdx: index('error_watch_events_detected_at_idx').on(table.detectedAt),
+  signatureIdx: index('error_watch_events_signature_idx').on(table.signature, table.detectedAt),
+  kindIdx: index('error_watch_events_kind_idx').on(table.kind, table.detectedAt),
+}))
+
+// shure_pending_resync — operator-queued receiver-side frequency changes
+// that need a manual IR-sync of the transmitter to take effect on the
+// mic. Lifecycle: row INSERTed when operator calls /api/shure-rf/queue-
+// freq-change → bartender Audio tab shows a "Mic N needs re-sync" banner
+// while verified_at IS NULL → shure-rf-watcher.ts UPDATE-sets verified_at
+// when the receiver's sample frames show a real TX_MODEL (i.e. not
+// UNKNOWN) with active signal at the new frequency. Operator can
+// canceled_at-set the row via /api/shure-rf/cancel-resync to abandon a
+// pending change (banner clears without verification).
+//
+// freq stored as 6-digit kHz to match the wire protocol (485325 =
+// 485.325 MHz; SLX-D's `< SET 1 FREQUENCY 503000 >` format).
+export const shurePendingResync = sqliteTable('shure_pending_resync', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  receiverId: text('receiver_id').notNull(),
+  channel: integer('channel').notNull(),
+  oldFreqKhz: integer('old_freq_khz').notNull(),
+  newFreqKhz: integer('new_freq_khz').notNull(),
+  setAt: integer('set_at').notNull().$defaultFn(() => Math.floor(Date.now() / 1000)),
+  verifiedAt: integer('verified_at'),     // NULL = pending; non-NULL = TX active on new freq
+  canceledAt: integer('canceled_at'),     // NULL = active; non-NULL = abandoned
+  notes: text('notes'),
+}, (table) => ({
+  activeIdx: index('shure_pending_resync_active_idx').on(table.receiverId, table.channel, table.verifiedAt, table.canceledAt),
+  setAtIdx: index('shure_pending_resync_set_at_idx').on(table.setAt),
+}))
+
+// agent_tool_invocations (v2.57.0, Hermes Phase 2) — audit trail of every tool
+// the agent brain (via the @sports-bar/mcp gateway) invokes. The MCP server
+// fire-and-forget POSTs one row per tool call to /api/agent/tool-log. This is
+// the accountability layer: proposals + todo-writes especially must leave a
+// record (who/what/when), and read tools are logged too so an operator can see
+// exactly what the agent looked at. Nothing here authorizes a hardware write —
+// it only records intent + result.
+export const agentToolInvocations = sqliteTable('agent_tool_invocations', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  tool: text('tool').notNull(),                 // tool name, e.g. 'get_system_health', 'propose_action'
+  args: text('args'),                           // JSON string of the tool arguments (may be null/empty)
+  resultSummary: text('result_summary'),        // first ~500 chars of the tool's text result
+  surface: text('surface').notNull().default('unknown'), // 'operator' | 'bartender' | 'unknown'
+  isError: integer('is_error', { mode: 'boolean' }).notNull().default(false),
+  createdAt: integer('created_at').notNull().$defaultFn(() => Math.floor(Date.now() / 1000)),
+}, (table) => ({
+  toolIdx: index('agent_tool_invocations_tool_created_at_idx').on(table.tool, table.createdAt),
+  createdAtIdx: index('agent_tool_invocations_created_at_idx').on(table.createdAt),
 }))

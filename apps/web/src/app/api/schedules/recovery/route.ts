@@ -6,6 +6,7 @@ import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { z } from 'zod'
 import { validateRequestBody, isValidationError } from '@/lib/validation'
+import { parseHardwareResult } from '@sports-bar/utils'
 
 // GET - Return all allocations with status='needs_confirmation'
 export async function GET(request: NextRequest) {
@@ -134,17 +135,22 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify(tunePayload),
     })
 
-    const tuneResult = await tuneResponse.json()
+    // OR-gate guard: the tune route returns HTTP 200 with {success:false} on a
+    // soft failure (e.g. cable box offline). A raw `!tuneResponse.ok` check would
+    // treat that as success and flip the allocation to 'active' — the operator
+    // sees "resumed" and takes no action while the TV never moved. parseHardwareResult
+    // consumes the body internally (Gotcha #1) and treats malformedOk as a FAILURE.
+    const tuneHw = await parseHardwareResult(tuneResponse)
 
-    if (!tuneResponse.ok) {
-      logger.error(`[RECOVERY] Tune failed for allocation ${allocationId}:`, tuneResult)
+    if (!tuneHw.ok) {
+      logger.error(`[RECOVERY] Tune failed for allocation ${allocationId}:`, tuneHw.error)
       return NextResponse.json(
-        { success: false, error: `Tune failed: ${tuneResult.error || 'Unknown error'}` },
+        { success: false, error: `Tune failed: ${tuneHw.error || 'Unknown error'}` },
         { status: 500 }
       )
     }
 
-    // Set status to active
+    // Set status to active — only when tuneHw.ok === true
     await db.update(schema.inputSourceAllocations)
       .set({ status: 'active', updatedAt: Math.floor(Date.now() / 1000) })
       .where(eq(schema.inputSourceAllocations.id, allocationId))
@@ -154,7 +160,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       message: `Resumed ${result.inputSource.name} on channel ${result.allocation.channelNumber}`,
-      tuneResult,
+      tuneResult: tuneHw.body,
     })
   } catch (error: any) {
     logger.error('[RECOVERY] Error processing recovery action:', error)

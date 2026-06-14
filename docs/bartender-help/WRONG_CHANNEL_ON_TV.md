@@ -152,30 +152,24 @@ The TV shows the cable channel (or any cable channel) again with normal picture 
 
 **Why this happens:** the TV is powered off. Either someone shut it off, the bar's power-on routine missed it this morning, or the TV is unplugged.
 
-### Try first
+### Try first — the Power tab
 
-Tap the **Power On** button on the iPad. Some TVs respond instantly to this; some don't.
+The iPad has a **Power** tab in the bottom row (a circle with a line through the top, next to Video). This is the primary way to turn a TV back on.
 
-### What to do (from the iPad)
+1. On the iPad, tap the **Power** tab.
+2. Find the tile for the TV that's off. Each tile has the TV's name at the top ("TV 7", "Patio Left", etc.) and a colored dot — **red** means off.
+3. Tap the wide **Power** button in the middle of the tile.
+4. Wait 5 seconds. The dot should turn green and the TV should light up.
 
-1. On the iPad, tap the **Video** tab.
-2. Tap the tile for the TV that's off.
-3. Look for a **Power On** button — usually at the top of the controls, sometimes with a power icon (the circle with a line through the top).
-4. Tap it.
-5. Wait 5 seconds.
+For full Power-tab details (Toggle All TVs, network-TV reboot, dot meanings) see **[[POWER_AND_NETWORK_TVS]]**.
 
 ### How you know it worked
 
-The TV's screen lights up. You should see a logo (Samsung, LG, Sony) for a second, then the picture from whatever box was last assigned to it.
+The TV's screen lights up. You should see a logo (Samsung, LG, Sony) for a second, then the picture from whatever box was last assigned to it. The dot on the Power-tab tile turns green within 5 seconds.
 
-### If it didn't work (TV still dark)
+### If it didn't work — try the physical remote
 
-Some TVs in the bar do NOT respond to the iPad's power button — they need their physical remote. The two types of TVs behave differently:
-
-- **TVs that respond to the iPad:** these are the newer ones, mostly in the main bar area.
-- **TVs that need the physical remote:** these are the older ones, mostly the perimeter TVs and the patio.
-
-For TVs that need the physical remote:
+Some TVs in the bar don't respond to the iPad's Power tab — they're the older or cable-only TVs (perimeter sets, projectors, patio in some bars). For those, use the physical remote:
 
 1. Find the TV's physical remote. They're stored in the **drawer under the register**, labeled with masking tape matching the TV number ("TV 7 remote", "TV 8 remote").
 2. Point the remote at the TV (not the iPad).
@@ -184,7 +178,7 @@ For TVs that need the physical remote:
 
 ### If it STILL didn't work
 
-- **TV doesn't respond to either iPad or physical remote:** the TV might be unplugged or the bulb (for older projector-style sets) is out. Check the power cord at the back of the TV is plugged into the wall. If it's plugged in and still dark, text the manager.
+- **TV doesn't respond to either iPad or physical remote:** the TV might be unplugged or have lost power at the wall. Walk to the TV and check: any tiny LED on the front edge? If yes, it has power and is just being stubborn — try the Power tab once more. If no LED, check the wall outlet. The wall switch is always a safe reset (it can't damage the TV) — see **[[POWER_AND_NETWORK_TVS]]** for the wall-switch procedure.
 - **TV comes on but immediately goes black:** something is wrong with the source feeding it. Go to **Section 1** and switch it to a different source.
 
 ---
@@ -240,7 +234,7 @@ That gives the manager enough to know what's broken and what you already ruled o
 | Wrong source on TV | iPad → Video tab → tap the TV → tap the correct source |
 | Right source, wrong channel | iPad → tap the TV → tap the preset for the team they want |
 | Static or "No Signal" on cable | iPad → tap the TV → tap **Reboot Box** → wait 60 seconds |
-| TV is dark | iPad → tap the TV → tap **Power On** (or use the physical remote in the register drawer) |
+| TV is dark | iPad → **Power** tab → that TV's tile → **Power** button (or use the physical remote in the register drawer). Full Power-tab guide: [[POWER_AND_NETWORK_TVS]] |
 | Everything is wrong | Physical remotes for what matters most + text the manager |
 
 **Remember:** you can tap any button on the iPad without breaking anything. The worst that happens is the wrong TV changes for a few seconds — you'll just change it back. Try things.

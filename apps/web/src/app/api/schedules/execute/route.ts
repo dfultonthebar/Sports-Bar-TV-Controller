@@ -15,8 +15,11 @@ import { getTeamMatcher } from '@/lib/scheduler/team-name-matcher'
 import { getPriorityCalculator } from '@/lib/scheduler/priority-calculator'
 import { getDistributionEngine } from '@/lib/scheduler/distribution-engine'
 import { getStateReader } from '@/lib/scheduler/state-reader'
+import { schedulerLogger } from '@sports-bar/scheduler'
+import { randomUUID } from 'crypto'
 import type { GameInfo } from '@/lib/scheduler/priority-calculator'
 import { espnScoreboardAPI } from '@/lib/sports-apis/espn-scoreboard-api'
+import { parseHardwareResult } from '@sports-bar/utils'
 // POST - Execute a schedule immediately
 export async function POST(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.DATABASE_WRITE)
@@ -350,6 +353,7 @@ async function executeSchedule(schedule: any, allowedOutputs?: number[]) {
         result.details.games = gamesResult.games;
         result.channelsSet = gamesResult.channelsSet || 0;
         result.tvsControlled = gamesResult.tvsControlled || 0;  // Copy TVs controlled count
+        result.unservedGames = (gamesResult as any).unservedGames || [];  // Wave 3.6: propagate no-screen games to the response
         aiSchedulerExecuted = gamesResult.aiSchedulerExecuted || false; // Check if AI handled execution
       }
     }
@@ -418,14 +422,23 @@ async function executeSchedule(schedule: any, allowedOutputs?: number[]) {
               })
             });
 
-            if (routeResponse.ok) {
+            // OR-gate fix: /api/matrix/route returns HTTP 200 with {success:false}
+            // on a soft hardware failure. A raw response.ok would increment
+            // channelsSet AND fire changeChannel() for a route that never landed
+            // — issuing a cable/DirecTV tune for the wrong (unrouted) TV. Strict
+            // success===true only; malformed-OK (contract drift) logs loud and is
+            // treated as a FAILURE.
+            const routeHw = await parseHardwareResult(routeResponse);
+            if (routeHw.ok) {
               result.channelsSet++;
 
               // Send channel change command to input device
               await changeChannel(input, channel);
             } else {
-              const errorData = await routeResponse.json().catch(() => ({ error: 'Unknown error' }));
-              result.errors.push(`Failed to route ${output.label}: ${errorData.error || 'Unknown error'}`);
+              if (routeHw.malformedOk) {
+                logger.warn(`[SCHEDULE] ⚠️ Matrix route returned HTTP 200 but no success flag (contract drift) for ${output.label}: ${JSON.stringify(routeHw.body)} — treating as FAILURE`);
+              }
+              result.errors.push(`Failed to route ${output.label}: ${routeHw.error || 'Unknown error'}`);
             }
           } catch (error: any) {
             result.errors.push(`Error setting channel for ${output.label}: ${error.message}`);
@@ -609,6 +622,49 @@ async function findHomeTeamGames(homeTeamIds: string[], schedule: any, allowedOu
         `${distributionPlan.summary.assignedTVs}/${distributionPlan.summary.totalTVs} TVs assigned`
       );
 
+      // Wave 3.7: persist the engine's per-game assign/drop reasoning to
+      // SchedulerLog so "why did the Bucks game get no screen last Tuesday?" is a
+      // query (SchedulerLogsDashboard, component='distribution-engine'), not PM2
+      // log archaeology. Wave 3.6: collect under-served/no-screen games to surface
+      // back to the operator. Best-effort — never block the schedule execution.
+      const planCorrelationId = randomUUID();
+      const unservedGames: Array<{ game: string; assignedTVs: number; minTVsRequired: number; reason: string }> = [];
+      try {
+        for (const ga of distributionPlan.games) {
+          const label = `${ga.game.awayTeam} @ ${ga.game.homeTeam}`;
+          const assignedTVs = ga.assignments.length;
+          // Pass the raw object — SchedulerLogger.log() JSON.stringifies metadata
+          // itself; pre-stringifying here would double-encode it in the DB.
+          const ctx = {
+            metadata: {
+              game: label,
+              league: ga.game.league ?? null,
+              priority: ga.priority?.finalScore ?? null,
+              isHomeTeam: ga.priority?.isHomeTeamGame ?? null,
+              assignedTVs,
+              minTVsRequired: ga.minTVsRequired,
+              minTVsMet: ga.minTVsMet,
+              inputs: [...new Set(ga.assignments.map((a) => a.inputLabel))],
+            },
+          };
+          if (assignedTVs === 0) {
+            unservedGames.push({ game: label, assignedTVs, minTVsRequired: ga.minTVsRequired, reason: 'no available screen (all matching inputs busy/unavailable)' });
+            await schedulerLogger.warn('distribution-engine', 'distribute', `No screen: ${label} got 0/${ga.minTVsRequired} TVs`, planCorrelationId, ctx);
+          } else if (!ga.minTVsMet) {
+            unservedGames.push({ game: label, assignedTVs, minTVsRequired: ga.minTVsRequired, reason: 'below minimum TVs' });
+            await schedulerLogger.warn('distribution-engine', 'distribute', `Under-served: ${label} got ${assignedTVs}/${ga.minTVsRequired} TVs`, planCorrelationId, ctx);
+          } else {
+            await schedulerLogger.info('distribution-engine', 'distribute', `Assigned ${assignedTVs} TVs to ${label}`, planCorrelationId, ctx);
+          }
+        }
+        if (unservedGames.length > 0) {
+          logger.warn(`[AI_SCHEDULER] ${unservedGames.length} game(s) under-served/no-screen: ${unservedGames.map((u) => u.game).join(', ')}`);
+        }
+      } catch (logErr: any) {
+        logger.warn(`[AI_SCHEDULER] engine reasoning log failed (non-fatal): ${logErr?.message || logErr}`);
+      }
+      (result as any).unservedGames = unservedGames;
+
       // Transform distribution plan into output assignments format
       for (const gameAssignment of distributionPlan.games) {
         for (const tvAssignment of gameAssignment.assignments) {
@@ -779,8 +835,16 @@ async function findHomeTeamGames(homeTeamIds: string[], schedule: any, allowedOu
             })
           });
 
-          if (!routeResponse.ok) {
-            logger.warn(`[AI_SCHEDULER] Failed to route output ${routeCmd.outputNumber} (${routeCmd.zoneName}) to input ${routeCmd.inputNumber}`);
+          // OR-gate fix: a raw response.ok would inflate tvsControlled on a
+          // soft hardware failure (HTTP 200 + {success:false}). Strict
+          // success===true only; malformed-OK (contract drift) logs loud and
+          // is treated as a FAILURE.
+          const routeHw = await parseHardwareResult(routeResponse);
+          if (!routeHw.ok) {
+            if (routeHw.malformedOk) {
+              logger.warn(`[AI_SCHEDULER] ⚠️ Matrix route returned HTTP 200 but no success flag (contract drift) for output ${routeCmd.outputNumber} (${routeCmd.zoneName}) → input ${routeCmd.inputNumber}: ${JSON.stringify(routeHw.body)} — treating as FAILURE`);
+            }
+            logger.warn(`[AI_SCHEDULER] Failed to route output ${routeCmd.outputNumber} (${routeCmd.zoneName}) to input ${routeCmd.inputNumber}: ${routeHw.error}`);
           } else {
             logger.info(`[AI_SCHEDULER] Routed output ${routeCmd.outputNumber} (${routeCmd.zoneName}) to input ${routeCmd.inputNumber} (channel ${tunedInputs.get(routeCmd.inputNumber)})`);
             result.tvsControlled++;

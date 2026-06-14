@@ -69,6 +69,16 @@ const sqlite = new Database(dbPath)
 sqlite.pragma('journal_mode = WAL')
 currentLogger.debug?.('Enabled WAL mode for better concurrency')
 
+// v2.54.43 — set busy_timeout so concurrent writers (e.g. the discover-venues
+// CLI script running while sports-bar app holds the WAL connection) wait
+// 30 seconds instead of failing immediately with SQLITE_BUSY. WAL mode + a
+// generous busy_timeout is the SQLite-recommended pattern for "one app +
+// occasional CLI/cron writer" scenarios — see
+// https://www.sqlite.org/pragma.html#pragma_busy_timeout. 30s is well below
+// any per-operation hard timeout we have elsewhere; in practice contention
+// resolves in milliseconds (WAL allows readers to never block writers).
+sqlite.pragma('busy_timeout = 30000')
+
 // Create Drizzle instance with query logging
 export const db = drizzle(sqlite, {
   schema,

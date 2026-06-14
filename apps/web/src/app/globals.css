@@ -1,7 +1,8 @@
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+/* v4 keeps the legacy JS config via @config */
+@config "../../tailwind.config.js";
 
 /* Modern Professional Sports Bar Dark Blue Theme */
 :root {

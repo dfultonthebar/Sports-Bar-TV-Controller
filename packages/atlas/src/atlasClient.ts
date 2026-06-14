@@ -540,8 +540,30 @@ export class AtlasTCPClient {
           this.pendingResponses.delete(response.id)
           
           if (response.error) {
-            atlasLogger.error('RESPONSE', 'Atlas command error', response.error)
-            pending.reject(new Error(response.error.message || 'Atlas command error'))
+            // v2.54.4 — "param not found" (-32604) is a BENIGN config-mismatch
+            // case: the caller asked Atlas about a zone/parameter that doesn't
+            // exist on this processor model. Common when the drop watcher
+            // iterates ZoneGain_1..8 against a processor with fewer zones.
+            // Atlas correctly returns -32604; the watcher correctly catches
+            // the rejection. Logging at error-level is noise. Demote to debug.
+            // ALL OTHER error codes still log at error-level (real protocol
+            // failures, auth errors, etc.).
+            //
+            // v2.54.5 — response.error from the wire arrives as EITHER a
+            // parsed object OR a JSON-encoded string depending on the
+            // upstream framing. Handle both shapes by parsing-if-string.
+            let errObj: any = response.error
+            if (typeof errObj === 'string') {
+              try { errObj = JSON.parse(errObj) } catch { /* leave as string */ }
+            }
+            const errCode = (typeof errObj === 'object' && errObj) ? errObj.code : undefined
+            const errMsg = (typeof errObj === 'object' && errObj) ? errObj.message : String(errObj)
+            if (errCode === -32604) {
+              atlasLogger.debug('RESPONSE', 'param not found (benign)', errObj)
+            } else {
+              atlasLogger.error('RESPONSE', 'Atlas command error', errObj)
+            }
+            pending.reject(new Error(errMsg || 'Atlas command error'))
           } else {
             pending.resolve(response)
           }
@@ -1024,10 +1046,20 @@ export class AtlasTCPClient {
         }
       }
     } catch (error) {
-      atlasLogger.error('GET', 'Error getting parameter', { param, format, error })
-      return { 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Unknown error' 
+      // v2.54.4 — the RESPONSE handler above already demotes -32604 to debug.
+      // The thrown Error here will carry "could not be found" in its message
+      // when that was the underlying cause. Match the message text to demote
+      // this GET log site too — avoids double-logging the same benign event.
+      const msg = error instanceof Error ? error.message : String(error)
+      const isParamNotFound = /could not be found/i.test(msg)
+      if (isParamNotFound) {
+        atlasLogger.debug('GET', 'param not found (benign)', { param, format, msg })
+      } else {
+        atlasLogger.error('GET', 'Error getting parameter', { param, format, error })
+      }
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error'
       }
     }
   }

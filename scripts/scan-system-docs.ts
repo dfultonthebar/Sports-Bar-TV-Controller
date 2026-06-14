@@ -307,6 +307,12 @@ async function main() {
 
   console.log('\n5. Processing + indexing in batches of 5...')
   const batchSize = 5
+  // Yield the iGPU between batches so an interactive Ollama request (AI Suggest,
+  // shift-brief) can slip into the serialized single-GPU queue instead of waiting
+  // behind the ENTIRE remaining scan. Without this, a doc-commit rescan running
+  // during pre-shift starved AI Suggest into its 300s timeout (Holmgren
+  // 2026-06-11). 1.2s default; tune via RAG_SCAN_BATCH_DELAY_MS (0 disables).
+  const batchDelayMs = Number(process.env.RAG_SCAN_BATCH_DELAY_MS ?? 1200)
   let totalChunks = 0
   let totalDocs = 0
   const errors: string[] = []
@@ -327,6 +333,9 @@ async function main() {
     }
     const pct = Math.round(((i + batch.length) / files.length) * 100)
     console.log(`    progress ${i + batch.length}/${files.length} (${pct}%) — chunks=${totalChunks}`)
+    if (batchDelayMs > 0 && i + batchSize < files.length) {
+      await new Promise(resolve => setTimeout(resolve, batchDelayMs))
+    }
   }
 
   const stats = await getVectorStoreStats()
