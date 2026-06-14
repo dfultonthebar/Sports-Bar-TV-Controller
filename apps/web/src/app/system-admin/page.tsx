@@ -23,6 +23,8 @@ import {
   LayoutGrid,
   MapPin,
   BarChart3,
+  Radio,
+  Cable,
 } from 'lucide-react'
 import Link from 'next/link'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -33,13 +35,14 @@ import SystemControlPanel from '@/components/SystemControlPanel'
 import TodoList from '@/components/TodoList'
 import TodoForm from '@/components/TodoForm'
 import TodoDetails from '@/components/TodoDetails'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/cards'
-import { Badge } from '@/components/ui/badge'
 import SportsBarLayout from '@/components/SportsBarLayout'
 import { SystemResourceMonitor } from '@/components/system/SystemResourceMonitor'
 import LocationSettings from '@/components/LocationSettings'
 import { SystemLogsViewer } from '@/components/SystemLogsViewer'
 import EmbeddedLayoutManager from '@/components/EmbeddedLayoutManager'
+import WatcherHealthPanel from '@/components/admin/WatcherHealthPanel'
+import ErrorWatchPanel from '@/components/admin/ErrorWatchPanel'
+import MatrixConfigPanel from '@/components/admin/MatrixConfigPanel'
 
 import { logger } from '@sports-bar/logger'
 interface Backup {
@@ -84,7 +87,7 @@ interface TestSummary {
   duration: number
 }
 
-const VALID_TABS = ['power', 'location', 'layout', 'logs', 'backup', 'sync', 'tests', 'todos'] as const
+const VALID_TABS = ['power', 'location', 'layout', 'logs', 'backup', 'sync', 'tests', 'todos', 'watchers', 'matrix'] as const
 type TabId = (typeof VALID_TABS)[number]
 
 /**
@@ -610,7 +613,7 @@ export default function SystemAdminPage() {
         <VersionBadge />
         <AuthStatusBanner />
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabId)} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-9 bg-sportsBar-800/50 p-1">
+          <TabsList className="grid w-full grid-cols-10 bg-sportsBar-800/50 p-1">
             <TabsTrigger value="power" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
               <Power className="w-4 h-4 mr-2" />
               Power
@@ -643,6 +646,14 @@ export default function SystemAdminPage() {
               <ListTodo className="w-4 h-4 mr-2" />
               TODOs
             </TabsTrigger>
+            <TabsTrigger value="watchers" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
+              <Radio className="w-4 h-4 mr-2" />
+              Watchers
+            </TabsTrigger>
+            <TabsTrigger value="matrix" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
+              <Cable className="w-4 h-4 mr-2" />
+              Matrix
+            </TabsTrigger>
           </TabsList>
 
           {/* Power Controls Tab */}
@@ -658,20 +669,20 @@ export default function SystemAdminPage() {
 
           {/* Layout Editor Tab */}
           <TabsContent value="layout" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <LayoutGrid className="w-5 h-5" />
+            <div className="rounded-lg border border-slate-700 bg-slate-800/50 p-6">
+              <div className="mb-4">
+                <h3 className="text-lg font-semibold text-slate-100 flex items-center gap-2">
+                  <LayoutGrid className="w-5 h-5 text-blue-400" />
                   TV Layout Editor
-                </CardTitle>
-                <CardDescription>
+                </h3>
+                <p className="text-sm text-slate-400 mt-1">
                   Upload, edit, and configure your bar's TV floor plan layout
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
+                </p>
+              </div>
+              <div>
                 <EmbeddedLayoutManager />
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           </TabsContent>
 
           {/* Logs Tab */}
@@ -834,26 +845,26 @@ export default function SystemAdminPage() {
 
           {/* Config Sync Tab */}
           <TabsContent value="sync" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <GitBranch className="w-5 h-5 text-blue-600" />
+            <div className="rounded-lg border border-slate-700 bg-slate-800/50 p-6">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-100 flex items-center gap-2">
+                  <GitBranch className="w-5 h-5 text-blue-400" />
                   GitHub Configuration Sync
-                </CardTitle>
-                <CardDescription>
+                </h3>
+                <p className="text-sm text-slate-400 mt-1">
                   Manage and sync your Sports Bar configurations
-                </CardDescription>
-              </CardHeader>
-            </Card>
+                </p>
+              </div>
+            </div>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>🚀 Configuration Sync Overview</CardTitle>
-                <CardDescription>
+            <div className="rounded-lg border border-slate-700 bg-slate-800/50 p-6">
+              <div className="mb-4">
+                <h3 className="text-lg font-semibold text-slate-100">🚀 Configuration Sync Overview</h3>
+                <p className="text-sm text-slate-400 mt-1">
                   Your Sports Bar AI Assistant configurations are automatically tracked and can be synced to GitHub
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
+                </p>
+              </div>
+              <div className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="bg-slate-900/40 p-4 rounded-lg border border-slate-700 border-l-4 border-l-blue-500">
                     <h4 className="font-semibold text-white mb-2">📊 Tracked Configurations</h4>
@@ -888,8 +899,8 @@ export default function SystemAdminPage() {
                     </ul>
                   </div>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
 
             <GitHubConfigSync />
 
@@ -1314,6 +1325,17 @@ export default function SystemAdminPage() {
                 />
               )}
             </div>
+          </TabsContent>
+
+          {/* Watchers Tab */}
+          <TabsContent value="watchers" className="space-y-6">
+            <WatcherHealthPanel />
+            <ErrorWatchPanel />
+          </TabsContent>
+
+          {/* Matrix Config Tab — CLAUDE.md Gotcha #4 surface */}
+          <TabsContent value="matrix" className="space-y-6">
+            <MatrixConfigPanel />
           </TabsContent>
         </Tabs>
       </main>

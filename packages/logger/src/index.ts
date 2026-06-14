@@ -383,25 +383,49 @@ class Logger {
     },
   }
 
+  // v2.54.66: normalize the second arg. The documented signature is
+  // (message, options: LogOptions) where options is { error, data, ... }.
+  // But ~964 call sites in the codebase pass a bare Error or raw context
+  // object as the second arg ( logger.warn('X failed:', err) ). Before
+  // v2.54.66 that silently no-op'd — options.error was undefined so the
+  // error message + stack never printed. This is what hid the v2.54.65
+  // audio-mute bug for weeks (a TypeError in the catch was logged but
+  // the message body was invisible).
+  //
+  // Now we detect the common slip patterns and wrap them into a proper
+  // LogOptions shape so the logger ALWAYS prints something useful.
+  private normalizeOptions(opts: any): LogOptions | undefined {
+    if (opts === undefined || opts === null) return undefined
+    // Error instance → wrap as { error: ... }
+    if (opts instanceof Error) return { error: opts }
+    // Plain object that already looks like LogOptions → pass through
+    if (typeof opts === 'object' && (
+      'error' in opts || 'data' in opts || 'category' in opts ||
+      'level' in opts || 'timestamp' in opts
+    )) return opts as LogOptions
+    // Anything else (raw object, primitive) → stuff into { data }
+    return { data: opts }
+  }
+
   // Generic logging methods
-  debug(message: string, options?: LogOptions) {
-    this.logWithData(LogLevel.DEBUG, message, options)
+  debug(message: string, options?: LogOptions | unknown) {
+    this.logWithData(LogLevel.DEBUG, message, this.normalizeOptions(options))
   }
 
-  info(message: string, options?: LogOptions) {
-    this.logWithData(LogLevel.INFO, message, options)
+  info(message: string, options?: LogOptions | unknown) {
+    this.logWithData(LogLevel.INFO, message, this.normalizeOptions(options))
   }
 
-  warn(message: string, options?: LogOptions) {
-    this.logWithData(LogLevel.WARN, message, options)
+  warn(message: string, options?: LogOptions | unknown) {
+    this.logWithData(LogLevel.WARN, message, this.normalizeOptions(options))
   }
 
-  error(message: string, options?: LogOptions) {
-    this.logWithData(LogLevel.ERROR, message, options)
+  error(message: string, options?: LogOptions | unknown) {
+    this.logWithData(LogLevel.ERROR, message, this.normalizeOptions(options))
   }
 
-  success(message: string, options?: LogOptions) {
-    this.logWithData(LogLevel.SUCCESS, message, options)
+  success(message: string, options?: LogOptions | unknown) {
+    this.logWithData(LogLevel.SUCCESS, message, this.normalizeOptions(options))
   }
 }
 

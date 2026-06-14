@@ -13,10 +13,11 @@
     "@sports-bar/database": "*",
     "@sports-bar/logger": "*",
     "@sports-bar/sports-apis": "*",
-    "@sports-bar/streaming": "*"
+    "@sports-bar/streaming": "*",
+    "@sports-bar/utils": "*"
   },
   "devDependencies": {
-    "@types/node": "^24.5.2",
-    "typescript": "^5.9.2"
+    "@types/node": "^25.0.0",
+    "typescript": "^6.0.0"
   }
 }

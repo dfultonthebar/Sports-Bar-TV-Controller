@@ -79,23 +79,6 @@ export {
   createRealtimeMeterService
 } from './atlas-realtime-meter-service'
 
-// AI Analyzer
-export {
-  AtlasAIAnalyzer,
-  atlasAIAnalyzer,
-  type AtlasAIAnalysisResult,
-  type AtlasMonitoringData
-} from './atlas-ai-analyzer'
-
-// Training Data & Pattern Matching
-export {
-  AtlasPatternMatcher,
-  atlasPatternMatcher,
-  atlasTrainingPatterns,
-  type AtlasTrainingPattern,
-  type AtlasLearningData
-} from './atlas-ai-training-data'
-
 // Models Config
 export * from './atlas-models-config'
 
@@ -109,12 +92,6 @@ export {
   type AtlasCommand as AtlasControlCommand,
   type MeterUpdate
 } from './atlas-control-service'
-
-// Meter Service (audio level monitoring)
-export {
-  AtlasMeterService,
-  atlasMeterService
-} from './atlas-meter-service'
 
 // AI Gain Service (automatic gain adjustment)
 export {

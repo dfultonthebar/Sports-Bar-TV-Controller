@@ -1,5 +1,15 @@
 
 /** @type {import('tailwindcss').Config} */
+// Tailwind v4 JS config (consumed via @config directive in src/app/globals.css).
+// Migrating this to a CSS-first @theme block was evaluated 2026-05-26 — would
+// require 101 sportsBar* sed replacements (camelCase → kebab-case in v4's
+// auto-naming convention) with no functional benefit. v4 supports JS config
+// indefinitely; keeping it.
+//
+// Pruned 2026-05-26 (v2.54.42): removed `accent` color scale (0 usages
+// across apps/web/src) and the `accent-gradient` backgroundImage. The
+// remaining primary/sportsBar/sports-gradient/primary-gradient are all
+// used in production components.
 module.exports = {
   content: [
     './src/pages/**/*.{js,ts,jsx,tsx,mdx}',
@@ -12,7 +22,7 @@ module.exports = {
         // Sports Bar Dark Blue Theme
         primary: {
           50: '#eff6ff',
-          100: '#dbeafe', 
+          100: '#dbeafe',
           200: '#bfdbfe',
           300: '#93c5fd',
           400: '#60a5fa',
@@ -23,7 +33,7 @@ module.exports = {
           900: '#1e3a8a',
           950: '#172554'
         },
-        // Dark Blue Background Variants
+        // Dark Blue Background Variants (101 usages across apps/web/src)
         sportsBar: {
           50: '#f8fafc',
           100: '#f1f5f9',
@@ -36,19 +46,11 @@ module.exports = {
           800: '#1e293b',
           900: '#0f172a',
           950: '#020617'
-        },
-        // Accent colors for sports themes
-        accent: {
-          green: '#10b981',
-          orange: '#f59e0b',
-          red: '#ef4444',
-          purple: '#8b5cf6'
         }
       },
       backgroundImage: {
         'sports-gradient': 'linear-gradient(135deg, #1e293b 0%, #334155 50%, #475569 100%)',
-        'primary-gradient': 'linear-gradient(135deg, #1e40af 0%, #2563eb 50%, #3b82f6 100%)',
-        'accent-gradient': 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
+        'primary-gradient': 'linear-gradient(135deg, #1e40af 0%, #2563eb 50%, #3b82f6 100%)'
       }
     },
   },

@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { cookies } from 'next/headers'
 import { db, schema } from '@/db'
 import { eq } from 'drizzle-orm'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
+import { validateSession, AUTH_CONFIG } from '@/lib/auth'
 import { logger } from '@sports-bar/logger'
 
 const execFileAsync = promisify(execFile)
@@ -13,6 +15,17 @@ const execFileAsync = promisify(execFile)
 export async function GET(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.DEFAULT)
   if (!rateLimit.allowed) return rateLimit.response
+
+  // ADMIN-only: leaks locationId / name / git branch otherwise (Grok follow-up).
+  const cookieStore = await cookies()
+  const sessionCookie = cookieStore.get(AUTH_CONFIG.COOKIE_NAME)
+  const session = sessionCookie ? await validateSession(sessionCookie.value) : null
+  if (!session || session.role !== 'ADMIN') {
+    return NextResponse.json(
+      { success: false, error: 'Unauthorized — ADMIN session required' },
+      { status: 401 }
+    )
+  }
 
   try {
     // Get current location

@@ -7,6 +7,7 @@ import Link from 'next/link'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import ApiKeysManager from '@/components/ApiKeysManager'
 import DeviceAIAssistant from '@/components/DeviceAIAssistant'
+import { makeSessionId } from '@/lib/uuid-safe'
 
 import { logger } from '@sports-bar/logger'
 
@@ -70,9 +71,10 @@ function getOrCreateSessionId(): string {
   const KEY = 'sportsBar.aiHub.sessionId'
   let id = window.localStorage.getItem(KEY)
   if (!id) {
-    id = (typeof crypto !== 'undefined' && crypto.randomUUID)
-      ? crypto.randomUUID()
-      : `session-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+    // makeSessionId handles insecure-context (HTTP) gracefully — direct
+    // crypto.randomUUID() throws on http://<lan-ip>:3002 even when the
+    // property exists. See apps/web/src/lib/uuid-safe.ts.
+    id = makeSessionId()
     window.localStorage.setItem(KEY, id)
   }
   return id
@@ -311,9 +313,7 @@ export default function AIHubPage() {
 
   // v2.49.0: clear conversation + start a fresh session
   const handleNewSession = () => {
-    const newId = (typeof crypto !== 'undefined' && crypto.randomUUID)
-      ? crypto.randomUUID()
-      : `session-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+    const newId = makeSessionId()
     window.localStorage.setItem('sportsBar.aiHub.sessionId', newId)
     setSessionId(newId)
     setChatHistory([])
@@ -611,28 +611,56 @@ export default function AIHubPage() {
                 >
                   {chatHistory.length === 0 && !isChatting ? (
                     <div className="text-center text-slate-400 py-6">
-                      <p className="font-medium mb-1">Ask me anything about the system</p>
+                      <p className="font-medium mb-1">Ask me anything</p>
                       <p className="text-xs mb-4 text-slate-500">
-                        I&apos;m grounded in every doc, source file, vendor manual, and operator memory we have. Paste a log or error — I&apos;ll quote the relevant lines.
+                        Whether you&apos;re behind the bar (&quot;the mic isn&apos;t working&quot;) or in the office
+                        (&quot;rebuild the RAG vector store&quot;), I&apos;ll match the level. Paste a log or error and
+                        I&apos;ll quote the relevant lines.
                       </p>
-                      {/* v2.49.3: starter prompts — one-tap common ops/setup questions.
-                          Operationally-focused per the "feed the AI ops + setup" pivot 2026-05-18. */}
+                      {/* v2.54.48 (Grok audit G) — bartender onboarding pointer */}
+                      <p className="text-xs text-slate-500 mb-4 max-w-2xl mx-auto">
+                        <strong className="text-slate-300">New bartender?</strong> Tap any &quot;Behind the bar&quot;
+                        question below to get started, or describe what you&apos;re seeing in plain English. I&apos;ll
+                        walk you through it step-by-step. Full plain-English help docs live in{' '}
+                        <code className="text-slate-400">docs/bartender-help/</code> (MIC_NOT_WORKING,
+                        WRONG_CHANNEL_ON_TV, MUSIC_OR_AUDIO_PROBLEM, RF_INTERFERENCE_FOR_BARTENDERS).
+                      </p>
+                      {/* v2.54.47 (Grok audit) — split into bartender + admin starter sets. Matches the
+                          register-detection logic in chat/route.ts:404-445 and the new bartender-mode
+                          adapter in @sports-bar/rag-server's llm-client.ts. */}
                       <div className="mt-2">
-                        <p className="text-xs text-slate-400 mb-2 font-medium">Quick-start questions:</p>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-w-2xl mx-auto">
+                        <p className="text-xs text-slate-400 mb-2 font-medium">Behind the bar:</p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-w-2xl mx-auto mb-4">
                           {[
-                            'How do I restart a stuck Atlas processor?',
-                            'How do I learn a new IR code on a cable box?',
-                            'A Fire TV is offline — what do I check?',
-                            'How do I bootstrap a new location?',
-                            'How do I rebuild the RAG vector store?',
-                            'What does the Atlas drop watcher detect?',
+                            "The wireless mic isn't working",
+                            'TV 3 has the wrong game on',
+                            'The music stopped in the patio',
+                            'How do I change the channel on TV 5?',
                           ].map((q) => (
                             <button
                               key={q}
                               onClick={() => {
                                 setChatMessage(q)
-                                // small delay to let state propagate, then send
+                                setTimeout(() => handleSendMessage(), 50)
+                              }}
+                              className="text-left text-xs px-3 py-2 bg-slate-800/60 hover:bg-slate-700 rounded border border-slate-700 text-slate-300 hover:text-slate-100 transition-colors"
+                            >
+                              {q}
+                            </button>
+                          ))}
+                        </div>
+                        <p className="text-xs text-slate-400 mb-2 font-medium">Admin / setup:</p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-w-2xl mx-auto">
+                          {[
+                            'How do I restart a stuck Atlas processor?',
+                            'How do I learn a new IR code on a cable box?',
+                            'How do I bootstrap a new location?',
+                            'How do I rebuild the RAG vector store?',
+                          ].map((q) => (
+                            <button
+                              key={q}
+                              onClick={() => {
+                                setChatMessage(q)
                                 setTimeout(() => handleSendMessage(), 50)
                               }}
                               className="text-left text-xs px-3 py-2 bg-slate-800/60 hover:bg-slate-700 rounded border border-slate-700 text-slate-300 hover:text-slate-100 transition-colors"

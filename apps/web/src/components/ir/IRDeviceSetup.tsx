@@ -2,7 +2,6 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/cards'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -441,16 +440,16 @@ export function IRDeviceSetup() {
 
       {/* Add/Edit Device Form */}
       {showAddDevice && (
-        <Card className="border-blue-500/20 bg-slate-800/50">
-          <CardHeader>
-            <CardTitle className="text-slate-100">
+        <div className="rounded-lg border border-blue-500/20 bg-slate-800/50 p-6">
+          <div className="mb-4">
+            <h3 className="text-lg font-semibold text-slate-100">
               {editingDevice ? 'Edit IR Device' : 'Add IR Device'}
-            </CardTitle>
-            <CardDescription>
+            </h3>
+            <p className="text-sm text-slate-400 mt-1">
               {editingDevice ? 'Update device configuration' : 'Configure a new device to be controlled via IR'}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
+            </p>
+          </div>
+          <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="name" className="text-slate-300">Device Name *</Label>
@@ -609,37 +608,37 @@ export function IRDeviceSetup() {
                 Cancel
               </Button>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       )}
 
       {/* Devices List */}
       {devices.length === 0 ? (
-        <Card className="border-slate-700 bg-slate-800/50">
-          <CardContent className="flex flex-col items-center justify-center py-12">
+        <div className="rounded-lg border border-slate-700 bg-slate-800/50 p-6">
+          <div className="flex flex-col items-center justify-center py-12">
             <Radio className="w-16 h-16 text-slate-600 mb-4" />
             <p className="text-slate-400 text-center">
               No IR devices configured yet.
               <br />
               Click "Add IR Device" to get started.
             </p>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       ) : (
         <div className="grid gap-6">
           {devices.map((device) => (
-            <Card key={device.id} className="border-slate-700 bg-slate-800/50">
-              <CardHeader>
+            <div key={device.id} className="rounded-lg border border-slate-700 bg-slate-800/50 p-6">
+              <div className="mb-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div className="p-2 rounded-lg bg-purple-500/20 text-purple-400">
                       <Radio className="w-5 h-5" />
                     </div>
                     <div>
-                      <CardTitle className="text-slate-100">{device.name}</CardTitle>
-                      <CardDescription>
+                      <h3 className="text-lg font-semibold text-slate-100">{device.name}</h3>
+                      <p className="text-sm text-slate-400 mt-1">
                         {device.brand} {device.model && `• ${device.model}`} • {device.deviceType}
-                      </CardDescription>
+                      </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -695,8 +694,8 @@ export function IRDeviceSetup() {
                     </Button>
                   </div>
                 </div>
-              </CardHeader>
-              <CardContent>
+              </div>
+              <div>
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   {device.globalCacheDeviceId && (
                     <div>
@@ -751,8 +750,8 @@ export function IRDeviceSetup() {
                     </div>
                   </div>
                 )}
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           ))}
         </div>
       )}
@@ -760,14 +759,14 @@ export function IRDeviceSetup() {
       {/* Clone Commands Modal */}
       {showCloneModal && cloneSourceDevice && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <Card className="w-full max-w-2xl border-slate-700 bg-slate-800">
-            <CardHeader>
-              <CardTitle className="text-slate-100">Clone IR Commands</CardTitle>
-              <CardDescription>
+          <div className="w-full max-w-2xl rounded-lg border border-slate-700 bg-slate-800 p-6">
+            <div className="mb-4">
+              <h3 className="text-lg font-semibold text-slate-100">Clone IR Commands</h3>
+              <p className="text-sm text-slate-400 mt-1">
                 Copy all {cloneSourceDevice.commands.length} commands from "{cloneSourceDevice.name}" to other devices
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
+              </p>
+            </div>
+            <div className="space-y-4">
               <div>
                 <Label className="text-slate-300 mb-3 block">
                   Select target devices to clone commands to:
@@ -844,8 +843,8 @@ export function IRDeviceSetup() {
                   )}
                 </Button>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </div>
       )}
     </div>

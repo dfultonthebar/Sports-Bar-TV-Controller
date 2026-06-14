@@ -40,7 +40,7 @@ export const booleanSchema = z.boolean().or(z.enum(['true', 'false']).transform(
 // ============================================================================
 
 /** IP Address validation (IPv4 and IPv6) */
-export const ipAddressSchema = z.string().ip({ message: 'Invalid IP address' })
+export const ipAddressSchema = z.union([z.ipv4(), z.ipv6()], { error: () => 'Invalid IP address' })
 
 /** IPv4 Address validation (strict) */
 export const ipv4AddressSchema = z.string().regex(
@@ -53,7 +53,7 @@ export const urlSchema = z.string().url({ message: 'Invalid URL format' })
 
 /** Protocol validation (TCP/UDP) */
 export const protocolSchema = z.enum(['TCP', 'UDP'], {
-  errorMap: () => ({ message: 'Protocol must be TCP or UDP' })
+  error: () => 'Protocol must be TCP or UDP'
 })
 
 // ============================================================================
@@ -97,7 +97,7 @@ export const deviceTypeSchema = z.enum([
   'wolfpack',
   'atlas'
 ], {
-  errorMap: () => ({ message: 'Invalid device type' })
+  error: () => 'Invalid device type'
 })
 
 /** DirecTV receiver type validation */
@@ -107,7 +107,7 @@ export const directvReceiverTypeSchema = z.enum([
   'HD Receiver',
   'SD Receiver'
 ], {
-  errorMap: () => ({ message: 'Invalid DirecTV receiver type' })
+  error: () => 'Invalid DirecTV receiver type'
 })
 
 /** Fire TV device status validation */
@@ -117,7 +117,7 @@ export const fireTVStatusSchema = z.enum([
   'unknown',
   'connecting'
 ], {
-  errorMap: () => ({ message: 'Invalid Fire TV status' })
+  error: () => 'Invalid Fire TV status'
 })
 
 // ============================================================================

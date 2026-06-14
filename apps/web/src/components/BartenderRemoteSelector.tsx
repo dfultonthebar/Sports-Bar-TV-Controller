@@ -464,7 +464,7 @@ export default function BartenderRemoteSelector() {
       {/* Header with Glassmorphism */}
       <div className="relative text-center mb-8">
         <div className="inline-block backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl px-8 py-4 shadow-2xl">
-          <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent mb-2 flex items-center justify-center gap-3">
+          <h1 className="text-3xl md:text-4xl font-bold text-white mb-2 flex items-center justify-center gap-3">
             <Gamepad2 className="w-8 h-8 text-blue-400 drop-shadow-lg" />
             Remote Control Center
           </h1>

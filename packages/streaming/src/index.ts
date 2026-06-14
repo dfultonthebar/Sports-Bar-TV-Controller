@@ -43,13 +43,6 @@ export {
   type MLBSchedule
 } from './api-integrations/mlb-api'
 
-// NFHS API
-export {
-  nfhsApi,
-  isNFHSApiAvailable,
-  type NFHSEvent
-} from './api-integrations/nfhs-api'
-
 // Unified Streaming API
 export {
   UnifiedStreamingAPI,

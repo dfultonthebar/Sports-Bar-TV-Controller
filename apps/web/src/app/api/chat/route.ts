@@ -5,8 +5,12 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
+import { requireAuth } from '@/lib/auth'
 import { documentSearch } from '@/lib/enhanced-document-search'
 import { retrieveContext } from '@/lib/rag-server/query-engine'
+import { findBestQAMatch, recordQAHit, looksLikeBartenderQuery, QA_CONFIDENT_THRESHOLD } from '@/lib/qa-retrieval'
 import { operationLogger } from '@/lib/operation-logger'
 import { findUnique, update, upsert } from '@/lib/db-helpers'
 import { schema } from '@/db'
@@ -127,30 +131,82 @@ async function searchDocsViaRag(
   query: string,
   topK: number,
 ): Promise<Array<{ id: string; originalName: string; content: string; relevanceScore: number; matchedTerms: string[] }>> {
+  // v2.54.50 (Grok audit #1): QAEntry pre-pass for bartender-register
+  // queries. The 36 curated bartender Q&A pairs in QAEntry are the
+  // canonical answers for common bartender questions, written in the
+  // exact voice docs/bartender-help/*.md uses. Pure cosine on doc
+  // chunks doesn't surface them. Confident match -> QA is the sole
+  // context (LLM still narrates but constrained to the curated text).
+  // Moderate match -> QA prepended as highest-ranked source.
+  let qaResult: Array<{ id: string; originalName: string; content: string; relevanceScore: number; matchedTerms: string[] }> = []
+  if (looksLikeBartenderQuery(query)) {
+    try {
+      const qa = await findBestQAMatch(query)
+      if (qa) {
+        logger.info(`[QA-HIT] match=${qa.matchType} score=${qa.score.toFixed(3)} q="${query.slice(0, 60)}" -> "${qa.question.slice(0, 60)}"`)
+        recordQAHit(qa.id)
+        qaResult = [
+          {
+            id: `qa-${qa.id}`,
+            originalName: `${qa.sourceFile} (curated Q&A)`,
+            content: `**Q: ${qa.question}**\n\n${qa.answer}`,
+            relevanceScore: qa.matchType === 'confident' ? 1.0 : 0.9,
+            matchedTerms: query.toLowerCase().split(/\s+/).filter((t) => t.length > 3).slice(0, 5),
+          },
+        ]
+        if (qa.score >= QA_CONFIDENT_THRESHOLD) {
+          return qaResult
+        }
+      }
+    } catch (err) {
+      logger.warn(`[QA-RETRIEVAL] pre-pass failed (continuing to RAG): ${(err as Error)?.message ?? err}`)
+    }
+  }
+
   try {
-    const result = await retrieveContext(query, topK)
+    const remainingTopK = qaResult.length > 0 ? Math.max(1, topK - 1) : topK
+    const result = await retrieveContext(query, remainingTopK)
     if (!result.chunks || result.chunks.length === 0) {
-      return documentSearch.searchDocuments(query, topK)
+      return qaResult.length > 0 ? qaResult : documentSearch.searchDocuments(query, topK)
     }
     const terms = query
       .toLowerCase()
       .split(/\s+/)
       .filter((t) => t.length > 3)
       .slice(0, 5)
-    return result.chunks.map((c, i) => ({
+    const ragResults = result.chunks.map((c, i) => ({
       id: `rag-${i}`,
       originalName: c.source ?? `chunk_${i}`,
       content: c.content,
       relevanceScore: c.score ?? 0,
       matchedTerms: terms,
     }))
+    return [...qaResult, ...ragResults]
   } catch (err) {
     logger.warn(`[AI-HUB-CHAT] RAG retrieval failed, falling back: ${(err as Error)?.message ?? err}`)
+    if (qaResult.length > 0) return qaResult
     return documentSearch.searchDocuments(query, topK)
   }
 }
 
 export async function POST(request: NextRequest) {
+  // v2.54.45 added `requireAuth(STAFF)` here as a Grok-audit DoS/prompt-injection
+  // hardening. Reverted in v2.54.74: the bartender iPad never logs in (the rest
+  // of the bartender remote — /remote, /api/audio-processor, /api/matrix,
+  // /api/atlas, /api/shure-rf, /api/scheduling, etc. — are all unauth by
+  // design and gated network-side by the port-3002 nginx allow-list). The
+  // STAFF gate broke "Ask AI" on the bartender remote: every request 401'd
+  // and the UI surfaced "log in" to bartenders, which is never supposed to
+  // happen on the iPad. Defense-in-depth still present:
+  //   - port-3002 allow-list restricts the route to bartender-LAN origin
+  //   - RateLimitConfigs.AI throttles per-IP to bound Ollama burn
+  //   - validateRequestBody(ValidationSchemas.aiQuery) bounds input shape/size
+  //   - the underlying Ollama model is sandboxed local inference (no exfil path)
+  // If we ever need to re-add auth, do it conditionally on a session existing
+  // (allow anon + identify when present), not as a hard gate.
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.AI)
+  if (!rateLimit.allowed) return rateLimit.response
+
   // Input validation
   const bodyValidation = await validateRequestBody(request, ValidationSchemas.aiQuery)
   if (isValidationError(bodyValidation)) return bodyValidation.error
@@ -807,6 +863,24 @@ async function handleNonStreamingChat(
   sessionId: string | undefined,
   enableTools: boolean
 ): Promise<NextResponse> {
+  // v2.54.53 (Grok #3): pre-resolve a curated-QA fallback before any
+  // network call. If Ollama is down (5xx/timeout/abort) and the
+  // bartender's question matches a confident curated QA, we return
+  // the curated answer directly with a "(AI offline — curated answer)"
+  // note instead of dumping "Server returned 500" on a bartender who
+  // just wants to know how to swap mic batteries. Cache TTL is 5 min
+  // so this second call (after searchDocsViaRag's pre-pass) is free.
+  let qaFallback: { answer: string; sourceFile: string; question: string } | null = null
+  if (looksLikeBartenderQuery(message)) {
+    try {
+      const qa = await findBestQAMatch(message)
+      if (qa && qa.matchType === 'confident') {
+        qaFallback = { answer: qa.answer, sourceFile: qa.sourceFile, question: qa.question }
+      }
+    } catch {
+      // QA pre-resolve is best-effort; failing it must not block chat
+    }
+  }
   // v2.46.3: topK 5→8 — see fact-checker re-grill 2026-05-18
   const relevantDocs = await searchDocsViaRag(message, 8)
   
@@ -871,24 +945,42 @@ NONE of the snippets address the question. Do not refuse on uncertainty.`,
   const nsOllamaTools = enableTools && availableTools.length > 0
     ? convertToOllamaToolsFormat(availableTools)
     : undefined
-  const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: nsModel,
-      messages: [systemMessage, ...messages],
-      stream: false,
-      keep_alive: OLLAMA_KEEP_ALIVE, // v2.50.0 #1: stay resident → warm prefix cache
-      ...(nsOllamaTools ? { tools: nsOllamaTools } : {}), // v2.50.3
-      options: {
-        temperature: 0.3, // v2.46.3: match streaming-path fidelity setting
-        top_p: 0.9,
-      },
-    }),
-  })
-
-  if (!response.ok) {
-    throw new Error(`Ollama API error: ${response.status}`)
+  // v2.54.53 (Grok #3): wrap the Ollama call so a 5xx/timeout doesn't
+  // dump a raw error on a bartender. If we pre-resolved a confident
+  // QA fallback at top-of-function, short-circuit to that. Otherwise
+  // re-throw so the existing catch + 500 response fires.
+  let response: Response
+  try {
+    response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: nsModel,
+        messages: [systemMessage, ...messages],
+        stream: false,
+        keep_alive: OLLAMA_KEEP_ALIVE, // v2.50.0 #1: stay resident → warm prefix cache
+        ...(nsOllamaTools ? { tools: nsOllamaTools } : {}), // v2.50.3
+        options: {
+          temperature: 0.3, // v2.46.3: match streaming-path fidelity setting
+          top_p: 0.9,
+        },
+      }),
+    })
+    if (!response.ok) {
+      throw new Error(`Ollama API error: ${response.status}`)
+    }
+  } catch (err) {
+    if (qaFallback) {
+      logger.warn(`[CHAT API] Ollama unreachable, serving curated QA fallback for "${message.slice(0, 60)}": ${(err as Error)?.message ?? err}`)
+      const fallbackBody = `${qaFallback.answer}\n\n---\n*(The AI is offline right now — this is a curated answer from ${qaFallback.sourceFile}. If you need more detail, text the manager.)*`
+      return NextResponse.json({
+        response: fallbackBody,
+        sessionId: sessionId || 'new',
+        sources: [{ name: qaFallback.sourceFile, score: 1.0, excerpt: qaFallback.question }],
+        model: 'qa-fallback-curated',
+      })
+    }
+    throw err
   }
 
   const data = await response.json()

@@ -4,7 +4,7 @@
  * API Documentation: https://irdb.globalcache.com:8081/
  */
 
-import { logDatabaseOperation } from '@sports-bar/data'
+import { logDatabaseOperation } from '@sports-bar/database'
 import { logger } from '@sports-bar/logger'
 
 const IR_DATABASE_BASE_URL = 'https://irdb.globalcache.com:8081'

@@ -166,6 +166,32 @@ log() {
   echo "[$ts][AUTO-UPDATE] $*" | tee -a "$LOG_FILE"
 }
 
+# v2.55.33 — Last-attempt sidecar for verify-install Layer 19 freshness check.
+# On NOOP runs (e.g. origin/main already merged) no new log file is created,
+# so log-mtime makes the timer look stuck even when systemctl shows it fired.
+# Always-touch this sidecar at every exit path (noop/success/fail) so the
+# layer's freshness signal is "did the timer run", not "did it produce a log".
+# Atomic write via mv to avoid partial reads on race with verify-install.
+update_last_attempt_sidecar() {
+  local outcome="${1:-unknown}"
+  local sidecar="$DATA_DIR/.auto-update-last-attempt.json"
+  local tmp
+  local run_id
+  run_id=$(basename "${LOG_FILE:-auto-update-${RUN_TS:-unknown}.log}" .log)
+  [ -d "$DATA_DIR" ] || return 0
+  tmp=$(mktemp "$DATA_DIR/.auto-update-last-attempt.json.XXXXXX" 2>/dev/null) || return 0
+  {
+    printf '{\n'
+    printf '  "attempted_at": %d,\n' "$(date +%s)"
+    printf '  "attempted_at_iso": "%s",\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    printf '  "outcome": "%s",\n' "$outcome"
+    printf '  "runId": "%s",\n' "$run_id"
+    printf '  "triggeredBy": "%s",\n' "${TRIGGERED_BY:-unknown}"
+    printf '  "branch": "%s"\n' "${BRANCH:-unknown}"
+    printf '}\n'
+  } > "$tmp" 2>/dev/null && mv -f "$tmp" "$sidecar" 2>/dev/null || rm -f "$tmp" 2>/dev/null
+}
+
 step() {
   CURRENT_STEP="$1"
   log "=== STEP: $CURRENT_STEP ==="
@@ -192,6 +218,7 @@ fail() {
       "http://localhost:3001/api/auto-update/failures" -d "$payload" >/dev/null 2>&1 || true
   fi
 
+  update_last_attempt_sidecar "fail"
   exit "${2:-4}"
 }
 
@@ -269,9 +296,24 @@ acquire_lock_or_sweep_stale() {
     # covered the no-PID-file variant.
     #
     # Liveness check via pgrep (not PID file): if no auto-update.sh process
-    # is running anywhere on the system, the lock is truly orphan → sweep.
-    local live_count
-    live_count=$(pgrep -af "[a]uto-update\.sh" 2>/dev/null | grep -v "$$" | wc -l)
+    # OTHER THAN our own invocation is running, the lock is truly orphan → sweep.
+    #
+    # v2.55.14 fix: a single timer-fired run shows up as MULTIPLE processes
+    # (the systemd-spawned shell + the script + subshells). The old
+    # `grep -v "$$"` only excluded the current PID, leaving sibling/parent
+    # processes of THIS SAME run counted → live_count=1 → false "concurrent
+    # run" → exit 75 every night → permanent stall. (All 5 remote boxes hit
+    # this, frozen 154 commits behind, 2026-05-28.) Exclude the entire current
+    # process GROUP so only a genuinely separate invocation counts.
+    local live_count mypgid ppg p
+    mypgid=$(ps -o pgid= -p $$ 2>/dev/null | tr -d ' ')
+    live_count=0
+    for p in $(pgrep -f "[a]uto-update\.sh" 2>/dev/null); do
+      [ "$p" = "$$" ] && continue
+      ppg=$(ps -o pgid= -p "$p" 2>/dev/null | tr -d ' ')
+      [ -n "$mypgid" ] && [ "$ppg" = "$mypgid" ] && continue   # same invocation
+      live_count=$((live_count + 1))
+    done
     if [ "$live_count" -eq 0 ]; then
       log "Lock held but no PID file AND no auto-update.sh process running — orphan lock, sweeping."
       exec 200>&-
@@ -757,6 +799,7 @@ if [ "$TRIGGERED_BY" = "cron" ]; then
   ENABLED=$(sql "SELECT enabled FROM auto_update_state WHERE id=1;" 2>/dev/null || echo "0")
   if [ "$ENABLED" != "1" ]; then
     log "auto_update_state.enabled=$ENABLED (cron invocation); exiting early"
+    update_last_attempt_sidecar "noop"
     exit 0
   fi
 fi
@@ -831,6 +874,7 @@ if git merge-base --is-ancestor "$TARGET_SHA" HEAD 2>/dev/null; then
   history_update_result "pass" "no update available"
   state_update "pass" "no update available"
   write_summary_json "pass" "no update available"
+  update_last_attempt_sidecar "noop"
   exit 0
 fi
 
@@ -858,6 +902,7 @@ if [ -f "$CANARY_CFG" ]; then
       history_update_result "pass" "skipped — canary $CANARY_BRANCH has not blessed any commit"
       state_update "pass" "skipped — waiting on canary"
       write_summary_json "pass" "skipped — waiting on canary"
+      update_last_attempt_sidecar "noop"
       exit 0
     fi
     BLESSED_SHA=$(printf '%s' "$BLESS_JSON" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{console.log(JSON.parse(s).blessedCommitSha||'')}catch(e){console.log('')}})" 2>/dev/null || echo "")
@@ -868,6 +913,7 @@ if [ -f "$CANARY_CFG" ]; then
       history_update_result "pass" "skipped — canary not yet on target commit"
       state_update "pass" "skipped — waiting on canary catch-up"
       write_summary_json "pass" "skipped — canary not yet on target commit"
+      update_last_attempt_sidecar "noop"
       exit 0
     fi
     NOW_UNIX=$(date +%s)
@@ -878,6 +924,7 @@ if [ -f "$CANARY_CFG" ]; then
       history_update_result "pass" "skipped — canary soak in progress (${AGE_MIN}/${CANARY_MIN_AGE_MIN}min)"
       state_update "pass" "skipped — canary soaking"
       write_summary_json "pass" "skipped — canary soaking ${AGE_MIN}/${CANARY_MIN_AGE_MIN}min"
+      update_last_attempt_sidecar "noop"
       exit 0
     fi
     log "Canary gate: passed — $CANARY_BRANCH blessed $TARGET_SHA ${AGE_MIN}min ago (≥${CANARY_MIN_AGE_MIN}min required)"
@@ -955,6 +1002,7 @@ if [ "$DRY_RUN" -eq 1 ]; then
   history_update_result "pass" "dry-run stopped after checkpoint A"
   state_update "pass" "dry-run"
   write_summary_json "pass" "dry-run — no changes made"
+  update_last_attempt_sidecar "noop"
   exit 0
 fi
 
@@ -1077,6 +1125,9 @@ SHARED_SOFTWARE_PREFIXES=(
   "apps/web/src/db/"
   "apps/web/src/types/"
   "apps/web/src/utils/"
+  "apps/web/src/services/"
+  "apps/web/src/config/"
+  "apps/web/src/middleware/"
   "apps/web/public/"
   "packages/"
   "docs/"
@@ -1290,132 +1341,52 @@ fi
 rm -f "$NPM_CI_LOG"
 
 # ===========================================================================
-# PHASE: SCHEMA PUSH (drizzle-kit)
+# PHASE: SCHEMA MIGRATE (drizzle-kit) — v2.54.1+
 # ===========================================================================
-# Apply any new tables/columns from packages/database/src/schema.ts to the
-# live production.db before the build runs. Without this, releases that add
-# a new table (like v2.8.0's ChannelTuneLog) build successfully but their
-# new endpoints 500 at runtime because the table doesn't exist.
+# Apply pending schema changes by running drizzle-kit migrate against
+# committed migration files in drizzle/. Replaces the v2.8-v2.53 `push`
+# flow which had a known silent-abort failure mode (CLAUDE.md Gotcha #6):
+# push aborts on a pre-existing index, but exits 0, and any CREATE TABLE
+# scheduled after the failing point is silently skipped. v2.51 shipped
+# this way to 5 fleet boxes — NeighborhoodEvent never created, preemptive-
+# strike scheduler threw "no such table" every 10 min for ~24 hours
+# before being caught.
 #
-# drizzle-kit push will sometimes fail on *pre-existing* indexes/tables that
-# were created out of band (manual sqlite3, earlier hotfix, etc.) — drizzle
-# tracks schema by literal CREATE statements, not by structural diff, so any
-# untracked-but-already-present object trips it. That class of error is
-# benign: the schema is already in the desired state. We detect it, log a
-# warning, and continue. Any OTHER error fails the update because it likely
-# indicates a real schema corruption or version mismatch.
-step "schema_push"
-log "npx drizzle-kit push (apply pending schema changes)"
-SCHEMA_PUSH_LOG="$LOG_DIR/drizzle-push-$(date +%s).log"
-# drizzle-kit push prompts for confirmation when it detects a data-loss
-# statement (e.g. dropping a table that still has rows). In the
-# auto-update flow the schema change was already approved at Checkpoint A
-# (it's in the merge diff Claude reviewed), so we auto-accept.
+# Migrate has none of those failure modes: pending migrations are tracked
+# in __drizzle_migrations, missing migrations are applied one-at-a-time,
+# any SQL error fails LOUD with a non-zero exit. Schema state is
+# deterministic from the migration files in git, not from in-place diff.
 #
-# Piping `yes` into stdin does NOT work: drizzle-kit uses the `prompts`
-# package with a TTY-aware reader that bails with "Interactive prompts
-# require a TTY terminal" the moment it detects stdin is not a tty —
-# BEFORE it ever tries to read a character. Same class of problem as
-# the Claude CLI TTY bug (v2.22.4). Fix the same way: wrap in
-# `script -qfc` to provide a pty, and feed the "y\n" answer via `yes`
-# inside the script so it's ready when the prompt reads.
-if script -qfc "yes 2>/dev/null | NODE_ENV=development npx drizzle-kit push" /dev/null 2>&1 | tee "$SCHEMA_PUSH_LOG" | tee -a "$LOG_FILE"; then
-  log "drizzle-kit push completed cleanly"
-else
-  # v2.50.12: detect TWO benign cases and fall through safely; only hard-fail
-  # on genuinely-unrecognized errors.
-  #
-  # Case A — pre-existing objects: drizzle-kit tracks schema by literal
-  # CREATE statements; a hotfix-created index/table trips it but the DB is
-  # already in the desired state.
-  #
-  # Case B (NEW) — data-loss prompt in non-TTY mode: drizzle-kit errors out
-  # with "Interactive prompts require a TTY terminal" when its diff would
-  # drop a table/column that still has rows. Greenville hit this on
-  # 2026-05-19 with atlas_priority_events (6 rows) + shure_rf_events (2 rows)
-  # + scheduling_preferences (1 row) — all watcher-managed audit tables
-  # that don't belong to the Drizzle schema. The yes|script pipe trick
-  # doesn't help because drizzle-kit detects isTTY=false on its stdin
-  # BEFORE reading. Root fix is declaring those tables in schema.ts
-  # (v2.50.12 did this for the 4 known watcher tables). Defensive fallback
-  # here: if the only error IS the data-loss prompt AND the to-be-dropped
-  # tables match a known-safe allowlist, treat as benign and continue.
-  if grep -qE "(index|table|column) [\`\"]?[A-Za-z_][A-Za-z0-9_]*[\`\"]? already exists|already exists" "$SCHEMA_PUSH_LOG"; then
-    log "WARNING: drizzle-kit push reported pre-existing objects (benign — see $SCHEMA_PUSH_LOG)"
-    log "WARNING: this means the DB already had untracked tables/indexes from a prior manual hotfix."
-    log "WARNING: Running ensure-schema.sh fallback to create any genuinely missing tables/columns..."
-    if bash "$REPO_ROOT/scripts/ensure-schema.sh" "$DB_PATH" 2>&1 | tee -a "$LOG_FILE"; then
-      log "ensure-schema.sh fallback completed successfully"
-    else
-      log "WARNING: ensure-schema.sh had errors — some new tables/columns may be missing"
-    fi
-  elif grep -qE "Interactive prompts require a TTY terminal" "$SCHEMA_PUSH_LOG"; then
-    # Case B — drizzle-kit hit some kind of interactive prompt in non-TTY
-    # mode and bailed. There are TWO known sub-cases:
-    #   B1. "data-loss" — would drop tables/columns with rows (drizzle prints
-    #       "delete X table with N items"). Allowlist of safe-to-flag tables
-    #       (mostly watcher/audit ones declared in schema.ts as of v2.50.12).
-    #   B2. "column conflict" — drizzle's diff is ambiguous about whether
-    #       new columns are renames of removed columns. Prints
-    #       "promptColumnsConflicts" in stack. v2.51.4 fix: when we hit this
-    #       prompt AND ensure-schema.sh succeeds, treat as benign — the live
-    #       DB state matches schema.ts (we applied via ALTER TABLE), drizzle
-    #       just couldn't auto-confirm. Trust ensure-schema.sh's outcome.
-    # v2.52.3 fix (code-reviewer audit Finding #4): regex was `[a-z_]+`
-    # which silently EXCLUDED PascalCase tables like ChatSession + ChatMessage
-    # from UNSAFE_TABLES — drizzle-kit IS dropping them per its log but our
-    # parser pretends it didn't see them, so the schema-drop safety check
-    # was a no-op for half the tables in our schema. Expand to [A-Za-z_].
-    DROPPED_TABLES=$(grep -E "delete .* table with [0-9]+ items" "$SCHEMA_PUSH_LOG" | sed -E "s/.*delete ([A-Za-z_]+) table.*/\1/" | sort -u | tr '\n' ' ')
-    IS_COLUMN_CONFLICT=$(grep -cE "promptColumnsConflicts|columnsResolver" "$SCHEMA_PUSH_LOG" 2>/dev/null || echo 0)
+# Step 1: bootstrap-drizzle-migrations.sh marks the current committed
+# migrations as "already applied" if they aren't already. Idempotent —
+# no-op after first run on a given DB. Bridges existing fleet boxes from
+# the push workflow without touching their schemas.
+#
+# Step 2: drizzle-kit migrate runs any pending migrations. On a freshly-
+# bootstrapped box this is a no-op. On a box that's been on migrate for
+# a while, this applies whatever was generated since the last update.
+#
+# Legacy `ensure-schema.sh` and the push fallback handling have been
+# removed — the migrate flow eliminates the failure modes they existed
+# to work around. If they're needed again, git history has them.
+step "schema_migrate"
+log "Bootstrap drizzle migrations + run migrate"
+SCHEMA_MIGRATE_LOG="$LOG_DIR/drizzle-migrate-$(date +%s).log"
 
-    if [ -n "$DROPPED_TABLES" ]; then
-      # Sub-case B1: data-loss table drop
-      log "WARNING: drizzle-kit hit data-loss prompt in non-TTY mode for tables: $DROPPED_TABLES"
-      SAFE_TABLES_REGEX="^(atlas_drop_events|atlas_priority_events|shure_rf_events|scheduling_preferences|sdr_spectrum|sdr_carriers|sdr_state|chat_messages|ChatSession|ChatMessage|chat_feedback|chat_qa_training|ai_indexing_log)$"
-      UNSAFE_TABLES=""
-      for T in $DROPPED_TABLES; do
-        if ! [[ "$T" =~ $SAFE_TABLES_REGEX ]]; then
-          UNSAFE_TABLES="$UNSAFE_TABLES $T"
-        fi
-      done
-      if [ -z "$UNSAFE_TABLES" ]; then
-        log "  All flagged tables are on the known-safe watcher/audit allowlist — continuing."
-        log "  (TO ROOT-FIX: add the table to packages/database/src/schema.ts so drizzle stops flagging it.)"
-        if bash "$REPO_ROOT/scripts/ensure-schema.sh" "$DB_PATH" 2>&1 | tee -a "$LOG_FILE"; then
-          log "ensure-schema.sh fallback completed successfully"
-        else
-          log "WARNING: ensure-schema.sh had errors — some new tables/columns may be missing"
-        fi
-      else
-        fail "drizzle-kit data-loss prompt for non-allowlisted tables:$UNSAFE_TABLES — manual review required. Either declare the table in schema.ts (preferred) or add to the allowlist in scripts/auto-update.sh schema_push step. See $SCHEMA_PUSH_LOG for full output." 4
-      fi
-    elif [ "$IS_COLUMN_CONFLICT" != "0" ]; then
-      # Sub-case B2: column-conflict prompt (v2.51.4+). drizzle can't tell
-      # if a new column is a rename of a removed one. Fall through to
-      # ensure-schema.sh — if it succeeds, the live DB is in sync with
-      # schema.ts and drizzle's diff was wrong.
-      log "WARNING: drizzle-kit hit column-conflict prompt in non-TTY mode (rename detection ambiguity)"
-      log "  Falling through to ensure-schema.sh — if it succeeds, live DB matches schema.ts"
-      if bash "$REPO_ROOT/scripts/ensure-schema.sh" "$DB_PATH" 2>&1 | tee -a "$LOG_FILE"; then
-        log "ensure-schema.sh fallback completed successfully — column changes safely applied"
-      else
-        fail "drizzle-kit column-conflict + ensure-schema.sh also failed — manual review required. See $SCHEMA_PUSH_LOG." 4
-      fi
-    else
-      log "WARNING: drizzle-kit hit unrecognized TTY prompt in non-TTY mode"
-      log "  Falling through to ensure-schema.sh as last-resort"
-      if bash "$REPO_ROOT/scripts/ensure-schema.sh" "$DB_PATH" 2>&1 | tee -a "$LOG_FILE"; then
-        log "ensure-schema.sh fallback completed successfully"
-      else
-        fail "drizzle-kit unknown TTY prompt + ensure-schema.sh also failed — manual review required. See $SCHEMA_PUSH_LOG." 4
-      fi
-    fi
-  else
-    cat "$SCHEMA_PUSH_LOG" >> "$LOG_FILE"
-    fail "drizzle-kit push failed with an unrecognized error — see $SCHEMA_PUSH_LOG" 4
-  fi
+# --- Step 1: bootstrap (idempotent) ---
+if bash "$REPO_ROOT/scripts/bootstrap-drizzle-migrations.sh" "$DB_PATH" 2>&1 | tee -a "$SCHEMA_MIGRATE_LOG" | tee -a "$LOG_FILE"; then
+    log "bootstrap-drizzle-migrations.sh OK"
+else
+    fail "bootstrap-drizzle-migrations.sh failed — see $SCHEMA_MIGRATE_LOG" 4
 fi
+
+# --- Step 2: run migrate ---
+if NODE_ENV=development npx drizzle-kit migrate 2>&1 | tee -a "$SCHEMA_MIGRATE_LOG" | tee -a "$LOG_FILE"; then
+    log "drizzle-kit migrate completed cleanly"
+else
+    fail "drizzle-kit migrate failed — see $SCHEMA_MIGRATE_LOG. To re-attempt manually: cd $REPO_ROOT && NODE_ENV=development npx drizzle-kit migrate" 4
+fi
+
 
 # v2.32.5 — Detect destructive schema operations and mark the pre-update
 # DB backup as required for rollback. Without this marker, rollback.sh
@@ -1429,16 +1400,21 @@ fi
 # loss in its push output. Pure additive schema (CREATE TABLE / ADD
 # COLUMN) doesn't trip this and rollback continues to leave the DB
 # alone (the additive schema is forward-compatible with old code).
-if [ -f "$SCHEMA_PUSH_LOG" ] && grep -qiE "you're about to (delete|drop)|drop (table|column)|data.loss|truncate" "$SCHEMA_PUSH_LOG" 2>/dev/null; then
+# v2.54.1+ — adapted to read the migrate log. Both `push` and `migrate`
+# emit similar destructive-operation strings ("drop table X" etc.) when
+# they would lose data. We scan both logs so this block keeps working
+# during the legacy push fallback window AND after it's removed.
+DESTRUCT_LOG="${SCHEMA_MIGRATE_LOG:-${SCHEMA_PUSH_LOG:-}}"
+if [ -n "$DESTRUCT_LOG" ] && [ -f "$DESTRUCT_LOG" ] && grep -qiE "you're about to (delete|drop)|drop (table|column)|data.loss|truncate" "$DESTRUCT_LOG" 2>/dev/null; then
   DESTRUCTIVE_MARKER="$BACKUP_FILE.destructive"
-  log "Schema push included destructive operations — writing $DESTRUCTIVE_MARKER (rollback will auto-restore DB)"
+  log "Schema migration included destructive operations — writing $DESTRUCTIVE_MARKER (rollback will auto-restore DB)"
   {
     echo "runId=$(basename "$LOG_FILE" .log)"
     echo "detectedAtUtc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     echo "preMergeSha=${PRE_MERGE_SHA:-unknown}"
     echo "postMergeSha=${POST_MERGE_SHA:-unknown}"
     echo "--- detected lines ---"
-    grep -iE "you're about to|drop (table|column)|data.loss|truncate|dropping" "$SCHEMA_PUSH_LOG" 2>/dev/null | head -20
+    grep -iE "you're about to|drop (table|column)|data.loss|truncate|dropping" "$DESTRUCT_LOG" 2>/dev/null | head -20
   } > "$DESTRUCTIVE_MARKER" 2>/dev/null || log "WARNING: could not write destructive marker"
 fi
 
@@ -1700,6 +1676,18 @@ if [ -n "${VERIFY_INSTALL_JSON:-}" ]; then
   fi
 fi
 
+# v2.54.3 — Snapshot the just-verified release to /home/ubuntu/sports-bar-releases/
+# so scripts/instant-rollback.sh can restore it in ~5s without re-checkout
+# + rebuild. Snapshot is "known good" by construction — we got here only
+# because verify-install passed. Non-fatal: if snapshot fails, the update
+# is still successful; only instant-rollback for THIS version is unavailable
+# (operator can still use auto-update.sh's normal rollback path).
+if bash "$REPO_ROOT/scripts/snapshot-release.sh" 2>&1 | tee -a "$LOG_FILE"; then
+  log "Release snapshot OK"
+else
+  log "WARN: snapshot-release.sh returned non-zero — instant-rollback unavailable for this version, but update still successful"
+fi
+
 # v2.32.6 — Canary bless write. If this location IS the canary AND
 # canary mode is enabled in scripts/canary-config.json, write
 # .canary-blessed.json with the just-verified commit so non-canary
@@ -1821,4 +1809,5 @@ write_summary_json "$FINAL_RESULT" "$FINAL_MSG"
 DURATION=$(( $(date +%s) - RUN_STARTED_EPOCH ))
 log "SUCCESS: updated $BRANCH from $PRE_MERGE_SHA to $POST_MERGE_SHA in ${DURATION}s"
 log "Log file: $LOG_FILE"
+update_last_attempt_sidecar "success"
 exit 0

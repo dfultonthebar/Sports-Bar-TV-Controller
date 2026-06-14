@@ -76,14 +76,22 @@ export interface PatternAnalysisResult {
 // Table Creation SQL
 // ============================================================================
 
+// Fallback DDL only — production tables come from the drizzle baseline
+// migration. Kept column-compatible with drizzle/0000_baseline.sql so a
+// dev DB created via this path behaves identically (observation_count etc).
 const CREATE_SCHEDULING_PATTERNS_TABLE = `
   CREATE TABLE IF NOT EXISTS scheduling_patterns (
     id TEXT PRIMARY KEY NOT NULL,
     pattern_type TEXT NOT NULL,
     pattern_key TEXT NOT NULL,
     pattern_data TEXT NOT NULL,
+    observation_count INTEGER NOT NULL DEFAULT 1,
     sample_size INTEGER NOT NULL DEFAULT 0,
+    first_observed INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+    last_observed INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
     confidence REAL NOT NULL DEFAULT 0,
+    is_stale INTEGER NOT NULL DEFAULT 0,
+    last_analyzed_at INTEGER DEFAULT (strftime('%s', 'now')),
     created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
     updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
     UNIQUE(pattern_type, pattern_key)
@@ -798,7 +806,11 @@ class PatternAnalyzer {
 
   /**
    * Run all analyzers and save results to the scheduling_patterns table.
-   * Uses INSERT OR REPLACE to upsert rows keyed by (pattern_type, pattern_key).
+   * Uses INSERT ... ON CONFLICT(pattern_type, pattern_key) DO UPDATE so that
+   * observation_count increments atomically on every re-observation (v2.55.45 —
+   * the old INSERT OR REPLACE deleted+reinserted the row, resetting
+   * observation_count to its DEFAULT 1 forever, which made AI Suggest's
+   * ORDER BY observation_count DESC ranking meaningless).
    */
   async analyzeAll(): Promise<PatternAnalysisResult> {
     const startTime = Date.now();
@@ -822,24 +834,16 @@ class PatternAnalyzer {
         const id = this.generateId();
         const data = JSON.stringify(pattern);
         await db.run(sql`
-          INSERT OR REPLACE INTO scheduling_patterns
-            (id, pattern_type, pattern_key, pattern_data, sample_size, confidence, created_at, updated_at)
-          VALUES (
-            COALESCE(
-              (SELECT id FROM scheduling_patterns WHERE pattern_type = 'team_routing' AND pattern_key = ${pattern.team}),
-              ${id}
-            ),
-            'team_routing',
-            ${pattern.team},
-            ${data},
-            ${pattern.frequency},
-            ${Math.min(pattern.frequency / 10, 1.0)},
-            COALESCE(
-              (SELECT created_at FROM scheduling_patterns WHERE pattern_type = 'team_routing' AND pattern_key = ${pattern.team}),
-              ${now}
-            ),
-            ${now}
-          )
+          INSERT INTO scheduling_patterns
+            (id, pattern_type, pattern_key, pattern_data, sample_size, confidence, last_observed, created_at, updated_at)
+          VALUES (${id}, 'team_routing', ${pattern.team}, ${data}, ${pattern.frequency}, ${Math.min(pattern.frequency / 10, 1.0)}, ${now}, ${now}, ${now})
+          ON CONFLICT(pattern_type, pattern_key) DO UPDATE SET
+            pattern_data = excluded.pattern_data,
+            sample_size = excluded.sample_size,
+            confidence = excluded.confidence,
+            observation_count = COALESCE(observation_count, 0) + 1,
+            last_observed = excluded.last_observed,
+            updated_at = excluded.updated_at
         `);
       } catch (error: any) {
         logger.error(`[PATTERN-ANALYZER] Error saving team routing pattern for ${pattern.team}:`, { error });
@@ -852,24 +856,16 @@ class PatternAnalyzer {
         const id = this.generateId();
         const data = JSON.stringify(pattern);
         await db.run(sql`
-          INSERT OR REPLACE INTO scheduling_patterns
-            (id, pattern_type, pattern_key, pattern_data, sample_size, confidence, created_at, updated_at)
-          VALUES (
-            COALESCE(
-              (SELECT id FROM scheduling_patterns WHERE pattern_type = 'league_priority' AND pattern_key = ${pattern.league}),
-              ${id}
-            ),
-            'league_priority',
-            ${pattern.league},
-            ${data},
-            ${pattern.scheduleCount},
-            ${Math.min(pattern.scheduleCount / 20, 1.0)},
-            COALESCE(
-              (SELECT created_at FROM scheduling_patterns WHERE pattern_type = 'league_priority' AND pattern_key = ${pattern.league}),
-              ${now}
-            ),
-            ${now}
-          )
+          INSERT INTO scheduling_patterns
+            (id, pattern_type, pattern_key, pattern_data, sample_size, confidence, last_observed, created_at, updated_at)
+          VALUES (${id}, 'league_priority', ${pattern.league}, ${data}, ${pattern.scheduleCount}, ${Math.min(pattern.scheduleCount / 20, 1.0)}, ${now}, ${now}, ${now})
+          ON CONFLICT(pattern_type, pattern_key) DO UPDATE SET
+            pattern_data = excluded.pattern_data,
+            sample_size = excluded.sample_size,
+            confidence = excluded.confidence,
+            observation_count = COALESCE(observation_count, 0) + 1,
+            last_observed = excluded.last_observed,
+            updated_at = excluded.updated_at
         `);
       } catch (error: any) {
         logger.error(`[PATTERN-ANALYZER] Error saving league priority pattern for ${pattern.league}:`, { error });
@@ -885,24 +881,16 @@ class PatternAnalyzer {
         // confidence bump per additional game is negligible for this use.
         const confidence = Math.min(pattern.sampleCount / 10, 1.0);
         await db.run(sql`
-          INSERT OR REPLACE INTO scheduling_patterns
-            (id, pattern_type, pattern_key, pattern_data, sample_size, confidence, created_at, updated_at)
-          VALUES (
-            COALESCE(
-              (SELECT id FROM scheduling_patterns WHERE pattern_type = 'league_duration' AND pattern_key = ${pattern.league}),
-              ${id}
-            ),
-            'league_duration',
-            ${pattern.league},
-            ${data},
-            ${pattern.sampleCount},
-            ${confidence},
-            COALESCE(
-              (SELECT created_at FROM scheduling_patterns WHERE pattern_type = 'league_duration' AND pattern_key = ${pattern.league}),
-              ${now}
-            ),
-            ${now}
-          )
+          INSERT INTO scheduling_patterns
+            (id, pattern_type, pattern_key, pattern_data, sample_size, confidence, last_observed, created_at, updated_at)
+          VALUES (${id}, 'league_duration', ${pattern.league}, ${data}, ${pattern.sampleCount}, ${confidence}, ${now}, ${now}, ${now})
+          ON CONFLICT(pattern_type, pattern_key) DO UPDATE SET
+            pattern_data = excluded.pattern_data,
+            sample_size = excluded.sample_size,
+            confidence = excluded.confidence,
+            observation_count = COALESCE(observation_count, 0) + 1,
+            last_observed = excluded.last_observed,
+            updated_at = excluded.updated_at
         `);
       } catch (error: any) {
         logger.error(`[PATTERN-ANALYZER] Error saving league duration pattern for ${pattern.league}:`, { error });
@@ -915,24 +903,16 @@ class PatternAnalyzer {
         const id = this.generateId();
         const data = JSON.stringify(pattern);
         await db.run(sql`
-          INSERT OR REPLACE INTO scheduling_patterns
-            (id, pattern_type, pattern_key, pattern_data, sample_size, confidence, created_at, updated_at)
-          VALUES (
-            COALESCE(
-              (SELECT id FROM scheduling_patterns WHERE pattern_type = 'time_slot' AND pattern_key = ${pattern.hourRange}),
-              ${id}
-            ),
-            'time_slot',
-            ${pattern.hourRange},
-            ${data},
-            ${pattern.peakBoxes},
-            ${pattern.avgBoxes > 0 ? 0.8 : 0},
-            COALESCE(
-              (SELECT created_at FROM scheduling_patterns WHERE pattern_type = 'time_slot' AND pattern_key = ${pattern.hourRange}),
-              ${now}
-            ),
-            ${now}
-          )
+          INSERT INTO scheduling_patterns
+            (id, pattern_type, pattern_key, pattern_data, sample_size, confidence, last_observed, created_at, updated_at)
+          VALUES (${id}, 'time_slot', ${pattern.hourRange}, ${data}, ${pattern.peakBoxes}, ${pattern.avgBoxes > 0 ? 0.8 : 0}, ${now}, ${now}, ${now})
+          ON CONFLICT(pattern_type, pattern_key) DO UPDATE SET
+            pattern_data = excluded.pattern_data,
+            sample_size = excluded.sample_size,
+            confidence = excluded.confidence,
+            observation_count = COALESCE(observation_count, 0) + 1,
+            last_observed = excluded.last_observed,
+            updated_at = excluded.updated_at
         `);
       } catch (error: any) {
         logger.error(`[PATTERN-ANALYZER] Error saving time slot pattern for ${pattern.hourRange}:`, { error });
@@ -948,24 +928,16 @@ class PatternAnalyzer {
         const patternKey = pattern.patternKey;
         const sampleCount = pattern.data.sampleCount;
         await db.run(sql`
-          INSERT OR REPLACE INTO scheduling_patterns
-            (id, pattern_type, pattern_key, pattern_data, sample_size, confidence, created_at, updated_at)
-          VALUES (
-            COALESCE(
-              (SELECT id FROM scheduling_patterns WHERE pattern_type = ${patternType} AND pattern_key = ${patternKey}),
-              ${id}
-            ),
-            ${patternType},
-            ${patternKey},
-            ${data},
-            ${sampleCount},
-            ${Math.min(sampleCount / 15, 1.0)},
-            COALESCE(
-              (SELECT created_at FROM scheduling_patterns WHERE pattern_type = ${patternType} AND pattern_key = ${patternKey}),
-              ${now}
-            ),
-            ${now}
-          )
+          INSERT INTO scheduling_patterns
+            (id, pattern_type, pattern_key, pattern_data, sample_size, confidence, last_observed, created_at, updated_at)
+          VALUES (${id}, ${patternType}, ${patternKey}, ${data}, ${sampleCount}, ${Math.min(sampleCount / 15, 1.0)}, ${now}, ${now}, ${now})
+          ON CONFLICT(pattern_type, pattern_key) DO UPDATE SET
+            pattern_data = excluded.pattern_data,
+            sample_size = excluded.sample_size,
+            confidence = excluded.confidence,
+            observation_count = COALESCE(observation_count, 0) + 1,
+            last_observed = excluded.last_observed,
+            updated_at = excluded.updated_at
         `);
       } catch (error: any) {
         logger.error(`[PATTERN-ANALYZER] Error saving audio volume pattern ${pattern.patternKey}:`, { error });

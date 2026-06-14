@@ -114,7 +114,7 @@ export async function POST(
   if (isValidationError(paramsValidation)) return paramsValidation.error
 
   const bodySchema = z.object({
-    ipAddress: z.string().ip(),
+    ipAddress: z.union([z.ipv4(), z.ipv6()]),
     port: z.number().int().min(1).max(65535).optional().default(8080),
   })
 

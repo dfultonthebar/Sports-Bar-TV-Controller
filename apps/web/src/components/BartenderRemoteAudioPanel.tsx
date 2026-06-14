@@ -9,6 +9,7 @@ import WolfpackMatrixOutputControl from './WolfpackMatrixOutputControl'
 import AtlasRealtimeMeters from './AtlasRealtimeMeters'
 import DbxZoneControl from './DbxZoneControl'
 import HTDZoneControl from './HTDZoneControl'
+import BartenderEmptyState from './BartenderEmptyState'
 import { logger } from '@sports-bar/logger'
 
 // LocalStorage keys for persisting meter toggle settings
@@ -141,6 +142,38 @@ export default function BartenderRemoteAudioPanel({
     localStorage.setItem(METERS_INPUT_KEY, String(enabled))
   }
 
+  // Empty-state recovery (v2.54.57). Renders when no audio processor
+  // (Atlas / dbx ZonePRO) has been configured for this location yet.
+  // The parent (apps/web/src/app/remote/page.tsx) leaves `processorIp`
+  // as the empty string when /api/audio-processor returns no drivable
+  // processor — without this card the panel would render a Wolf Pack
+  // matrix output column with no audio control on the right, and the
+  // bartender would have no idea why they can't change zone gain.
+  if (!processorIp) {
+    return (
+      <BartenderEmptyState
+        icon={<Volume2 className="w-12 h-12" strokeWidth={1.5} />}
+        heading="Audio control isn't set up yet"
+        body={
+          <>
+            <p>
+              The audio processor (the box that controls zone volumes and what plays where)
+              hasn&apos;t been connected for this location yet. Until it&apos;s set up, you can&apos;t
+              change zone volume from here.
+            </p>
+            <p>
+              On a fresh install this is normal — the manager needs to add the processor once,
+              then it stays. TVs and channels still work in the meantime.
+            </p>
+          </>
+        }
+        adminUrl="/audio-control"
+        adminLabel="Open Audio Control"
+        managerMessage="The bartender iPad Audio tab is empty — please open Audio Control in admin and connect the audio processor so I can adjust zone volumes."
+      />
+    )
+  }
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
       {/* Left Side - Wolfpack Matrix Output Controls */}
@@ -153,7 +186,7 @@ export default function BartenderRemoteAudioPanel({
         {/* dbx ZonePRO - show zone controls instead of Atlas meters/groups */}
         {processorType === 'dbx-zonepro' && processorId ? (
           <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl shadow-2xl p-6">
-            <h3 className="text-xl font-bold mb-6 flex items-center bg-gradient-to-r from-orange-400 via-amber-400 to-yellow-400 bg-clip-text text-transparent">
+            <h3 className="text-xl font-bold mb-6 flex items-center text-white">
               <Volume2 className="mr-3 w-6 h-6 text-orange-400" />
               Audio Control
             </h3>
@@ -168,7 +201,7 @@ export default function BartenderRemoteAudioPanel({
                   onClick={toggleMetersExpanded}
                   className="w-full p-4 flex items-center justify-between hover:bg-white/5 transition-colors"
                 >
-                  <h3 className="text-lg font-bold flex items-center bg-gradient-to-r from-green-400 via-emerald-400 to-teal-400 bg-clip-text text-transparent">
+                  <h3 className="text-lg font-bold flex items-center text-white">
                     <Activity className="mr-3 w-5 h-5 text-green-400" />
                     Real-time Audio Meters
                   </h3>
@@ -232,7 +265,7 @@ export default function BartenderRemoteAudioPanel({
 
             {/* Audio Control Panel (Atlas) */}
             <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl shadow-2xl p-6">
-              <h3 className="text-xl font-bold mb-6 flex items-center bg-gradient-to-r from-teal-400 via-cyan-400 to-blue-400 bg-clip-text text-transparent">
+              <h3 className="text-xl font-bold mb-6 flex items-center text-white">
                 <Volume2 className="mr-3 w-6 h-6 text-teal-400" />
                 Audio Control
               </h3>
@@ -260,7 +293,7 @@ export default function BartenderRemoteAudioPanel({
               onClick={() => setHtdExpanded(!htdExpanded)}
               className="w-full p-4 flex items-center justify-between hover:bg-white/5 transition-colors"
             >
-              <h3 className="text-lg font-bold flex items-center bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
+              <h3 className="text-lg font-bold flex items-center text-white">
                 <Radio className="mr-3 w-5 h-5 text-indigo-400" />
                 HTD Whole-House Audio
               </h3>

@@ -24,6 +24,7 @@ import BartenderMusicControl from '@/components/BartenderMusicControl'
 import BartenderRemoteAudioPanel from '@/components/BartenderRemoteAudioPanel'
 import InteractiveBartenderLayout from '@/components/InteractiveBartenderLayout'
 import BartenderRemoteSelector from '@/components/BartenderRemoteSelector'
+import { BartenderAskAIButton } from '@/components/BartenderAskAIButton'
 import DMXLightingRemote from '@/components/dmx/DMXLightingRemote'
 import DJControlPanel from '@/components/DJControlPanel'
 import ScheduledGamesPanel from '@/components/ScheduledGamesPanel'
@@ -124,6 +125,14 @@ export default function BartenderRemotePage() {
   const [multiViewMode, setMultiViewMode] = useState<number>(0)
   const [multiViewCardId, setMultiViewCardId] = useState<string | null>(null)
   const [multiViewLoading, setMultiViewLoading] = useState(false)
+  // 4 Wolf Pack input numbers (window1..window4) that the card will tile
+  // when Quad View activates. Drives the 2x2 preview in the routing tab.
+  const [multiViewInputs, setMultiViewInputs] = useState<{
+    window1: number
+    window2: number
+    window3: number
+    window4: number
+  } | null>(null)
 
   // Channel digit buffer for tracking manual channel entry
   const digitBufferRef = useRef<string>('')
@@ -380,8 +389,20 @@ export default function BartenderRemotePage() {
       if (response.ok) {
         const data = await response.json()
         if (data.cards?.length > 0) {
-          setMultiViewCardId(data.cards[0].id)
-          setMultiViewMode(data.cards[0].currentMode ?? 0)
+          const card = data.cards[0]
+          setMultiViewCardId(card.id)
+          setMultiViewMode(card.currentMode ?? 0)
+          // inputAssignments comes pre-parsed from the API
+          // ({window1..window4}: number) — used for the Quad View preview.
+          if (card.inputAssignments &&
+              typeof card.inputAssignments.window1 === 'number' &&
+              typeof card.inputAssignments.window2 === 'number' &&
+              typeof card.inputAssignments.window3 === 'number' &&
+              typeof card.inputAssignments.window4 === 'number') {
+            setMultiViewInputs(card.inputAssignments)
+          } else {
+            setMultiViewInputs(null)
+          }
         }
       }
     } catch (error) {
@@ -836,6 +857,7 @@ export default function BartenderRemotePage() {
               inputs={inputs}
               currentChannels={currentChannels}
               onRefreshRoutes={loadCurrentRoutes}
+              networkTVs={networkTVs}
             />
             {selectedInput === 11 && <AtmosphereControl />}
           </div>
@@ -921,24 +943,24 @@ export default function BartenderRemotePage() {
                             if (e.key === 'Escape') setEditingTVName(null)
                           }}
                           autoFocus
-                          className="flex-1 px-1.5 py-0.5 bg-slate-700 border border-slate-600 rounded text-xs text-white focus:outline-none focus:border-blue-500 min-w-0"
+                          className="flex-1 px-2 py-2 min-h-[44px] bg-slate-700 border border-slate-600 rounded text-sm text-white focus:outline-none focus:border-blue-500 min-w-0"
                           placeholder="TV name..."
                         />
                         <button
                           onClick={() => saveTVName(tv.id, editNameValue)}
-                          className="px-1.5 py-0.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-[10px]"
+                          className="px-3 py-2 min-h-[44px] min-w-[44px] bg-blue-600 hover:bg-blue-700 text-white rounded text-sm font-medium"
                         >OK</button>
                       </div>
                     ) : (
                       <p
                         onClick={() => { setEditingTVName(tv.id); setEditNameValue(tv.name || tv.outputLabel || '') }}
-                        className="text-sm font-semibold text-white truncate mb-0.5 cursor-pointer hover:text-blue-300 transition-colors"
+                        className="text-sm font-semibold text-white truncate mb-0.5 cursor-pointer hover:text-blue-300 transition-colors min-h-[44px] flex items-center"
                         title="Click to rename"
                       >
                         {tv.name || tv.outputLabel || 'Unnamed TV'}
                       </p>
                     )}
-                    <div className="flex items-center gap-1.5 mb-3">
+                    <div className="flex items-center gap-2 mb-3 flex-wrap">
                       <p className="text-[10px] text-slate-500 font-mono">{tv.ipAddress}</p>
                       {assigningOutput === tv.id ? (
                         <select
@@ -946,7 +968,7 @@ export default function BartenderRemotePage() {
                           onChange={(e) => assignTVOutput(tv.id, e.target.value || null)}
                           autoFocus
                           onBlur={() => setAssigningOutput(null)}
-                          className="text-[10px] bg-slate-700 border border-slate-600 text-white rounded px-1 py-0.5 focus:outline-none focus:border-blue-500"
+                          className="text-sm bg-slate-700 border border-slate-600 text-white rounded px-2 py-2 min-h-[44px] focus:outline-none focus:border-blue-500"
                         >
                           <option value="">None</option>
                           {matrixOutputs.map((o) => (
@@ -956,7 +978,7 @@ export default function BartenderRemotePage() {
                       ) : (
                         <span
                           onClick={() => setAssigningOutput(tv.id)}
-                          className="text-[10px] text-slate-600 bg-slate-700/50 px-1 rounded cursor-pointer hover:text-blue-300 transition-colors"
+                          className="text-sm text-slate-300 bg-slate-700/50 px-3 py-2 min-h-[44px] inline-flex items-center rounded cursor-pointer hover:text-blue-300 transition-colors"
                           title="Click to assign Wolf Pack output"
                         >
                           {tv.outputNumber ? `Out ${tv.outputNumber}` : 'Link output'}
@@ -970,9 +992,9 @@ export default function BartenderRemotePage() {
                         <button
                           onClick={() => pairNetworkTV(tv.id, tv.name || tv.outputLabel || tv.ipAddress)}
                           disabled={pairingTVId === tv.id}
-                          className="w-full py-1.5 bg-orange-600 hover:bg-orange-700 text-white rounded text-xs font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-1"
+                          className="w-full py-2 min-h-[44px] bg-orange-600 hover:bg-orange-700 text-white rounded text-sm font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                         >
-                          {pairingTVId === tv.id ? <><Loader2 className="w-3 h-3 animate-spin" /> Waiting for TV...</> : <><Zap className="w-3 h-3" /> Pair</>}
+                          {pairingTVId === tv.id ? <><Loader2 className="w-4 h-4 animate-spin" /> Waiting for TV...</> : <><Zap className="w-4 h-4" /> Pair</>}
                         </button>
                       </div>
                     )}
@@ -983,11 +1005,11 @@ export default function BartenderRemotePage() {
                         <button
                           onClick={() => sendTVPower(tv.id, 'toggle')}
                           disabled={tvPowerLoading === `${tv.id}-toggle`}
-                          className={`w-full py-1.5 text-white rounded text-xs font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-1 ${
+                          className={`w-full py-2 min-h-[44px] text-white rounded text-sm font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2 ${
                             tv.status === 'online' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'
                           }`}
                         >
-                          {tvPowerLoading === `${tv.id}-toggle` ? <Loader2 className="w-3 h-3 animate-spin" /> : <><Power className="w-3 h-3" /> Power</>}
+                          {tvPowerLoading === `${tv.id}-toggle` ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Power className="w-4 h-4" /> Power</>}
                         </button>
                       </div>
                     )}
@@ -995,22 +1017,22 @@ export default function BartenderRemotePage() {
                     {/* HDMI Input Buttons */}
                     {tv.supportsInput && (
                       <div>
-                        <p className="text-[10px] text-slate-500 mb-1 flex items-center gap-1">
-                          <Monitor className="w-2.5 h-2.5" /> HDMI Input
+                        <p className="text-sm text-slate-400 mb-2 flex items-center gap-1">
+                          <Monitor className="w-3.5 h-3.5" /> HDMI Input
                         </p>
-                        <div className="grid grid-cols-4 gap-1">
+                        <div className="grid grid-cols-4 gap-2">
                           {(['hdmi1', 'hdmi2', 'hdmi3', 'hdmi4'] as const).map((input) => (
                             <button
                               key={input}
                               onClick={() => sendTVInput(tv.id, input)}
                               disabled={tvInputLoading === `${tv.id}-${input}`}
-                              className={`py-1 rounded text-[10px] font-medium transition-colors disabled:opacity-50 ${
+                              className={`py-2 min-h-[44px] rounded text-sm font-medium transition-colors disabled:opacity-50 ${
                                 tv.currentInput === input
                                   ? 'bg-blue-600 text-white ring-1 ring-blue-400'
                                   : 'bg-slate-700 hover:bg-blue-600 text-slate-300 hover:text-white'
                               }`}
                             >
-                              {tvInputLoading === `${tv.id}-${input}` ? <Loader2 className="w-2.5 h-2.5 animate-spin mx-auto" /> : input.replace('hdmi', '')}
+                              {tvInputLoading === `${tv.id}-${input}` ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : input.replace('hdmi', '')}
                             </button>
                           ))}
                         </div>
@@ -1033,23 +1055,72 @@ export default function BartenderRemotePage() {
         {activeTab === 'routing' && (
           <div className="max-w-7xl mx-auto pt-4">
             <div className="bg-slate-900/90 backdrop-blur rounded-lg shadow-xl p-4 border border-slate-700/50">
-              <div className="flex items-center justify-between mb-4">
-                <div>
+              <div className="flex items-start justify-between mb-4 gap-4 flex-wrap">
+                <div className="flex-1 min-w-[180px]">
                   <h3 className="text-lg font-semibold text-slate-100">Quick Routing Matrix</h3>
                   <p className="text-xs text-slate-400 mt-1">Tap a cell to route an input to an output</p>
                 </div>
                 {multiViewCardId && (
-                  <button
-                    onClick={toggleMultiView}
-                    disabled={multiViewLoading}
-                    className={`px-4 py-2 rounded-lg text-sm font-bold transition-colors ${
-                      multiViewMode === 6
-                        ? 'bg-purple-600 text-white hover:bg-purple-700'
-                        : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-                    } ${multiViewLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  >
-                    {multiViewLoading ? '...' : multiViewMode === 6 ? '■ Single View' : '⊞ Quad View'}
-                  </button>
+                  <div className={`flex flex-col items-center gap-2 p-2 rounded-lg border ${
+                    multiViewMode === 6
+                      ? 'bg-purple-900/20 border-purple-500/50'
+                      : 'bg-slate-800/50 border-slate-700'
+                  }`}>
+                    <p className="text-[10px] uppercase tracking-wide text-slate-400 font-semibold">
+                      Multi-View Preview
+                      {multiViewMode === 6 && (
+                        <span className="ml-2 text-purple-300">● Active</span>
+                      )}
+                    </p>
+                    {/* 2x2 preview — shows the 4 Wolf Pack inputs that will tile
+                        when Quad View is on. If no assignments configured, shows
+                        a friendly note instead of crashing. */}
+                    {multiViewInputs ? (
+                      <div className="grid grid-cols-2 gap-1 w-[140px] h-[140px]">
+                        {([
+                          multiViewInputs.window1,
+                          multiViewInputs.window2,
+                          multiViewInputs.window3,
+                          multiViewInputs.window4
+                        ]).map((inputNum, idx) => {
+                          const input = inputs.find(i => i.channelNumber === inputNum)
+                          return (
+                            <div
+                              key={idx}
+                              className={`bg-slate-800 border border-slate-700 rounded text-center flex flex-col items-center justify-center px-1 py-1 ${
+                                multiViewMode === 6 ? 'ring-1 ring-purple-400/40' : ''
+                              }`}
+                              title={input?.label || `Input ${inputNum}`}
+                            >
+                              <span className="text-sm font-bold text-blue-300 leading-none">
+                                IN {inputNum}
+                              </span>
+                              {input?.label && (
+                                <span className="text-[9px] text-slate-400 truncate max-w-full mt-0.5 leading-tight">
+                                  {input.label}
+                                </span>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    ) : (
+                      <div className="w-[140px] h-[140px] flex items-center justify-center text-center text-[10px] text-slate-500 px-2 border border-dashed border-slate-700 rounded">
+                        (no preview — multi-view card not configured)
+                      </div>
+                    )}
+                    <button
+                      onClick={toggleMultiView}
+                      disabled={multiViewLoading}
+                      className={`w-[140px] px-3 py-3 min-h-[44px] rounded-lg text-sm font-bold transition-colors ${
+                        multiViewMode === 6
+                          ? 'bg-purple-600 text-white hover:bg-purple-700'
+                          : 'bg-slate-700 text-slate-200 hover:bg-slate-600'
+                      } ${multiViewLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    >
+                      {multiViewLoading ? '...' : multiViewMode === 6 ? '■ Single View' : '⊞ Quad View'}
+                    </button>
+                  </div>
                 )}
                 <button
                   onClick={loadCurrentRoutes}
@@ -1126,7 +1197,7 @@ export default function BartenderRemotePage() {
                               return (
                                 <td
                                   key={`${output.channelNumber}-${input.channelNumber}`}
-                                  className={`border border-slate-700 p-2 text-center cursor-pointer transition-all active:scale-95 ${
+                                  className={`border border-slate-700 p-2 text-center cursor-pointer transition-all active:scale-95 min-h-[44px] min-w-[44px] h-[44px] ${
                                     isRouted
                                       ? 'bg-green-600 hover:bg-green-700'
                                       : 'bg-slate-900 hover:bg-blue-700/50 active:bg-blue-600'
@@ -1235,6 +1306,23 @@ export default function BartenderRemotePage() {
             <span className="text-sm font-medium">Guide</span>
           </button>
 
+          {/* Schedule promoted to primary tab strip (Grok #6 UX fix, v2.54.55) —
+           * bartenders on game days need ScheduledGamesPanel to set up AI Suggest
+           * allocations. Previously hidden behind the unlabeled "More" 3-dot icon,
+           * which had a discoverability hole the bartender how-tos couldn't bridge.
+           * Uses Clock icon to differentiate from Guide's ListVideo. */}
+          <button
+            onClick={() => setActiveTab('schedule')}
+            className={`min-h-[52px] min-w-[60px] flex flex-col items-center justify-center gap-1.5 px-2.5 py-3 rounded-xl transition-all ${
+              activeTab === 'schedule'
+                ? 'ring-1 ring-sky-400/50 bg-sky-500/20 text-sky-300 scale-[1.03]'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Clock className="h-5 w-5" />
+            <span className="text-sm font-medium">Schedule</span>
+          </button>
+
           <button
             onClick={() => {
               setActiveTab('routing')
@@ -1264,19 +1352,27 @@ export default function BartenderRemotePage() {
           </button>
 
           {/* Ambient tier — 44×52px, text-xs, text-slate-500 inactive */}
-          {audioProcessorIp && (
-            <button
-              onClick={() => setActiveTab('audio')}
-              className={`min-h-[44px] min-w-[52px] flex flex-col items-center justify-center gap-1 px-2 py-2 rounded-xl transition-all ${
-                activeTab === 'audio'
-                  ? 'ring-1 ring-sky-400/50 bg-sky-500/20 text-sky-300 scale-[1.03]'
-                  : 'text-slate-500 hover:text-slate-300'
-              }`}
-            >
-              <Volume2 className="h-4 w-4" />
-              <span className="text-xs font-medium">Audio</span>
-            </button>
-          )}
+          {/*
+           * Audio tab is ALWAYS visible (v2.54.57) so a fresh-install
+           * bartender can discover the empty-state recovery card inside
+           * BartenderRemoteAudioPanel — previously the tab was hidden
+           * when no processor was configured, which meant a botched
+           * merge that blanked the processor IP would leave the
+           * bartender with no in-app indication that Audio existed at
+           * all. The panel renders a clear "not set up yet" card when
+           * processorIp is empty.
+           */}
+          <button
+            onClick={() => setActiveTab('audio')}
+            className={`min-h-[44px] min-w-[52px] flex flex-col items-center justify-center gap-1 px-2 py-2 rounded-xl transition-all ${
+              activeTab === 'audio'
+                ? 'ring-1 ring-sky-400/50 bg-sky-500/20 text-sky-300 scale-[1.03]'
+                : 'text-slate-500 hover:text-slate-300'
+            }`}
+          >
+            <Volume2 className="h-4 w-4" />
+            <span className="text-xs font-medium">Audio</span>
+          </button>
 
           <button
             onClick={() => setActiveTab('music')}
@@ -1320,11 +1416,15 @@ export default function BartenderRemotePage() {
             <span className="text-xs font-medium">Power</span>
           </button>
 
-          {/* Overflow — Schedule + DJ in a bottom sheet */}
+          {/* Overflow — DJ in a bottom sheet. Always rendered so admin tabs
+           * stay discoverable (v2.54.67 fix: v2.54.55 hid this whole button
+           * when djControlsEnabled=false, which left Holmgren with no path
+           * to reach DJ Mode or any future overflow item). Inner items are
+           * gated individually; the sheet shows a friendly hint if empty. */}
           <button
             onClick={() => setMoreOpen(true)}
             className={`min-h-[44px] min-w-[44px] flex flex-col items-center justify-center gap-1 px-2 py-2 rounded-xl transition-all ${
-              activeTab === 'schedule' || activeTab === 'dj'
+              activeTab === 'dj'
                 ? 'ring-1 ring-sky-400/50 bg-sky-500/20 text-sky-300 scale-[1.03]'
                 : 'text-slate-500 hover:text-slate-300'
             }`}
@@ -1359,25 +1459,8 @@ export default function BartenderRemotePage() {
               </button>
             </div>
             <div className="flex gap-3 flex-wrap">
-              <button
-                onClick={() => {
-                  setActiveTab('schedule')
-                  setMoreOpen(false)
-                }}
-                className={`flex-1 min-w-[140px] min-h-[64px] flex items-center gap-3 px-4 py-3 rounded-xl border border-slate-700 transition-all ${
-                  activeTab === 'schedule'
-                    ? 'ring-1 ring-sky-400/50 bg-sky-500/20 text-sky-300'
-                    : 'bg-slate-800/50 text-slate-300 hover:bg-slate-800 hover:text-slate-100'
-                }`}
-              >
-                <Clock className="h-5 w-5 flex-shrink-0" />
-                <div className="flex flex-col items-start">
-                  <span className="text-sm font-semibold">Schedule</span>
-                  <span className="text-xs opacity-70">Scheduled games</span>
-                </div>
-              </button>
-
-              {djControlsEnabled && (
+              {/* Schedule entry removed in v2.54.55 — promoted to primary tab strip */}
+              {djControlsEnabled ? (
                 <button
                   onClick={() => {
                     setActiveTab('dj')
@@ -1395,11 +1478,24 @@ export default function BartenderRemotePage() {
                     <span className="text-xs opacity-70">Assignment lock</span>
                   </div>
                 </button>
+              ) : (
+                <div className="flex-1 min-w-[140px] min-h-[64px] flex items-center gap-3 px-4 py-3 rounded-xl border border-slate-700/50 bg-slate-800/30 text-slate-400">
+                  <Music className="h-5 w-5 flex-shrink-0 opacity-50" />
+                  <div className="flex flex-col items-start">
+                    <span className="text-sm font-semibold text-slate-300">DJ Mode unavailable</span>
+                    <span className="text-xs opacity-70">Enable in Admin → Bartender Remote Settings</span>
+                  </div>
+                </div>
               )}
             </div>
           </div>
         </div>
       )}
+
+      {/* v2.54.48 (Grok audit E) — floating "Ask AI" button + modal.
+          Lives at the page root so it's available on every tab without
+          per-tab wiring. Tap-target ≥44px (bartender lens). */}
+      <BartenderAskAIButton />
     </div>
   )
 }

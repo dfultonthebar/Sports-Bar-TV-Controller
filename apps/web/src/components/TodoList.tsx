@@ -53,9 +53,13 @@ export default function TodoList({ onSelectTodo, onNewTodo, refreshTrigger }: To
   const [filterPriority, setFilterPriority] = useState<string>('all')
   const [searchQuery, setSearchQuery] = useState('')
 
+  // Re-fetch whenever the filters change. MUST depend on filterStatus/filterPriority
+  // so the fetch runs AFTER the state updates — calling loadTodos() directly in the
+  // dropdown onChange used the stale (previous) filter value, so selecting
+  // "All Priorities" fetched the prior priority and showed only that subset.
   useEffect(() => {
     loadTodos()
-  }, [refreshTrigger])
+  }, [refreshTrigger, filterStatus, filterPriority])
 
   const loadTodos = async () => {
     try {
@@ -127,10 +131,7 @@ export default function TodoList({ onSelectTodo, onNewTodo, refreshTrigger }: To
             </label>
             <select
               value={filterStatus}
-              onChange={(e) => {
-                setFilterStatus(e.target.value)
-                loadTodos()
-              }}
+              onChange={(e) => setFilterStatus(e.target.value)}
               className="w-full px-4 py-2 bg-sportsBar-800 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="all">All Status</option>
@@ -148,10 +149,7 @@ export default function TodoList({ onSelectTodo, onNewTodo, refreshTrigger }: To
             </label>
             <select
               value={filterPriority}
-              onChange={(e) => {
-                setFilterPriority(e.target.value)
-                loadTodos()
-              }}
+              onChange={(e) => setFilterPriority(e.target.value)}
               className="w-full px-4 py-2 bg-sportsBar-800 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="all">All Priorities</option>
