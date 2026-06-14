@@ -25,6 +25,28 @@ everything (see Gotcha #13 + the bartender-lens rule).
 - A recurring real-world problem has no how-to (mic cutting out, TV showing the
   wrong game, no sound on a TV, music stopped, a remote/Fire TV issue, a black TV).
 - After a fix ships, write the bartender-facing "if this happens, do this."
+- **Maintain the EXISTING how-tos** — `docs/bartender-help/` already holds ~18
+  guides (MIC_NOT_WORKING, FINDING_A_LIVE_GAME, MUSIC_OR_AUDIO_PROBLEM, etc.).
+  These go STALE as the system changes — your job is to keep them correct, not
+  just add new ones. See "Update existing how-tos" below.
+
+## Update existing how-tos (don't let them rot)
+A how-to with wrong steps is worse than none — a bartender follows it and it fails.
+Audit + refresh the existing guides:
+1. **Trigger to re-check a guide:** a fix shipped that changes its procedure; a
+   bartender reports the steps didn't work; a device/hardware change; a periodic
+   sweep (e.g. monthly, one or two guides at a time).
+2. **Re-learn the truth** for that guide's topic (`search_system_docs` + a focused
+   `ask_claude_code`: "Has anything changed in how <X> works or is fixed? Here's the
+   current how-to — are any steps now wrong or missing?"). Compare against the live
+   behavior with the observe tools where relevant.
+3. **Edit the existing file in place** — keep its filename/slug so its chat answers
+   and any links stay stable. Fix wrong/outdated steps, strip jargon that crept in,
+   add a recovery path or escalation if missing, and align it to the bartender-lens
+   rules below. Note what changed in the commit message.
+4. **Never silently delete** a guide. If a feature is gone (e.g. a CEC how-to), the
+   guide should say so plainly and point to the current path, not vanish.
+5. Re-verify via the chatbot + RAG-rescan (same as a new one).
 
 ## Workflow
 1. **Pick ONE concrete topic** — a real question/problem, not a whole subsystem.
