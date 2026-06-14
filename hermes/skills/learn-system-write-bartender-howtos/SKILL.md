@@ -82,6 +82,26 @@ Audit + refresh the existing guides:
    question and confirm it now answers from your new how-to, in plain English.
    If the answer is jargon-y or wrong, fix the how-to and rescan.
 
+## Also write OPERATOR SOPs (runbooks), not just bartender how-tos
+Same workflow (learn the truth → write → save → rescan → verify), but a different
+audience + home:
+- **Audience:** the operator / Claude Code — technical is FINE here. Use real
+  commands, file paths, table names, exit codes, gotcha numbers. The bartender-lens
+  rules above do NOT apply to SOPs.
+- **Home:** `docs/runbooks/` (or `docs/<TOPIC>.md` for bigger procedures), NOT
+  `docs/bartender-help/`. Examples already there: AUTO_UPDATE_RECOVERY,
+  DRIZZLE_MIGRATION_DRIFT_RECOVERY, HERMES_AGENT_OPERATIONS, OS_UPGRADE_RUNBOOK.
+- **Shape of an SOP:** Purpose · Symptoms (when to run it) · Diagnose (read-only
+  checks) · Procedure (numbered, real commands) · Verify (success signals) ·
+  Prevention. Capture a recurring operational procedure so the next person (or the
+  next Claude) follows it instead of re-deriving it.
+- **When:** a recurring ops task has no clean step-by-step (deploy/update, recover a
+  box, add a device, bring up a location, an RF/audio procedure); or a hard incident
+  just got solved and the procedure should be reusable (this overlaps
+  `crystallize-runbook-skill` — use that for incident→runbook, use THIS for proactive
+  "document how X works/is done"). Keep both registers' docs current (audit + update
+  the old ones, don't let them rot).
+
 ## Guardrails
 - Truth first: the steps must match what the code/hardware actually does. If you
   can't confirm a step, say so — don't invent a fix.
