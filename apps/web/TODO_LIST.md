@@ -16,9 +16,9 @@ Last Updated: 6/14/2026, 1:51:16 AM
 - **Priority**: MEDIUM
 - **Status**: PLANNED
 - **Category**: Intelligence Roadmap
-- **Description**: AI_SUGGEST_SOLVER=shadow live on Holmgren gathering engine-vs-LLM diffs. After ~7 days clean diffs, flip to primary (deterministic DistributionEngine becomes the answer; LLM -> reasoning-only on llama3.2:3b). First data points favor the engine (LLM returned 0 games / 6 unresolved inputs).
+- **Description**: REVIEWED 2026-06-14: DO NOT FLIP YET. Only 2 degenerate shadow runs exist (1 day, 1 game, 0 comparable pairs) — not the ~7 days of clean game-day diffs the design requires. Also the primary codepath is NOT implemented (route.ts only branches on AI_SUGGEST_SOLVER===shadow; setting =primary just disables shadow logging). Roadmap gates the flip on Waves 3.5/6/7. Next: leave shadow running through real game-day traffic, fix unresolvedInputs, implement the primary branch, then re-review.
 - **Created**: 6/12/2026, 4:20:41 AM
-- **Updated**: 6/11/2026, 11:20:41 PM
+- **Updated**: 6/14/2026, 1:51:16 AM
 
 ### Wave 6 + 7 — engine learning loops + bartender-facing why
 
@@ -67,9 +67,9 @@ Last Updated: 6/14/2026, 1:51:16 AM
 - **Priority**: LOW
 - **Status**: PLANNED
 - **Category**: AI/Perf
-- **Description**: Use the v2.55.56 LLM perf logging to set per-box num_predict/timeout (Graystone slowest at ~170s).
+- **Description**: PARTIAL v2.59.0: shift-brief truncation fixed (SHIFT_BRIEF_NUM_PREDICT 320->384; LLM-PERF showed ~13% briefs truncated). Per-box OLLAMA_NUM_PREDICT tuning still BLOCKED: LLM-PERF logs are per-box local files never collected centrally (Holmgren-only, 2 ai-suggest samples fleet-wide). UNBLOCKER: build fleet log aggregation (Tailscale cat or /api/llm-perf/summary), accumulate a week of ai-suggest runs per box, THEN set per-box caps. Evidence-backed interim: Graystone .env OLLAMA_NUM_PREDICT=1100 (real output ~851 tok, 2048 risks >300s timeout at 6.7 tok/s).
 - **Created**: 6/12/2026, 4:20:41 AM
-- **Updated**: 6/11/2026, 11:20:41 PM
+- **Updated**: 6/14/2026, 1:51:16 AM
 
 ### Appleton: confirm next auto-update succeeds after rebase unstick
 
