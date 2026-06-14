@@ -46,6 +46,146 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-05-28 — v2.55.6–v2.55.9 — ISO hardware-prereqs + triple-$ password + PXE netboot fix
+
+**Risk:** GO — **zero runtime impact for installed fleet boxes.** Every change in this batch is ISO-build / new-NUC-provisioning side. No app code, no schema, no PM2 service touched.
+
+**What changed:**
+- **v2.55.6** — baked hardware prereqs into the autoinstall ISO (packages `adb, rtl-sdr, nginx, nmap, arp-scan, sshpass, imagemagick, v4l-utils`; first-boot `.env` generation with fresh crypto secrets; `usermod -aG dialout,video,render,plugdev`; setup-sdr.sh + setup-bartender-nginx.sh). Closes the gap analysis vs Holmgren so new NUCs need minimal debugging.
+- **v2.55.7** — fleet password fixed to `6809233DjD$$$` (THREE $, was two). Fixed the `$$`→PID expansion trap in smoke/audit test scripts.
+- **v2.55.8** — PXE netboot fix: `sanboot`-the-whole-ISO never worked for Ubuntu casper (UEFI+BIOS both); now boots kernel+initrd over HTTP with casper fetching the ISO via `url=`. `configure-netboot-menu.sh` reworked; dnsmasq proxy fixed (`pxe-service=` not `dhcp-boot=`). Verified live on Proxmox VM 201. CLAUDE.md Gotcha #19.
+- **v2.55.9** — VERSION_SETUP_GUIDE entries for the above.
+
+**Where this matters:** new-NUC provisioning only (USB ISO + office PXE server). Installed fleet boxes never re-run the ISO/installer.
+
+**Manual steps required (PXE server LXC only):** re-run `bash /root/configure-netboot-menu.sh` inside the netboot LXC so the new kernel+initrd menu + extracted casper files land. Fleet boxes: nothing. Full prescriptive steps in VERSION_SETUP_GUIDE.md v2.55.6–.8.
+
+**Rollback:** revert the relevant commit; previous ISO builds are archived. No fleet-side state to undo.
+
+**Affected files:** `scripts/iso/*`, `scripts/proxmox/configure-netboot-menu.sh`, `docs/PROXMOX_PXE_SETUP.md`, `docs/VERSION_SETUP_GUIDE.md`, `CLAUDE.md`.
+
+### 2026-05-27 — v2.54.86 — disk-installer adds bios_boot partition (GPT+BIOS boot fix)
+
+**Risk:** GO — zero runtime impact for installed fleet.
+
+**What changed:** the 6th install-bug iteration this week. `disk-installer.sh` Step 2 now creates a `bios_boot` partition (1 MB, type ef02) as partition 1 before EFI (now part 2) + root (now part 3). On GPT disks booted in BIOS legacy mode, `grub-install --target=i386-pc` requires this partition to embed its core image. Without it, the MBR signature 0x55AA was present (v2.54.80 check passed) but GRUB stage 1 had no valid stage-2 pointer → VM hung at SeaBIOS "Booting from Hard Disk..." even though kernel + initrd + grub.cfg were all correctly placed (v2.54.84 + earlier fixes confirmed working at install time via disk inspection).
+
+**Where this matters:** new-NUC installs only. Installed fleet boxes never re-run disk-installer.
+
+**Manual steps required:** none. Next-NUC install with attempt-9 ISO should finally boot all the way through.
+
+**Caveat for the v2.54.80 MBR check:** the 0x55AA signature is necessary but not sufficient validation — it's present on every formatted disk regardless of GRUB. A future hardening pass could read GRUB's identifying bytes from MBR. Not blocking; the bios_boot partition fix addresses the underlying cause.
+
+**Rollback:** `git revert <SHA>` — no functional change to revert at any installed location.
+
+**Pattern (6th iteration this week):** v2.54.76 + v2.54.79 + v2.54.80 + v2.54.81 + v2.54.84 + v2.54.86. Every handoff in the boot chain is now defensively validated where we know how to check it.
+
+`Checkpoint model: opus`
+
+---
+
+### 2026-05-27 — v2.54.84 — disk-installer copies kernel+initrd from casper to /boot
+
+**Risk:** GO — zero runtime impact for installed fleet.
+
+**What changed:** the 5th install-bug iteration this week. `disk-installer.sh` Step 4 (squashfs extract) now also copies `/cdrom/casper/vmlinuz` + `initrd` to the target's `/boot/vmlinuz-${KERNEL_VER}` + `/boot/initrd.img-${KERNEL_VER}` with version-matching symlinks. The build script's `mksquashfs -e boot` deliberately excludes /boot/ from the squashfs (live-boot uses /casper/* instead), so the extracted filesystem had no kernel — and `update-grub` referenced non-existent kernel files. Installed VM hung at `Booting from Hard Disk...` for 4+ min with no DHCP. Disk inspection confirmed missing vmlinuz/initrd.
+
+**Where this matters:** new-NUC installs only. Installed fleet boxes never re-run disk-installer.
+
+**Manual steps required:** none. Next-NUC install with attempt-8 ISO will boot through to systemd + first-boot service.
+
+**Rollback:** `git revert <SHA>` — no functional change to revert at any installed location.
+
+**Pattern (5th iteration):** v2.54.76 (parted) + v2.54.79 (unsquashfs) + v2.54.80 (grub-install fatal) + v2.54.81 (5 silent-fail sites) + v2.54.84 (missing kernel). Each handoff in the boot path must have a positive existence check. Currently validated: MBR sig (v2.54.80), kernel file (v2.54.84). Next gap-class candidates: initrd-required modules, systemd unit symlinks, network config presence.
+
+`Checkpoint model: opus`
+
+---
+
+### 2026-05-27 — v2.54.81 — disk-installer silent-fail sweep (5 critical sites)
+
+**Risk:** GO — zero runtime impact for installed fleet.
+
+**What changed:** swept `disk-installer.sh` for `|| true` patterns at install-critical steps. Removed silent-fail on 5 sites — partprobe, systemctl enable ssh, dpkg-reconfigure openssh-server, systemd-machine-id-setup, systemctl enable sports-bar-first-boot.service. Each now `exit 1` on failure with a clear error.
+
+**Most important:** `systemctl enable sports-bar-first-boot.service` was silent-fail. If it failed, the installed system would boot cleanly but never clone the app, never start PM2, never serve bartender remote — appears "INSTALLATION COMPLETE!" but produces an empty box. This was likely the next bug we'd hit after v2.54.80 fixed GRUB.
+
+**Where this matters:** new-NUC installs only. Installed fleet boxes never re-run disk-installer.
+
+**Bonus:** `dpkg-reconfigure openssh-server` was silent-fail — meaning if it failed, every fleet install would ship with the SAME SSH host keys baked into the chroot. Fleet-wide MITM risk we'd never have noticed until first network capture. Now fatal.
+
+**Manual steps required:** none. Install pipeline now fails LOUDLY at any disk-touching, bootloader-programming, identity-generating, or boot-service-enabling step.
+
+**Rollback:** `git revert <SHA>` — no functional change to revert at any installed location.
+
+**Pattern (4th iteration this week):** v2.54.76 + v2.54.79 + v2.54.80 + v2.54.81. Disk-installer.sh now systematically loud. Future contributors must NOT add `|| true` to disk/boot/identity steps — only `cleanup()` trap is exempt.
+
+`Checkpoint model: opus`
+
+---
+
+### 2026-05-27 — v2.54.80 — disk-installer GRUB hardening: fatal-fail + MBR signature verify
+
+**Risk:** GO — zero runtime impact for installed fleet.
+
+**What changed:** `scripts/iso/disk-installer.sh` Step 6 (GRUB install) is now fatal on dual-failure + verifies MBR boot signature 0x55AA post-BIOS install. Previously every grub-install call was wrapped in `|| warn` — silent failure mode where the installer said "INSTALLATION COMPLETE!" but the disk MBR was unprogrammed. Caught during VM 200 attempt-6 install: all 7 steps green but post-reboot SeaBIOS hung at "Booting from Hard Disk..."
+
+**Where this matters:** ONLY new-NUC installs from v3.0.1 attempt-7 (or later) ISOs. Installed fleet boxes never run disk-installer again.
+
+**Bonus:** new `scripts/iso/cleanup-chroot.sh` helper — safe replacement for the lazy-umount-then-rm pattern that hollowed Holmgren's /dev on 2026-05-27. Memorialized for future debootstrap chroot workflows.
+
+**Manual steps required:** none for existing locations. Next-NUC install: same 7-step wizard, but Step 6 will now LOUDLY exit on failure instead of silently shipping a broken install.
+
+**Rollback:** `git revert <SHA>` — no functional change to revert at any installed location.
+
+**Pattern:** v2.54.76 (parted) + v2.54.79 (unsquashfs) + v2.54.80 (grub-install) — three ISO bugs of the same class. Disk-installer.sh now LOUD when disk-programming fails. Future audit: grep `disk-installer.sh` for remaining `|| warn` / `|| true` patterns at disk-touching steps.
+
+`Checkpoint model: opus`
+
+---
+
+### 2026-05-27 — v2.54.79 — ISO chroot: add squashfs-tools (disk-installer Step 4/7 fix)
+
+**Risk:** GO — zero runtime impact for installed fleet.
+
+**What changed:** added `squashfs-tools` to the chroot apt install in `scripts/iso/build-sports-bar-iso.sh` so the live-ISO's `disk-installer.sh` can run `unsquashfs` at Step 4/7. Without it, VM 200 install pre-flight hung indefinitely with identical screendumps for 7+ minutes (silent because `disk-installer.sh` swallowed the "command not found").
+
+**Where this matters:** ONLY when a new NUC is being installed from a v3.0.1 ISO. Installed fleet boxes never run disk-installer again (they're already on disk) so this commit is a no-op for them.
+
+**Manual steps required:** none for existing locations. For new-NUC installs: download v3.0.1 attempt-6 ISO (or later) when posted to GitHub Releases. The 7-step wizard now completes Step 4/7 cleanly.
+
+**Rollback:** `git revert <SHA>` — but no functional change to revert at any installed location.
+
+**Pattern:** when `disk-installer.sh` shells out to any binary, that binary MUST be in the chroot install list (v2.54.76 caught parted/mkfs; v2.54.79 catches unsquashfs). Future ISO bugs in the same class: search `disk-installer.sh` for command invocations + cross-check against the chroot apt list.
+
+`Checkpoint model: opus`
+
+---
+
+### 2026-05-18 → 2026-05-27 — v2.49.2 through v2.54.78 — CATCH-UP entry (per-release notes not maintained in this range)
+
+**Risk:** GO — no STOP-grade incidents identified in this range. No location reported an auto-update rollback that required manual intervention beyond what's already captured in CLAUDE.md gotchas.
+
+**Why this is a catch-up entry instead of 60+ individual ones:** the per-release LOCATION_UPDATE_NOTES.md entries were not kept up to date for this range. Full per-release prescriptive details ARE in `docs/VERSION_SETUP_GUIDE.md` (61 substantive entries from v2.54.42 forward). For the gap before v2.54.42 (v2.49.2 → v2.54.41), refer to `git log --oneline main` for the commit-level history; commit subjects follow the same "vX.Y.Z: <one-line summary>" pattern.
+
+**Manually-actionable highlights from the gap** (versions that needed ANYTHING beyond auto-update):
+- **v2.54.51** — Virgin installer Part 1 P0: introduces `bootstrap-new-location.sh` + DB migrate path. NEW LOCATIONS only; existing fleet unaffected.
+- **v2.54.46** — commercial-lighting 19-route auth+rate-limit codemod. Auth-required for /api/commercial-lighting/** now; no operator action.
+- **v2.54.41** — full Turbopack migration (dropped --webpack). Requires `serverExternalPackages` in next.config.js for native modules. Already in place; no operator action.
+- **v2.54.38** — HOT FIX restoring webpack externals for native modules (canary fix during the Turbopack switch). No operator action.
+- **v2.54.34** — removed next-pwa entirely (closes 5 HIGH vulns). PWA install / "Add to home screen" feature removed; service worker gone. No operator action; bartenders will use browser bookmarks instead.
+- **v2.54.30** — zod 3→4 across monorepo. Breaking validation API changes confined to the package itself; no operator action.
+- **v2.54.29** — typescript 5.9→6.0. No operator action; type-check passes.
+- **v2.54.31** — tailwindcss 3→4. Minimal migration; no operator action.
+
+**Everything else in the range** (~140 commits) is GO with no manual steps: bug fixes, log demotes, dep bumps (Rule 10), doc updates, dead-code removal, agent-batch UI polish.
+
+**Per-release backfill deferred:** writing 140 individual entries from git log is a 2+ hour mechanical task with low marginal value (this catch-up entry covers the auto-update gate need). Can be revisited if a specific version's missing detail bites someone.
+
+`Checkpoint model: opus`
+
+---
+
 ### 2026-05-18 — v2.49.1 — chat-route audit BUG#1 fix + Q3 hedge tightening
 
 **What changed:**

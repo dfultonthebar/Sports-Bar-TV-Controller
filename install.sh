@@ -774,23 +774,52 @@ setup_database() {
     # Export DATABASE_URL for drizzle-kit
     export DATABASE_URL="file:${DATABASE_DIR}/production.db"
 
-    log_and_print "Pushing database schema..."
+    log_and_print "Applying database migrations..."
     log_and_print "  Database: ${DATABASE_DIR}/production.db"
 
-    # Simple and direct — run drizzle-kit push, show output
-    if npx drizzle-kit push --config=drizzle.config.ts 2>&1 | tee -a "$LOG_FILE"; then
-        print_success "Database schema created"
-    else
-        print_error "Database push failed. Trying again..."
-        # Delete any corrupt DB and retry once
-        rm -f "${DATABASE_DIR}/production.db"
-        if npx drizzle-kit push --config=drizzle.config.ts 2>&1 | tee -a "$LOG_FILE"; then
-            print_success "Database schema created (retry)"
+    # v2.54.51+ — Use the canonical migrate flow (matches scripts/auto-update.sh).
+    # Replaces drizzle-kit push which silently aborts on pre-existing indexes
+    # (CLAUDE.md Gotcha #6 — caused the 2026-05-20 NeighborhoodEvent outage).
+    local DB_PATH="${DATABASE_DIR}/production.db"
+
+    # Step 1: bootstrap migration markers (idempotent). Only runs if the DB
+    # already exists — on a true virgin install the DB is created by the
+    # migrate step below and bootstrap is unnecessary.
+    if [ -f "$DB_PATH" ]; then
+        log_and_print "Bootstrapping drizzle migration markers..."
+        if bash "$INSTALL_DIR/scripts/bootstrap-drizzle-migrations.sh" "$DB_PATH" 2>&1 | tee -a "$LOG_FILE"; then
+            print_success "Migration markers bootstrapped"
         else
-            print_error "Database setup failed."
-            echo "  Manual fix: cd $INSTALL_DIR && npx drizzle-kit push --config=drizzle.config.ts"
+            print_error "bootstrap-drizzle-migrations.sh failed"
+            echo "  Manual fix: cd $INSTALL_DIR && bash scripts/bootstrap-drizzle-migrations.sh $DB_PATH"
             return 1
         fi
+    fi
+
+    # Step 2: apply pending migrations (creates DB on virgin install)
+    log_and_print "Applying pending Drizzle migrations..."
+    if NODE_ENV=development npx drizzle-kit migrate 2>&1 | tee -a "$LOG_FILE"; then
+        print_success "Database schema migrated"
+    else
+        print_error "drizzle-kit migrate failed. Trying once after wiping DB..."
+        # Delete any partially-created DB and retry once
+        rm -f "$DB_PATH"
+        if NODE_ENV=development npx drizzle-kit migrate 2>&1 | tee -a "$LOG_FILE"; then
+            print_success "Database schema migrated (retry)"
+        else
+            print_error "Database setup failed."
+            echo "  Manual fix: cd $INSTALL_DIR && NODE_ENV=development npx drizzle-kit migrate"
+            return 1
+        fi
+    fi
+
+    # Step 3: belt-and-suspenders — run ensure-schema.sh to add any tables
+    # or columns that the migration files might have missed. No-op when
+    # migrations are complete.
+    if [ -f "$INSTALL_DIR/scripts/ensure-schema.sh" ] && [ -f "$DB_PATH" ]; then
+        log_and_print "Running ensure-schema.sh (belt-and-suspenders)..."
+        bash "$INSTALL_DIR/scripts/ensure-schema.sh" "$DB_PATH" 2>&1 | tee -a "$LOG_FILE" || \
+            print_warning "ensure-schema.sh reported issues (non-fatal — migrate is the source of truth)"
     fi
 
     # Verify DB exists
@@ -1021,9 +1050,10 @@ print_final_instructions() {
     echo -e "  • PM2 is installed in: ${YELLOW}$HOME/.npm-global/bin${NC}"
     echo -e "  • If 'pm2' command not found, run: ${YELLOW}source ~/.profile${NC}"
     echo -e "  • Or log out and log back in to refresh your PATH"
+    echo -e "  • ${GREEN}✓ Gotcha #11 hardening applied (linger, node, ollama)${NC} — see PHASE 12 in install log"
     echo ""
-    
-    echo -e "${CYAN}REQUIRED NEXT STEPS — auth bootstrap (PHASE 12):${NC}"
+
+    echo -e "${CYAN}REQUIRED NEXT STEP — auth bootstrap (PHASE 13):${NC}"
     echo -e "  Without this, every login attempt returns 'Invalid PIN'."
     echo -e "  Seeds the Location row, AuthPin rows, and LOCATION_ID/.env binding."
     echo ""
@@ -1045,7 +1075,7 @@ print_final_instructions() {
     echo -e "${CYAN}Auto-update timer (after Sync tab is configured):${NC}"
     echo -e "  Enable in UI: ${YELLOW}/system-admin?tab=sync${NC}, toggle Auto Update Enabled, Save"
     echo -e "  Install timer: ${YELLOW}bash scripts/install-auto-update-timer.sh${NC}"
-    echo -e "  Reboot survives: ${YELLOW}sudo loginctl enable-linger ubuntu${NC}"
+    echo -e "  (Linger already enabled by PHASE 12 hardening — timer survives reboots.)"
     echo ""
 
     echo -e "${CYAN}Optional — migrate from an existing location:${NC}"
@@ -1129,14 +1159,77 @@ run_install_verify() {
     if bash "$verify_script" 2>&1 | tee -a "$LOG_FILE"; then
         print_success "Install verification PASSED"
     else
-        # Non-fatal at install time — auth bootstrap (Phase 12, manual) hasn't
+        # Non-fatal at install time — auth bootstrap (Phase 13, manual) hasn't
         # run yet, and the operator may still need to populate location data.
         # The operator-facing "Next steps" output below tells them what to do.
         print_warning "Install verification reported failures (see above)."
         print_warning "Most likely cause on a fresh install: auth bootstrap"
         print_warning "(scripts/bootstrap-new-location.sh) hasn't been run yet."
-        print_warning "See PHASE 12 in the Next Steps below."
+        print_warning "See PHASE 13 in the Next Steps below."
     fi
+}
+
+#############################################################################
+# PHASE 12: Gotcha #11 hardening (linger, node symlinks, ollama perms)
+#############################################################################
+# Closes the four CLAUDE.md Gotcha #11 install-time gaps that cause
+# auto-update / RAG rescan / scheduler timers to silently die on a fresh
+# Ubuntu box. Idempotent — re-running on a hardened box is a no-op.
+#
+# Items applied:
+#   1. loginctl enable-linger ubuntu (user timers survive without SSH)
+#   2. Symlink NVM node/npm/npx into /usr/local/bin (systemd PATH fix)
+#   3. ubuntu in ollama group + models-dir g+w (ollama pull works)
+#   4. Proof step: verify all three from a clean-PATH subprocess view
+#
+# Non-fatal on failure — the rest of the install is still useful and the
+# operator can re-run the hardening script manually. Distinct exit codes
+# (2/3/4/5) from the hardening script let us surface WHICH item failed.
+#############################################################################
+
+run_gotcha11_hardening() {
+    print_header "PHASE 12: Gotcha #11 hardening (linger, node, ollama)"
+
+    local hardening_script="$INSTALL_DIR/scripts/enforce-gotcha11-hardening.sh"
+
+    if [ ! -f "$hardening_script" ]; then
+        print_warning "enforce-gotcha11-hardening.sh not found at $hardening_script — skipping"
+        print_warning "  Apply Gotcha #11 items manually per CLAUDE.md §Gotcha #11"
+        return 0
+    fi
+
+    chmod +x "$hardening_script"
+
+    log_and_print "Running enforce-gotcha11-hardening.sh (requires sudo)..."
+    # Script is root-required. sudo -E preserves env in case the script
+    # ever needs to read INSTALL_DIR or PATH from us.
+    local hardening_rc=0
+    sudo -E bash "$hardening_script" 2>&1 | tee -a "$LOG_FILE" || hardening_rc=$?
+
+    if [ "$hardening_rc" -eq 0 ]; then
+        print_success "Gotcha #11 hardening applied (linger, node, ollama)"
+    else
+        # Map the script's exit codes to operator-actionable hints. See
+        # script header for the full code table.
+        case "$hardening_rc" in
+            1) print_warning "Gotcha #11 hardening: must run as root (rc=1) — re-run manually with sudo" ;;
+            2) print_warning "Gotcha #11 hardening: linger enforcement failed (rc=2)" ;;
+            3) print_warning "Gotcha #11 hardening: node symlink enforcement failed (rc=3)" ;;
+            4) print_warning "Gotcha #11 hardening: ollama perms enforcement failed (rc=4)" ;;
+            5) print_warning "Gotcha #11 hardening: proof step caught a regression (rc=5)" ;;
+            *) print_warning "Gotcha #11 hardening exited with rc=$hardening_rc" ;;
+        esac
+        print_warning "  Re-run manually:  sudo bash $hardening_script"
+        print_warning "  (Non-fatal — the rest of the install is still usable.)"
+    fi
+
+    # Lightweight post-hardening proof: print linger state so the operator
+    # can see at a glance whether the most-common Gotcha #11 failure mode
+    # (Linger=no) was actually fixed. The full proof step ran inside the
+    # script above; this is just a one-line summary for the install log.
+    local linger_line
+    linger_line=$(loginctl show-user ubuntu 2>/dev/null | grep -E '^Linger=' || echo "Linger=unknown")
+    log_and_print "Post-hardening: $linger_line"
 }
 
 #############################################################################
@@ -1251,6 +1344,26 @@ main() {
 
     # PHASE 11: Install verification (verify-install.sh — the install gate)
     run_install_verify
+
+    # PHASE 12: Gotcha #11 hardening (linger, node symlinks, ollama perms).
+    # Runs AFTER verify-install so the operator sees both "verify result"
+    # and "hardening result" in the same install log, in that order.
+    run_gotcha11_hardening
+
+    # PHASE 13: OS hygiene + trim (journald cap, swappiness=10, disable
+    # bloat services, purge old kernels, sweep caches, rotate pre-update
+    # backups). v2.54.60 — idempotent, safe to re-run, no-op if already
+    # in desired state. Non-fatal on failure.
+    print_header "PHASE 13: OS hygiene + trim (optimize-os.sh)"
+    if [ -f scripts/optimize-os.sh ]; then
+        if bash scripts/optimize-os.sh 2>&1 | tee -a "$LOG_FILE"; then
+            print_success "OS hygiene applied (journald, swappiness, services, kernels, caches)"
+        else
+            print_warning "optimize-os.sh reported a non-fatal warning — see log."
+        fi
+    else
+        print_warning "scripts/optimize-os.sh not present in repo — skipping (this is normal on older checkouts)."
+    fi
 
     # Show completion message
     print_final_instructions

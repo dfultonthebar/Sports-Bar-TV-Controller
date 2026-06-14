@@ -53,9 +53,13 @@ export default function TodoList({ onSelectTodo, onNewTodo, refreshTrigger }: To
   const [filterPriority, setFilterPriority] = useState<string>('all')
   const [searchQuery, setSearchQuery] = useState('')
 
+  // Re-fetch whenever the filters change. MUST depend on filterStatus/filterPriority
+  // so the fetch runs AFTER the state updates — calling loadTodos() directly in the
+  // dropdown onChange used the stale (previous) filter value, so selecting
+  // "All Priorities" fetched the prior priority and showed only that subset.
   useEffect(() => {
     loadTodos()
-  }, [refreshTrigger])
+  }, [refreshTrigger, filterStatus, filterPriority])
 
   const loadTodos = async () => {
     try {
@@ -96,7 +100,7 @@ export default function TodoList({ onSelectTodo, onNewTodo, refreshTrigger }: To
         <h2 className="text-2xl font-bold text-slate-100">TODO List</h2>
         <button
           onClick={onNewTodo}
-          className="inline-flex items-center space-x-2 px-4 py-2 bg-linear-to-r from-blue-600 to-purple-600 text-white rounded-lg hover:from-blue-700 hover:to-purple-700 transition-colors"
+          className="inline-flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg hover:from-blue-700 hover:to-purple-700 transition-colors"
         >
           <Plus className="w-5 h-5" />
           <span>New TODO</span>
@@ -116,7 +120,7 @@ export default function TodoList({ onSelectTodo, onNewTodo, refreshTrigger }: To
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search todos..."
-              className="w-full px-4 py-2 bg-sportsBar-800 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+              className="w-full px-4 py-2 bg-sportsBar-800 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
@@ -127,11 +131,8 @@ export default function TodoList({ onSelectTodo, onNewTodo, refreshTrigger }: To
             </label>
             <select
               value={filterStatus}
-              onChange={(e) => {
-                setFilterStatus(e.target.value)
-                loadTodos()
-              }}
-              className="w-full px-4 py-2 bg-sportsBar-800 border border-slate-600 rounded-lg text-white focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+              onChange={(e) => setFilterStatus(e.target.value)}
+              className="w-full px-4 py-2 bg-sportsBar-800 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="all">All Status</option>
               <option value="PLANNED">Planned</option>
@@ -148,11 +149,8 @@ export default function TodoList({ onSelectTodo, onNewTodo, refreshTrigger }: To
             </label>
             <select
               value={filterPriority}
-              onChange={(e) => {
-                setFilterPriority(e.target.value)
-                loadTodos()
-              }}
-              className="w-full px-4 py-2 bg-sportsBar-800 border border-slate-600 rounded-lg text-white focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+              onChange={(e) => setFilterPriority(e.target.value)}
+              className="w-full px-4 py-2 bg-sportsBar-800 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="all">All Priorities</option>
               <option value="LOW">Low</option>

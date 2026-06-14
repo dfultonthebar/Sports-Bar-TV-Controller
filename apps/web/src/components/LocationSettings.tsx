@@ -188,7 +188,14 @@ export default function LocationSettings() {
       const data = await response.json()
 
       if (response.ok && data.success) {
-        setMessage({ type: 'success', text: `Backup successful! Pushed to branch: ${location.gitBranch}` })
+        // The API returns `warning` when it wrote the backup locally but did NOT
+        // push — e.g. the box is on `main` (not a location/* branch) or the push
+        // failed. Don't claim "Pushed to branch" in that case (Grok follow-up).
+        if (data.warning) {
+          setMessage({ type: 'error', text: data.message || data.warning })
+        } else {
+          setMessage({ type: 'success', text: data.message || `Backup successful! Pushed to branch: ${data.branch || location.gitBranch}` })
+        }
         await loadBackupStatus()
       } else {
         setMessage({ type: 'error', text: data.error || 'Backup failed' })

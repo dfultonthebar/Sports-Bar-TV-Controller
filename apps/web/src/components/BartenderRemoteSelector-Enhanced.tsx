@@ -204,7 +204,7 @@ export default function BartenderRemoteSelectorEnhanced() {
   }
 
   return (
-    <div className="min-h-screen bg-linear-to-br from-slate-950 via-blue-950 to-purple-950 p-4 pb-20">
+    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-purple-950 p-4 pb-20">
       {/* Animated Background Gradient Orbs */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl animate-pulse"></div>
@@ -214,7 +214,7 @@ export default function BartenderRemoteSelectorEnhanced() {
       {/* Header with Glassmorphism */}
       <div className="relative text-center mb-8">
         <div className="inline-block backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl px-8 py-4 shadow-2xl">
-          <h1 className="text-3xl md:text-4xl font-bold bg-linear-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent mb-2 flex items-center justify-center gap-3">
+          <h1 className="text-3xl md:text-4xl font-bold text-white mb-2 flex items-center justify-center gap-3">
             <Gamepad2 className="w-8 h-8 text-blue-400 drop-shadow-lg" />
             Remote Control Center
           </h1>
@@ -236,7 +236,7 @@ export default function BartenderRemoteSelectorEnhanced() {
         <div className="lg:col-span-1">
           <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl p-6 shadow-2xl">
             <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-              <div className="p-2 bg-linear-to-br from-blue-500/20 to-purple-500/20 rounded-lg">
+              <div className="p-2 bg-gradient-to-br from-blue-500/20 to-purple-500/20 rounded-lg">
                 <Tv className="w-5 h-5 text-blue-400" />
               </div>
               Select Source
@@ -262,16 +262,16 @@ export default function BartenderRemoteSelectorEnhanced() {
                       className={`
                         group relative w-full p-4 rounded-xl text-left transition-all duration-300
                         ${isSelected
-                          ? 'backdrop-blur-xl bg-linear-to-r ' + getInputGradient(input.inputType) + ' border-2 border-white/30 shadow-2xl scale-105'
+                          ? 'backdrop-blur-xl bg-gradient-to-r ' + getInputGradient(input.inputType) + ' border-2 border-white/30 shadow-2xl scale-105'
                           : hasDevice
                           ? 'backdrop-blur-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-white/20 hover:scale-102 hover:shadow-xl'
-                          : 'backdrop-blur-xl bg-white/2 border border-white/5 cursor-not-allowed opacity-50'
+                          : 'backdrop-blur-xl bg-white/[0.02] border border-white/5 cursor-not-allowed opacity-50'
                         }
                       `}
                     >
                       {/* Selection Glow Effect */}
                       {isSelected && (
-                        <div className="absolute inset-0 bg-linear-to-r from-blue-500/20 to-purple-500/20 rounded-xl blur-xl -z-10 animate-pulse"></div>
+                        <div className="absolute inset-0 bg-gradient-to-r from-blue-500/20 to-purple-500/20 rounded-xl blur-xl -z-10 animate-pulse"></div>
                       )}
 
                       <div className="flex items-center gap-3">
@@ -279,7 +279,7 @@ export default function BartenderRemoteSelectorEnhanced() {
                         <div className={`
                           p-3 rounded-lg transition-all duration-300
                           ${isSelected
-                            ? 'bg-linear-to-br from-blue-500/30 to-purple-500/30 shadow-lg scale-110'
+                            ? 'bg-gradient-to-br from-blue-500/30 to-purple-500/30 shadow-lg scale-110'
                             : 'bg-white/10 group-hover:bg-white/15'
                           }
                         `}>

@@ -15,6 +15,16 @@
 #   13  Bartender proxy on port 3002 unreachable
 #   14  Critical DB tables missing or empty
 #   15  Crash strings found in recent PM2 error logs
+#   16  matrix_config: single-card outputOffset != 0
+#   17  schema_completeness: expected table missing
+#   18  Gotcha #11: Linger=no on ubuntu user (user timer dies on logout)
+#   19  Gotcha #11: auto-update timer hasn't fired in >26h
+#   20  Gotcha #6: drizzle migration markers misaligned vs .sql file count
+#   21  Phase 2a: error-watch heartbeat stale (>12 min)
+#   22  Gotcha #8: BartenderLayout has no rooms (room-filter tabs won't render)
+#   23  Atlas drop-watcher startup row >24h old
+#   24  Atlas priority-watcher startup row >24h old
+#   25  Gotcha #11: /usr/local/bin/node or /npx missing symlink
 #
 # Flags:
 #   --quiet   Suppress per-check success output; print only the summary line
@@ -343,6 +353,117 @@ check_critical_tables() {
 }
 
 # ---------------------------------------------------------------------------
+# Check 5b: Schema completeness — recent schema additions actually present
+# ---------------------------------------------------------------------------
+# Why this exists: `drizzle-kit push` silently aborts on a pre-existing index
+# (CLAUDE.md Gotcha #6) and any CREATE TABLE scheduled AFTER that index in
+# the push order gets skipped. The push exits 0 — auto-update.sh thinks
+# everything is fine — verify-install thinks everything is fine — but a
+# newly-added feature is broken because its tables don't exist.
+#
+# This actually happened on 2026-05-20: v2.51 added 4 NeighborhoodVenue/
+# Event/Alias/InterferenceAttribution tables. drizzle-kit push aborted on
+# every fleet box except Holmgren (where dev created tables manually); the
+# preemptive-strike scheduler threw "no such table: NeighborhoodEvent"
+# every 10 minutes for ~24 hours before being caught by manual log audit.
+#
+# Fix: keep this list updated when adding new tables. Each entry should be
+# a table that the codebase EXPECTS to exist at the current version. If any
+# is missing, fail the install loud — auto-update.sh's rollback fires and
+# the operator gets a clear "missing table X" message instead of silent
+# feature-broken state.
+#
+# Real fix (task #154): switch to drizzle-kit generate + migrate which
+# can't silent-abort. Until that ships, this layer is the safety net.
+check_schema_completeness() {
+    log_info "Checking schema completeness (derived from drizzle/0000_baseline.sql)..."
+    if [ ! -f "$DB_PATH" ]; then
+        log_fail "Database file not found at ${DB_PATH}"
+        record "schema_completeness" 0 "db file missing"
+        return 17
+    fi
+
+    # The expected table list is derived dynamically from
+    # drizzle/0000_baseline.sql so we don't have to remember to update a
+    # hardcoded list every time the schema grows. v2.54.9 incident:
+    # ArtistInterferenceProfile was missing on 5/6 fleet boxes for weeks
+    # because the previous hardcoded list of 13 tables didn't include it
+    # — the bootstrap script marked baseline as applied without verifying.
+    # Deriving from the baseline migration closes that loophole.
+    local script_dir
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    local baseline_sql="$script_dir/../drizzle/0000_baseline.sql"
+    if [ ! -f "$baseline_sql" ]; then
+        # Fallback: layer is informational only when baseline missing
+        log_pass "Schema completeness SKIPPED (baseline migration not present)"
+        record "schema_completeness" 1 "baseline migration absent — skipped"
+        return 0
+    fi
+
+    # Use Python — easier to parse the baseline migration's CREATE TABLE
+    # blocks AND compare per-column against PRAGMA table_info on the live DB.
+    # v2.54.20 incident: 5/6 fleet boxes were missing Location.latitude /
+    # longitude / lastGeocodedAt columns because v2.51.2's ALTER TABLE never
+    # landed via the push workflow, AND atlas_drop_events.event_type was
+    # missing on all 6 boxes. The previous table-only check passed even
+    # though columns were missing. Now we audit columns too.
+    local audit_result
+    audit_result=$(python3 - "$DB_PATH" "$baseline_sql" 2>&1 <<'PYEOF'
+import re, sqlite3, sys
+db_path, baseline_path = sys.argv[1], sys.argv[2]
+src = open(baseline_path).read()
+tables = {}
+for m in re.finditer(r'CREATE TABLE `([A-Za-z_][A-Za-z_0-9]*)` \((.*?)\);', src, re.DOTALL):
+    name = m.group(1)
+    body = m.group(2)
+    cols = set()
+    for cm in re.finditer(r'`([a-zA-Z_][a-zA-Z_0-9]*)`\s+(?!REFERENCES)\S', body):
+        cols.add(cm.group(1))
+    tables[name] = cols
+conn = sqlite3.connect(db_path)
+missing_tables = []
+missing_cols = []  # list of "table.column"
+for tname, expected_cols in sorted(tables.items()):
+    row = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (tname,)
+    ).fetchone()
+    if not row:
+        missing_tables.append(tname)
+        continue
+    actual_cols = set(r[1] for r in conn.execute(f"PRAGMA table_info('{tname}')"))
+    missing = expected_cols - actual_cols
+    for c in sorted(missing):
+        missing_cols.append(f"{tname}.{c}")
+print(f"TABLES={len(tables)}", f"MISSING_TABLES={','.join(missing_tables)}", f"MISSING_COLS={','.join(missing_cols)}")
+PYEOF
+)
+
+    local total_tables missing_tables_str missing_cols_str
+    total_tables=$(echo "$audit_result" | grep -oE 'TABLES=[0-9]+' | cut -d= -f2)
+    missing_tables_str=$(echo "$audit_result" | grep -oE 'MISSING_TABLES=[^ ]*' | cut -d= -f2)
+    missing_cols_str=$(echo "$audit_result" | grep -oE 'MISSING_COLS=[^ ]*' | cut -d= -f2)
+
+    if [ -n "$missing_tables_str" ]; then
+        local cap="$missing_tables_str"
+        if [ ${#cap} -gt 200 ]; then cap="${cap:0:200}..."; fi
+        log_fail "Missing tables: ${cap} — drizzle silent abort (Gotcha #6). Apply DDL manually or run drizzle-kit migrate."
+        record "schema_completeness" 0 "missing_tables=${cap}"
+        return 17
+    fi
+    if [ -n "$missing_cols_str" ]; then
+        local cap="$missing_cols_str"
+        if [ ${#cap} -gt 200 ]; then cap="${cap:0:200}..."; fi
+        log_fail "Missing columns: ${cap} — older ALTER TABLE migration never landed. Apply DDL manually."
+        record "schema_completeness" 0 "missing_cols=${cap}"
+        return 17
+    fi
+
+    log_pass "Schema completeness OK (${total_tables} tables, all columns present)"
+    record "schema_completeness" 1 "${total_tables}/${total_tables} tables present, all columns present"
+    return 0
+}
+
+# ---------------------------------------------------------------------------
 # Check 6: No recent crash strings in PM2 error logs
 # ---------------------------------------------------------------------------
 # Looks at last CRASH_LOG_LINES of PM2 error stream and grepps for crash
@@ -418,11 +539,416 @@ check_crash_logs() {
 }
 
 # ---------------------------------------------------------------------------
+# Phase 3 — Liveness assertions tied to fixed bugs.
+# Each layer here turns a previously-🟡 "doc-only" Gotcha into an asserted
+# check that fires on every auto-update + every 15-min scheduled run.
+# Designed per docs/HOOK_COVERAGE.md.
+# ---------------------------------------------------------------------------
+
+# Check 18: Gotcha #11 — Linger=yes on the ubuntu user.
+# Without it, every systemd-user unit (auto-update timer, error-watch
+# service, etc.) dies when the operator's SSH session ends. Greenville
+# sat 38h without an update at v2.50.x because linger was off and nobody
+# had SSH'd since the last manual touch. Fix: sudo loginctl enable-linger ubuntu
+check_linger_enabled() {
+    log_info "Checking Linger=yes on the ubuntu user (Gotcha #11)..."
+    if ! command -v loginctl >/dev/null 2>&1; then
+        log_warn "loginctl not available — skipping linger check (treating as pass)"
+        record "linger_enabled" 1 "loginctl absent"
+        return 0
+    fi
+    if loginctl show-user ubuntu 2>/dev/null | grep -q '^Linger=yes$'; then
+        log_pass "Linger=yes on ubuntu user — user timers survive SSH logout"
+        record "linger_enabled" 1 "Linger=yes"
+        return 0
+    fi
+    log_fail "Linger=no on ubuntu user (Gotcha #11). User timers (auto-update, error-watch) die on SSH logout. Run: sudo loginctl enable-linger ubuntu"
+    record "linger_enabled" 0 "Linger=no"
+    return 18
+}
+
+# Check 19: Gotcha #11 — auto-update timer fired in the last 26h.
+# The timer runs every ~24h; a 1h grace covers cadence drift. Stale signal
+# means the timer is stuck (probably one of: Linger=no, conflict trap, NVM
+# PATH gap, ollama perms — see Gotcha #11 §audit recipe).
+#
+# v2.55.33 — Prefer the .auto-update-last-attempt.json sidecar's attempted_at
+# field. NOOP runs (origin/main already merged) don't create a new log file
+# so log-mtime stays old even when the timer fired successfully — caught on
+# Appleton 2026-06-09. Fall back to log-mtime when the sidecar is absent
+# (pre-v2.55.33 boxes during rollout).
+check_autoupdate_timer_fresh() {
+    log_info "Checking auto-update timer freshness (Gotcha #11)..."
+    local data_dir="/home/ubuntu/sports-bar-data"
+    local sidecar="$data_dir/.auto-update-last-attempt.json"
+    local log_dir="$data_dir/update-logs"
+    local now_epoch
+    now_epoch=$(date +%s)
+
+    # Unit-file existence FIRST (Lime Kiln audit 2026-06-10): the freshness
+    # checks below grandfather "no logs yet" as PASS, which silently masked a
+    # box where the timer was NEVER installed (so it can never auto-update at
+    # all — no security patches, no schema migrations). Distinguish "installed
+    # but not fired yet" from "never installed".
+    # In --json/auto-update mode this is a non-fatal WARN (a fresh box being
+    # manually updated before its timer is installed must not trigger a
+    # rollback). In interactive mode it is a hard FAIL so an installer can't
+    # read a green board on a box that will never update itself.
+    local timer_unit="/home/ubuntu/.config/systemd/user/sports-bar-autoupdate.timer"
+    if [ ! -f "$timer_unit" ]; then
+        if [ "$JSON" -eq 1 ]; then
+            log_warn "auto-update timer unit file missing — run: bash scripts/install-auto-update-timer.sh"
+            record "autoupdate_timer_fresh" 1 "WARN: unit file missing (run install-auto-update-timer.sh)"
+            return 0
+        fi
+        log_fail "auto-update timer unit file missing ($timer_unit) — this box will NEVER auto-update (no security patches, no schema migrations). Run: bash scripts/install-auto-update-timer.sh"
+        record "autoupdate_timer_fresh" 0 "unit file missing"
+        return 19
+    fi
+
+    # Prefer sidecar (v2.55.33+): captures every attempt including NOOP.
+    if [ -f "$sidecar" ]; then
+        local attempted_at
+        attempted_at=$(python3 -c "import json,sys; d=json.load(open('$sidecar')); print(int(d.get('attempted_at',0)))" 2>/dev/null || echo "0")
+        if [ -n "$attempted_at" ] && [ "$attempted_at" -gt 0 ] 2>/dev/null; then
+            local age=$(( now_epoch - attempted_at ))
+            if [ "$age" -lt 93600 ]; then
+                log_pass "Last auto-update attempt $((age / 3600))h old via sidecar (<26h)"
+                record "autoupdate_timer_fresh" 1 "sidecar age=${age}s"
+                return 0
+            fi
+            # A stale timer means "this box hasn't been auto-updating," which is
+            # worth surfacing — but it is NOT a reason to ROLL BACK a freshly-built,
+            # healthy update. In --json/auto-update mode this MUST be a non-fatal
+            # WARN, exactly like the unit-file-missing case above: otherwise a box
+            # whose timer went stale gets an infinite-rollback trap — every update
+            # builds green + healthy, then verify fails on the stale timer (which a
+            # successful update can't freshen) → rollback → still stale → repeat.
+            # (Appleton 2026-06-13: 17/18 layers passed, this one failure rolled
+            # back a good build.) Interactive runs still hard-FAIL so an operator
+            # auditing a box sees the stuck timer.
+            if [ "$JSON" -eq 1 ]; then
+                log_warn "Last auto-update attempt $((age / 3600))h old via sidecar — timer may be stuck (Gotcha #11), NOT failing the update (a stale timer doesn't make THIS build bad). Check: systemctl --user list-timers sports-bar-autoupdate.timer"
+                record "autoupdate_timer_fresh" 1 "WARN: sidecar age=${age}s (stale timer — non-fatal in update flow)"
+                return 0
+            fi
+            log_fail "Last auto-update attempt $((age / 3600))h old via sidecar — timer may be stuck (Gotcha #11). Check: systemctl --user list-timers sports-bar-autoupdate.timer"
+            record "autoupdate_timer_fresh" 0 "sidecar age=${age}s"
+            return 19
+        fi
+        log_warn "Sidecar present but attempted_at unreadable — falling back to log-mtime"
+    fi
+
+    # Fallback (pre-v2.55.33 boxes): log-mtime check.
+    if [ ! -d "$log_dir" ]; then
+        log_warn "Auto-update log dir missing — fresh install or never ran (treating as pass)"
+        record "autoupdate_timer_fresh" 1 "log dir absent (fresh install)"
+        return 0
+    fi
+    local last_log
+    last_log=$(ls -t "$log_dir"/auto-update-*.log 2>/dev/null | head -1 || true)
+    if [ -z "$last_log" ]; then
+        log_warn "No auto-update logs found (fresh install) — pass"
+        record "autoupdate_timer_fresh" 1 "no logs"
+        return 0
+    fi
+    local last_epoch
+    last_epoch=$(date -r "$last_log" +%s 2>/dev/null || echo "0")
+    local age=$(( now_epoch - last_epoch ))
+    # 26h = 24h cadence + 2h grace (auto-update timer + occasional clock drift)
+    if [ "$age" -lt 93600 ]; then
+        log_pass "Last auto-update log is $((age / 3600))h old (<26h, log-mtime fallback)"
+        record "autoupdate_timer_fresh" 1 "log-mtime age=${age}s"
+        return 0
+    fi
+    # Same non-fatal-in-update-flow rule as the sidecar branch above (the
+    # log-mtime fallback for pre-v2.55.33 boxes): never roll back a healthy
+    # build over a stale-timer signal.
+    if [ "$JSON" -eq 1 ]; then
+        log_warn "Last auto-update log is $((age / 3600))h old — timer may be stuck (Gotcha #11), NOT failing the update. Check: systemctl --user list-timers sports-bar-autoupdate.timer"
+        record "autoupdate_timer_fresh" 1 "WARN: log-mtime age=${age}s (stale timer — non-fatal in update flow)"
+        return 0
+    fi
+    log_fail "Last auto-update log is $((age / 3600))h old — timer may be stuck (Gotcha #11). Check: systemctl --user list-timers sports-bar-autoupdate.timer"
+    record "autoupdate_timer_fresh" 0 "log-mtime age=${age}s"
+    return 19
+}
+
+# Check 20: Gotcha #6 — drizzle migration markers consistent with .sql files.
+# `drizzle-kit migrate` writes one row to __drizzle_migrations per file
+# applied. If we have N .sql files in drizzle/ but only N-K rows in the
+# table, K migrations didn't apply — exactly the symptom that caused the
+# 2026-05-20 NeighborhoodEvent outage (push silently aborted on a
+# pre-existing index, skipping later tables).
+check_migration_markers_consistent() {
+    log_info "Checking drizzle migration marker consistency (Gotcha #6)..."
+    if [ ! -f "$DB_PATH" ]; then
+        log_warn "Production DB not found at $DB_PATH — skipping marker check"
+        record "migration_markers_consistent" 1 "DB absent"
+        return 0
+    fi
+    local drizzle_dir="/home/ubuntu/Sports-Bar-TV-Controller/drizzle"
+    local sql_count
+    sql_count=$(ls "$drizzle_dir"/*.sql 2>/dev/null | grep -v '/meta/' | wc -l || echo "0")
+    local db_count
+    db_count=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM __drizzle_migrations;" 2>/dev/null || echo "0")
+    if [ "$sql_count" -eq "$db_count" ]; then
+        log_pass "Migration markers consistent ($db_count rows = $sql_count .sql files)"
+        record "migration_markers_consistent" 1 "$db_count/$sql_count"
+        return 0
+    fi
+    log_fail "Migration marker mismatch: __drizzle_migrations has $db_count rows, drizzle/*.sql has $sql_count files (Gotcha #6). Run: cd /home/ubuntu/Sports-Bar-TV-Controller && npx drizzle-kit migrate"
+    record "migration_markers_consistent" 0 "$db_count/$sql_count"
+    return 20
+}
+
+# Check 21: Phase 2a — error-watch heartbeat fresh.
+# The watcher writes a 'heartbeat' row every HEARTBEAT_INTERVAL_SEC (default
+# 300s). A row older than 2× that means the watcher is dead. "No errors
+# in 24h" is fine; "no heartbeat in 12 min" is broken.
+check_error_watch_alive() {
+    log_info "Checking error-watch service heartbeat freshness (Phase 2a)..."
+    if [ ! -f "$DB_PATH" ]; then
+        log_warn "Production DB not found — skipping error-watch check"
+        record "error_watch_alive" 1 "DB absent"
+        return 0
+    fi
+    local table_exists
+    table_exists=$(sqlite3 "$DB_PATH" "SELECT 1 FROM sqlite_master WHERE type='table' AND name='error_watch_events' LIMIT 1;" 2>/dev/null || echo "")
+    if [ -z "$table_exists" ]; then
+        log_warn "error_watch_events table missing — pre-v2.55.23 box (treating as pass)"
+        record "error_watch_alive" 1 "table absent"
+        return 0
+    fi
+    local last_heartbeat
+    last_heartbeat=$(sqlite3 "$DB_PATH" "SELECT MAX(detected_at) FROM error_watch_events WHERE kind='heartbeat';" 2>/dev/null || echo "")
+    if [ -z "$last_heartbeat" ] || [ "$last_heartbeat" = "" ]; then
+        log_fail "error-watch has no heartbeat rows — service may have never started. Check: systemctl --user status sports-bar-error-watch"
+        record "error_watch_alive" 0 "no heartbeat rows"
+        return 21
+    fi
+    local age=$(( $(date +%s) - last_heartbeat ))
+    # 720s = 2 × HEARTBEAT_INTERVAL_SEC (300s default)
+    if [ "$age" -lt 720 ]; then
+        log_pass "error-watch heartbeat fresh (${age}s ago)"
+        record "error_watch_alive" 1 "age=${age}s"
+        return 0
+    fi
+    log_fail "error-watch heartbeat is ${age}s old (>720s threshold) — service may have died. Check: systemctl --user status sports-bar-error-watch"
+    record "error_watch_alive" 0 "age=${age}s"
+    return 21
+}
+
+# Check 22: Gotcha #8 — BartenderLayout referential integrity for rooms.
+# FAIL only when zones REFERENCE room IDs that don't exist in the rooms
+# array — that's the actual operational problem (broken filter UI). An
+# empty rooms array with zones that don't reference any rooms is a
+# single-room bar — operationally fine. Initial naive check (just
+# "rooms empty?") tripped 4/5 remote boxes in v2.55.25 dev because
+# Lucky's / LegLamp / single-room bars legitimately have empty rooms.
+check_bartender_layout_rooms() {
+    log_info "Checking BartenderLayout rooms referential integrity (Gotcha #8)..."
+    if [ ! -f "$DB_PATH" ]; then
+        record "bartender_layout_rooms" 1 "DB absent"
+        return 0
+    fi
+    local has_table
+    has_table=$(sqlite3 "$DB_PATH" "SELECT 1 FROM sqlite_master WHERE type='table' AND name='BartenderLayout' LIMIT 1;" 2>/dev/null || echo "")
+    if [ -z "$has_table" ]; then
+        log_warn "BartenderLayout table missing — pre-v2.11.0 box (treating as pass)"
+        record "bartender_layout_rooms" 1 "table absent"
+        return 0
+    fi
+    local row_count
+    row_count=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM BartenderLayout;" 2>/dev/null || echo "0")
+    if [ "$row_count" -eq 0 ]; then
+        log_warn "No BartenderLayout row yet — pass"
+        record "bartender_layout_rooms" 1 "no layout configured"
+        return 0
+    fi
+
+    # Pull active layout's zones + rooms. Use json_extract to count zone
+    # references vs declared rooms. The query is fast (single-row scan).
+    # Returns "zones_with_room_ref|rooms_declared|first_orphan_id" — orphan
+    # is a zone.room that has no matching rooms[].id (referential integrity break).
+    local result
+    result=$(sqlite3 "$DB_PATH" "
+WITH layout AS (
+  SELECT zones, rooms FROM BartenderLayout
+  WHERE isActive=1
+  ORDER BY isDefault DESC, displayOrder ASC LIMIT 1
+),
+zone_refs AS (
+  SELECT DISTINCT json_extract(value, '\$.room') AS room_id
+  FROM layout, json_each(layout.zones)
+  WHERE json_extract(value, '\$.room') IS NOT NULL
+    AND json_extract(value, '\$.room') != ''
+),
+room_ids AS (
+  SELECT json_extract(value, '\$.id') AS room_id
+  FROM layout, json_each(layout.rooms)
+),
+orphans AS (
+  SELECT zr.room_id FROM zone_refs zr
+  LEFT JOIN room_ids ri ON ri.room_id = zr.room_id
+  WHERE ri.room_id IS NULL
+)
+SELECT
+  (SELECT COUNT(*) FROM zone_refs) || '|' ||
+  (SELECT COUNT(*) FROM room_ids) || '|' ||
+  COALESCE((SELECT room_id FROM orphans LIMIT 1), '');
+" 2>/dev/null || echo "0|0|")
+    local zones_with_ref="${result%%|*}"
+    local rest="${result#*|}"
+    local rooms_decl="${rest%%|*}"
+    local first_orphan="${rest#*|}"
+
+    if [ -n "$first_orphan" ] && [ "$first_orphan" != "" ]; then
+        log_fail "BartenderLayout has zones referencing room ID '$first_orphan' but rooms[] array is missing it — bartender Video tab room-filter will show a broken/missing tab. Reconcile rooms or strip the orphan reference. (Gotcha #8)"
+        record "bartender_layout_rooms" 0 "orphan room ref: $first_orphan"
+        return 22
+    fi
+
+    if [ "$zones_with_ref" -gt 0 ]; then
+        log_pass "BartenderLayout rooms OK ($rooms_decl rooms, $zones_with_ref zones reference them, no orphans)"
+        record "bartender_layout_rooms" 1 "$rooms_decl rooms / $zones_with_ref refs / clean"
+    elif [ "$rooms_decl" -gt 0 ]; then
+        log_pass "BartenderLayout has $rooms_decl rooms declared (no zones reference them yet — single-zone setup or new layout)"
+        record "bartender_layout_rooms" 1 "$rooms_decl rooms / 0 refs"
+    else
+        log_pass "BartenderLayout single-room bar (no rooms declared, no zone references) — operationally fine"
+        record "bartender_layout_rooms" 1 "single-room bar"
+    fi
+    return 0
+}
+
+# Check 23: Atlas drop-watcher liveness.
+# In-process poller; writes one 'startup' row per process boot to
+# atlas_priority_events with event_type='startup'. Stale >24h means it
+# didn't come up after the last PM2 restart.
+check_atlas_drop_watcher_alive() {
+    log_info "Checking Atlas drop-watcher startup row freshness..."
+    if [ ! -f "$DB_PATH" ]; then
+        record "atlas_drop_watcher_alive" 1 "DB absent"
+        return 0
+    fi
+    local has_table
+    has_table=$(sqlite3 "$DB_PATH" "SELECT 1 FROM sqlite_master WHERE type='table' AND name='atlas_drop_events' LIMIT 1;" 2>/dev/null || echo "")
+    if [ -z "$has_table" ]; then
+        log_warn "atlas_drop_events table missing — pre-v2.33.x box (treating as pass)"
+        record "atlas_drop_watcher_alive" 1 "table absent"
+        return 0
+    fi
+    local row_count
+    row_count=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM atlas_drop_events;" 2>/dev/null || echo "0")
+    if [ "$row_count" -eq 0 ]; then
+        log_warn "atlas_drop_events table empty — no Atlas drops ever recorded (fresh install or pre-watcher) — pass"
+        record "atlas_drop_watcher_alive" 1 "no rows yet"
+        return 0
+    fi
+    local last
+    last=$(sqlite3 "$DB_PATH" "SELECT MAX(detected_at) FROM atlas_drop_events;" 2>/dev/null || echo "0")
+    local age=$(( $(date +%s) - last ))
+    # 86400s = 24h. PM2 may not restart for weeks at a healthy box, so this
+    # is purely a "did the watcher EVER run since last boot" check.
+    if [ "$age" -lt 604800 ]; then
+        log_pass "Atlas drop-watcher last fired ${age}s ago"
+        record "atlas_drop_watcher_alive" 1 "age=${age}s"
+        return 0
+    fi
+    log_warn "Atlas drop-watcher has not written in >7d — may be inactive (no priority events) or stopped. Check: pm2 logs sports-bar-tv-controller | grep ATLAS-DROP-WATCHER"
+    record "atlas_drop_watcher_alive" 1 "stale ${age}s (warn only)"
+    return 0
+}
+
+# Check 24: Atlas priority-watcher liveness.
+# Same shape as drop-watcher. Writes 'startup' rows to atlas_priority_events.
+check_atlas_priority_watcher_alive() {
+    log_info "Checking Atlas priority-watcher startup row freshness..."
+    if [ ! -f "$DB_PATH" ]; then
+        record "atlas_priority_watcher_alive" 1 "DB absent"
+        return 0
+    fi
+    local has_table
+    has_table=$(sqlite3 "$DB_PATH" "SELECT 1 FROM sqlite_master WHERE type='table' AND name='atlas_priority_events' LIMIT 1;" 2>/dev/null || echo "")
+    if [ -z "$has_table" ]; then
+        log_warn "atlas_priority_events table missing — pre-v2.33.x box (treating as pass)"
+        record "atlas_priority_watcher_alive" 1 "table absent"
+        return 0
+    fi
+    local last
+    last=$(sqlite3 "$DB_PATH" "SELECT MAX(detected_at) FROM atlas_priority_events;" 2>/dev/null || echo "0")
+    if [ "$last" = "" ] || [ "$last" -eq 0 ] 2>/dev/null; then
+        log_warn "atlas_priority_events empty (no startup rows) — pass"
+        record "atlas_priority_watcher_alive" 1 "empty"
+        return 0
+    fi
+    local age=$(( $(date +%s) - last ))
+    if [ "$age" -lt 604800 ]; then
+        log_pass "Atlas priority-watcher last fired ${age}s ago"
+        record "atlas_priority_watcher_alive" 1 "age=${age}s"
+        return 0
+    fi
+    log_warn "Atlas priority-watcher has not written in >7d (warn only)"
+    record "atlas_priority_watcher_alive" 1 "stale ${age}s (warn only)"
+    return 0
+}
+
+# Check 25: Gotcha #11 — /usr/local/bin/{node,npm,npx} symlinks present.
+# NVM-installed Node isn't in /usr/local/bin by default. Systemd-fired
+# scripts (rag-rescan-if-needed.sh, scheduler subprocesses) inherit a
+# minimal PATH and fail with "command not found" without these symlinks.
+# Not applicable to apt/NodeSource Node installs (those land in /usr/bin
+# automatically); we treat both as pass.
+check_node_symlink_present() {
+    log_info "Checking node/npm/npx in /usr/local/bin or /usr/bin (Gotcha #11)..."
+    local found=0
+    for bin in node npm npx; do
+        if [ -x "/usr/local/bin/$bin" ] || [ -x "/usr/bin/$bin" ]; then
+            found=$((found + 1))
+        fi
+    done
+    if [ "$found" -eq 3 ]; then
+        log_pass "node/npm/npx all reachable from systemd PATH"
+        record "node_symlink_present" 1 "3/3"
+        return 0
+    fi
+    log_fail "Only $found/3 of {node,npm,npx} reachable from systemd PATH (Gotcha #11). Run: sudo ln -sfv /home/ubuntu/.nvm/versions/node/v22.22.3/bin/{node,npm,npx} /usr/local/bin/"
+    record "node_symlink_present" 0 "$found/3"
+    return 25
+}
+
+# Check 26: drizzle 0003 migration applied — shure_pending_resync table
+# present. The v2.55.31 freq-change workflow + /api/shure-rf/queue-freq-change
+# both write to this table; without the migration the route returns 503 and
+# the bartender resync banner never shows. Belt-and-suspenders for the
+# Gotcha #6 class (documented gotcha vs enforced gate — feedback-documented-
+# gotchas-need-enforcement).
+check_shure_pending_resync_table_present() {
+    log_info "Checking shure_pending_resync table present (drizzle 0003)..."
+    if [ ! -f "$DB_PATH" ]; then
+        log_fail "Database file not found at ${DB_PATH}"
+        record "shure_pending_resync_table_present" 0 "no db file"
+        return 26
+    fi
+    local found
+    found=$(sqlite3 "$DB_PATH" "SELECT 1 FROM sqlite_master WHERE type='table' AND name='shure_pending_resync' LIMIT 1;" 2>/dev/null || echo "")
+    if [ -n "$found" ]; then
+        log_pass "shure_pending_resync table present"
+        record "shure_pending_resync_table_present" 1 "present"
+        return 0
+    fi
+    log_fail "shure_pending_resync table MISSING (drizzle 0003 not applied). Run: cd /home/ubuntu/Sports-Bar-TV-Controller && npx drizzle-kit migrate"
+    record "shure_pending_resync_table_present" 0 "missing"
+    return 26
+}
+
+# ---------------------------------------------------------------------------
 # Run all checks. Track first-failure exit code so we can return a specific
 # code when only one check failed (helps the auto-updater decide what to roll
 # back), but always run every check so the operator sees the full picture.
 # ---------------------------------------------------------------------------
-TOTAL=7
+TOTAL=18
 PASSED=0
 FAILED_NAMES=""
 FIRST_FAIL_CODE=0
@@ -496,13 +1022,89 @@ check_matrix_config() {
     return 0
 }
 
+# Check 27 (Lime Kiln audit 2026-06-10): auth bootstrap completeness.
+# verify-install historically checked runtime health (PM2/HTTP/schema) but not
+# deployment completeness — a fresh ISO box passed 17/17 while AuthPin=0 and
+# LOCATION_ID was blank, i.e. every login returns "Invalid PIN". The box is
+# health=200 but operationally dead. This converts that silent green into a
+# visible signal.
+#
+# json/auto-update mode → non-fatal WARN (bootstrap state is orthogonal to
+# whether a code update applied; must never trigger a rollback). Interactive
+# mode → hard FAIL so an operator/installer can't trust a green board on an
+# unloggable box.
+check_auth_bootstrap_complete() {
+    log_info "Checking auth bootstrap completeness (AuthPin + LOCATION_ID)..."
+    if [ ! -f "$DB_PATH" ]; then
+        log_warn "Production DB not found — skipping auth bootstrap check"
+        record "auth_bootstrap_complete" 1 "DB absent"
+        return 0
+    fi
+    local env_file="/home/ubuntu/Sports-Bar-TV-Controller/.env"
+    local location_id=""
+    [ -f "$env_file" ] && location_id=$(grep -E '^LOCATION_ID=' "$env_file" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'")
+
+    # The real readiness test is the BINDING: at least one ACTIVE AuthPin must
+    # reference the .env LOCATION_ID, or login returns "Invalid PIN". This holds
+    # regardless of id FORMAT — a legacy box whose id is the literal
+    # "default-location" (e.g. Graystone) with PINs bound to it is fully
+    # functional and MUST pass. (An earlier draft rejected "default-location"
+    # outright per a Grok suggestion; that false-FAILed working fleet boxes —
+    # Lime Kiln audit follow-up. What matters is the binding, not the id string.)
+    local location_id_trimmed pin_bound=""
+    location_id_trimmed=$(printf '%s' "$location_id" | tr -d '[:space:]')
+
+    local problem=""
+    if [ -z "$location_id_trimmed" ]; then
+        problem="LOCATION_ID blank in .env"
+    else
+        pin_bound=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM AuthPin WHERE isActive=1 AND locationId='${location_id_trimmed}';" 2>/dev/null || echo "ERR")
+        if [ "$pin_bound" = "ERR" ]; then
+            # AuthPin table itself unqueryable → a schema problem, owned by
+            # check_schema_completeness, not this readiness check.
+            log_warn "AuthPin table not queryable — skipping (schema_completeness owns this)"
+            record "auth_bootstrap_complete" 1 "AuthPin not queryable"
+            return 0
+        fi
+        if [ "$pin_bound" -le 0 ] 2>/dev/null; then
+            problem="no active AuthPin bound to LOCATION_ID '${location_id_trimmed}'"
+        fi
+    fi
+
+    if [ -n "$problem" ]; then
+        if [ "$JSON" -eq 1 ]; then
+            log_warn "Auth not bootstrapped — $problem (run bootstrap-new-location.sh)"
+            record "auth_bootstrap_complete" 1 "WARN: $problem (run bootstrap-new-location.sh)"
+            return 0
+        fi
+        log_fail "Auth not bootstrapped — $problem. Login returns 'Invalid PIN'. Run: bash scripts/bootstrap-new-location.sh --name '<Bar Name>' --admin-pin <PIN> --staff-pin <PIN>; then pm2 restart sports-bar-tv-controller --update-env"
+        record "auth_bootstrap_complete" 0 "$problem"
+        return 27
+    fi
+    log_pass "Auth bootstrap complete (LOCATION_ID='${location_id_trimmed}', AuthPin bound=${pin_bound})"
+    record "auth_bootstrap_complete" 1 "LOCATION_ID set, AuthPin bound=${pin_bound}"
+    return 0
+}
+
 run_check check_pm2             "pm2_online"
 run_check check_health_http     "health_http"
 run_check check_metrics_http    "metrics_http"
 run_check check_bartender_proxy "bartender_proxy"
-run_check check_critical_tables "critical_tables"
-run_check check_matrix_config   "matrix_config"
-run_check check_crash_logs      "crash_logs"
+run_check check_critical_tables       "critical_tables"
+run_check check_schema_completeness   "schema_completeness"
+run_check check_matrix_config         "matrix_config"
+run_check check_crash_logs            "crash_logs"
+# Phase 3 (v2.55.25) — liveness assertions tied to fixed bugs
+run_check check_linger_enabled               "linger_enabled"
+run_check check_autoupdate_timer_fresh       "autoupdate_timer_fresh"
+run_check check_migration_markers_consistent "migration_markers_consistent"
+run_check check_error_watch_alive            "error_watch_alive"
+run_check check_bartender_layout_rooms       "bartender_layout_rooms"
+run_check check_atlas_drop_watcher_alive     "atlas_drop_watcher_alive"
+run_check check_atlas_priority_watcher_alive "atlas_priority_watcher_alive"
+run_check check_node_symlink_present         "node_symlink_present"
+run_check check_shure_pending_resync_table_present "shure_pending_resync_table_present"
+run_check check_auth_bootstrap_complete      "auth_bootstrap_complete"
 
 END_EPOCH=$(date +%s)
 DURATION=$((END_EPOCH - START_EPOCH))

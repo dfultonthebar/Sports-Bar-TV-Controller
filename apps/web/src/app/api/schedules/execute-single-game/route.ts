@@ -12,6 +12,7 @@ import { eq, and, or } from 'drizzle-orm'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { logger } from '@sports-bar/logger'
+import { parseHardwareResult } from '@sports-bar/utils'
 import { z } from 'zod'
 import { validateRequestBody, isValidationError } from '@/lib/validation'
 import { getDistributionEngine } from '@/lib/scheduler/distribution-engine'
@@ -190,9 +191,21 @@ export async function POST(request: NextRequest) {
       })
     })
 
-    if (routeResponse.ok) {
+    // OR-gate fix (Wave 1, intelligence roadmap): a raw `if (routeResponse.ok)`
+    // here treated HTTP 200 + {success:false} as a routed TV — tvsControlled
+    // incremented even though the hardware never moved. Strict success===true
+    // only; malformed-OK (contract drift) logs loud and is a failure. This site
+    // also had NO error log on failure, which is why the enum-400 bug above was
+    // invisible.
+    const routeHw = await parseHardwareResult(routeResponse)
+    if (routeHw.ok) {
       tvsControlled++
       logger.info(`[SINGLE_GAME] Routed output ${assignment.outputNumber} to input ${assignment.inputNumber}`)
+    } else {
+      if (routeHw.malformedOk) {
+        logger.warn(`[SINGLE_GAME] Matrix route returned HTTP 200 but no success flag (contract drift) output ${assignment.outputNumber} → input ${assignment.inputNumber}: ${JSON.stringify(routeHw.body)} — treating as FAILURE`)
+      }
+      logger.error(`[SINGLE_GAME] route failed output ${assignment.outputNumber} → input ${assignment.inputNumber}: ${routeHw.error}`)
     }
 
     // Update input current channel tracking

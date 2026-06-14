@@ -14,7 +14,6 @@
     "incremental": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "allowJs": true,
-    "downlevelIteration": true
+    "allowJs": true
   }
 }

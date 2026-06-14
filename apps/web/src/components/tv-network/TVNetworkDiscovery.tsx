@@ -49,6 +49,7 @@ export default function TVNetworkDiscovery() {
   const [bulkLoading, setBulkLoading] = useState<string | null>(null)
   const [ipRange, setIpRange] = useState('192.168.10.1-192.168.10.254')
   const [statusChecking, setStatusChecking] = useState(false)
+  const [macDetecting, setMacDetecting] = useState(false)
 
   useEffect(() => {
     // Restore IP range from localStorage
@@ -103,6 +104,29 @@ export default function TVNetworkDiscovery() {
       logger.error('[TV-DISCOVERY] Status check failed:', err)
     } finally {
       setStatusChecking(false)
+    }
+  }
+
+  // Read missing TV MAC addresses straight off the LAN (ping → ARP). Lets
+  // Wake-on-LAN power-on work without hand-entering each MAC.
+  const detectMacs = async () => {
+    setMacDetecting(true)
+    setError(null)
+    setSuccessMessage(null)
+    try {
+      const response = await fetch('/api/tv-control/detect-macs', { method: 'POST' })
+      const data = await response.json()
+      if (response.ok && data.success) {
+        setSuccessMessage(data.message || `Detected ${data.filled ?? 0} MAC address(es).`)
+        await loadDevices()
+      } else {
+        setError(data.error || 'MAC detection failed')
+      }
+    } catch (err: any) {
+      logger.error('[TV-DISCOVERY] MAC detection failed:', err)
+      setError('MAC detection failed')
+    } finally {
+      setMacDetecting(false)
     }
   }
 
@@ -301,6 +325,17 @@ export default function TVNetworkDiscovery() {
               >
                 <RefreshCw className={`w-4 h-4 ${statusChecking ? 'animate-spin' : ''}`} />
                 Check Status
+              </Button>
+              <Button
+                onClick={detectMacs}
+                disabled={macDetecting || isScanning}
+                variant="outline"
+                size="sm"
+                className="flex items-center gap-2"
+                title="Read missing TV MAC addresses off the network (enables Wake-on-LAN power on)"
+              >
+                {macDetecting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wifi className="w-4 h-4" />}
+                Detect MACs
               </Button>
               <Button
                 onClick={startNetworkScan}

@@ -2,7 +2,6 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/cards'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs'
 import { Input } from './ui/input'
 import { Button } from './ui/button'
@@ -842,17 +841,17 @@ export default function AtlasProgrammingInterface() {
   }
 
   const renderProcessorForm = (isEdit: boolean = false) => (
-    <Card className="border-2 border-blue-800/40 bg-blue-900/20">
-      <CardHeader>
+    <div className="border border-blue-800/40 bg-blue-900/20 rounded-lg p-6">
+      <div className="pb-4">
         <div className="flex justify-between items-start">
           <div className="space-y-1">
-            <CardTitle className="text-blue-100 flex items-center gap-2">
+            <h3 className="text-lg font-semibold text-blue-100 flex items-center gap-2">
               {isEdit ? <Edit3 className="h-5 w-5" /> : <Plus className="h-5 w-5" />}
               {isEdit ? 'Edit Atlas Processor' : 'Add New Atlas Processor'}
-            </CardTitle>
-            <CardDescription>
+            </h3>
+            <p className="text-sm text-slate-400 mt-1">
               {isEdit ? 'Update processor configuration and credentials' : 'Configure a new Atlas audio processor for programming and control'}
-            </CardDescription>
+            </p>
           </div>
           <Button
             onClick={() => {
@@ -880,8 +879,8 @@ export default function AtlasProgrammingInterface() {
             ✕
           </Button>
         </div>
-      </CardHeader>
-      <CardContent className="space-y-6">
+      </div>
+      <div className="space-y-6">
         {/* Basic Information */}
         <div className="space-y-4">
           <h4 className="font-semibold text-slate-100 border-b pb-2">Basic Information</h4>
@@ -908,7 +907,7 @@ export default function AtlasProgrammingInterface() {
                     zones
                   })
                 }}
-                className="w-full p-2 border border-slate-700 rounded-md focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full p-2 border border-slate-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
                 <option value="AZM4">AZM4 (4 zones)</option>
                 <option value="AZM8">AZM8 (8 zones)</option>
@@ -965,7 +964,7 @@ export default function AtlasProgrammingInterface() {
           <h4 className="font-semibold text-slate-100 border-b pb-2">Authentication</h4>
           <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3 mb-4">
             <div className="flex items-start gap-2">
-              <Info className="h-4 w-4 text-blue-600 dark:text-blue-400 mt-0.5 shrink-0" />
+              <Info className="h-4 w-4 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
               <div className="text-xs text-blue-800 dark:text-blue-300">
                 <p className="font-medium mb-1">Atlas processors typically require authentication</p>
                 <p>Default credentials are usually <strong>admin/admin</strong>. {isEdit && 'Leave password blank to keep existing password.'}</p>
@@ -1034,8 +1033,8 @@ export default function AtlasProgrammingInterface() {
             {isEdit ? 'Update Processor' : 'Add Processor'}
           </Button>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   )
 
   if (loading) {
@@ -1050,14 +1049,14 @@ export default function AtlasProgrammingInterface() {
             <p className="text-lg text-gray-600">Loading Atlas processor configurations...</p>
           </div>
         </div>
-        <Card>
-          <CardContent className="flex items-center justify-center py-12">
+        <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-6">
+          <div className="flex items-center justify-center py-12">
             <div className="flex items-center gap-3">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
               <span className="text-gray-600">Loading processors...</span>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
     )
   }
@@ -1110,8 +1109,8 @@ export default function AtlasProgrammingInterface() {
 
       {/* Processor Selection */}
       {processors.length === 0 ? (
-        <Card className="border-2 border-dashed border-slate-700">
-          <CardContent className="text-center py-12">
+        <div className="border-2 border-dashed border-slate-700 bg-slate-800/50 rounded-lg p-6">
+          <div className="text-center py-12">
             <div className="mx-auto w-24 h-24 bg-slate-800 rounded-full flex items-center justify-center mb-4">
               <Cpu className="h-12 w-12 text-slate-500" />
             </div>
@@ -1126,23 +1125,23 @@ export default function AtlasProgrammingInterface() {
               <Plus className="h-4 w-4 mr-2" />
               Add Your First Processor
             </Button>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       ) : (
         <div className="space-y-6">
           {/* Processor Selection Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {processors.map((processor) => (
-              <Card 
-                key={processor.id} 
-                className={`cursor-pointer transition-all duration-200 hover:shadow-lg border-2 ${
-                  selectedProcessor?.id === processor.id 
-                    ? 'border-blue-400 bg-blue-900/20 shadow-lg' 
-                    : 'border-slate-700 hover:border-slate-700'
+              <div
+                key={processor.id}
+                className={`cursor-pointer transition-all duration-200 hover:shadow-lg rounded-lg border ${
+                  selectedProcessor?.id === processor.id
+                    ? 'border-blue-400 bg-blue-900/20 shadow-lg'
+                    : 'border-slate-700 bg-slate-800/50 hover:border-slate-700'
                 }`}
                 onClick={() => setSelectedProcessor(processor)}
               >
-                <CardContent className="p-4">
+                <div className="p-4">
                   <div className="flex items-start justify-between mb-3">
                     <div className="space-y-1 flex-1">
                       <h3 className="font-semibold text-slate-100">{processor.name}</h3>
@@ -1211,26 +1210,26 @@ export default function AtlasProgrammingInterface() {
                       <span>{processor.inputs} inputs • {processor.outputs} outputs</span>
                     </div>
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+              </div>
             ))}
           </div>
 
           {/* Programming Interface - Rest of the component remains the same */}
           {selectedProcessor && (
-            <Card className="border-2 border-blue-900/30 shadow-xl">
-              <CardHeader className="bg-linear-to-r from-blue-900/20 to-blue-900/20">
+            <div className="border border-blue-900/30 shadow-xl bg-slate-800/50 rounded-lg">
+              <div className="bg-gradient-to-r from-blue-900/20 to-blue-900/20 p-6 rounded-t-lg">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                   <div className="space-y-1">
-                    <CardTitle className="text-2xl text-blue-100 flex items-center gap-3">
+                    <h3 className="text-2xl font-semibold text-blue-100 flex items-center gap-3">
                       <div className="p-2 bg-blue-800/40 rounded-lg">
                         <Settings className="h-6 w-6 text-blue-300" />
                       </div>
                       Programming: {selectedProcessor.name}
-                    </CardTitle>
-                    <CardDescription className="text-blue-300 text-base">
+                    </h3>
+                    <p className="text-blue-300 text-base mt-1">
                       {selectedProcessor.model} • {selectedProcessor.inputs} inputs • {selectedProcessor.outputs} outputs
-                    </CardDescription>
+                    </p>
                   </div>
                   
                   <div className="flex flex-col sm:flex-row gap-2">
@@ -1273,9 +1272,9 @@ export default function AtlasProgrammingInterface() {
                     </Button>
                   </div>
                 </div>
-              </CardHeader>
+              </div>
 
-              <CardContent className="p-6">
+              <div className="p-6">
                 <Tabs defaultValue="inputs" className="w-full">
                   <TabsList className="grid w-full grid-cols-4 mb-6">
                     <TabsTrigger value="inputs" className="flex items-center gap-2">
@@ -1308,8 +1307,8 @@ export default function AtlasProgrammingInterface() {
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {inputs.map((input) => (
-                        <Card key={input.id} className="border-slate-700 bg-slate-800/50">
-                          <CardHeader className="pb-3">
+                        <div key={input.id} className="bg-slate-800/50 border border-slate-700 rounded-lg p-6">
+                          <div className="pb-3">
                             <div className="flex justify-between items-start">
                               <div className="flex-1">
                                 <Input
@@ -1336,8 +1335,8 @@ export default function AtlasProgrammingInterface() {
                                 <Trash2 className="h-4 w-4" />
                               </Button>
                             </div>
-                          </CardHeader>
-                          <CardContent className="space-y-3">
+                          </div>
+                          <div className="space-y-3">
                             {/* Input Type */}
                             <div>
                               <label className="text-xs text-slate-400 mb-1 block">Type</label>
@@ -1405,7 +1404,7 @@ export default function AtlasProgrammingInterface() {
                                   type="checkbox"
                                   checked={input.phantom}
                                   onChange={(e) => updateInput(input.id, { phantom: e.target.checked })}
-                                  className="rounded-sm"
+                                  className="rounded"
                                 />
                                 <span className="text-slate-300">Phantom</span>
                               </label>
@@ -1414,7 +1413,7 @@ export default function AtlasProgrammingInterface() {
                                   type="checkbox"
                                   checked={input.lowcut}
                                   onChange={(e) => updateInput(input.id, { lowcut: e.target.checked })}
-                                  className="rounded-sm"
+                                  className="rounded"
                                 />
                                 <span className="text-slate-300">Low Cut</span>
                               </label>
@@ -1423,7 +1422,7 @@ export default function AtlasProgrammingInterface() {
                                   type="checkbox"
                                   checked={input.compressor}
                                   onChange={(e) => updateInput(input.id, { compressor: e.target.checked })}
-                                  className="rounded-sm"
+                                  className="rounded"
                                 />
                                 <span className="text-slate-300">Compressor</span>
                               </label>
@@ -1432,7 +1431,7 @@ export default function AtlasProgrammingInterface() {
                                   type="checkbox"
                                   checked={input.gate}
                                   onChange={(e) => updateInput(input.id, { gate: e.target.checked })}
-                                  className="rounded-sm"
+                                  className="rounded"
                                 />
                                 <span className="text-slate-300">Gate</span>
                               </label>
@@ -1441,7 +1440,7 @@ export default function AtlasProgrammingInterface() {
                             {/* Routing */}
                             <div>
                               <label className="text-xs text-slate-400 mb-1 block">Route to Outputs</label>
-                              <div className="grid grid-cols-4 gap-1 max-h-32 overflow-y-auto p-2 bg-slate-900/30 rounded-sm border border-slate-700">
+                              <div className="grid grid-cols-4 gap-1 max-h-32 overflow-y-auto p-2 bg-slate-900/30 rounded border border-slate-700">
                                 {outputs.map((output) => (
                                   <label key={output.id} className="flex items-center gap-1 text-xs cursor-pointer">
                                     <input
@@ -1454,15 +1453,15 @@ export default function AtlasProgrammingInterface() {
                                           : currentRouting.filter(r => r !== output.id)
                                         updateInput(input.id, { routing: newRouting })
                                       }}
-                                      className="rounded-sm"
+                                      className="rounded"
                                     />
                                     <span className="text-slate-300">{output.id}</span>
                                   </label>
                                 ))}
                               </div>
                             </div>
-                          </CardContent>
-                        </Card>
+                          </div>
+                        </div>
                       ))}
                     </div>
                   </TabsContent>
@@ -1479,8 +1478,8 @@ export default function AtlasProgrammingInterface() {
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {outputs.map((output) => (
-                        <Card key={output.id} className="border-slate-700 bg-slate-800/50">
-                          <CardHeader className="pb-3">
+                        <div key={output.id} className="bg-slate-800/50 border border-slate-700 rounded-lg p-6">
+                          <div className="pb-3">
                             <div className="flex justify-between items-start">
                               <div className="flex-1">
                                 <Input
@@ -1512,8 +1511,8 @@ export default function AtlasProgrammingInterface() {
                                 <Trash2 className="h-4 w-4" />
                               </Button>
                             </div>
-                          </CardHeader>
-                          <CardContent className="space-y-3">
+                          </div>
+                          <div className="space-y-3">
                             {/* Output Type */}
                             <div>
                               <label className="text-xs text-slate-400 mb-1 block">Type</label>
@@ -1592,7 +1591,7 @@ export default function AtlasProgrammingInterface() {
                                   type="checkbox"
                                   checked={output.muted}
                                   onChange={(e) => updateOutput(output.id, { muted: e.target.checked })}
-                                  className="rounded-sm"
+                                  className="rounded"
                                 />
                                 <span className="text-slate-300">Muted</span>
                               </label>
@@ -1601,7 +1600,7 @@ export default function AtlasProgrammingInterface() {
                                   type="checkbox"
                                   checked={output.compressor}
                                   onChange={(e) => updateOutput(output.id, { compressor: e.target.checked })}
-                                  className="rounded-sm"
+                                  className="rounded"
                                 />
                                 <span className="text-slate-300">Compressor</span>
                               </label>
@@ -1610,13 +1609,13 @@ export default function AtlasProgrammingInterface() {
                                   type="checkbox"
                                   checked={output.limiter}
                                   onChange={(e) => updateOutput(output.id, { limiter: e.target.checked })}
-                                  className="rounded-sm"
+                                  className="rounded"
                                 />
                                 <span className="text-slate-300">Limiter</span>
                               </label>
                             </div>
-                          </CardContent>
-                        </Card>
+                          </div>
+                        </div>
                       ))}
                     </div>
                   </TabsContent>
@@ -1633,19 +1632,19 @@ export default function AtlasProgrammingInterface() {
 
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                       {scenes.map((scene) => (
-                        <Card key={scene.id} className="border-slate-700 bg-slate-800/50">
-                          <CardHeader>
-                            <CardTitle className="text-lg flex items-center gap-2">
+                        <div key={scene.id} className="bg-slate-800/50 border border-slate-700 rounded-lg p-6">
+                          <div className="pb-4">
+                            <h3 className="text-lg font-semibold text-slate-100 flex items-center gap-2">
                               <Zap className="h-5 w-5 text-yellow-400" />
                               {scene.name}
-                            </CardTitle>
+                            </h3>
                             {scene.description && (
-                              <CardDescription className="text-slate-400">
+                              <p className="text-sm text-slate-400 mt-1">
                                 {scene.description}
-                              </CardDescription>
+                              </p>
                             )}
-                          </CardHeader>
-                          <CardContent className="space-y-3">
+                          </div>
+                          <div className="space-y-3">
                             <div className="text-xs text-slate-400 space-y-1">
                               <div className="flex items-center gap-2">
                                 <Mic className="h-3 w-3" />
@@ -1668,8 +1667,8 @@ export default function AtlasProgrammingInterface() {
                               <Play className="h-4 w-4 mr-2" />
                               Recall Scene
                             </Button>
-                          </CardContent>
-                        </Card>
+                          </div>
+                        </div>
                       ))}
                     </div>
 
@@ -1694,14 +1693,14 @@ export default function AtlasProgrammingInterface() {
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {messages.map((message) => (
-                        <Card key={message.id} className="border-slate-700 bg-slate-800/50">
-                          <CardHeader>
-                            <CardTitle className="text-lg flex items-center gap-2">
+                        <div key={message.id} className="bg-slate-800/50 border border-slate-700 rounded-lg p-6">
+                          <div className="pb-4">
+                            <h3 className="text-lg font-semibold text-slate-100 flex items-center gap-2">
                               <MessageSquare className="h-5 w-5 text-blue-400" />
                               {message.name}
-                            </CardTitle>
-                          </CardHeader>
-                          <CardContent className="space-y-3">
+                            </h3>
+                          </div>
+                          <div className="space-y-3">
                             <div className="text-xs text-slate-400 space-y-1">
                               <div className="flex items-center gap-2">
                                 <Music className="h-3 w-3" />
@@ -1724,8 +1723,8 @@ export default function AtlasProgrammingInterface() {
                               <Play className="h-4 w-4 mr-2" />
                               Play Message
                             </Button>
-                          </CardContent>
-                        </Card>
+                          </div>
+                        </div>
                       ))}
                     </div>
 
@@ -1738,9 +1737,9 @@ export default function AtlasProgrammingInterface() {
                     )}
                   </TabsContent>
                 </Tabs>
-              </CardContent>
+              </div>
 
-            </Card>
+            </div>
           )}
         </div>
       )}

@@ -178,6 +178,31 @@ server {
         proxy_send_timeout 300s;
     }
 
+    # v2.54.47 (Grok audit headline finding) — /api/chat was UNREACHABLE
+    # from the bartender remote before this. Chat route was already STAFF-
+    # auth'd (v2.54.45) and the system prompt at
+    # apps/web/src/app/api/chat/route.ts:404-445 has the bartender-mode
+    # logic ("silver box with the antennas", "you can't break it",
+    # photo+text manager escalation). Now bartenders can reach it.
+    # SSE streaming → 300s timeout + proxy_buffering off.
+    location /api/chat {
+        proxy_pass http://127.0.0.1:3001;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+        proxy_buffering off;
+    }
+
+    # v2.54.47 — RAG knowledge-base query (used by bartender chat surfaces).
+    # Bartender-mode auto-detection added in llm-client.ts as of v2.54.47.
+    location /api/rag/query {
+        proxy_pass http://127.0.0.1:3001;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_read_timeout 60s;
+    }
+
     # Block everything else (admin pages, etc.)
     location / {
         default_type application/json;

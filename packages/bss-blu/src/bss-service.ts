@@ -2,7 +2,15 @@
  * BSS Soundweb London BLU Service
  *
  * High-level service for controlling BSS Soundweb London audio processors.
- * Supports device discovery, zone control, and configuration probing.
+ *
+ * ⚠ STUB STATUS (v2.54.12): The zone-control methods (setZoneMute,
+ * setZoneGain, setZoneSource) and getDeviceState() are NO-OP STUBS —
+ * they return success/defaults without sending any HiQnet command.
+ * TCP connect works; everything downstream is unimplemented (see TODOs
+ * at lines ~131, 191, 223, 237, 253). The package surface area exists
+ * to let the UI render BSS as a selectable device type, but actual
+ * hardware control is not wired through. Implement HiQnet zone-control
+ * frames before deploying BSS hardware at a new location.
  */
 
 import { logger } from '@sports-bar/logger'

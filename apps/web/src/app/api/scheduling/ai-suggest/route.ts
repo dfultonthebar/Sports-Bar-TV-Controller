@@ -16,6 +16,12 @@ import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { validateQueryParams, z } from '@/lib/validation'
 import { HARDWARE_CONFIG } from '@/lib/hardware-config'
+import {
+  logSchedulingEvent,
+  newSchedulingRequestId,
+} from '@/lib/scheduling-logger'
+import { logLlmPerf } from '@/lib/llm-perf-logger'
+import { runAiSuggestSolverShadow } from '@/lib/scheduling/ai-suggest-solver-shadow'
 import { resolveChannelsForGame } from '@/lib/network-channel-resolver'
 
 const OLLAMA_URL = `${HARDWARE_CONFIG.ollama.baseUrl}/api/generate`
@@ -25,6 +31,16 @@ const OLLAMA_URL = `${HARDWARE_CONFIG.ollama.baseUrl}/api/generate`
 // to avoid aborts during legitimate generation.
 const OLLAMA_TIMEOUT_MS = Math.max(HARDWARE_CONFIG.ollama.timeout, 300000) // ≥ 300s
 const OLLAMA_MODEL = HARDWARE_CONFIG.ollama.model
+// Output-token ceiling (env OLLAMA_NUM_PREDICT, default 2048). Per-box tunable:
+// slow iGPUs (Graystone ~6.7 tok/s) hit the 300s timeout at 2048. logLlmPerf
+// records real eval_count + done_reason so this gets set from data.
+const OLLAMA_NUM_PREDICT = HARDWARE_CONFIG.ollama.numPredict
+// Wave 2 (intelligence roadmap): deterministic DistributionEngine solver.
+// off (default) = LLM only, no engine call. shadow = also run the engine after
+// the response is sent and LOG a diff (no output change). primary (later patch)
+// = engine plan is the answer, LLM optional for reasoning. Env-tunable per box;
+// in ecosystem.config.js, needs pm2 delete+start (Gotcha #2).
+const AI_SUGGEST_SOLVER = (process.env.AI_SUGGEST_SOLVER || 'off').toLowerCase()
 
 // ---------- types ----------
 
@@ -399,7 +415,7 @@ async function fetchStreamingCatalogCandidates(
 async function loadSchedulingPatterns(): Promise<SchedulingPattern[]> {
   try {
     const rows = await db.all(
-      sql`SELECT * FROM scheduling_patterns ORDER BY observation_count DESC LIMIT 100`
+      sql`SELECT * FROM scheduling_patterns ORDER BY observation_count DESC, confidence DESC LIMIT 100`
     ) as SchedulingPattern[]
     logger.info(`[AI-SUGGEST] Loaded ${rows.length} scheduling patterns`)
     return rows
@@ -524,6 +540,7 @@ async function loadTVOutputs() {
 async function callOllama(prompt: string): Promise<string> {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), OLLAMA_TIMEOUT_MS)
+  const startedAt = Date.now()
 
   try {
     const response = await fetch(OLLAMA_URL, {
@@ -536,7 +553,9 @@ async function callOllama(prompt: string): Promise<string> {
         format: 'json',
         options: {
           temperature: 0.3,
-          num_predict: 2048,
+          // Output-token ceiling — per-box env-tunable (OLLAMA_NUM_PREDICT).
+          // num_predict is only a CAP; logLlmPerf records the real eval_count.
+          num_predict: OLLAMA_NUM_PREDICT,
         },
       }),
       signal: controller.signal,
@@ -547,7 +566,31 @@ async function callOllama(prompt: string): Promise<string> {
     }
 
     const data = await response.json()
+    // Record real throughput so num_predict + timeout can be tuned from data.
+    void logLlmPerf({
+      feature: 'ai-suggest',
+      model: OLLAMA_MODEL,
+      totalMs: Date.now() - startedAt,
+      evalCount: data.eval_count,
+      promptEvalCount: data.prompt_eval_count,
+      doneReason: data.done_reason,
+      numPredict: OLLAMA_NUM_PREDICT,
+      outcome: 'ok',
+    })
     return data.response || ''
+  } catch (err: any) {
+    const isTimeout = err?.name === 'TimeoutError' || err?.name === 'AbortError'
+    void logLlmPerf({
+      feature: 'ai-suggest',
+      model: OLLAMA_MODEL,
+      totalMs: Date.now() - startedAt,
+      numPredict: OLLAMA_NUM_PREDICT,
+      outcome: isTimeout ? 'timeout' : 'error',
+      note: isTimeout
+        ? `aborted at OLLAMA_TIMEOUT_MS=${OLLAMA_TIMEOUT_MS}ms — likely num_predict too high for this box's tok/s, or Ollama contended`
+        : (err?.message || err?.name || 'unknown'),
+    })
+    throw err
   } finally {
     clearTimeout(timeout)
   }
@@ -1080,6 +1123,11 @@ function parseOllamaResponse(
     const inBatchClaims = new Map<string, Array<{ start: number; end: number; gameId: string }>>()
 
     const finalSuggestions: AISuggestion[] = []
+    // Wave 2 shadow (#2): the home-team pad below mutates sug.suggestedOutputs to
+    // minTVs in place. Snapshot each padded suggestion's ORGANIC outputs (keyed by
+    // gameId) so the shadow comparison isn't inflated to Jaccard 1.0 on home games.
+    // Internal only — never serialized into the response.
+    const prePadByGameId = new Map<string, number[]>()
     for (const sug of suggestions) {
       const gameIdx = parseInt(sug.gameId.replace('game-', ''), 10)
       const origGame = games[gameIdx]
@@ -1255,6 +1303,7 @@ function parseOllamaResponse(
             logger.info(
               `[AI-SUGGEST] Home-team pad: ${rule.teamName} (${origGame.awayTeam} @ ${origGame.homeTeam}) — LLM gave ${sug.suggestedOutputs.length} TVs, padded to ${padded.length} (rule minTVs=${rule.minTVs})`,
             )
+            prePadByGameId.set(sug.gameId, [...sug.suggestedOutputs]) // Wave 2 shadow (#2): organic, pre-pad
             sug.suggestedOutputs = padded
             sug.reasoning = `${sug.reasoning} [auto-padded to ${padded.length} TVs per ${rule.teamName} home-team rule]`
           }
@@ -1264,11 +1313,11 @@ function parseOllamaResponse(
       finalSuggestions.push(sug)
     }
 
-    return { suggestions: finalSuggestions, rejections }
+    return { suggestions: finalSuggestions, rejections, prePadByGameId }
   } catch (err: any) {
     logger.error(`[AI-SUGGEST] Failed to parse Ollama JSON response: ${err.message}`)
     logger.debug(`[AI-SUGGEST] Raw response: ${raw.substring(0, 500)}`)
-    return { suggestions: [], rejections: [] }
+    return { suggestions: [], rejections: [], prePadByGameId: new Map<string, number[]>() }
   }
 }
 
@@ -1288,6 +1337,20 @@ export async function GET(request: NextRequest) {
   )
 
   if (!queryValidation.success) return queryValidation.error
+
+  // v2.55.42 — scheduling-logger instrumentation (closes the AI half of the
+  // dedicated-log coverage). Manual path was wired in v2.55.38; this adds
+  // source='ai' visibility so the operator can grep
+  // /home/ubuntu/sports-bar-data/logs/scheduling-YYYY-MM-DD.log for the
+  // AI's decision trail alongside the bartender's manual schedules.
+  const aiReqId = newSchedulingRequestId()
+  await logSchedulingEvent({
+    level: 'info',
+    source: 'ai',
+    action: 'attempt',
+    requestId: aiReqId,
+    note: 'AI Suggest invoked — about to load games, inputs, patterns',
+  })
 
   try {
     // v2.32.100 — Load input sources FIRST so the streaming catalog fetch
@@ -1415,6 +1478,17 @@ export async function GET(request: NextRequest) {
     } catch (err: any) {
       if (err.name === 'AbortError') {
         logger.error(`[AI-SUGGEST] Ollama request timed out after ${Math.round(OLLAMA_TIMEOUT_MS / 1000)}s`)
+        await logSchedulingEvent({
+          level: 'error',
+          source: 'ai',
+          action: 'tune_fail',
+          requestId: aiReqId,
+          outcome: {
+            httpStatus: 504,
+            errorMessage: `Ollama timed out after ${Math.round(OLLAMA_TIMEOUT_MS / 1000)}s`,
+          },
+          note: 'AI suggestion aborted — Ollama unresponsive (may be RAM-pressured, model evicted, or service down)',
+        })
         return NextResponse.json(
           { success: false, error: 'AI suggestion timed out. Ollama may be busy or unavailable.', suggestions: [] },
           { status: 504 }
@@ -1422,6 +1496,14 @@ export async function GET(request: NextRequest) {
       }
 
       logger.error('[AI-SUGGEST] Ollama unavailable:', err)
+      await logSchedulingEvent({
+        level: 'error',
+        source: 'ai',
+        action: 'tune_fail',
+        requestId: aiReqId,
+        outcome: { httpStatus: 503, errorMessage: err.message },
+        note: `Ollama at ${HARDWARE_CONFIG.ollama.baseUrl} unreachable`,
+      })
       return NextResponse.json(
         {
           success: false,
@@ -1436,7 +1518,7 @@ export async function GET(request: NextRequest) {
     logger.info(`[AI-SUGGEST] Ollama raw response (${ollamaResponse.length} chars): ${ollamaResponse.slice(0, 2000)}`)
 
     // 4. Parse response into structured suggestions
-    const { suggestions, rejections } = parseOllamaResponse(ollamaResponse, filteredGames, inputSources, homeTeamRules, tvOutputs.length)
+    const { suggestions, rejections, prePadByGameId } = parseOllamaResponse(ollamaResponse, filteredGames, inputSources, homeTeamRules, tvOutputs.length)
 
     // v2.27.1: Persist rejection telemetry so operators can see WHY the LLM
     // dropped suggestions (zero outputs, in-batch collision, existing booking,
@@ -1474,6 +1556,23 @@ export async function GET(request: NextRequest) {
       rejections: rejections.length,
     })
 
+    await logSchedulingEvent({
+      level: 'info',
+      source: 'ai',
+      action: 'allocation_created',  // semantically: AI proposed N allocations; operator's approve flow creates them
+      requestId: aiReqId,
+      outcome: { httpStatus: 200 },
+      note: `AI returned ${suggestions.length} suggestion(s) for ${games.length} game(s) (${rejections.length} rejections, ${inputSources.length} inputs avail, ${patterns.length} learned patterns consulted). Operator will approve via /api/schedules/bartender-schedule.`,
+    })
+
+    // Wave 2 SHADOW: after building the response, run the deterministic engine
+    // in the background and log a diff vs the LLM plan. setTimeout(0) defers it
+    // past this return so it never adds latency; the runner never throws.
+    if (AI_SUGGEST_SOLVER === 'shadow') {
+      const shadowArgs = { requestId: aiReqId, filteredGames, inputSources, tvOutputs, llmSuggestions: suggestions, prePadByGameId }
+      setTimeout(() => { void runAiSuggestSolverShadow(shadowArgs) }, 0)
+    }
+
     return NextResponse.json({
       success: true,
       suggestions,
@@ -1488,6 +1587,14 @@ export async function GET(request: NextRequest) {
     })
   } catch (error: any) {
     logger.api.error('GET', '/api/scheduling/ai-suggest', error)
+    await logSchedulingEvent({
+      level: 'error',
+      source: 'ai',
+      action: 'tune_fail',
+      requestId: aiReqId,
+      outcome: { httpStatus: 500, errorMessage: error.message },
+      note: 'AI Suggest threw uncaught — see PM2 stack',
+    })
     return NextResponse.json(
       { success: false, error: 'Failed to generate scheduling suggestions', details: error.message },
       { status: 500 }

@@ -510,7 +510,7 @@ export default function MatrixControl() {
                 onChange={(e) => setCurrentConfig({ ...currentConfig, tcpPort: parseInt(e.target.value) })}
                 className="w-full px-3 py-2 border border-slate-600 rounded-md focus:outline-hidden focus:ring-2 focus:ring-indigo-500 bg-slate-800 text-slate-100"
               />
-              <p className="text-xs text-slate-400 mt-1">Default: 23 (Telnet/Wolfpack standard)</p>
+              <p className="text-xs text-slate-400 mt-1">Default: 23 (Telnet/Wolf Pack standard)</p>
             </div>
           )}
 

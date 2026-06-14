@@ -350,8 +350,12 @@ class ESPNSyncService {
       let linkedCount = 0;
 
       for (const game of unlinkedGames) {
-        // Try to find matching home teams by team name
-        // TODO: Add espnTeamId column to homeTeams schema for better matching
+        // KNOWN LIMITATION: matching by team name string is fuzzy — Bucks
+        // sometimes ingests as "Milwaukee Bucks" vs "Bucks" depending on
+        // ESPN league context. An espnTeamId column on homeTeams would be
+        // more robust but is deferred (schema-change cost > current
+        // false-negative cost — operators have caught mismatches in the
+        // wild and corrected homeTeams.teamName manually).
         const homeTeam = await db
           .select()
           .from(schema.homeTeams)

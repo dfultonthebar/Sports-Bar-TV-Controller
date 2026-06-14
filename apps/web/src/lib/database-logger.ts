@@ -2,7 +2,7 @@
  * Database Logger - Re-exported from @sports-bar/data
  *
  * This file bridges the local import path (@/lib/database-logger) to the shared package.
- * All database logging functionality is maintained in the @sports-bar/data package.
+ * All database logging functionality is maintained in the @sports-bar/database package.
  */
 
 // Re-export everything from the data package database-logger module
@@ -11,4 +11,4 @@ export {
   logError,
   logInfo,
   logWarning
-} from '@sports-bar/data'
+} from '@sports-bar/database'

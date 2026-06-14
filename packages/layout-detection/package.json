@@ -18,12 +18,12 @@
     "@sports-bar/config": "*",
     "@sports-bar/logger": "*",
     "sharp": "^0.34.4",
-    "tesseract.js": "^6.0.1",
+    "tesseract.js": "^7.0.0",
     "node-fetch": "^3.3.2"
   },
   "devDependencies": {
     "@sports-bar/config": "*",
-    "@types/node": "^24.5.2",
-    "typescript": "^5.9.2"
+    "@types/node": "^25.0.0",
+    "typescript": "^6.0.0"
   }
 }

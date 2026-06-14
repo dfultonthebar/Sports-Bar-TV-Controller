@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/cards'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -859,86 +858,80 @@ export function IRLearningPanel({ device, onClose }: IRLearningPanelProps) {
 
       {/* Global Cache Status */}
       {device.globalCacheDeviceId ? (
-        <Card className="border-blue-500/20 bg-blue-500/5">
-          <CardContent className="py-4">
-            <div className="flex items-center gap-3">
-              <Radio className="w-5 h-5 text-blue-400" />
-              <div>
-                <div className="text-sm font-medium text-slate-200">
-                  Global Cache Device: {globalCacheDevices.find(d => d.id === device.globalCacheDeviceId)?.name || 'Unknown'}
-                </div>
-                <div className="text-xs text-slate-400">
-                  Port {device.globalCachePortNumber} • 
-                  {globalCacheDevices.find(d => d.id === device.globalCacheDeviceId)?.ipAddress}
-                </div>
+        <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 p-4">
+          <div className="flex items-center gap-3">
+            <Radio className="w-5 h-5 text-blue-400" />
+            <div>
+              <div className="text-sm font-medium text-slate-200">
+                Global Cache Device: {globalCacheDevices.find(d => d.id === device.globalCacheDeviceId)?.name || 'Unknown'}
               </div>
-              <Badge
-                className={`ml-auto ${
-                  globalCacheDevices.find(d => d.id === device.globalCacheDeviceId)?.status === 'online'
-                    ? 'bg-green-500/20 text-green-400 border-green-500/30'
-                    : 'bg-red-500/20 text-red-400 border-red-500/30'
-                }`}
-              >
-                {globalCacheDevices.find(d => d.id === device.globalCacheDeviceId)?.status || 'unknown'}
-              </Badge>
+              <div className="text-xs text-slate-400">
+                Port {device.globalCachePortNumber} •
+                {globalCacheDevices.find(d => d.id === device.globalCacheDeviceId)?.ipAddress}
+              </div>
             </div>
-          </CardContent>
-        </Card>
+            <Badge
+              className={`ml-auto ${
+                globalCacheDevices.find(d => d.id === device.globalCacheDeviceId)?.status === 'online'
+                  ? 'bg-green-500/20 text-green-400 border-green-500/30'
+                  : 'bg-red-500/20 text-red-400 border-red-500/30'
+              }`}
+            >
+              {globalCacheDevices.find(d => d.id === device.globalCacheDeviceId)?.status || 'unknown'}
+            </Badge>
+          </div>
+        </div>
       ) : (
-        <Card className="border-amber-500/20 bg-amber-500/5">
-          <CardContent className="py-4">
-            <div className="flex items-center gap-3">
-              <AlertCircle className="w-5 h-5 text-amber-400" />
-              <div className="text-sm text-amber-200">
-                No Global Cache device assigned to this IR device. Please edit the device configuration and assign a Global Cache device and port.
-              </div>
+        <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-4">
+          <div className="flex items-center gap-3">
+            <AlertCircle className="w-5 h-5 text-amber-400" />
+            <div className="text-sm text-amber-200">
+              No Global Cache device assigned to this IR device. Please edit the device configuration and assign a Global Cache device and port.
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       )}
 
       {/* Alignment Test Mode Banner */}
       {alignmentTestRunning && (
-        <Card className="border-2 border-orange-500/50 bg-orange-500/10 animate-pulse">
-          <CardContent className="py-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <Target className="w-6 h-6 text-orange-400 animate-bounce" />
-                <div>
-                  <div className="font-medium text-orange-200">
-                    🎯 Alignment Test Running
-                  </div>
-                  <div className="text-sm text-orange-300 mt-1">
-                    Sending Exit command every 2 seconds • {alignmentTestCount} commands sent
-                  </div>
-                  <div className="text-xs text-orange-400 mt-1">
-                    Adjust the IR emitter position until the cable box responds consistently
-                  </div>
+        <div className="rounded-lg border-2 border-orange-500/50 bg-orange-500/10 p-4 animate-pulse">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Target className="w-6 h-6 text-orange-400 animate-bounce" />
+              <div>
+                <div className="font-medium text-orange-200">
+                  🎯 Alignment Test Running
+                </div>
+                <div className="text-sm text-orange-300 mt-1">
+                  Sending Exit command every 2 seconds • {alignmentTestCount} commands sent
+                </div>
+                <div className="text-xs text-orange-400 mt-1">
+                  Adjust the IR emitter position until the cable box responds consistently
                 </div>
               </div>
-              <Button
-                variant="destructive"
-                onClick={stopAlignmentTest}
-                className="flex items-center gap-2"
-              >
-                <StopCircle className="w-4 h-4" />
-                Stop Test
-              </Button>
             </div>
-          </CardContent>
-        </Card>
+            <Button
+              variant="destructive"
+              onClick={stopAlignmentTest}
+              className="flex items-center gap-2"
+            >
+              <StopCircle className="w-4 h-4" />
+              Stop Test
+            </Button>
+          </div>
+        </div>
       )}
 
       {/* Learn All Wizard Banner */}
       {wizardRunning && wizardQueue.length > 0 && (
-        <Card className={`border-2 ${
+        <div className={`rounded-lg border-2 p-6 ${
           wizardStatus === 'ready' ? 'border-green-500 bg-green-500/10 animate-pulse' :
           wizardStatus === 'captured' || wizardStatus === 'testing' ? 'border-blue-500 bg-blue-500/10' :
           wizardStatus === 'verified' ? 'border-green-500 bg-green-500/10' :
           wizardStatus === 'failed' ? 'border-red-500 bg-red-500/10' :
           'border-blue-500/50 bg-blue-500/10'
         }`}>
-          <CardContent className="py-6">
+          <div>
             <div className="text-center space-y-4">
               {/* Progress */}
               <div className="text-sm text-slate-400">
@@ -1000,45 +993,43 @@ export function IRLearningPanel({ device, onClose }: IRLearningPanelProps) {
                 </Button>
               )}
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       )}
 
       {/* Wizard Complete Summary */}
       {!wizardRunning && wizardResults.length > 0 && (
-        <Card className="border-slate-700 bg-slate-800/50">
-          <CardContent className="py-4">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-semibold text-slate-100">Learn All Results</h3>
-              <Button size="sm" variant="outline" onClick={() => setWizardResults([])}>Dismiss</Button>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {wizardResults.map((r, i) => (
-                <Badge
-                  key={i}
-                  className={
-                    r.status === 'ok' ? 'bg-green-500/20 text-green-400 border-green-500/30' :
-                    r.status === 'fail' ? 'bg-red-500/20 text-red-400 border-red-500/30' :
-                    'bg-slate-500/20 text-slate-400 border-slate-500/30'
-                  }
-                >
-                  {r.status === 'ok' ? '✓' : r.status === 'fail' ? '✗' : '⏭'} {r.name}
-                </Badge>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+        <div className="rounded-lg border border-slate-700 bg-slate-800/50 p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-semibold text-slate-100">Learn All Results</h3>
+            <Button size="sm" variant="outline" onClick={() => setWizardResults([])}>Dismiss</Button>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {wizardResults.map((r, i) => (
+              <Badge
+                key={i}
+                className={
+                  r.status === 'ok' ? 'bg-green-500/20 text-green-400 border-green-500/30' :
+                  r.status === 'fail' ? 'bg-red-500/20 text-red-400 border-red-500/30' :
+                  'bg-slate-500/20 text-slate-400 border-slate-500/30'
+                }
+              >
+                {r.status === 'ok' ? '✓' : r.status === 'fail' ? '✗' : '⏭'} {r.name}
+              </Badge>
+            ))}
+          </div>
+        </div>
       )}
 
       {/* Load Commands from Template */}
-      <Card className="border-slate-700 bg-slate-800/50">
-        <CardHeader>
+      <div className="rounded-lg border border-slate-700 bg-slate-800/50 p-6">
+        <div className="mb-4">
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle className="text-slate-100">Load Commands from Template</CardTitle>
-              <CardDescription>
+              <h3 className="text-lg font-semibold text-slate-100">Load Commands from Template</h3>
+              <p className="text-sm text-slate-400 mt-1">
                 Quickly add common commands for your device type
-              </CardDescription>
+              </p>
             </div>
             <Button
               variant="outline"
@@ -1047,9 +1038,9 @@ export function IRLearningPanel({ device, onClose }: IRLearningPanelProps) {
               {showTemplateLoader ? 'Hide Templates' : 'Show Templates'}
             </Button>
           </div>
-        </CardHeader>
+        </div>
         {showTemplateLoader && (
-          <CardContent className="space-y-4">
+          <div className="space-y-4">
             <div>
               <Label className="text-slate-300">Select Device Model Template</Label>
               <select
@@ -1095,7 +1086,7 @@ export function IRLearningPanel({ device, onClose }: IRLearningPanelProps) {
                     {selectedTemplate.commands.map((cmd) => (
                       <label
                         key={cmd.name}
-                        className="flex items-center gap-2 p-2 rounded-sm hover:bg-slate-600/30 cursor-pointer"
+                        className="flex items-center gap-2 p-2 rounded hover:bg-slate-600/30 cursor-pointer"
                       >
                         <input
                           type="checkbox"
@@ -1131,19 +1122,19 @@ export function IRLearningPanel({ device, onClose }: IRLearningPanelProps) {
                 </Button>
               </>
             )}
-          </CardContent>
+          </div>
         )}
-      </Card>
+      </div>
 
       {/* Add New Command */}
-      <Card className="border-slate-700 bg-slate-800/50">
-        <CardHeader>
-          <CardTitle className="text-slate-100">Add Individual Command</CardTitle>
-          <CardDescription>
+      <div className="rounded-lg border border-slate-700 bg-slate-800/50 p-6">
+        <div className="mb-4">
+          <h3 className="text-lg font-semibold text-slate-100">Add Individual Command</h3>
+          <p className="text-sm text-slate-400 mt-1">
             Or add a single custom command, then click "Learn" to capture the IR code from your remote
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+          </p>
+        </div>
+        <div>
           <div className="flex gap-3">
             <div className="flex-1">
               <Input
@@ -1170,22 +1161,20 @@ export function IRLearningPanel({ device, onClose }: IRLearningPanelProps) {
               Add
             </Button>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       {/* Learning Status - shows error details if any */}
       {learningCommandId && learningError && (
-        <Card className="border-2 border-red-500/50 bg-red-500/10">
-          <CardContent className="py-4">
-            <div className="flex items-center gap-3">
-              <AlertCircle className="w-6 h-6 text-red-400 shrink-0" />
-              <div className="flex-1">
-                <div className="font-medium text-red-200">Learning Failed</div>
-                <div className="text-sm text-red-300 mt-1">{learningError}</div>
-              </div>
+        <div className="rounded-lg border-2 border-red-500/50 bg-red-500/10 p-4">
+          <div className="flex items-center gap-3">
+            <AlertCircle className="w-6 h-6 text-red-400 flex-shrink-0" />
+            <div className="flex-1">
+              <div className="font-medium text-red-200">Learning Failed</div>
+              <div className="text-sm text-red-300 mt-1">{learningError}</div>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       )}
 
       {/* Commands List */}
@@ -1194,22 +1183,22 @@ export function IRLearningPanel({ device, onClose }: IRLearningPanelProps) {
           <Loader2 className="w-8 h-8 text-slate-400 animate-spin" />
         </div>
       ) : commands.length === 0 ? (
-        <Card className="border-slate-700 bg-slate-800/50">
-          <CardContent className="flex flex-col items-center justify-center py-12">
+        <div className="rounded-lg border border-slate-700 bg-slate-800/50 p-6">
+          <div className="flex flex-col items-center justify-center py-12">
             <Radio className="w-16 h-16 text-slate-600 mb-4" />
             <p className="text-slate-400 text-center">
               No commands yet. Add a command above to get started.
             </p>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       ) : (
         <div className="space-y-6">
           {Object.entries(commandsByCategory).map(([category, categoryCommands]) => (
-            <Card key={category} className="border-slate-700 bg-slate-800/50">
-              <CardHeader>
-                <CardTitle className="text-lg text-slate-100">{category}</CardTitle>
-              </CardHeader>
-              <CardContent>
+            <div key={category} className="rounded-lg border border-slate-700 bg-slate-800/50 p-6">
+              <div className="mb-4">
+                <h3 className="text-lg font-semibold text-slate-100">{category}</h3>
+              </div>
+              <div>
                 <div className="space-y-2">
                   {categoryCommands.map((command) => {
                     const isPlaceholder = command.irCode === 'PLACEHOLDER'
@@ -1351,8 +1340,8 @@ export function IRLearningPanel({ device, onClose }: IRLearningPanelProps) {
                     )
                   })}
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           ))}
         </div>
       )}
@@ -1360,41 +1349,35 @@ export function IRLearningPanel({ device, onClose }: IRLearningPanelProps) {
       {/* Test Results Modal */}
       {showTestResults && testResults && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <Card className="w-full max-w-4xl max-h-[90vh] overflow-hidden border-slate-700 bg-slate-800">
-            <CardHeader className="border-b border-slate-700">
+          <div className="w-full max-w-4xl max-h-[90vh] overflow-hidden rounded-lg border border-slate-700 bg-slate-800">
+            <div className="border-b border-slate-700 p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <CardTitle className="text-slate-100">IR Command Test Results</CardTitle>
-                  <CardDescription>
+                  <h3 className="text-lg font-semibold text-slate-100">IR Command Test Results</h3>
+                  <p className="text-sm text-slate-400 mt-1">
                     Tested {testResults.summary.total} commands on {testResults.device}
-                  </CardDescription>
+                  </p>
                 </div>
                 <Button variant="outline" onClick={() => setShowTestResults(false)}>
                   Close
                 </Button>
               </div>
-            </CardHeader>
-            <CardContent className="p-6 overflow-y-auto max-h-[calc(90vh-140px)]">
+            </div>
+            <div className="p-6 overflow-y-auto max-h-[calc(90vh-140px)]">
               {/* Summary */}
               <div className="grid grid-cols-3 gap-4 mb-6">
-                <Card className="border-slate-600 bg-slate-700/50">
-                  <CardContent className="p-4 text-center">
-                    <div className="text-3xl font-bold text-slate-100">{testResults.summary.total}</div>
-                    <div className="text-sm text-slate-400 mt-1">Total Tested</div>
-                  </CardContent>
-                </Card>
-                <Card className="border-green-500/30 bg-green-500/10">
-                  <CardContent className="p-4 text-center">
-                    <div className="text-3xl font-bold text-green-400">{testResults.summary.passed}</div>
-                    <div className="text-sm text-green-300 mt-1">Passed ✓</div>
-                  </CardContent>
-                </Card>
-                <Card className="border-red-500/30 bg-red-500/10">
-                  <CardContent className="p-4 text-center">
-                    <div className="text-3xl font-bold text-red-400">{testResults.summary.failed}</div>
-                    <div className="text-sm text-red-300 mt-1">Failed ✗</div>
-                  </CardContent>
-                </Card>
+                <div className="rounded-lg border border-slate-600 bg-slate-700/50 p-4 text-center">
+                  <div className="text-3xl font-bold text-slate-100">{testResults.summary.total}</div>
+                  <div className="text-sm text-slate-400 mt-1">Total Tested</div>
+                </div>
+                <div className="rounded-lg border border-green-500/30 bg-green-500/10 p-4 text-center">
+                  <div className="text-3xl font-bold text-green-400">{testResults.summary.passed}</div>
+                  <div className="text-sm text-green-300 mt-1">Passed ✓</div>
+                </div>
+                <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-center">
+                  <div className="text-3xl font-bold text-red-400">{testResults.summary.failed}</div>
+                  <div className="text-sm text-red-300 mt-1">Failed ✗</div>
+                </div>
               </div>
 
               {/* Results List */}
@@ -1411,9 +1394,9 @@ export function IRLearningPanel({ device, onClose }: IRLearningPanelProps) {
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3 flex-1">
                         {result.success ? (
-                          <CheckCircle2 className="w-5 h-5 text-green-400 shrink-0" />
+                          <CheckCircle2 className="w-5 h-5 text-green-400 flex-shrink-0" />
                         ) : (
-                          <AlertCircle className="w-5 h-5 text-red-400 shrink-0" />
+                          <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0" />
                         )}
                         <div className="flex-1">
                           <div className="font-medium text-slate-200">{result.command}</div>
@@ -1473,8 +1456,8 @@ export function IRLearningPanel({ device, onClose }: IRLearningPanelProps) {
                   </div>
                 </div>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </div>
       )}
     </div>

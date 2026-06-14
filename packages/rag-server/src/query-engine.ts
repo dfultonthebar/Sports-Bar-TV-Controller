@@ -8,6 +8,27 @@ import { logger } from '@sports-bar/logger';
 import { searchVectorStore, searchHybrid, SearchResult } from './vector-store';
 import { queryLLM, LLMResponse } from './llm-client';
 import { RAGConfig } from './config';
+import { rerankChunks } from './reranker';
+
+/**
+ * Hybrid retrieval + optional cross-encoder rerank. When rerank is enabled
+ * (RAG_RERANK_ENABLED=true), pulls a wider candidate pool from searchHybrid
+ * and uses the reranker to slice down to topK. When disabled, behaves
+ * identically to the pre-v2.53.0 single-pass retrieval.
+ *
+ * Shared between queryDocs (one-shot) and queryDocsStream (SSE) so rerank
+ * semantics can't drift between the two paths.
+ */
+async function retrieveAndRerank(
+  query: string,
+  topK: number,
+  techFilter: string | string[] | undefined,
+): Promise<SearchResult[]> {
+  const candidatesK = RAGConfig.rerankEnabled ? RAGConfig.rerankCandidates : topK;
+  const candidates = await searchHybrid(query, candidatesK, techFilter);
+  const finalTopK = RAGConfig.rerankEnabled ? RAGConfig.rerankTopK : topK;
+  return rerankChunks(query, candidates, finalTopK);
+}
 
 export interface QueryOptions {
   query: string;
@@ -56,8 +77,10 @@ export async function queryDocs(options: QueryOptions): Promise<QueryResult> {
     // Convert tech filter to array
     const techFilter = tech ? (Array.isArray(tech) ? tech : [tech]) : undefined;
 
-    // Search vector store for relevant chunks
-    const searchResults = await searchHybrid(query, topK, techFilter);
+    // Search vector store for relevant chunks. When rerank is enabled, pull
+    // a wider candidate pool from the bi-encoder/BM25 fusion and let the
+    // cross-encoder pick the final topK. When disabled, behave as before.
+    const searchResults = await retrieveAndRerank(query, topK, techFilter);
 
     if (searchResults.length === 0) {
       logger.warn('No relevant documents found', { data: { query, tech }
@@ -164,8 +187,9 @@ export async function* queryDocsStream(
     // Convert tech filter to array
     const techFilter = tech ? (Array.isArray(tech) ? tech : [tech]) : undefined;
 
-    // Search vector store
-    const searchResults = await searchHybrid(query, topK, techFilter);
+    // Search vector store. When rerank is enabled, pull a wider candidate
+    // pool and let the cross-encoder pick the final topK.
+    const searchResults = await retrieveAndRerank(query, topK, techFilter);
 
     // Yield context information
     yield {
@@ -307,7 +331,12 @@ export async function retrieveContext(
   try {
     // v2.50.4: retrieveContext is what the /api/chat adapter calls — switch
     // it to hybrid so chat queries benefit from BM25 sparse retrieval too.
-    const results = await searchHybrid(query, topK, techFilter);
+    // v2.53.11: when RAG_RERANK_ENABLED=true, route through retrieveAndRerank
+    // so chat gets the same cross-encoder pass that queryDocs does. Without
+    // this, the env flag silently no-ops on the chat path.
+    const results = RAGConfig.rerankEnabled
+      ? await retrieveAndRerank(query, topK, techFilter)
+      : await searchHybrid(query, topK, techFilter);
 
     const chunks = results.map(result => ({
       content: result.chunk.content,

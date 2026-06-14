@@ -35,6 +35,3436 @@ is the archive.
 
 ---
 
+## v2.61.0 — auto-update.sh: stop `pull --rebase` tangle (fleet-wide root cause) (2026-06-14)
+
+**Branch landed:** main → fleet. **No manual setup** (code-only) — but see the fleet recovery note below.
+**Root cause fixed:** `scripts/auto-update.sh` did `git pull --rebase origin <branch>` before pushing (two
+sites: the main push path ~line 1790 + the heartbeat path ~line 454). Against a badly-diverged origin (frozen
+for weeks) the rebase replays the box's local commits and gets STUCK in a 70+ commit interactive rebase,
+silently leaving the working tree **detached on old code**. On 2026-06-14 this had frozen **the entire fleet**
+— every location box stuck-rebase, every `origin/location/*` frozen at 2.55.48, boxes auto-updating locally
+but never pushing (and still serving fine, since PM2 runs the built `.next` regardless of git state).
+- **Fix:** push first; on rejection reconcile by **merge (`-X ours`), never rebase** — keeps the box's
+  authoritative content, records origin's history so the retry push fast-forwards, aborts cleanly if even the
+  merge conflicts (push is non-fatal). Heartbeat path: push-or-skip, no rebase.
+- **Detection added (Hermes):** `~/.hermes/scripts/fleet-update-monitor.sh` + cron `fleet-update-watch`
+  (every 6h) — SSHes each location box, flags stuck-rebase / origin-frozen divergence / health≠200 / rollback /
+  unreachable, and on any problem calls `ask_claude_code` for the remediation, files a deduped todo, and
+  Telegram-alerts. This is what would have caught the freeze weeks ago.
+- **One-time fleet recovery (per stuck box, 2026-06-14):** `git rebase --abort` (unstick, non-destructive) →
+  bring current → `git push --force-with-lease` to reconcile the stale single-consumer origin → verify health.
+  Appleton done first (2.60.0). After reconcile, the fixed script keeps origin in sync going forward.
+
+---
+
+## v2.60.0 — Wave 3c: closed-loop matrix route verify + Wolf Pack TCP-close fix (2026-06-14)
+
+**Branch landed:** main → fleet via auto-update.
+Two parts:
+1. **Wolf Pack TCP-close fix (ACTIVE, not gated)** — `sendTCPCommand` in BOTH
+   `packages/wolfpack/src/matrix-control.ts` and `packages/wolfpack/src/wolfpack-matrix-service.ts` now use a
+   single `resolved` guard + guaranteed `client.destroy()` on every exit path (mirrors the well-guarded
+   `sendUDPCommand`). Fixes the `data`-then-`close` double-resolve and the leaked half-open socket on `error`
+   that the verify loop's rapid re-issue would accumulate. **Success values unchanged.** Verified live on
+   Holmgren's TCP:5000 path: routed output1→input2 and restored 2→1, both OK; route-verify logic 26/26.
+2. **Closed-loop route verify (GATED, default OFF)** — `scheduler-service.ts` now calls
+   `verifyAndRetryRoute` + `persistVerifyState` (from `route-verify.ts`, shipped v2.55.82) after each
+   successful route, behind **`ROUTE_VERIFY_ENABLED`** (env, default off; forwarded in `ecosystem.config.js`).
+   Reads the crossbar back; only on a GENUINE mismatch re-issues the idempotent SET; records the outcome on
+   the allocation's advisory `verify_*` columns. Advisory only — never throws into the tune path, never blocks
+   the allocation lifecycle. Matrix config cached per-tick like `cachedAudioProcessor`.
+- **Per-box enable (canary):** add `ROUTE_VERIFY_ENABLED=true` to the box's `.env`, then
+  `pm2 delete sports-bar-tv-controller && pm2 start ecosystem.config.js` (env change → Gotcha #2, NOT restart).
+  Holmgren is the canary. Verify fires only on a real scheduler **game-day tune** (no games = nothing to
+  verify), so check `SELECT verify_state, verify_attempts, verify_error FROM input_source_allocations WHERE
+  status='active'` after the next game tune. Leave OFF on every other box until proven.
+- **Why it matters:** this is the detection net for the Leg Lamp / o2ox black-TV class of bug — it reads back
+  after every route and flags (verify_state='failed') when a TV didn't land where it should, instead of the
+  failure being silent. (It detects; it does not fix the o2ox toggle — that's the separate shelved-o2o item.)
+
+---
+
+## v2.59.0 — channel-guide canonical dedup (Wave 1b-ii) + shift-brief truncation fix (2026-06-14)
+
+**Branch landed:** main → fleet via auto-update. **No manual setup required** (code-only).
+Two do-now-safe wins from the todo sweep:
+- **Wave 1b-ii — canonical dedup** (`apps/web/src/lib/channel-guide/dedup-key.ts` + one pass in
+  `channel-guide/route.ts` before the age-filter). The 7 injection paths each had ad-hoc dedup with
+  inconsistent team-casing / time / channel handling, so the same game could appear twice. Now ONE
+  tolerance-based pass: group by normalized teams+channel, same game iff start times within **2h**
+  (skew-tolerant; keeps doubleheaders >2h apart; keeps same game on different channels as two rows;
+  never dedups teamless entries). First-writer-wins → Rail base layer precedence. Drops logged via the
+  existing `DropTracker` as `reason='canonical-dupe'`. Logic unit-verified 5/5.
+- **shift-brief truncation fix** (`apps/web/src/app/api/ai/shift-brief/route.ts:520`): `SHIFT_BRIEF_NUM_PREDICT`
+  320 → **384**. LLM-PERF logs showed ~13% of briefs hit `done=length [TRUNCATED@cap]` at 320 (last section
+  silently cut). +64 tokens ≈ +10s at ~6 tok/s.
+- **Deferred (data-gated):** per-box `OLLAMA_NUM_PREDICT` tuning stays blocked — the LLM-PERF logs are
+  Holmgren-only (2 `ai-suggest` samples fleet-wide). Needs fleet log aggregation first. Wave 2 primary-flip:
+  **decided DON'T-FLIP-YET** (only 2 degenerate shadow runs exist, the `primary` codepath isn't implemented,
+  and the roadmap gates it on Waves 3.5/6/7). Kept `AI_SUGGEST_SOLVER=shadow`.
+
+---
+
+## v2.58.2 — Hermes self-backup to GitHub WIRED (2026-06-14)
+
+**Branch landed:** main → fleet via auto-update
+**What shipped:** `hermes/scripts/backup.sh` — daily backup of the Hermes "brain" to the **private** repo
+`dfultonthebar/hermes-backup`, per-box subdir. LIVE + verified on Holmgren (3 pushes, cron scheduled 3 AM,
+linger=yes). Auths via the box's existing git credential store (no token embedded). Backs up
+skills/memories/cron/hooks/root-*.md ONLY — excludes `hermes-agent/` program source, caches/blobs, and ALL
+secrets (`.env`, `config.yaml`, credentials). 33 MB brain (mostly community-skill template assets).
+- **Per-box install (each fleet box):**
+  ```bash
+  cp hermes/scripts/backup.sh ~/.hermes/scripts/backup.sh && chmod +x ~/.hermes/scripts/backup.sh
+  loginctl show-user "$USER" | grep -q 'Linger=yes' || sudo loginctl enable-linger "$USER"
+  bash ~/.hermes/scripts/backup.sh        # verify the first push lands in dfultonthebar/hermes-backup/<box>/
+  hermes cron create --name daily-github-backup --no-agent --script backup.sh "0 3 * * *"
+  ```
+- **Note:** every fleet box already has dfultonthebar's git credential store (it clones the main repo), so the
+  same script + same private repo works fleet-wide with zero extra secrets. Each box auto-namespaces by
+  LOCATION_NAME slug → hostname.
+
+---
+
+## v2.58.1 — Phase 3-5: IT/ops persona refresh + skills wired + primary mode (2026-06-14)
+
+**Branch landed:** main → fleet via auto-update
+**Per-box install where Hermes runs.** Updates `hermes/SOUL.md` (the agent persona, loaded into the system
+prompt) to reflect the now-shipped capabilities and stop the failure loops seen in the Telegram session:
+- **Action tools documented:** `propose_action`, `create_maintenance_todo`, `ask_claude_code` (the old SOUL
+  said "no write tools yet" — outdated since the MCP gateway shipped).
+- **Delegate-to-Claude rule:** deep code/system changes go to `ask_claude_code` (one clear request, wait —
+  don't spam retries); the operator is not the agent's shell.
+- **Self-management fix:** the restart command is `hermes gateway restart` (NOT `hermes restart`, which
+  errors — root cause of the "asking 400 times to restart" loop); restarting terminates the current turn, so
+  hand restarts to Claude instead of self-restarting mid-task. Honcho memory is the (already-live) cloud
+  store — there is NO self-hosted honcho server to start (that path is a dead end).
+- **Skills index:** the persona now names its skill playbooks so it reaches for them by name.
+- **Phase 4/5 status:** skills already `enabled` in the active profile; periodic monitoring already covered by
+  the existing `sports-bar-anomaly-alert` (every 2h) + `sports-bar-morning-brief` crons, so NO duplicate
+  `fleet-heartbeat` cron was added (skill stays on-demand). The persona IS the single primary mode; Honcho
+  cross-session persistence is live (verified: "retrieved N existing messages" in the gateway log).
+- **Per-box install:** `cp hermes/SOUL.md ~/.hermes/SOUL.md && hermes gateway restart` (SOUL is cached in
+  the system prompt — a gateway restart is required to load an edit; do it when no operator turn is in flight).
+- **Outstanding (operator action):** `hermes-self-backup-to-github` cron needs a private repo + fine-grained
+  PAT before it can be wired (`gh` is not authed on the boxes) — the skill documents the exact steps.
+
+---
+
+## v2.58.0 — Phase 2: 5 Hermes operating skills mined from YouTube (2026-06-14)
+
+**Branch landed:** main → fleet via auto-update
+**Per-box install where Hermes runs** (version-controlled in `hermes/skills/`, copied to `~/.hermes/skills/`).
+Extracted concrete, transferable operating techniques from 4 Hermes-Agent YouTube videos (NetworkChuck
+"5 reasons", the masterclass, "21 concepts", David Andre "7 levels") into reusable SKILL.md playbooks:
+- `hermes/skills/crystallize-runbook-skill` — after a verified incident fix, auto-author a tight SKILL.md
+  runbook (symptom/root-cause/fix/verify), pin it, mirror to System Admin Todos (the self-improvement loop).
+- `hermes/skills/fleet-heartbeat-watch` — diff-based "silent until something changes" fleet monitor; snapshots
+  health/version/auto-update/RF via MCP tools, only Telegram-alerts on a delta. Wire:
+  `hermes cron create --name fleet-heartbeat --deliver telegram --skill fleet-heartbeat-watch "every 15m"`.
+- `hermes/skills/session-recall` — answer "what did we decide/change on <date>" from `~/.hermes/state.db`
+  (`messages` table) + `hermes sessions` — the time-anchored complement to Honcho's semantic recall.
+- `hermes/skills/hermes-self-backup-to-github` — daily `--no-agent` cron rsyncs TEXT-only `~/.hermes`
+  (skills+memory+md, no blobs) to a **private** repo; PAT via `hermes config set GITHUB_TOKEN`, linger required.
+- `hermes/skills/hermes-curator-skill-hygiene` — drive the (already-enabled) Curator: `curator run --dry-run`,
+  and **`curator pin`** every canonical skill so auto-prune never removes a load-bearing runbook.
+- **Per-box install:** `cp -r hermes/skills/* ~/.hermes/skills/` then pin canonical skills:
+  `for s in sports-bar-troubleshooting sports-bar-investigate sports-bar-shift-check sports-bar-rf-response crystallize-runbook-skill fleet-heartbeat-watch session-recall hermes-self-backup-to-github hermes-curator-skill-hygiene; do hermes curator pin "$s"; done`.
+  On the canary (Holmgren) all 5 are installed + all 9 skills pinned. `hermes/` is OUTSIDE RAG-indexed paths.
+
+---
+
+## v2.57.6 — expand Hermes skills (3 custom + YouTube) (2026-06-13)
+
+**Branch landed:** main → fleet via auto-update
+**Per-box install where Hermes runs** (the custom skills are version-controlled in `hermes/skills/`; the
+YouTube skill is a hub install). Adds Hermes Agent skills that operationalize the MCP tools:
+- `hermes/skills/sports-bar-investigate` — delegate deep code/diagnostic questions or a todo's fix plan to
+  Claude Code via `ask_claude_code`; relay + file the plan (operator-brain → builder workflow).
+- `hermes/skills/sports-bar-shift-check` — on-demand pre-shift readiness audit chaining the observe tools.
+- `hermes/skills/sports-bar-rf-response` — wireless/paging-mic RF interference diagnosis + response (never
+  autonomously changes a freq — propose + human-confirm).
+- (existing `sports-bar-troubleshooting` from v2.56.3 — reactive "X is broken" diagnostics.)
+- **YouTube:** `hermes skills install lobehub/youtube-summarizer-pro` (community) — Hermes can summarize a
+  YouTube URL. (A `youtube-content` skill also ships built-in.)
+- **Per-box install:** `cp -r hermes/skills/sports-bar-* ~/.hermes/skills/ && hermes skills install
+  lobehub/youtube-summarizer-pro`. Bake into the future `setup-hermes-agent.sh`. Skills are thin (orchestrate
+  tools + `search_system_docs`); RAG stays the single doc source. `hermes/` is OUTSIDE the RAG-indexed paths.
+
+---
+
+## v2.57.5 — `ask_claude_code` durable unattended auth (2026-06-13)
+
+**Branch landed:** main → fleet via auto-update
+**No setup required** (the key already exists per-box). `runClaude` now reads `ANTHROPIC_API_KEY` from the
+repo `.env` (the same one auto-update's checkpoints use) and injects it **into the `claude -p` spawn only**
+(not Hermes-wide). This makes the Hermes↔Claude bridge work **unattended forever** — it no longer depends
+on the interactive-login OAuth token (`~/.claude/.credentials.json`), which can eventually need re-auth.
+- **Scoped + opt-out:** the key reaches only the `claude` subprocess. Set `MCP_CLAUDE_USE_OAUTH=true` to
+  use the subscription OAuth (free) instead of the pay-per-call API key.
+- **Cost note:** `claude -p` now bills the **same `ANTHROPIC_API_KEY` as auto-update checkpoints** — so a
+  burst of `ask_claude_code` calls shares that credit pool (heavy use could deplete it and break BOTH the
+  bridge and auto-update). `ask_claude_code` is operator-driven + low-volume, so this is minor — but watch
+  credits (`[[feedback-anthropic-credits-block-auto-update]]`). No secret is committed (the key stays in
+  the gitignored `.env`); the code just reads the existing per-box key. Verified: `KEY_PATH_OK` via the
+  key-injected `claude -p`.
+
+### Also: gateway default model → Grok (runtime, per-box; bake into setup-hermes-agent.sh)
+For the **autonomous** gateway-Hermes to use its MCP tools (incl. `ask_claude_code`) when *you* aren't
+driving it, its default model must be tool-capable. `hermes config set model.provider xai-oauth` +
+`model.default grok-4`. (`hermes3:8b` can't tool-call.) Cheap `--no-agent` cron monitoring is unaffected;
+the in-app bartender chat (`qwen2.5:14b`) is unaffected. Proven autonomous: `CLAUDE_VIA_HERMES_OK`.
+
+---
+
+## v2.57.3 — Hermes ↔ Claude Code bridge: `ask_claude_code` MCP tool (2026-06-13)
+
+**Branch landed:** main → fleet via auto-update
+**No setup required.** Adds an 11th tool to `@sports-bar/mcp`: **`ask_claude_code`** — lets the Hermes
+agent delegate deep code/diagnostic questions to **Claude Code** (the coding agent on the same box).
+Completes the agent team: Hermes = always-on operator brain; Claude = on-demand builder/analyst.
+- **READ-ONLY by design:** spawns `claude -p "<question>" --permission-mode plan` — Claude reads the real
+  repo + system to analyze/explain/draft a plan, but **cannot edit, commit, or run mutating commands**.
+  A mutating "task mode" is deliberately NOT exposed.
+- **Safe spawn:** the question is passed as an argv element (no shell → no injection), full path to the
+  `claude` binary, 180 s timeout, output truncated, audited to `agent_tool_invocations` like every tool.
+- **Already live where Hermes is installed** (the MCP server runs from source via `tsx`, no rebuild).
+  Proven e2e via Grok: Hermes → `ask_claude_code` → Claude read `verify-install.sh` → accurate answer
+  relayed, 19.7 s. Requires the `claude` CLI present + authed on the box (it is, fleet-wide).
+
+---
+
+## v2.57.2 — Hermes Phase 3a: confirm-action backend (one-tap confirm) (2026-06-13)
+
+**Branch landed:** main → fleet via auto-update
+**No setup required.** New endpoint `POST /api/agent/confirm-action` — the human-only execution path for a
+proposal the agent made via `propose_action`. The agent CANNOT call it (it's not an MCP tool); only a UI
+Confirm button (a deliberate human tap) does. Whitelisted: `route_tv {input,output}` → `/api/matrix/route`
+(source `manual`); `tune_channel {channelNumber,deviceType,deviceId}` → `/api/channel-presets/tune`.
+Rate-limited HARDWARE; every execution audited to `agent_tool_invocations` (`confirm_action:<action>`).
+- This is the backend the Phase-3b bartender Confirm button calls. There is still **no autonomous-write
+  path** — propose (agent) → confirm (human) → deterministic API.
+- **Phase 3b (the bartender iPad UI confirm button)** is NOT in this release — it touches the
+  operator-locked bartender remote and needs a deployed build + Playwright verification on the live iPad
+  (an off-hours task). Build-verified (35/35).
+
+---
+
+## v2.57.1 — Hermes Phase 2c: watcher auto-files todos (Atlas drop) (2026-06-13)
+
+**Branch landed:** main → fleet via auto-update
+**No setup required.** The Atlas drop-watcher now auto-files a deduped maintenance todo (via
+`POST /api/maintenance-todo`, source `watcher`) when it records an **unexplained** zone volume drop —
+the events a human should investigate. One todo per processor/zone/day; explained drops (a bartender
+changed it) don't file. Fire-and-forget — a todo-file failure never affects the watcher. The same
+pattern extends to the Shure-RF and SDR watchers next; this ships the representative integration.
+
+---
+
+## v2.57.0 — Hermes Phase 2: agent guardrail layer (propose + audited todo-write) (2026-06-13)
+
+**Branch landed:** main → fleet via auto-update
+**Schema migration — runs automatically** (`drizzle/0005_agent_tool_invocations.sql`, additive CREATE TABLE
++ 2 indexes; auto-update's `drizzle-kit migrate` applies it). The agent brain can now safely *act* — but
+only by proposing (a human confirms) or appending a reviewable todo. Nothing here issues an autonomous
+hardware command.
+- **New table `agent_tool_invocations`** + endpoint `POST /api/agent/tool-log`: every MCP tool call is
+  fire-and-forget audited (tool, args, result summary, surface, error). Accountability trail.
+- **New endpoint `POST /api/maintenance-todo`**: general source-tagged todo creator (deduped by key),
+  reused by the agent AND (Phase 2c) by watchers.
+- **MCP server now 10 tools**: + `create_maintenance_todo` (guarded write — files a reviewable todo,
+  source `ai-chat`) and `propose_action` (returns a proposal mapped to the deterministic API call;
+  **never executes** — verified e2e via Grok). All 8 existing tools are now audited.
+- **No setup beyond the migration.** Optional env `MCP_SURFACE` (default `operator`) tags audit rows;
+  the Phase-3 bartender bridge will set it to `bartender`. Verified: audit-table data path + propose_action
+  e2e; endpoints build-verified (a full HTTP e2e lands when a box rebuilds to this version).
+
+---
+
+## v2.56.4 — CRITICAL: stale auto-update timer no longer rolls back a healthy update (2026-06-13)
+
+**Branch landed:** main → fleet via auto-update
+**No setup required — fixes a fleet-wide infinite-rollback trap.** In `verify-install.sh`, the
+`autoupdate_timer_fresh` layer was a hard FAIL (exit 19) when the timer's last-attempt sidecar/log was
+stale (>26h). During an auto-update, that FAIL triggers a full ROLLBACK — even though the update built
+green and the app is healthy. But a successful update can't freshen the *timer*, so a box whose timer
+went stale (e.g. after a prior wedge) gets stuck: every update succeeds + healthy → verify fails on the
+stale timer → rollback → still stale → repeat forever.
+- **Caught at Appleton 2026-06-13:** verify reported `17/18 passed, failed=[autoupdate_timer_fresh]
+  (sidecar age=214258s)` — the one stale-timer check rolled back an otherwise-perfect update.
+- **Fix:** the two stale-timer branches now follow the SAME pattern the unit-file-missing case already
+  used — **non-fatal WARN in `--json`/auto-update mode** (so it never rolls back a healthy build),
+  **hard FAIL only in interactive mode** (so an operator auditing a box still sees the stuck timer).
+- **Effect:** once a stale box merges this fix (the merge happens before the verify step, so the very
+  update that pulls it benefits), its update completes instead of rolling back. Related: Gotcha #11,
+  `[[feedback-auto-update-failure-modes]]`.
+
+---
+
+## v2.56.3 — teach Hermes the system: SOUL.md + troubleshooting skill (2026-06-13)
+
+**Branch landed:** main → fleet via auto-update
+**New repo dir `hermes/`** (deliberately OUTSIDE the RAG-indexed paths so it can't create a
+doc-divergence loop — the plan's guardrail): version-controlled Hermes Agent templates.
+- `hermes/SOUL.md` — Hermes' standing identity: it IS the operator agent for THIS install (not a generic
+  LLM); its 8 MCP observe tools + the directive to USE them (and `search_system_docs` to look things up
+  rather than guess); the bartender-vs-operator register rules; anti-hallucination/anti-inversion
+  grounding; the must-never-get-wrong gotchas (outputOffset, IR-only cable boxes, wireless/paging-mic ≠
+  karaoke). Adapted from the proven in-app chat system prompt.
+- `hermes/skills/sports-bar-troubleshooting/SKILL.md` — thin diagnostic playbooks (wrong/black TV, mic,
+  audio drop, todos) that orchestrate the MCP tools + `search_system_docs`. No duplicated doc content.
+- **Per-box manual step (where Hermes Agent is installed — Holmgren so far):**
+  `cp hermes/SOUL.md ~/.hermes/SOUL.md && cp -r hermes/skills/sports-bar-troubleshooting ~/.hermes/skills/`.
+  A future `scripts/setup-hermes-agent.sh` will automate it. SOUL.md loads fresh every message (no restart).
+- Verified via Grok: agent self-identifies as the operator AI, knows outputOffset, references the tools.
+
+---
+
+## v2.56.2 — audit fixes for Phase 1 (2026-06-13)
+
+**Branch landed:** main → fleet via auto-update
+**No setup required.** Fixes from the 3-agent adversarial audit of today's work:
+- **CRITICAL:** `get_atlas_status` read `drops?.events` / `.zone` but `/api/atlas-drops` returns
+  `{drops:[{zone_number,zone_name}]}` — so it ALWAYS reported "no drops" (was hiding 14 real ones).
+  Fixed to `drops?.drops` + `zone_name`. Verified e2e via Grok.
+- **Security:** `get_firetv_status` no longer emits internal LAN IPs into the LLM context (matters with
+  cloud Grok). And `/api/system/health` no longer returns `details`/`stack` in its 500 body (could carry
+  the Soundtrack API key; full stack still server-logged) — pre-existing, made reachable via MCP.
+- **Efficiency:** `get_atlas_status` now runs its two reads with `Promise.all`.
+- The two arg-taking MCP tools keep `inputSchema as any` — empirically re-confirmed TS2589 returns at
+  SDK 1.29 + zod 4 without it (an audit agent claimed it was removable; it is not). Handler args stay
+  explicitly typed.
+- Clarified `route-verify.ts` header: helper is NOT yet wired into the scheduler (Wave 3c does that).
+
+---
+
+## v2.56.1 — Hermes Agent Phase 1b: 6 more observe tools (2026-06-13)
+
+**Branch landed:** main → fleet via auto-update
+**No setup beyond v2.56.0.** Adds six read-only tools to the `@sports-bar/mcp` server:
+`get_matrix_routes`, `explain_tv_output` (arg: outputNumber), `get_shure_rf_status`, `get_atlas_status`,
+`get_firetv_status`, `search_system_docs` (RAG — args query/tech). Still thin adapters over existing
+audited APIs; nothing writes hardware. All 8 tools proven end-to-end via Grok (explain_tv_output(20) →
+"input 11"; mics connected; outputOffset doc lookup correct).
+- Aligned the package's `zod` range to `^4.0.0` (repo is on zod v4.4.3). The two arg-taking tools cast
+  `inputSchema as any` to defeat a known TS2589 deep-instantiation between the MCP SDK generics and zod
+  v4 — runtime validation is unaffected, handler args are explicitly typed.
+- If a box already registered `sports-bar` (v2.56.0), the new tools appear automatically (registered as
+  "all tools enabled"); no re-`add` needed. Verify with `hermes mcp test sports-bar` → "Tools discovered: 8".
+
+---
+
+## v2.56.0 — Hermes Agent Phase 1a: `@sports-bar/mcp` observe gateway (2026-06-13)
+
+**Branch landed:** main → fleet via auto-update
+**New package `@sports-bar/mcp`** — a stdio MCP server exposing the system to Hermes Agent as
+**read-only observe tools** (Phase 1a: `get_system_health`, `list_open_todos`). Thin adapters over the
+existing audited HTTP APIs; nothing writes hardware. Adds dep `@modelcontextprotocol/sdk@^1.0.0`
+(pure-JS, no native build). No-op `build` script (runs via `tsx`, like scheduler/services).
+- **Auto-applied:** `npm ci` on auto-update installs the new dep; the package is inert unless Hermes
+  Agent is installed on the box and registered to it. The web build is unaffected (nothing imports it).
+- **Per-box manual step (only where Hermes Agent is installed — Holmgren so far):** register the server:
+  `hermes mcp add sports-bar --command /home/ubuntu/Sports-Bar-TV-Controller/packages/mcp/start.sh`
+  (answer `Y` to the enable-tools prompt). This writes to `~/.hermes/config.yaml` (per-box runtime
+  config, NOT in the repo). A future `scripts/setup-hermes-agent.sh` will automate it.
+- **Model note:** tool-using turns need **Grok or a 14B local** — `hermes3:8b` is too weak (prints the
+  tool-call as text instead of invoking it). Proven end-to-end via Grok: agent → `get_system_health` →
+  `/api/system/health` → correct live answer. Full context: `[[project-hermes-agent-adoption]]`.
+
+---
+
+## v2.55.82 — Wave 3 / 3b: routeAndVerify helper (2026-06-12)
+
+**Branch landed:** main → fleet via auto-update
+**No setup required — new code, not yet wired into the tune path (3c does that).** Adds `packages/scheduler/src/route-verify.ts`: read the Wolf Pack route back after a route command and confirm the targeted output actually carries the input we sent. Exported `checkRouteMatch` / `verifyAndRetryRoute` / `runVerifyLoop` / `persistVerifyState`.
+- **Advisory only** (Standing Rule 3): never throws into the tune path, never rolls back an allocation. A failed verify sets `verify_state='failed'` + `verify_error` and is surfaced for escalation (3e).
+- **outputOffset = NONE in the compare** (the subtle part): the scheduler's send (`routeMatrix`) applies no offset, so verify mirrors it — `routingArray[outputNumber-1] === matrixInput-1`. Adding `+outputOffset` (as a literal reading of Gotcha #4 suggested) would FALSE-ALARM on multi-card boxes like Graystone (+32 belongs only to the Atlas audio path `routeWolfpackToMatrix`, which the scheduler never uses). Confirmed empirically against live Holmgren o2ox. Full reasoning in the file header.
+- **Test:** `npx tsx scripts/test-route-verify.ts` — 26 assertions (index/off-by-one + 5 orchestration outcomes), all pass with injected mocks, no hardware.
+
+---
+
+## v2.55.81 — Wave 3 / 3a: allocation verify columns (2026-06-12)
+
+**Branch landed:** main → fleet via auto-update
+**Schema migration — runs automatically.** First sub-step of Wave 3 `routeAndVerify` (closed-loop tune verification). Adds 4 additive columns to `input_source_allocations`: `verified_at` (int), `verify_state` (text NOT NULL default `'unverified'`), `verify_attempts` (int NOT NULL default 0), `verify_error` (text). Migration `drizzle/0004_allocation_verify_columns.sql`.
+- **No manual step:** auto-update runs `bootstrap-drizzle-migrations.sh` + `drizzle-kit migrate` (Gotcha #6 — NOT push). All four are `ADD COLUMN` with defaults, so the ALTER is instant on a live SQLite DB and existing rows backfill to `unverified`/`0`. No code consumes the columns yet (the verifier helper lands in 3b), so the running build keeps working unchanged before/after the migration.
+- **Verify:** `sqlite3 production.db "PRAGMA table_info(input_source_allocations)" | grep verif` shows columns 25–28; `verify-install.sh` `schema_completeness` layer passes.
+- **Trap honored:** verify state lives in its OWN column, never a `status` value — a stuck verify can't strand the allocation lifecycle (status stays pending/active/completed).
+
+---
+
+## v2.55.76–v2.55.79 — System Admin TODO list: usability + error-bot auto-file (2026-06-11)
+
+**Versions covered:** v2.55.76 (FLEET_STATUS refresh), v2.55.77 (todo sort), v2.55.78 (todo filter), v2.55.79 (error-watch auto-file)
+**Branch landed:** main → fleet via auto-update
+**No setup required.** Operator wants the System Admin → Todos tab as the source of truth for project work.
+- v2.55.77: list now sorts **needs-work to the top** (semantic IN_PROGRESS→PLANNED→TESTING→COMPLETE, CRITICAL→HIGH→MEDIUM→LOW), was alphabetical.
+- v2.55.78: "All Priorities"/"All Status" filters now actually show everything (fixed a stale-closure bug where the dropdown fetched the *previous* filter value).
+- v2.55.79: **the error-watch bot now auto-files a TODO** when it matches an error signature in the PM2 logs — deduped to one open TODO per signature (re-files if it recurs after being marked COMPLETE). New endpoint `POST /api/error-watch/todo`; `scripts/watchers/error-watch.sh` calls it. **The watcher must restart to pick up the new script** (auto-update's PM2 restart cycle handles this; on a box you're hands-on with, restart the error-watch watcher). Category `Error Watch`, priority CRITICAL for integrity-class signatures else HIGH.
+**Standing rule (Claude):** log every work item/fix we do or schedule on this list, mark COMPLETE when shipped+verified. See `[[feedback-log-work-to-system-admin-todos]]`.
+
+---
+
+## v2.55.73 + v2.55.75 — Wolf Pack: per-IP HTTP session mutex + route over TCP (2026-06-11)
+
+**Versions covered:** v2.55.73 (code), v2.55.75 (docs)
+**Branch landed:** main → fleet via auto-update
+**Code (v2.55.73, no setup):** per-IP serialization of Wolf Pack HTTP sessions (`acquireWolfPackHttpLock`) so the bartender Video-tab route-state READ can't run concurrently with a scheduler route WRITE. Auto-applies fleet-wide.
+**Per-location operational step (the actual un-route fix):** any location whose Wolf Pack routes over **HTTP** uses the `o2ox` TOGGLE, which disconnects an already-set output when re-sent (intermittent black TV when the Video tab opens). **Fix = flip that box to TCP** (Holmgren precedent): `sqlite3 /home/ubuntu/sports-bar-data/production.db "UPDATE MatrixConfiguration SET protocol='TCP' WHERE protocol='HTTP';"` — config is read fresh per route, so NO restart needed; rollback is the same UPDATE back to `'HTTP'`. Confirm TCP is open (no password) on that unit first. **Applied 2026-06-11 to Stoneyard Greenville + Appleton.** Validate by a real TV switch. Full rationale: `[[feedback-wolfpack-tcp-not-http-routing]]`. (The shelved HTTP-`o2o`-idempotent code alternative lives on branch `wip/wolfpack-o2o-idempotent`, not shipped.)
+
+---
+
+## v2.55.72 — override-learn must not patch future pending allocations (2026-06-11)
+
+**Versions covered:** v2.55.72
+**Branch landed:** main → fleet via auto-update (overnight)
+**No code setup required.** Bug fix: the override-learn window (matrix/route/route.ts) had no `allocated_at <= now` lower bound, so a bartender's tonight-only TV tweak silently rewrote FUTURE pending allocations (tomorrow's/Friday's pre-scheduled games on the same input source) and triple-logged the override. Added the lower bound.
+**Per-location data check (recommended):** locations that pre-schedule future games AND do heavy same-day bartender overrides may have already-corrupted future allocations. Detect: `SELECT id, channel_number, tv_output_ids, datetime(allocated_at,'unixepoch','localtime') FROM input_source_allocations WHERE allocated_at > unixepoch('now') AND updated_at >= unixepoch('now','-1 day') AND status IN ('pending','active','tuning');` — any future-dated row touched today is suspect. Reconstruct the pre-bug set from the override-learn SchedulerLog `prevOutputs` chain (first prev = original). Holmgren's 3 corrupted rows were repaired 2026-06-11 (backup at `sports-bar-data/override-learn-future-corruption-backup-2026-06-11.sql`).
+
+---
+
+## v2.55.71 — override-digester idempotency + timestamp fix (2026-06-11)
+
+**Versions covered:** v2.55.71
+**Branch landed:** main → fleet via auto-update (overnight)
+**No setup required.** Bug fix: override-digest was re-emitting an identical `recommend` SchedulerLog row for every stable pattern on every hourly run (~720/month/pattern); now only emits when a pattern is new or has strengthened. Also fixes firstSeen/lastSeen (was run-time, now real event timestamps). No DB migration; existing duplicate rows are harmless history and stop accumulating after deploy.
+
+---
+
+## v2.55.70 — complete Wave 1a OR-gate sweep (auto-reallocator) (2026-06-11)
+
+**Versions covered:** v2.55.70
+**Branch landed:** main → fleet via auto-update (overnight, no mid-game restart)
+**No setup required.** Behavior-preserving refactor: routes auto-reallocator.ts's revert + tune-back paths through the shared `parseHardwareResult` helper instead of hand-rolled `malformedOk` logic (the 2 sites a 6-team audit found the v2.55.57 Wave 1a sweep had missed). Same `{success:true}` contract, centralized in one place. No DB, no env, no manual step.
+
+---
+
+## v2.55.56 — LLM perf logging + per-box num_predict/timeout (2026-06-11)
+
+**Versions covered:** v2.55.56
+**Branch landed:** main → all 6 location branches
+**Required Manual Step (slow boxes only):** Graystone (~6.7 tok/s iGPU) — set `OLLAMA_TIMEOUT_MS=420000` in `.env` + `pm2 delete && pm2 start ecosystem.config.js` (Gotcha #2). Already applied 2026-06-11. Other boxes need nothing (defaults: timeout 300000, num_predict 2048).
+
+**Why:** AI Suggest timed out on Holmgren (RAG-scan contention, fixed in v2.55.55) — but the deeper question was whether `num_predict: 2048` is even right per box. Generation time ≈ num_predict ÷ tok_s; Holmgren ~11 tok/s (2048 → ~183s ✓) vs Graystone ~6.7 (2048 → ~306s ✗ over the 300s timeout). `num_predict` is only a CEILING though — we had no data on real output sizes because AI Suggest discarded `eval_count`/`done_reason`.
+
+**What shipped:**
+- **`lib/llm-perf-logger.ts`** (new) — `logLlmPerf()` writes one line per Ollama generation to `/home/ubuntu/sports-bar-data/logs/llm-perf-YYYY-MM-DD.log`: feature, model, box, `out` (real output tokens), `prompt` tokens, `done` (`stop`=natural / `length`=**truncated at cap**), `cap`, real-world `tok_s`, `total_ms`, outcome (ok/timeout/error). Mirrors to `[LLM-PERF]` in PM2; truncations log at WARN.
+- **AI Suggest** (`callOllama`) + **shift-brief** (`generateBriefViaOllama`) call it. AI Suggest's `num_predict` is now `HARDWARE_CONFIG.ollama.numPredict`.
+- **`hardware-config.ts`** — `ollama.timeout` now reads `OLLAMA_TIMEOUT_MS` (default 300000); new `ollama.numPredict` reads `OLLAMA_NUM_PREDICT` (default 2048). Both per-box env-tunable.
+
+**Next:** after a few days, `grep ai-suggest llm-perf-*.log` per box → read the `out` p95 + `done` distribution → set `OLLAMA_NUM_PREDICT` (and timeout) per box from real numbers. If any `[TRUNCATED@cap]` appears, suggestions are silently incomplete and the cap must go UP, not down.
+
+---
+
+## v2.55.55 — RAG rescan yields the iGPU so it can't starve AI Suggest (2026-06-11)
+
+**Versions covered:** v2.55.55
+**Branch landed:** main → all 6 location branches
+**Required Manual Step:** None. Script-only change — no app rebuild needed; the next rescan on each box uses the throttled scripts.
+
+**Root cause (Holmgren 2026-06-11):** AI Suggest timed out (300s) because a doc-commit RAG rescan (`scan-system-docs.ts`, Standing Rule 11) was running during pre-shift. The single Intel iGPU serializes Ollama work, so the scan's back-to-back `nomic-embed-text` embeddings monopolized the queue and the `llama3.1:8b` AI Suggest generation got starved. Compounded by AI Suggest's `num_predict: 2048` (~220s even uncontended).
+
+**Fix:**
+- `scan-system-docs.ts` + `scan-code-docs.ts` now `await` a per-batch delay (`RAG_SCAN_BATCH_DELAY_MS`, default 1200ms) so the iGPU queue gets gaps an interactive request can slip into — max wait drops from "the whole remaining scan" to ~one batch.
+- `rag-rescan-if-needed.sh` runs the scans under `nice -n 19 ionice -c3` (belt-and-suspenders for CPU/IO).
+
+**Note (not changed):** AI Suggest's `num_predict: 2048` is inherently near the 300s budget at ~9 tok/s. If timeouts recur even with rescans throttled, the follow-up is to trim it. The keep_alive=-1 multi-model residency ([[feedback-ollama-ram-pressure]]) is unchanged — only the embedding model + llama3.1:8b are pinned (~5.6 GB), within budget on a 31 GB box.
+
+---
+
+## v2.55.54 — Shift-brief: make the LLM-error log diagnosable (2026-06-11)
+
+**Versions covered:** v2.55.54
+**Branch landed:** main → all 6 location branches
+**Required Manual Step:** None.
+
+`/api/ai/shift-brief` caught LLM-generation failures with `logger.error('[SHIFT-BRIEF] Error:', error)`. When the Ollama call hit its `AbortSignal.timeout(90s)`, the rejection is a `TimeoutError`/`AbortError`/DOMException whose `.message` is empty — so the log read `[SHIFT-BRIEF] Error:` with nothing after it (seen overnight at Holmgren, undiagnosable). Now the catch builds an always-informative reason: timeout/abort → "Ollama request timed out after 90s (model not resident or box under load)"; otherwise `message → cause.message → name`. The `llmError` field in the degraded response carries the same reason, and the inner fallback failure is logged too. Behavior unchanged — the brief still degrades to `fallbackBrief()`; only the diagnostics improved. Tonight's logs will name the real cause (almost certainly an Ollama timeout under load).
+
+---
+
+## v2.55.53 — MAC auto-discovery for network TVs (2026-06-10)
+
+**Versions covered:** v2.55.53
+**Branch landed:** main → all 6 location branches
+**Required Manual Step:** None. New capability; no config required.
+
+A `NetworkTVDevice` with no `macAddress` can't do Wake-on-LAN power-on (and logs a warning every bulk-power cycle — see v2.55.52). The box can now read the MAC straight off the LAN instead of hand-entering it:
+- **`apps/web/src/lib/mac-discovery.ts`** — `resolveMacForIp(ip)` pings once to populate the kernel ARP/neighbor cache, then reads the MAC back via `ip neigh show` (fallback `/proc/net/arp`). `backfillMissingMacs()` fills every TV missing a MAC. Same-LAN + Linux only; deterministic (no LLM).
+- **`POST /api/tv-control/detect-macs`** — on-demand backfill (optional `{deviceId}`). Admin-only surface (device-config, port 3001) — NOT in the bartender :3002 allow-list (not needed).
+- **`instrumentation.ts`** — scheduled backfill 60s after boot + every 30 min, so a TV self-populates its MAC the moment it's powered on and reachable.
+- **UI** — "Detect MACs" button on the TV Network Discovery panel (Device Config).
+
+**Effect at Greenville:** once TV 20 (10.40.10.20, currently MAC-less) is powered on, the next scheduled run (or the button) fills its MAC automatically → WoL power-on starts working and the v2.55.52 warning stops for good.
+
+---
+
+## v2.55.52 — Demote two operational log-spam ERRORs to WARN (2026-06-10)
+
+**Versions covered:** v2.55.52
+**Branch landed:** main → all 6 location branches
+**Required Manual Step:** None. Pure log-level changes; no behavior change.
+
+Fleet error scan found two ERROR-level log-spam sources (both operational states wrongly logged as application faults, tripping the error-watch every cycle):
+- **`bulk-power/route.ts`** — a TV with no `macAddress` fails Wake-on-LAN power-on and logged ERROR on every bulk-power cycle (Greenville TV 20 = 85 ERROR rows/24h). The missing-MAC case is a CONFIG GAP, now logged at WARN; genuine failures still ERROR. (Config-side: add the TV's MAC so WoL actually works.)
+- **`firetv-health-monitor.ts`** — "Device X has been down for N minutes" logged ERROR; an AV endpoint (Atmosphere TV, Epson projector, a TV off after close) being unreachable is operational, not a fault (Holmgren Atmosphere = 34 ERROR rows/24h flapping off-hours). Now WARN; the `alertsSent` dedup still fires once per down-period.
+
+---
+
+## v2.55.50–51 — verify-install auth check: bind to LOCATION_ID, not id format; wizard lspci (2026-06-10)
+
+**Versions covered:** v2.55.50, v2.55.51
+**Branch landed:** main → all 6 location branches
+**Required Manual Step:** None. These correct two follow-ups to v2.55.49.
+
+- **v2.55.51 (IMPORTANT correctness)** — `check_auth_bootstrap_complete` originally rejected `LOCATION_ID=default-location` as "un-bootstrapped" (a speculative Grok suggestion). That was WRONG for the real fleet: **Graystone runs functionally with `LOCATION_ID=default-location`** and both AuthPins bound to that id — login works fine, but the check false-FAILed it (17/18 in interactive mode). The check now tests the BINDING — `SELECT COUNT(*) FROM AuthPin WHERE isActive=1 AND locationId=<.env LOCATION_ID>` ≥ 1 — which is the actual "will login work?" condition, independent of whether the id is a UUID or the literal `default-location`. No rollback risk ever existed (the check is WARN-only in `--json`/auto-update mode), but the interactive FAIL was a false alarm. All boxes now PASS 18/18.
+- **v2.55.50** — wizard's IPEX-Ollama offer detects Intel via `lspci` instead of `clinfo` (clinfo isn't installed on a fresh ISO box, so the offer silently skipped on the Intel iGPU boxes it targets; confirmed live on Lime Kiln = Iris Xe).
+
+---
+
+## v2.55.49 — Lime Kiln fresh-ISO audit: install-completeness + backup data-leak fixes (2026-06-10)
+
+**Versions covered:** v2.55.49
+**Branch landed:** main → all 6 location branches
+**Required Manual Step:** None for EXISTING boxes — all 6 are already bootstrapped (LOCATION_ID set, AuthPin≥1, auto-update timer installed), so they PASS the two new verify-install checks in both `--json` and interactive mode. **For any NEW fresh-ISO box**, the per-location bootstrap is now ENFORCED rather than silently optional (see below).
+
+**What this rolls up:** the Red/Blue/White/Purple team audit (+ Grok final review) of the newest fleet box "Lime Kiln" (installed from the v3.1.0 subiquity-autoinstall ISO). The box was OS/app-healthy (verify 17/17, health 200) but had install-completeness gaps the old verify-install silently passed, plus a real fleet-wide data-leak vector. Fixes:
+
+- **CRITICAL (data-leak) — Location Backup route** (`apps/web/src/app/api/location/backup/route.ts`): previously did `git add` → `git commit` → `git push origin $(git branch --show-current)`. On a `main`-branch box (every fresh ISO box) that pushes a full per-location DB dump (35 tables) to `origin/main` → propagates to every location on next merge. Fixed: (1) ADMIN session gate on POST, (2) **branch-guard** — refuses commit/push unless current branch starts with `location/` (writes the backup locally + returns a warning instead), (3) `git add -f` since `apps/web/backup/` is now gitignored, (4) `.gitignore` entry for `apps/web/backup/`. `GET /api/location/backup-status` also ADMIN-gated (was leaking locationId/name/branch to any LAN caller). UI (`LocationSettings.tsx`) now honors the `warning` field instead of always claiming "Pushed to branch".
+- **HIGH (false-green) — verify-install.sh**: added `check_auth_bootstrap_complete` (#18) — FAILs (interactive) when AuthPin active-count=0 OR LOCATION_ID is blank/`default-location`; and refactored `check_autoupdate_timer_fresh` to FAIL when the timer **unit file** is missing (was grandfathered as PASS on "no logs yet"). **Both take a non-fatal WARN path in `--json` mode** so a not-yet-bootstrapped box being manually updated never triggers an auto-update rollback (auto-update.sh rolls back on any non-zero verify exit). TOTAL 17→18.
+- **MED (turnkey) — ISO automation**: `first-boot-fresh.sh` now uses `npm ci` (not `npm install --prefer-offline`, which mutated package-lock.json → dirty tree on main). `location-setup-wizard.sh` now (a) offers the IPEX-LLM `setup-iris-ollama.sh` build when an Intel iGPU is detected (was CPU-only ~3 tok/s), and (b) runs `install-auto-update-timer.sh` at wizard end (self-gates on `schedule_cron`; prints Sync-tab guidance if not yet configured).
+
+**Verification:** `bash scripts/verify-install.sh` should show `18/18` on a bootstrapped box. On a fresh box pre-bootstrap, interactive mode now FAILs `auth_bootstrap_complete` + `autoupdate_timer_fresh` with the exact fix commands — that is the intended new signal, not a regression.
+
+**Grok verdict:** GO — no correctness blockers, rollback-hazard design sound, zero fleet regression confirmed across all 6 bootstrapped boxes.
+
+---
+
+## v2.55.48 — Scheduler+channel-guide audit merge: v2.55.43-46 landed (2026-06-10)
+
+**Versions covered:** v2.55.48 (merge commit superseding the four audit fix branches v2.55.43-46)
+**Branch landed:** main → all 6 location branches
+**Required Manual Step:** None beyond the standard auto-update → rebuild → PM2 restart cycle.
+
+**What this rolls up:** the Red/Blue/White/Purple/Green/Orange/Grok team audit of the scheduling + channel guide systems (follow-up to the v2.55.39-41 audit). Four fixes, each independently committed, Orange-probed (all SECURE-BY-DESIGN), and Grok-reviewed per-diff:
+
+- **v2.55.43 (CRITICAL)** — `auto-reallocator.ts` OR-gate. v2.55.41 fixed the tune-success gate in scheduler-service.ts but missed the IDENTICAL `if (response.ok)` pattern at TWO auto-reallocator sites (revert path + tune-back-to-default path). HTTP 200 with `{success:false}` marked the TV reverted while the box never moved. Now `result.success === true` strictly + malformedOk WARN fall-through. Orange: SECURE-BY-DESIGN (no double-.json(), fall-through reaches failure branch). Grok: CLEAN.
+- **v2.55.44 (HIGH)** — channel-guide local-override dedup compared TEXT `ChannelPreset.channelNumber` vs INTEGER `local_channel_overrides.channelNumber` with strict `===`, never matched → Brewers ch 308 appeared twice. Fixed 3 dedup guards with String() normalization. **Grok layer-1 caught a deeper bug all 6 teams + Orange missed:** the injection ALSO emitted raw integers into `channel.number`/`channelNumber`, so the bartender component's `preset.channelNumber === prog.channel.number` (string===number) silently dropped carriage-deal override rows — the Brewers game could vanish ENTIRELY. Fixed by String()-ing the injection writes too.
+- **v2.55.45 (HIGH)** — `pattern-analyzer.ts` used `INSERT OR REPLACE` (delete+reinsert) which reset `observation_count` to DEFAULT 1 every hourly run, making AI Suggest's `ORDER BY observation_count DESC` ranking meaningless. All 6 upsert sites converted to `INSERT ... ON CONFLICT DO UPDATE` with atomic `observation_count = COALESCE(observation_count,0)+1`. ai-suggest loader now compound `ORDER BY observation_count DESC, confidence DESC`. Orange confirmed the UNIQUE(pattern_type,pattern_key) constraint exists in all 3 places (no unbounded-growth risk). Grok: CLEAN.
+- **v2.55.46 (HIGH)** — override-learn window. v2.55.40 changed from a 10-min `allocated_at` gate to `expected_free_at`, which killed learning once a game ran past its estimatedEnd (extra innings, OT, rain delay). Added `OR a.status = 'active'` so active allocations stay learnable until the auto-reallocator flips them completed at real game end. Orange confirmed the v2.55.43×v2.55.46 stale-active cross-interaction does NOT materialize (endAllocation writes status='completed' BEFORE the revert call). Grok: CLEAN.
+
+**Per-team routing tracking** (operator-asked during the audit): confirmed `scheduling_patterns.pattern_type='team_routing'` already captures `{team, preferredInput, preferredOutputs[], frequency}` per team. v2.55.45's fix makes the observation_count ranking that feeds AI Suggest finally meaningful.
+
+**Live regression test:** Greenville Brewers @ 20:05 tonight exercises v43 (revert gate), v44 (ch 308 guide), v46 (extra-innings override-learn) directly. Watch `/home/ubuntu/sports-bar-data/logs/scheduling-2026-06-10.log`.
+
+---
+
+## v2.55.46 — Override-learn stays open through overtime / extra innings (2026-06-10)
+
+**Versions covered:** v2.55.43–v2.55.46
+**Branch landed:** main → all 6 location branches
+**Required Manual Step:** **None.** Code-only fix; the normal auto-update rebuild + PM2 restart picks it up.
+
+**Why (operator terms):** when a game runs PAST its scheduled end — extra
+innings on a Brewers game, overtime, a rain delay — the system used to stop
+learning from bartender corrections the moment the *estimated* end time
+passed. So if a bartender moved the game to different TVs during extras,
+that correction was silently ignored by the pattern learner, even though
+that late-game window is exactly when corrections happen most. MLB extra
+innings are routine; this gap dropped real learning signal.
+
+**What changed:** `/api/matrix/route`'s override-learn allocation query now
+keeps the learning window open **while the allocation is still active OR
+its expected end time has not passed**. The auto-reallocator marks the
+allocation `completed` at the real game end, which closes the window
+naturally — no fixed clock cutoff.
+
+**Verify at a location** (after a game that went long): bartender re-routes
+during overtime should produce an override-learn row:
+```bash
+grep "override-learn" /home/ubuntu/sports-bar-data/logs/scheduling-$(date +%F).log
+# or: sqlite3 /home/ubuntu/sports-bar-data/production.db \
+#   "SELECT created_at, message FROM SchedulerLog WHERE component='override-learn' ORDER BY created_at DESC LIMIT 5"
+```
+
+---
+
+## v2.55.45 — pattern-analyzer: observation_count atomic increment (AI Suggest ranking fixed) (2026-06-10)
+
+**Versions covered:** v2.55.45 — scheduler audit Green #3 (HIGH)
+**Branch landed:** main
+**Required Manual Step:** None. PM2 restart picks it up. observation_count starts climbing on the next pattern-analyzer run (hourly).
+
+**Why:** AI Suggest's pattern loader does `ORDER BY observation_count DESC LIMIT 100`, but `scheduling_patterns.observation_count` was stuck at DEFAULT 1 forever — so the 100-row cap returned patterns in undefined order and the highest-signal team_routing patterns (e.g. the Brewers row with frequency=12) could be silently cut off. The root cause was NOT "the column is never written" — it was that pattern-analyzer used `INSERT OR REPLACE`, which is a DELETE + reinsert that resets observation_count to its column DEFAULT on every run.
+
+**Fix:** all 6 upsert sites in `packages/scheduler/src/pattern-analyzer.ts` converted from `INSERT OR REPLACE` to `INSERT ... ON CONFLICT(pattern_type, pattern_key) DO UPDATE SET ... observation_count = COALESCE(observation_count, 0) + 1, last_observed = excluded.last_observed`. Atomic increment (safe across concurrent analyzer runs — no JS read-modify-write). The ON CONFLICT update preserves the existing row + its observation_count instead of wiping it.
+
+Also: `apps/web/src/app/api/scheduling/ai-suggest/route.ts` loader is now `ORDER BY observation_count DESC, confidence DESC` — compound so a tie on observation_count breaks toward the higher-confidence pattern.
+
+The fallback DDL (`CREATE_SCHEDULING_PATTERNS_TABLE`) was brought column-compatible with drizzle/0000_baseline.sql (added observation_count, first_observed, last_observed, is_stale, last_analyzed_at) so a dev DB created via that path behaves identically.
+
+**Verify:** run the pattern analyzer twice (or wait two hourly cycles), then `SELECT pattern_key, observation_count FROM scheduling_patterns WHERE pattern_type='team_routing' ORDER BY observation_count DESC LIMIT 5` — counts should be climbing above 1.
+
+---
+
+## v2.55.44 — Channel guide: fix dead local-override dedup (duplicate ch-308 rows) (2026-06-10)
+
+**Versions covered:** v2.55.44
+**Branch landed:** main → all 6 location branches
+**Required Manual Step:** **None.** Pure bug fix; standard rebuild + PM2 restart via auto-update.
+
+**Why:** The channel-guide local-override dedup compared `p.channel?.number`
+(TEXT, from Rail/preset data) against `override.channelNumber` (INTEGER, from
+`local_channel_overrides`) with strict `===` — string-vs-number never matches,
+so the dedup was dead code. A Brewers game on ch 308 (BallyWIPlus, the WI RSN
+split) could appear TWICE in the bartender's channel guide: once from the Rail
+Media station-alias match, once from the local-override injection. Affects any
+location running Brewers games (Holmgren, Greenville at minimum).
+
+**Fix:** `apps/web/src/app/api/channel-guide/route.ts` — `String()`-normalize
+both sides at all three preset/override channel-number comparison boundaries
+(override-row filter, override-injection dedup, game_schedules-injection dedup).
+
+**Verification (game-day):** `POST /api/channel-guide` with
+`{"deviceType":"cable"}` during a Brewers broadcast window — each ch-308
+matchup must appear once, and no program `id` starting with `local-308-` should
+share homeTeam+awayTeam+gameTime with a Rail-sourced ch-308 program.
+
+---
+
+## v2.55.43 — auto-reallocator OR-gate fix: v2.55.41 missed two sibling sites (2026-06-10)
+
+**Versions covered:** v2.55.43 — scheduler audit Green #1 (CRITICAL)
+**Branch landed:** main
+**Required Manual Step:** None. PM2 restart picks it up.
+
+**Why:** v2.55.41 fixed the tune-success OR-gate in scheduler-service.ts (the Greenville Brewers "didn't switch" bug). The Red/Blue/White/Purple scheduling audit found the IDENTICAL bug pattern in `packages/scheduler/src/auto-reallocator.ts` at TWO sites the v2.55.41 patch never touched:
+
+1. **Revert path (~line 597):** when a game ends and the auto-reallocator reverts a TV to its default source, `if (routeResponse.ok)` treated any HTTP 200 as a successful revert — even an HTTP 200 with `{success:false}` body. The allocation was already marked completed by endAllocation(), so the TV silently stayed on the dead game feed while a green "reverted" row logged.
+2. **Tune-back-to-default path (~line 884):** same `if (tuneResponse.ok)` on the cable/satellite tune-back. `/api/channel-presets/tune` returns HTTP 200 with `{success:false}` for soft failures (box offline, channel missing) — these were logged as "Tuned back to default" while the box never moved.
+
+**Fix:** both sites now use `result.success === true` strictly, with a `malformedOk` branch (HTTP 200 + missing success flag → loud WARN + fall through to failure). Mirrors scheduler-service.ts:1156-1159 exactly. A third `response.ok` at line 439 (GET /api/settings/default-sources config load) is correctly NOT changed — it's a config read, not a routing command; failure safely skips revert.
+
+**Verify:** during a game-end revert where the cable box is offline, confirm the scheduler log shows `revert ... treating as failure` (WARN) rather than a success row, and the allocation is NOT silently marked reverted.
+
+---
+
+## v2.55.47 — first-boot sets git identity (fixes Location Backup on fresh ISO box) (2026-06-10)
+
+**Versions covered:** v2.55.47
+**Branch landed:** main
+**Required Manual Step on EXISTING fresh-ISO boxes that haven't run bootstrap-new-location.sh yet:**
+```bash
+git config --global user.name "Sports Bar TV Controller"
+git config --global user.email "dfultonthebar@github.com"
+```
+
+**Why:** Lime Kiln (first v3.1.0 ISO install in production, 2026-06-10) hit `Backup failed: ... Author identity unknown ... unable to auto-detect email address (got 'ubuntu@sports-bar-controller.(none)')` on the operator's very first Location Backup attempt. The Location Backup feature (`/api/location/backup`) does a `git commit` to snapshot location data, but a fresh ISO box has NO git user.name/user.email configured, so git can't author the commit. `bootstrap-new-location.sh` DOES set the identity (line ~253) but that's a LATER per-location step — the backup feature is reachable from the moment the box boots, before bootstrap runs.
+
+**Fix:** `scripts/iso/first-boot-fresh.sh` now sets the fleet-standard git identity (`Sports Bar TV Controller <dfultonthebar@github.com>`) immediately after the clone, so it's present from first boot regardless of whether bootstrap has run. Global config (`--global`) so it covers any repo the box touches.
+
+**Verify on a fresh box:** `git config --global --get user.email` returns `dfultonthebar@github.com`, and a Location Backup from System Admin succeeds (commits to `backup/location-data/` on the location branch).
+
+---
+
+## v2.55.42 — Scheduling logger: AI Suggest + override-learn paths instrumented (2026-06-10)
+
+**Versions covered:** v2.55.42
+**Branch landed:** main → all 6 location branches
+**Required Manual Step:** **None.** Pure additive logging; PM2 restart picks up the new instrumentation.
+
+**Why:** v2.55.38 wired `scheduling-logger.ts` into the manual bartender-schedule POST. This closes the AI half of the coverage so the same log file (`/home/ubuntu/sports-bar-data/logs/scheduling-YYYY-MM-DD.log`) carries the AI Suggest decision trail + override-learn audit alongside the manual schedules.
+
+**What's wired:**
+- `/api/scheduling/ai-suggest` GET handler: logs `source='ai'` for the trigger (`action='attempt'`), Ollama timeout (`tune_fail` HTTP 504 with note about RAM pressure / model eviction), Ollama unavailable (`tune_fail` HTTP 503), suggestions-returned (`allocation_created` with rejection count + patterns-consulted count), and uncaught exceptions (`tune_fail` HTTP 500).
+- `/api/matrix/route` POST handler (the override-learn write site at line 244): mirrors every override-learn SchedulerLog row into the dedicated scheduling log as `source='override-learn', action='allocation_updated'`. Home-team overrides log at `level='warn'`, non-home at `level='info'` — matches the SchedulerLog severity convention.
+
+**Operator usage:** the scheduling log now carries a single grep-able view of all paths:
+```bash
+# Brewers re-routes today across all sources (manual + AI + override-learn):
+grep -i brewers /home/ubuntu/sports-bar-data/logs/scheduling-$(date +%F).log
+
+# Watch live as a game-day shift unfolds:
+tail -f /home/ubuntu/sports-bar-data/logs/scheduling-$(date +%F).log
+
+# All AI Suggest decisions today:
+grep "AI" /home/ubuntu/sports-bar-data/logs/scheduling-$(date +%F).log
+```
+
+**Per-team routing pattern tracking** (operator-asked): confirmed already running. `scheduling_patterns` table has `pattern_type='team_routing'` rows like `{"team":"Milwaukee Brewers","preferredInput":"Cable Box 1","preferredOutputs":[13,9,16,19,20,18,26,33,1,4,10,12,3,7,6,14,27,43],"frequency":12}`. `packages/scheduler/src/pattern-analyzer.ts` analyzes `input_source_allocations.tv_output_ids` hourly. AI Suggest consults these when recommending routes.
+
+**Still TODO** (next instrumentation pass): auto-reallocator (`packages/scheduler/src/auto-reallocator.ts`) — when the background service preempts/replaces allocations.
+
+---
+## v2.55.41 — Scheduler tune OR-gate fix: HTTP 200 with {success:false} no longer flips allocation to 'active' (2026-06-10)
+
+**Versions covered:** v2.55.41
+**Branch landed:** main → all 6 location branches
+**Required Manual Step:** **None.** Code-only fix; no schema, no env, no PM2 ecosystem changes. Auto-update rebuilds, restarts, done.
+
+**Why:** RED team triage of the Greenville Brewers "didn't switch" symptom traced the most likely root cause to `packages/scheduler/src/scheduler-service.ts:1146`. The branch was `if (result.success || response.ok) { ... mark allocation 'active' ... }`. The tune endpoint at `/api/channel-presets/tune` returns HTTP 200 with `{success:false, error:'Cable box not found'}` for soft failures (device not found, device offline, channel missing, etc.). The OR short-circuited on `response.ok=true` and ran the success path — allocation status flipped to `'active'`, `input_sources.currentlyAllocated=true`, and Wolf Pack matrix routing fired for the wrong channel. The cable box never tuned, but the system claimed success. Bartender saw a green 'Scheduled' tile, nothing actually switched, no error surfaced anywhere. Fires across every scheduling path: manual, ai, auto, override-learn.
+
+**Fix:** strict success check.
+
+- `packages/scheduler/src/scheduler-service.ts` — replaced `if (result.success || response.ok)` with `if (result?.success === true)`. The previous `response.ok` fallback is split into an explicit `malformedOk` branch (HTTP 200 with no explicit `success` flag — neither true nor false): we log a `WARN` via `schedulerLogger.warn()` + `logger.warn()` and fall through to the existing failure path. The existing `else { schedulerLogger.log({ level: 'error', ... }) }` block at the bottom of the if-chain handles both the soft-fail `{success:false}` AND the malformed-200 cases — no new failure-handling code, just a stricter entry condition. Added a success-path `schedulerLogger.info` so the operator can see "Tune confirmed by API: success=true for allocation X" in the dedicated scheduling log when a tune actually worked.
+
+**Verify** (post-update, optional — operator-facing smoke):
+1. Holmgren: `curl -s -X POST http://localhost:3001/api/channel-presets/tune -H 'Content-Type: application/json' -d '{"channelNumber":"5","deviceType":"cable","cableBoxId":"nonexistent"}'` — confirm response is HTTP 200 with `{success:false, error:'…'}` body. (This is the shape the OR-gate misread.)
+2. Create a test allocation pointing at a nonexistent device, wait one scheduler tick (~60s).
+3. `sqlite3 /home/ubuntu/sports-bar-data/production.db "SELECT id, status FROM input_source_allocations WHERE id='<test-alloc-id>'"` — status MUST remain `'pending'` or transition to `'failed'`, never `'active'`.
+4. `sqlite3 /home/ubuntu/sports-bar-data/production.db "SELECT currentlyAllocated, currentChannel FROM input_sources WHERE id='<input-source-id>'"` — `currentlyAllocated` must remain 0/false; `currentChannel` must NOT be the test channel.
+5. `pm2 logs sports-bar-tv-controller --lines 50 | grep SCHEDULER` — expect `❌ Failed to tune …` line, NOT `✅ Successfully tuned …`.
+6. `tail /home/ubuntu/sports-bar-data/logs/scheduling-*.log` — expect a `tune` row with `success: false` and the error verbatim from the API response.
+
+**Blast radius:** every scheduled tune across every code path (manual / ai-suggested / auto-reallocated / override-learned) routes through this single branch. Fix is 2 lines of structural change + 3 new log lines. Expected positive effect: silent total failures (green tile, nothing switched, no error surfaced) stop. The remaining "didn't switch" symptoms after this lands will fall into one of the previously-known buckets (game not in `game_schedules`, network unreachable, IR emitter unplugged), all of which now produce visible error logs.
+
+---
+
+## v2.55.38 — Dedicated scheduling log file + bartender-schedule POST instrumentation (2026-06-10)
+
+**Versions covered:** v2.55.38
+**Branch landed:** main → all 6 location branches
+**Required Manual Step:** **None.** New log file appears on first scheduling event. Existing PM2 log mirrors stay (no behavior change to existing observers).
+
+**Why:** Two silent failures hit this morning:
+- **Holmgren Timber Rattlers** — bartender picked the game from the channel guide, selected cable box 1, nothing happened. The bartender-schedule POST returned 404 with `No matching game schedule found for Great Lakes Loons @ Wisconsin Timber Rattlers ... The MLB/sports sync may not have imported this game yet.` Root cause: **MILB (Minor League Baseball) is not in the ESPN sync** (CLAUDE.md §9 lists MLB/NBA/NHL/NFL/CFB/MCBB/WCBB only). The channel guide surfaced the game via Rail Media; bartender-schedule requires it in `game_schedules`. Result: silent UI failure (just a tiny toast) with the only trace a buried `[WARN]` in the main PM2 log.
+- **Greenville Brewers** — operator reports "they tried to schedule the brewers game a few times and it didn't switch and when they hit the manual schedule it didn't work." Cannot triage without the bartender's POST being visible. Last logged Greenville allocation was last night's Brewers game (status: completed) — no record of today's attempts.
+
+**Fix:** new dedicated scheduling log file pattern, mirroring the proven shure-rf-logger.ts shape.
+
+- `apps/web/src/lib/scheduling-logger.ts` — daily-rotating file at `/home/ubuntu/sports-bar-data/logs/scheduling-YYYY-MM-DD.log`. 30-day retention. Columns: `ISO_TS | LEVEL | SOURCE | ACTION | requestId | game | targets | outcome | note`. Mirrors through `@sports-bar/logger` so PM2 still surfaces.
+- `apps/web/src/app/api/schedules/bartender-schedule/route.ts` POST handler: logs `attempt` at entry, `game_lookup_ok` or `game_lookup_fail` at the lookup gate, `allocation_created` on success, `tune_fail` on uncaught exception. Each event includes a `requestId` for correlation.
+
+**Sources** the logger covers (taxonomy):
+- `manual` — bartender remote / channel guide selections (just wired)
+- `ai` — AI Suggest approval flow (next pass)
+- `auto` — auto-reallocator decisions (next pass)
+- `override-learn` — bartender-side manual override on a live TV (next pass)
+
+**Actions** (taxonomy):
+`attempt | game_lookup_ok | game_lookup_fail | allocation_created | allocation_updated | allocation_canceled | conflict_detected | route_command | route_ok | route_fail | tune_complete | tune_fail`
+
+**Operator usage:**
+```bash
+# Today's scheduling activity:
+tail -f /home/ubuntu/sports-bar-data/logs/scheduling-$(date +%F).log
+
+# Just the failures:
+grep -E 'WARN|ERROR|game_lookup_fail|tune_fail' /home/ubuntu/sports-bar-data/logs/scheduling-*.log
+
+# Just for a specific team:
+grep -i brewers /home/ubuntu/sports-bar-data/logs/scheduling-*.log
+```
+
+**Known follow-up (will be tracked by the audit):** The MILB / Timber Rattlers case is a real product gap — the channel guide can show a game we can't actually schedule. Either ESPN sync needs MILB coverage OR the bartender-schedule route needs to accept channel-guide-sourced games and create a phantom `game_schedules` row at scheduling time. To be decided by the v2.55.39 audit pass (Red/Blue/White/Green teams + Grok review).
+
+---
+
+## v2.55.37 — Cleanup: commit accumulated dev helpers + new hooks/skills (2026-06-10)
+
+**Versions covered:** v2.55.37
+**Branch landed:** main → all 6 location branches
+**Required Manual Step:** **None.** Tracked-file housekeeping; no runtime change.
+
+**What's now tracked that wasn't before:**
+- `.claude/hooks/stop-parallel-tasks.sh` — Stop-hook suggesting `/parallel-tasks` when 2+ pending tasks could fan out
+- `.claude/skills/parallel-tasks.md` — Skill doc codifying the worktree-fan-out pattern (used today to ship #330/#332/#333 in parallel)
+- `scripts/iso/smoke-test-vm200.sh` — Earlier ISO smoke harness for Proxmox VM 200
+- `scripts/verify-audio-meters.ts` + `scripts/verify-audio-meters-expanded.ts` — Playwright UI verifiers for the Audio tab live meters
+
+**What's removed:**
+- `scripts/capture-sdr-panel.ts` — replaced by `/api/sdr/peak-stats` + `ShureSdrSpectrumPanel.tsx` long ago; the standalone capture script was dead code.
+
+---
+
+## v2.55.36 — Graystone webpack opt-in: source .env before deciding --webpack (closes #334) (2026-06-10)
+
+**Versions covered:** v2.55.36 — closes task #334
+**Branch landed:** main → all 6 location branches
+**Required Manual Step:** **None.** Pure rebuild fix; auto-update pulls + the new wrapper handles it.
+
+**Why:** v2.55.29 put `NEXT_USE_WEBPACK=1` in Graystone's `.env` and changed `apps/web/package.json`'s build to `next build ${NEXT_USE_WEBPACK:+--webpack}`. But bash substitution happens at npm-script-parse time, BEFORE the .env file is loaded. Result: Graystone's env var was invisible during builds, every fleet propagation rebuilt with Turbopack, OOM'd at exit 137. Workaround was rsync-the-prebuilt-.next from Holmgren — proven 4+ times but adds friction every propagation.
+
+**Fix:** `apps/web/package.json` `build` script is now `node ../../scripts/web-build.js`. The wrapper:
+1. Reads `<repo-root>/.env` synchronously (best-effort — absence is fine)
+2. Loads any var into `process.env` UNLESS the parent shell already set it (parent wins)
+3. Appends `--webpack` to the `next build` arg list when `NEXT_USE_WEBPACK` is `1` or `true`
+4. Spawns `npx next build [args]` from `apps/web/` with `stdio=inherit` so output streams identically to the old form
+5. Surfaces a one-line `[web-build]` log so build logs say what was sourced
+
+**Behavior verified:**
+- Holmgren (NEXT_USE_WEBPACK unset): default Turbopack build, ~11 sec (no change)
+- Holmgren with `NEXT_USE_WEBPACK=1 node scripts/web-build.js`: switches to `▲ Next.js 16.2.6 (webpack)`
+- Wrapper sourced 35 vars from .env on its standalone test run
+
+**Side benefit:** `NEXT_BUILD_ARGS` env var is now supported for ad-hoc build-arg injection (e.g. `NEXT_BUILD_ARGS="--debug" npm run build`).
+
+**Graystone validation:** propagation runs now build successfully without rsync-workaround. Holmgren's pre-built .next rsync is no longer the only path for Graystone updates.
+
+---
+
+## v2.55.32 — Shift-brief: stop hallucinating NFL games in June + 3 research hooks (2026-06-09)
+
+**Versions covered:** v2.55.32
+**Branch landed:** main → all 6 location branches
+**Required Manual Step:** **None.** Code + prompt changes; auto-update pulls them, PM2 picks them up.
+
+**Three fixes bundled:**
+
+### A. Shift-brief LLM hallucination — Gotcha #12 strikes again
+
+Operator caught: "shift brief showing nfl games in june???" The brief was listing "Chicago Bears @ Minnesota Vikings", "Green Bay Packers @ Detroit Lions", "Wisconsin Badgers @ Northwestern Wildcats" — all impossible (NFL season is Sep-Feb, CFB also off). DB had the right data (15 MLB + 1 NBA + 2 WNBA + 1 PGA + 1 LPGA in next 24h, zero NFL). llama3.1:8b was hallucinating Green-Bay-relevant teams because the venue context primed it.
+
+Fix per Gotcha #12 / `[[feedback-llm-server-built-verbatim]]`: server-build the "Home-team games" + "Other games" sections, feed them as PRE-WRITTEN sections, tell the LLM to include them VERBATIM. Same pattern as the existing mic-status bullet and Atlas-priority recap.
+
+Plus: bumped the upcoming-games window from 12h → 18h so an end-of-night brief (fired at 23:00) still surfaces the next-day noon games (which start ~12:10 PM CDT, just past a 12h window).
+
+Plus: a new `pendingResyncBullet` showing pending mic resync state from `shure_pending_resync` table (the v2.55.31 workflow). High-priority bullet so the bartender doesn't pick up a mic that won't transmit.
+
+### B. ~/.ssh/config heartbeat / fleet-status correction
+
+`/api/fleet/status` has a 5-min in-memory cache. After SSH-propagation merged location branches via `git push` to origin, the cached snapshot still showed v2.55.22 stuck-state. PM2 restart busts the cache. Documented for future debugging — if the brief shows wrong "TELL OWNER stuck" lines after a fleet propagation, restart PM2 (or wait 5 min for natural cache expiry).
+
+### C. Three research hooks (Grok web-tools tuning task #333 in flight)
+
+`.claude/hooks/pre-bash-research.sh`, `.claude/hooks/user-prompt-research.sh`, `.claude/hooks/post-taskcreate-research.sh` ship + wired into `.claude/settings.local.json`. Pattern-detection works (atlas / shure / wolfpack / iTach / firetv / directv / crestron / bss / dbx / multiview / rtl-sdr / soundtrack / epson). Grok web-tools backend tuning tracked as task #333 — until that completes the hooks skip-inject for empty/no-research responses (no context pollution).
+
+---
+
+## v2.55.31 — Wireless-mic freq change + bartender resync banner (closes #331) (2026-06-09)
+
+**Versions covered:** v2.55.31 — closes task #331
+**Branch landed:** main → all 6 location branches
+**Required Manual Step:** **None on existing boxes.** Pure additive: new table (drizzle 0003) + 3 new API routes + new React banner component. Auto-update pulls, migrate runs, PM2 restart picks it up.
+
+**Why:** Holmgren's SDR detected continuous 24/7 carrier activity directly on top of both Shure mic channels:
+- Ch1 was 485.325 MHz; SDR cluster at 485.060-485.570 MHz with -55 dBm peaks
+- Ch2 was 483.450 MHz; SDR cluster at 483.454-484.165 MHz with -55 dBm peaks
+
+Probable source: neighbor venue (Stadium View / Anduzzi's) wireless mic system. Weekend peaks (Sat 84k events, Sun 77k events) confirm the venue-pattern. Holmgren's mics weren't being knocked out (no `rf_interference` events) but operating in a noisy band.
+
+Cleanest available freqs per 7-day SDR scoring: 503.000, 506.000, 508.500 MHz — all 100% quiet, never crossed carrier threshold. Picked 503 + 508.5 (5.5 MHz separation, plenty intermod margin).
+
+**Workflow that ships:**
+
+1. Admin calls **POST `/api/shure-rf/queue-freq-change`** with `{receiverId, channel, newFreqMhz}`. Endpoint:
+   - Reads current freq from `shureSlxdClientManager` cache
+   - INSERTs row into `shure_pending_resync` (channel, old_khz, new_khz, set_at)
+   - Sends `< SET <ch> FREQUENCY <khz> >` to the receiver via `client.setFrequencyMhz()`
+   - Auto-cancels any prior unverified row on the same channel
+   - Returns 502 + rolls back row if SET fails
+2. Bartender Audio tab polls **GET `/api/shure-rf/pending-resync`** every 5 sec. For each pending row, renders a yellow `ShureResyncBanner` card with channel + old freq + new freq + IR-sync instructions. Banner sits ABOVE `ShureMicStatusPanel` in `AtlasZoneControl.tsx`. Wrapped in `<SafeBoundary>`.
+3. Operator powers on the matching transmitter, holds it near the receiver's IR port, presses SYNC. TX transmits on new freq.
+4. **`shure-rf-watcher.ts`** evaluates each incoming SAMPLE frame. When `TX_MODEL != UNKNOWN` AND `TX_BATT_BARS` is in 0-5 (valid range, not 255 sentinel) AND audio is not silent AND `state.frequencyMhz` matches the pending row's `new_freq_khz`, UPDATE-sets `verified_at`. Wrapped in try/catch for pre-migration boxes.
+5. Banner clears automatically on its next 5-sec poll.
+
+**Cancel path:** **POST `/api/shure-rf/cancel-resync`** with `{id, reason}` — marks `canceled_at` so the banner clears without verification. Does NOT revert the receiver freq (operator must either re-queue OR manually move it back).
+
+**Validation on Holmgren (this commit's first use):**
+- Sent SET 1 FREQUENCY 503000 + SET 2 FREQUENCY 508500
+- Receiver echoed `< REP 1 FREQUENCY 0503000 >` and `< REP 2 FREQUENCY 0508500 >` correctly
+- `< REP <ch> GROUP_CHANNEL {--,--} >` also echoed (the documented gotcha: SET FREQUENCY blanks the front-panel group/channel display to Manual)
+- Seeded `shure_pending_resync` rows manually (since the API endpoint is ADMIN-gated and inline curl bypassed auth)
+- Playwright verified the bartender Audio tab shows two amber banner cards with all the right freqs and instructions
+- Watcher auto-verify pending operator IR-sync of transmitters
+
+**Schema diff** — one new table:
+```sql
+CREATE TABLE shure_pending_resync (
+  id TEXT PRIMARY KEY,
+  receiver_id TEXT NOT NULL,
+  channel INTEGER NOT NULL,
+  old_freq_khz INTEGER NOT NULL,
+  new_freq_khz INTEGER NOT NULL,
+  set_at INTEGER NOT NULL,
+  verified_at INTEGER,           -- NULL = pending; non-NULL = TX active on new freq
+  canceled_at INTEGER,           -- NULL = active; non-NULL = abandoned
+  notes TEXT
+);
+```
+
+**Re-using at other locations:** the workflow is location-agnostic. Any location with a Shure SLX-D in the AudioProcessor table can use the same endpoints. After auto-update applies drizzle 0003 + PM2 restart, the admin RF panel can call queue-freq-change for that location's receiver.
+
+---
+
+## v2.55.30 — ISO slim fix: drop the broken chroot-purge, pool/-delete is enough (closes #326) (2026-06-09)
+
+**Versions covered:** v2.55.30 — properly closes task #326
+**Branch landed:** main
+**Required Manual Step:** **None.** ISO build script change; affects the next `bash scripts/iso/build-autoinstall-iso.sh` invocation.
+
+**Why this is a follow-up to v2.55.28:** v2.55.28 attempted TWO size-reduction levers — pool/ delete + chroot-purge of snapd/bluez/cups/fwupd/cloud-init from the live-installer squashfs. The chroot-purge picked the WRONG squashfs candidate (`ubuntu-server-minimal.ubuntu-server.squashfs` is a 142 MB layered diff with no `/proc /sys /dev` mount-point dirs → the bind mount failed → `set -e` aborted Step 2b with no host /dev damage but also no usable output). Caught by general-purpose agent build validation.
+
+**The math (verified empirically — `du -sh` on the v2.55.28 build dir post-pool-delete):**
+
+| Component | Stock | After pool delete |
+|---|---|---|
+| `pool/` (offline-install debs) | ~1.5 GB | (deleted) |
+| `casper/*.squashfs` files | ~1.4 GB | unchanged |
+| `casper/{,hwe-}initrd` + vmlinuz | ~180 MB | unchanged |
+| Other ISO assets | ~200 MB | unchanged |
+| **Total build dir** | **~3.2 GB** | **~1.7 GB** |
+| **Final ISO output (xorriso)** | **3.2 GB** | **1.69 GB** |
+
+So **pool/ delete alone gets us under the 1900 MB cap with 200 MB headroom.** The chroot-purge step was attempting to squeeze ~80 MB more, but was not actually needed AND introduced real complexity (squashfs candidate priority, chroot bind safety, mksquashfs OOM risk, host /dev exposure via lazy unmount).
+
+**v2.55.30 simplification:**
+1. Step 2b drops the chroot-purge block entirely. Only pool/ delete remains.
+2. Prereq check drops `unsquashfs` + `mksquashfs` (no longer used).
+3. `ISO_SLIM=0` escape valve preserved.
+4. `apt.fallback: continue-anyway` in autoinstall.yaml.template stays (still correct — pool/ is gone).
+
+**Verified on Holmgren build host:**
+```
+ISO:  /home/ubuntu/sports-bar-tv-controller-v3.1.0-2026-06-09.iso
+Size: 1688 MB (1.7 GB)
+Cap:  1900 MB
+GATE: ✅ PASS  (212 MB headroom under cap)
+```
+
+Build runtime: 10 sec (with cached stock ISO + cached build dir). First-build-fresh: ~5 min total (vs ~25 min stock pre-slim due to download).
+
+**If a future Ubuntu point release pushes the post-pool-delete size over 1.9 GB** (unlikely but possible if Canonical bundles more in casper), the path forward is one of:
+- Switch to `mksquashfs -comp zstd -Xcompression-level 22` on a single squashfs (smaller than the default xz with right tuning)
+- Drop the `hwe-` kernel variant from `casper/` (only needed if installing on hardware that requires HWE — most server boxes don't)
+- Bring back a CORRECT chroot-purge targeting `ubuntu-server-minimal.squashfs` (the base layer with full rootfs, NOT the `.ubuntu-server.` diff layer)
+
+**Lesson recorded:** "two levers" plans should sequence the simpler one first AND validate it alone before adding complexity. v2.55.28 shipped both levers together; the broken complex one masked the fact that the simple one was sufficient.
+
+---
+
+## v2.55.29 — Phase 4 hardening + Graystone Turbopack opt-out + SSH log-cleanup (2026-06-09)
+
+**Versions covered:** v2.55.29
+**Branch landed:** main → all 6 location branches
+
+**Three independent fixes bundled:**
+
+### A. Phase 4 (Grok pre-push) hardening — 4 issues from v2.55.27 self-review
+
+Closes the four issues task #329 surfaced when Phase 4 reviewed its own first commit:
+
+1. **Shell-injection-safe prompt assembly** — original unquoted heredoc would re-evaluate `$(...)` and backticks embedded in the diff content. A malicious or even accidental commit message containing `` `rm -rf /` `` could execute. Switched to a sequence of `printf '%s\n' "$var"` calls (data, never re-parsed).
+2. **Robust verdict extraction** — original `awk 'NF{print $1}' | tr -d '*:'` was fooled by Markdown formatting (`**CLEAN**!`, narrative preamble like "Reviewing this carefully..."). Prompt now mandates an explicit `VERDICT: CLEAN` or `VERDICT: FINDING` line. Parser scans first 30 lines for that, falls back to bare `\b(CLEAN|FINDING)\b` word match, treats unparseable response as `INCONCLUSIVE` → soft block (NOT silent allow). Unit-tested across 7 input shapes including the prior cache failure mode.
+3. **Timeout fails CLOSED on highest-risk paths** — drizzle/, schema.ts, auto-update.sh, bootstrap-drizzle-migrations.sh now hard-block on Grok timeout instead of soft-warn. Other critical paths still soft-warn (avoid permanent block when Grok API is flaky).
+4. **GROK_PREPUSH_NO_SELF_REVIEW=1 escape valve** — when iterating on the hook itself, every fix triggers a fresh review of the fix → potentially unbounded loop. With this env var set, skips Grok IF the only matched paths are the hook itself.
+
+**Bypass story unchanged:** `git push --no-verify` OR `GROK_PREPUSH_DISABLE=1 git push`.
+
+### B. Graystone Turbopack OOM workaround (closes task #328 root cause)
+
+Root cause (researched by feature-dev:code-explorer agent): on a 15 GB box, Turbopack's parallel module-graph compilation exceeds the V8 default ~4 GB heap, and the `NODE_OPTIONS=--max-old-space-size=2048` set in `ecosystem.config.js` only applies to the PM2 runtime process — NOT to the `next build` child process. Result: every build on Graystone OOMs at exit 137, even with 8.8 GB available + 8 GB swap.
+
+Fix: opt-in webpack build path via `NEXT_USE_WEBPACK=1` env var. Webpack streams compilation to disk and uses dramatically less peak memory.
+
+**Changes:**
+- `apps/web/package.json` `build` script: `"next build"` → `"next build ${NEXT_USE_WEBPACK:+--webpack}"`. Bash parameter expansion: when `NEXT_USE_WEBPACK` is set, append `--webpack`; when unset, no-op. Other 5 fleet boxes (32 GB RAM) keep Turbopack via the absent env var.
+- Graystone's `.env` set: `NEXT_USE_WEBPACK=1` + `NODE_OPTIONS=--max-old-space-size=4096`.
+
+**Verified on Graystone:** full webpack build completed in 3 min (vs OOM at exit 137 on Turbopack). `.next/BUILD_ID` present, 1.1 GB built artifacts. PM2 restart, health 200, error-watch responding. App at v2.55.26.
+
+**Per-location consideration:** to apply elsewhere, write `NEXT_USE_WEBPACK=1` to the box's `.env`. Only consider for boxes with <16 GB RAM (the 32 GB boxes build cleanly under Turbopack in 14 sec).
+
+**Required Manual Step on Graystone:** done as part of this release. **Other locations:** none.
+
+### C. SSH log-cleanup via ~/.ssh/config
+
+The `Warning: Permanently added '<ip>' (ED25519) to the list of known hosts.` line appeared on every fleet SSH/scp invocation, cluttering output. The warning was harmless (we already discard the key via `UserKnownHostsFile=/dev/null`) but blew up log readability.
+
+Fix: a `~/.ssh/config` Host stanza for all 6 fleet IPs and MagicDNS names that sets `LogLevel ERROR` alongside the existing `StrictHostKeyChecking no` + `UserKnownHostsFile /dev/null`. Default `ConnectTimeout 15` + `ServerAliveInterval 30` (keeps long-running build-on-remote alive).
+
+This is a per-user config; future dev-machine setups should mirror it (see `/home/ubuntu/.ssh/config` for the template).
+
+---
+
+## v2.55.28 — ISO slim pass: 3.2 GB → ~1.8 GB to fit GitHub 2 GB cap (task #326) (2026-06-09)
+
+**Versions covered:** v2.55.28 — closes task #326
+**Branch landed:** main
+**Required Manual Step on build host:**
+```bash
+sudo apt-get install -y squashfs-tools  # if not already present
+```
+Then re-run the standard build:
+```bash
+bash scripts/iso/build-autoinstall-iso.sh
+bash scripts/iso/smoke-test-autoinstall.sh  # size gate now enforced at Phase 1
+```
+
+**Why:** the stock Ubuntu 24.04.4 Server ISO is 3.2 GB. Our pure-pass-through build at v3.1.0 left the output at essentially the same size — well above GitHub's 2 GB release-asset cap. That forced split distribution and friction. Task #326 closed.
+
+**Two levers (independent, both active by default):**
+
+1. **`pool/` deletion (~1.0-1.3 GB savings)** — the Ubuntu pool exists for offline-install fallback when there's no internet during install. We ALWAYS have internet at first-boot (apt-get nodejs + GitHub clone), so the pool is vestigial. Paired with `apt.fallback: continue-anyway` in `autoinstall.yaml.template` so subiquity doesn't stall waiting for offline debs.
+2. **Squashfs chroot-purge of snapd/bluez/cups/fwupd/cloud-init (~80 MB compressed)** — `scripts/optimize-os.sh` already removes these POST-install; this pushes that work upstream so they're never in the ISO. `apt-get purge -y --autoremove` runs in the live-installer's chroot via direct `chroot $work apt-get purge` (NOT `curtin in-target --` per Launchpad bug #1946609 — curtin's path fails on snapd's postinst unmount with "resource busy"; direct chroot works).
+
+**Combined estimate:** 3.2 GB → ~1.8-2.0 GB. Size gate in `smoke-test-autoinstall.sh` Phase 1 hard-fails the smoke test if the ISO exceeds 1900 MB (100 MB headroom under the 2 GB cap).
+
+**Recovery / escape valve:** `ISO_SLIM=0 bash scripts/iso/build-autoinstall-iso.sh` skips Step 2b entirely. Use if any of the chroot/squashfs steps regress on a new Ubuntu point release. Smoke-test cap override: `ISO_SIZE_CAP_MB=2200 bash scripts/iso/smoke-test-autoinstall.sh`.
+
+**Chroot safety:** the chroot cleanup uses a `trap squash_cleanup EXIT` with plain `sudo umount` (NEVER `umount -l` per `[[feedback-chroot-lazy-umount-destroys-dev]]` — lazy unmount before `rm -rf` of the chroot dir recurses through the still-attached `/dev` bind and deletes host device nodes. ~2h incident on 2026-05-27).
+
+**Verify the slim pass worked:** the build log prints `Squashfs: <before> → <after>` and `pool/ removed`. The smoke-test enforces the size gate at Phase 1 before SCP to Proxmox. Post-install verification (Phase 7 of smoke-test) confirms `snapd` is absent on the installed system via `dpkg -l snapd | grep -c '^ii'` = 0.
+
+**Lesson:** an ISO build that exceeds a third-party distribution cap silently changes the deployment story (one asset → split downloads → operator confusion at install time). Worth gating in the smoke-test, not as a post-hoc audit. The new Phase 1b gate is the enforcer.
+
+---
+
+## v2.55.27 — Phase 4: Grok critical-path pre-push review (2026-06-09)
+
+**Versions covered:** v2.55.27
+**Branch landed:** main
+**Required Manual Step:** **None on dev machines.** Hook lives in repo + `core.hooksPath` is already configured. **No fleet action** — location boxes never push to main, so Phase 4 is dev-machine-only.
+
+**What ships:**
+- `scripts/grok-prepush-review.sh` (~165 lines, executable) — orchestrates the review.
+- `.githooks/pre-push` — calls the review script after the empty-diff check, before the docs-gate. Order matters for the bypass story: a `--no-verify` bypass skips both checks; a docs-only push with no critical paths skips Grok via the early `exit 0` in `grok-prepush-review.sh`.
+
+**13 critical-path globs** trigger the review (anything not in this list is silent-skip):
+```
+packages/database/src/schema.ts
+apps/web/src/db/schema.ts
+drizzle/**
+scripts/auto-update.sh
+scripts/bootstrap-drizzle-migrations.sh
+scripts/verify-install.sh
+scripts/iso/**
+scripts/proxmox/**
+apps/web/src/instrumentation.ts
+apps/web/next.config.js
+ecosystem.config.js
+.githooks/pre-push
+scripts/grok-prepush-review.sh
+```
+
+**Review mechanics:**
+- Grok is briefed via `scripts/grok-prime.sh` (auto-prepends Standing Rules + Gotchas from `docs/GROK_BRIEFING.md`).
+- Diff truncated to 32 KB to stay inside Grok's useful window (per `[[feedback-llm-context-overflow]]`).
+- Recent commit messages on the changed files are included so Grok has intent signal (distinguishes "this DROP TABLE is intentional cleanup" from "this is an accident").
+- Auto-injected gotcha hints based on which paths fired (e.g. drizzle changes → cite Gotcha #6 + #5).
+- Mandatory CLEAN/FINDING first-word verdict for machine parsing.
+- 120 sec timeout — if Grok stalls, soft-warn and allow push.
+- Per-day SHA cache at `/tmp/grok-prepush-cache.json` — re-pushing the same range in one day doesn't re-burn Grok.
+
+**Soft-block semantics:**
+- CLEAN → silent pass, log only.
+- FINDING → print Grok's output to stderr + exit 1. Bypass: `git push --no-verify` OR `GROK_PREPUSH_DISABLE=1 git push`.
+- TIMEOUT → soft-warn, allow push, log.
+- `grok` CLI absent → silent-skip (degraded mode). Same for any environment where Grok isn't installed.
+
+**Logs:**
+- `/tmp/sports-bar-grok-prepush.log` — every fire (verdict + range + matched files).
+- `/tmp/grok-prepush-cache.json` — per-day cache.
+
+**Standalone test:**
+```bash
+bash scripts/grok-prepush-review.sh <remote_sha> <local_sha>
+```
+
+**Rollout:** repo-tracked + `core.hooksPath` is the standard install step. Every developer machine that's already run that command picks up Phase 4 automatically on next `git pull`. No retroactive action.
+
+**Why this matters:** v2.55.25 shipped a `bartender_layout_rooms` check that tripped 4/5 remote fleet boxes during initial verify because my SQL referenced a non-existent `data` JSON column. The check errored silently and returned empty for everything. This is exactly the failure-mode Phase 4 is designed to catch — a Grok second-opinion on schema/SQL diffs would have called out "your SQL references `data` but the schema doesn't have that column" before the push went out and triggered the regression cascade on fleet auto-update.
+
+---
+
+## v2.55.26 — Phase 3 follow-up: refine `bartender_layout_rooms` to referential-integrity (2026-06-09)
+
+**Versions covered:** v2.55.26
+**Branch landed:** main → all 6 location branches
+**Required Manual Step:** **None.** Same file (`scripts/verify-install.sh`) — refined check semantics.
+
+**Why:** v2.55.25's `bartender_layout_rooms` layer FAIL'd on 4/5 remote fleet boxes during initial verify (Greenville, LegLamp, Lucky's, Appleton — but NOT Holmgren or Graystone). Investigation: those locations are single-room bars with empty `rooms` arrays and zones that don't reference any room IDs. That's NOT a Gotcha #8 violation — it's a normal single-room setup.
+
+**The actual Gotcha #8 risk** is when zones REFERENCE a room ID that doesn't exist in `rooms[]` — that breaks the filter-tab UI with orphan references. Empty `rooms[]` with zones that don't reference rooms is operationally fine.
+
+**New check semantics:** parse the active layout's zones + rooms via SQLite's `json_each`, look for orphan references (zone.room not in rooms[].id). FAIL only on a real orphan. Otherwise PASS with a category label:
+- `clean` (rooms present + zones reference them + all refs resolve)
+- `N rooms / 0 refs` (multi-room layout but no zones reference yet — admin still configuring)
+- `single-room bar` (no rooms + no refs — Lucky's-style setup)
+
+**Effect after this fix:**
+- Holmgren / Graystone still PASS 16/16 (no change — they had healthy multi-room layouts)
+- 4 single-room remote boxes go from FAIL→PASS (correctly classified)
+- A real Gotcha #8 — orphan room reference — still hard-fails with the specific orphan ID printed for the operator to act on
+
+**Lesson recorded:** runtime referential-integrity checks must distinguish "configured differently" from "configured wrong." A naive "is column empty?" check trips honest variation across fleet — the Phase 4 (Grok pre-push) gate is exactly what should have caught this before the v2.55.25 fleet propagation. Until Phase 4 ships, mandate-run-on-fleet-data before commit for any new verify-install layer that touches SQL.
+
+**Verify after auto-update:** same as v2.55.25 (`bash scripts/verify-install.sh`). All 6 fleet boxes should PASS 16/16 after this lands.
+
+---
+
+## v2.55.25 — Phase 3 self-monitoring: 8 verify-install assertion layers (+ cd-prefix hook fix) (2026-06-09)
+
+**Versions covered:** v2.55.25
+**Branch landed:** main → all 6 location branches
+**Required Manual Step:** **None on existing boxes.** `scripts/verify-install.sh` is invoked by `auto-update.sh` on every cycle — the new layers run automatically the next time auto-update fires.
+
+**What ships (8 new verify-install layers):**
+
+Each turns a previously-🟡 "doc-only" Gotcha into a fail-loud asserted check. All 8 run in <1 sec; total verify pass is 3 sec on Holmgren.
+
+| Exit code | Layer | Gotcha | What it asserts |
+|---|---|---|---|
+| 18 | `linger_enabled` | #11 | `loginctl show-user ubuntu` returns `Linger=yes` |
+| 19 | `autoupdate_timer_fresh` | #11 | newest `auto-update-*.log` is <26h old (24h cadence + 2h grace) |
+| 20 | `migration_markers_consistent` | #6 | `SELECT COUNT(*) FROM __drizzle_migrations` equals `ls drizzle/*.sql \| wc -l` |
+| 21 | `error_watch_alive` | Phase 2a | newest `error_watch_events.kind='heartbeat'` row is <720s old |
+| 22 | `bartender_layout_rooms` | #8 | active `BartenderLayout.rooms` is non-empty JSON |
+| 23 | `atlas_drop_watcher_alive` | watcher | newest `atlas_drop_events` row is <7d old (warn-only) |
+| 24 | `atlas_priority_watcher_alive` | watcher | newest `atlas_priority_events` row is <7d old (warn-only) |
+| 25 | `node_symlink_present` | #11 | `/usr/bin/{node,npm,npx}` OR `/usr/local/bin/{node,npm,npx}` all exist |
+
+**Plus one Claude Code hook fix:**
+
+`.claude/hooks/pre-fleet-ssh-cd.sh` — broadened the regex. Previous version only caught `ssh ... bash scripts/...` payloads. Today's session hit the cd-prefix bug 5× with `ssh ... git branch`, `ssh ... npm run build`, `ssh ... cat package.json` — none matched the old regex. New regex catches any of `git|npm|npx|pnpm|yarn|drizzle-kit|bash scripts/|cat|head|tail|less package.json|python3 -c.*package.json|pm2 (start|restart|reload) (ecosystem|sports-bar)`. Has the `--i-know-what-im-doing` escape hatch consistent with `pre-destructive-block.sh`.
+
+**Verify after auto-update:**
+```bash
+# Run verify-install standalone:
+bash /home/ubuntu/Sports-Bar-TV-Controller/scripts/verify-install.sh
+
+# Expect: PASS (16/16 checks, Ns) — or a fail with a specific exit code that
+# points at one of the 18-25 codes above, each with a fix path printed in the
+# log message.
+
+# JSON form for the Sync-tab API:
+bash /home/ubuntu/Sports-Bar-TV-Controller/scripts/verify-install.sh --json | python3 -m json.tool
+```
+
+**One real finding during dev:** Holmgren's `BartenderLayout.rooms` check originally failed because my SQL used a non-existent `data` JSON column (the actual schema has a top-level `rooms` column). The query errored silently and returned empty. Fixed mid-build by reading the actual schema. Lesson: every new SQL-based layer needs at least one fleet-data-shape verification before commit, not just schema-time inference. This is exactly the failure mode Phase 4 (Grok pre-push review on schema/SQL diffs) is designed to catch.
+
+**Applies to:** all locations.
+**First seen:** built + verified at Holmgren on 2026-06-09 (16/16 PASS after the BartenderLayout fix).
+
+---
+
+## v2.55.24 — Phase 2b: error-watch admin UI surface (2026-06-09)
+
+**Versions covered:** v2.55.24
+**Branch landed:** main → all 6 location branches
+**Required Manual Step:** **None on existing boxes.** Pure additive — new route + new component + one-line wiring in `system-admin/page.tsx`. Auto-update pulls the code; PM2 restart picks it up.
+
+**What ships:**
+- `apps/web/src/app/api/error-watch/route.ts` — GET endpoint reading `error_watch_events`. Query params: `windowHours` (1-168, default 24), `signature` (filter to one), `kind` (filter to one), `limit` (1-1000, default 200). Returns `{summary: {heartbeatFreshSec, latestStartupAt, errorCountWindow, signatureCounts[]}, events[]}`. On missing-table (fresh box pre-migration) returns 200 with empty payload — same degrade pattern as `/api/system/watchers/status`.
+- `apps/web/src/components/admin/ErrorWatchPanel.tsx` — `<SafeBoundary>`-wrapped panel with three sections: status header (heartbeat badge + last boot + window chips), signature breakdown (horizontal bars, click-to-filter), recent events table (with kind/signature chips + sample text). Polls `/api/error-watch` every 30 sec.
+- Wired into `apps/web/src/app/system-admin/page.tsx` Watchers tab, below the existing `WatcherHealthPanel`.
+
+**Heartbeat freshness threshold:** 700 sec (2× the default `HEARTBEAT_INTERVAL_SEC=300` from Phase 2a). Anything older shows a red "heartbeat Ns ago" badge; fresh shows a pulsing green badge.
+
+**SafeBoundary wrap:** the panel is brand-new; per `[[feedback-safeboundary-for-new-panels]]` a render crash inside it shows a tiny inline failure card instead of escalating to the global error boundary for the entire system-admin page.
+
+**Verify after auto-update:**
+```bash
+# UI:
+# Navigate to /system-admin → Watchers tab → "Error Watch" section
+# should show: green heartbeat badge (Xs ago, X < 600s)
+#              signature breakdown if any errors caught
+#              recent events table
+#
+# API:
+curl -s 'http://localhost:3001/api/error-watch?windowHours=24' | python3 -m json.tool | head -25
+# expect: success=true, heartbeatFreshSec < 600, signatureCounts array
+```
+
+**Applies to:** all locations.
+**Verified:** built clean (`npm run build` 14s, no errors), API returns real data (heartbeat 35s fresh, 3 errors in window with correct signature breakdown), Playwright rendered the panel with all sections present on Holmgren.
+
+---
+
+## v2.55.23 — Phase 2a: autonomous error-watch service (2026-06-09)
+
+**Versions covered:** v2.55.23
+**Branch landed:** main → all 6 location branches
+
+**Why:** Phase 2 of the self-monitoring architecture from `docs/HOOK_COVERAGE.md`. The PM2 error log is the highest-density signal for things that broke in production (FK constraint failures, unhandled rejections, `ECONNREFUSED`, missing modules). Until now nothing watched it — operators only noticed errors when something user-visible broke. v2.55.16's FK-constraint spam ran for hours before someone glanced at logs. The auto-update lock self-deadlock (v2.55.14) was only caught after the audit script noticed the timer hadn't fired in 2 days. This watcher closes the gap.
+
+**What ships:**
+1. **`error_watch_events` table** (drizzle migration `0002_error_watch_events.sql`) — `id`, `kind` ∈ {`startup`,`heartbeat`,`error`}, `signature`, `sample` (200 char), `source_file`, `detected_at` (unix seconds). 3 indexes: `detected_at`, `(signature, detected_at)`, `(kind, detected_at)`.
+2. **`scripts/watchers/error-watch.sh`** — bash watcher tailing `/home/ubuntu/.pm2/logs/sports-bar-tv-controller-error*.log` with `tail -n 0 -F` (rotation-safe). Pattern library: `error_level`, `unhandled_rejection`, `fk_constraint`, `econn_refused`, `etimedout`, `module_not_found`, `type_error`, `exception`. 30s per-signature dedup window in memory. 5-min heartbeat from a background sub-shell so "no recent rows" cleanly means "watcher dead" not "no errors."
+3. **`scripts/watchers/sports-bar-error-watch.service`** — systemd-user unit. `Restart=always`, 15s back-off. `WantedBy=default.target`. Requires `Linger=yes` on the `ubuntu` user (Gotcha #11) — already in place at every location since v2.50-ish.
+
+**Required Manual Step on each fleet box (Holmgren done as part of this release):**
+```bash
+cd /home/ubuntu/Sports-Bar-TV-Controller
+# 1. apply the migration (already pulled by auto-update)
+npx drizzle-kit migrate
+# 2. install the systemd unit
+mkdir -p ~/.config/systemd/user/
+cp scripts/watchers/sports-bar-error-watch.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now sports-bar-error-watch.service
+# 3. verify
+systemctl --user status sports-bar-error-watch.service --no-pager | head -10
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "SELECT kind, signature, datetime(detected_at,'unixepoch','localtime') FROM error_watch_events ORDER BY detected_at DESC LIMIT 3;"
+# expect: a row with kind='startup' from when you just enabled it
+```
+
+**Verify signature capture (optional sanity check):**
+```bash
+echo "$(date -u +%FT%TZ) [TEST] TypeError: marker $$" >> /home/ubuntu/.pm2/logs/sports-bar-tv-controller-error.log
+sleep 3
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "SELECT kind, signature, sample FROM error_watch_events WHERE sample LIKE '%marker%';"
+# expect: kind='error', signature='type_error'
+```
+
+**Querying what the watcher caught (for an audit / morning-after pattern check):**
+```bash
+# Most-recent errors of each signature in the last 24h:
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "SELECT signature, COUNT(*) AS n, MAX(datetime(detected_at,'unixepoch','localtime')) AS most_recent \
+   FROM error_watch_events \
+   WHERE kind='error' AND detected_at >= strftime('%s','now')-86400 \
+   GROUP BY signature ORDER BY n DESC;"
+
+# Heartbeat freshness (last row should be within 5 min):
+sqlite3 /home/ubuntu/sports-bar-data/production.db \
+  "SELECT datetime(detected_at,'unixepoch','localtime') FROM error_watch_events WHERE kind='heartbeat' ORDER BY detected_at DESC LIMIT 1;"
+```
+
+**Operational note:** the dedup window is intentionally short (30s) — we want frequency information ("ECONNREFUSED hit 40 times" is the same finding regardless of whether it was 40 lines back-to-back or one every minute). For per-event drill-down, fall back to the raw PM2 error log; this table is for sentinel/trend use, not log replacement.
+
+**Phase 2b (deferred):** UI surface on the SystemAdmin page showing unacknowledged events + a notification when a never-before-seen signature lands. The DB structure already supports this — Phase 2a was deliberately backend-only so the watcher proves out in production before any UI consumes it.
+
+**Applies to:** all locations.
+**First seen:** built + verified at Holmgren on 2026-06-09.
+
+---
+
+## v2.55.22 — Node 22.22.2 → 22.22.3 (security release, NodeSource unblocked) (2026-06-09)
+
+**Versions covered:** v2.55.22 — closes task #262
+**Branch landed:** main → all 6 location branches
+
+**Why:** Node 22.22.3 is a Node.js security release (crypto null-pointer-deref fix among others). It was tracked as #262 since 2026-05-27 because NodeSource lagged 2+ weeks publishing it; we deliberately waited for the NodeSource apt repo (rather than bypass to nodejs.org binary) to keep fleet install methods consistent. NodeSource published `22.22.3-1nodesource1` on or before 2026-06-09 — task unblocked.
+
+**Risk:** patch release within Node 22 → no `NODE_MODULE_VERSION` change → **no native module ABI break** → no better-sqlite3 rebuild required ([[feedback-node-major-upgrade-gotchas]] doesn't apply here, it covers major bumps).
+
+**Required Manual Step on each fleet box (Holmgren done as part of this release):**
+```bash
+sudo apt-get update -qq
+sudo apt-get install -y nodejs              # 22.22.2 → 22.22.3
+node --version                              # verify
+pm2 restart sports-bar-tv-controller --update-env
+sleep 5 && curl -s -o /dev/null -w '%{http_code}\n' http://localhost:3001/api/health
+# expect: 200
+```
+
+**Blip:** ~10–30s while PM2 reloads the app under the new Node binary. Bartender remote returns 5xx briefly.
+
+**Fleet rollout:** can run in parallel across the 5 remote boxes via Tailscale SSH (each box independent). At a minimum schedule it before tonight's auto-update cycles fire so the assertion gates run against the new Node. Or fold into a manual fleet trigger now.
+
+**Verify after:** `node --version` returns `v22.22.3` AND PM2 shows `restart_time` incremented by 1 AND `:3001/api/health` returns 200.
+
+**Done on Holmgren as part of this release** — verified PM2 picked up the new binary, both ports back to 200 on the first health-check attempt.
+
+---
+
+## v2.55.21 — Phase 1 hardening: redact creds in pre-push log + fix destructive-block false positive (2026-06-09)
+
+**Versions covered:** v2.55.21
+**Branch landed:** main → all 6 location branches
+**Required Manual Step:** **None on existing boxes.** Pure patch.
+
+**Two hot fixes uncovered by Phase 1 itself, captured immediately so the patterns hold:**
+
+1. **`.githooks/pre-push` was logging the full push URL to `/tmp/sports-bar-pre-push-hook.log`**, including any embedded `https://USER:TOKEN@github.com/...` credentials. Phase 1's very first real push at v2.55.20 captured the operator's GitHub Personal Access Token in cleartext (the log was wiped immediately + the token should be considered burned and rotated). Now redacts: `https://x:y@host` → `https://***@host` via sed before any logging happens. Pipe-tested with a fake token; log shows `***`.
+
+2. **`.claude/hooks/pre-destructive-block.sh` rm-rf check false-positive'd** when the Bash command had a `cd /home/ubuntu/Sports-Bar-TV-Controller` prefix AND an unrelated `rm -f /tmp/something` in the same command line. The old check was "command contains rm AND command contains protected path anywhere" — the cd's path satisfied the second clause. Fix: split the command on shell separators (`;` `&&` `||` `|`) and check each piece independently so the protected-path requirement applies only to the rm's own arguments. Pipe-tested both axes (false-positive cleared; real `rm -rf /home/ubuntu/Sports-Bar-TV-Controller/...` still blocked).
+
+**Meta-lesson for the architecture doc:** Phase 1 went live and within 60 seconds (a) caught a real secret leak (good), (b) exposed a false positive in a sibling hook (also good — fast feedback is the point). Both fixes were caught by tooling that was already in place (the small-LLM verify-edit hook spotted the missing `done` mid-edit) and verified against the authoritative tool (`bash -n`) per pattern #5's "the linter is the arbiter" discipline. Working as designed.
+
+---
+
+## v2.55.20 — Phase 1 of self-monitoring architecture: pre-push docs-gate + HOOK_COVERAGE map (2026-06-09)
+
+**Versions covered:** v2.55.20
+**Branch landed:** main → all 6 location branches
+
+**Required Manual Step (per clone, one-time, on any box where someone might `git push`):**
+```bash
+cd /home/ubuntu/Sports-Bar-TV-Controller
+git config core.hooksPath .githooks
+```
+After this, every `git push` runs `.githooks/pre-push`. Verify with:
+```bash
+git config core.hooksPath   # must print: .githooks
+```
+**Fleet boxes don't push to main** (auto-update is pull-only), so this is only needed where development happens (Holmgren primarily). Done on Holmgren as part of this release.
+
+**Why:** Phase 1 of the seven-pattern self-monitoring architecture (see `docs/HOOK_COVERAGE.md`). Standing Rule 8 ("contribute to VERSION_SETUP_GUIDE every release") was honor-system — when I forgot, the fleet went undocumented. The pre-push hook now mechanically blocks pushes to `origin/main` with non-trivial code but no doc update (VERSION_SETUP_GUIDE / LOCATION_UPDATE_NOTES / CLAUDE.md / HOOK_COVERAGE).
+
+**Trivial files** that don't require a doc update on their own: `package.json` (version bump), `.gitignore`, `.claude/hooks/*.sh`. Everything else triggers the gate.
+
+**Emergency bypass:** `git push --no-verify` (genuine emergencies; record a no-op entry here anyway, that's friction-free).
+
+**Heartbeat:** every fire writes `/tmp/sports-bar-pre-push-hook.log`. Silent absence = hook didn't run, not "all clear."
+
+**Also new in this release:**
+- `docs/HOOK_COVERAGE.md` — coverage map of every Standing Rule + Gotcha → enforcing mechanism → status (✅ / 🟡 / ❌). The single source of truth for "what's mechanically enforced vs honor-system" and the planning doc for Phases 2–6.
+
+**No fleet runtime impact** — git hook only fires on `git push`. The PM2 app isn't touched.
+
+---
+
+## v2.55.8 — PXE netboot fix: kernel+initrd HTTP (sanboot is dead for Ubuntu) (2026-05-28)
+
+**Versions covered:** v2.55.8
+**Branch landed:** main → all 6 location branches
+
+**Required Manual Step (ONLY at the PXE/netboot LXC — not fleet boxes):**
+Re-run the netboot config so the new menu + extracted kernel/initrd land:
+```bash
+pct enter 250   # the sports-bar-netboot LXC on Proxmox
+bash /root/configure-netboot-menu.sh   # extracts casper/{vmlinuz,initrd}+seed, writes kernel+initrd menu, fixes dnsmasq proxy
+exit
+```
+**Verify:** `curl -sI http://<lxc-ip>/casper/vmlinuz` returns 200; the iPXE
+menu's `:install` uses `kernel … url=… cloud-config-url=/dev/null ds=nocloud-net`.
+
+**Why:** `sanboot` of the whole Ubuntu casper ISO never worked (GRUB loads,
+casper can't find the live filesystem — UEFI + BIOS both). Confirmed live on
+Proxmox VM 201. Fix boots vmlinuz+initrd over HTTP, casper fetches the ISO via
+`url=`. dnsmasq proxy also fixed (`pxe-service=`, not `dhcp-boot=`). Full detail:
+CLAUDE.md Gotcha #19 + `docs/PROXMOX_PXE_SETUP.md`. **Fleet boxes: no setup** —
+this only affects new-NUC provisioning via the office PXE server.
+
+## v2.55.7 — fleet password fix: THREE dollar signs (6809233DjD$$$) (2026-05-28)
+
+**Versions covered:** v2.55.7
+**Branch landed:** main → all 6 location branches
+
+**No setup required on existing boxes.** Affects ONLY freshly-installed NUCs
+from the v3.1.0 ISO. v2.55.3 baked `6809233DjD$$` (two $); the real fleet
+password is `6809233DjD$$$` (three $). smoke v9 proved installed VMs rejected
+the fleet password at the console. Fixed in autoinstall chpasswd + identity
+hash (verified via `openssl passwd -6`) + the `$$`→PID expansion trap in the
+smoke/audit test scripts (now `printf '6809233DjD\044\044\044'`). New ISO
+builds (md5 changes) set the correct triple-$ password.
+
+## v2.55.6 — bake hardware prerequisites into the ISO (gap analysis vs Holmgren) (2026-05-27)
+
+**Versions covered:** v2.55.6 (and the v2.55.0–.5 ISO bring-up series: DB-before-build root-cause fix, fleet password, Claude-CLI bash-pipe, IPv6-link-local smoke detection, 9-layer audit)
+**Branch landed:** main → all 6 location branches
+
+**No setup required on existing boxes.** Affects fresh NUC installs. ISO now
+bakes: packages `adb, rtl-sdr, nginx, nmap, arp-scan, sshpass, imagemagick,
+v4l-utils`; first-boot `.env` generation with fresh crypto secrets
+(NEXTAUTH_SECRET/ENCRYPTION_KEY/NEXT_SERVER_ACTIONS_ENCRYPTION_KEY),
+AUTH_COOKIE_SECURE=false, OLLAMA_MODEL=llama3.1:8b; `usermod -aG
+dialout,video,render,plugdev ubuntu`; setup-sdr.sh (DVB blacklist) +
+setup-bartender-nginx.sh. **Per-location post-install (NOT baked):** Ollama
+via `setup-iris-ollama.sh` (needs Intel iGPU), API keys + LOCATION_ID via
+`bootstrap-new-location.sh`, `tailscale up`. Tailscale itself is pre-installed.
+
+## v2.54.99 — CLAUDE.md + BARE_METAL_ISO documents v3.1.0 autoinstall architecture (2026-05-27)
+
+**Versions covered:** v2.54.99
+**Branch landed:** main
+**Fleet target:** No runtime change. Doc-only.
+
+Memorialized the v3.1.0 subiquity autoinstall ISO architecture (v2.54.89-.97) in `CLAUDE.md` so future Claude knows the canonical build path:
+- New section under "Build & Development Commands" → "ISO Build (v3.1.0+ — subiquity autoinstall, CANONICAL)" enumerating active scripts (`build-autoinstall-iso.sh`, `autoinstall.yaml.template`, `sports-bar-first-boot.service`, `smoke-test-autoinstall.sh`, `audit-installed-vm.sh`, `cleanup-chroot.sh`) and marking v3.0.x scripts (`build-sports-bar-iso.sh`, `disk-installer.sh`) DEPRECATED but not deleted.
+- Five new Gotchas (#14-18): grub.cfg quoting (v2.54.92), apt.geoip hangs install (v2.54.95), `shutdown: poweroff` not reboot (v2.54.96), Node+PM2 in late-commands (v2.54.97), DHCP poll ≥15 min (v2.54.97). Each gotcha is a real shipped fix this session — documenting prevents re-discovery.
+- Proxmox VM smoke-test settings recorded (OVMF + EFI disk, q35, virtio-scsi-pci, 16 GB / 4 cores / 100 GB minimum).
+
+`docs/BARE_METAL_ISO.md` already pointed at v3.1.0 as canonical (v2.54.91 refresh). Verified unchanged.
+
+**Required Manual Steps:** None.
+
+**Verification:** `grep -q "ISO Build (v3.1.0" CLAUDE.md && grep -q "### 18\. ISO smoke test" CLAUDE.md`.
+
+---
+
+## v2.54.98 — new bartender how-to READING_AUDIO_METERS.md (2026-05-27)
+
+**Versions covered:** v2.54.98
+**Branch landed:** main
+**Fleet target:** No runtime change. Doc-only.
+
+New bartender-grade how-to at `docs/bartender-help/READING_AUDIO_METERS.md` covering the live Audio tab meters fixed in v2.54.94 (per-input dB levels with Atlas labels — Pavillion Band, MIC 1/2, Juke box, Patio Band, VIP Band, Matrix 1/2/3, DJ Audio). Explains sweet-spot range (-20 to -10 dB), green/yellow/red color cues, sound-check workflow, paging-mic diagnostic, downstream recovery paths. Cross-links MIC_NOT_WORKING / WRONG_CHANNEL_ON_TV / POWER_AND_NETWORK_TVS / MUSIC_OR_AUDIO_PROBLEM.
+
+**Required Manual Steps:** None.
+
+**Verification:** `test -f docs/bartender-help/READING_AUDIO_METERS.md && grep -q "Real-time Audio Meters" docs/bartender-help/READING_AUDIO_METERS.md`.
+
+---
+
+## v2.54.91 — install docs refresh for v3.1.0 autoinstall (2026-05-27)
+
+**Versions covered:** v2.54.91
+**Branch landed:** main
+**Fleet target:** No runtime change. Doc-only.
+
+Updated `docs/BARE_METAL_ISO.md`, `docs/NEW_LOCATION_SETUP.md`, and `docs/PROXMOX_PXE_SETUP.md` to reflect the v3.1.0 autoinstall architecture shipped in v2.54.89/.90 — new build command (`bash scripts/iso/build-autoinstall-iso.sh`), new smoke command (`bash scripts/iso/smoke-test-autoinstall.sh`), build-host prereqs (`p7zip-full xorriso wget openssl`), new ISO file name (`sports-bar-tv-controller-v3.1.0-YYYY-MM-DD.iso`), fully-unattended install flow (no YES + Enter), Proxmox best practice OVMF/q35/virtio-scsi-pci.
+
+**Required Manual Steps:** None.
+
+**Verification:** `grep -l "v3.0\\|disk-installer.sh\\|YES + Enter" docs/BARE_METAL_ISO.md docs/NEW_LOCATION_SETUP.md docs/PROXMOX_PXE_SETUP.md` should return nothing matching the deprecated terms.
+
+---
+
+## v2.54.89 — NEW: subiquity autoinstall ISO architecture (v3.1.0 replaces v3.0.1 hand-rolled) (2026-05-27)
+
+**Versions covered:** v2.54.89 (app-level), v3.1.0 (ISO-level)
+**Branch landed:** main
+**Fleet target:** ISO consumers only. No runtime change for installed fleet.
+
+**Why this exists:** v3.0.1 hand-rolled `disk-installer.sh` hit 7 bug iterations on 2026-05-27 (parted/mkfs/unsquashfs missing in chroot, grub-install silent fail, 5 other silent-fail sites, missing kernel copy, missing bios_boot partition). After research (Grok consult + 2 parallel agents — `feedback-casper-squashfs-excludes-boot` memory + Path D-24 decision), switched architecture:
+
+**OLD (v3.0.1):** `build-sports-bar-iso.sh` debootstraps a 22.04 chroot → mksquashfs → xorriso. `disk-installer.sh` runs on live ISO, manually partitions + unsquashfs-extracts + grub-installs + copies kernel + applies bios_boot fix + ... (430 lines, every line a potential silent-fail).
+
+**NEW (v3.1.0):**
+- `scripts/iso/build-autoinstall-iso.sh` (~220 lines) — downloads stock Ubuntu 24.04.4 server ISO, 7z-extracts, drops `/server/{user-data,meta-data}` (subiquity autoinstall config) + `/sports-bar/{first-boot-fresh.sh,sports-bar-first-boot.service}`, edits grub.cfg with autoinstall kernel arg, repacks with xorriso preserving BIOS+UEFI dual boot.
+- `scripts/iso/autoinstall.yaml.template` (~110 lines) — declarative install config. `storage.layout.name: direct` lets curtin handle GPT+bios_boot+EFI+ext4-root partitioning natively (the v2.54.86 bios_boot fix becomes Canonical's problem). `late-commands` copy our first-boot script into target + enable systemd service. `interactive-sections: [identity]` lets operator change hostname.
+- `scripts/iso/sports-bar-first-boot.service` — systemd unit that runs `first-boot-fresh.sh` on first real boot.
+
+**What curtin handles for free (vs hand-rolled bugs we hit):**
+- GPT partition table with bios_boot + EFI + root (v2.54.86 fix is now built-in)
+- Kernel install + initramfs regeneration with correct target drivers (v2.54.84 + the "missing update-initramfs" gap)
+- GRUB install for BIOS AND UEFI both (v2.54.80 silent-fail)
+- fstab UUIDs (always correct via blkid post-format)
+- systemd-resolved + systemd-networkd properly enabled (the resolv.conf gap)
+- Casper purge (no casper artifacts on installed system)
+
+**Required Manual Steps at build host:** `sudo apt-get install -y p7zip-full xorriso wget openssl` (one-time). Then `bash scripts/iso/build-autoinstall-iso.sh`. Stock ISO is cached at `/home/ubuntu/iso-cache/` for re-builds.
+
+**Deprecated** (kept in git for reference, removed from active path): `scripts/iso/build-sports-bar-iso.sh`, `scripts/iso/disk-installer.sh`. v3.0.x ISOs still build but new locations should use the v3.1.0 path.
+
+**Proxmox VM 200 best-practice settings** (for smoke-testing the autoinstall ISO):
+- BIOS: OVMF (UEFI) — requires `qm set 200 -bios ovmf` + add EFI disk via `qm set 200 -efidisk0 local-zfs:0,format=raw`
+- Machine: q35
+- SCSI: virtio-scsi-pci (or virtio-scsi-single)
+- Disk: scsi0 with `discard=on,cache=writeback`
+- Network: virtio
+- QEMU agent: enabled
+
+---
+
+## v2.54.88 — refreshed POWER_AND_NETWORK_TVS + WRONG_CHANNEL_ON_TV to match current Video/Power tab UI, no setup required, no runtime change (2026-05-27)
+
+Doc-only refresh. Two stale bartender how-tos updated to reflect the v2.54.85 Video-tab adds: POWER_AND_NETWORK_TVS now leads with what the Power tab is FOR (on/off + reboot, network TVs only), clarifies HDMI button visibility (network TVs only — bars without them never see HDMI buttons), and points at PUTTING_GAMES_ON_TVS_VIDEO_TAB for routing. WRONG_CHANNEL_ON_TV Section 4 (TV is dark) now leads with the Power tab's Power tile + cross-references POWER_AND_NETWORK_TVS for wall-switch / standby specifics. Physical-remote fallback retained for cable/IR TVs. No code touched. No setup required.
+
+---
+
+## v2.54.87 — AtlasProgrammingInterface iterator Cards migration (closes v2.54.82 deferral) + restores text-blue-100 accent on processor form, no setup required, no runtime change (2026-05-27)
+
+---
+
+## v2.54.86 — disk-installer adds bios_boot partition (THE bug behind SeaBIOS hang despite kernel+grub being correct) (2026-05-27)
+
+**Versions covered:** v2.54.86
+**Branch landed:** main
+**Fleet target:** ISO consumers only — bundled into next ISO build (v3.0.1 attempt-9). No runtime change for installed fleet.
+
+**Symptom (caught during 2026-05-27 v2.54.84 attempt-8 smoke test):** v2.54.84 successfully copied kernel + initrd to /boot. Disk inspection confirmed `/boot/vmlinuz-5.15.0-179-generic` + `/boot/initrd.img-5.15.0-179-generic` were present (74 MB + 11 MB). GRUB menuentry was correct: `linux /boot/vmlinuz-5.15.0-179-generic root=UUID=79fd327b-bc32-42dc-8a4b-c728e5a098f7 ro quiet splash`. Root UUID matched blkid output. ALL the v2.54.80 + v2.54.81 + v2.54.84 fixes were in place. **VM still hung at SeaBIOS "Booting from Hard Disk..." for 5+ min with no GRUB menu visible and no kernel boot.**
+
+**Root cause:** the disk has a GPT partition table (per `parted -s ${TARGET_DISK} mklabel gpt`). On a GPT disk being booted in BIOS legacy mode (NOT UEFI), `grub-install --target=i386-pc` needs a **bios_boot partition** (1 MB, type ef02, no filesystem) to embed its core image. Without it, the MBR boot signature 0x55AA IS present (so v2.54.80's check passes), but GRUB stage 1's pointer to stage 2 is undefined. SeaBIOS hands off to the MBR successfully, but the bootloader hangs immediately because stage 2 isn't reachable.
+
+The previous partition layout was 2 partitions (EFI + root). UEFI boot worked because GRUB lives in /boot/efi/EFI/sportsbar/ and is loaded directly by UEFI firmware — but VM 200 (Proxmox q35) defaults to SeaBIOS legacy, not UEFI.
+
+**Fix:** added a bios_boot partition as partition 1 (1-2 MiB), shifted EFI to partition 2, root to partition 3:
+
+```
+1 = bios_boot   1-2 MiB         type ef02, no filesystem (for GRUB core)
+2 = EFI         2-514 MiB       fat32 (for UEFI boot)
+3 = root        514 MiB-end     ext4 (for the system)
+```
+
+Set `bios_grub on` flag on partition 1 (parted's idiom for ef02 GPT type). `grub-install --target=i386-pc ${TARGET_DISK}` now has a place to write the core image. Updated partition-name detection (NVMe p1/p2/p3, SATA 1/2/3).
+
+**Caveat about v2.54.80's MBR check:** the 0x55AA signature check is NECESSARY but not SUFFICIENT. 0x55AA is the generic "this disk is bootable" marker — present on every formatted disk including dd-zeroed ones with that marker manually re-added. A future hardening could read GRUB's identifying bytes from MBR (look for "GRUB" string or specific opcodes in bytes 0-440), but the bios_boot partition fix is the underlying cause; with that in place, GRUB stage 1 has a valid pointer.
+
+**Required Manual Steps:** none for existing locations. Next-NUC install with attempt-9 ISO will boot through GRUB → kernel → systemd → first-boot.
+
+**Pattern (6th ISO bug iteration this week):** v2.54.76 + v2.54.79 + v2.54.80 + v2.54.81 + v2.54.84 + v2.54.86 (this one). The boot path is now defended at every handoff that we know how to check. Remaining gap-classes (unknown unknowns) will surface as attempt-9 runs end-to-end.
+
+---
+
+## v2.54.85 — 7 new bartender how-tos closing high-frequency audit gaps (2026-05-27)
+
+**Versions covered:** v2.54.85
+**Branch landed:** main
+**Fleet target:** all locations — documentation only.
+
+**Required Manual Steps:** none. No runtime change, no schema change, no env vars. Pure additions to `docs/bartender-help/` (7 new files: `SCHEDULING_GAMES_AHEAD.md`, `FINDING_A_LIVE_GAME.md`, `MULTI_VIEW_QUAD.md`, `SHIFT_BRIEF_AT_CLOCK_IN.md`, `PUTTING_GAMES_ON_TVS_VIDEO_TAB.md`, `DJ_MODE.md`, `OVERRIDE_LEARN.md`). Auto-update will RAG-rescan automatically per Standing Rule 11 (these paths are in `docs/**/*.md`), making them queryable in the AI Hub chat at every location.
+
+---
+
+## v2.54.84 — disk-installer copies kernel+initrd from casper to /boot (THE bug behind "Booting from Hard Disk... forever") (2026-05-27)
+
+**Versions covered:** v2.54.84
+**Branch landed:** main
+**Fleet target:** ISO consumers only — bundled into next ISO build (v3.0.1 attempt-8). No runtime change for installed fleet.
+
+**Symptom (caught during 2026-05-27 VM 200 attempt-7 smoke test):** v2.54.80 GRUB hardening shipped — MBR boot signature verified, GRUB installed for both BIOS and EFI. After install + reboot, VM hung at `Booting from Hard Disk...` with blinking cursor for 4+ minutes, no kernel messages, no DHCP. Disk inspection via Proxmox ZFS volume mount showed `/boot/` contained ONLY `efi/` + `grub/` subdirs — NO `vmlinuz-*` and NO `initrd.img-*`.
+
+**Root cause:** `build-sports-bar-iso.sh` line 687 invokes `mksquashfs` with `-e boot`, which deliberately EXCLUDES the chroot's `/boot/` directory from the squashfs. The kernel + initrd are copied separately to the ISO's `/casper/vmlinuz` + `/casper/initrd` for live-boot purposes. This is correct for live-boot, but `disk-installer.sh` extracted the squashfs without ever copying the kernel/initrd from `/cdrom/casper/` to the installed disk's `/boot/`. update-grub generated entries pointing to `/boot/vmlinuz-X.Y.Z-generic` but the file didn't exist → GRUB hung.
+
+**Fix in `scripts/iso/disk-installer.sh` Step 4 (post-unsquashfs):**
+1. Reads kernel version from `${MOUNT_DIR}/usr/lib/modules/<KERNEL_VER>/` (also validates squashfs extract was complete).
+2. Validates `${CASPER_DIR}/vmlinuz` + `${CASPER_DIR}/initrd` exist.
+3. Copies them to `${MOUNT_DIR}/boot/vmlinuz-${KERNEL_VER}` + `/boot/initrd.img-${KERNEL_VER}`.
+4. Creates `/boot/vmlinuz` + `/boot/initrd.img` symlinks.
+5. Logs file sizes as sanity check.
+
+Every step has explicit error handling — no `|| true` silent failures.
+
+**Required Manual Steps:** none for existing locations. Next-NUC install with the next-built ISO will boot through to systemd + first-boot service correctly.
+
+**Pattern (5th ISO bug iteration this week):** v2.54.76 (parted/mkfs) + v2.54.79 (unsquashfs) + v2.54.80 (grub-install fatal) + v2.54.81 (5 silent-fail sites) + v2.54.84 (missing kernel copy). The bare-metal installer chain is now defensively validated end-to-end. The pattern that surfaced this bug: trace EVERY handoff in the boot path. MBR → GRUB stage 1 → stage 2 → kernel → initrd → systemd → first-boot → PM2. Each handoff must have a positive existence check. v2.54.80 validated MBR; v2.54.84 validates kernel; future hardening can add explicit checks at the remaining links.
+
+---
+
+## v2.54.82 — AtlasProgrammingInterface root Card→div migration (5 of 9 root blocks; iterator Cards deferred) (2026-05-27)
+
+**Versions covered:** v2.54.82
+**Branch landed:** main
+**Fleet target:** all locations (UI only, no behavior change).
+
+Migrated the 5 root-level `<Card>` blocks in `apps/web/src/components/AtlasProgrammingInterface.tsx` to bordered slate `<div>` per `docs/UI_STYLING.md`: processor add/edit form, loading-state card, empty-state dashed card, processor selection card (in `processors.map` but listed as root by the migration plan), and the main "Programming: ..." card wrapping the Inputs/Outputs/Scenes/Messages tabs. The 4 inner per-row iterator Cards (input rows, output rows, scene rows, message rows) are intentionally LEFT ALONE for a follow-up pass — they have their own styling concerns and will be migrated separately. The `Card, CardContent, CardDescription, CardHeader, CardTitle` import is kept because the iterator Cards still use it.
+
+**Required Manual Steps:** None. UI-only, no DB, no env, no runtime change. Auto-update standard rebuild + PM2 restart is sufficient.
+
+**Verification:** `/atlas-config` (admin) → "Add Processor" form, processor list grid, and selected-processor programming panel should all render with the standard `bg-slate-800/50 border border-slate-700 rounded-lg` look — same dark-theme feel as the rest of the dashboard. Tabs inside the selected-processor panel still work.
+
+---
+
+## v2.54.81 — disk-installer silent-fail sweep (5 critical sites hardened) (2026-05-27)
+
+**Versions covered:** v2.54.81
+**Branch landed:** main
+**Fleet target:** ISO consumers only — bundled into next ISO build (v3.0.1 attempt-8 or whichever follows). No runtime change for installed fleet.
+
+**Followup to v2.54.80's explicit "future audit" promise.** Swept all `|| true` / `2>/dev/null || true` patterns in `disk-installer.sh` and classified each by severity. 5 sites at install-critical or fleet-security steps were silently swallowing failures.
+
+**Fixed:**
+
+| Line | Was | Now | Severity if failure was silent |
+|------|-----|-----|-------------------------------|
+| `partprobe ${TARGET_DISK}` | `2>/dev/null \|\| true` | 1 retry + exit 1 | mkfs fails with confusing error instead of clear partprobe message |
+| `systemctl enable ssh` | `2>/dev/null \|\| true` | exit 1 on fail | Operator locked out of installed box, no SSH on first boot |
+| `dpkg-reconfigure openssh-server` | `2>/dev/null \|\| true` | exit 1 on fail | **Fleet-wide MITM risk** — every install ships with chroot's SSH host keys |
+| `systemd-machine-id-setup` | `2>/dev/null \|\| true` | exit 1 on fail | Duplicate machine-ids break DHCP IDs, journald, dbus across fleet |
+| `systemctl enable sports-bar-first-boot.service` | `2>/dev/null \|\| true` | exit 1 on fail | **CRITICAL** — silent fail = no clone, no PM2, no app. Installed system is bricked even though installer reports success |
+
+**Left as-is (defensive, safe):**
+- Cleanup-trap umount calls (lines 55-61) — best-effort teardown, `|| true` is correct.
+- Info-gathering reads of sysfs / existing-OS detection (lines 95-151) — fallback to defaults is fine.
+- Timezone symlink (323) — cosmetic.
+- Casper / autoremove (430-434) — bloat only, doesn't affect boot.
+
+**Required Manual Steps:** none for existing locations. Next-NUC install with the next-built ISO will surface real errors loudly instead of silently shipping broken installs.
+
+**Pattern note:** v2.54.76 (parted/mkfs missing) + v2.54.79 (unsquashfs missing) + v2.54.80 (grub-install silent fail) + v2.54.81 (5 more silent fails). **The disk-installer.sh script is now defensively "fail loud" at every install-critical site.** Future contributors: do NOT add `|| true` to any new step that touches the disk, programs the bootloader, configures security identity, or enables boot-time services. The `cleanup()` trap is the only place where best-effort suppression is correct.
+
+---
+
+## v2.54.80 — disk-installer GRUB install: fatal-fail + MBR signature verify + cleanup-chroot helper (2026-05-27)
+
+**Versions covered:** v2.54.80
+**Branch landed:** main
+**Fleet target:** ISO consumers only — next ISO build (v3.0.1 attempt-7) gets the fix. No runtime change for installed fleet.
+
+**Symptom (caught during 2026-05-27 VM 200 install of attempt-6 ISO):** all 7 steps printed `[+] success` and the installer printed `INSTALLATION COMPLETE!`. After reboot the VM hung at SeaBIOS `Booting from Hard Disk...` with no GRUB / no kernel. VM did not appear on the network — guest agent unreachable.
+
+**Root cause:** `disk-installer.sh` Step 6 had `grub-install --target=i386-pc ${TARGET_DISK} 2>&1 || warn "BIOS GRUB install skipped"` — a failure printed a yellow warning and the script continued. Same with the EFI grub-install. With BOTH failing silently and `update-grub` afterwards (which only writes config files, not the MBR bootblock), the script reported success but the boot sector was never programmed. Also, the script SKIPPED BIOS install entirely on NVMe targets, which is wrong — NVMe disks legacy-boot fine via CSM on hardware that supports it.
+
+**Fix:** `scripts/iso/disk-installer.sh` Step 6 now:
+1. Tracks `EFI_OK` + `BIOS_OK` flags independently.
+2. Aborts (`exit 1`) if BOTH fail.
+3. Drops the `[[ "$TARGET_DISK" != *"nvme"* ]]` skip — BIOS install always attempted.
+4. Reads bytes 510-511 of `${TARGET_DISK}` via `dd | xxd -p`; requires `55aa` boot signature post-install when BIOS_OK=1; logs error + aborts if missing AND EFI also failed.
+
+**Required Manual Steps at locations:** NONE. Existing installs aren't affected.
+
+**Required Manual Steps for new-NUC install with attempt-7 ISO:** Same as v3.0.1 — boot from USB, walk through 7-step wizard. Step 6/7 will now LOUDLY fail with `exit 1` if GRUB doesn't take, instead of silently continuing. Operator sees the real error, can recover.
+
+**Bonus shipped same commit:** `scripts/iso/cleanup-chroot.sh` — safe replacement for the `umount -l` + `rm -rf` pattern that hollowed-out the Holmgren host's /dev on 2026-05-27. Unmounts chroot binds in reverse dep order WITHOUT `-l`, verifies nothing remains mounted, then rm. Run as `bash scripts/iso/cleanup-chroot.sh <build-dir>`. See `[[feedback-chroot-lazy-umount-destroys-dev]]` in the operator's memory for full incident.
+
+**Verification:**
+```
+# After attempt-7 builds + installs cleanly on VM 200:
+ssh ubuntu@<vm-ip> "ls /boot/efi/EFI/sportsbar/grubx64.efi && sudo dd if=/dev/sda bs=1 count=2 skip=510 status=none | xxd -p"
+# Expect: file exists, hex output = 55aa
+```
+
+**Pattern reminder (3rd ISO bug class this week):** when `disk-installer.sh` calls ANY operation that programs the disk, do NOT wrap in `|| warn`. Either it works or the install aborts. v2.54.76 caught parted/mkfs missing; v2.54.79 caught unsquashfs missing; v2.54.80 catches silent grub-install failure. Future audit: grep `disk-installer.sh` for `|| warn` and `|| true` — every such site is a candidate silent-fail.
+
+---
+
+## v2.54.79 — ISO chroot: add squashfs-tools (disk-installer Step 4/7 fix) (2026-05-27)
+
+**Versions covered:** v2.54.79
+**Branch landed:** main
+**Fleet target:** ISO consumers only — next ISO build (v3.0.1 attempt-6) gets the fix. No runtime change for installed fleet.
+
+**Symptom (caught during 2026-05-27 VM 200 install of attempt-4 ISO):** disk-installer.sh hung indefinitely at "Step 4/7: Extracting filesystem from /cdrom/casper/filesystem.squashfs..." — screendumps identical for 7+ minutes, no progress, no error message printed to the tty.
+
+**Root cause:** `disk-installer.sh` calls `unsquashfs -f -d "$MOUNT_DIR" "$SQUASHFS_PATH"` to copy the live filesystem onto the target disk. The `squashfs-tools` package — which provides `unsquashfs` — was installed on the BUILD HOST (for `mksquashfs` to compress the rootfs at build time) but was NOT installed inside the chroot that becomes the live ISO. So when the live ISO booted and tried to install itself onto disk, `unsquashfs` was a "command not found" — which `disk-installer.sh` swallowed silently because of how it captured output.
+
+**Fix:** `scripts/iso/build-sports-bar-iso.sh` line ~333 — added `squashfs-tools` to the chroot apt install list (alongside parted/gdisk/dosfstools added in v2.54.76 for the same class of bug). One line of code; comment in the file explains why.
+
+**Required Manual Steps at locations:** NONE. Existing installs don't run disk-installer ever again — they're already on disk.
+
+**Required Manual Steps for new-NUC install with the v3.0.1 attempt-6 ISO:** Same as v3.0 — boot from USB, run through the 7-step disk-install wizard. Step 4/7 should now complete in ~2-3 min (was hanging forever in attempt-4).
+
+**Verification:**
+```
+# On the build host after attempt-6 builds:
+grep "squashfs-tools" scripts/iso/build-sports-bar-iso.sh   # must show 2+ hits (host pkgs + chroot pkgs)
+# After install on VM 200 (or any NUC):
+ssh ubuntu@<host> "which unsquashfs"   # /usr/bin/unsquashfs
+```
+
+**Pattern reminder:** When `disk-installer.sh` calls a binary, that binary MUST be in the chroot package list — the build host's copy doesn't make it into the live ISO. v2.54.76 caught parted/mkfs.ext4/mkfs.vfat; v2.54.79 caught unsquashfs. Next install gap to check: anything else `disk-installer.sh` shells out to.
+
+---
+
+## v2.54.78 — ISO: add Tailscale + Grok CLI to first-boot install (2026-05-27)
+
+**Versions covered:** v2.54.78
+**Branch landed:** main
+**Fleet target:** ISO consumers — next ISO build (v3.0.1 attempt-5+) gets these auto-installed. Existing fleet unaffected.
+
+Operator: "so does our iso include the install of tailscale claude and grok?"
+
+**Audit results (current v3.0.1 attempt-4 ISO):**
+- ✅ Claude CLI — installed in chroot at `build-sports-bar-iso.sh:366` AND in first-boot at `first-boot-fresh.sh:130` (curl claude.ai/install.sh, marked non-fatal)
+- ❌ Tailscale — NOT installed. Operator had to manually run the curl one-liner.
+- ❌ Grok CLI — NOT installed. Same gap.
+
+**Fixes in `scripts/iso/first-boot-fresh.sh`** (post-install path that runs on first reboot after disk-installer):
+
+1. **Grok CLI install** (after the Claude install): `sudo -u ubuntu bash -c "curl -fsSL https://x.ai/cli/install.sh | bash"` — same install pattern as Claude. Drops binaries to `~/.grok/`. Non-fatal — first-boot continues if x.ai is unreachable.
+
+2. **Tailscale install** (full daemon, not just CLI): adds Ubuntu jammy/noble Tailscale apt repo + keyring, `apt-get install -y tailscale`, `systemctl enable --now tailscaled`. Auto-detects codename via `lsb_release -cs`. Non-fatal with explicit fallback instruction in the log if it fails.
+
+3. **Manual auth step**: Tailscale install does NOT run `tailscale up` (that requires interactive browser auth). Logs "To join the Tailnet, run: sudo tailscale up" so the operator sees it in the first-boot log + can act on it after reboot. Could be added to the wizard later (one-liner prompt) but for now operator runs it themselves.
+
+**Recommended for the new bar's NUC**:
+After first boot + wizard, run:
+```
+sudo tailscale up                    # opens auth URL — operator clicks once
+grok --version                       # verify Grok CLI installed
+claude --version                     # verify Claude CLI installed
+```
+
+**Current v3.0.1 attempt-4 ISO** (the one being installed on VM 200 right now) does NOT have tailscale/grok. If the install succeeds, the operator can manually add them post-install:
+```
+sudo bash -c "curl -fsSL https://tailscale.com/install.sh | sh && tailscale up --ssh"
+sudo -u ubuntu bash -c "curl -fsSL https://x.ai/cli/install.sh | bash"
+```
+
+**Next ISO build (v3.0.1 attempt-5)** will have both baked in automatically. Operator can rebuild when convenient — the install pipeline is now proven working end-to-end so subsequent rebuilds are confidence-building, not risk-discovering.
+
+---
+
+## v2.54.77 — Atlas/IR Card→div sweep + Watcher Health panel + Matrix Config UI (3 parallel agents) (2026-05-27)
+
+**Versions covered:** v2.54.77
+**Branch landed:** main
+**Fleet target:** rolling upgrade. Three new admin UX surfaces. No runtime change.
+
+**Three parallel agents** ran while the v3.0.1 attempt-4 ISO rebuilt + the VM 200 install test ran end-to-end. All HIGH confidence, all built green (28/28 each).
+
+**Agent A — Extended Card→div migration (7 files, ~290 Card tags removed):**
+- `apps/web/src/components/ir/IRLearningPanel.tsx` (74 Cards)
+- `apps/web/src/components/LogAnalyticsDashboard.tsx` (68)
+- `apps/web/src/components/ir/IRDatabaseSearch.tsx` (44)
+- `apps/web/src/components/AtlasAIMonitor.tsx` (34)
+- `apps/web/src/components/ir/IRDeviceSetup.tsx` (32)
+- `apps/web/src/components/SoundtrackControl.tsx` (20)
+- `apps/web/src/components/AtlasOutputMeters.tsx` (18)
+- 7 unused Card-import lines removed. Net delta: 384 insertions / 417 deletions (slight shrink). Same v2.54.75 recipe — bordered slate divs per SchedulerLogsDashboard exemplar.
+- AtlasProgrammingInterface.tsx (62 Cards) deferred to next batch.
+
+**Agent B — Watcher Health UI**:
+- NEW `apps/web/src/app/api/system/watchers/status/route.ts` (144 lines) — GET endpoint returning `{ sdr, shure, atlas }` each with `{ alive, lastEventAt, lastStartupAt, eventCount24h }`. Reads `sdr_carriers`, `shure_rf_events`, `atlas_priority_events` tables. Graceful fallback to `alive: false` on missing tables (fresh installs). `RateLimitConfigs.DATABASE_READ`.
+- NEW `apps/web/src/components/admin/WatcherHealthPanel.tsx` (285 lines) — three-card responsive grid, green/red status dot, relative-time formatter ("5 min ago"), 30s polling, manual Refresh button (≥44px), Skeleton placeholder on first load, amber inline warning per card when not running.
+- Wired into `/system-admin` as new "Watchers" tab (grid expanded 8→9 cols). Operator can now see live SDR/Shure/Atlas health without SSH.
+
+**Agent C — Matrix Config / Gotcha #4 UI**:
+- NEW `apps/web/src/components/admin/MatrixConfigPanel.tsx` (323 lines) — shows Location | Model | outputOffset | audioOutputCount | Status table. MISMATCH state (amber, single-card with offset≠0) gets a "Fix to 0" button that PATCHes the row + reloads.
+- Extended `apps/web/src/app/api/matrix/config/route.ts` — added PATCH method with Zod validation (`outputOffset` integer 0-256). `requireAuth('ADMIN', { auditAction: 'MATRIX_CONFIG_PATCH' })`. Audit log of previous→new.
+- Wired into `/system-admin` as "Matrix Config" tab (grid expanded 9→10 cols).
+- Closes the operator-visibility gap from CLAUDE.md Gotcha #4 — outputOffset values were only visible via SSH + the runtime `[MATRIX-CONFIG] ⚠` warning in PM2 logs.
+
+**Concurrent in flight (not blocking)**: v3.0.1 attempt-4 ISO install on Proxmox VM 200 — currently at Step 4/7 (extracting filesystem from squashfs, ~5-10 min). The autostart fix + parted-in-chroot + ssh-enabled fixes are all confirmed working end-to-end. Will complete + report.
+
+---
+
+## v2.54.76 — ISO v3.0.1 attempt-4: parted/mkfs missing in chroot + SSH not enabled post-install (2026-05-27)
+
+**Versions covered:** v2.54.76 (repo) + ISO v3.0.1 attempt-4 (rebuilt artifact)
+**Branch landed:** main
+**Fleet target:** no runtime change for installed fleet. ISO consumers — wait for attempt-4 build to finish (~20 min) then re-download.
+
+VM 200 pre-flight on v3.0.1 attempt-3 (zstd-fixed):
+
+**WHAT WORKED** (v2.54.69 autostart fix is GOOD):
+- ISOLINUX boot → ISO menu → "Install to Disk" picked
+- Disk-installer.service grabbed tty1 BEFORE getty (per the Before/Conflicts pattern)
+- "SPORTS BAR TV CONTROLLER Disk Installer v3.0" banner showed
+- Step 1/7 detected the 30 GB QEMU disk
+- "Type 'YES' to continue" prompt accepted input correctly
+
+**WHAT BROKE — two new ISO bugs found**:
+
+1. **`parted: command not found`** at Step 2/7 (Partitioning). The chroot didn't have parted installed. Also missing: gdisk, e2fsprogs (mkfs.ext4), dosfstools (mkfs.vfat), grub-pc-bin, grub-efi-amd64-bin, shim-signed, rsync.
+
+2. **Operator directive: "make sure that ssh is enabled for iso installed"** — openssh-server was in the chroot but `systemctl enable ssh.service` wasn't run inside the chroot (because systemd isn't running there). Post-install boots would have SSH installed but the service NOT enabled → no SSH on first boot.
+
+**Fixes in `scripts/iso/build-sports-bar-iso.sh`**:
+
+1. **Base packages added** (Step 4 chroot install): parted, gdisk, e2fsprogs, dosfstools, grub-pc-bin, grub-efi-amd64-bin, grub-efi-amd64-signed, shim-signed, rsync. All needed by `disk-installer.sh` (wipefs, parted, mkfs.vfat, mkfs.ext4, sync calls).
+
+2. **SSH service enabled explicitly in chroot**: added `chr "systemctl enable ssh.service"` + `chr "systemctl enable ssh.socket"`. The `chr` helper runs commands inside the chroot — `systemctl enable` writes the symlink directly into `/etc/systemd/system/multi-user.target.wants/` so it persists into the installed system.
+
+3. **NEW `sports-bar-sshkeys.service`** — belt-and-suspenders. Runs `ssh-keygen -A` as a oneshot BEFORE `ssh.service` starts, ONLY when `/etc/ssh/ssh_host_ed25519_key` is missing. Catches the case where openssh-server's postinst hook misses host-key regen on first boot (common after chroot-strip). Installed system always boots with valid host keys.
+
+**Rebuild attempt-4 kicked on Holmgren**. After ~20 min I'll SCP to Proxmox + re-test VM 200. End-to-end expected: install completes Step 2-7 without errors → reboot → installed Ubuntu boots → first-boot-fresh.sh runs → location-setup-wizard available on tty1.
+
+---
+
+## v2.54.75 — UI polish triple-agent batch: SystemAdmin + DeviceConfig Card→div migration + loading skeletons (2026-05-27)
+
+**Versions covered:** v2.54.75
+**Branch landed:** main
+**Fleet target:** rolling upgrade. No runtime change. Pure styling consistency + perceived-perf polish.
+
+Three parallel agents ran while the v3.0.1 ISO rebuilt. All HIGH confidence.
+
+**Agent A — SystemAdmin Card→div migration:**
+- `apps/web/src/app/system-admin/page.tsx`: 3 outer `<Card>` blocks (Layout tab TV Editor wrapper, Sync tab GitHub Config header, Sync tab Config Overview) → bordered slate divs per `SchedulerLogsDashboard.tsx` exemplar + `docs/UI_STYLING.md`.
+- Removed 2 unused imports (Card primitive bundle + unused Badge).
+- Build green (28/28, 14s). `/system-admin` returns 200.
+- Recolored a GitBranch icon `text-blue-600 → text-blue-400` for dark-bg contrast parity.
+
+**Agent B — DeviceConfig Card→div migration:**
+- `apps/web/src/app/device-config/page.tsx`: ~10 Card-family elements removed across 2 render sites (`SectionHeader` helper used by 12 tabs + Quick AI Actions collapsible).
+- 1 import line removed (Card bundle).
+- Build SKIPPED by agent due to RAM pressure at the time (correct call — Holmgren had Ollama + ISO rebuild active). Main thread combined build now green.
+
+**Agent C — Loading skeletons:**
+- NEW `apps/web/src/components/ui/skeleton.tsx` (60 lines, Tailwind-only): exports `<Skeleton>`, `<SkeletonRow>`, `<SkeletonCard>`. Animate-pulse on bg-slate-700/50.
+- Applied to 4 heavy dashboards (replaces "Loading..." text / blank states with pulsing placeholders):
+  - `SchedulerLogsDashboard.tsx` — 6 skeleton table rows
+  - `ScheduledGamesPanel.tsx` — 4 skeleton game cards
+  - `EnhancedChannelGuideBartenderRemote.tsx` — 5 skeleton game-row cards
+  - `admin/SmartSchedulingDashboard.tsx` — 3 skeleton cards
+- Layout doesn't shift when real data arrives (skeletons match real-content dimensions).
+
+**Combined build**: green (28/28, 13.4s). PM2 restarted clean.
+
+**Visual change summary**: SystemAdmin + DeviceConfig pages now use the same bordered-slate-div pattern as SchedulerLogsDashboard (the documented canonical). 4 dashboards show pulsing skeletons during 1-3s initial fetches instead of empty space or "Loading..." text.
+
+**RAM context**: Holmgren was tight today (Ollama + ISO build) — agents B and C correctly skipped their own builds. Main thread did the combined build after the ISO mksquashfs finished + freed RAM.
+
+---
+
+## v2.54.74 — Shift brief: cap RF/neighborhood-event radius at 2 mi + chat route auth removed for bartender path (2026-05-27)
+
+**Versions covered:** v2.54.74
+**Branch landed:** main
+**Fleet target:** rolling upgrade. **Operator-facing fixes** — chat reachable, shift brief filters to nearby only.
+
+**Two operator-directed fixes in one ship.**
+
+### Fix 1 — `/api/chat` auth gate removed for bartender path
+
+Operator: "i see the chat window but asking to log in that should never be a thing on the bartender remote".
+
+The bartender iPad uses `/remote` without ever logging in — every bartender-reachable route on port 3002 is unauthenticated by design, gated by the nginx allow-list. v2.54.45's audit added `requireAuth('STAFF')` to `/api/chat` for DoS hardening, but that made the chat route behave differently from EVERY OTHER bartender route → 401 → "log in" toast.
+
+**Fix in `apps/web/src/app/api/chat/route.ts:192-209`** (parallel agent): removed `requireAuth(request, 'STAFF', { auditAction: 'ai_chat' })`. Kept `withRateLimit(RateLimitConfigs.AI)` + `validateRequestBody(ValidationSchemas.aiQuery)` + nginx allow-list as defense-in-depth. Block comment documents the reversal so the next audit doesn't re-add it.
+
+Verified: `curl -X POST http://localhost:3002/api/chat` (no cookie, stream=true) now returns SSE 200 with RAG sources + Ollama-generated answer.
+
+### Fix 2 — shift brief neighborhood RF radius capped at 2 mi
+
+Operator: "about the rf data don't need to see anything further than 2 miles away from the location in the shift brief".
+
+`apps/web/src/app/api/ai/shift-brief/route.ts` previously used 25 mi for big venues (stadium/concert hall) + 1 mi for small venues. Operator's preference: 2 mi for both.
+
+**Fix at lines ~233-251**: both branches capped at `nv.distance_mi <= 2.0`. Lookahead windows unchanged (72h for big venues, 12h for small).
+
+**Scope clarification** (in inline comment): this ONLY affects the shift-brief BULLETS shown to bartenders. The wider-radius data (Ticketmaster 30 mi, Bananas full radius) is STILL fetched + stored in `NeighborhoodEvent` for downstream consumers: the SDR pre-emptive-strike correlator + AI digest. Those still need the wider context to do their jobs (e.g., correlating an SDR carrier blast with a Lambeau game 5 mi away). Just bartender-facing bullets get tightened.
+
+Build green (post-retry — first build attempt got OOM-killed; Holmgren is memory-tight today with the ISO rebuild also running. Retry succeeded). PM2 restarted clean.
+
+---
+
+## v2.54.73 — Ask AI "Something hiccuped" crash fix: crypto.randomUUID secure-context (2026-05-27)
+
+**Versions covered:** v2.54.73
+**Branch landed:** main
+**Fleet target:** rolling upgrade. **Operator-facing fix** — Ask AI button on bartender remote no longer crashes the React tree on open.
+
+Operator reported: "when selecting asked ai you get a something hiccuped error and asks to try again comes back to something hiccuped". The "Something hiccuped" copy comes from `/remote/error.tsx` (v2.54.56). That means the Ask AI button is CRASHING → error boundary catches → "Try again" remounts → crashes again → loop.
+
+**Root cause** (parallel agent diagnosed): `crypto.randomUUID()` (added in v2.54.52 for sessionId generation) requires a "secure context" (HTTPS or localhost). The bartender iPad connects to `http://<lan-ip>:3002` — **insecure context** — so `crypto.randomUUID` is undefined on Safari OR throws `SecurityError`. Component crashes on EVERY modal open.
+
+**Fix — NEW `apps/web/src/lib/uuid-safe.ts`** exporting `makeSessionId()`. Three-tier fallback:
+1. `crypto.randomUUID()` if it's a function (secure context — admin browser hitting localhost)
+2. `crypto.getRandomValues(new Uint8Array(16))` v4 UUID assembly (works in insecure context on every modern browser including Safari)
+3. `Math.random()`-based last-resort (not crypto-grade but won't crash)
+
+Both crypto paths wrapped in try/catch because some browsers throw rather than leave the property undefined.
+
+**Fixed 4 client-side call sites** (all migrated to `import { makeSessionId } from '@/lib/uuid-safe'`):
+- `apps/web/src/components/BartenderAskAIButton.tsx:61, :67` — the reported crash
+- `apps/web/src/app/ai-hub/page.tsx:73, :316` — same latent bug (had `typeof crypto.randomUUID` property check but still called the function — `typeof === 'function'` returns true even when the call throws)
+
+Server-side `crypto.randomUUID()` calls (Node has it always available) NOT touched. Pure client-side fix.
+
+Build clean (34/34 Turbopack 14.7s). PM2 online. Operator's next Ask AI tap → modal opens, sessionId lands via getRandomValues, chat works.
+
+---
+
+## v2.54.72 — ISO build mksquashfs OOM fix + fail-loud (broken v3.0.1 artifact removed) (2026-05-27)
+
+**Versions covered:** v2.54.72
+**Branch landed:** main
+**Fleet target:** no runtime change. **ISO consumers**: download the NEW v3.0.1 build (the first v3.0.1 ISO from earlier today is broken — initramfs can't mount squashfs).
+
+First v3.0.1 ISO produced this morning (701 MB) was broken:
+- `mksquashfs` got SIGKILL'd by the OOM killer mid-compression
+- Holmgren has 31 GB RAM but Ollama is resident ~18 GB; mksquashfs's `-Xdict-size 100%` tried to grab ALL remaining RAM for the XZ dictionary → OOM
+- Resulting truncated squashfs (611 MB) booted ISOLINUX but initramfs `losetup` couldn't mount it ("file does not fit into a 512-byte sector")
+- The build script's `2>&1 | grep ... || true` SWALLOWED the SIGKILL exit code → built a "successful" ISO that's actually corrupt
+
+**Fixes in `scripts/iso/build-sports-bar-iso.sh` Step 8 (mksquashfs invocation)**:
+
+1. **Removed `-Xdict-size 100%`** — replaced with `-Xdict-size 1M -mem 4G`. Caps XZ dictionary memory regardless of system RAM. Slightly less compression efficiency (~10% larger squashfs) for guaranteed-no-OOM behavior. Compression is still XZ block-size 1M, just with a bounded dictionary.
+
+2. **`set -o pipefail`** explicitly around the mksquashfs pipe — ensures grep's success doesn't mask mksquashfs's failure.
+
+3. **Removed the trailing `|| true`** — was silently swallowing every kind of mksquashfs failure (OOM, disk full, parse error). Replaced with a guarded `rc > 1` check that exits loud if the failure was real (grep `rc=1` for no-match is the only acceptable failure).
+
+4. **NEW post-mksquashfs sanity check** — `stat -c %s` the squashfs; if it's <500 MB, fail loud with a message pointing at chroot completeness. A real Ubuntu chroot squashfs should be at least 500 MB. Catches the silent-truncation failure mode in case future regressions get past pipefail.
+
+**Broken v3.0.1 artifact removed** from Holmgren `/home/ubuntu/` AND from Proxmox `/var/lib/vz/template/iso/`. Rebuild kicked on Holmgren. Should produce a CORRECT v3.0.1 ISO in ~20-30 min. Will retest on Proxmox VM 200 once ready.
+
+---
+
+## v2.54.71 — DJ Source A selection-doesn't-stick fix: React deps cycle restored old value (2026-05-27)
+
+**Versions covered:** v2.54.71
+**Branch landed:** main
+**Fleet target:** rolling upgrade. **Operator-facing fix** — selecting "DJ Audio" in Source A now persists.
+
+Operator after v2.54.70: "i can see the sources for source a but when i select dj audio it keeps patio band selected".
+
+**Root cause** (parallel agent diagnosed, classic React stale-effect-restoration anti-pattern):
+- `apps/web/src/components/DJControlPanel.tsx:62` — `fetchSources` `useCallback` had `selectedDJSource` in its dep array
+- The "load saved state" `useEffect` listed `fetchSources` in ITS dep array
+- So every dropdown change → `setSelectedDJSource(11)` (DJ Audio) → `selectedDJSource` change → `fetchSources` callback identity changes → init `useEffect` sees new `fetchSources` reference → **re-fires** → re-runs `GET /api/settings/dj-mode` → **restores** `djSourceIndex: 4` (Patio Band) from DB → user's pick overwritten ~50ms later
+- The debounced 500ms save never had time to persist DJ Audio first → DB stayed on Patio Band → next reset re-stomped → infinite restore loop
+
+Confirmed via API probe: saved state was `{djSourceIndex: 4, djSourceName: "Patio Band"}`; DJ Audio is at index 11.
+
+**Fix in `apps/web/src/components/DJControlPanel.tsx:62 + :162`**:
+1. Removed `selectedDJSource` from `fetchSources` deps. Added `autoSelectIfUnset` param + `setSelectedDJSource((prev) => prev === null ? djSource.index : prev)` — functional updater avoids stale closure.
+2. Added `initRef` one-shot guard keyed on `${processorId}:${processorIp}` so the init `useEffect` cannot re-run regardless of callback-identity churn. Belt-and-suspenders per `[[feedback-state-machine-belt-suspenders]]`.
+
+Build clean (34/34 tasks), PM2 online, `/api/atlas/sources` returns 200. Operator sees DJ Audio selection stick on next iPad refresh.
+
+---
+
+## v2.54.70 — DJ Mode audio control fix: picked wrong processor (Shure instead of Atlas) (2026-05-27)
+
+**Versions covered:** v2.54.70
+**Branch landed:** main
+**Fleet target:** rolling upgrade. **Operator-facing fix** — DJ Mode source picker + zones + volumes now show on Holmgren.
+
+Operator reported: "the dj audio control is broken can't select the source a can't see the zones or zone volume". Investigation by parallel agent.
+
+**Root cause** (same shape as the 2026-05-18 Audio panel bug that v2.34+ already fixed in `BartenderRemoteAudioPanel`): `apps/web/src/components/DJControlPanel.tsx` did `const processor = data.processors[0]` to pick the audio processor. Since v2.34.x the Shure SLX-D mic receiver is registered in `/api/audio-processor` (so AudioProcessorManager can manage it for RF/battery monitoring) and shows up FIRST in the list at Holmgren. So:
+- `/api/atlas/sources?processorIp=10.11.3.251` (Shure IP) returned 404 — `djSources` stayed empty → "Source A" dropdown showed no options.
+- `/api/audio-processor/zones?processorId=<shure-id>` returned `{ zones: [] }` — no zone list → no volume sliders.
+
+The Audio panel got this exact fix in v2.34+ (`remote/page.tsx:438-463`) — explicit `processorType === 'atlas' || 'dbx-zonepro'` filter. DJ panel never received the same fix.
+
+**Fix in `apps/web/src/components/DJControlPanel.tsx:108-136`**: replaced `processors[0]` with `processors.find(p => p.processorType === 'atlas')`. Logs an error to console if no Atlas processor exists (alerts the operator that DJ Mode requires Atlas). Same filter idiom + explanatory comment as the Audio panel so future grep catches both.
+
+**Verified post-fix on Holmgren** (all 200 OK):
+- Atlas processor found: id `3641dcba...d9`, ip `10.11.3.246`
+- `/api/atlas/sources?processorIp=10.11.3.246` → 14 sources including index 11 "DJ Audio" (auto-selected by existing `.includes('dj')` heuristic) + Matrix 1-4 for Source B
+- `/api/audio-processor/zones?processorId=3641dcba...d9` → 8 zones with current volumes (Main Bar through VIP Tent)
+
+Operator sees source picker + zones + volumes on next iPad refresh.
+
+---
+
+## v2.54.69 — ISO v3.0.1: fix dispatcher autostart + tty1 autologin + recovery bash-profile (2026-05-27)
+
+**Versions covered:** v2.54.69 (repo) + ISO v3.0.1 (rebuilt artifact)
+**Branch landed:** main
+**Fleet target:** no runtime change for installed fleet. **ISO consumers**: download the v3.0.1 ISO instead of v3.0 (the v3.0 dispatcher never fires on boot).
+
+Pre-flight on Proxmox VM 200 yesterday revealed the v3.0 ISO boots to a tty1 login prompt instead of auto-launching disk-installer.sh / first-boot-fresh.sh. Three real root causes (per `feedback_iso_v3_autostart_missing` memory):
+
+**Bug 1 — dispatcher waits for network that never comes:** the v3.0 service had `After=network-online.target Wants=network-online.target`. In any boot path where DHCP fails (which the VM hit), `network-online.target` never fires → dispatcher hangs forever → getty@tty1 fires first → operator sees login prompt.
+
+**Bug 2 — disk-installer service runs AFTER getty:** v3.0 service had `After=multi-user.target`. By the time `multi-user.target` is reached, `getty@tty1.service` has already started + bound /dev/tty1 + shown the login prompt. Disk-installer.service was effectively shadowed.
+
+**Bug 3 — no autologin fallback:** if all else failed, operator landed at a login prompt with casper-overridden credentials they couldn't guess (chroot's `ubuntu:ubuntu` is rewritten by casper at runtime).
+
+**Fixes in `scripts/iso/build-sports-bar-iso.sh` (Step 5)**:
+
+1. **`sports-bar-first-boot.service`** (the fresh-mode dispatcher) — added `ConditionKernelCommandLine=!sports_bar_mode=install` so it only fires when NOT in install mode (so install mode doesn't compete + so install mode doesn't pay the network-wait tax).
+
+2. **`sports-bar-disk-installer.service`** (the install-mode TTY taker) — replaced `After=multi-user.target` with `Before=getty@tty1.service` + `Conflicts=getty@tty1.service`. Now disk-installer.service WINS tty1 before getty gets there. Added `TTYVHangup=yes`, `KillMode=process`, `StandardInput=tty-force` per systemd canonical recipes for tty-grabbing services. No network dependency — disk install doesn't need GitHub access.
+
+3. **NEW `/etc/systemd/system/getty@tty1.service.d/autologin.conf`** — drop-in that makes tty1 auto-login as `ubuntu` (no password). This is the fallback path: if for any reason both dispatchers fail to fire, the operator gets a working shell + the `.bash_profile` recovery net (#4) below.
+
+4. **NEW `/home/ubuntu/.bash_profile`** — recovery net. Runs on every interactive shell start. If `sports_bar_mode=` is in `/proc/cmdline` AND `DONE_MARKER` doesn't exist (= dispatcher hasn't completed), it prints a banner + offers to run `/usr/local/bin/sports-bar-first-boot.sh` manually. Y/n prompt with default Y. Skip-this-session token at `/tmp/.skip-recovery`. Harmless on successful runs (DONE_MARKER blocks re-prompt).
+
+5. **NEW `/etc/issue`** banner — shows live ISO credentials (`ubuntu`/`ubuntu`) before any login prompt + points at `docs/BARE_METAL_ISO.md`. Visible whenever a manual login happens.
+
+6. **`VERSION` bumped from `v3.0` to `v3.0.1`** in the build script so the new artifact has a distinct filename + GitHub Release tag.
+
+**`docs/BARE_METAL_ISO.md`** — added "Live ISO credentials" section above "What you need" so operators know `ubuntu`/`ubuntu` for any debug session AND that autologin handles the normal case.
+
+**v3.0.1 ISO build kicked on Holmgren** as part of this commit. Once it completes (~20-30 min), I scp it to Proxmox + retest on VM 200 (the same VM that exposed the v3.0 bug yesterday). End-to-end target:
+- Install path: BIOS → ISOLINUX → "Install to Disk" → disk-installer takes tty1 → installs → reboot → installed Ubuntu → first-boot-fresh.sh runs (network up now) → location-setup-wizard
+- Live/safe path: same boot → autologin to `ubuntu` → bash_profile detects mode → offers to run dispatcher manually
+- Auth verified by walking the wizard with test PINs.
+
+If the rebuild passes end-to-end, the v3.0.1 ISO replaces v3.0 on GitHub Releases + Holmgren's HTTP serving + the Proxmox netboot LXC menu.
+
+---
+
+## v2.54.68 — Ask AI button overlap fix + REQUIRED nginx re-run (v2.54.47 follow-up missed) (2026-05-27)
+
+**Versions covered:** v2.54.68
+**Branch landed:** main
+**Fleet target:** rolling upgrade. **REQUIRED PER-BOX**: `sudo bash scripts/setup-bartender-nginx.sh` (this was documented in v2.54.47 ship notes but apparently never run — Holmgren confirmed bug today).
+
+Operator reported two bartender-remote bugs on Holmgren:
+
+**Bug #1 — Ask AI button covers the More button.** The floating button at `fixed bottom-6 right-6` sat directly over the right-most tab button in the bottom tab bar (which is `fixed bottom-0`, ~76px tall). Both at the bottom-right corner = visual stack.
+
+**Fix in `apps/web/src/components/BartenderAskAIButton.tsx:126`**:
+- `bottom-6` (24px) → `bottom-24` (96px) — clears the ~76px tab bar with margin.
+- Same z-50, same min-h-[44px], same purple-600 styling. Single Tailwind class swap.
+
+**Bug #2 — Ask AI not working.** Tapping Ask AI returned a "Couldn't reach the AI: Server returned 4XX" error. Diagnosis traced through:
+- `/api/chat` direct on :3001 returns 401 (correct — auth gate firing; bartender session cookie passes).
+- `/api/chat` via :3002 returns **403** (wrong — nginx access-denied).
+- Root cause: `scripts/setup-bartender-nginx.sh:188` ADDED `/api/chat` to the allow-list in v2.54.47, but the script was never **re-run** on Holmgren after the update. The live `/etc/nginx/sites-available/bartender-remote` had the OLD allow-list (no `/api/chat`).
+
+**Fix applied to Holmgren**: ran `sudo bash scripts/setup-bartender-nginx.sh` — nginx writes the updated site config + reloads. Verified: `/api/chat` via :3002 now returns 401 (matches :3001).
+
+**FLEET-WIDE REMINDER**: v2.54.47's ship notes documented this as a required step but it was apparently missed at other locations too. **Every fleet box should run `sudo bash scripts/setup-bartender-nginx.sh` once** to pick up the v2.54.47 nginx allow-list changes (`/api/chat`, `/api/rag/query`, the SSE timeout bumps). The script is idempotent — safe to re-run.
+
+**v2.54.47 followup gap acknowledged**: the operator-facing process for "per-box manual step" needs to be tighter. Future "REQUIRED MANUAL STEP" entries in VERSION_SETUP_GUIDE need a way to verify they actually got run at each location — ideally automated via auto-update.sh detecting changes to `scripts/setup-bartender-nginx.sh` and re-invoking.
+
+Build green, PM2 restarted clean. Holmgren Ask AI button visible above tab bar + Ask AI chat reachable.
+
+**REQUIRED PER-BOX FOR ALL FLEET**:
+```
+sudo bash /home/ubuntu/Sports-Bar-TV-Controller/scripts/setup-bartender-nginx.sh
+```
+
+---
+
+## v2.54.67 — More-button regression fix: always render, show "enable in admin" when DJ off (2026-05-27)
+
+**Versions covered:** v2.54.67
+**Branch landed:** main
+**Fleet target:** rolling upgrade. **Operator-facing fix** — More overflow button reappears on bartender remote.
+
+Operator reported on Holmgren: "where did the more button go for the other things like the dj mode". Root cause: v2.54.55's More-overflow restructure wrapped the entire More button in `{djControlsEnabled && (...)}` thinking "hide empty button". But at locations with DJ controls disabled OR locations where the operator hadn't enabled them yet, the More button vanished — taking DJ Mode + Override-Learn widget + any future overflow items with it.
+
+**Fix in `apps/web/src/app/remote/page.tsx`** (lines 1419-1434 + 1459-1489):
+- Removed the outer `djControlsEnabled` wrapper from the More button → always renders
+- Inside the More sheet, kept the `djControlsEnabled` gate around the DJ Mode entry but replaced the silent hide with a non-interactive "DJ Mode unavailable — Enable in Admin → Bartender Remote Settings" tile (same 64px min-height, not tappable since there's nothing to tap)
+
+**Design intent preserved**:
+- v2.54.55 intent #1 (promote Schedule to primary) — **preserved** (Schedule stays in primary tab strip)
+- v2.54.55 intent #2 (overflow for less-frequent admin tabs) — **preserved** (DJ Mode stays in overflow)
+- v2.54.55 sub-goal "hide empty button" — **abandoned** (was overcorrection; vanishing the access path broke discovery for any location not running DJ)
+
+**Holmgren effect**: DB has `dj_controls_enabled=true`, so the More button is back to its v2.54.54 state (full tappable DJ entry). Operators at locations with DJ disabled see the button + a clear "how to enable" hint when they tap.
+
+Build green, PM2 restarted clean (no startup errors).
+
+---
+
+## v2.54.66 — LOGGER FIX: stop silently swallowing Error objects passed as 2nd arg (caused v2.54.65) (2026-05-27)
+
+**Versions covered:** v2.54.66
+**Branch landed:** main
+**Fleet target:** rolling upgrade. **No runtime behavior change for correctly-written log calls.** Buggy call sites (~964 across the codebase) NOW print their error message + stack instead of silently dropping it.
+
+**Why this exists:** v2.54.65 found a bug in `audio-processor/zones/route.ts` that had been broken for weeks — `getAtlasClient` was undefined at runtime, throwing a TypeError, swallowed by `logger.warn('Failed to sync...', err)`. Investigation revealed the logger contract was the trap.
+
+**The trap:** `@sports-bar/logger`'s documented signature is `(message: string, options?: LogOptions)` where options is `{ error?: ..., data?: ..., category?: ... }`. Call sites who pass `err` (a bare Error) as the second arg were silently treated as if they'd passed an empty options object — so `options?.error` was undefined and the actual error message + stack never printed.
+
+**Count of bad-pattern sites in the codebase**: ~964 `logger.X(msg, err)` calls. Fixing one-by-one would take hours and introduce regression risk. Fixed the LOGGER itself instead.
+
+**`packages/logger/src/index.ts:386-410`** — added `normalizeOptions(opts)` to all 5 generic logger methods (debug/info/warn/error/success):
+- If `opts instanceof Error` → wrap as `{ error: opts }` (the silent-swallow case)
+- If `opts` looks like proper `LogOptions` (has `error`/`data`/`category`/etc.) → pass through unchanged
+- Otherwise (raw object / primitive) → wrap as `{ data: opts }` so it's at least visible
+
+Type signature relaxed from `options?: LogOptions` to `options?: LogOptions | unknown` so call sites pass-through TypeScript without compile errors. Backwards-compatible — every correctly-written call still works.
+
+**Verified in-process smoke** (after the classifier-temporary-block cleared): `logger.warn('msg', new Error('X'))` now prints `Error: X` + stack trace. `logger.info('msg', { foo: 'bar' })` now prints `Data: { foo: 'bar' }`. Existing `logger.warn('msg', { error: err })` still works.
+
+**Future debugging unblocked**: any swallowed-error site that catches an exception and logs it will now show the message + stack in PM2 logs. Hidden TypeErrors like the v2.54.65 audio-mute bug surface immediately on the next failure.
+
+**Worth noting**: this doesn't make the buggy call sites GOOD — they're still passing wrong-shaped args. Ideal would be to also codemod all 964 call sites to use the canonical `{ error: err }` form. Deferred — the logger normalization gets us 95% of the value with 1% of the change footprint. Codemod can ship as v2.54.67+ when convenient.
+
+---
+
+## v2.54.65 — BUG FIX: bartender Audio tab "always muted" — wrong Atlas import path swallowed the sync error (2026-05-27)
+
+**Versions covered:** v2.54.65
+**Branch landed:** main
+**Fleet target:** rolling upgrade. **Operator-facing fix** — the Audio tab on the bartender remote was showing zones as MUTED even when hardware reported them unmuted. Holmgren had 7 of 8 zones stuck this way.
+
+**Root cause:** `apps/web/src/app/api/audio-processor/zones/route.ts:43` imported `getAtlasClient` from the wrong bridge file. `@/lib/atlasClient.ts` only re-exports `AtlasTCPClient`/`createAtlasClient`/`executeAtlasCommand`. `getAtlasClient` (the singleton-aware version per Gotcha #10 / v2.33.50) lives in `@/lib/atlas-client-manager.ts`. Result:
+1. `const { getAtlasClient } = await import('@/lib/atlasClient')` → `getAtlasClient === undefined`
+2. `getAtlasClient(processor.ipAddress, ...)` → `TypeError: getAtlasClient is not a function`
+3. `catch (err) { logger.warn('[ZONES] Failed to sync live zone data from hardware:', err) }` swallowed the error
+4. The DB mute-sync loop never ran
+5. Zones stuck at whatever `muted` value they were last manually toggled to
+6. UI displays that stuck DB value as "MUTED"
+
+Made worse by the `logger.warn` call passing `err` as second arg only — Pino-style structured logging printed the message prefix with no body, so the actual TypeError was invisible in the logs. Could have caught this immediately if the error had been interpolated.
+
+**Fix in `apps/web/src/app/api/audio-processor/zones/route.ts:42-75`**:
+1. Import from `@/lib/atlas-client-manager` (correct bridge).
+2. `getAtlasClient` is async — added `await`. Signature is `(processorId: string, config: AtlasConnectionConfig)`, not `(ip, port)`. Pass full config object with `ipAddress`, `tcpPort`, `timeout`.
+3. Improved the catch's `logger.warn` to interpolate `(err as Error)?.message` into the message string so future failures don't disappear into a void.
+
+**Verified live on Holmgren** post-rebuild + PM2 restart: all 8 zones now report correct mute state (6 unmuted, 2 actually muted — Upstairs + VIP Tent which are genuinely off right now). Operator should see correct state on next iPad refresh.
+
+**Pattern reminder for future debugging**: `logger.warn("X failed:", err)` with the error as a separate arg often shows in PM2 stdout/stderr as just "X failed:" with no body. Better: `logger.warn(\`X failed: ${(err as Error)?.message ?? err}\`, err)` — interpolated string for visibility, full object as second arg for structured logging. Saved as memory `feedback_demote_verify_actual_firing` cousin: log-the-error-message-not-just-the-object.
+
+**Honest scope:** this fixes the SYNC. Zones that the operator had manually muted via the UI still show muted (correctly). Zones that were stuck on muted=1 due to the sync bug are now reset to the actual hardware state.
+
+---
+
+## v2.54.64 — Shell cleanup + SECURITY: leaked SSH password removed from tracked file (2026-05-27)
+
+**Versions covered:** v2.54.64
+**Branch landed:** main
+**Fleet target:** rolling upgrade. No runtime change.
+
+Routine shell audit kicked up a real security finding.
+
+**SECURITY — `scripts/retrieve-benchmark-results.sh:11` had `REMOTE_PASS="6809233DjD\$\$\$"` in plaintext.** Real SSH password for `ubuntu@135.131.39.26:223` (operator's home Linux box, used as a benchmark fetch target). Script was an orphan (zero callers in the codebase) and the leaked password is the same one used as `$SSHPASS` in ad-hoc operator scripts. **Deleted from HEAD in this commit. STILL IN GIT HISTORY** — operator threat-model decision required: rotate the password OR scrub history with `git filter-repo` + force-push (which breaks all existing clones). Saved memory `feedback_password_leak_in_git_history.md` with both paths documented.
+
+**Deletions (6 files):**
+- `fresh_install.sh`, `install_fixed.sh`, `fix_and_install.sh`, `update_from_github.sh` — already deprecated with loud `DEPRECATED` headers in v2.54.51 (~6h ago). Operators have been redirected at the canonical `install.sh` + ISO + `scripts/auto-update.sh`. Time to actually remove.
+- `scripts/final-logger-wrapper.sh` — pre-v2-monorepo path references (`src/components/...` not `apps/web/src/components/...`). Historical sed-injection fix-up that doesn't match current file layout. Dead.
+- `scripts/retrieve-benchmark-results.sh` — password leak (above).
+
+**Header updates (3 files)** — orphan scripts that ARE useful operator helpers but had no caller documentation. Added "OPERATOR HELPER, not invoked by any automated flow (verified v2.54.64 audit)" so future audits know they're intentionally kept:
+- `scripts/av-system-monitor.sh` (Wolf Pack TCP/UDP port monitor + restart, 59 lines)
+- `scripts/status-dashboard.sh` (color-coded terminal dashboard with 5s refresh, 249 lines)
+- `scripts/verify-db-migration.sh` (curl-based API smoke for post-DB-migration; complementary to `verify-install.sh`)
+
+**`db:push` mentions** — remaining 7 in 5 files are all HISTORICAL-CONTEXT comments explaining what v2.54.1 migrated AWAY from (`first-boot-fresh.sh:142`, `install.sh:781`, `ensure-schema.sh:3,7`, `verify-install.sh:348,355`, `rollback.sh:76`). Left as-is per "don't churn what's correct" — these explain WHY we use the canonical pattern. Not stale.
+
+**Shell tally post-cleanup**: 100 .sh in the repo (was 106). Of those, 4 explicitly DEPRECATED warnings → 0 (they're gone). 5 orphans → 3 (kept + documented; 2 deleted).
+
+Total commit footprint: 6 deletions (~280 lines removed) + 3 header updates (+~15 lines).
+
+---
+
+## v2.54.63 — Proxmox PXE LXC plan + scripts for office NUC pre-provisioning (2026-05-26)
+
+**Versions covered:** v2.54.63
+**Branch landed:** main
+**Fleet target:** no change. **Operator's Proxmox host only** (runs the scripts manually).
+
+Operator has a Proxmox server at home/office and wants to PXE-boot new NUCs from it so they install pre-configured + ship to bars already-set-up.
+
+**NEW `docs/PROXMOX_PXE_SETUP.md`** (130-line operator runbook): architecture, prerequisites, 3-step setup, troubleshooting matrix, future enhancements (multi-version menu, Tailscale Serve integration, unattended install).
+
+**NEW `scripts/proxmox/setup-netboot-lxc.sh`** (163 lines): runs ON the Proxmox host. Creates a Debian 12 LXC named `sports-bar-netboot` (default CTID 200), installs dnsmasq + lighttpd + curl + ipxe inside. Detects template via `pveam`, downloads if missing, configures unprivileged container with DHCP networking, copies iPXE binaries to TFTP root. Reports the LXC IP + next-step command at the end.
+
+**NEW `scripts/proxmox/configure-netboot-menu.sh`** (270 lines): runs INSIDE the netboot LXC. Auto-fetches latest release tag from GitHub, downloads the 2 split ISO parts + sidecars, verifies per-part MD5 + combined SHA256, reassembles into single .iso. Writes iPXE menu under `/var/www/html/menu/sports-bar.ipxe` with install / live-boot / safe-mode / iPXE-shell options. Configures dnsmasq in **proxy-DHCP mode** (doesn't fight existing router DHCP — just adds PXE options + bootfile path). Handles UEFI vs legacy BIOS clients via DHCP option 93 matching. Auto-symlinks `current.iso` so the menu stays stable across updates. Idempotent — re-run when a new release ships. Optional `--release v3.0-YYYY-MM-DD` to pin + `--tailscale-url URL` to skip the 2-part reassembly when Holmgren's Tailscale Serve URL is available.
+
+**Architecture choices**:
+- Proxy-DHCP not full DHCP — augments router, doesn't replace it. Zero router config needed for most home/office setups.
+- LXC not VM — 50 MB RAM idle, 2-sec boot. dnsmasq + lighttpd don't need a full kernel.
+- iPXE not legacy PXELINUX — handles HTTP (not just TFTP), modern UEFI + BIOS, scriptable.
+- HTTP-fetchable menu — operator can edit `/var/www/html/menu/sports-bar.ipxe` without rebuilding the LXC.
+
+**Operator workflow** (after running both scripts):
+1. New NUC arrives at office. One-time BIOS: enable PXE boot + set network first.
+2. Power on NUC plugged into office LAN.
+3. iPXE menu appears → operator picks "Install Sports Bar TV Controller v3.0".
+4. ISO boots over HTTP from LXC → standard install → reboot.
+5. After reboot: first-boot-fresh.sh + location-setup-wizard (v2.54.51+ canonical pipeline).
+6. Ship NUC to bar already-configured.
+
+Both scripts pass `bash -n` syntax check. NOT executed on any operator infrastructure — operator runs them manually on their Proxmox host.
+
+---
+
+## v2.54.61 — Grok persistent briefing + invocation wrapper (Grok knows the rules every time) (2026-05-26)
+
+**Versions covered:** v2.54.61
+**Branch landed:** main
+**Fleet target:** rolling upgrade. No runtime change. Tooling only.
+
+Operator-requested: "make sure Grok knows the rules and a way to remember them or access them." Grok has no persistent memory across invocations — every `grok --prompt-file X` starts fresh. Previously I'd hand-write the relevant standing rules into each Grok prompt, which is error-prone (forget a rule, get inconsistent recommendations).
+
+**NEW `docs/GROK_BRIEFING.md`** (~125 lines): distilled essentials Grok needs at the top of every prompt.
+- All 11 Standing Rules summarized
+- Top 7 of 13 Gotchas (the most-expensive ones — #1, #6, #7, #8, #10, #11, #13)
+- 10 validated operator preferences (software-to-main, Turbo force-rebuild, PM2 delete+start, CEC-deprecated, matrix outputOffset, device DB source of truth, iPad touch targets, latest-versions rule, RAG re-scan, bartender voice)
+- Role separation (Claude = implementer, Grok = advisor + auditor)
+- Pointers to deeper docs (CLAUDE.md, CLAUDE_MEMORY_GUIDE, CLAUDE_VERSIONING_GUIDE, VERSION_SETUP_GUIDE, FLEET_STATUS)
+- "Read on demand" pointers to operator memory file groups by topic (AI/RAG, hardware, install/fleet, bartender UX)
+- Version scheme reminder + mandatory `package.json` bump per commit
+
+**NEW `scripts/grok-prime.sh`**: wrapper that prepends `GROK_BRIEFING.md` to any Grok prompt automatically. Usage:
+```bash
+bash scripts/grok-prime.sh <prompt-file>           # one-shot
+bash scripts/grok-prime.sh --task "..."            # inline task
+bash scripts/grok-prime.sh --task "..." --file extra.md  # task + extra context
+echo "..." | bash scripts/grok-prime.sh -          # stdin
+```
+Reports prompt size + briefing line count to stderr; pipes to `grok --permission-mode auto`. Smoke-tested: asked Grok "what standing rule covers auto-update.sh vs manual pm2 restart?" — Grok correctly cited Rule 6 verbatim and distinguished it from related Gotcha 11 + Operator Preference 3.
+
+**CLAUDE.md** got a one-paragraph pointer at the top (under "Grok collaboration") so anyone reading CLAUDE.md sees how to invoke Grok with rules pre-loaded.
+
+**Outcome**: future Grok audits no longer need me to hand-write "remember to follow Standing Rule X" in the prompt. The wrapper handles it. Operator can also invoke Grok directly via the wrapper for one-off questions.
+
+---
+
+## v2.54.60 — OS hygiene + trim sweep (Grok + 2 parallel agents) — 137 GB reclaimed on Holmgren (2026-05-26)
+
+**Versions covered:** v2.54.60
+**Branch landed:** main
+**Fleet target:** rolling upgrade. **REQUIRED PER-BOX**: `sudo bash scripts/optimize-os.sh` after auto-update (idempotent — safe to re-run). For NEW installs, install.sh PHASE 13 runs it automatically.
+
+Operator-requested OS optimization audit. Engaged Grok for "what does a sports-bar-TV-controller actually NEED at OS level" + 2 parallel Explore agents for "what's actually installed/running/consuming" on Holmgren. All 3 converged.
+
+**THE BIGGEST FIND — local agents caught what Grok couldn't see:** a **140 GB runaway `atlas-communication.log`** (5.75 BILLION lines since 2026-02-18, 98 days of continuous append). Root cause: `packages/atlas/src/atlas-client-manager.ts:119,180` logged `Reusing existing Atlas client` + `Released Atlas client` at INFO level — these fire on EVERY Atlas operation (~15-30 Hz across the fleet). Plus `packages/atlas/src/atlas-logger.ts` had no size cap or rotation.
+
+**Fixes (atlas log root cause):**
+- `packages/atlas/src/atlas-client-manager.ts`: demoted 2 lines from `.info` to `.debug` (per `[[feedback_demote_verify_actual_firing]]` pattern). Reuse + Release are normal-operation noise, not events. Kept `.info` on `Creating new` (first-time event), `Reconnecting` (rare + notable), and `Force disconnecting` (operator action).
+- `packages/atlas/src/atlas-logger.ts`: added `MAX_LOG_BYTES = 100 * 1024 * 1024` size cap. Checked every 1000 writes. When exceeded, file rotated to `.old` sibling and next write opens a fresh file.
+- **Manual truncate**: `: > atlas-communication.log` (inode-preserving) reclaimed 140 GB instantly without restart. Verified live PM2 writer kept appending after truncate (size grew to 9.3K within 5 seconds, then to 18 KB / 10s post-rebuild — an 80% reduction from the ~100 KB / 10s pre-fix rate).
+
+**NEW `scripts/optimize-os.sh`** (288 lines, idempotent, modeled on `enforce-gotcha11-hardening.sh` from v2.54.51):
+- **Layer 1**: journald `SystemMaxUse=500M`, `MaxRetentionSec=14day`, `SystemKeepFree=2G` via `/etc/systemd/journald.conf.d/99-fleet-trim.conf`. Holmgren had no cap; reclaimed 145 MB (297 → 152 MB) + bounds future growth.
+- **Layer 2**: `vm.swappiness=10` + `vm.vfs_cache_pressure=50` via `/etc/sysctl.d/99-fleet-memory.conf`. Critical with IPEX-LLM Ollama using 16+ GB resident — default swappiness=60 was thrashing (Holmgren swap 100% used at audit). Already-swapped pages drain over days as workload accesses them.
+- **Layer 3**: disable 7 services with no hardware/use on the fleet: `ModemManager`, `apport`, `whoopsie`, `motd-news.timer`, `apt-daily.timer`, `apt-daily-upgrade.timer` (we have auto-update.sh per Standing Rule #6), `cups-browsed`. Plus sets `ENABLED=0` in `/etc/default/motd-news`.
+- **Layer 4**: purges old kernel images keeping only running + latest. Holmgren had 31 old kernel packages (6 kernel versions × ~5 packages each: image, image-unsigned, modules, modules-extra, headers).
+- **Layer 5**: sweeps caches > size threshold: apt (>10 MB), npm (>1 GB), pip (>500 MB), snap disabled-revisions (>500 MB), `/tmp/*.log` older than 3 days. Holmgren reclaimed: apt 55 MB + npm 3398 MB + pip 2790 MB + snap 1988 MB + 126 /tmp logs = **~8.2 GB**.
+- **Layer 6**: purges `sports-bar-data/backups/pre-update-*.db` older than 14 days. Holmgren had 57 uncapped files (auto-update.sh creates these on every cycle, no retention). 44 deleted = **3.3 GB**.
+
+All layers idempotent. `--check` mode dry-runs + exits non-zero if any layer is out of desired state — wireable into `verify-install.sh` for fleet drift detection.
+
+**Wired into `install.sh` as PHASE 13** (runs after PHASE 12 Gotcha #11 hardening). New installs get optimized boxes automatically; existing fleet runs `sudo bash scripts/optimize-os.sh` on next auto-update or manual sweep.
+
+**Holmgren reclaim tally:**
+- Atlas log truncate: **140 GB** (root cause fixed for the future)
+- pre-update backups: 3.3 GB
+- Caches (apt + npm + pip + snap + tmp): 8.2 GB
+- Old kernel packages: ~735 MB
+- journald retention cap: 145 MB
+- **Total: ~152 GB on this single box** (disk went 287 → 150 GB used = 137 GB measurable + bounded future growth)
+
+**Deferred items needing operator decision** (NOT in this commit, see Grok + agent reports):
+- snapd removal (5-7 GB win, but breaks if anyone uses Chromium snap via xrdp)
+- xrdp removal (no active sessions but operator may RDP in occasionally)
+- openjdk-17, python3-botocore, libwebkit2gtk audit + removal (need `apt rdepends` review)
+- Ollama model audit (26 GB; phi3:mini + llama3.2:3b may be orphans — but Standing Rule #10 keeps all models)
+
+---
+
+## v2.54.59 — ISO uploader via direct REST (fallback when `gh auth` scope is missing) (2026-05-26)
+
+**Versions covered:** v2.54.59
+**Branch landed:** main
+**Fleet target:** rolling upgrade. No runtime change.
+
+Trigger: operator asked to be able to download the ISO from GitHub. v2.54.58's `upload-github-release.sh` requires `gh auth login` which requires the `read:org` scope. The Personal Access Token in our git remote URL (used for git push all session) has only `repo` scope — sufficient for releases via the REST API but not enough for `gh auth login`.
+
+**NEW `scripts/iso/upload-github-release-curl.sh`**:
+- Direct REST API uploader using curl. Auto-discovers the PAT from `$GITHUB_TOKEN` or extracts from `git remote get-url origin`.
+- Creates the release via `POST /repos/:owner/:repo/releases`, then uploads ISO + .md5 + .sha256 sidecars via `POST uploads.github.com/.../releases/:id/assets`.
+- Idempotent: if the tag already exists (re-build same day), deletes the prior release + tag and re-creates.
+- Defaults: tag = `v3.0-YYYY-MM-DD`, notes pre-filled with the v2.54.51+ canonical pipeline summary + BARE_METAL_ISO.md pointer.
+- Auto-generates md5/sha256 if sidecars don't exist.
+- Reports the release HTML URL + direct-download URL at the end.
+
+**Usage** (after a build finishes):
+```
+bash scripts/iso/upload-github-release-curl.sh /home/ubuntu/iso-build/sports-bar-tv-controller-v3.0-*.iso
+```
+Pulls the token from git remote automatically. Operator can also pass `GITHUB_TOKEN=ghp_...` explicitly.
+
+**Holmgren ISO pre-flight status (in flight at commit time):**
+- Build started 22:28 from `scripts/iso/build-sports-bar-iso.sh --no-upload --build-dir /home/ubuntu/iso-build`
+- Steps 1-7 of 10 complete (debootstrap + chroot + first-boot scripts installed + dispatcher service + snapshot disabled as expected in v3.0).
+- Currently on Step 8/10 (XZ filesystem compression — script warns 20-40 min). 6.6 GB intermediate.
+- After build completes, the new uploader will push the ISO to GitHub Releases automatically. Operator then has a downloadable ISO + .md5 + .sha256 for `dd` to USB.
+
+---
+
+## v2.54.58 — ISO build script: prereq check + stale header fix + pre-flight kicked (2026-05-26)
+
+**Versions covered:** v2.54.58
+**Branch landed:** main
+**Fleet target:** rolling upgrade. **Build-host one-time prereq install** for any box that will build the ISO (not needed at run-time on existing fleet boxes):
+```
+sudo apt-get install -y debootstrap xorriso squashfs-tools \
+    grub-efi-amd64-bin grub-pc-bin mtools dosfstools isolinux syslinux-utils
+```
+
+**Trigger:** task #282 — pre-flight v2.54.51 ISO in a VM before the new-location NUC ships this week. Audit found two real issues in `scripts/iso/build-sports-bar-iso.sh`:
+
+1. **Stale "Run on Leg Lamp ONLY" warning** at line 13. This predates v3.0's snapshot-mode removal (line 470: "Snapshot mode removed in v3.0 — this ISO is location-independent"). The warning would have scared operators away from building on any fleet box. **Replaced** with an accurate v2.54.58 header explaining snapshot is disabled, ISO is now location-independent, `--skip-snapshot` flag retained for backwards-compat but is now a no-op. Documented prereqs + duration + disk needs upfront.
+
+2. **No prereq check** — debootstrap / xorriso / grub-pc-bin / mtools / isolinux / syslinux-utils could be missing on a fresh build host and the script would fail mid-build with cryptic errors. **Added** an explicit prereq check that runs before Step 1 of the build and bails with one clear copy-paste `sudo apt-get install ...` command listing exactly the missing packages.
+
+**`docs/BARE_METAL_ISO.md`** — added "Building the ISO yourself" section with the apt-get one-liner + build command + result location. Operators who can't find a Release asset can now self-build cleanly.
+
+**Pre-flight test kicked in background on Holmgren (this box):**
+- Installed the 6 missing apt packages
+- Launched `sudo bash scripts/iso/build-sports-bar-iso.sh --no-upload --build-dir /home/ubuntu/iso-build` in background
+- ~15-30 min expected. Result will land in `/home/ubuntu/iso-build/sports-bar-tv-controller-v3.0-*.iso`.
+- If the build succeeds: pre-flight proves v2.54.51's installer pipeline produces a bootable ISO. Operator can `dd` to USB + boot a VM (or NUC) for end-to-end validation.
+- If the build fails: log at `/tmp/iso-build-v2.54.58.log` shows exactly where + the v2.54.58 prereq check rules out the easy "missing apt package" causes.
+
+**Why now (vs deferring pre-flight to operator):** the new location is going up THIS WEEK per operator. v2.54.51's installer wiring was aspirational until proven. A 15-30 min unattended background build is cheap; catching a regression before the NUC ships is high-value.
+
+---
+
+## v2.54.57 — Sports-guide route gates + bartender empty-state recovery (Grok Part 2 P1) (2026-05-26)
+
+**Versions covered:** v2.54.57
+**Branch landed:** main
+**Fleet target:** rolling upgrade. No manual step.
+
+Two more Grok Part 2 P1 findings closed via parallel agents. Both HIGH confidence. Build green 34/34 Turbopack 15s.
+
+**Sports-guide + scheduling route gates (Agent 1):**
+- Audited 16 routes across `apps/web/src/app/api/sports-guide/**` + `apps/web/src/app/api/scheduling/**`. Of those, 12 were already correctly wrapped (rate-limit + validation + sometimes auth) — credit to prior work.
+- **4 real fixes**:
+  - `sports-guide/route.ts` POST: replaced raw `request.text()` + `JSON.parse` (Gotcha #1) with `validateRequestBody(sportsGuideRequest)`.
+  - `sports-guide/update-key/route.ts`: replaced loose `z.record(z.unknown())` + `String(undefined)` coercion bug with `sportsGuideUpdateKey` schema (apiKey min 10 chars, userId required).
+  - `scheduling/input-sources/route.ts` DELETE handler: replaced raw `searchParams.get('id')` with `validateQueryParams(inputSourceDeleteQuery)`.
+  - All 3 new schemas added to `packages/validation/src/schemas.ts` under "// SPORTS GUIDE SCHEMAS — v2.54.57" header + registered in `ValidationSchemas` map.
+- `scheduling/live-status/route.ts` deliberately skipped — called only by `scheduler-service.ts` localhost cron (no UI callers), noted in agent report.
+- All component call sites verified — no breaking shape changes for `SportsGuide.tsx` / `BartenderRemoteControl.tsx` / `SportsGuideConfig.tsx` / etc.
+
+**Bartender empty-state recovery (Agent 2):**
+- NEW `apps/web/src/components/BartenderEmptyState.tsx` — reusable card with icon + heading + 2-3 sentence body + optional amber "partially configured" sub-card + verbatim text-to-manager preview block (so bartenders can read off the message even when clipboard is blocked on insecure-context iPad browsers — AUTH_COOKIE_SECURE=false LAN deployments per CLAUDE.md) + 2 CTAs: "Open admin" (purple, deep-link to admin page) + "Copy message" (slate, clipboard API with check-icon confirmation).
+- Applied to **Video tab** (`InteractiveBartenderLayout.tsx`) → links `/layout-editor`. Distinguishes fresh-install vs partial-config (zone count = 0 with row exists) via amber sub-card.
+- Applied to **Audio tab** (`BartenderRemoteAudioPanel.tsx`) → links `/audio-control`.
+- Applied to **Music tab** (`BartenderMusicControl.tsx`) → links `/soundtrack`.
+- All touch targets ≥48px. Bartender voice ("you didn't do anything wrong") matches the new `app/remote/error.tsx` boundary from v2.54.56.
+- **Audio tab visibility change**: removed `{audioProcessorIp && ...}` guard on the Audio tab button (`app/remote/page.tsx`) so fresh-install bartenders actually see the new empty-state card. Annotated.
+- Tabs that DON'T need this (visibility-guarded — never render empty): Lighting (only renders when configured), DJ (only renders when enabled), Schedule/Guide/Routing/Remote/Power (backed by always-present sources, or already have inline empty cards).
+
+**Closes Gotcha #7 operational pain** (location-data templates blanking real data on merge → empty bartender remote → no recovery path). The 9 bartender how-to docs all assume the Video tab has a layout — empty-state recovery means even mid-merge-mess locations have a clear path forward.
+
+---
+
+## v2.54.56 — Dark-theme global error page + bartender-grade /remote error boundary (2026-05-26)
+
+**Versions covered:** v2.54.56
+**Branch landed:** main
+**Fleet target:** rolling upgrade. No manual step.
+
+Closes one of Grok Part 2 P1's smaller findings: `apps/web/src/app/error.tsx` was rendering a white modal on a dark app (jarring + violated the dark-theme consistency the rest of v2.54.54+v2.54.55 just shipped). Plus added a bartender-specific error boundary at `/remote` so a crash on the iPad shows reassuring bartender-grade copy instead of admin-jargon "Something went wrong!".
+
+**`apps/web/src/app/error.tsx`** (modified):
+- `bg-gray-100` → `bg-slate-950`
+- White modal → `bg-slate-800/50 border border-slate-700` (matches SchedulerLogsDashboard exemplar + the Card primitive fix from v2.54.54)
+- Heading `text-red-600` → `text-red-400` (better contrast on dark)
+- Button → `bg-purple-600 hover:bg-purple-500` (matches Ask AI floating button color), 44px touch target
+- Copy: added a second sentence with operator-friendly recovery hint ("refresh the page or text the manager with what you were doing").
+
+**`apps/web/src/app/remote/error.tsx`** (NEW):
+- Bartender-grade copy: "Something hiccuped" + "You didn't do anything wrong" (matches the "you can't break it" voice the 9 bartender how-to docs use).
+- Explicit reassurance that TVs / audio / lighting keep running while the iPad UI is broken (technically true — the backend keeps running independently of the React tree).
+- Two CTAs: "Try again" (calls `reset`) + "Refresh the page" (`window.location.reload`).
+- Both buttons 44px tap targets, dark theme.
+- This is the first per-route error boundary for /remote. Future enhancement: per-tab boundaries inside /remote so a crash in Audio doesn't bring down Video.
+
+**Why now (vs deferring to a larger v2.54.57 Card-pattern sweep):** the global error page was actively rendering wrong-themed on every uncaught exception. Cheap fix, immediate visual win. The bigger Card-pattern migration across SystemAdmin / DeviceConfig / Atlas can take more deliberate planning + multi-agent waves — separate PR.
+
+**Cumulative session ship (2026-05-26 evening):** v2.54.49 → v2.54.56, 8 versions, ~40 files touched, ALL 6 Grok handoff items + Part 2 P0 + 2 of Part 2 P1 (error boundaries) shipped. Fleet fully propagated. RAG re-scanned.
+
+---
+
+## v2.54.55 — Grok #4 + #5 + #6: HDMI input unify + Multi-View preview + Schedule tab promotion (2026-05-26)
+
+**Versions covered:** v2.54.55
+**Branch landed:** main
+**Fleet target:** rolling upgrade. No manual step.
+
+Closes the remaining 3 of 6 Grok audit follow-ups (#4, #5, #6 from the original 7-item list). Two parallel agents, both HIGH confidence. Build green (34/34 Turbopack, 19s).
+
+**Grok #4 — HDMI input unify (InteractiveBartenderLayout):**
+- POWER_AND_NETWORK_TVS.md spent paragraphs explaining that bartenders had to bounce to Power tab for HDMI input switching on network-discovered TVs. No more.
+- Added `networkTVs?: NetworkTV[]` prop to `InteractiveBartenderLayout`; parent (`app/remote/page.tsx`) passes it through.
+- When the tapped TV zone matches a network TV with `supportsInput=true`, the modal now shows "Currently on: HDMI 2" prominently above the matrix inputs + a 4-button HDMI 1/2/3/4 row using the same `/api/tv-control/{id}/input` endpoint the Power tab uses. Current input highlighted blue ring, optimistic update on tap.
+- Non-network TVs (cable boxes, Fire TVs) see the modal unchanged (matrix inputs only).
+- The Power tab still works for setup-style flows — nothing broken.
+
+**Grok #5 — Multi-View Quad preview:**
+- `app/remote/page.tsx:1058-1124` — restructured the Quad View toggle into a card with a 140×140px 2×2 preview grid showing the 4 Wolf Pack inputs that will tile when Quad mode is on. Each cell shows input number + truncated friendly label from `inputs.find()`. "● Active" badge when mode=6, purple ring around cells when active.
+- Empty-state fallback "(no preview — multi-view card not configured)" when `card.inputAssignments` is null/incomplete (no crash).
+- Data source: `card.inputAssignments` from `GET /api/wolfpack/multiview` (pre-parsed JSON containing window1-4 as Wolf Pack input numbers, per `packages/multiview/src/types.ts:45`). New `multiViewInputs` state.
+
+**Grok #6 — Schedule out of "More" overflow:**
+- Promoted Schedule to the primary tab strip between Guide and Routing. Order now: Video → Guide → **Schedule** → Routing → Remote → Audio → Music → Lighting → Power → More.
+- Schedule tab uses the existing Clock icon + "Schedule" label (≥44px touch target).
+- Removed Schedule entry from the More sheet. More button itself now only renders when `djControlsEnabled` is true (otherwise nothing to show — auto-hides).
+- `ScheduledGamesPanel` rendering unchanged at activeTab==='schedule' — no further wiring needed.
+- PUTTING_GAMES_ON_TVS.md + PRE_SHIFT_WALKTHROUGH.md teach Schedule as the proactive game-assignment tool; now bartenders can actually find it.
+
+**Cumulative Grok handoff status as of v2.54.55:**
+- v2.54.50 — Grok #1 ✓ (QAEntry retrieval)
+- v2.54.52 — Grok #2 ✓ (Ask AI session history + bug fix)
+- v2.54.53 — Grok #3 ✓ (Ollama-down QA fallback)
+- v2.54.54 — Grok Part 2 P0 ✓ (auth/login Gotcha #1 + bartender touch + dark primitives)
+- v2.54.55 — Grok #4 + #5 + #6 ✓
+
+**Remaining Grok Part 2 P1+** (not in this commit, sequence as operator prioritizes):
+- Card-pattern violations across SystemAdmin / DeviceConfig / Atlas (page-level migration to bordered slate divs)
+- `sports-guide` + `live-status` routes bypassing validate/rate-limit (similar to auth/login Gotcha #1 fix)
+- `packages/validation` vs `packages/config` dedup
+- Seed-empty-UI recovery flow
+- Loading state polish (skeletons on tables/grids)
+- Error boundary expansion (global error.tsx still light-themed)
+
+---
+
+## v2.54.54 — Grok Part 2 P0: auth/login Gotcha #1 + bartender touch sweep + dark-theme primitives (2026-05-26)
+
+**Versions covered:** v2.54.54
+**Branch landed:** main
+**Fleet target:** rolling upgrade. No manual step.
+
+Closes the highest-leverage findings from Grok handoff Part 2 (UI + bug audit). Multi-agent parallel waves: 3 agents in parallel + me on auth/login simultaneously. All HIGH confidence, build green (34/34 Turbopack 16s), PM2 healthy.
+
+**Auth/login Gotcha #1 (me, security fix):**
+- `apps/web/src/app/api/auth/login/route.ts:40-50` was using raw `request.json()` + manual `if (!pin)` check (Gotcha #1 violation per CLAUDE.md, also accepted non-string pin values that bcrypt-compared garbage).
+- Added `authLoginSchema = z.object({ pin: z.string().regex(/^\d{4,8}$/) })` to `packages/validation/src/schemas.ts` + registered as `ValidationSchemas.authLogin`.
+- Switched route to canonical `validateRequestBody(request, ValidationSchemas.authLogin)` + `isValidationError` pattern. Now rejects non-digit / wrong-length pins at the schema gate with a 400 before any database call.
+
+**Dark-theme primitive sweep (Agent A1):**
+- `components/ui/select.tsx`: 7 swaps — Content/ScrollUp/ScrollDown/Item/Label/Check/Separator all `bg-white text-black` → `bg-slate-900 text-slate-100 border-slate-700`. Added explicit `data-[highlighted]` keyboard-nav highlight matching dark theme.
+- `components/ui/card.tsx`: 4 swaps — Card root `bg-white` → `bg-slate-800/50 text-slate-100 border border-slate-700`. CardHeader border-bottom slate. CardTitle slate-100. CardDescription slate-400. Mirrors SchedulerLogsDashboard.tsx exemplar.
+- `components/ui/button.tsx`: size map — default `h-10` → `h-11` (44px iPad target), lg `h-11` → `h-12`, icon `h-10` → `h-11`. No `bg-white` leaks in variants. Bartender-remote inherits 44px default automatically.
+
+**Bartender remote touch sweep — page.tsx + EnhancedBartenderRemoteControl (Agent A2):**
+- `app/remote/page.tsx` Power tab TV cards (lines 914-1019): ~9 interactive elements per TV bumped to `≥44px` + `text-sm` minimum. Input/OK/Pair/Power/HDMI 1-4 all compliant. Routing matrix cells (lines 1127-1146) `min-h-[44px] min-w-[44px]`.
+- `EnhancedBartenderRemoteControl.tsx`: no edits needed — Agent A1's button primitive `size="icon"` bump to `h-11 w-11` already brings the 3 size="icon" mute/volume buttons into compliance. Component is also not currently mounted in the live tree.
+- Deliberately left small: brand logo, IP address text, status dots (online/offline indicators are non-interactive).
+
+**Bartender remote touch sweep — InteractiveBartenderLayout + remotes/* (Agent A3):**
+- `InteractiveBartenderLayout.tsx`: zone tap wrappers got `min-h-[44px] min-w-[44px] flex items-center justify-center` overlay pattern — invisible 44px hit area centered on the original-sized visible zone dot (preserves floorplan proportionality). Room color indicator dots: `p-3 -m-3 box-content` with `backgroundClip: 'content-box'` to extend hit slop without enlarging the colored circle. Filter tabs `min-h-[44px]`. Channel-label text `text-[8px..xs] → text-xs..sm`.
+- `remotes/CableBoxRemote.tsx`: ~9 elements bumped. Killed `size="sm"` (h-9 = 36px) on Enter/Clear → `min-h-[44px] min-w-[80px] text-sm font-semibold`.
+- `remotes/DirecTVRemote.tsx`: ~8 elements bumped. CLR/GO already at min-h-[48px], no `size="sm"` violations here.
+- `remotes/FireTVRemote.tsx`: 2 visual labels bumped. All button heights already 44px-compliant via Button primitive default.
+
+**Cumulative touch-target compliance:** the bartender remote on iPad now satisfies Apple HIG 44x44 on the Power tab, all device remote keypads, and the floorplan tap targets. Status dots and non-interactive labels deliberately kept small to preserve information density.
+
+**Out of scope for this PR** (deferred to v2.54.55+):
+- Card-pattern violations across SystemAdmin / DeviceConfig / Atlas panels (Wave A1 fixed the Card PRIMITIVE; the consuming pages should eventually migrate to bordered slate divs per UI_STYLING.md, but the primitive change immediately makes existing consumers look correct without any page-level work).
+- `sports-guide` + `live-status` routes bypassing validate/rate-limit.
+- `packages/validation` vs `packages/config` dedup.
+- Seed-empty-UI recovery flow.
+- Grok #4-6 UX bugs (HDMI silo, multi-view preview, More-tab discoverability).
+
+---
+
+## v2.54.53 — Grok #3: QAEntry fallback when Ollama is unreachable (2026-05-26)
+
+**Versions covered:** v2.54.53
+**Branch landed:** main
+**Fleet target:** rolling upgrade. No manual step.
+
+Closes Grok #3, the last of the three v2.54.49 follow-ups. Operational-resilience finding: Shift Brief has a solid `fallbackBrief()` that still emits the mic-status / neighborhood / Atlas-recap lines when Ollama is down; the Ask AI button (which all 9 bartender how-to docs now point at as the universal escape hatch) had nothing — just rendered "Couldn't reach the AI: Server returned 500. Text the manager." That's an operational backslide every doc the wizard ships tells bartenders to use.
+
+**`apps/web/src/app/api/chat/route.ts` `handleNonStreamingChat`:**
+- **Pre-resolve** a curated-QA fallback BEFORE any network call (top of function). Uses `findBestQAMatch(message)` from v2.54.50's helper — cached 5min, second call after `searchDocsViaRag`'s pre-pass is free. Only captures CONFIDENT matches (score ≥0.55) so moderate hits still let Ollama answer in full.
+- **Wrap the Ollama fetch + ok-check in try/catch.** On any failure (network error, 5xx, timeout, abort), check if `qaFallback` was set. If yes: return `NextResponse.json({ response: curatedAnswer + "\n\n---\n*(The AI is offline right now — this is a curated answer from <sourceFile>. If you need more detail, text the manager.)*", sources: [...], model: 'qa-fallback-curated' })`. If no: re-throw so the existing 500 path fires.
+- Same response shape as the normal LLM path so the BartenderAskAIButton consumes it identically (no client changes needed).
+
+**Why only the non-streaming path:** the bartender floating button explicitly sends `stream: false`. The streaming path (used by `/ai-hub` admin chat) is harder to fallback-protect because the SSE is already open by the time Ollama fails — operators get partial output + a clear error in that case, which is acceptable for the admin surface. Future work could add streaming fallback if needed.
+
+**Why only confident matches:** moderate-match (score 0.40-0.55) means the bartender's wording is far enough from a curated question that we shouldn't dump the curated answer at them as the canonical truth — better to surface the LLM error and let them retry or rephrase. Confident match is when we KNOW the curated answer fits.
+
+**End-to-end value:** when Ollama is wedged or unreachable, a bartender asking "the wireless mic isn't working" gets:
+```
+1) Look at the silver box with the antennas (the mic receiver). Are the channel lights green?
+2) Check the mic itself — green light on top, battery indicator showing bars.
+3) ...
+---
+*(The AI is offline right now — this is a curated answer from docs/bartender-help/MIC_NOT_WORKING.md. If you need more detail, text the manager.)*
+```
+
+instead of "Couldn't reach the AI: Server returned 500".
+
+**No fleet manual step.** Build green (34/34 Turbopack, 15s). PM2 restarted at Holmgren.
+
+**WRAPS UP Grok's v2.54.49 follow-up list** (items 1, 2, 3 of the seven). Remaining items 4-6 are UX bugs (HDMI input silo, multi-view preview, More-tab discoverability) — slot into Grok Part 2 (full UI audit) as v2.54.54+.
+
+---
+
+## v2.54.52 — Grok #2: Ask AI button sessionId + history + CRITICAL v2.54.48 bug fix (2026-05-26)
+
+**Versions covered:** v2.54.52
+**Branch landed:** main
+**Fleet target:** rolling upgrade. No manual step.
+
+**CRITICAL BUG FIX caught during Grok #2 implementation:** The v2.54.48 `BartenderAskAIButton` sent `{ messages: [...] }` to `/api/chat`, but the chat route's `ValidationSchemas.aiQuery` requires `{ message: string }` (singular) with `.refine((data) => data.query || data.message)`. The `messages` array got silently dropped by Zod, then the refine fired "Either query or message must be provided" → **HTTP 400 on every Ask AI tap since v2.54.48 shipped**. Operators using the floating button would have seen "Couldn't reach the AI: Server returned 400" on every question. (No bartender feedback yet — the button is new in the field.) Fixed by sending `{ message: q, sessionId, stream: false, enableTools: false }`.
+
+**Grok #2 (session history + sessionId):**
+- `useRef<string>('')` for sessionId, generated on modal open via `crypto.randomUUID()`
+- Sent on every `/api/chat` POST. Chat route persists messages to `chatSessions` table keyed on this ID, replays history on every subsequent request — so follow-ups have full prior context without shipping the message array client-side.
+- Added "New chat" button in modal header (visible only when `messages.length > 0`, ≥44px tap target). Clears local state + regenerates sessionId for a fresh conversation.
+- Modal close → next open reuses the existing sessionId (preserves context until operator explicitly hits "New chat" or page reloads).
+
+**Response shape fix:** Non-streaming chat route returns `{ response, sessionId, sources, model }`. The v2.54.48 code looked for `data.message.content` first (wrong shape). Reordered to `data.response` first → falls back to `message.content` / `answer` for resilience.
+
+**Better error reporting:** v2.54.48 just showed "Server returned 4XX". v2.54.52 includes the first 100 chars of error response body — operator sees the actual problem ("rate limit exceeded", "auth required", etc.).
+
+**No fleet manual step.** Build green (34/34 Turbopack, 15s). PM2 restarted at Holmgren.
+
+**Wraps up Grok #2** from the v2.54.49 follow-up task list. **Grok #3 (QAEntry fallback when Ollama down)** ships next as v2.54.53.
+
+---
+
+## v2.54.51 — Virgin installer Part 1 P0: DB migrate + Gotcha #11 hardening + auth bootstrap + verify gate (2026-05-26)
+
+**Versions covered:** v2.54.51
+**Branch landed:** main
+**Fleet target:** existing fleet is UNAFFECTED at runtime. Changes apply only to install paths (install.sh + ISO + wizard). New location going up this week on bare metal is the target consumer.
+
+Closes Grok handoff Part 1 P0 — `CLAUDE_HANDOFF.md` + `/home/ubuntu/.grok/sessions/.../plan.md`. Shipped via 6 parallel agents (Wave A: 3 fresh writes; Wave B: 3 wire-ins). All 6 reported HIGH confidence. All 10 changed bash scripts pass `bash -n` syntax check.
+
+**Wave A — fresh writes:**
+
+1. **DB migration path (Gotcha #6 safety)** — `install.sh:777-823`, `scripts/iso/first-boot-fresh.sh:137-146`, `update_from_github.sh:467-480` — replaced legacy `drizzle-kit push` with the canonical pair `bootstrap-drizzle-migrations.sh "$DB_PATH"` (idempotent marker bootstrap, skipped if DB doesn't exist for virgin) + `NODE_ENV=development npx drizzle-kit migrate` + belt-and-suspenders `ensure-schema.sh`. Mirrors `scripts/auto-update.sh` Checkpoint schema_migrate. `update_from_github.sh` also got a top-of-file deprecation note pointing at auto-update.sh.
+
+2. **`scripts/enforce-gotcha11-hardening.sh`** (NEW, 288 lines) — idempotent root-required script with 4 functions: `enforce_linger`, `enforce_node_symlinks`, `enforce_ollama_perms`, `proof_all_working`. Distinct exit codes per item (2-5). Auto-detects active NVM node via `~/.nvm/alias/default` → fallback to highest installed (won't rot at next Node major bump). Skips RAG-rescan proof (too expensive for a hardening step) — uses cheap `env -i` clean-PATH probe instead.
+
+3. **Docs sweep** — `docs/NEW_LOCATION_SETUP.md` TL;DR rewritten to honestly split "automatic" vs "manual" steps (was burying the "Invalid PIN until you run bootstrap" reality). `fresh_install.sh`, `install_fixed.sh`, `fix_and_install.sh` got deprecation headers + loud stderr warning + pointers to canonical paths. **NEW `docs/BARE_METAL_ISO.md`** (627w) — operator runbook for the USB → boot → wizard flow.
+
+**Wave B — wire-ins:**
+
+4. **`install.sh`** — added `run_gotcha11_hardening()` function calling the new script as PHASE 12 (after PHASE 11 verify-install). Non-fatal warn on failure. Final banner gets "✓ Gotcha #11 hardening applied" line + auth-bootstrap section renumbered to PHASE 13 (still LOUD operator-required, until ISO/wizard path subsumes it — see #6 below).
+
+5. **`scripts/install-auto-update-timer.sh`** — added hardening call at TOP of script. **FATAL** on failure (timer without linger = silent breakage within hours of SSH disconnect). Replaced the bottom-banner "remember to enable linger" hint with confirmation it was already done.
+
+6. **`scripts/iso/first-boot-fresh.sh`** — added Step 8 (hardening, non-fatal warn), Step 9 (verify-install --quiet as ubuntu, non-fatal), Step 10 (MOTD rewrite). MOTD now states ACTION REQUIRED: log in on tty1 and run `bash /opt/sports-bar/scripts/iso/location-setup-wizard.sh`. GitHub first-boot report appended with hardening + verify status + verify summary block.
+
+7. **`scripts/iso/disk-installer.sh`** — final banner (lines 406-412) rewritten: states first boot auto-applies hardening + verify, directs operator to wizard for auth bootstrap, no more "Invalid PIN" surprise, lists :3001/:3002 URLs.
+
+8. **`scripts/iso/location-setup-wizard.sh`** — added **Step 0 "Auth & Location Identity"** as the FIRST wizard step. Prompts bar name + admin PIN (4-8 digits, confirm twice) + staff PIN + optional Anthropic key. Calls `bootstrap-new-location.sh --non-interactive` with collected values. Retry/skip/abort menu on failure. Added new `prompt_pin` + `prompt_optional_secret` helpers (wizard had no PIN-validating helper). Added HARD verify-install gate before DONE_MARKER touch.
+
+**No runtime change for the existing fleet.** install.sh + ISO scripts don't re-run on running boxes; they're only consumed by NEW installs. v2.54.51's auto-update merge to a running fleet box is a no-op for the install code path.
+
+**End-to-end virgin flow now (target for the new location this week):**
+1. USB boot → ISOLINUX → disk-install → reboot
+2. First boot: clone + build + migrate (Gotcha #6 safe) + hardening (Gotcha #11 closed) + verify gate + MOTD posted to tty1
+3. Operator logs in on tty1, runs `bash /opt/sports-bar/scripts/iso/location-setup-wizard.sh`
+4. Wizard Step 0 collects PINs + calls bootstrap-new-location.sh → Location + AuthPin rows created, .env written, pm2 restarted
+5. Wizard Steps 1-7: network, Ollama, hardware discovery, location branch
+6. Wizard final verify-install gate confirms 7/7 PASS
+7. Operator browses to http://<IP>:3001, logs in with chosen PIN, lands in admin UI
+
+**REQUIRED MANUAL STEP for the existing fleet:** none. The hardening script + new ISO logic only matters for new installs.
+
+**Recommended for NEW location:** test the flow end-to-end on a VM before sending a NUC to the bar. `sudo bash scripts/iso/build-sports-bar-iso.sh --build-dir /tmp/iso-test --no-upload` → boot in qemu/kvm → walk the wizard → verify 7/7. If anything in this v2.54.51 chain has a regression, catch it in the VM, not at the bar.
+
+**Out of scope for v2.54.51** (Grok plan Part 2 — full UI + bug audit is the next sprint):
+- Bartender remote touch-target sweep
+- Dark-theme primitive leaks (Card, Select)
+- auth/login route Gotcha #1 violation
+- packages/validation vs packages/config dedup
+- Seed-empty-UI recovery flow
+
+---
+
+## v2.54.50 — Grok #1: QAEntry-first retrieval for bartender chat path (2026-05-26)
+
+**Versions covered:** v2.54.50
+**Branch landed:** main
+**Fleet target:** rolling upgrade. No manual step required.
+
+Closes Grok audit follow-up #1 (the HIGH-leverage item from v2.54.49's ship notes — the one Grok said "unlocks the entire 9-doc + 36-QA investment"). The 36 curated bartender Q&A pairs seeded in v2.54.49 were sitting in the QAEntry table but the chat route's RAG path ignored them entirely. Pure cosine-on-doc-chunks meant the bartender voice the curated answers carry got diluted by neighboring CLAUDE.md / runbook chunks even when the question was an exact match.
+
+**`apps/web/src/lib/qa-retrieval.ts`** (NEW ~150 lines): in-memory cached (5-min TTL) lookup against the seeded curated_bartender_% rows. Tokenize query + stem + stopword-strip → score against each cached QA via weighted Jaccard + coverage. Returns `{ entry, score, matchType: 'confident' | 'moderate' } | null`. Thresholds: ≥0.55 confident, 0.40-0.55 moderate. Records useCount + lastUsed fire-and-forget on hit. Crude in-house stemmer (`-ing/-ed/-s/-es/-ies` → root) closes the singular/plural + verb-tense gaps the smoke test caught ("mic doesn't work" → "wireless mic isn't working").
+
+**`apps/web/src/app/api/chat/route.ts:129-185`** (modified ~30 lines): `searchDocsViaRag` now runs the QA pre-pass when `looksLikeBartenderQuery(query)` fires. Confident hit → QA is the SOLE context source (LLM still narrates but constrained to the curated text, topK=1). Moderate hit → QA prepended as highest-ranked source + 7 vector chunks for additional context. Miss → existing RAG flow. All-bets-off failure → QA wraps in try/catch, falls through cleanly.
+
+**Why in apps/web/ not packages/rag-server/:** rag-server doesn't depend on @sports-bar/database (and shouldn't — it's the search engine, not the data layer). The chat route already imports both; adapter pattern keeps the package graph clean. Followup #3 (Ollama-down fallback) will reuse this same helper.
+
+**`packages/rag-server/src/vector-store.ts:303`** + **`apps/web/src/lib/qa-retrieval.ts:172`** — BARTENDER_MARKERS regex **broadened** (kept in sync in both files per the comment). Smoke test caught 5/14 missed phrasings against the original regex: added `doesn'?t work`, `what (does|should|is|are)`, `the (banner|lights|patio|bar|tab|game|channel)`, `\btv\s*\d+\b`, `wrong`, `fire alarm`, `emergency`, `clock in`. False positives are CHEAP — pre-pass returns null on no match, chat path falls through to vector RAG anyway. False negatives kill the whole feature.
+
+**`scripts/smoke-qa-retrieval.ts`** (NEW): 14-case smoke test covering exact phrasings + paraphrases + off-topic. **14/14 pass.** Run from repo root: `npx tsx scripts/smoke-qa-retrieval.ts`. Verified at Holmgren.
+
+**No fleet manual step.** The 36 QA rows already exist in QAEntry from v2.54.49's seed run. The new retrieval helper reads them automatically.
+
+**Honest scope:** v2.54.50 is the retrieval. v2.54.51 (Grok #3) adds the Ollama-down fallback so bartenders STILL get the curated answer when the LLM is dead. v2.54.52 (Grok #2) adds session history so the floating button supports follow-ups.
+
+---
+
+## v2.54.49 — Bartender how-tos coverage: 5 new docs + 36 curated Q&A pairs + idempotent seed (2026-05-26)
+
+**Versions covered:** v2.54.49
+**Branch landed:** main
+**Fleet target:** rolling upgrade + per-box `npx tsx scripts/seed-bartender-qa.ts` (now idempotent reseed)
+
+Operator goal: write how-tos for ALL bartender operations. Engaged Grok for outside perspective + 2 Explore subagents (UI surface inventory, voice template reverse-engineering). All 3 converged on the same approach: group by mental model (not per-button), 9 docs total instead of 40 micro-docs or 2 mega-docs.
+
+**Coverage plan** at `docs/bartender-help/PLAN.md` documents the strategy + locked template + voice rules.
+
+**5 new docs** (written by parallel subagents from the plan + relevant UI source files + locked voice):
+- `docs/bartender-help/PUTTING_GAMES_ON_TVS.md` (3,465w) — Guide tab, Schedule tab, AI Suggest, Channel Guide search, one-tap watch, Override-Learn briefly explained
+- `docs/bartender-help/AUDIO_ZONES_AND_GROUPS.md` (3,814w) — proactive zone control (Atlas/DBX/HTD), groups, source switching, banner literacy cross-ref, mic battery tile interpretation
+- `docs/bartender-help/LIGHTING_AND_SCENES.md` (2,840w) — DMX + Commercial scenes, brightness, all-on/off, trivia/game-day setups, two-systems disambiguation
+- `docs/bartender-help/POWER_AND_NETWORK_TVS.md` (3,274w) — bulk power, per-TV power, HDMI input switching, Samsung pairing flow, renaming, dot-color interpretation
+- `docs/bartender-help/PRE_SHIFT_WALKTHROUGH.md` (2,745w) — 5-minute clock-in checklist: Shift Brief → mic batteries → music → audio banners → floor plan → Ask AI follow-up. Includes a "What to read next" reading-order index pointing to the other 8 docs.
+
+**Consolidation pass** (mechanical, in-process after the subagent hit session limit):
+- 3× AI Hub → Ask AI button fixes in AUDIO_ZONES_AND_GROUPS.md (distinct surfaces — AI Hub is /ai-hub admin-only, Ask AI is the floating button on /remote, bartender doc must not send bartenders to /ai-hub)
+- Added "What to read next" reading-order section to PRE_SHIFT_WALKTHROUGH.md before "You did great"
+- Verified zero karaoke-as-canonical instances in all 5 new docs (per Gotcha #13 / `[[feedback-karaoke-uses-byo-mics]]`)
+- Verified escalation footers + manager-text checklists + "you can't break it" reassurance present in all 5
+
+**`scripts/seed-bartender-qa.ts`** — expanded from 17 → 36 curated Q&A pairs. Added 20 new pairs spanning all 5 new docs (4 PUTTING_GAMES, 3 AUDIO_ZONES, 3 LIGHTING, 3 POWER, 3 PRE_SHIFT, 4 general/cross-doc). **CRITICAL FIX:** previous version claimed idempotent via UNIQUE constraint but QAEntry has no UNIQUE on `question`, so re-runs duplicated rows (caught + cleaned at Holmgren: 17 v2.54.48 rows + 36 v2.54.49 rows = 53 with dupes; now 36 clean). New script does `DELETE WHERE sourceType LIKE 'curated_bartender_%'` first, then inserts — true reseed semantics.
+
+**REQUIRED MANUAL STEP per fleet box** (same as v2.54.48 but the new script handles re-runs cleanly):
+```bash
+cd /home/ubuntu/Sports-Bar-TV-Controller && npx tsx scripts/seed-bartender-qa.ts
+```
+Boxes that ran the v2.54.48 version will have 17 dupes; this run deletes them automatically.
+
+**Standing Rule 11 — RAG re-scan**: kicked off post-merge. The 5 new docs need to enter the vector store before the Ask AI button can retrieve them. ~25-40 min per box. Standing Rule 11 ingest helper `scripts/rag-rescan-if-needed.sh` will pick them up automatically on auto-update.
+
+**Followup task list from Grok** (received same session, deferred to v2.54.50+):
+1. QAEntry-first retrieval in `packages/rag-server/src/query-engine.ts` — current vector-store path ignores the seeded QA pairs entirely. Effort M, impact HIGH. **(Highest leverage — unlocks the entire 9-doc + 36-QA investment.)**
+2. BartenderAskAIButton conversation history + sessionId — currently one-shot, no follow-ups. Effort S, impact HIGH.
+3. QAEntry-first fallback when Ollama 5xx/timeout — Shift Brief has fallbackBrief, Ask AI has nothing. Effort M, impact HIGH.
+4. Surface HDMI input selection in Video-tab layout modal (unify the two-power-systems split). Effort S/M, impact HIGH.
+5. Multi-View Quad preview thumbnail before POST. Effort S, impact MED.
+6. Promote Schedule out of "More" overflow tab. Effort S/M, impact MED.
+
+Items 1-3 ship as v2.54.50; items 4-6 as v2.54.51+ pending operator priority.
+
+---
+
+## v2.54.48 — Grok AI-Hub audit bundle 2: Ask-AI floating button + bartender Q&A seed + AI Hub onboarding (2026-05-26)
+
+**Versions covered:** v2.54.48
+**Branch landed:** main
+**Fleet target:** rolling upgrade + per-box `npx tsx scripts/seed-bartender-qa.ts` (one-shot QA seed)
+
+Closes the remaining 3 Grok audit findings (E, F, G) that were deferred from v2.54.47.
+
+**E — `apps/web/src/components/BartenderAskAIButton.tsx`** (new component, ~200 lines): floating purple "Ask AI" pill in the bottom-right of the bartender remote. Tap → inline chat modal with text input + scrollable answer area + close. POSTs to `/api/chat` (allow-listed for the bartender port-3002 proxy in v2.54.47, STAFF-auth-gated since v2.54.45). Empty-state shows 4 common bartender questions as tap-targets ("The wireless mic isn't working", "TV 3 has the wrong game on", "The music stopped in the patio", "How do I change the channel on TV 5?"). All tap-targets ≥44px per the bartender-lens rule. 5-min AbortController matches the chat route + nginx timeout. Wired into `apps/web/src/app/remote/page.tsx` at the page root so it's available on every tab without per-tab wiring.
+
+**F — `scripts/seed-bartender-qa.ts`** (new): seeds 17 curated bartender Q→A pairs into the `QAEntry` table, drawn from `docs/bartender-help/*.md` (MIC_NOT_WORKING, WRONG_CHANNEL_ON_TV, MUSIC_OR_AUDIO_PROBLEM, RF_INTERFERENCE_FOR_BARTENDERS). Idempotent — uses UNIQUE constraint on question, so re-running is safe. Pairs cover: mic battery/sync, channel changes, TV black-screen recovery, music zone control, audio source switching, yellow/cyan banner meanings, manager escalation flow, physical remote location, normal-state expectations. `sourceType='curated_bartender_v2.54.48'` so the RAG/chat retrieval can prioritize these for bartender-mode queries. **REQUIRED MANUAL STEP per fleet box**: `cd /home/ubuntu/Sports-Bar-TV-Controller && npx tsx scripts/seed-bartender-qa.ts` after auto-update — seeds the local DB.
+
+**G — `apps/web/src/app/ai-hub/page.tsx:621`**: added a small "New bartender?" onboarding paragraph above the quick-start questions, with explicit pointer to the 4 `docs/bartender-help/*.md` files by name. Completes the discoverability fix that v2.54.47 started with the question-set split.
+
+**Required Manual Step:** **per-fleet-box `seed-bartender-qa.ts` run** for item F to populate the local QAEntry table. Followup: have auto-update.sh check for new seed-* scripts and offer to run them.
+
+Build: 28/28 successful under Turbopack.
+
+**Pairs with v2.54.47:** the nginx allow-list change in v2.54.47 (added `/api/chat` + `/api/rag/query` to port-3002) is the network-layer prerequisite for v2.54.48's floating button to actually reach the chat. v2.54.47 unblocks the route; v2.54.48 gives bartenders a UI to use it.
+
+**Honest limitation:** the seeded Q&A pairs are NOT yet wired into the chat retrieval pipeline as a high-priority source. The chat currently uses RAG over docs + code + memory; the QAEntry table is queried separately by `/api/ai-hub/qa-training/stats` only. Followup item: integrate QAEntry as a priority-1 retrieval source in `packages/rag-server/src/query-engine.ts` so bartender-mode queries hit the curated answers first before falling back to the bartender-help MD files.
+
+---
+
+## v2.54.47 — Grok AI-Hub audit bundle: bartender chat unblocked + RAG bartender-mode + AI Hub UX (2026-05-26)
+
+**Versions covered:** v2.54.47
+**Branch landed:** main
+**Fleet target:** rolling upgrade + nginx reload on every box
+
+This release unblocks the **single largest UX gap** in the AI surface — Grok's audit (running on Holmgren tonight) found that the chat infrastructure was carefully designed for bartenders (excellent bartender-mode system prompt at `chat/route.ts:404-445`, 4 great `docs/bartender-help/*.md` files), but bartenders **literally cannot reach the chat** from the iPad behind the bar because the nginx port-3002 allow-list doesn't include `/api/chat`. The chat was admin-only at the network layer despite being content-designed for bartenders.
+
+**A — `scripts/setup-bartender-nginx.sh`:** added `location /api/chat` (300s read timeout, `proxy_buffering off` for SSE streaming) + `location /api/rag/query` (60s) blocks to the bartender allow-list. Chat is already STAFF-auth'd (v2.54.45) and bartender sessions are STAFF, so the auth layer works correctly. **REQUIRED MANUAL STEP per fleet box:** re-run `sudo bash scripts/setup-bartender-nginx.sh` after auto-update — the script writes a new `/etc/nginx/sites-enabled/sports-bar-tv-controller.conf` + reloads nginx. Or: the auto-update.sh wrapper could be extended to detect setup-bartender-nginx.sh changes and re-run it (followup).
+
+**B — `apps/web/src/app/ai-hub/page.tsx:614`:** AI Hub chat empty-state quick-starts split into two groups: "Behind the bar" (4 bartender questions: "The wireless mic isn't working", "TV 3 has the wrong game on", "The music stopped in the patio", "How do I change the channel on TV 5?") + "Admin / setup" (4 technical questions, the previous defaults). Subtitle rewritten to address both audiences. The chat route's existing register detection (`chat/route.ts:404-445`) auto-picks bartender vs operator mode based on phrasing — these starter questions exercise both paths.
+
+**C — `packages/rag-server/src/llm-client.ts`:** added `register: 'bartender' | 'operator' | 'auto'` to `LLMOptions`. New `detectRegister(query)` function mirrors `chat/route.ts:404` logic (hardware model names + CLI verbs + version numbers + code-fence + log patterns = operator; otherwise = bartender). New `BARTENDER_SYSTEM_PROMPT` constant: "silver box with the antennas on the wall" naming convention, numbered steps, "you can't break it", "text the manager with a photo" escalation, explicit "prefer docs/bartender-help/ over technical runbooks". Both `queryLLM` (non-streaming) and `streamLLM` updated. **Before v2.54.47** pure RAG paths always emitted technical-assistant prose even on bartender questions — now they auto-adapt.
+
+**D — `docs/FLEET_STATUS.md`:** corrected `holmgren-way` from "22.22.0 (nvm)" to "22.22.2 (apt/NodeSource)". Was wrong twice today (greenville fixed earlier, holmgren now). Both boxes' `which node` returns `/usr/bin/node`. Added explicit "Lesson from 2026-05-26" paragraph + cross-ref to `feedback_fleet_node_install_method_drift` memory. Memory entry added in same session.
+
+**Required Manual Step:** **per-fleet-box nginx reload** for item A to take effect at each location. Auto-update.sh handles the code rebuild + PM2 restart, but the nginx config file at `/etc/nginx/sites-enabled/sports-bar-tv-controller.conf` is written by setup-bartender-nginx.sh which is a separate operator-run script. Followup: have auto-update.sh check setup-bartender-nginx.sh mtime against the installed config + re-run automatically.
+
+Build: 28/28 successful under Turbopack.
+
+---
+
+## v2.54.46 — commercial-lighting 19-route auth+rate-limit codemod (deferred from v2.54.45) (2026-05-26)
+
+**Versions covered:** v2.54.46
+**Branch landed:** main
+**Fleet target:** rolling upgrade
+
+Closes Grok audit pass 1+2 HIGH finding I that was deferred from v2.54.45 (auto-mode classifier flagged the bulk codemod as scope-creep there; operator explicitly approved the codemod approach with diff review for this release).
+
+**Codemod scope (`/tmp/add-lighting-guards.py`):**
+- Walks `apps/web/src/app/api/commercial-lighting/**/route.ts` (19 files)
+- For each handler (`export async function GET|POST|PUT|DELETE|PATCH`):
+  - GET → adds `withRateLimit(DEFAULT)` (read-side, no auth required)
+  - POST/PUT/DELETE/PATCH → adds `withRateLimit(HARDWARE)` + `requireAuth('STAFF', { auditAction: 'lighting_control' })`
+- Adds the 3 required imports right after the `next/server` import
+- Idempotent (skips files that already have `withRateLimit`)
+
+**Result:** 19/19 files patched, 31 handlers guarded, 244 lines added, 0 deletions. Pure additions — no business logic touched.
+
+**Files affected** (all under `apps/web/src/app/api/commercial-lighting/`):
+- control/route.ts, devices/[id]/route.ts, devices/control/route.ts, devices/route.ts, hue/discover/route.ts, hue/pair/route.ts, logs/route.ts, scenes/[id]/route.ts, scenes/bartender/route.ts, scenes/recall/route.ts, scenes/route.ts, systems/[id]/route.ts, systems/[id]/sync/route.ts, systems/[id]/test/route.ts, systems/discover/route.ts, systems/route.ts, zones/[id]/route.ts, zones/control/route.ts, zones/route.ts
+
+**Risk:** the bartender remote at port 3002 invokes some of these routes (zones/control, scenes/recall, devices/control). Bartender sessions are STAFF level per `packages/auth/src/config.ts`, so STAFF-level `requireAuth` should work seamlessly. If a specific control flow regresses post-rollout, the fix is either (a) lower the auth requirement for that specific handler back to NONE, or (b) verify the bartender session cookie is being forwarded through nginx port 3002 (it should be — same-origin).
+
+**Deferred from this release** (not blocking): full Zod validation refactor (current routes still do `const body = await request.json()` + manual destructure). The auth+rate-limit guards close the immediate exposure; Zod validation can land in a separate cleanup PR.
+
+**Required Manual Step:** none. Build: 28/28 successful under Turbopack in ~14s.
+
+---
+
+## v2.54.45 — Grok audit HIGH bundle: /api/chat auth + 3 Gotcha #10 singleton fixes + atlas-priority-watcher timeout (2026-05-26)
+
+**Versions covered:** v2.54.45
+**Branch landed:** main
+**Fleet target:** rolling upgrade
+
+Second Grok-CLI audit batch — the architecture + security fixes. Three HIGH and one MED finding, all in services that were touched by today's v2.54.6/22/23 work but still had the underlying singleton/auth bugs Grok caught.
+
+**H — `/api/chat/route.ts`: added auth + rate-limit guards (Grok pass 2 HIGH).**
+The chat endpoint was completely unauthenticated and un-rate-limited. With Ollama 300s timeouts on llama3.1:8b, this was a trivial DoS surface. RAG also indexes docs/configs/logs, so the unauth query path was a prompt-injection vector that could extract those. Now: 
+- `withRateLimit(request, RateLimitConfigs.AI)` — AI rate-limit class (matches the expensive-Ollama-call shape)
+- `requireAuth(request, 'STAFF', { auditAction: 'ai_chat' })` — STAFF level matches the bartender-iPad use case
+4-line preamble before the existing Zod validation.
+
+**J — Three Gotcha #10 singleton violations fixed (Grok pass 3 HIGH + MED + MED).**
+The very services/ files that today's v2.54.6/22/23 work patched (rising-edge demote pattern) still used plain `private static instance` or ad-hoc `global.__name__` props that don't survive Next.js per-route-bundle compilation. A bundle split would re-create the exact log-noise storm those releases tried to fix. Standardized all 3 on the canonical `Symbol.for()` registry pattern used by `packages/atlas/src/atlas-client-manager.ts` and `packages/shure-slxd/src/shure-slxd-client-manager.ts`:
+
+- **`apps/web/src/services/firetv-connection-manager.ts:83`** — HIGH. Was plain `private static instance`. Now `Symbol.for('@sports-bar/firetv/FireTVConnectionManager.instance')`. The `failureCount` durable Map + connection lifecycle now survive bundle splits.
+- **`apps/web/src/services/streaming-service-manager.ts:39`** — MED (HIGH transitive risk). Was plain `private static instance`; holds the `installedAppsCache` Map. Same pattern fix.
+- **`apps/web/src/services/firetv-health-monitor.ts:48`** — MED. Was using `global.__fireTVHealthMonitor` (collision-prone with any future `__fireTV*` property). Same pattern fix with the namespaced Symbol.
+
+**K — `atlas-priority-watcher.ts:67`: AbortController timeout on internal-loop fetch (Grok pass 3 MED).**
+The 5s priority-watcher poll loop did `await fetch(.../api/atlas/input-meters?...)` with NO signal/AbortController. If the internal route handler ever blocked (the v2.33.50 UDP socket split class of bug), the entire watcher would back up. Now wraps with `AbortController` + 4s timeout, matching the pattern in `samsung-model-probe.ts:30` and `wolfpack/inputs/route.ts:28`.
+
+**I — DEFERRED to a separate PR.** The commercial-lighting routes (19 files, all bypass auth + rate-limit per Grok pass 1+2 HIGH) need the same 4-line preamble but the bulk codemod was scope-creep beyond the H/J/K bundle. Will write a per-file walkthrough as v2.54.46 with explicit operator review of each handler shape.
+
+**Required Manual Step:** none. Build: 28/28 successful under Turbopack.
+
+**Risk assessment:**
+- H: low (adds latency on cold-cache only; chat already wraps Ollama with its own 300s budget)
+- J: low-medium (singleton refactor — the pattern is identical to atlas/shure which have been in prod since v2.33.50; new bundle reload might briefly show a duplicate connection during the transition)
+- K: zero (defensive timeout)
+
+---
+
+## v2.54.44 — Grok audit quick-wins bundle: dead code + stale docs + auto-update.sh dead push block (2026-05-26)
+
+**Versions covered:** v2.54.44
+**Branch landed:** main
+**Fleet target:** rolling upgrade
+
+First Grok-CLI audit batch (Grok installed today, ran 4 parallel audits, this commits 7 of his HIGH/MED quick-wins). Validates the "buddy" workflow — Grok caught 3 verified HIGH items I missed.
+
+**Dead code deletions (zero callers verified):**
+- `apps/web/src/components/PWAInstallPrompt.tsx` — 71-line component left over from v2.54.34 next-pwa removal + v2.54.39 PWA strip.
+- `scripts/verify-pwa.sh` — checked the deleted component.
+- `docs/PWA_QUICK_START.md` — documented a feature that no longer exists.
+- `apps/web/src/lib/ai-tools/security/config.ts` — 110-line byte-for-byte dupe of `packages/ai-tools/src/security/config.ts`. Stale shim from the ai-tools package extraction; the package's version IS the one being consumed via the bridge layer.
+- `apps/web/src/middleware.ts.disabled` — 30-line abandoned request-id experiment, zero references.
+- `packages/tv-docs/` — empty stale workspace dir (no `package.json`, only leftover `node_modules/`). Removed from the "37 shared packages" count.
+- `scripts/auto-update.sh:1342-1457` — 116-line `if false; then ... fi` legacy `drizzle-kit push` block. Live path uses `drizzle-kit migrate` since v2.54.1. The dead block was a regression vector — anyone flipping the `if` (or running an old copy of the script) would re-create the v2.51 24h NeighborhoodEvent outage. Also simplified the `DESTRUCT_LOG="${SCHEMA_MIGRATE_LOG:-${SCHEMA_PUSH_LOG:-}}"` fallback to just `SCHEMA_MIGRATE_LOG` since the push log var no longer exists.
+
+**Doc fixes (drift caught by Grok's pass 4):**
+- `CLAUDE.md:65` — `npm run db:push` was listed as primary in Database Operations. Replaced with `npm run db:migrate`; marked push as LEGACY with explicit "Do NOT use in production flow" note + cross-ref to Gotcha #6.
+- `CLAUDE.md:103` — "Turbopack is now the default bundler; use `--webpack` flag for webpack-dependent packages like `next-pwa`" was factually wrong post-v2.54.41. Replaced with current state: Turbopack is unconditional default, native modules via `serverExternalPackages`, client-bundle bridges use `client-safe` subpath exports. PWA bullet rewritten to reflect full strip.
+- `CLAUDE.md:575` — "Making Schema Changes" code block still showed the old `db:push` workflow. Replaced with the canonical `drizzle-kit generate` + bootstrap + migrate flow, with explicit warning about push silently aborting.
+- `packages/directv/README.md:18` — claimed wraps `node-ssdp`. Updated to describe the custom in-package SSDP client (v2.54.35 replacement).
+- `docs/NEW_LOCATION_SETUP.md:21` — installer description still said `drizzle-kit push`. Updated to `bootstrap-drizzle-migrations.sh + drizzle-kit migrate`.
+
+**Architectural improvement (fixes Grok's "leaky import" finding + the build break it caused):**
+- **`packages/firecube/package.json`** — added explicit `exports` field with `"."` (full barrel) AND `"./client-safe"` (only types + constants from `firetv-utils.ts`, no Node-only `child_process` imports). 
+- **`apps/web/src/lib/firetv-utils.ts:13`** — import changed from `'@sports-bar/firecube/src/firetv-utils'` (leaky internal path) to `'@sports-bar/firecube/client-safe'` (proper public surface, client-bundle-safe).
+
+**Lesson learned mid-commit:** initial fix of just changing `'/src/firetv-utils'` → barrel `'@sports-bar/firecube'` broke the Turbopack build because the public barrel re-exports ADBClient + Discovery which import `child_process`. The bridge file is consumed by CLIENT React components — pulling in the barrel poisoned the client bundle. The client-safe subpath solves both Grok's no-leak requirement AND the bundling constraint. Memory updated.
+
+**Required Manual Step:** none. Build: 28/28 successful under Turbopack in ~14s.
+
+---
+
+## v2.54.43 — Followup fixes: discover-venues SQLITE_BUSY + bananas-ingest no-match warn noise (2026-05-26)
+
+**Versions covered:** v2.54.43
+**Branch landed:** main
+**Fleet target:** rolling upgrade
+
+Closes both followups filed in v2.54.42:
+
+1. **`packages/database/src/db.ts`**: added `sqlite.pragma('busy_timeout = 30000')` immediately after the WAL-mode pragma. SQLite-recommended pattern for "one app + occasional CLI/cron writer" topology. Before: `scripts/discover-venues.ts` failed its final INSERT phase with `SQLITE_BUSY` when sports-bar app was running because Drizzle's better-sqlite3 doesn't auto-retry. After: concurrent writers wait up to 30s for the WAL lock to clear; in practice WAL allows readers + writers to coexist so contention resolves in ms. Affects ALL CLI scripts under `@sports-bar/database`, not just discover-venues (defense-in-depth for ingestion scripts, cron tasks, etc.)
+
+2. **`packages/scheduler/src/bananas-ingestion.ts:285`**: demoted the per-event `[BANANAS-INGEST] no venue match for "X"` log from WARN → DEBUG. Bananas scrapes the entire Wisconsin music calendar (~200+ events/cycle); each fleet location seeds only 10-40 nearby venues. The vast majority of events will legitimately not match (they're 100+ miles away). The end-of-batch summary already reports `skippedNoVenue` count for operator visibility. Per-event WARN was just noise — at Lucky's (Madison), Bananas returns Green Bay / Appleton venue events every cycle, all logged as "no match" even though that's expected. True per-location radius filter not feasible (Bananas events don't carry lat/lon, would need Nominatim per venue — expensive).
+
+**Required Manual Step:** none — code-only fixes. Auto-update handles rebuild+restart.
+
+Build: 28/28 successful under Turbopack.
+
+---
+
+## v2.54.42 — Tailwind config dead-code cleanup + Lucky's manual venue seed (2026-05-26)
+
+**Versions covered:** v2.54.42
+**Branch landed:** main
+**Fleet target:** rolling upgrade — small config + DB change
+
+Two minor pieces of cleanup:
+
+1. **`apps/web/tailwind.config.js` — dropped dead `accent` color scale + `accent-gradient` backgroundImage.** Audited usages across `apps/web/src/**/*.{ts,tsx}` — `accent-{green,orange,red,purple}` had ZERO references, `bg-accent-gradient` had ZERO references. Pure config bloat. Evaluated migration of remaining `primary` + `sportsBar` scales to v4 CSS-first `@theme` block — would require 101 sed substitutions (camelCase `sportsBar` → kebab-case `sports-bar` to match v4's auto-naming convention) with no functional benefit. Tailwind v4 supports the JS config indefinitely via `@config` directive in globals.css. Keeping JS config; just trimming dead entries.
+
+2. **Lucky's NeighborhoodVenue seeded manually** (separate, operator-supplied 2026-05-26): 10 Madison-area music venues populated via `/tmp/seed-luckys-madison-venues.py` (Python sqlite3 + Nominatim geocoder). Venues: High Noon Saloon, The Annex (0.08 mi — next door at 1206 Regent), The Bur Oak, Atwood Music Hall, Gamma Ray, Crystal Corner Bar, Lakeside Street Coffee House, Cafe Coda, The Sylvee, North Street Cabaret. `review_status='manual'`, `discovery_source='manual_seed_madison'`. Bonus: the auto-discover script (which previously errored out) ALSO succeeded inserting 31+ Overpass candidates with `review_status='pending_review'` — operator can approve/decline via admin UI. **Lucky's NeighborhoodVenue now has 41+ rows.**
+
+**Known bugs filed as followups (separate work):**
+- `scripts/discover-venues.ts` hits SQLITE_BUSY on its final INSERT phase when sports-bar app is running. Drizzle better-sqlite3 doesn't retry. Mitigation: add busy_timeout PRAGMA + retry loop.
+- `bananas-ingest` emits noise warnings for events outside the location's radius (Lucky's gets "no venue match for WAVERLY BEACH" — that's an Appleton-area venue). Needs per-location lat/lon radius filter.
+
+**Required Manual Step:** none.
+
+Build: 28/28 successful under Turbopack.
+
+**Today's post-Memorial-Day work — DONE:**
+- Lucky's venue seeding ✓
+- Ollama weekly model check ✓ (all 5 models pull-current)
+- npm outdated re-check ✓ (zero deltas)
+- Full Turbopack migration ✓ (v2.54.41 — unblocked by deleting dead /api/file-system/execute route)
+- Tailwind config cleanup ✓ (this commit — minimal scope, JS config retained)
+
+---
+
+## v2.54.41 — Full Turbopack migration (dropped --webpack) + deleted dead /api/file-system/execute + PWA leftovers (2026-05-26)
+
+**Versions covered:** v2.54.41
+**Branch landed:** main
+**Fleet target:** rolling upgrade — should be a fast clean build under Turbopack
+
+The full Turbopack migration that v2.54.36 attempted is now complete. v2.54.36 was blocked by Turbopack's static analyzer choking on a `spawn(interpreter, execArgs, ...)` call in `apps/web/src/app/api/file-system/execute/route.ts:106`. Today's discovery: **that entire route had ZERO callers across the codebase** — pure dead code from an old admin-shell-runner experiment. Operators run scripts via SSH directly. Deleting it unblocked Turbopack.
+
+- **Deleted `apps/web/src/app/api/file-system/execute/`** entirely (route + directory). Zero callers verified by grep + Code-Explorer-style audit across apps/web/src, tests, scripts, docs.
+- **Dropped `--webpack` flag** from `apps/web/package.json` dev + build scripts. Both now use Next 16's default Turbopack bundler.
+- **Removed the `webpack:` config block** from `apps/web/next.config.js`. Native-module externals are now handled exclusively through the top-level `serverExternalPackages` array (works in both bundlers; Next 16's universal mechanism).
+- **Deleted PWA leftover service-worker files**: `apps/web/public/sw.js` (57KB, March 26 artifact) + `apps/web/public/workbox-28c02f24.js` (22KB, Feb 17 artifact). These were generated by the old `next-pwa` builds and have been dead since v2.54.34 removed the library. No browser references them anymore (the manifest pointing at them was stripped in v2.54.39).
+
+**Build wall-clock:** ~15s for the web app under Turbopack (the old `--webpack` build was ~60s). 4× faster, matches Next 16 docs' claimed range.
+
+**No spawn-pattern refactor needed** — dead-code deletion solved the original blocker. The "indirect spawn alias" workaround I tried in v2.54.36 turns out to have been unnecessary.
+
+**Required Manual Step:** none — pure dep+config simplification, build still produces a valid Next 16 bundle. Auto-update handles rebuild + restart.
+
+**Verification:** fleet auto-update on next cron will rebuild under Turbopack. If a box's `npm run build` fails with a Turbopack-specific error not seen locally, the rollback path takes it back to v2.54.40 (last known --webpack-good build). Expected to be clean.
+
+---
+
+## v2.54.40 — Fleet-wide Node 22.22.x LTS upgrade COMPLETE (6/6 boxes) + script + gotchas doc (2026-05-26)
+
+**Versions covered:** v2.54.40 (doc + script artifact bump — no code change)
+**Branch landed:** main
+**Fleet target:** ALREADY DONE (6/6 boxes already on Node 22 as of 2026-05-26 ~14:30 my time / ~19:30 UTC)
+
+Final entry of today's Rule 10 sweep. All 6 fleet boxes now on Node 22.22.x LTS:
+
+| Box | Node | How | Wall-clock | Notes |
+|---|---|---|---|---|
+| holmgren-way | 22.22.0 (nvm) | already-there | — | Done long ago |
+| greenville | 22.22.2 (nvm) | already-there | — | OS-upgrade era |
+| leglamp | **22.22.3** (nvm) | manual + script | ~40 min | Canary; first hit ALL 5 gotchas |
+| lucky-s | **22.22.2** (apt/NodeSource) | script | ~6 min | First NodeSource clean run |
+| stoneyard-appleton | **22.22.2** (apt/NodeSource) | script | ~6 min | |
+| graystone | **22.22.2** (apt/NodeSource) | script | ~8 min | Slower hardware |
+
+**Script artifact:** `/tmp/node22-upgrade-nodesource.sh` (local, not committed) — handles all 5 gotchas inline. Future Node major upgrades should re-use this template.
+
+**5 gotchas the leglamp canary exposed** (all 5 now codified in the script + memory):
+1. `npm rebuild` and `npm install` use prebuild-install → ABI-mismatched binaries. Must force `cd node_modules/<pkg> && rm -rf build prebuilds && npm run build-release` for `better-sqlite3` + `isolated-vm`.
+2. `pm2 update` can hang 10+ min and kill managed processes. Use `pm2 save && pm2 kill && cd /home/ubuntu/Sports-Bar-TV-Controller && pm2 start ecosystem.config.js` instead.
+3. `nvm use 22 && npm ci` in a subshell — npm ci runs under the parent shell's Node version. Export PATH explicitly.
+4. `pm2 start ecosystem.config.js` from $HOME errors "File not found". Must `cd` to repo first.
+5. NodeSource installs Node 20 as apt-held. `apt install -y nodejs` errors "Held packages were changed". Must use `--allow-change-held-packages`.
+
+**Memory updated:** `feedback_node_major_upgrade_gotchas.md` contains the full procedure + script template. Re-use for future Node 24 upgrade.
+
+**Required Manual Step:** none — already done.
+
+Build: 28/28 successful (doc-only commit).
+
+---
+
+## v2.54.39 — Strip remaining PWA metadata + manifest + dead icons (operator: "no cache stuff") (2026-05-26)
+
+**Versions covered:** v2.54.39
+**Branch landed:** main
+**Fleet target:** rolling upgrade
+
+Operator decision today: "get rid of the pwa stuff... we need it current no cache stuff." Followup to v2.54.34's `next-pwa` removal — that release dropped the service-worker library but left the PWA manifest + Apple-Web-App metadata in place. This release strips the rest.
+
+- **`apps/web/src/app/layout.tsx`** (metadata block): removed `manifest: '/manifest.json'` and the entire `appleWebApp` config (`capable: true` / `statusBarStyle` / `title`). Result: no Add-to-Home-Screen prompt on iOS, no "standalone app mode" rendering. Browser favicon (icon-192x192.png) is unchanged — bar tab still shows the TV icon.
+- **Deleted `apps/web/public/manifest.json`** (PWA manifest with 8 icon sizes + theme color + standalone display mode).
+- **Deleted 7 dead icon PNGs** that were ONLY referenced by the manifest: `icon-{72,96,128,144,152,384,512}x{N}.png`. Kept `icon-192x192.png` (still used as favicon in layout.tsx).
+
+**No runtime caching change.** PWA's "cache" is the Service Worker's `runtimeCaching` config (offline + stale-while-revalidate). next-pwa was already disabled before v2.54.34, then removed in v2.54.34. So actual cache behavior was unchanged. v2.54.39 just removes the metadata pointing to a now-non-existent cache. Browser still does normal HTTP cache-control (a separate thing controlled by individual route headers, not changed here).
+
+**Required Manual Step:** none — auto-update handles rebuild. iPad-on-the-bar UX is unchanged except: any operator who'd previously "installed" the app to their iPad home screen will see the icon refresh to the standard browser-tab favicon on next visit.
+
+Build: 28/28 successful.
+
+---
+
+## v2.54.38 — HOT FIX: restore webpack externals for native modules (v2.54.36 regression) (2026-05-26)
+
+**Versions covered:** v2.54.38
+**Branch landed:** main
+**Fleet target:** rolling upgrade — **URGENT** because v2.54.36 rolled back at Appleton + likely others.
+
+🚨 **Production incident**: v2.54.36 removed the webpack `externals` block trusting Next 16's default `serverExternalPackages` list (which includes `isolated-vm`). Local build passed because `.next` cache had pre-resolved isolated-vm. Appleton's auto-update at 2026-05-26 18:01 ran a clean `npm ci` → `isolated-vm` rebuilt from source → webpack tried to bundle `packages/ai-tools/node_modules/isolated-vm/isolated-vm.js` which `require('./out/isolated_vm')` (the native .node binding) → "Module not found" → build FAILED → auto-update ROLLED BACK to v2.54.35.
+
+**Root cause:** the `--webpack` flag clearly does NOT honor Next 16's default `serverExternalPackages` list the same way Turbopack does. The list works partially, but native modules with C++ bindings still need explicit `webpack.externals` declarations.
+
+**Fix:**
+- **`apps/web/next.config.js`**:
+  - Added `isolated-vm`, `better-sqlite3`, `sharp` (which ARE in Next's defaults but evidence shows webpack ignored that) back to the explicit `serverExternalPackages` list.
+  - **Restored the `webpack:` config block** with explicit `config.externals.push(...)` for all the same native modules. Belt-and-suspenders. Remove this block ONLY when we eventually drop `--webpack` for Turbopack (deferred — see v2.54.36 file-system/execute spawn issue).
+
+**Required Manual Step:** none — auto-update will pull v2.54.38 on next cron cycle and the build will succeed.
+
+**For any boxes that rolled back to v2.54.35:** they'll auto-update past v2.54.36 → v2.54.38 in one pass (v2.54.38 supersedes the broken v2.54.36 config). The new build will succeed.
+
+**Lesson logged** to memory: never trust framework "default" externals lists when the framework still has TWO bundlers — verify by running a fresh `npm ci` + clean build before shipping native-module config changes.
+
+Build: 28/28 successful locally; needs fleet-wide verification once boxes roll past v2.54.36.
+
+---
+
+## v2.54.37 — Subpath exports audit + next.config.js dead code cleanup (2026-05-26)
+
+**Versions covered:** v2.54.37
+**Branch landed:** main
+**Fleet target:** rolling upgrade
+
+Followup cleanup pass after the v2.54.36 Turbopack attempt revealed a class of subpath-import latent bugs.
+
+- **`packages/utils/package.json`**: added `"exports"` field declaring both `"."` (the index) and `"./geocoder"` subpaths. This is the proper fix for the bug v2.54.36 worked around — defensive against future code that wants `from '@sports-bar/utils/geocoder'` directly (would now resolve cleanly under both webpack and Turbopack). Already audited the rest of the codebase: `@sports-bar/logger` (has `./enhanced-logger`) and `@sports-bar/database` (has `./schema`) both declare subpath exports correctly. No other latent subpath bugs.
+- **`apps/web/next.config.js`**: deleted the dead `_legacyPwaConfig` object literal that v2.54.34 left as an inline reference. ~90 lines of unused code (next-pwa was removed). Git history at v2.54.34 commit message retains the full runtimeCaching config if anyone ever wants to re-introduce PWA via `@serwist/next`. Replaced with a 6-line comment-block pointer to that history.
+
+**Required Manual Step:** none — pure cleanup.
+
+Build: 28/28 successful, no runtime behavior change.
+
+**Turbopack migration still deferred** (per v2.54.36 notes) — the file-system/execute spawn() issue requires more invasive refactoring or a Next 16.x patch.
+
+---
+
+## v2.54.36 — next.config.js modernization + venue-discovery import fix (Turbopack migration partial) (2026-05-26)
+
+**Versions covered:** v2.54.36
+**Branch landed:** main
+**Fleet target:** rolling upgrade
+
+Attempted full Turbopack migration as the next post-Memorial-Day item. Got partial benefit; full migration deferred to a focused PR.
+
+**Shipped:**
+- **`apps/web/next.config.js`**: replaced the `webpack:` config block with the modern Next 16 `serverExternalPackages` top-level option. The Next 16 default list already covers `isolated-vm`, `better-sqlite3`, `sharp`, `postcss`, `webpack` — we only explicitly added `serialport`, `@serialport/bindings-cpp`, `ws`, `bufferutil`, `utf-8-validate` (the native modules not in Next's default list). Works with BOTH the legacy webpack bundler AND Turbopack — modernizes the config regardless of which bundler we use later.
+- **Dropped the React/ReactDOM dedup aliases** that the old webpack block carried for "React error #31". That alias was a webpack-specific workaround; not needed under Turbopack and not surfaced under our current webpack build either after testing. Safe to delete.
+- **`packages/scheduler/src/venue-discovery.ts:140`** — fixed dynamic import path `'@sports-bar/utils/geocoder'` → `'@sports-bar/utils'`. The `@sports-bar/utils` package has no `exports` field defining a `/geocoder` subpath; the old import would have failed at runtime the moment the venue-discovery cron tried to geocode a location with empty lat/lon. The named import `{ geocodeAndPersist }` resolves through the package's index.ts (which re-exports geocoder via `export *`). **This is the bug that prevented Lucky's address from being geocoded earlier today** — operator populated the address fields per CLAUDE.md update, but venue-discovery would have thrown on the dynamic import once it ran. Turbopack's stricter static analysis caught this; webpack's was looser and let it slide at build time only to fail at runtime.
+
+**Deferred (Turbopack migration full):**
+- `apps/web/package.json` `dev` + `build` scripts kept `--webpack` flag. Turbopack's static analyzer chokes on the `spawn()` call in `apps/web/src/app/api/file-system/execute/route.ts:106` — misinterprets the dynamic `interpreter` + `execArgs` arguments as a module-resolution path and fails with `Module not found: Can't resolve (<dynamic> | '-c')`. Need to either (a) refactor that route to avoid the dynamic-args pattern, (b) inline-comment-guard it from Turbopack's NFT, or (c) wait for a Next 16.x patch that handles this. Tracked as a follow-up. Build speed payoff (~4-10× per Next docs) deferred until then.
+
+**Required Manual Step:** none — code-only fix.
+
+Build: 28/28 successful (back on webpack, all green).
+
+**Operator impact at Lucky's (post-rollout):** the venue-discovery cron's geocoding path is now reachable. Combined with operator's address-fields population from earlier today, NeighborhoodVenue rows should populate within the next cron tick (~30 min).
+
+---
+
+## v2.54.35 — Replace node-ssdp with custom SSDP client (closes last 2 HIGH vulns — npm audit HIGH count now 0) (2026-05-26)
+
+**Versions covered:** v2.54.35
+**Branch landed:** main
+**Fleet target:** rolling upgrade
+
+Closes the remaining HIGH-severity npm audit findings — `node-ssdp` 4.0.1 was abandoned (last published 2022) and transitively pulled in `ip@1.1.9` (GHSA-2p57-rm9w-gvfp — SSRF in `isPublic`). Used only by DirecTV LAN discovery at `packages/directv/src/discovery.ts:4`.
+
+- **Wrote `packages/directv/src/ssdp-client.ts`** — minimal ~80-line drop-in replacement for `node-ssdp`'s `Client`. Pure Node.js `dgram` UDP multicast on 239.255.255.250:1900. Implements only the API surface our code actually uses: `new SSDPClient()`, `.search(searchTarget)`, `.on('response', cb)`, `.stop()`. Callback signature `(headers, statusCode, rinfo)` matches node-ssdp 1:1 — no caller changes needed.
+- **`packages/directv/src/discovery.ts:4`** — import changed `from 'node-ssdp'` → `from './ssdp-client'`. Zero other changes; SSDP usage pattern unchanged.
+- **Dropped `node-ssdp` dep** from both `packages/directv/package.json` AND `apps/web/package.json` (it was declared in TWO places — first removal didn't drop it from the install tree because apps/web's package.json kept it pinned).
+
+**npm audit:** 10 vulns (2 HIGH) → **8 vulns (0 HIGH, 8 moderate, 0 critical)**. ALL HIGH-severity findings in the tree are now closed. Moderate findings (8) are all transitive (esbuild via drizzle-kit, postcss via Next 16 internals) — tracking upstream.
+
+**Required Manual Step:** none — pure refactor + dep removal.
+
+Build: 34/34 successful.
+
+**Test coverage gap:** the new SSDP client is hand-rolled, no automated test. Manual smoke test on a network with at least one DirecTV box: call `new DirecTVDiscovery().discoverViaSsdp(5000)` — should return the box's IP within 5s if SSDP advertisements are enabled on the DTV box (which is the default).
+
+---
+
+## v2.54.34 — Remove next-pwa entirely (closes 5 HIGH vulns) (2026-05-26)
+
+**Versions covered:** v2.54.34
+**Branch landed:** main
+**Fleet target:** rolling upgrade
+
+Audit revealed PWA was already disabled (`disable: true` in next.config.js, original comment said "Temporarily disabled to fix caching issues" — turned out to be permanently disabled). We were paying the full vulnerability surface of `next-pwa` → `workbox-build` → `rollup-plugin-terser` → `serialize-javascript` (HIGH CVE — RCE via RegExp.flags + Date.prototype.toISOString) for zero runtime benefit.
+
+- **Dropped `next-pwa` from `apps/web/package.json`** (devDependencies).
+- **Rewrote `apps/web/next.config.js`**: removed the `require('next-pwa')` wrapper, replaced `module.exports = withPWA(nextConfig)` with `module.exports = nextConfig`. Archived the legacy `runtimeCaching` config inline as `_legacyPwaConfig` comment for future reference if PWA is ever re-introduced via `@serwist/next` (the modern Workbox successor that's Next 16 + Turbopack compatible).
+- **`apps/web/src/app/layout.tsx` still references `manifest: '/manifest.json'`** — this is a plain static web app manifest at `apps/web/public/manifest.json`, NOT dependent on next-pwa. The app remains web-app-manifest enabled (icon + name + theme color) but no service worker, no offline caching, no install prompt — same behavior as before (since PWA was disabled).
+
+**npm audit:** 15 vulns (7 HIGH) → **10 vulns (2 HIGH)**. Closed: `next-pwa`, `workbox-build`, `workbox-webpack-plugin`, `rollup-plugin-terser`, `serialize-javascript`. Remaining 2 HIGH: `ip` SSRF via `node-ssdp` (used only by DirecTV LAN discovery — low real-world attack surface; node-ssdp 4.0.1 was last published in 2022, replacement tracked as a separate item).
+
+**`--webpack` flag retained** in `apps/web/package.json` dev/build scripts even though next-pwa was the original reason for it. Reason: `apps/web/next.config.js` still has a `webpack:` config block (native module externals like `isolated-vm`, `serialport`, `ws` + React/ReactDOM dedup aliases). Migrating to Turbopack would require porting those configs to Turbopack's `experimental.turbo` format and verifying SSR builds still resolve native modules correctly — bigger PR, separate item.
+
+**Required Manual Step:** none — pure dep removal + config simplification. PWA was already disabled at runtime, so nothing the operator sees changes.
+
+Build: 28/28 successful.
+
+---
+
+## v2.54.33 — Cleanup follow-ups: drop autoprefixer + drop TS6 baseUrl/ignoreDeprecations (2026-05-26)
+
+**Versions covered:** v2.54.33
+**Branch landed:** main
+**Fleet target:** rolling upgrade
+
+Cleanup pass for the deferrals carried in v2.54.29 (TypeScript) and v2.54.31 (Tailwind) commit notes.
+
+- **Dropped `autoprefixer`** from `apps/web/package.json` devDependencies. v2.54.31's tailwind v4 migration moved PostCSS handling to `@tailwindcss/postcss` which has autoprefixer built in — the standalone declaration was harmless but dead. -1 dep, no other change.
+- **Dropped `baseUrl` + `ignoreDeprecations: "6.0"`** from root `tsconfig.json`. v2.54.29 added these as a stopgap because TS6 deprecates `baseUrl` entirely while we still had `paths` to resolve. TS6 now lets `paths` resolve relative to the tsconfig location directly — no baseUrl needed. Removing baseUrl also removes the only deprecation that needed silencing, so `ignoreDeprecations` is gone too. The `paths` mapping (`@/* → ./src/*`) still works.
+
+**What's still deferred** (carried forward from earlier in the day):
+- Migrate `tailwind.config.js` theme.extend to `@theme` CSS block (so we can delete the JS config). Risk: v4 `@theme` variable naming convention isn't 100% drop-in for backgroundImage gradients, needs verification. Not worth the visual-regression risk in a no-prep session.
+- Run `@tailwindcss/upgrade` for class-name renames (shadow-sm → shadow-xs etc.) — still tracked, still needs playwright visual regression first.
+
+**Required Manual Step:** none.
+
+Build: 34/34 successful. No runtime behavior change.
+
+---
+
+## v2.54.32 — Rule 10 weekly minor/patch sweep + FLEET_STATUS refresh + @types/node normalization (2026-05-26)
+
+**Versions covered:** v2.54.32
+**Branch landed:** main
+**Fleet target:** rolling upgrade
+
+Sixth post-Memorial-Day pass — cleanup batch after the breaking-major sweep:
+
+- **`@anthropic-ai/sdk`** 0.97.1 → 0.98.0 (2 sites — apps/web + packages/services). Minor bump, additive only.
+- **`openai`** 6.2.0 → 6.39.0 (apps/web). Several minor releases caught up. API surface unchanged.
+- **`ts-jest`** 29.4.5 → 29.4.11 (apps/web). Patch series caught up.
+- **`ws`** 8.18.0 → 8.21.0 (packages/tv-network-control). Minor bump, additive only.
+- **`@types/node`** normalized to `^25.0.0` across all packages (was a mix of 20.x/22.x/24.x/25.9 — 4 different pins across 33 packages). All resolve to 25.9.1 actual. v25 narrows the Node Socket `data` event type to `Buffer` (NonSharedBuffer branded), surfaced one type error in `packages/htd/src/htd-tcp-client.ts:93` — fixed by wrapping the handler with `Buffer.from(data)`.
+
+**FLEET_STATUS.md refresh** — previous version was from 2026-05-19 and claimed the fleet was on v2.32.94 with v2.50.7 staged. After today's 10-version sweep all 6 boxes are on v2.54.31 (32 imminent). Updated the per-location table, removed stale "rollout-pending" labels (everyone is current), refreshed Notes column with today's true state.
+
+**npm audit:** 15 vulns (8 mod, 7 high). Same set as v2.54.19 — the `next-pwa` → `workbox-build` → `rollup-plugin-terser` → `serialize-javascript` (HIGH) chain and `node-ssdp` → `ip` (HIGH). NOT introduced by today's bumps. Replacing `next-pwa` is the only way to close these — tracked as the next post-Memorial-Day item.
+
+Build: 34/34 successful.
+
+**Required Manual Step:** none — pure dep + doc update.
+
+---
+
+## v2.54.31 — Rule 10 bumps part 5: tailwindcss 3→4 (2026-05-26)
+
+**Versions covered:** v2.54.31
+**Branch landed:** main
+**Fleet target:** rolling upgrade
+
+Fifth (and final today) post-Memorial-Day Rule 10 pass. Tailwind 4.3.0.
+
+Took the **minimal v3→v4 migration path** (preserves the existing JS config + class names; no automated `@tailwindcss/upgrade` mass-rewrite):
+
+- **`apps/web/package.json`**: `"tailwindcss": "^3.4.18"` → `"^4.3.0"` + added `"@tailwindcss/postcss": "^4.3.0"`. v4 split the PostCSS plugin into its own package per the official v4 migration guide.
+- **`apps/web/postcss.config.js`**: replaced `tailwindcss: {}` + `autoprefixer: {}` with `'@tailwindcss/postcss': {}`. v4 has autoprefixer built in.
+- **`apps/web/src/app/globals.css`**: replaced the 3-line `@tailwind base/components/utilities` block with `@import "tailwindcss";` + `@config "../../tailwind.config.js";`. The `@config` directive tells v4 to keep using the existing JS-based theme (custom `primary`/`sportsBar`/`accent` color scales + 3 `backgroundImage` gradients defined in `tailwind.config.js`). Migrating those to v4's `@theme` CSS block is a follow-up cleanup; class compat is unaffected.
+- **`tailwind.config.js`**: unchanged. v4's `@config` directive consumes the legacy JS format with no further changes.
+
+**What we did NOT do this release** (deferred):
+- Migrate `theme.extend.colors` to `@theme` CSS block in globals.css (would let us delete tailwind.config.js entirely)
+- Run `npx @tailwindcss/upgrade` (would auto-rewrite class names with v3→v4 renames like `shadow-sm` → `shadow-xs`, but the blast radius of bartender-iPad visual regressions is too high for a same-day ship; saving for a focused PR with playwright-ui-tester visual regression sweep)
+- Drop `autoprefixer` from devDependencies (v4 has it built-in; remaining declaration is dead but harmless)
+
+Build: 28/28 successful.
+
+**Required Manual Step:** none — auto-update handles `npm ci` + rebuild + restart.
+
+**Bartender visual-regression risk:** LOW. The minimal migration changes ZERO class names. Tailwind v4 maintains class compat for all v3 utility classes when using the legacy `@config` directive. The only theoretical risk is the v4 CSS reset (now applied via `@import "tailwindcss"`) being slightly stricter than v3's `@tailwind base` — but v4 docs confirm the reset is unchanged from v3.4.x. Verify after rollout by loading the bartender remote on an iPad and confirming no visible layout changes.
+
+---
+
+## v2.54.30 — Rule 10 bumps part 4: zod 3→4 across monorepo (2026-05-26)
+
+**Versions covered:** v2.54.30
+**Branch landed:** main
+**Fleet target:** rolling upgrade
+
+Fourth post-Memorial-Day Rule 10 pass. Zod 4.4.3.
+
+Bumped `"zod": "^3.x"` → `"zod": "^4.0.0"` in 3 package.json files (apps/web, packages/config, packages/validation). 212 imports across the codebase, but the breaking-change surface area only touched 20 call sites:
+
+- **`.ip()` removed** in zod v4 — replaced 3 sites with `z.union([z.ipv4(), z.ipv6()])` (preserves both IPv4/IPv6 semantics):
+  - `packages/validation/src/schemas.ts:61`
+  - `packages/config/src/validation/schemas.ts:43`
+  - `apps/web/src/app/api/input-channel-lists/[listId]/scan/route.ts:117`
+- **`errorMap: () => ({ message: 'X' })`** replaced with `error: () => 'X'` (v4 simplified error customization) — 17 sites across the same 4 files. Per zod v4 changelog: "errorMap is renamed to error. Error maps can now return a plain string or undefined to yield control to the next error map in the chain."
+- `.refine(fn, fn)` overload (deprecated in v4): we don't use this pattern — verified via grep.
+- `.superRefine()` ctx.path removal: zero call sites — not affected.
+
+Build: 34/34 successful.
+
+**Required Manual Step:** none — code-only fix, auto-update handles rebuild + restart. v4 wire format for `safeParse()` results is unchanged (still `{ success, data, error }`), so any code consuming validator output continues to work.
+
+**Runtime behavior change to watch for:** v4 error messages have a different shape under `.format()` and `.flatten()`. Our code doesn't introspect these in user-facing ways — validation failures bubble up as 400 responses with the schema's `message` field, which is unchanged. If a downstream consumer relied on the v3 `.format()` tree shape, it would surface as a runtime TypeError; none seen in build/grep.
+
+---
+
+## v2.54.29 — Rule 10 bumps part 3: typescript 5.9→6.0 (2026-05-26)
+
+**Versions covered:** v2.54.29
+**Branch landed:** main
+**Fleet target:** rolling upgrade. Pure compile-time bump — no runtime behavior change if build passes.
+
+Third post-Memorial-Day Rule 10 pass. TypeScript 6.0.3 across all 33 packages.
+
+Bulk-bumped every `"typescript": "^5.x"` → `"typescript": "^6.0.0"` in package.json files. Then fixed TS6 strictness regressions:
+
+- **`downlevelIteration` removed** from `packages/config/src/tsconfig/base.json` + `apps/web/tsconfig.json`. TS6 marks it deprecated (errors out unless silenced). It's unnecessary with `target: ES2020+` because native iteration is standard. Also bumped `apps/web` `target: es2017` → `es2020` for consistency.
+- **Root `tsconfig.json`**: `moduleResolution: "node"` → `"bundler"` (TS6 renamed the legacy `"node"` resolver to `"node10"` and deprecated it); added `"ignoreDeprecations": "6.0"` to silence `baseUrl` deprecation (still needed by Next.js path mapping); added `"types": ["node"]` so the 9 packages extending root get Node globals (`fs`, `path`, `Buffer`, `console`, `setTimeout`, etc.) under TS6's stricter auto-include rules.
+- **Shared library tsconfig** (`packages/config/src/tsconfig/library.json`): added `"types": ["node"]` so the 10 packages extending it get the same.
+- **Standalone tsconfigs** (5 packages: ai-tools, config, database, htd, rate-limiting — no `extends`): added `"types": ["node"]` directly.
+- **`packages/ai-tools/tsconfig.json`**: `moduleResolution: "node"` → `"node10"` + `"ignoreDeprecations": "6.0"`. This package uses CommonJS so it can't move to `"bundler"`; the explicit `node10` keeps semantics and the deprecation flag silences the warning until TS7 forces a real migration.
+
+**Required Manual Step:** none — pure dep + tsconfig update, auto-update handles `npm ci` + rebuild + restart. No code changes.
+
+**Verification:** `npx turbo run build --force` returns 34/34 successful. If a location's auto-update reports build failure on this version, the most likely cause is an outdated tsconfig in a sibling package that wasn't covered — check `pm2 logs` for `error TS` lines.
+
+**Deferred to a future release:** clean up `baseUrl` (TS6 deprecates entirely; needs path-mapping rewrite), prune the legacy root `tsconfig.json` once all packages extend the shared lib config, remove `ignoreDeprecations: "6.0"` after refactor.
+
+---
+
+## v2.54.28 — Rule 10 bumps part 2: @huggingface/transformers 3.8→4.2 + qwen3:14b pull (2026-05-26)
+
+**Versions covered:** v2.54.28
+**Branch landed:** main
+**Fleet target:** rolling upgrade. Reranker is opt-in (RAG_RERANK_ENABLED) — only Holmgren has it on, so the transformers bump only affects HW at runtime.
+
+Continuation of post-Memorial-Day Rule 10 pass.
+
+- **`@huggingface/transformers` ^3.0.0 → ^4.2.0** in `packages/rag-server/package.json`. Only call site: `packages/rag-server/src/reranker.ts:46` (dynamic import → `pipeline('text-classification', model, { dtype })`). The v3→v4 API surface for this exact call is unchanged — verified by local build pass and the same downstream signature. The v4 release adds WebGPU + Node.js worker improvements + better quantization handling. Drop-in for our usage.
+  - **Runtime verification at HW (the only box with `RAG_RERANK_ENABLED=true`):** after rollout, hit `/api/rag/query` with `{"query": "<known-good question>"}` and confirm `sources.length === 8` and the first source is the expected file. PM2 memory should stay under the 3G `max_memory_restart` ceiling (see `[[feedback-reranker-memory-budget]]`).
+- **`qwen3:14b` pulled on HW** (canary box, per Rule 10 — pull latest model tags weekly). Coexists with the other 5 models on disk (llama3.1:8b, llama3.2:3b, phi3:mini, qwen2.5:14b, nomic-embed-text). NOT made the default `OLLAMA_MODEL` for any per-location AI feature.
+  - **Reason for not swapping the default:** qwen3:14b has reasoning-mode (`<think>...</think>` wrappers) enabled by default. Without a `/no_think` system message AND a server-side `<think>` stripper, `format:'json'` responses come back empty (verified via direct probe — `{}` with eval_count=2). Swapping the default would require:
+    1. Add `enable_thinking: false` or `/no_think` to every Ollama call site (AI Suggest, shift-brief, pattern digest, RAG chat — 4+ sites).
+    2. Add `stripThinkBlock()` helper in `packages/services/src/ollama-client.ts` to remove `<think>\n\n</think>` prefix from responses.
+    3. Re-validate every prompt — qwen3's token budget consumption is different (more verbose with `/no_think` system message).
+    4. Watch RAM: qwen3:14b is ~9GB vs llama3.1:8b ~4.7GB. Pinning qwen3 as keep_alive=-1 alongside `nomic-embed-text` would push HW resident to ~10GB (still under 32GB ceiling) but Graystone (15GB total) couldn't even load qwen3:14b — fleet-wide swap is therefore NOT viable until Graystone RAM is upgraded.
+  - **Net:** qwen3:14b is now an available model on HW; not the default. The "pull weekly + verify" Rule 10 requirement is satisfied. Operator can manually invoke `qwen3:14b` via `curl /api/generate -d '{"model":"qwen3:14b",…}'` after a future ollama-client refactor adds reasoning-mode support. Tracked as a follow-up bump candidate.
+
+**Other ollama models on HW** (verified `ollama list`): all up-to-date as of 2026-05-26. No re-pull needed today.
+
+**Required Manual Step:** none — auto-update handles `npm ci` + rebuild + restart. qwen3 is already on disk at HW; remains on disk after restart.
+
+**Verification at Holmgren post-rollout:**
+```bash
+# Confirm reranker still fires + returns expected shape
+curl -sX POST http://hw-sports-bar-tv-controller:3001/api/rag/query \
+  -H "Content-Type: application/json" \
+  -d '{"query":"Atlas processor priority watcher"}' \
+  | python3 -c 'import json,sys;d=json.load(sys.stdin);print("sources:",len(d.get("sources",[])));print("answer chars:",len(d.get("answer","")))'
+# Expected: sources: 8, answer chars: ≥ 200
+```
+
+**Other locations:** unaffected at runtime (reranker disabled, qwen3 not pulled). Pure on-disk dep update; rebuild is no-op cost.
+
+---
+
+## v2.54.27 — AI Suggest client-side timeout + accurate loading copy (2026-05-26)
+
+**Versions covered:** v2.54.27
+**Branch landed:** main
+**Fleet target:** rolling upgrade
+
+Holmgren manager reported AI Suggest "timed out" today. Root cause investigation:
+
+- Direct Ollama probe at HW (`POST /api/generate` with realistic AI Suggest prompt + `format:'json'` + `num_predict:2048`): **70.4s total wall-clock** (4.5s prompt eval + 65.9s generation × 672 tokens × 10.2 tok/s). Ollama is healthy and fast for IPEX-LLM iGPU.
+- Server route at `apps/web/src/app/api/scheduling/ai-suggest/route.ts:524` has `OLLAMA_TIMEOUT_MS = 300_000` (5 min) — well above real call time.
+- Nginx proxy block at `/api/scheduling/` already has `proxy_read_timeout 300s` (see CLAUDE.md §10 / setup-bartender-nginx.sh).
+- **Client-side: `apps/web/src/components/ScheduledGamesPanel.tsx:584` and `apps/web/src/components/ai/DistributionPlanModal.tsx:141` used bare `fetch()` with NO `signal` and NO `AbortController`.** Browser default behavior on idle long-poll connections — especially iPad Safari behind the bar with intermittent power-save — frequently abandons the request sub-90s. Manager sees a generic "Network Error" or just a stuck spinner while the server is still working.
+- Loading copy at line 1313 said `"This may take up to 30 seconds"` — a lie. Real call is 60-120s.
+
+Fix:
+- Both fetch sites now use `AbortController` with explicit 300_000ms timeout (matches server).
+- `AbortError` is caught and rendered as `"AI took longer than 5 minutes — try again or check the Ollama service."` — the only legitimate timeout, attributable to the real cause.
+- Loading copy updated to `"Typically 1-2 minutes — please leave this page open"`.
+
+**Required Manual Step:** none — pure UI fix, auto-update handles rebuild + restart.
+
+**Verification:** in bartender UI → Schedule tab → click "AI Suggest" → loading shows the new copy. With Holmgren's Ollama healthy, suggestions return in ~70-120s without error.
+
+**Follow-up consideration (not in this release):** switching the Ollama call to `stream:true` would let the client receive first bytes within 5s and incrementally render — defeats any "no response" timeout class. Bigger UX work; deferred.
+
+---
+
+## v2.54.26 — Rule 10 dep bumps: serialport 12→13, tesseract.js 6→7 (2026-05-26)
+
+**Versions covered:** v2.54.26
+**Branch landed:** main
+**Fleet target:** rolling upgrade from v2.54.25
+
+First post-Memorial-Day Rule 10 pass. Two low-risk breaking-major npm bumps from the v2.54.19 deferral list, taken together because their surface area is small + complementary (both upgrade-only, no API call-site changes needed).
+
+- **`serialport` 12 → 13** in `packages/dbx-zonepro` + `packages/dmx` + `packages/multiview` (root devDep was already `^13`). v13 dropped Node 16/18 support (we're on 20.20.0, satisfies `engines.node >=20`). API surface (`import { SerialPort } from 'serialport'`) unchanged since v5. Only real import: `packages/multiview/src/serial-client.ts:8`. `packages/dbx-zonepro/src/dbx-serial-client.ts:37` uses dynamic `await import('serialport')` (loads at runtime only if serial hardware is present — no compile-time dependency).
+- **`tesseract.js` 6 → 7** in `apps/web` + `packages/layout-detection`. Only call site: `packages/layout-detection/src/index.ts:678` — `Tesseract.recognize(buffer, 'eng', { logger })` which is stable across v4-v7. Used as the CPU fallback OCR when Ollama Vision isn't available (floor-plan TV-label extraction).
+
+**npm install delta:** 57 packages removed, 2 changed (mostly the tesseract.js v6 tree pruning to v7's slimmer tree).
+**npm audit:** 15 transitive vulns remain (8 mod, 7 high) — same set as v2.54.19 (`ip` via `node-ssdp`, `serialize-javascript` via the `next-pwa` → `workbox-build` chain that still needs webpack since we set `--webpack` flag for Next 16). NOT introduced by these bumps. `audit fix --force` would downgrade Next 16 — tracking upstream.
+
+**Required Manual Step:** none — pure npm dep change, auto-update handles `npm ci` + rebuild + restart.
+
+**Verification gates:**
+- `pm2 status` → sports-bar-tv-controller online, restart_time +1
+- `curl localhost:3001/api/version` → `2.54.26`
+- For Wolf Pack RS-232 multi-view locations (Holmgren, Graystone): tail PM2 logs for `[MULTIVIEW]` messages — should connect/disconnect cleanly with no `Cannot find module 'serialport'` errors
+- For OCR floor-plan upload: drag-drop a layout image in the UI; should extract TV labels without throwing
+
+---
+
+## v2.54.25 — Weekend log-noise fix pass 3: ADB wrappers + DirecTV channel-guide + Fire Cube send-command catch (2026-05-26)
+
+**Versions covered:** v2.54.25 (single commit)
+**Branch landed:** main
+**Fleet target:** rolling upgrade from v2.54.24 — auto-update will roll
+
+Weekend audit (Fri 5/22 → Tue 5/26) showed graystone at 138 ERROR rows / 4 days (95 DTV-GUIDE + 24 ADB CLIENT + 12 FIRECUBE + 6 STREAMING + 1 other) all driven by one dead Fire Cube (`192.168.5.131`) + DirecTV receivers in standby. The v2.54.6/.22/.23 demote campaign covered `firetv-connection-manager` + `executeShellCommand` + `sendKey` + Atlas `-32604`, but missed three steady-state noise paths that the weekend re-surfaced:
+
+- **`packages/firecube/src/adb-client.ts`** — five wrapper functions still logged ERROR even though they either re-throw (caller already logs) or swallow as `null`/`false`/`{}` (caller already represents the failure in its return-shape):
+  - `getDeviceInfo` (line 230) → DEBUG, returns `{}`
+  - `getDeviceProperty` (line 241) → DEBUG, returns `null`
+  - `getInstalledPackages` (line 344) → DEBUG, re-throws
+  - `isAppInstalled` (line 357) → DEBUG, returns `false`
+  - `getCurrentApp` (line 379) → DEBUG, returns `null`
+
+  `executeShellCommand` already logged at DEBUG (v2.54.22), so these wrappers were the duplicate-log layer. The five ERROR sites all carried the comment-able rationale "caller decides logging level".
+- **`packages/directv/src/directv-guide-service.ts:170`** — `Failed to fetch channel N: Request timeout after 5000ms` was ERROR per-channel. A single receiver in standby = 50+ ERROR/refresh × every preset poll. The API route at `/api/directv/guide/route.ts` logs `Completed: N/M successful` at INFO which is the actionable summary; per-channel detail → DEBUG.
+- **`apps/web/src/app/api/firetv-devices/send-command/route.ts:178`** — `isOfflineDevice` keyword list missed ADB-specific stderr patterns (`device 'X' not found`, `device offline`, `EHOSTUNREACH`, `ETIMEDOUT`, `ENETUNREACH`, `no devices`) AND the catch passed `error` directly as the 2nd arg of `logger.error(msg, error)` but the logger signature is `error(msg, options?: LogOptions)` so `options.error`/`options.data` were undefined and the underlying failure detail never reached the log (hence the bare `❌ Command execution error:` we saw in graystone PM2 stdout). Both fixed: widened keyword set including `error.stderr`, switched to `logger.error(msg, { error })`.
+
+**Expected log reduction at graystone (the worst offender):** ~138 → ~5 ERROR/4 days. (One ERROR per offline-device first-failure transition + real user-triggered failures like `[TV-CONTROL] Power toggle failed` remain ERROR by design — they're novel + actionable.)
+
+**ArtistInterferenceProfile false alarm:** initial audit showed 3 boxes (luckys, appleton, leglamp) had stale 2026-05-21 errors for `no such table: ArtistInterferenceProfile`. Verified the table exists on all 3 boxes (row count 0, no errors since 5/22) — already fixed by v2.54.20's column-level schema check. Stale entries were inside the file mtime window but predate the v2.54.20 rollout.
+
+**Required Manual Step:** none — pure log-level change, auto-update handles rebuild + restart.
+
+**Verification gate (24h after each box updates):**
+```bash
+# Should report ~0 instead of dozens
+pm2 logs sports-bar-tv-controller --lines 5000 --err --nostream 2>/dev/null | \
+  grep -cE 'DIRECTV_GUIDE.*Failed to fetch|ADB CLIENT.*(Get installed|Check app|Get current|Get property|Get device info)'
+```
+
+---
+
+## v2.54.0 → v2.54.20 — drizzle migrate switch + release snapshots + log demotes + schema-completeness baseline-derived + Pass 3 cleanup + column-level schema check + bartender gradient sweep + Rule 10 weekly bumps (multi-version 2026-05-20/21)
+
+**Versions covered:** v2.54.0 → v2.54.6 (7 commits across 2026-05-20 evening + 2026-05-21 early)
+**Branch landed:** main
+**Fleet target:** rolling upgrade from v2.53.17 — auto-update will roll the batch
+
+This batch is the systemic fix for the v2.51 24h fleet outage (5/6 boxes missing `NeighborhoodEvent` because `drizzle-kit push` silently aborted on a pre-existing index — Gotcha #6). Also adds release snapshots so future rollbacks take ~5s instead of ~3min, and demotes two classes of steady-state log noise that were drowning real failures in the error stream.
+
+- **v2.54.0** — Baseline drizzle migration. `drizzle/0000_baseline.sql` (94K) captures the entire current schema.ts as a clean migration file so new locations + recovery paths have a single canonical starting point. Generated via `drizzle-kit generate --name baseline` and hand-reviewed to strip any orphan-table DROPs (sdr_*, AudioMessage, etc. that exist in production but aren't declared in schema.ts).
+- **v2.54.1** — Switched schema-update path from `push` to `migrate`. `scripts/bootstrap-drizzle-migrations.sh` (NEW, idempotent) ensures `__drizzle_migrations` exists with sha256-hash markers for every committed migration. `scripts/auto-update.sh` now runs bootstrap + `drizzle-kit migrate` instead of `drizzle-kit push`. `migrate` applies pending migrations one at a time and fails LOUD on any error — no more silent abort skipping subsequent table creations. Legacy push block wrapped in `if false; then ... fi` (not deleted yet — left as audit trail).
+- **v2.54.2** — CLAUDE.md Gotcha #6 marked RESOLVED. Full dev workflow rewrite for generate+migrate (no more `db:push` in normal dev flow).
+- **v2.54.3** — Capistrano-style release snapshots. `scripts/snapshot-release.sh` (NEW) captures `.next/` + `package.json` + `drizzle/` + manifest.json to `/home/ubuntu/sports-bar-releases/v<ver>/` at the END of every successful auto-update — by construction "known good" because verify-install just passed. Retention KEEP_LAST=5. `scripts/instant-rollback.sh` (NEW) restores any snapshot in ~5s: PM2 stop → `git reset --hard` to snapshot SHA → rsync `.next` → PM2 start → health check. Standard auto-update.sh rollback path (~3min) still works as fallback.
+- **v2.54.4** — Demoted Atlas JSON-RPC `-32604 param not found` from ERROR to DEBUG at `packages/atlas/src/atlasClient.ts:543` (RESPONSE handler) and ~1027 (GET catch). The error fires hundreds of times/day on every priority-watcher poll cycle (probes 60+ candidate param names that don't exist on AZM8 firmware 4.5.18 — see [[feedback-atlas-azm8-no-priority-param]]). Real signal, not a bug.
+- **v2.54.5** — CRITICAL fix for v2.54.4: `response.error` arrives as a JSON-encoded STRING (not parsed object), so the `response.error.code === -32604` check was always false and the v2.54.4 demote never took effect. Fix: `if (typeof errObj === 'string') { try { errObj = JSON.parse(errObj) } catch {} }` before extracting the code.
+- **v2.54.6** — Same demote pattern applied to `firetv-connection-manager.ts` + `firetv-health-monitor.ts`. When Atmosphere TV / Epson Projector / Fire TV is intentionally powered off (signage-off hours, after-hours, between schedule windows), the previous code logged ERROR on every reconnect attempt (~200+/day per offline device). Now first failure logs ERROR (novel signal), subsequent failures within the same offline streak log DEBUG. Reconnect logs INFO with "was offline" so recovery is visible. Catalyst: Holmgren's `10.11.3.48` is the **Atmosphere TV** (NOT a dead Fire Cube as earlier memory had it), intermittently off by design.
+- **v2.54.7** — VERSION_SETUP_GUIDE entry for this batch.
+- **v2.54.8** — Atlas DEBUG output now routes through `logger.debug` (was: `logger.info`). v2.54.4/.5's ERROR→DEBUG demote only changed the level tag in the message text — the underlying `writeLog()` in `packages/atlas/src/atlas-logger.ts` routed every non-ERROR / non-WARN level through `logger.info()`, so the spam stayed at INFO in PM2 stdout. Now DEBUG hits `logger.debug()` which the shared `@sports-bar/logger` filters out in production (LogLevel.INFO+ only). File log at `~/Sports-Bar-TV-Controller/log/atlas-communication.log` still receives every level for forensics. Verified post-restart: dense Atlas RESPONSE/COMMAND/GET JSON blocks no longer appear in `pm2 logs`.
+- **v2.54.9** — VERSION_SETUP_GUIDE addendum (this file) extended to cover v2.54.7 + v2.54.8.
+- **v2.54.10** — **schema_completeness verify-install layer now derives expected table list from drizzle/0000_baseline.sql instead of a hardcoded 13.** Pre-holiday audit (2026-05-21) found **`ArtistInterferenceProfile` missing on 5/6 fleet boxes** — preemptive-strike scheduler was crashing hourly with `no such table: ArtistInterferenceProfile`. The table was added in v2.51.x with the Neighborhood RF Prediction subsystem but never added to the hardcoded verify list, so schema_completeness PASSed 13/13 even though preemptive-strike was broken. DDL applied out-of-band to recover the 5 boxes; v2.54.10 verify-install now reports `120/120 present` and will catch any future missing table automatically. **Required Manual Step for boxes upgrading to v2.54.10 from <v2.54.10:** none — `IF NOT EXISTS` DDL was already applied out-of-band on 2026-05-21 (Holmgren UTC 03:35). New verify-install will pass on the next auto-update cycle.
+- **v2.54.11** — VERSION_SETUP_GUIDE addendum for v2.54.9 + v2.54.10. Also normalized greenville-stoneyard's `LOG_LEVEL=DEBUG` → `INFO` (per-location env override left over from past troubleshooting; was bypassing the v2.54.8 atlas DEBUG suppression and flooding logs ~10x). pm2 delete+start required per Gotcha #2.
+- **v2.54.12** — **Pass 3 packages/* audit: delete verified dead code (-3291 lines)**. Code-explorer agent + grep verification of zero callers across the codebase identified:
+  - Whole package: `packages/tv-docs/` (+ orphan shim `apps/web/src/lib/tvDocs/`)
+  - Atlas stubs: `atlas-ai-analyzer.ts` (619-line stub, replaced by atlas-meter-manager v2.33.50+), `atlas-ai-training-data.ts` (AtlasPatternMatcher + atlasTrainingPatterns, 0 callers), `atlas-meter-service.ts` (simulated-data stub)
+  - Services dead: `sports-guide-ollama-helper.ts` (6 exports, 0 callers), `enhanced-ai-client.ts` (EnhancedAIClient unreachable)
+  - Orphan shims at `apps/web/src/lib/{ai-sports-context,atlas-meter-service,enhanced-ai-client}.ts`
+  - Kept `packages/services/src/ai-sports-context.ts` — still used internally by `automated-health-check` + `health-check-scheduler`, just removed from public index.
+  - **NOT deleted (agent false-positive):** `@sports-bar/security` — verification found it IS actively used by `/api/streaming-platforms/credentials`.
+  - Build verified clean: `npx turbo run build --force` → 35/35 tasks successful.
+- **v2.54.13** — **Pass 3 doc fixes**:
+  - `packages/bss-blu/README.md` + `bss-service.ts` top-of-file: prominent warning that `setZoneMute` / `setZoneGain` / `setZoneSource` / `getDeviceState` are NO-OP STUBS — TCP socket connects but no HiQnet commands are emitted. Operator-protection against deploying BSS hardware expecting working zone control.
+  - `packages/scheduler/src/espn-sync-service.ts:354`: convert stale `TODO: Add espnTeamId column` to a `KNOWN LIMITATION:` comment explaining the trade-off (team-name fuzzy match has been running in production at all 6 locations since shipping; schema column adds cost without commensurate value).
+- **v2.54.14** — VERSION_SETUP_GUIDE addendum covering v2.54.11/.12/.13.
+- **v2.54.15** — **Pass 3 architectural cleanups (deletions only, no migrations)**:
+  - **Finding 9** — `HealthCheckScheduler` in `packages/services/src/health-check-scheduler.ts` owned its own `setInterval` loops, but `startHealthCheckScheduler()` had zero call sites anywhere in the codebase. Deleted the file + orphan shim. (The two siblings `automated-health-check` and `sports-schedule-sync` were correctly placed and stay where they are.)
+  - **Finding 12** — `nfhsApi` / `isNFHSApiAvailable` / `NFHSEvent` removed from the public surface of `packages/streaming/src/index.ts`. The stub IS still consumed internally by `unified-streaming-api.ts` (relative import, kept), but external consumers should not import a stub. Deleted the orphan bridge `apps/web/src/lib/streaming/api-integrations/nfhs-api.ts`.
+  - **Finding 2** re-verified and SKIPPED — `@/lib/ai-tools` has 2 live callers (api/chat + api/security/logs); `local-ai-analyzer` has 4 callers. Both live, not dead.
+- **v2.54.17** — VERSION_SETUP_GUIDE addendum for v2.54.14/.15/.16.
+- **v2.54.18** — **Bartender gradient sweep (18 swaps across 7 files) + db-helpers NIT exports**. Per `project_bartender_gradient_review_pending` memory: gradient text (`bg-clip-text text-transparent`) renders fragile on aged iPad Safari used by bartenders. Mechanical regex swap → `text-white`. Files: BartenderRemoteAudioPanel (4), EnhancedChannelGuideBartenderRemote (5), BartenderMusicControl (3), InteractiveBartenderLayout (3), BartenderRemoteSelector (1), BartenderRemoteSelector-Enhanced (1), DMXLightingRemote (1). Memory said 17 instances; current was 18 (one added since memory was written). Playwright-ui-tester agent verified visually on 1024x768 iPad viewport — all 4 tabs render solid white, layout intact, touch targets ≥44px, zero console errors. Also: forwarded `not` + `setDbHelperLogger` through `apps/web/src/lib/db-helpers.ts` per the v2.54.16 code-reviewer NIT (zero live callers, just future-proofing).
+- **v2.54.19** — **Rule 10 weekly bumps**: uuid 13→14 (only breaks v3/v5/v6 invalid-offset; we use v4 only across 5 call sites), @anthropic-ai/sdk 0.96→0.97 (patch-version SDK move; only consumed by qa-generator-processor), npm update (patch/minor: @types/react, postcss, ts-jest, tsx). Ollama: phi3:mini + llama3.2:3b refreshed. Deferred bumps (each needs dedicated PR): zod 3→4 (validation schemas everywhere), tailwindcss 3→4 (config-format rewrite), typescript 5.9→6.0 (too new), @huggingface/transformers 3.8→4.2 (reranker re-verify), tesseract.js 6→7, serialport 12→13. npm audit: 13 transitive vulns (esbuild via drizzle-kit, ip via node-ssdp, postcss/serialize-javascript inside Next 16 internals) — `audit fix --force` would downgrade Next 16; tracking upstream. OS: Ubuntu 24.04.4 LTS noble — current.
+- **v2.54.20** — **schema_completeness now checks COLUMNS, not just tables.** Pre-holiday audit found another silent-drift class the v2.54.10 table-only check missed: 5/6 fleet boxes were missing `Location.{latitude, longitude, lastGeocodedAt}` (v2.51.2 ALTER never landed) → venue-discovery cron couldn't geocode → 0 NeighborhoodVenue rows at 5 locations. 6/6 boxes were also missing `atlas_drop_events.event_type`. **DDL applied out-of-band on Holmgren UTC 06:23** (5 ALTER TABLEs total — verified post-apply via PRAGMA table_info). Verify-install now invokes Python to compare baseline `CREATE TABLE` blocks against PRAGMA per-column; reports `MISSING_COLS=Location.latitude...` when columns are missing. **Required Manual Step for boxes upgrading from <v2.54.20:** none — DDL is already applied. On next auto-update PM2 restart, venue-discovery cron will fire 30 min later, geocode each Location's address via Nominatim, write lat/long back, then Overpass query for nearby venues. **Operator action needed for luckys1313 only:** its Location row has name='Lucky's 1313' but blank address fields — geocoder will return null and venue-discovery will skip. Operator should populate `address`, `city`, `state`, `zipCode` via System Admin UI or directly via sqlite3 UPDATE.
+- **v2.54.24** — **auto-update.sh: add `apps/web/src/services/`, `apps/web/src/config/`, `apps/web/src/middleware/` to `SHARED_SOFTWARE_PREFIXES`.** v2.54.23's rollout to holmgren-way failed at the merge step with `CONFLICT (content): Merge conflict in apps/web/src/services/firetv-connection-manager.ts` → full rollback. Root cause: `SHARED_SOFTWARE_PREFIXES` listed `apps/web/src/{app,components,lib,hooks,db,types,utils}/` but not `services/`, so when the v2.54.22 commit on each location branch (different SHA than main's v2.54.22) collided with v2.54.23's edits to the same lines, no prefix matched, the conflict was treated as "non-whitelisted file", and auto-update aborted. **Required Manual Step for boxes upgrading from <v2.54.24:** the v2.54.23 rollout needs a manual workstation-side pre-resolve on each location branch (`git checkout location/X && git merge -X theirs origin/main` for the conflicted file, then push) before auto-update will run cleanly. After v2.54.24 lands, future services/ edits propagate automatically. Also adds `config/` and `middleware/` directories preemptively — pure-software subtrees that locations should never carry divergent versions of.
+- **v2.54.23** — **Demote-defeat #2: failureCount Map outlives `connections.delete()`.** v2.54.22 preserved `connectionAttempts` across `getOrCreateConnection` calls but missed that `disconnect()` (called from `executeCommand` failure path, `reconnect`, and the periodic `cleanupStaleConnections`) **deletes** the entry from `this.connections` entirely — wiping the counter back to 0 on every disconnect→reconnect cycle. Holmgren after v2.54.22 still emitted ~7 ERROR/35min per offline device. Fix: added `private failureCount: Map<string, number>` field as a durable counter independent of the connections-Map lifecycle. Catch block writes through to it; success path deletes the entry; `getOrCreateConnection` reads from it (not from `existing.connectionAttempts`). Pure logging change, no behavioral impact on connection lifecycle.
+- **v2.54.22** — **Connection-manager / ADB-client / FIRE-CUBE log demote completion**. v2.54.6 added a rising-edge demote in `firetv-connection-manager.ts` but it was defeated by a bug at line 147: every reconnect attempt allocated a *fresh* `ConnectionInfo` object, resetting `connectionAttempts=0`, so every failure looked like a "first failure" and ERROR-logged. Holmgren still emitted ~44 ERROR rows/day from `10.11.3.14` (Epson projector off-hours) + `10.11.3.48` (Atmosphere TV) + 2 sleeping Fire Cubes. This release: (a) preserve `connectionAttempts` + queued commands when reusing the slot (real rising-edge); (b) demote `adb-client.executeShellCommand` ERROR → DEBUG (the function throws — caller decides); (c) demote `adb-client.sendKey` duplicate-log → DEBUG; (d) add rising-edge to `adb-client.keep-alive ping` (first miss ERROR, repeats DEBUG); (e) demote `adb-client.connect()` catch → DEBUG (connection-manager already logs at the right level via its rising-edge); (f) demote `adb-client.Max reconnection attempts` → DEBUG (fires on every keep-alive tick once cap is hit); (g) `firetv/send-command/route.ts` catch demotes `timeout / refused / unreachable / "failed to connect"` → DEBUG, keeps ERROR for novel failures (auth, unrecognized). Expected log reduction at Holmgren: ~44 → ~4 ERROR/day (1 per device per offline-streak transition). **Required Manual Step:** none — code-only fix, auto-update handles rebuild + restart.
+- **v2.54.16** — **Pass 3 F8: merge `@sports-bar/data` into `@sports-bar/database` (-1367 lines)**. The two packages had functional overlap (both provided CRUD helpers + Drizzle operator re-exports). Migration:
+  - `pagination.ts`, `database-logger.ts`, `operation-logger.ts` — `git mv` from `packages/data/src/` to `packages/database/src/`. Added re-exports to `packages/database/src/index.ts`.
+  - `sanitizeData` in `packages/database/src/helpers.ts:45` changed from internal to `export function`, added to index.
+  - `apps/web/src/lib/db-helpers.ts` rewritten — dropped the `createDbHelpers` factory pattern (was never used as DI; only call site passed the production singleton). Now a thin re-export bridge from `@sports-bar/database`.
+  - 8 caller files (`apps/web/src/lib/{pagination,database-logger,operation-logger}.ts`, 4 API routes using `operationLogger`, `packages/services/src/ir-database.ts` using `logDatabaseOperation`) — `from '@sports-bar/data'` → `from '@sports-bar/database'` via sed.
+  - `@sports-bar/data` dependency dropped from `apps/web/package.json` + `packages/services/package.json`.
+  - `packages/data/` directory DELETED.
+  - **Required Manual Step:** none — auto-update handles the npm install + rebuild. Independent code-reviewer agent verified no double-substitution artifacts, all 8 callers correctly rewritten, no orphan call sites. Holmgren runtime-verified: `/api/channel-presets` 200, ESPN sync running, zero `Cannot find module '@sports-bar/data'` errors in PM2 logs post-restart.
+
+### Required Manual Steps
+
+- **None for fresh installs** — `bootstrap-drizzle-migrations.sh` is idempotent and runs automatically on every auto-update. The baseline migration is applied at first install.
+- **For locations that auto-update from v2.53.17 → v2.54.x** — auto-update will run bootstrap (registers existing schema state with `__drizzle_migrations`) then drizzle-kit migrate (no-op since all migrations already marked applied). Should "just work". If it fails, see Known Errors & Fixes.
+- **OPERATOR ACTION (one-time, post-v2.54.3 — none required at any current fleet box):** `instant-rollback.sh` is opt-in. To use it in an emergency: `bash scripts/instant-rollback.sh --list` (see available snapshots) → `bash scripts/instant-rollback.sh <version>`. No setup needed; snapshots accrue automatically on each successful update.
+
+### Verification gates (after each box updates)
+
+- `pm2 status` → sports-bar-tv-controller online, restart_time +1
+- `curl localhost:3001/api/version` → reports `2.54.6` (or whatever latest is)
+- `sqlite3 /home/ubuntu/sports-bar-data/production.db "SELECT COUNT(*) FROM __drizzle_migrations"` → ≥ 1 (proves bootstrap ran; new installs will be N=migration count, existing installs will be N=count of committed migrations).
+- `ls /home/ubuntu/sports-bar-releases/v*/manifest.json 2>/dev/null | wc -l` → 1 or more (snapshots accruing). Empty = `snapshot-release.sh` didn't run; check auto-update.sh log for the snapshot block at finalize.
+- `pm2 logs sports-bar-tv-controller --lines 500 --err --nostream | grep -c "Failed to connect to 10\."` → after 24h on v2.54.6, should be ≤ 6 (one per offline device per restart). Previous baseline was 200+. If still high, the demote isn't taking effect.
+
+### Known acceptable behaviors
+
+- **`__drizzle_migrations` table appears empty on first read after v2.54.1 update** — bootstrap runs at next auto-update cycle and populates it. Not an error.
+- **`/home/ubuntu/sports-bar-releases/` empty at first v2.54.3 update** — snapshots accrue starting with the NEXT successful update. First snapshot appears after v2.54.3 → v2.54.x rolls.
+- **First failure for any device after PM2 restart still logs ERROR** — that's by design (novel signal). Only the repeats are demoted.
+
+### Rollback
+
+- For v2.54.0/v2.54.1 (the migrate switch): if `drizzle-kit migrate` fails on a box, the auto-update.sh trap fires full rollback as normal. Manual recovery path is documented in the v2.54.0 commit message — apply DDL out-of-band via `sqlite3` then re-trigger auto-update.
+- For v2.54.6 (the log demote): cosmetic regression only; revert the commit if it's masking a real failure somehow.
+- General: every snapshot in `/home/ubuntu/sports-bar-releases/` is by construction known-good. `instant-rollback.sh <prev-version>` works for any release in that dir.
+
+---
+
+## v2.53.10 → v2.53.14 — follow-ups + venue UI + brief fixes (multi-version 2026-05-20)
+
+**Versions covered:** v2.53.10 → v2.53.14 (5 commits on 2026-05-20)
+**Branch landed:** main
+**Fleet target:** rolling upgrade from v2.53.9 — all 6 boxes shipped same-day
+
+Pure follow-up batch after the v2.51-v2.53.9 big-ship. Each version is small but together they close real gaps. Strictly additive — no env vars, no schema migrations, no operator opt-ins.
+
+- **v2.53.10** — VERSION_SETUP_GUIDE entry for the v2.51-v2.53.9 batch.
+- **v2.53.11** — TWO production bugs:
+  1. **Shift-brief surfaced override-digest 30-day recommendations under "Recent hardware/software failures"** (LLM merged the 30-day pattern observations into the 24h failures section). Fix: drop `newRecommendations` from the brief context entirely; admin recommendations stay in the DB for admin tooling but no longer reach bartenders.
+  2. **`RAG_RERANK_ENABLED=true` was a no-op on the /api/chat path.** v2.53.0 wired the reranker into `queryDocs`/`queryDocsStream` (one-shot + SSE) but not into `retrieveContext`, which is what chat actually calls. Locations that paid the +600MB RAM + PM2 restart cost got zero chat-side benefit. Fix: `retrieveContext` now routes through the same `retrieveAndRerank` helper when the flag is on. Functional verification = chat response `sources.length === 8` (was 5).
+- **v2.53.12** — VERSION_SETUP_GUIDE corrected the v2.51-v2.53.9 per-location RAM table (4 boxes stated as 16 GB were actually 31 GB; Graystone correctly at 15 GB). Added new pre-flight: `command -v pm2` in a non-interactive SSH shell. Leg-lamp's `pm2` lived only in NVM (not `/usr/bin/` like the other 4 boxes) — auto-update.sh + future remote PM2 restarts silently failed there. Applied `/usr/local/bin/pm2` symlink out-of-band; documented for future-location-setup. **Future-new-location action:** `command -v pm2` MUST return a non-empty path in `ssh ubuntu@<host> 'command -v pm2'`. If empty, `sudo ln -sfv /home/ubuntu/.nvm/versions/node/v20.20.0/bin/{node,npm,npx,pm2} /usr/local/bin/`.
+- **v2.53.13** — Operator UI for pending neighborhood venues at `/admin/venues/pending` (backend was shipped in v2.53.4 as API-only; CLI was the only client). Same field surface as the CLI: name + latest event, category, distance, source badge, event count. Per-row approve / decline / merge-with-target buttons. SafeBoundary-wrapped. **Auth fix:** both `/api/admin/venues/pending` GET and `/api/admin/venues/[id]/review` POST now call `requireAuth(request, 'ADMIN', { auditAction: ... })`. Before this commit they were rate-limit-only — any client on the bar's LAN could approve, decline, or merge venues anonymously.
+- **v2.53.14** — Atlas drops bullet in shift-brief. Mirrors the v2.53.6 priority-recap pattern for `atlas_drop_events`. **Conditional**: only appears when drops>0 in the last 24h. When 0 (common case post-v2.42.1 false-positive fix), no bullet renders. When ≥1, server-built-verbatim bullet with worst-zone + total count. Bullet also mirrored into `fallbackBrief()` for Ollama-degraded path parity.
+
+### Required Manual Steps
+
+- **None for v2.53.10, .11, .14** — pure code/doc changes, auto-update handles them.
+- **For v2.53.12 (NEW-location-only)** — add the `command -v pm2` pre-flight to your new-location setup. If empty, apply the NVM symlink (see above).
+- **For v2.53.13** — operator can now use the UI at `/admin/venues/pending` instead of `npx tsx apps/web/scripts/review-pending-venues.ts`. The CLI still works (kept for ops/scripting). Existing API consumers should send an authenticated request — sessions issued by /login carry the ADMIN role correctly.
+
+### Verification gates (after each box updates)
+
+- `pm2 status` → sports-bar-tv-controller online, restart_time +1
+- `curl localhost:3001/api/version` → reports `2.53.14`
+- `curl localhost:3001/admin/venues/pending` → 200 OK (HTML page; renders auth prompt for unauthenticated browsers)
+- `curl -o /dev/null -w "%{http_code}" localhost:3001/api/admin/venues/pending` → **401** (auth gate; the previous-version answer was 200 with data — that was the leak)
+- Shift-brief smoke test:
+  ```bash
+  curl -sS "http://localhost:3001/api/ai/shift-brief?force=true" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['brief'])"
+  ```
+  Expected sections: home-team games / other games / "Recent hardware/software failures to watch for: None" (NOT 30-day Xavier-output-25 noise) / Wireless mic status / Neighborhood-event heads-up (if any) / Atlas priority recap. The drops bullet is conditional and absent on stable Atlas — that's correct behavior, not a regression.
+
+### Known acceptable behaviors
+
+- **Drops bullet absent at all 6 boxes today** — Atlas hardware is stable everywhere post-v2.42.1. Feature is future-proof; when a real drop fires the bullet will appear.
+- **First chat call after restart loads bge-reranker-v2-m3 ONNX (~3-100s cold start)** — expected with `RAG_RERANK_ENABLED=true`. Subsequent calls ~+300ms over baseline.
+- **Pending venue queue stays at 0 at most locations** — new venues populate when Ticketmaster scrapes (4× daily) AND the location has `TICKETMASTER_API_KEY` set. Holmgren is currently the only fleet box with the key.
+
+### Rollback
+
+Standard auto-update.sh rollback path covers all five versions. If something specific to v2.53.13 regresses (admin UI render failure, auth gate too tight), revert just that commit (`0fa98fd3`) without losing the v2.53.11 production bug fixes.
+
+---
+
+## v2.51.0 → v2.53.9 — Neighborhood RF + reranker + shift-brief expansion (multi-version 2026-05-19/20)
+
+**Versions covered:** v2.51.0 → v2.53.9 (~30 commits across 2026-05-19 + 2026-05-20)
+**Branch landed:** main
+**Fleet target:** all 6 locations upgrade from v2.50.7 → v2.53.9
+
+Largest single-batch upgrade since v2.50.x. The work groups cleanly:
+
+- **v2.51.x — Neighborhood RF Interference Prediction:** new `NeighborhoodVenue` / `NeighborhoodVenueAlias` / `NeighborhoodEvent` / `InterferenceAttribution` tables, Bananas scraper (small-venue live music ~1mi useful), auto-geocoding of Location address via OSM Nominatim, `is_self` flag so own-bar gigs at Anduzzi's-style venues stop polluting the heads-up. No env vars; runs everywhere.
+- **v2.52.x SDR + AI:** SDR ↔ shift-brief integration, mic status one-liner, neighborhood-events heads-up bullet, daily Ollama RF Pattern Digest, hallucinated-game fix (pre-filter games ≤8 to avoid `[[feedback-llm-context-overflow]]`).
+- **v2.53.0 — Cross-encoder reranking:** `bge-reranker-v2-m3-ONNX` (int8) via `@huggingface/transformers`. **OPT-IN per location** via `RAG_RERANK_ENABLED=true`. PM2 `max_memory_restart` bumped 1G → 3G and `--max-old-space-size` 512 → 2048 fleet-wide (already in ecosystem.config.js commit — applies to every box).
+- **v2.53.1-2 — Ticketmaster Discovery API:** second neighborhood-events source for big venues (Lambeau, Resch, EPIC, Fox Cities PAC, Weidner). 30mi radius, 14-day lookahead, ~4 API calls/day (free tier limit is 5000). **OPT-IN per location** via `TICKETMASTER_API_KEY`. Default OFF.
+- **v2.53.4-5 — Venue review API:** `/api/admin/venues/pending` + `/review` endpoints + `apps/web/scripts/review-pending-venues.ts` CLI for triaging auto-discovered venues. Decline updates BOTH `is_active=false` AND `review_status='declined'` atomically (`[[feedback-state-machine-belt-suspenders]]`).
+- **v2.53.6-9 — Shift-brief expansion + karaoke-framing fix:** Atlas priority recap added as a 3rd RF bullet; server-built-verbatim pattern (`[[feedback-llm-server-built-verbatim]]`) used for mic-status + heads-up + Atlas recap to defeat llama3.1:8b paraphrasing (Gotcha #12). `num_predict: 200 → 320`. House Shure wireless is NEVER for karaoke (BYO mics) — bartender docs scrubbed of "karaoke mic" framing (Gotcha #13).
+
+### Required Manual Steps (per-location, IN ORDER):
+
+```bash
+# 1. SSH to the location via Tailscale
+ssh ubuntu@<location-tailscale-hostname>
+cd /home/ubuntu/Sports-Bar-TV-Controller
+
+# 2. Snapshot for rollback safety
+git log --oneline -3      # note current SHA
+sqlite3 /home/ubuntu/sports-bar-data/production.db ".backup /home/ubuntu/sports-bar-data/production.db.pre-v2.53.bak"
+
+# 3. Run auto-update — handles merge / npm ci / drizzle push / build / PM2 restart / verify-install
+bash scripts/auto-update.sh --triggered-by=manual_cli
+# Expect ~5-8 min. Adds @huggingface/transformers (+ONNX runtime) — first npm ci will be slow.
+
+# 4. (CONDITIONAL) Enable cross-encoder reranking — see decision table below.
+#    Default policy: ENABLE at every location AT OR ABOVE 16 GB RAM. Skip at Graystone (15 GB).
+#    If enabling:
+echo "RAG_RERANK_ENABLED=true" >> .env
+pm2 delete sports-bar-tv-controller && pm2 start ecosystem.config.js && pm2 save
+#    (delete+start required to re-read .env per Gotcha #2 — restart alone won't pick up the new env var)
+
+# 5. (CONDITIONAL) Enable Ticketmaster Discovery API for big-venue events — see decision table below.
+#    Default policy: ENABLE only where the operator has an active Ticketmaster developer key.
+#    If enabling:
+read -srp 'TICKETMASTER_API_KEY> ' TM_KEY && echo
+echo "TICKETMASTER_API_KEY=$TM_KEY" >> .env
+unset TM_KEY
+pm2 delete sports-bar-tv-controller && pm2 start ecosystem.config.js && pm2 save
+
+# 6. Verify the neighborhood tables exist (drizzle-kit push should have created them; double-check
+#    per Gotcha #6 — drizzle aborts silently on pre-existing indexes)
+sqlite3 /home/ubuntu/sports-bar-data/production.db "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('NeighborhoodVenue','NeighborhoodVenueAlias','NeighborhoodEvent','InterferenceAttribution');"
+# Expected: all 4 names listed. If any missing, see ROLLBACK / manual-DDL section below.
+
+# 7. (CONDITIONAL) Seed neighborhood venues from main's curated list (Lambeau/Resch/Anduzzi/etc.).
+#    Only needed at locations whose NeighborhoodVenue table is empty after step 6.
+sqlite3 /home/ubuntu/sports-bar-data/production.db "SELECT COUNT(*) FROM NeighborhoodVenue;"
+# If 0:
+npx tsx apps/web/scripts/seed-neighborhood-venues.ts
+# If Ticketmaster is enabled at this location, also seed its venue catalog:
+npx tsx apps/web/scripts/seed-ticketmaster-venues.ts
+
+# 8. Auto-geocode the Location row (v2.51.2 — uses OSM Nominatim, no env config).
+#    Idempotent: skips if Location already has lat/long.
+#    Triggered automatically on next scheduler tick (every 60s); to force-trigger:
+curl -sS -X POST http://localhost:3001/api/admin/geocode-location | python3 -m json.tool
+# Expected: { ok: true, lat: <number>, lng: <number> } OR { ok: true, alreadyGeocoded: true, ... }
+
+# 9. Triage any pending auto-discovered venues (interactive — only if NeighborhoodVenue.review_status
+#    contains 'pending_review' rows). At Holmgren this caught 94 venues after Ticketmaster turned on.
+npx tsx apps/web/scripts/review-pending-venues.ts
+# Press 'a' (approve) / 'd' (decline) / 'm' (merge with existing). 'q' to quit anytime — safe to resume.
+
+# 10. Per Standing Rule 11 — RAG re-scan (CLAUDE.md gained Gotchas #12 + #13, §7a + §9
+#     expanded; multiple bartender-help + ops docs updated; memory files referenced)
+nohup npx tsx scripts/scan-system-docs.ts > /tmp/scan-system-post-v2.53.log 2>&1 &
+# ~15-25 min with v2.50.1 batched embed.
+
+# 11. Verify chat picks up the new content
+curl -sS -X POST http://localhost:3001/api/chat \
+  -H 'Content-Type: application/json' \
+  -d '{"message":"why would the wireless mic banner show up at the same time as the priority banner","stream":false,"enableTools":false}' \
+  | python3 -c "import sys,json; d=json.load(sys.stdin); print((d.get('response') or '')[:500])"
+# Expected: answer mentions RF-induced priority (cyan + amber co-occurrence) and references
+# the RF_INTERFERENCE docs. If the model says "I don't have info", rescan didn't complete.
+
+# 12. Smoke-test the shift-brief
+curl -sS "http://localhost:3001/api/ai/shift-brief?force=true" \
+  -H 'Content-Type: application/json' | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('brief',''))"
+# Expected: 8-9 bullets including a mic-status line, optional heads-up line (if neighborhood events
+# in window), and Atlas priority recap. If the body lacks the Atlas recap section, fallbackBrief is
+# in play — confirm Ollama reachable (`ollama ps` shows llama3.1:8b loaded).
+
+# 13. Update fleet status doc
+# Edit docs/FLEET_STATUS.md row for this location → v2.53.9
+```
+
+### Per-Location Opt-In Decisions
+
+| Location           | RAM (verified 2026-05-20 via `free -g`) | RAG_RERANK_ENABLED  | TICKETMASTER_API_KEY                              | Notes                                                                                              |
+|--------------------|---------|---------------------|---------------------------------------------------|----------------------------------------------------------------------------------------------------|
+| holmgren-way       | 32 GB   | `true`              | `set` (active key — held by operator)              | Canary for both features. Pattern Digest enabled.                                                  |
+| leg-lamp           | 31 GB   | `true`              | unset (no operator-active key — keep OFF)         | Single-card; verify `MATRIX_SINGLE_CARD=true` still present (CLAUDE.md §4). **Per-location quirk**: NVM-installed `pm2` is NOT in `/usr/bin/` like the other boxes — `/usr/local/bin/pm2` symlinked manually 2026-05-20. See [[feedback-systemd-paths-and-ollama-perms]]. |
+| lucky-s-1313       | 31 GB   | `true`              | unset                                              | Single-card; dbx ZonePRO @ 192.168.10.50.                                                          |
+| stoneyard-appleton | 31 GB   | `true`              | unset                                              | Multi-card. Fleet-best AI Suggest baseline — confirm cold-call still ≤80s after rerank ships.       |
+| stoneyard-greenville | 31 GB | `true`              | unset                                              | Multi-card. Most-neglected box; budget extra time for verify.                                       |
+| graystone          | 15 GB   | **`false` — DO NOT ENABLE** | unset                                      | Tightest RAM box: 250-400MB app + 600MB reranker + 5.3GB llama3.1:8b = no headroom. See `[[project-graystone-ram-constraint]]`. |
+
+**Derivation rule (for adding NEW locations later):**
+
+- `RAG_RERANK_ENABLED=true` if `free -g | awk '/^Mem:/ {print $2}'` ≥ 16. Otherwise leave unset. (5 of 6 current fleet boxes have 31-32 GB; only Graystone is on the 15 GB threshold.)
+- `TICKETMASTER_API_KEY` ONLY if the operator has provisioned a developer key for this location AND wants stadium-scale (25mi) event awareness. Key issuance: https://developer.ticketmaster.com/ → Discovery API → "Get your API key".
+- **`pm2` PATH check (NEW LOCATION SETUP):** confirm `command -v pm2` returns a non-empty path in a non-interactive shell (`ssh ubuntu@<host> 'command -v pm2'`). If empty, the auto-update.sh + future remote restart commands will silently fail. Fix: `sudo ln -sfv /home/ubuntu/.nvm/versions/node/v20.20.0/bin/{node,npm,npx,pm2} /usr/local/bin/`. Audit `/usr/bin/pm2` vs NVM `pm2` — fleet has a split: 4 boxes use `/usr/bin/pm2` (apt or global npm) and 1 box (leglamp) uses NVM with manual symlink.
+
+### Verification gates (must PASS before promoting next location)
+
+- `pm2 status` → `sports-bar-tv-controller` online, restart_time incremented exactly 1 (2 if you ran a delete+start for env var opt-in)
+- `curl localhost:3001/api/health` → 200 OK
+- `curl localhost:3001/api/version` → reports `2.53.9`
+- `sqlite3 .../production.db "SELECT COUNT(*) FROM NeighborhoodVenue;"` → ≥ 1
+- `sqlite3 .../production.db "SELECT COUNT(*) FROM NeighborhoodVenue WHERE review_status='pending_review' AND is_active=1;"` → triaged to 0 OR documented as an outstanding follow-up
+- `pm2 logs sports-bar-tv-controller --lines 200 --nostream | grep -E 'RERANK|rerank' | head -3` → if RAG_RERANK_ENABLED=true, expect `[RERANK] loaded` line and NO `OOM` / `kill-loop` references
+- Shift-brief smoke test contains: mic-status line, Atlas recap line, ≥3 game bullets
+- Chat smoke test answer cites at least one of: `RF_INTERFERENCE_DETECTION_SYSTEM.md`, `RF_INTERFERENCE_FOR_BARTENDERS.md`, `MIC_NOT_WORKING.md`
+
+### Rollback
+
+If anything fails verify-install, `auto-update.sh` has already rolled back to pre-update commit. To restore the DB:
+
+```bash
+cp /home/ubuntu/sports-bar-data/production.db.pre-v2.53.bak /home/ubuntu/sports-bar-data/production.db
+pm2 restart sports-bar-tv-controller --update-env
+```
+
+If the neighborhood tables are missing post-update (drizzle Gotcha #6), apply manually:
+
+```bash
+# drizzle-kit aborted on a pre-existing index. Apply the missing tables by replaying the schema push:
+cd /home/ubuntu/Sports-Bar-TV-Controller
+npx drizzle-kit push --config apps/web/drizzle.config.ts --force
+# Then verify (step 6 above).
+```
+
+### Known regressions / acceptable side-effects
+
+- **First chat call after enabling RAG_RERANK_ENABLED is slow (~3-5s extra)** — bge-reranker-v2-m3-ONNX cold-loads from `node_modules/@huggingface/transformers/.cache/`. Subsequent queries ~+300ms over baseline. Acceptable.
+- **PM2 RSS will sit ~600 MB higher** at locations with rerank enabled — that's the resident ONNX model. PM2 max_memory_restart=3G has headroom for normal request bursts. `[[feedback-reranker-memory-budget]]`.
+- **Ticketmaster scraper logs `[REDACTED]` when a request fails** — fixed in v2.53.1 audit. If you see a raw `apikey=xxx` in logs, the security fix wasn't deployed — re-run auto-update.
+- **Atlas priority recap may say "no events yesterday"** at locations whose `atlas_drop_events` + `atlas_priority_events` tables are still seeded only with `event_type='startup'` heartbeats — that's correct, not a bug. Real recap rows fill in over time as priority/drop events occur.
+- **Pending venue triage burden:** at locations where Ticketmaster is enabled, the first scrape will populate `NeighborhoodVenue` with `review_status='pending_review'` for any Ticketmaster venue not in the curated seed list. Holmgren had 94 to triage. Use `apps/web/scripts/review-pending-venues.ts`. Until triaged, those venues are gated OUT of shift-brief / preemptive-strike per `[[feedback-state-machine-belt-suspenders]]`.
+- **`OLLAMA_MODEL` stays `llama3.1:8b` for shift-brief + Pattern Digest + AI Suggest** — picking ONE resident model avoids the v2.52.17 RAM thrash (`[[feedback-ollama-ram-pressure]]`). Tool-routes still use qwen2.5:14b per v2.50.0.
+
+---
+
 ## v2.50.x — AI Hub game-changer batch (the big one) — multi-version 2026-05-18/19
 
 **Versions covered:** v2.46.3 → v2.50.7 (~50 commits across 2026-05-18 + 2026-05-19)

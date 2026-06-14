@@ -15,6 +15,7 @@ import FireTVAppShortcuts from './FireTVAppShortcuts'
 import AIGamePlanModal from './AIGamePlanModal'
 import LiveSportsDashboard from './LiveSportsDashboard'
 import ScheduledGameTVPicker from './ScheduledGameTVPicker'
+import { Skeleton } from './ui/skeleton'
 import { logger } from '@sports-bar/logger'
 import { findStreamingAppByPackageName } from '@sports-bar/streaming'
 import {
@@ -956,11 +957,17 @@ export default function EnhancedChannelGuideBartenderRemote() {
       // Filter and map - only show channels that have a preset configured
       filtered = filtered
         .map((prog): GameListing | null => {
-          // Find matching preset by channel name or number
+          // Find matching preset by channel name or number.
+          // Wave 1b-i: String()-normalize BOTH sides. preset.channelNumber is
+          // TEXT from the DB; prog.channel.number has historically been a number
+          // from some injection paths — a bare === silently dropped the row (the
+          // client half of the Brewers ch308 / TEXT-vs-INTEGER class; the server
+          // half was fixed in v2.55.44). This fix only ADDS back rows that were
+          // previously nulled — it never removes a row.
           const matchingPreset = channelPresets.find(preset =>
             preset.deviceType === presetDeviceType &&
             (preset.name.toLowerCase() === prog.channel.name.toLowerCase() ||
-             preset.channelNumber === prog.channel.number)
+             String(preset.channelNumber) === String(prog.channel.number ?? (prog.channel as any).channelNumber))
           )
 
           if (matchingPreset) {
@@ -1561,7 +1568,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
 
       {/* Header */}
       <div className="relative z-10 text-center mb-6">
-        <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent mb-2">
+        <h1 className="text-2xl md:text-3xl font-bold text-white mb-2">
           Bartender Channel Guide
         </h1>
         <div className="flex items-center justify-center space-x-2 text-sm flex-wrap">
@@ -1606,7 +1613,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
         {/* Left Panel - Input Selection */}
         <div className="lg:col-span-1">
           <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl shadow-2xl p-4 h-fit">
-            <h2 className="text-lg font-bold bg-gradient-to-r from-blue-400 via-indigo-400 to-purple-400 bg-clip-text text-transparent mb-3 flex items-center">
+            <h2 className="text-lg font-bold text-white mb-3 flex items-center">
               <Tv className="mr-2 w-5 h-5 text-blue-400" />
               Select Input
             </h2>
@@ -1709,14 +1716,14 @@ export default function EnhancedChannelGuideBartenderRemote() {
           ) : !selectedInput ? (
             <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl shadow-2xl p-8 text-center">
               <Tv className="w-16 h-16 text-purple-400 mx-auto mb-4 opacity-50" />
-              <h3 className="text-xl font-medium bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent mb-2">Select an Input</h3>
+              <h3 className="text-xl font-medium text-white mb-2">Select an Input</h3>
               <p className="text-slate-400">Choose an input from the left panel to load its channel guide</p>
             </div>
           ) : (
             <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl shadow-2xl p-4">
               <div className="flex items-center justify-between mb-4">
                 <div>
-                  <h2 className="text-xl font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent flex items-center">
+                  <h2 className="text-xl font-bold text-white flex items-center">
                     <Calendar className="mr-2 w-5 h-5 text-blue-400" />
                     {inputs.find(i => i.channelNumber === selectedInput)?.label} Guide
                   </h2>
@@ -1760,9 +1767,31 @@ export default function EnhancedChannelGuideBartenderRemote() {
               {/* Guide Content */}
               <div className="max-h-96 overflow-y-auto">
                 {loadingGuide ? (
-                  <div className="text-center py-8">
-                    <div className="animate-spin rounded-full h-8 w-8 border-2 border-blue-500 border-t-transparent mx-auto mb-4"></div>
-                    <p className="text-slate-500">Loading channel guide...</p>
+                  // Skeleton placeholders matching the game-card shape
+                  // below — keeps the popup from flashing blank for the
+                  // ~2 sec the guide fetch takes on a busy network.
+                  <div className="space-y-3">
+                    {Array.from({ length: 5 }).map((_, i) => (
+                      <div
+                        key={`guide-skeleton-${i}`}
+                        className="backdrop-blur-xl bg-gradient-to-br from-purple-500/5 to-pink-500/5 border border-purple-400/10 rounded-xl p-4"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1 space-y-2">
+                            <div className="flex items-center gap-2">
+                              <Skeleton className="h-5 w-12 rounded-full" />
+                              <Skeleton className="h-5 w-12 rounded-full" />
+                            </div>
+                            <Skeleton className="h-5 w-3/4" />
+                            <div className="flex items-center gap-3">
+                              <Skeleton className="h-4 w-20" />
+                              <Skeleton className="h-4 w-16" />
+                            </div>
+                          </div>
+                          <Skeleton className="h-9 w-20 rounded-lg ml-3" />
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 ) : guideError ? (
                   <div className="text-center py-8">
@@ -1989,7 +2018,7 @@ export default function EnhancedChannelGuideBartenderRemote() {
               {/* Streaming Apps (for Fire TV ONLY — not cable or DirecTV) */}
               {guideData?.type === 'streaming' && guideData.apps && getDeviceTypeForInput(selectedInput) === 'streaming' && (
                 <div className="mt-6 pt-4 border-t border-white/10">
-                  <h3 className="text-lg font-medium bg-gradient-to-r from-green-400 to-emerald-400 bg-clip-text text-transparent mb-3">Quick Access Sports Apps</h3>
+                  <h3 className="text-lg font-medium text-white mb-3">Quick Access Sports Apps</h3>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                     {guideData.apps.filter(app => app.sportsContent).map((app) => (
                       <button type="button"

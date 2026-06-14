@@ -65,6 +65,12 @@ class FireTVConnectionManager {
   private initialized: boolean = false
   private readonly MAX_QUEUED_COMMANDS = 50 // Max commands to queue per device
   private readonly COMMAND_QUEUE_TIMEOUT = 5 * 60 * 1000 // 5 minutes
+  // Survives this.connections.delete() in disconnect() / cleanup paths so
+  // the rising-edge ERROR→DEBUG demote stays correct across the full
+  // failure → disconnect → retry cycle. Reset to 0 only on successful
+  // connect (line 174). v2.54.23 — v2.54.22 fix was insufficient because
+  // disconnect() wipes the connections Map entry, losing the counter.
+  private failureCount: Map<string, number> = new Map()
 
   private constructor() {
     logger.info('[CONNECTION MANAGER] Initializing Fire TV Connection Manager')
@@ -72,13 +78,27 @@ class FireTVConnectionManager {
   }
 
   /**
-   * Get singleton instance
+   * Get singleton instance.
+   *
+   * v2.54.45 (Grok audit pass 3 HIGH) — hoisted to globalThis + Symbol.for()
+   * per Gotcha #10. Next.js App Router compiles each route handler into its
+   * own server bundle; a `private static instance` class field is therefore
+   * per-bundle, not per-process. Each bundle would create its own
+   * ConnectionManager → duplicate ADB sockets per device → split
+   * `failureCount`/`connections` Maps → defeats the rising-edge demote (the
+   * exact bug chain that v2.54.6/22/23 patched at the symptom level but
+   * left intact at the architectural root).
+   *
+   * Same pattern as `packages/atlas/src/atlas-client-manager.ts`,
+   * `packages/shure-slxd/src/shure-slxd-client-manager.ts`.
    */
   public static getInstance(): FireTVConnectionManager {
-    if (!FireTVConnectionManager.instance) {
-      FireTVConnectionManager.instance = new FireTVConnectionManager()
+    const KEY = Symbol.for('@sports-bar/firetv/FireTVConnectionManager.instance')
+    const g = globalThis as any
+    if (!g[KEY]) {
+      g[KEY] = new FireTVConnectionManager()
     }
-    return FireTVConnectionManager.instance
+    return g[KEY] as FireTVConnectionManager
   }
 
   /**
@@ -104,11 +124,11 @@ class FireTVConnectionManager {
         logger.warn(`[CONNECTION MANAGER] Skipping device ${device.id} (${device.name || 'no name'}): no ipAddress`)
         continue
       }
-      // Don't await - let connections happen in background
+      // Don't await - let connections happen in background.
+      // The inner getOrCreateConnection already logs (first failure ERROR,
+      // repeats DEBUG); silence the outer catch so we don't double-log.
       this.getOrCreateConnection(device.id, device.ipAddress, device.port)
-        .catch(error => {
-          logger.error(`[CONNECTION MANAGER] Failed to initialize connection for ${device.name}:`, error.message)
-        })
+        .catch(() => {})
     }
 
     this.initialized = true
@@ -143,15 +163,21 @@ class FireTVConnectionManager {
       connectionTimeout: config.connection.connectionTimeout
     })
 
-    // Store connection info
+    // Preserve prior commandQueue from any existing entry so requests
+    // that were queued during reconnect survive. connectionAttempts is
+    // mirrored from this.failureCount (which outlives Map.delete()), so
+    // the rising-edge ERROR→DEBUG demote in the catch block stays correct
+    // even after disconnect() wipes the connections Map entry.
+    const priorQueue = existing ? existing.commandQueue : []
+    const priorAttempts = this.failureCount.get(deviceId) ?? 0
     const connectionInfo: ConnectionInfo = {
       deviceId,
       deviceAddress,
       client,
       lastActivity: new Date(),
-      connectionAttempts: 0,
+      connectionAttempts: priorAttempts,
       status: 'connecting',
-      commandQueue: []
+      commandQueue: priorQueue
     }
 
     this.connections.set(deviceId, connectionInfo)
@@ -161,9 +187,17 @@ class FireTVConnectionManager {
       const connected = await client.connect()
       
       if (connected) {
+        const wasOffline = connectionInfo.connectionAttempts > 0
         connectionInfo.status = 'connected'
         connectionInfo.connectionAttempts = 0
-        logger.info(`[CONNECTION MANAGER] Successfully connected to ${deviceAddress}`)
+        // Reset the durable counter too — next failure should be a fresh
+        // first-failure ERROR (real signal that the device just dropped).
+        this.failureCount.delete(deviceId)
+        if (wasOffline) {
+          logger.info(`[CONNECTION MANAGER] Reconnected to ${deviceAddress} (was offline)`)
+        } else {
+          logger.info(`[CONNECTION MANAGER] Successfully connected to ${deviceAddress}`)
+        }
 
         // Update device status in database
         await this.updateDeviceStatus(deviceId, true)
@@ -177,18 +211,33 @@ class FireTVConnectionManager {
       } else {
         connectionInfo.status = 'error'
         connectionInfo.lastError = 'Connection failed'
-        logger.error(`[CONNECTION MANAGER] Failed to connect to ${deviceAddress}`)
+        // Don't log here — the catch block below logs once with appropriate level.
         throw new Error('Connection failed')
       }
     } catch (error: any) {
       connectionInfo.status = 'error'
       connectionInfo.lastError = error.message
+      const isFirstFailure = connectionInfo.connectionAttempts === 0
       connectionInfo.connectionAttempts++
-      logger.error(`[CONNECTION MANAGER] Connection error for ${deviceAddress}:`, error.message)
-      
+      // Persist to the durable counter so the next retry — even after a
+      // disconnect()/cleanup wipes connections — sees a non-zero count
+      // and demotes to DEBUG.
+      this.failureCount.set(deviceId, connectionInfo.connectionAttempts)
+
+      // First failure → ERROR (real signal: device just went offline or is misconfigured).
+      // Subsequent failures → DEBUG (expected: device intentionally powered off, eg
+      // Atmosphere TV when display schedule is off, Epson projector after-hours).
+      // Demote pattern mirrors Atlas -32604 (v2.54.4/.5) to keep error log focused
+      // on novel failures, not steady-state powered-off devices.
+      if (isFirstFailure) {
+        logger.error(`[CONNECTION MANAGER] Connection error for ${deviceAddress}:`, error.message)
+      } else {
+        logger.debug(`[CONNECTION MANAGER] Reconnect attempt ${connectionInfo.connectionAttempts} for ${deviceAddress} failed (device may be powered off): ${error.message}`)
+      }
+
       // Update device status in database
       await this.updateDeviceStatus(deviceId, false)
-      
+
       throw error
     }
   }

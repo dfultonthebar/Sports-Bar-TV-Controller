@@ -16,6 +16,7 @@ import {
   Ban
 } from 'lucide-react'
 import Image from 'next/image'
+import BartenderEmptyState from './BartenderEmptyState'
 
 import { logger } from '@sports-bar/logger'
 interface SoundtrackStation {
@@ -282,25 +283,26 @@ export default function BartenderMusicControl() {
     )
   }
 
-  if (error) {
+  // Distinguish "Soundtrack truly not configured at this location" from
+  // a transient API blip. The empty-state card (v2.54.57) is for the
+  // former — "fresh install, manager needs to set this up". Transient
+  // errors still get the retry-flavored alert.
+  //
+  // Heuristics for "not configured": message mentions configuration, or
+  // mentions "No music players", or the API returned 404 (the Soundtrack
+  // integration route doesn't even exist yet at this location).
+  const looksUnconfigured = error
+    ? /not configured|no music players|404|contact management/i.test(error)
+    : false
+
+  if (error && !looksUnconfigured) {
     return (
       <div className="max-w-4xl mx-auto">
         <div className="backdrop-blur-xl bg-red-500/10 border border-red-400/30 rounded-2xl shadow-2xl p-8">
           <div className="flex items-center justify-center text-red-300 mb-4">
-            <AlertCircle className="w-6 h-6 mr-3 shrink-0" />
+            <AlertCircle className="w-6 h-6 mr-3 flex-shrink-0" />
             <span className="text-center font-medium">{error}</span>
           </div>
-          {error.includes('404') && (
-            <div className="mt-4 p-4 backdrop-blur-xl bg-orange-500/10 border border-orange-400/30 rounded-xl text-sm text-orange-200">
-              <p className="font-medium mb-2">Troubleshooting Steps:</p>
-              <ul className="list-disc list-inside space-y-1 text-xs">
-                <li>Verify the Soundtrack API configuration in the admin settings</li>
-                <li>Check if your Soundtrack Your Brand account is active</li>
-                <li>Run the API connection diagnostic tool</li>
-                <li>Contact management to review the Soundtrack integration</li>
-              </ul>
-            </div>
-          )}
           <div className="text-center mt-4">
             <Button onClick={loadData} variant="outline" size="sm" className="backdrop-blur-xl bg-white/5 border-white/10 hover:bg-white/10 transition-all duration-300">
               Retry
@@ -311,14 +313,27 @@ export default function BartenderMusicControl() {
     )
   }
 
-  if (!selectedPlayer) {
+  if (looksUnconfigured || !selectedPlayer) {
     return (
-      <div className="max-w-4xl mx-auto">
-        <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl shadow-2xl p-8 text-center text-slate-400">
-          <Music2 className="w-16 h-16 mx-auto mb-4 opacity-30" />
-          <p className="font-medium">No Soundtrack players configured</p>
-        </div>
-      </div>
+      <BartenderEmptyState
+        icon={<Music2 className="w-12 h-12" strokeWidth={1.5} />}
+        heading="Music isn't set up yet"
+        body={
+          <>
+            <p>
+              The bar music system (Soundtrack Your Brand) hasn&apos;t been connected for this
+              location yet. Until it&apos;s set up, you can&apos;t start/stop playlists from here.
+            </p>
+            <p>
+              On a fresh install this is normal — the manager needs to add the Soundtrack
+              account once, then it stays. Audio zones and TVs still work in the meantime.
+            </p>
+          </>
+        }
+        adminUrl="/soundtrack"
+        adminLabel="Open Soundtrack setup"
+        managerMessage="The bartender iPad Music tab is empty — please open the Soundtrack admin page and connect the music account so I can control the bar music."
+      />
     )
   }
 
@@ -327,7 +342,7 @@ export default function BartenderMusicControl() {
       {/* Player Selection (if multiple players) */}
       {players.length > 1 && (
         <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl shadow-2xl p-6">
-          <h3 className="text-sm font-semibold text-white mb-4 bg-linear-to-r from-pink-400 via-purple-400 to-blue-400 bg-clip-text text-transparent">Select Music Zone:</h3>
+          <h3 className="text-sm font-semibold text-white mb-4 text-white">Select Music Zone:</h3>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
             {players.map((player) => (
               <button
@@ -338,11 +353,11 @@ export default function BartenderMusicControl() {
                 }}
                 className={`group relative p-4 rounded-xl border-2 transition-all duration-300 ${
                   selectedPlayer?.id === player.id
-                    ? 'backdrop-blur-xl bg-linear-to-br from-pink-500/20 to-purple-500/20 border-pink-400/50 shadow-xl scale-105'
+                    ? 'backdrop-blur-xl bg-gradient-to-br from-pink-500/20 to-purple-500/20 border-pink-400/50 shadow-xl scale-105'
                     : 'backdrop-blur-xl bg-white/5 border-white/10 hover:border-pink-400/30 hover:scale-105'
                 }`}
               >
-                <div className={`absolute inset-0 bg-linear-to-br from-pink-500/10 to-purple-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-xl`}></div>
+                <div className={`absolute inset-0 bg-gradient-to-br from-pink-500/10 to-purple-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-xl`}></div>
                 <div className="relative z-10">
                   <div className="font-semibold text-sm text-white">{player.name}</div>
                   <div className="flex items-center justify-center mt-2">
@@ -366,9 +381,9 @@ export default function BartenderMusicControl() {
 
       {/* Now Playing Card */}
       {nowPlaying && (
-        <div className="backdrop-blur-xl bg-linear-to-br from-pink-500/20 to-purple-500/20 border-2 border-pink-400/30 rounded-2xl shadow-2xl p-6">
+        <div className="backdrop-blur-xl bg-gradient-to-br from-pink-500/20 to-purple-500/20 border-2 border-pink-400/30 rounded-2xl shadow-2xl p-6">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-white font-bold flex items-center text-lg bg-linear-to-r from-pink-400 via-purple-400 to-blue-400 bg-clip-text text-transparent">
+            <h3 className="text-white font-bold flex items-center text-lg text-white">
               <Disc className="w-6 h-6 mr-2 text-pink-400 animate-spin" style={{ animationDuration: '3s' }} />
               Now Playing {players.length > 1 && `- ${selectedPlayer.name}`}
             </h3>
@@ -379,7 +394,7 @@ export default function BartenderMusicControl() {
 
           <div className="flex items-start space-x-4">
             {nowPlaying.track.albumArt && (
-              <div className="relative w-24 h-24 rounded-xl overflow-hidden shrink-0 shadow-2xl border-2 border-white/10">
+              <div className="relative w-24 h-24 rounded-xl overflow-hidden flex-shrink-0 shadow-2xl border-2 border-white/10">
                 <Image
                   src={nowPlaying.track.albumArt}
                   alt={nowPlaying.track.album || 'Album art'}
@@ -433,7 +448,7 @@ export default function BartenderMusicControl() {
       <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl shadow-2xl p-6">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h3 className="text-xl font-bold text-white bg-linear-to-r from-pink-400 via-purple-400 to-blue-400 bg-clip-text text-transparent">{selectedPlayer.name}</h3>
+            <h3 className="text-xl font-bold text-white text-white">{selectedPlayer.name}</h3>
             <p className="text-sm text-slate-400 mt-1">Music Player</p>
           </div>
           <Badge variant={selectedPlayer.isPlaying ? "default" : "secondary"} className={`text-sm font-medium ${selectedPlayer.isPlaying ? 'backdrop-blur-xl bg-green-500/20 border border-green-400/30 text-green-200' : 'backdrop-blur-xl bg-white/5 border border-white/10 text-slate-300'}`}>
@@ -462,14 +477,14 @@ export default function BartenderMusicControl() {
             disabled={actionLoading}
             className={`group relative w-full backdrop-blur-xl rounded-xl border-2 transition-all duration-300 shadow-xl hover:scale-105 py-4 ${
               selectedPlayer.isPlaying
-                ? 'bg-linear-to-br from-orange-500/20 to-red-500/20 border-orange-400/50 hover:border-orange-400/70'
-                : 'bg-linear-to-br from-green-500/20 to-emerald-500/20 border-green-400/50 hover:border-green-400/70'
+                ? 'bg-gradient-to-br from-orange-500/20 to-red-500/20 border-orange-400/50 hover:border-orange-400/70'
+                : 'bg-gradient-to-br from-green-500/20 to-emerald-500/20 border-green-400/50 hover:border-green-400/70'
             }`}
           >
             <div className={`absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-xl ${
               selectedPlayer.isPlaying
-                ? 'bg-linear-to-br from-orange-500/10 to-red-500/10'
-                : 'bg-linear-to-br from-green-500/10 to-emerald-500/10'
+                ? 'bg-gradient-to-br from-orange-500/10 to-red-500/10'
+                : 'bg-gradient-to-br from-green-500/10 to-emerald-500/10'
             }`}></div>
             <div className="relative z-10 flex items-center justify-center text-white font-bold text-lg">
               {selectedPlayer.isPlaying ? (
@@ -507,14 +522,14 @@ export default function BartenderMusicControl() {
                       actionLoading
                         ? 'opacity-50 cursor-not-allowed'
                         : isActive
-                          ? 'backdrop-blur-xl bg-linear-to-br from-pink-500/20 to-purple-500/20 border-pink-400/50 shadow-xl'
+                          ? 'backdrop-blur-xl bg-gradient-to-br from-pink-500/20 to-purple-500/20 border-pink-400/50 shadow-xl'
                           : 'backdrop-blur-xl bg-white/5 border-white/10 hover:border-purple-400/50 hover:shadow-lg active:scale-95'
                     }`}
                   >
-                    <div className="absolute inset-0 bg-linear-to-br from-purple-500/10 to-pink-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                    <div className="absolute inset-0 bg-gradient-to-br from-purple-500/10 to-pink-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                     <div className="relative z-10 flex items-center gap-3 p-3">
                       {playlist.imageUrl ? (
-                        <div className="w-12 h-12 rounded-lg overflow-hidden shrink-0 border border-white/10">
+                        <div className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 border border-white/10">
                           <img
                             src={playlist.imageUrl}
                             alt=""
@@ -522,7 +537,7 @@ export default function BartenderMusicControl() {
                           />
                         </div>
                       ) : (
-                        <div className="w-12 h-12 rounded-lg shrink-0 bg-linear-to-br from-purple-500/30 to-pink-500/30 border border-white/10 flex items-center justify-center">
+                        <div className="w-12 h-12 rounded-lg flex-shrink-0 bg-gradient-to-br from-purple-500/30 to-pink-500/30 border border-white/10 flex items-center justify-center">
                           <Music2 className="w-5 h-5 text-purple-300" />
                         </div>
                       )}
@@ -533,7 +548,7 @@ export default function BartenderMusicControl() {
                         )}
                       </div>
                       {isActive && (
-                        <div className="shrink-0">
+                        <div className="flex-shrink-0">
                           <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
                         </div>
                       )}

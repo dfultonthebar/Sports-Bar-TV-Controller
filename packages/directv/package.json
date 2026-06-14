@@ -14,12 +14,11 @@
   "dependencies": {
     "@sports-bar/cache-manager": "*",
     "@sports-bar/logger": "*",
-    "axios": "^1.12.2",
-    "node-ssdp": "^4.0.1"
+    "axios": "^1.12.2"
   },
   "devDependencies": {
     "@sports-bar/config": "*",
-    "@types/node": "^24.5.2",
-    "typescript": "^5.9.2"
+    "@types/node": "^25.0.0",
+    "typescript": "^6.0.0"
   }
 }
