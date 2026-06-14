@@ -191,26 +191,53 @@ step "Step 2/7: Partitioning ${TARGET_DISK}"
 # Wipe existing partition table
 wipefs -af "$TARGET_DISK" &>/dev/null
 
-# Create GPT partition table with EFI + root
+# v2.54.86: added bios_boot partition (1MB, type ef02). On a GPT-labelled
+# disk being booted in BIOS legacy mode, grub-install --target=i386-pc has
+# no place to embed its core image without a bios_boot partition. Without
+# this, MBR sig 0x55AA is technically present (so v2.54.80's check passes)
+# but GRUB stage 1's pointer to stage 2 is undefined → SeaBIOS hands off to
+# the MBR and the bootloader hangs immediately. Caught during v2.54.84
+# attempt-8 install: kernel + initrd + grub.cfg all correctly populated,
+# UUID matched, but VM hung at SeaBIOS "Booting from Hard Disk..." with
+# no GRUB menu, no kernel.
+#
+# Layout (numbered from 1):
+#   1 = bios_boot   1-2 MiB         (type ef02, no filesystem, for GRUB core)
+#   2 = EFI         2-514 MiB       (fat32, for UEFI boot)
+#   3 = root        514 MiB-end     (ext4, for the system)
 parted -s "$TARGET_DISK" \
     mklabel gpt \
-    mkpart "EFI" fat32 1MiB 513MiB \
-    set 1 esp on \
-    mkpart "root" ext4 513MiB 100%
+    mkpart "bios_boot" 1MiB 2MiB \
+    set 1 bios_grub on \
+    mkpart "EFI" fat32 2MiB 514MiB \
+    set 2 esp on \
+    mkpart "root" ext4 514MiB 100%
 
 sleep 2  # Wait for kernel to re-read partition table
-partprobe "$TARGET_DISK" 2>/dev/null || true
+# v2.54.81: silent-fail removed. If partprobe fails, the kernel doesn't see
+# the new partitions; downstream mkfs would fail with a confusing
+# "No such file or directory" instead of a clear "partprobe failed".
+# Retry once with longer sleep — kernel re-read can be flaky on busy I/O.
+if ! partprobe "$TARGET_DISK"; then
+    warn "partprobe attempt 1 failed; sleeping 3s and retrying..."
+    sleep 3
+    partprobe "$TARGET_DISK" || { err "partprobe ${TARGET_DISK} failed twice — kernel partition table not refreshed"; exit 1; }
+fi
 sleep 1
 
-# Determine partition names (nvme uses p1/p2, sata uses 1/2)
+# v2.54.86: partition indices shifted by 1 (bios_boot is now part 1).
+# Determine partition names (nvme uses p1/p2/p3, sata uses 1/2/3)
 if [[ "$TARGET_DISK" == *"nvme"* ]]; then
-    EFI_PART="${TARGET_DISK}p1"
-    ROOT_PART="${TARGET_DISK}p2"
+    BIOS_PART="${TARGET_DISK}p1"
+    EFI_PART="${TARGET_DISK}p2"
+    ROOT_PART="${TARGET_DISK}p3"
 else
-    EFI_PART="${TARGET_DISK}1"
-    ROOT_PART="${TARGET_DISK}2"
+    BIOS_PART="${TARGET_DISK}1"
+    EFI_PART="${TARGET_DISK}2"
+    ROOT_PART="${TARGET_DISK}3"
 fi
 
+log "BIOS boot partition: ${BIOS_PART} (1 MiB, for GRUB core image on GPT+BIOS systems)"
 log "EFI partition: ${EFI_PART}"
 log "Root partition: ${ROOT_PART}"
 
@@ -261,6 +288,44 @@ log "Extracting filesystem from ${SQUASHFS_PATH}..."
 unsquashfs -f -d "$MOUNT_DIR" "$SQUASHFS_PATH" 2>&1 | grep -E "^(Parallel|[0-9]+)" | tail -5
 
 log "Filesystem extracted."
+
+# v2.54.84: copy kernel + initrd from /cdrom/casper to /boot on target disk.
+# The build script's mksquashfs is invoked with `-e boot` (deliberately
+# excluding /boot/ from the squashfs to keep it small), and the kernel +
+# initrd live separately at /cdrom/casper/vmlinuz + /cdrom/casper/initrd
+# for live-boot purposes. Result: after extraction, the target /boot has
+# only efi/ + grub/ subdirs — no vmlinuz-*, no initrd-*. update-grub
+# generates entries pointing to /boot/vmlinuz-X but the file doesn't
+# exist, so the installed system hangs at SeaBIOS "Booting from Hard
+# Disk..." after GRUB tries to chainload a non-existent kernel.
+# Caught during attempt-7 VM 200 install (2026-05-27): 4+ min after
+# reboot, no kernel messages, no DHCP — disk inspection showed missing
+# vmlinuz/initrd on /boot.
+log "Copying kernel + initrd from casper to /boot..."
+KERNEL_VER=$(ls "${MOUNT_DIR}/usr/lib/modules/" 2>/dev/null | head -1)
+if [ -z "$KERNEL_VER" ]; then
+    err "No kernel modules found in ${MOUNT_DIR}/usr/lib/modules/ — squashfs extract incomplete?"
+    exit 1
+fi
+log "Detected kernel version: $KERNEL_VER"
+
+CASPER_DIR=$(dirname "$SQUASHFS_PATH")
+if [ ! -f "$CASPER_DIR/vmlinuz" ] || [ ! -f "$CASPER_DIR/initrd" ]; then
+    err "Missing kernel/initrd at ${CASPER_DIR}/{vmlinuz,initrd}"
+    err "Live ISO casper directory contents:"
+    ls -la "$CASPER_DIR" >&2 || true
+    exit 1
+fi
+
+cp "$CASPER_DIR/vmlinuz" "${MOUNT_DIR}/boot/vmlinuz-${KERNEL_VER}" || { err "Failed to copy kernel"; exit 1; }
+cp "$CASPER_DIR/initrd"  "${MOUNT_DIR}/boot/initrd.img-${KERNEL_VER}" || { err "Failed to copy initrd"; exit 1; }
+
+# Generic symlinks so /boot/vmlinuz + /boot/initrd.img work for tools that expect them
+ln -sf "vmlinuz-${KERNEL_VER}"     "${MOUNT_DIR}/boot/vmlinuz"
+ln -sf "initrd.img-${KERNEL_VER}"  "${MOUNT_DIR}/boot/initrd.img"
+
+log "Kernel installed: /boot/vmlinuz-${KERNEL_VER} ($(stat -c %s "${MOUNT_DIR}/boot/vmlinuz-${KERNEL_VER}") bytes)"
+log "Initrd installed: /boot/initrd.img-${KERNEL_VER} ($(stat -c %s "${MOUNT_DIR}/boot/initrd.img-${KERNEL_VER}") bytes)"
 
 # ═════════════════════════════════════════════════════════════════════════════
 # STEP 5: Configure Installed System
@@ -333,23 +398,32 @@ chmod 440 "${MOUNT_DIR}/etc/sudoers.d/ubuntu-nopasswd"
 log "User: ubuntu (password: ubuntu)"
 
 # ─── SSH ─────────────────────────────────────────────────────────────────────
-chr "systemctl enable ssh" 2>/dev/null || true
+# v2.54.81: silent-fail removed. If SSH isn't enabled, operator can't remote in
+# to recover the box — same severity as a broken bootloader.
+chr "systemctl enable ssh" || { err "systemctl enable ssh failed"; exit 1; }
 log "SSH enabled."
 
 # ─── Regenerate SSH host keys ────────────────────────────────────────────────
+# v2.54.81: silent-fail removed. If host-key regen fails, every install ships
+# with the SAME ssh_host_* keys baked into the chroot — fleet-wide MITM risk.
 rm -f "${MOUNT_DIR}/etc/ssh/ssh_host_"*
-chr "dpkg-reconfigure -f noninteractive openssh-server" 2>/dev/null || true
+chr "dpkg-reconfigure -f noninteractive openssh-server" || { err "SSH host key regeneration failed"; exit 1; }
 
 # ─── Machine ID ──────────────────────────────────────────────────────────────
+# v2.54.81: silent-fail removed. Duplicate machine-id across fleet breaks
+# DHCP client IDs, journald, dbus name collisions, systemd state sync.
 rm -f "${MOUNT_DIR}/etc/machine-id" "${MOUNT_DIR}/var/lib/dbus/machine-id"
-chr "systemd-machine-id-setup" 2>/dev/null || true
+chr "systemd-machine-id-setup" || { err "systemd-machine-id-setup failed"; exit 1; }
 
 # ─── Create data directory ───────────────────────────────────────────────────
 mkdir -p "${MOUNT_DIR}/home/ubuntu/sports-bar-data"
 chr "chown -R ubuntu:ubuntu /home/ubuntu"
 
 # ─── Enable first-boot service ──────────────────────────────────────────────
-chr "systemctl enable sports-bar-first-boot.service" 2>/dev/null || true
+# v2.54.81: silent-fail removed. CRITICAL — if first-boot.service isn't enabled,
+# the installed system never clones the app, never starts PM2, never serves
+# bartender remote. Whole installer becomes a no-op.
+chr "systemctl enable sports-bar-first-boot.service" || { err "Failed to enable sports-bar-first-boot.service — installed system would never start PM2"; exit 1; }
 log "First-boot service enabled — will clone app and build on first real boot."
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -360,16 +434,59 @@ step "Step 6/7: Installing GRUB Bootloader"
 # Install GRUB packages in chroot if not present
 chr "DEBIAN_FRONTEND=noninteractive apt-get install -y grub-efi-amd64 grub-pc-bin 2>&1" | tail -5
 
-# Install GRUB to EFI
-chr "grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=sportsbar --recheck 2>&1" || warn "EFI GRUB install failed — trying BIOS fallback"
+# v2.54.80 hardening: track BIOS + EFI success separately. At LEAST ONE must
+# succeed AND we verify the boot signature on disk before considering Step 6
+# done. Previously both calls were `|| warn` — so if both silently failed the
+# script declared success but SeaBIOS / UEFI firmware would find no
+# bootloader. Caught during 2026-05-27 VM 200 install: all 7 steps printed
+# success but VM hung at "Booting from Hard Disk..." after reboot.
 
-# Also install GRUB for BIOS (legacy boot) if disk supports it
-if [[ "$TARGET_DISK" != *"nvme"* ]]; then
-    chr "grub-install --target=i386-pc ${TARGET_DISK} 2>&1" || warn "BIOS GRUB install skipped"
+EFI_OK=0
+BIOS_OK=0
+
+# Install GRUB to EFI (must succeed on UEFI hardware)
+if chr "grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=sportsbar --recheck 2>&1"; then
+    EFI_OK=1
+    log "EFI GRUB installed."
+else
+    warn "EFI GRUB install FAILED"
+fi
+
+# Install GRUB for BIOS legacy boot. Drop the NVMe skip — NVMe disks CAN be
+# legacy-booted via CSM on hardware that supports it (VMs especially).
+if chr "grub-install --target=i386-pc ${TARGET_DISK} 2>&1"; then
+    BIOS_OK=1
+    log "BIOS GRUB installed to ${TARGET_DISK}."
+else
+    warn "BIOS GRUB install FAILED"
+fi
+
+# At least one must have worked.
+if [ "$EFI_OK" = "0" ] && [ "$BIOS_OK" = "0" ]; then
+    err "GRUB install failed for BOTH EFI and BIOS targets. System will not boot."
+    err "Check the chroot log above for the underlying grub-install error."
+    exit 1
 fi
 
 # Generate GRUB config
 chr "update-grub 2>&1" | tail -5
+
+# Verify the MBR boot signature 0x55AA is now present when BIOS was installed.
+# The MBR is the first 512 bytes of the disk; bytes 510-511 must be 55 AA.
+if [ "$BIOS_OK" = "1" ]; then
+    MBR_SIG=$(dd if="${TARGET_DISK}" bs=1 skip=510 count=2 2>/dev/null | xxd -p)
+    if [ "$MBR_SIG" = "55aa" ]; then
+        log "MBR boot signature verified (0x55AA) on ${TARGET_DISK}."
+    else
+        err "MBR boot signature missing on ${TARGET_DISK} (got: ${MBR_SIG:-<empty>}). BIOS boot will FAIL."
+        if [ "$EFI_OK" = "0" ]; then
+            err "EFI also failed — aborting install."
+            exit 1
+        else
+            warn "EFI is in place — system may still boot if firmware supports UEFI."
+        fi
+    fi
+fi
 
 log "GRUB bootloader installed."
 
@@ -403,11 +520,22 @@ echo "  Installed to: ${TARGET_DISK}"
 echo "  Disk size:    ${DISK_SIZE}"
 echo "  User:         ubuntu (password: ubuntu)"
 echo ""
-echo "  On first boot from the SSD:"
-echo "    1. System will auto-clone the app from GitHub"
-echo "    2. Build and start the application (~10-15 min)"
-echo "    3. Install Claude Code CLI"
-echo "    4. Login and run: location-setup-wizard"
+echo "  On first boot from the SSD (automatic, ~10-15 min):"
+echo "    1. Clone app from GitHub, build, start PM2"
+echo "    2. Apply CLAUDE.md Gotcha #11 hardening (linger / NVM / ollama)"
+echo "    3. Run verify-install.sh (results in /var/log/sports-bar-first-boot.log)"
+echo ""
+echo -e "  ${BOLD}${YELLOW}Then log in on tty1 (ubuntu / ubuntu) and run the wizard:${NC}"
+echo ""
+echo -e "    ${BOLD}bash /opt/sports-bar/scripts/iso/location-setup-wizard.sh${NC}"
+echo ""
+echo "  The wizard collects bar name + admin/staff PINs and runs"
+echo "  bootstrap-new-location.sh — no more 'Invalid PIN until you SSH"
+echo "  in and manually bootstrap' surprise."
+echo ""
+echo "  After the wizard, open in a browser:"
+echo "    Admin UI:     http://<this-IP>:3001"
+echo "    Bartender UI: http://<this-IP>:3002"
 echo ""
 echo -e "  ${YELLOW}Remove the USB drive and press Enter to reboot...${NC}"
 read -r

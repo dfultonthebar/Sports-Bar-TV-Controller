@@ -1,6 +1,12 @@
 #!/bin/bash
+#
+# AV System Service Monitor — Operator helper (not part of any automated flow)
+#
+# Manual operator tool. Run periodically via cron OR ad-hoc when you suspect
+# the Wolf Pack matrix is unresponsive. Not invoked by any other script in
+# the codebase (verified v2.54.64 audit).
+#
 
-# AV System Service Monitor
 # This script checks the status of the Wolf Pack matrix switcher TCP and UDP ports
 # and restarts the services if they are down. It also logs the service status and
 # sends a notification on service restart.

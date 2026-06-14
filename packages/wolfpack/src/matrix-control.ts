@@ -156,15 +156,28 @@ async function sendWolfPackCommand(ipAddress: string, port: number, command: str
 async function sendTCPCommand(ipAddress: string, port: number, command: string): Promise<boolean> {
   const net = require('net')
 
-  return new Promise((resolve, reject) => {
-    let responseReceived = false
+  return new Promise((resolve) => {
+    // Wave 3c TCP-close fix: a single `resolved` guard + guaranteed destroy() on
+    // every exit path, mirroring sendUDPCommand. Previously the 'data' handler
+    // resolved + client.end()'d and then 'close' could resolve AGAIN, and the
+    // 'error' path never destroyed the socket — so the verify loop's rapid
+    // re-issue (maxRetries) leaked half-open sockets to the Wolf Pack and could
+    // double-resolve with disagreeing values. Success VALUES are unchanged.
+    let resolved = false
     let response = ''
+    let client: any
 
-    const client = net.createConnection({ port, host: ipAddress }, () => {
+    const finish = (val: boolean) => {
+      if (resolved) return
+      resolved = true
+      try { client?.destroy() } catch { /* socket already gone */ }
+      resolve(val)
+    }
+
+    client = net.createConnection({ port, host: ipAddress }, () => {
       logger.debug(`TCP Connected to Wolf Pack at ${ipAddress}:${port}`)
-      const commandWithLineEnding = command + '\r\n'
       logger.debug(`Sending command: "${command}" (with \\r\\n)`)
-      client.write(commandWithLineEnding)
+      client.write(command + '\r\n')
     })
 
     client.setTimeout(10000) // 10 second timeout
@@ -172,36 +185,27 @@ async function sendTCPCommand(ipAddress: string, port: number, command: string):
     client.on('data', (data: Buffer) => {
       response += data.toString()
       logger.debug(`Wolf Pack TCP response: ${response}`)
-
       if (response.includes('OK') || response.includes('ERR') || response.includes('Error')) {
-        responseReceived = true
-        client.end()
-
-        if (response.includes('OK')) {
-          resolve(true)
-        } else {
-          logger.error(`Wolf Pack command failed: ${response}`)
-          resolve(false)
-        }
+        if (!response.includes('OK')) logger.error(`Wolf Pack command failed: ${response}`)
+        finish(response.includes('OK'))
       }
     })
 
     client.on('timeout', () => {
       logger.error(`TCP connection timeout. Response so far: "${response}"`)
-      client.destroy()
-      resolve(false)
+      finish(false)
     })
 
     client.on('error', (err: Error) => {
       logger.error('TCP connection error:', { error: err.message })
-      resolve(false)
+      finish(false)
     })
 
     client.on('close', () => {
-      if (!responseReceived && response.length > 0) {
-        logger.debug(`Connection closed. Response received: "${response}"`)
-        resolve(response.length > 0)
-      }
+      // Fallback only when the device closed without an in-band OK/ERR — preserve
+      // the prior "any response byte = success" semantic so Holmgren is unchanged.
+      logger.debug(`Connection closed. Response received: "${response}"`)
+      finish(response.length > 0)
     })
   })
 }

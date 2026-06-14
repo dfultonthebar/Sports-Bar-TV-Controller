@@ -1,6 +1,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { findMany, findUnique, findFirst, create, update, updateMany, deleteRecord, upsert, count, eq, desc, asc, and, or, ne } from '@/lib/db-helpers'
+import { sql } from 'drizzle-orm'
 import { schema } from '@/db'
 // Converted to Drizzle ORM
 import { syncTodosToGitHub } from '@/lib/gitSync'
@@ -47,7 +48,14 @@ export async function GET(request: NextRequest) {
 
     const todosList = await findMany('todos', {
       where: whereClause,
-      orderBy: [asc(schema.todos.status), desc(schema.todos.priority), desc(schema.todos.createdAt)]
+      // Needs-work at the TOP, completed at the bottom. Order SEMANTICALLY, not
+      // alphabetically — `asc(status)`/`desc(priority)` on the raw strings put
+      // COMPLETE (C) and MEDIUM at the top, the opposite of what operators want.
+      orderBy: [
+        sql`CASE ${schema.todos.status} WHEN 'IN_PROGRESS' THEN 0 WHEN 'PLANNED' THEN 1 WHEN 'TESTING' THEN 2 WHEN 'COMPLETE' THEN 3 ELSE 4 END`,
+        sql`CASE ${schema.todos.priority} WHEN 'CRITICAL' THEN 0 WHEN 'HIGH' THEN 1 WHEN 'MEDIUM' THEN 2 WHEN 'LOW' THEN 3 ELSE 4 END`,
+        desc(schema.todos.createdAt),
+      ]
     })
 
     // Fetch documents for each todo

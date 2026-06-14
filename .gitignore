@@ -94,6 +94,9 @@ Thumbs.db
 ecosystem.config.js
 
 # backup files
+# Location Backup feature writes full per-location DB dumps here. NEVER commit
+# to main — on a location/* branch the route force-adds (git add -f) deliberately.
+apps/web/backup/
 *.bak
 *.backup
 *.backup.*
@@ -169,3 +172,6 @@ playwright-report/
 
 # Scout tree dumps (diagnostic, per-Cube — not committed)
 apps/web/data/tree-dumps/
+
+# Agent worktrees (transient subagent workspaces)
+.claude/worktrees/

@@ -1,5 +1,7 @@
 # @sports-bar/bss-blu
 
+> ⚠ **PROTOCOL STUB — zone control commands are no-ops.** As of v2.54.12, the high-level zone control methods (`setZoneMute`, `setZoneGain`, `setZoneSource`, `getDeviceState`) in `src/bss-service.ts` return success **without sending any HiQnet command to the device**. They log and return `true`/defaults. The TCP socket connects, but zone-level control is not wired through to the HiQnet protocol. **Do NOT deploy BSS hardware at a new location expecting functional zone control without first implementing these methods.** The Atlas / dbx-zonepro packages have working zone control if you need an alternative DSP.
+
 Control BSS Soundweb London BLU audio processors via the HiQnet protocol over TCP.
 
 ## Supported Models

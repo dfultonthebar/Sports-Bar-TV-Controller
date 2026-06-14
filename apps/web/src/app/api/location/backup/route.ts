@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { cookies } from 'next/headers'
 import { db, schema } from '@/db'
 import { eq, sql } from 'drizzle-orm'
 import { execFile } from 'child_process'
@@ -9,6 +10,7 @@ import path from 'path'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { validateRequestBody } from '@/lib/validation'
+import { validateSession, AUTH_CONFIG } from '@/lib/auth'
 import { z } from 'zod'
 import { logger } from '@sports-bar/logger'
 
@@ -105,6 +107,18 @@ async function createBackupManifest(location: any, tables: Record<string, any[]>
 export async function POST(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.SYSTEM)
   if (!rateLimit.allowed) return rateLimit.response
+
+  // ADMIN-only: this route exports the full location DB and runs git commit/push.
+  // Without this gate any unauthenticated caller on :3001 could trigger a DB dump.
+  const cookieStore = await cookies()
+  const sessionCookie = cookieStore.get(AUTH_CONFIG.COOKIE_NAME)
+  const session = sessionCookie ? await validateSession(sessionCookie.value) : null
+  if (!session || session.role !== 'ADMIN') {
+    return NextResponse.json(
+      { success: false, error: 'Unauthorized — ADMIN session required' },
+      { status: 401 }
+    )
+  }
 
   const bodyValidation = await validateRequestBody(request, backupSchema)
   if (!bodyValidation.success) return bodyValidation.error
@@ -227,8 +241,30 @@ ${Object.keys(tableData).map(t => `- ${t}: ${tableData[t].length} rows`).join('\
     // Git operations - commit backup files on current branch and push
     const cwd = process.cwd()
 
-    // Add backup files to staging
-    await execFileAsync('git', ['add', 'backup/location-data/'], { cwd })
+    // BRANCH-GUARD: refuse to commit/push location data unless we are on a
+    // location/* branch. On `main` (the shared template) a push would leak one
+    // location's full DB dump to origin/main and propagate fleet-wide on the
+    // next auto-update merge. The backup files are still written locally below
+    // the gitignore so the operator has the on-disk artifact for recovery.
+    const { stdout: currentBranchRaw } = await execFileAsync('git', ['branch', '--show-current'], { cwd })
+    const branch = currentBranchRaw.trim()
+
+    if (!branch.startsWith('location/')) {
+      logger.warn(`[LOCATION BACKUP] Not on a location/* branch (current: "${branch}") — skipping git commit/push to protect the shared template`)
+      return NextResponse.json({
+        success: true,
+        message: `Backup written locally to ${backupDir}. NOT committed/pushed: this box is on "${branch}", not a location/* branch. Run the location-setup wizard to move onto a location branch, then back up again.`,
+        branch,
+        tables: Object.keys(tableData).length,
+        totalRows: Object.values(tableData).reduce((sum, rows) => sum + rows.length, 0),
+        warning: 'Git push skipped — not on a location/* branch'
+      })
+    }
+
+    // Force-add: apps/web/backup/ is gitignored (belt-and-suspenders against an
+    // accidental commit on the wrong branch). -f overrides the ignore for the
+    // deliberate location-branch backup path only.
+    await execFileAsync('git', ['add', '-f', 'backup/location-data/'], { cwd })
 
     // Check if there are changes to commit
     const { stdout: statusOutput } = await execFileAsync('git', ['status', '--porcelain', 'backup/location-data/'], { cwd })
@@ -241,10 +277,6 @@ ${Object.keys(tableData).map(t => `- ${t}: ${tableData[t].length} rows`).join('\
       await execFileAsync('git', ['commit', '-m', commitMessage], { cwd })
       logger.info('[LOCATION BACKUP] Committed backup files')
     }
-
-    // Push current branch to remote
-    const { stdout: currentBranch } = await execFileAsync('git', ['branch', '--show-current'], { cwd })
-    const branch = currentBranch.trim()
 
     try {
       await execFileAsync('git', ['push', 'origin', branch], { cwd })

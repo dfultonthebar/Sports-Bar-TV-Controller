@@ -13,6 +13,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Monitor, X, Tv, Grid2X2, Maximize, Power } from 'lucide-react'
 import { logger } from '@sports-bar/logger'
+import BartenderEmptyState from './BartenderEmptyState'
 
 interface Room {
   id: string
@@ -48,6 +49,20 @@ interface MatrixInput {
   label: string
 }
 
+// Subset of the network-TV row needed for the modal-side HDMI control.
+// Mirrors the shape used by app/remote/page.tsx so the parent can pass its
+// `networkTVs` array straight through.
+interface NetworkTV {
+  id: string
+  name?: string | null
+  outputNumber?: number | null
+  ipAddress: string
+  brand: string
+  status: string
+  currentInput?: string | null
+  supportsInput: boolean
+}
+
 interface Props {
   layout: TVLayout
   onInputSelect: (inputNumber: number, outputNumber: number) => void
@@ -60,6 +75,13 @@ interface Props {
     inputLabel: string
   }>
   onRefreshRoutes?: () => Promise<void>
+  /**
+   * Network-discovered TVs (Samsung/Roku/etc). When the tapped zone matches
+   * one of these by outputNumber AND the TV supports input switching, the
+   * modal renders an HDMI 1-4 row so the bartender can change the TV's input
+   * without bouncing to the Power tab.
+   */
+  networkTVs?: NetworkTV[]
 }
 
 export default function InteractiveBartenderLayout({
@@ -68,7 +90,8 @@ export default function InteractiveBartenderLayout({
   currentSources,
   inputs,
   currentChannels = {},
-  onRefreshRoutes
+  onRefreshRoutes,
+  networkTVs = []
 }: Props) {
   const [selectedZone, setSelectedZone] = useState<Zone | null>(null)
   const [multiViewCardId, setMultiViewCardId] = useState<string | null>(null)
@@ -77,6 +100,11 @@ export default function InteractiveBartenderLayout({
   const [imageAspectRatio, setImageAspectRatio] = useState<number>(4 / 3)
   const [powerLoading, setPowerLoading] = useState<number | null>(null) // outputNumber being toggled
   const [powerMessage, setPowerMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  // HDMI input switch state for network-discovered TVs in the modal.
+  // Local optimistic mirror so the highlighted button updates immediately
+  // even though the parent's networkTVs prop may not refresh until next poll.
+  const [hdmiInputLoading, setHdmiInputLoading] = useState<string | null>(null) // `${tvId}-${input}`
+  const [optimisticInputs, setOptimisticInputs] = useState<Record<string, string>>({}) // tvId -> hdmi[1-4]
   const layoutImageRef = useRef<HTMLImageElement>(null)
 
   const rooms = layout.rooms || []
@@ -171,6 +199,40 @@ export default function InteractiveBartenderLayout({
     }
   }, [])
 
+  // Find the network TV (if any) bound to a Wolf Pack output.
+  // outputNumber === null/undefined on the TV side means it isn't placed on
+  // the layout yet, so it should never be considered for a zone match.
+  const getNetworkTVForZone = (outputNumber: number): NetworkTV | undefined => {
+    if (!networkTVs.length) return undefined
+    return networkTVs.find(
+      (tv) => tv.outputNumber != null && tv.outputNumber === outputNumber && tv.supportsInput
+    )
+  }
+
+  const handleHdmiInput = useCallback(async (tvId: string, input: string) => {
+    setHdmiInputLoading(`${tvId}-${input}`)
+    setPowerMessage(null)
+    try {
+      const response = await fetch(`/api/tv-control/${tvId}/input`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ input })
+      })
+      const data = await response.json()
+      if (data.success) {
+        setOptimisticInputs((prev) => ({ ...prev, [tvId]: input }))
+        setPowerMessage({ type: 'success', text: `TV switched to ${input.toUpperCase()}` })
+      } else {
+        setPowerMessage({ type: 'error', text: data.error || 'Failed to switch TV input' })
+      }
+    } catch (error) {
+      logger.error('[LAYOUT] TV input switch failed:', error)
+      setPowerMessage({ type: 'error', text: 'Failed to send TV input command' })
+    } finally {
+      setHdmiInputLoading(null)
+    }
+  }, [])
+
   const getCurrentInputLabel = (outputNumber: number): string | null => {
     if (!currentSources) return null
     const inputNum = currentSources.get(outputNumber)
@@ -203,11 +265,59 @@ export default function InteractiveBartenderLayout({
     || layout.professionalImageUrl
     || layout.imageUrl
 
+  // Empty-state recovery (v2.54.57). Two failure modes lead a bartender
+  // here:
+  //   1. Fresh install — no BartenderLayout row exists, API returns the
+  //      DEFAULT_LAYOUT with zones=[] and no id.
+  //   2. Botched merge — a `git merge main` into the location branch
+  //      silently overwrote tv-layout.json with main's empty template
+  //      (CLAUDE.md Gotcha #7), and an auto-reseed wiped the DB row's
+  //      zones.
+  // In both cases the bartender opens the iPad and sees a blank Video
+  // tab with no recovery path. We render the same shared empty-state
+  // card so the surface is consistent across Video / Audio / Music.
+  //
+  // We distinguish:
+  //   - no zones AND no layout.id → "never configured" framing
+  //   - no zones BUT layout.id present → "setup started, not finished"
+  //   - has zones but no imageUrl → still legitimate (label-driven
+  //     bartender remote works without a floor plan), so we fall
+  //     through to the main render. Floor plan upload is optional.
+  const noZones = !layout.zones || layout.zones.length === 0
+  if (noZones) {
+    const partiallyConfigured = Boolean(layout.id)
+    return (
+      <BartenderEmptyState
+        icon={<Monitor className="w-12 h-12" strokeWidth={1.5} />}
+        heading="No bar layout configured yet"
+        body={
+          <>
+            <p>
+              This iPad needs a bar layout — the floor plan with TV positions — before you
+              can route games to TVs from here.
+            </p>
+            <p>
+              {partiallyConfigured
+                ? 'Setup was started, but no TVs have been placed on the layout yet.'
+                : 'On a fresh install this is normal. The manager or admin needs to set it up once, then it stays.'}
+            </p>
+          </>
+        }
+        partiallyConfigured={partiallyConfigured}
+        adminUrl="/layout-editor"
+        adminLabel="Open Layout Editor"
+        managerMessage="The bartender iPad shows no TVs on the Video tab — please open Layout Editor in admin and set up the bar layout so I can route games."
+      />
+    )
+  }
+
+  // Has zones but no background image — still usable, but tell the
+  // manager so they can finish the polish step.
   if (!imageUrl) {
     return (
       <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl shadow-2xl p-12 text-center">
         <Monitor className="w-20 h-20 mx-auto mb-6 text-slate-400" />
-        <p className="text-xl font-bold bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">No Layout Uploaded</p>
+        <p className="text-xl font-bold text-white">No Layout Uploaded</p>
         <p className="text-sm text-slate-400 mt-3">Upload a floor plan in the Layout Editor to get started</p>
       </div>
     )
@@ -219,7 +329,7 @@ export default function InteractiveBartenderLayout({
       <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl shadow-2xl p-3 sm:p-4">
         {/* Header */}
         <div className="mb-2 sm:mb-4">
-          <h2 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent mb-2">{layout.name}</h2>
+          <h2 className="text-2xl font-bold text-white mb-2">{layout.name}</h2>
           <p className="text-slate-300">
             <span className="inline-flex items-center space-x-2">
               <Tv className="w-4 h-4" />
@@ -239,7 +349,7 @@ export default function InteractiveBartenderLayout({
               <button
                 onClick={toggleMultiView}
                 disabled={multiViewLoading}
-                className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 border ${
+                className={`px-4 py-3 min-h-[44px] rounded-lg text-sm font-bold transition-all flex items-center gap-2 border ${
                   multiViewMode === 6
                     ? 'bg-purple-600/30 text-purple-300 border-purple-500'
                     : 'bg-slate-700/50 text-slate-400 border-white/10 hover:bg-slate-600/50'
@@ -255,7 +365,7 @@ export default function InteractiveBartenderLayout({
                 <button
                   key={room.id}
                   onClick={() => setSelectedRoomFilter(room.id)}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
+                  className={`px-4 py-3 min-h-[44px] rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
                     selectedRoomFilter === room.id
                       ? 'text-white border'
                       : 'text-slate-400 border border-white/10 hover:bg-white/10'
@@ -306,7 +416,7 @@ export default function InteractiveBartenderLayout({
               <button
                 key={zone.id}
                 onClick={() => handleZoneClick(zone)}
-                className="group absolute transition-all duration-300 cursor-pointer hover:z-30"
+                className="group absolute transition-all duration-300 cursor-pointer hover:z-30 min-h-[44px] min-w-[44px] flex items-center justify-center"
                 style={{
                   left: `${zone.x + zone.width / 2}%`,
                   top: `${zone.y + zone.height / 2}%`,
@@ -326,20 +436,20 @@ export default function InteractiveBartenderLayout({
                     borderColor: roomColor ? `${roomColor}80` : (currentInput ? 'rgb(74 222 128 / 0.3)' : 'rgb(255 255 255 / 0.1)')
                   }}
                 >
-                  {/* Room Color Indicator */}
+                  {/* Room Color Indicator - extended tap area for the dot via negative margin */}
                   {roomInfo && (
                     <div
-                      className="absolute -top-1 -right-1 w-3 h-3 rounded-full border border-white shadow-sm"
-                      style={{ backgroundColor: roomColor }}
+                      className="absolute -top-1 -right-1 w-3 h-3 rounded-full border border-white shadow-sm p-3 -m-3 box-content"
+                      style={{ backgroundColor: roomColor, backgroundClip: 'content-box' }}
                       title={roomInfo.name}
                     />
                   )}
                   {/* TV Icon - Compact sizing to prevent overlap */}
                   <div className="relative z-10 p-1.5 sm:p-2 md:p-2 lg:p-2.5 xl:p-2.5 flex flex-col items-center">
                     <Tv className={`w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7 lg:w-8 lg:h-8 xl:w-9 xl:h-9 ${currentInput ? 'text-green-400' : 'text-slate-300 group-hover:text-green-400'}`} />
-                    {/* Current Input Label - Compact text */}
+                    {/* Current Input Label - bumped from text-[8px..xs] to text-xs..sm for arm's-length readability on a dim bar */}
                     {currentInput && (
-                      <div className="mt-0.5 sm:mt-1 md:mt-1 px-1.5 sm:px-2 md:px-2 py-0.5 bg-black/60 rounded text-[8px] sm:text-[9px] md:text-[10px] lg:text-xs font-semibold text-white truncate max-w-[50px] sm:max-w-[60px] md:max-w-[70px] lg:max-w-[80px] xl:max-w-[90px]">
+                      <div className="mt-0.5 sm:mt-1 md:mt-1 px-1.5 sm:px-2 md:px-2 py-0.5 bg-black/60 rounded text-xs sm:text-xs md:text-sm lg:text-sm font-semibold text-white truncate max-w-[50px] sm:max-w-[60px] md:max-w-[70px] lg:max-w-[80px] xl:max-w-[90px]">
                         {currentInput}
                       </div>
                     )}
@@ -383,7 +493,7 @@ export default function InteractiveBartenderLayout({
             {/* Modal Header */}
             <div className="backdrop-blur-xl bg-gradient-to-r from-slate-500/10 to-gray-500/10 border-b border-white/10 px-6 py-5 flex items-center justify-between">
               <div className="flex-1 min-w-0">
-                <h3 className="text-xl font-bold bg-gradient-to-r from-green-400 to-emerald-400 bg-clip-text text-transparent">
+                <h3 className="text-xl font-bold text-white">
                   {selectedZone.label || `TV ${selectedZone.outputNumber}`}
                 </h3>
                 <p className="text-slate-300 text-sm mt-1">Select source or toggle power</p>
@@ -422,6 +532,58 @@ export default function InteractiveBartenderLayout({
               </div>
             )}
 
+            {/* Network TV HDMI input switcher (only when this zone maps to a
+                network-discovered TV that supports input switching). Keeps the
+                bartender on the Video tab instead of bouncing to Power tab. */}
+            {(() => {
+              const netTV = getNetworkTVForZone(selectedZone.outputNumber)
+              if (!netTV) return null
+              const currentHdmi = optimisticInputs[netTV.id] || netTV.currentInput || null
+              const hdmiOptions = ['hdmi1', 'hdmi2', 'hdmi3', 'hdmi4'] as const
+              return (
+                <div className="px-6 pt-4 pb-2 border-b border-white/10">
+                  <div className="mb-3 flex items-baseline justify-between">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                        TV Input
+                      </p>
+                      <p className="text-base font-bold text-slate-100 mt-0.5">
+                        Currently on:{' '}
+                        <span className="text-blue-300">
+                          {currentHdmi ? currentHdmi.toUpperCase().replace('HDMI', 'HDMI ') : 'Unknown'}
+                        </span>
+                      </p>
+                    </div>
+                    <span className="text-[10px] text-slate-500 uppercase tracking-wide">
+                      {netTV.brand}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400 mb-2">Change TV input</p>
+                  <div className="grid grid-cols-4 gap-2">
+                    {hdmiOptions.map((input) => {
+                      const isCurrent = currentHdmi === input
+                      const isLoading = hdmiInputLoading === `${netTV.id}-${input}`
+                      return (
+                        <button
+                          key={input}
+                          onClick={() => handleHdmiInput(netTV.id, input)}
+                          disabled={isLoading}
+                          className={`py-3 min-h-[44px] rounded-lg text-sm font-semibold transition-colors disabled:opacity-50 border ${
+                            isCurrent
+                              ? 'bg-blue-600 text-white border-blue-400 ring-1 ring-blue-300'
+                              : 'bg-slate-800 hover:bg-blue-600 text-slate-200 hover:text-white border-slate-700'
+                          }`}
+                          aria-label={`Switch TV to ${input.toUpperCase()}`}
+                        >
+                          {isLoading ? '…' : input.replace('hdmi', 'HDMI ')}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })()}
+
             {/* Input List */}
             <div className="p-6 overflow-y-auto max-h-[calc(80vh-120px)]">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -440,7 +602,7 @@ export default function InteractiveBartenderLayout({
                     >
                       <div className="relative z-10 flex items-center justify-between">
                         <div>
-                          <div className={`text-xs font-medium mb-1 ${isActive ? 'text-green-300' : 'text-slate-400'}`}>
+                          <div className={`text-sm font-medium mb-1 ${isActive ? 'text-green-300' : 'text-slate-400'}`}>
                             Input {input.channelNumber}
                           </div>
                           <div className={`text-lg font-bold ${isActive ? 'text-white' : 'text-slate-200'}`}>

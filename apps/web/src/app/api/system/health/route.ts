@@ -270,12 +270,11 @@ export async function GET(request: NextRequest) {
     logger.error('System health error details:', error)
     logger.error('Error stack:', { data: error instanceof Error ? error.stack : 'No stack' })
     logger.error('Error message:', { data: error instanceof Error ? error.message : String(error) })
+    // Do NOT return the error message/stack in the response body — it can carry secrets
+    // (e.g. a Soundtrack API key echoed in an HTTP-client error) and is now reachable via the
+    // MCP gateway / LLM context. The full stack + message are already logged above. (v2.56.2 audit.)
     return NextResponse.json(
-      {
-        error: 'Failed to generate health report',
-        details: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : undefined
-      },
+      { error: 'Failed to generate health report' },
       { status: 500 }
     )
   }

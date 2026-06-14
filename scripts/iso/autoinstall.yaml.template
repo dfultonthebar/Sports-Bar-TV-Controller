@@ -1,0 +1,181 @@
+#cloud-config
+# Sports Bar TV Controller — Ubuntu 24.04 LTS Noble autoinstall configuration
+#
+# This is the v3.1 architecture: stock Ubuntu Server 24.04.4 ISO + subiquity
+# autoinstall + curtin. Replaces the ~430-line hand-rolled disk-installer.sh
+# that hit 7 bug iterations on 2026-05-27. Canonical's curtin handles every
+# gap we were chasing: GPT+bios_boot+EFI partitioning, kernel install +
+# initramfs regen, GRUB embed for both BIOS+UEFI, fstab UUIDs, etc.
+#
+# The {{UBUNTU_PASSWORD_HASH}} placeholder gets filled at build time by
+# build-autoinstall-iso.sh via `openssl passwd -6`.
+
+autoinstall:
+  version: 1
+
+  # v2.54.92: update=false — true makes subiquity BLOCK on the
+  # "checking for updates" screen waiting for operator confirmation.
+  # We pin to whatever subiquity ships in the stock 24.04.4 ISO.
+  refresh-installer:
+    update: false
+
+  # Explicit empty = fully automated. Default is also [] but Grok + research
+  # agent both recommend setting it explicitly for clarity / safety.
+  interactive-sections: []
+
+  locale: en_US.UTF-8
+
+  keyboard:
+    layout: us
+    variant: ""
+
+  timezone: America/Chicago
+
+  # Wildcard DHCP via netplan `match:` glob. Hand-rolled installer
+  # hardcoded the LIVE ISO's NIC name and broke when installed system
+  # had a different NIC name (different hardware path). The match
+  # form is the recommended netplan idiom (one entry covers any en*).
+  network:
+    version: 2
+    ethernets:
+      primary-nic:
+        match:
+          name: "en*"
+        dhcp4: true
+
+  # v2.54.95: dropped geoip:true — was hanging the install for 30+ min
+  # trying to resolve mirror.country.ubuntu.com via geoip lookup before
+  # finally falling through to offline-install. Hardcoded primary mirror
+  # avoids the resolution attempt entirely.
+  #
+  # v2.55.28 (task #326): fallback flipped offline-install → continue-anyway
+  # because build-autoinstall-iso.sh Step 2b now deletes pool/ entirely
+  # (~1 GB savings to fit GitHub 2 GB asset cap). Without continue-anyway,
+  # subiquity would stall trying to mount the missing pool when a transient
+  # network blip causes apt to fall back. Our first-boot script requires
+  # internet anyway (NodeSource apt + GitHub clone) so the offline path is
+  # vestigial.
+  apt:
+    fallback: continue-anyway
+    primary:
+      - arches: [default]
+        uri: http://archive.ubuntu.com/ubuntu
+    disable_components: []
+    preserve_sources_list: false
+
+  # Identity: ubuntu/ubuntu, hostname sports-bar-controller. Operator
+  # can change hostname AFTER install via the location-setup-wizard
+  # (first-boot-fresh.sh invokes it). v3.1.0 keeps the install 100%
+  # unattended for smoke-test reliability — no interactive-sections.
+  identity:
+    realname: 'Sports Bar TV Controller'
+    username: ubuntu
+    password: '{{UBUNTU_PASSWORD_HASH}}'
+    hostname: sports-bar-controller
+
+  ssh:
+    install-server: true
+    allow-pw: true
+    # No authorized-keys — Tailscale will be added on first-boot.
+
+  # Direct layout: use the largest disk with GPT + bios_boot + EFI +
+  # ext4 root. Curtin auto-sizes everything correctly. No more manual
+  # parted incantations + missing bios_boot partitions.
+  storage:
+    layout:
+      name: direct
+      match:
+        size: largest
+
+  # v2.55.0: added build-essential + python3 + dependencies needed by npm
+  # to compile native modules. better-sqlite3 (used heavily in our app) ships
+  # via npm and needs g++/make/python3-dev to build its native bindings
+  # during `npm install`. Without these, first-boot's `npm install` step
+  # fails with "no output files found for task @sports-bar/*#build" warnings
+  # then exits 1. Caught during v2.54.97 smoke v6 build failure.
+  packages:
+    - openssh-server
+    - curl
+    - wget
+    - git
+    - sqlite3
+    - ca-certificates
+    - gnupg
+    - lsb-release
+    - net-tools
+    - iputils-ping
+    - iproute2
+    - parted
+    - dosfstools
+    - e2fsprogs
+    # native-module build dependencies (better-sqlite3, serialport, etc):
+    - build-essential
+    - python3
+    - python3-dev
+    - python3-pip
+    - pkg-config
+    - libudev-dev
+    # v2.55.6: hardware-control prerequisites (gap analysis vs Holmgren).
+    # Baked in so hardware bring-up is debug-free on day one.
+    - adb              # Fire TV cube ADB control (BLOCKER for Fire TV)
+    - rtl-sdr          # SDR spectrum monitor — rtl_power binary (§7b)
+    - nginx            # bartender :3002 reverse proxy + allow-list (fleet std)
+    - nmap             # device discovery (Wolf Pack / DirecTV / Fire TV scan)
+    - arp-scan         # device discovery
+    - sshpass          # fleet SSH automation + trigger scripts
+    - imagemagick      # screenshot / layout image processing
+    - v4l-utils        # camera (OBSBOT) enumeration
+
+  # Late-commands run in the INSTALLER environment with the target
+  # filesystem mounted at /target. Use `curtin in-target -- <cmd>` to
+  # run a command inside the chroot.
+  late-commands:
+    # v2.54.97: install Node.js 22 from NodeSource into the target system.
+    # first-boot-fresh.sh assumed Node was pre-installed (errored "Node.js
+    # not found. The ISO should have pre-installed Node 22" otherwise).
+    # NodeSource setup_22.x adds the apt repo + key; apt-get install nodejs
+    # pulls in Node 22 LTS. Doing this in late-commands means the installed
+    # system has Node 22 ready when first-boot.service fires.
+    - curtin in-target -- bash -c 'curl -fsSL https://deb.nodesource.com/setup_22.x | bash -'
+    - curtin in-target -- apt-get install -y nodejs
+    - curtin in-target -- npm install -g pm2
+
+    # v2.55.7: set FLEET-STANDARD password (ubuntu / 6809233DjD$$$ — THREE
+    # dollar signs). Single quotes keep all three $ literal (shell does not
+    # expand inside single quotes, so no PID substitution). Belt-and-suspenders
+    # alongside the hashed identity.password — some autoinstall builds drop the
+    # identity hash. v2.55.3 mistakenly used TWO $; smoke v9 proved installed
+    # VMs rejected the real (triple-$) fleet password.
+    - echo 'ubuntu:6809233DjD$$$' | curtin in-target -- chpasswd
+
+    # Sudoers nopasswd for ubuntu user (matches operator's fleet convention)
+    - 'curtin in-target -- bash -c "echo ''%sudo ALL=(ALL) NOPASSWD:ALL'' > /etc/sudoers.d/ubuntu-nopasswd && chmod 440 /etc/sudoers.d/ubuntu-nopasswd"'
+
+    # Copy our first-boot-fresh.sh from the ISO into the target system.
+    # build-autoinstall-iso.sh placed it at /cdrom/sports-bar/.
+    - cp /cdrom/sports-bar/first-boot-fresh.sh /target/usr/local/bin/sports-bar-first-boot.sh
+    - chmod +x /target/usr/local/bin/sports-bar-first-boot.sh
+
+    # Install the first-boot systemd unit so it runs on first real boot.
+    - cp /cdrom/sports-bar/sports-bar-first-boot.service /target/etc/systemd/system/
+    - curtin in-target -- systemctl enable sports-bar-first-boot.service
+
+    # Create the data directory with correct ownership
+    - curtin in-target -- mkdir -p /home/ubuntu/sports-bar-data
+    - curtin in-target -- chown ubuntu:ubuntu /home/ubuntu/sports-bar-data
+
+    # Strip quiet+splash from GRUB cmdline so operators see boot output
+    # on tty1 instead of a black splash screen (no plymouth assumption).
+    - 'curtin in-target -- sed -i ''s/^GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT=""/'' /etc/default/grub'
+    - curtin in-target -- update-grub
+
+  # v2.54.96: POWEROFF not reboot. With reboot, if ISO is still in the
+  # boot order ahead of the installed disk, the VM/NUC re-loads subiquity
+  # and re-runs the autoinstall in a loop, eventually corrupting the disk
+  # if interrupted mid-loop. With poweroff, the VM shuts down cleanly;
+  # operator (or smoke test) detects the power-off, removes the ISO,
+  # then powers back on into the installed system.
+  #
+  # On real NUC installs: operator removes USB stick after power-off,
+  # then powers on. No risk of re-running the installer.
+  shutdown: poweroff

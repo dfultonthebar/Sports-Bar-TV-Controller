@@ -103,6 +103,23 @@ export async function register() {
     }
 
     try {
+      // MAC auto-discovery: backfill any NetworkTVDevice missing its macAddress
+      // by reading it off the LAN (ARP-after-ping) whenever the TV is reachable.
+      // Once filled, Wake-on-LAN power-on works and the missing-MAC warning stops.
+      // Initial run 60s after boot (give the network a moment), then every 30 min.
+      const { backfillMissingMacs } = await import('./lib/mac-discovery')
+      registerTimeout(() => {
+        backfillMissingMacs().catch(e => logger.warn('[MAC-DISCOVERY] initial backfill failed:', e))
+      }, 60_000)
+      registerInterval(() => {
+        backfillMissingMacs().catch(e => logger.warn('[MAC-DISCOVERY] periodic backfill failed:', e))
+      }, 30 * 60_000)
+      logger.info('[INSTRUMENTATION] MAC auto-discovery scheduled (60s + every 30min)')
+    } catch (error) {
+      logger.error('[INSTRUMENTATION] Failed to schedule MAC auto-discovery:', error)
+    }
+
+    try {
       // Import auto-reallocator worker
       const { autoReallocatorWorker } = await import('./lib/scheduling/auto-reallocator-worker')
 

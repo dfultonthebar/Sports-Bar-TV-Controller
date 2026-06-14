@@ -14,8 +14,8 @@
   },
   "devDependencies": {
     "@sports-bar/config": "*",
-    "@types/node": "^24.5.2",
-    "typescript": "^5.9.2"
+    "@types/node": "^25.0.0",
+    "typescript": "^6.0.0"
   },
   "keywords": [
     "bss",

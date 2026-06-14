@@ -566,7 +566,7 @@ export default function FireTVController() {
                   className="w-full px-3 py-2 bg-slate-900/50 border border-slate-600 rounded-md text-white focus:border-blue-400 focus:ring-1 focus:ring-blue-400"
                   required
                 >
-                  <option value="">Select Wolfpack Input Channel...</option>
+                  <option value="">Select Wolf Pack Input Channel...</option>
                   {matrixInputs
                     .filter(input => input.isActive && input.status === 'active')
                     .sort((a, b) => a.channelNumber - b.channelNumber)
@@ -578,7 +578,7 @@ export default function FireTVController() {
                 </select>
               )}
               <p className="text-xs text-slate-400 mt-1">
-                Select which Wolfpack matrix input this Fire TV device is connected to. This helps the bartender remote show the correct controls when that input is selected.
+                Select which Wolf Pack matrix input this Fire TV device is connected to. This helps the bartender remote show the correct controls when that input is selected.
               </p>
             </div>
           </div>
@@ -662,7 +662,7 @@ export default function FireTVController() {
                   className="w-full px-3 py-2 bg-slate-900/50 border border-slate-600 rounded-md text-white focus:border-blue-400 focus:ring-1 focus:ring-blue-400"
                   required
                 >
-                  <option value="">Select Wolfpack Input Channel...</option>
+                  <option value="">Select Wolf Pack Input Channel...</option>
                   {matrixInputs
                     .filter(input => input.isActive && input.status === 'active')
                     .sort((a, b) => a.channelNumber - b.channelNumber)
@@ -674,7 +674,7 @@ export default function FireTVController() {
                 </select>
               )}
               <p className="text-xs text-slate-400 mt-1">
-                Select which Wolfpack matrix input this Fire TV device is connected to. This helps the bartender remote show the correct controls when that input is selected.
+                Select which Wolf Pack matrix input this Fire TV device is connected to. This helps the bartender remote show the correct controls when that input is selected.
               </p>
             </div>
           </div>

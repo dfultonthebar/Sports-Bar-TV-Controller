@@ -13,6 +13,12 @@ Standing Rules 5, 7, and 8 below are SUMMARIES. Full application lives in:
 
 ---
 
+## Grok collaboration
+
+When invoking Grok (the advisor / outside-perspective agent), use `bash scripts/grok-prime.sh <prompt-file>` or `bash scripts/grok-prime.sh --task "..."`. The wrapper auto-prepends `docs/GROK_BRIEFING.md` (Standing Rules + hot Gotchas + operator preferences) to every prompt so Grok always knows the rules. Raw `grok --prompt-file X` works but means Grok has to be re-told the rules each time. See `docs/GROK_BRIEFING.md` for what's prepended.
+
+---
+
 ## V2 Monorepo Architecture
 
 Turborepo + npm workspaces. `apps/web/` (Next.js 16) consumes `packages/*` (37 shared packages — `ls packages/` for the live list). Hardware control packages are named after the device family they wrap: `atlas`, `wolfpack`, `crestron`, `bss-blu`, `dbx-zonepro`, `directv`, `firecube`, `ir-control`, `multiview`. Cross-cutting packages: `auth`, `cache-manager`, `circuit-breaker`, `config`, `database`, `logger`, `rate-limiting`, `streaming`, `tv-guide`, `sports-apis`, `validation`, `ui-utils`, `utils`.
@@ -61,9 +67,10 @@ pm2 restart sports-bar-tv-controller
 
 ### Database Operations
 ```bash
-npm run db:generate      # Generate Drizzle migrations from schema changes
-npm run db:push          # Push schema changes to database (no migration files)
+npm run db:generate      # Generate Drizzle migration files from schema changes
+npm run db:migrate       # Apply pending migrations to database (preferred since v2.54.1)
 npm run db:studio        # Open Drizzle Studio database GUI
+# npm run db:push        # LEGACY — silently aborts on pre-existing indexes (Gotcha #6). Do NOT use in production flow.
 ```
 
 **Database Architecture:**
@@ -90,6 +97,30 @@ npm run test:coverage       # Generate coverage report
 - Integration tests: `tests/integration/*.test.ts`
 - Test scenarios: `tests/scenarios/*.test.ts`
 
+### ISO Build (v3.1.0+ — subiquity autoinstall, CANONICAL)
+
+Bare-metal install media for new locations. **v3.1.0 replaces the hand-rolled v3.0.x installer.** Stock Ubuntu 24.04.4 Server ISO + subiquity autoinstall + curtin handle all partitioning, kernel, initramfs, GRUB BIOS+UEFI — pain we kept reinventing badly.
+
+**Build:**
+```bash
+sudo apt-get install -y p7zip-full xorriso wget openssl   # one-time
+bash scripts/iso/build-autoinstall-iso.sh                  # 15-30 min
+bash scripts/iso/smoke-test-autoinstall.sh                 # end-to-end VM verify (optional)
+bash scripts/iso/audit-installed-vm.sh <vmid>              # 9-layer post-install audit
+```
+
+**Active scripts** (`scripts/iso/`):
+- `build-autoinstall-iso.sh` (~220 lines) — downloads stock ISO, 7z-extracts, drops autoinstall config + first-boot service, edits grub.cfg, xorriso-repacks
+- `autoinstall.yaml.template` — declarative subiquity user-data; curtin handles partitioning natively
+- `sports-bar-first-boot.service` — systemd oneshot, runs `first-boot-fresh.sh` (clone → build → PM2) on first boot
+- `smoke-test-autoinstall.sh` — Proxmox VM 200 end-to-end install + Playwright HTTP verify
+- `audit-installed-vm.sh` — 9-layer production-readiness check post-install
+- `cleanup-chroot.sh` — safe debootstrap teardown helper (carried over from v3.0.x)
+
+**DEPRECATED — do not extend** (kept in repo for git history only): `build-sports-bar-iso.sh` (debootstrap from scratch, ~700 lines), `disk-installer.sh` (~430 lines, hit 7 silent-fail bugs in one day). The 4-iteration v3.1.0 vs 7-iteration v3.0.x pain memorialized the rule: **always use the distribution's installer (subiquity/preseed/kickstart), never hand-roll.** See `feedback-use-canonical-installer-not-hand-rolled` memory + `docs/BARE_METAL_ISO.md`.
+
+**Proxmox VM settings for smoke test** (VM 200 reference): BIOS OVMF + EFI disk (`qm set <id> -efidisk0 local-zfs:0,efitype=4m,pre-enrolled-keys=1`), machine q35, virtio-scsi-pci with `discard=on,cache=writeback,ssd=1`, virtio network, QEMU agent enabled. Min 16 GB RAM / 4 cores / 100 GB disk (4 GB/30 GB was too tight in 2026-05-27 testing).
+
 ## High-Level Architecture
 
 ### Next.js 16 App Router Architecture
@@ -100,8 +131,9 @@ npm run test:coverage       # Generate coverage report
 - Layouts: `apps/web/src/app/**/layout.tsx` files
 
 **Next.js 16 Breaking Changes (from v15):**
-- Turbopack is now the default bundler; use `--webpack` flag for webpack-dependent packages like `next-pwa`
-- `eslint` config in next.config.js is removed; run ESLint separately
+- **Turbopack is the unconditional default bundler** (v2.54.41 dropped `--webpack` flag from dev+build scripts). Native modules (`isolated-vm`, `better-sqlite3`, `serialport`, `sharp`, `ws`, etc.) are declared in top-level `serverExternalPackages` in `apps/web/next.config.js`. For client-bundled bridges that need server-only code (e.g. `child_process` import in `@sports-bar/firecube`), add a `client-safe` subpath export to the package and import THAT from the bridge file.
+- **PWA support removed entirely** (v2.54.34 dropped `next-pwa` to close 5 HIGH workbox CVEs; v2.54.39 stripped manifest + appleWebApp metadata + sw.js + workbox + dead icons). No service worker, no offline cache, no install-to-home-screen prompt. Browser HTTP caching only.
+- `eslint` config in next.config.js is removed; run `eslint .` directly
 - The `next lint` command is removed; use `eslint .` directly
 - Request APIs (`cookies()`, `headers()`, `params`) are now fully async (synchronous access removed)
 
@@ -285,6 +317,36 @@ Wolf Pack matrix does NOT pass CEC + Spectrum disables CEC in firmware → all c
 
 **Wrapped in SafeBoundary** — a render crash in the SDR panel only shows a tiny red inline card, doesn't escalate to the global "Something went wrong" page boundary.
 
+**v2.52.10-17 calibration + AI integration (2026-05-19 SDR install at Holmgren):**
+
+- **`SDR_DBM_OFFSET` software calibration** (default `-55`) applied in `handleSweepLine` at ingest. rtl_power outputs uncalibrated dBFS — not real antenna-port dBm — so every `sdr_spectrum`/`sdr_carriers` row + the carrier-detection threshold needs a per-tuner correction to land in textbook -110→0 dBm register. Holmgren tuned to `-37` at `SDR_GAIN_DB=14.4`. Calibrate per-location by keying a known mic + comparing SDR vs Shure RSSI. See [[feedback-sdr-rtl-power-calibration]].
+
+- **Per-sweep SSE event** (`sweep` event type, ~1 sec cadence) via `apps/web/src/lib/sdr-sweep-emitter.ts` (globalThis singleton per Gotcha #10). The FFT panadapter consumes this directly so it updates at sub-second freshness, not the per-minute bucket cadence. Catches 30-sec DJ-mic bursts that minute-aggregates would miss.
+
+- **Carrier coalescing** at `/api/sdr/status`: adjacent active-bin events within 500 kHz collapse to ONE carrier with `widthKhz` + `binCount` fields. 200 kHz TV broadcast renders as one entry, not 8 separate 25-kHz bin rows. `CARRIER_THRESHOLD_DBM` raised `-85 → -70` (less noise after calibration).
+
+- **FFT panadapter** (`apps/web/src/components/ShureSdrSpectrumPanel.tsx`) sits above the waterfall. 160px FFT primary view, 50px waterfall secondary, shared X-axis. Hover tooltip ("484.0 MHz · −62 dBm").
+
+- **Tier 1 — interference correlator (`packages/scheduler/src/interference-correlator.ts`):** `correlateAllInterference()` runs BOTH `correlateInterference()` (Shure-event source) and `correlateSdrInterference()` (SDR-carrier source). SDR pass filters to ±0.1 MHz of our currently-tuned Shure freqs so we attribute real mic-band interference only, not the continuous WCWF broadcast. `InterferenceAttribution.source` distinguishes `'shure'` vs `'sdr'`. Scheduler runs every 10 min.
+
+- **Tier 2 — preemptive-strike + clean-freq suggestion:** `PreemptiveStrikeCandidate.suggestedCleanFreqs[]` populated per-candidate from 7-day `sdr_spectrum` quietness scoring. `findCleanFreqs()` helper exported for on-demand UI use.
+
+- **Tier 3 — daily Ollama RF Pattern Digest:** `packages/scheduler/src/rf-pattern-digest.ts` runs once / 24h, llama3.1:8b summarizes the last 24h of SDR + Shure + neighborhood events into bartender-grade prose. Stored in `rf_pattern_digest` table. The model is shared with shift-brief/AI Suggest (one resident, not two — see [[feedback-ollama-ram-pressure]]).
+
+- **Tier 4 — `GET /api/sdr/clean-freqs?topN=N`:** ranked clean-freq suggestions, excludes currently-tuned Shure freqs by default, returns rationale ("quiet 99.4% of last 7 days, avg -88 dBm").
+
+- **UI surface (`apps/web/src/components/ShureRfAiPanel.tsx`):** Wireless Mics admin tab has "RF Environment Summary" card (LLM prose + Refresh button + counts grid) + "Suggest a Clean Frequency" button. SafeBoundary-wrapped.
+
+- **Shift-brief integration:** `apps/web/src/app/api/ai/shift-brief/route.ts` is now the bartender's primary pre-shift surface, with 3 RF-related verbatim bullets (each server-built per Gotcha #12):
+  - **Mic-status 1-liner** (v2.52.16): live Shure mic health.
+  - **Heads-up bullets** (v2.52.16 + v2.53.2): neighborhood-event warnings via Ticketmaster + Bananas. Category-aware radius/lookahead — bars: 1 mi / 12h, stadiums + concert halls: 25 mi / 72h.
+  - **Atlas priority recap** (v2.53.6): 24h aggregate of mic-key / RF-induced-ghost / source-override counts for yesterday's shift.
+  10-min cache (`?force=true` to bust), `num_predict: 320`. Pre-filter games to ≤8 to avoid LLM context-overflow hallucination (`[[feedback-llm-context-overflow]]`). Whenever adding a new section, mirror to `fallbackBrief()` so degraded-path bartenders still see it. Full architecture: `[[project-shift-brief-architecture]]`.
+
+- **Architecture map:** see [[project-ai-tier-architecture]] memory for the full tier diagram + which file does what.
+
+**ecosystem.config.js forwards all SDR_* env vars** (v2.52.7 fix) — adding a new SDR_FOO env requires (a) reading `process.env.SDR_FOO` in the watcher AND (b) listing it in `ecosystem.config.js`'s `env:` block AND (c) `pm2 delete && pm2 start ecosystem.config.js` (NOT just `restart` — per Gotcha #2).
+
 #### 8. Wolf Pack Multi-View Card Control
 `packages/multiview/` — HDTVSupply 4K60 Quad-View cards in Wolf Pack slots. RS-232 USB (115200 8N1), 8 display modes (single → quad), hex frame format. DB: `WolfpackMultiViewCard`. Full hex frames + mode table: `packages/multiview/README.md`.
 
@@ -331,6 +393,29 @@ Standard order: `withRateLimit` → `validateRequestBody`/`validateQueryParams` 
 const isCECDevice = !iTachAddress && deviceId.startsWith('cable-box')
 const endpoint = isCECDevice ? '/api/cec/cable-box/command' : '/api/ir-devices/send-command'
 ```
+
+## Terminology Conventions (canonical — keep consistent)
+
+After a full-system terminology audit (2026-05-28), these are the canonical
+forms. Most existing variance is *contextually correct* (identifiers vs display
+text serve different purposes) — do NOT mass-rename identifiers. Apply these to
+**new user-facing display text + docs**; leave identifiers, API paths, table
+names, and historical DB/log rows alone.
+
+- **Wolf Pack** (the matrix) — **display text + docs: "Wolf Pack"** (two words).
+  Identifiers stay as-is: package `@sports-bar/wolfpack` (lowercase), types/tables
+  `Wolfpack*` (PascalCase, e.g. `WolfpackMatrixRouting`), API paths
+  `/api/wolfpack/*`, log tags `[WOLFPACK]`/`[MATRIX]`. Never mass-rename these —
+  it breaks imports/routes/tables for zero functional gain.
+- **Audio processors** — brand styling in display: **Atlas** / **AtlasIED**
+  (models `AZM4`/`AZM8`/`AZMP4`/`AZMP8`), **dbx** (lowercase), **ZonePRO**
+  (caps PRO), **BSS** (package `bss-blu`). Don't rewrite historical log/event rows.
+- **Mics** — house Shure wireless system is **"wireless mic" / "paging mic" /
+  "hosted-event mic"** — **NEVER "karaoke mic"** (Gotcha #13; karaoke is BYO).
+  Exception: the neighbor-venue event-category `'karaoke'` in `bananas-scraper.ts`
+  is CORRECT and stays — it classifies *other bars'* karaoke nights as an external
+  RF-interference source (protects our mics). That is not "our system doing
+  karaoke"; it's detecting when someone else's might step on us.
 
 ## Common Gotchas
 
@@ -402,13 +487,22 @@ here.
 - To re-seed from JSON: delete rows from the DB table, restart the app
 - The `@sports-bar/directv` package still reads JSON for guide fetching (known tech debt)
 
-### 6. drizzle-kit push Fails Silently on Pre-Existing Indexes
-`npx drizzle-kit push` aborts entirely when it hits an index that already exists (e.g., `ApiKey_provider_keyName_key already exists`). Any tables or columns scheduled to be created AFTER that index in the push order are silently skipped. **Always verify new columns/tables exist after push:**
-```bash
-sqlite3 /home/ubuntu/sports-bar-data/production.db "PRAGMA table_info(TableName);"
-sqlite3 /home/ubuntu/sports-bar-data/production.db ".tables"
-```
-If a column is missing, add it manually with `ALTER TABLE ... ADD COLUMN`.
+### 6. drizzle-kit push Fails Silently on Pre-Existing Indexes — RESOLVED v2.54.1
+**Historical:** `npx drizzle-kit push` aborts entirely when it hits an index that already exists. Any tables or columns scheduled to be created AFTER that index in the push order are silently skipped. Caused a 24h outage on 2026-05-20 when 5 fleet boxes had the v2.51 NeighborhoodEvent table silently missing.
+
+**Fix (v2.54.1):** the schema-update flow no longer uses `push`. Auto-update.sh now runs:
+1. `scripts/bootstrap-drizzle-migrations.sh` (idempotent; ensures `__drizzle_migrations` exists with markers for every committed migration)
+2. `npx drizzle-kit migrate` (applies pending migrations one-at-a-time, fails LOUD on any error)
+
+Dev workflow for schema changes is now:
+1. Edit `packages/database/src/schema.ts`.
+2. `cd <repo root> && npx drizzle-kit generate --name <description>` — writes `drizzle/000N_<name>.sql` + `drizzle/meta/000N_snapshot.json`.
+3. Review the generated SQL. Drizzle MAY propose dropping orphan tables (sdr_*, AudioMessage, etc.) that aren't declared in schema.ts but exist in production. Use `--custom` or hand-edit the SQL to remove the DROP statements before commit.
+4. Commit + push. Auto-update on each fleet box runs the migration on next cycle.
+
+**Belt-and-suspenders:** `verify-install.sh` has a `schema_completeness` layer (v2.53.17) that checks expected tables exist post-install. If a future bug bypasses migrate, this catches it before verify-install passes.
+
+If a box ever shows a missing table again, the recovery is the same one used for the v2.51 outage — see `scripts/bootstrap-drizzle-migrations.sh` source + the v2.54.0 commit message for the manual DDL apply path.
 
 ### 7. Location Data Files Get Blanked on Merge from Main
 Main has empty template JSON files (`tv-layout.json` = 61 bytes, `directv-devices.json` = 15 bytes). When merging main into a location branch, git can silently overwrite real data with these templates if there's no conflict. **After every merge from main, verify:**
@@ -473,6 +567,72 @@ ssh ubuntu@<host> "systemctl --user list-timers sports-bar-autoupdate.timer; log
 ```
 If linger=no → fix it. If ROLLBACK present → resolve the conflict. If `npx: command not found` in a `rag-rescan-*.log` → symlink fix. If `ollama pull` errored with permission denied → group fix. Apply all four checks at install time via `docs/NEW_LOCATION_SETUP.md` §7b.
 
+### 12. llama3.1:8b paraphrases short verbatim text — server-build it instead
+
+llama3.1:8b ignores prompt rules like "do not rephrase" and "use EXACTLY as written" about half the time for short LLM-rendered text (formatted dates, counts, channel labels, source-target pairs). Proven across v2.53.0-8 in 6+ shift-brief sections: the model kept rewriting "Friday (May 22) at 7:30 PM" → "tonight at 7:30 PM", and "Mic status: good" → "Wireless mic status: Mic status: good" (double-prefix). Adding CRITICAL rules to the prompt didn't help.
+
+**Fix pattern:** server-construct the exact string in TypeScript, embed it as a labeled section in the prompt: `"Foo bullet — PRE-WRITTEN, include EXACTLY as shown, no rephrasing, no prefix, no rewording. The bullet is self-labeled:\n${preBuiltBullet}"`. Also include the verbatim bullet in any `fallbackBrief` / degraded-path code so the operator still sees it when Ollama is unreachable. The model is good at copying verbatim text when told to; it just paraphrases free-form generation. Full pattern in `[[feedback-llm-server-built-verbatim]]` memory. Related: `[[feedback-llm-context-overflow]]` for the >8-items hallucination sibling.
+
+### 13. Karaoke at the bars uses BYO mics — never frame bartender docs around it
+
+Standing operator rule (caught mid-doc-write 2026-05-19): the bar's house Shure wireless system is NEVER used for karaoke. Karaoke crews bring their own (BYO) wireless rigs. The house wireless is for paging, hosted events (trivia, MC, in-house entertainment), and the manager's announcement mic. v2.53.7+v2.53.8 fixed ~21 references across `RF_INTERFERENCE_FOR_BARTENDERS.md` + `MIC_NOT_WORKING.md` where "karaoke mic" or "Karaoke" as a channel-label example implied bartenders manage karaoke via the house Shure. They don't.
+
+**When writing bartender-facing content:** use "wireless mic" generic / "page mic" / "hosted-event mic" — never "karaoke mic" as canonical. Acceptable uses: karaoke as a busy-night context ("on a busy karaoke + game night, expect more paging"), or honest disambiguation ("note: karaoke at the bar uses BYO mics, not the house system"). Full guidance in `[[feedback-karaoke-uses-byo-mics]]`.
+
+### 14. ISO build (v3.1.0) — grub.cfg kernel cmdline must be QUOTED, not backslash-escaped
+
+When `build-autoinstall-iso.sh` edits `boot/grub/grub.cfg` to add the autoinstall kernel arg, **use the quoted form `"ds=nocloud;s=/cdrom/server/"`**, NOT the backslash-escape form `ds=nocloud\;s=/cdrom/server/`. The `awk -v` interpolation in the build script strips backslashes silently, leaving `ds=nocloud` alone in the final kernel cmdline — subiquity then ignores the autoinstall config and falls back to the interactive installer. v2.54.92 fix. Any future edit to the grub.cfg injection logic must keep the semicolon inside double quotes.
+
+### 15. ISO build (v3.1.0) — `apt.geoip: true` hangs the unattended install indefinitely
+
+In `autoinstall.yaml.template`, set apt config explicitly:
+```yaml
+apt:
+  fallback: offline-install
+  primary:
+    - arches: [default]
+      uri: "http://archive.ubuntu.com/ubuntu"
+```
+**Never use `geoip: true`.** Subiquity's geoip lookup tries `geoip.ubuntu.com` over DNS, which on a fresh ISO boot before systemd-resolved is fully up takes 60+ min of timeout-and-retry loops while the install stalls with no visible error. v2.54.95 fix. If a future template change reintroduces `geoip: true`, the install will appear hung on "Mirror selection" forever.
+
+### 16. ISO build (v3.1.0) — `shutdown: poweroff`, not `reboot`
+
+In `autoinstall.yaml.template` top-level: `shutdown: poweroff` (not `reboot`). With `reboot` and the USB still inserted, the BIOS boot-order hits the ISO again, subiquity restarts the install, and if the operator pulls the USB mid-second-install the disk corrupts. poweroff stops the VM/box cleanly so the operator removes USB → powers on → boots the installed system. v2.54.96 fix.
+
+### 17. ISO build (v3.1.0) — install Node 22 + PM2 in `late-commands`, not first-boot
+
+`first-boot-fresh.sh` assumes Node + npm + pm2 are already on PATH when it runs. The subiquity image ships neither, so install them via `late-commands` in `autoinstall.yaml.template`:
+```yaml
+late-commands:
+  - curtin in-target --target=/target -- bash -c 'curl -fsSL https://deb.nodesource.com/setup_22.x | bash -'
+  - curtin in-target --target=/target -- apt-get install -y nodejs
+  - curtin in-target --target=/target -- npm install -g pm2
+```
+v2.54.97 fix. If installing Node in first-boot instead, the box boots, first-boot service fires, `npm` is not found, service fails, and the box silently never reaches PM2.
+
+### 18. ISO smoke test — Proxmox DHCP arp lag means polling needs ≥15 min, not 5
+
+`smoke-test-autoinstall.sh` post-install poll for the VM's DHCP lease has to wait ≥15 minutes. Proxmox's arp cache doesn't show the new lease until systemd-networkd brings up the interface AND outbound traffic flows (~60-90s after kernel boot — first systemd-resolved query, NTP sync, etc.). v2.54.97 fix. A 5-minute poll loop reports "VM never got DHCP" while the VM is actually running fine.
+
+### 19. PXE netboot — `sanboot` the whole ISO is a DEAD END for Ubuntu; boot kernel+initrd over HTTP instead
+
+`scripts/proxmox/configure-netboot-menu.sh` used to `sanboot http://…/current.iso` (boot the whole ISO as a SAN disk). This **never worked for Ubuntu's casper-based live-server ISO**: iPXE registers the ISO as SAN device 0x80, GRUB loads, but casper then fails with *"Unable to find a medium containing a live file system"* (+ *"can't find command 'grub_platform'"*) — in **both UEFI and legacy BIOS**. (`sanboot`-whole-ISO works for some OSes, not Ubuntu casper.) v3.1.1 fix (confirmed live on Proxmox VM 201, 2026-05-27).
+
+**Working method** — boot `casper/vmlinuz` + `casper/initrd` directly over HTTP, let casper fetch the ISO via the `url=` kernel param:
+```
+:install
+kernel http://LXC/casper/vmlinuz
+initrd http://LXC/casper/initrd
+imgargs vmlinuz initrd=initrd ip=dhcp url=http://LXC/iso/current.iso autoinstall cloud-config-url=/dev/null ds=nocloud-net;s=http://LXC/server/ ---
+boot
+```
+Three non-obvious requirements (each cost an iteration):
+1. **`cloud-config-url=/dev/null` is MANDATORY on 24.04** — without it subiquity ignores the `ds=` seed and drops to the interactive language prompt. (Not needed on 22.04.)
+2. **`ip=dhcp`** — casper must have networking before it can fetch `url=`.
+3. **Serve the seed over HTTP at `/server/`** (`ds=nocloud-net;s=http://…/server/`, trailing slash) — the ISO-baked `ds=nocloud;s=/cdrom/server/` does NOT apply once the ISO is fetched via `url=`. `meta-data` must return HTTP 200 even if empty. Target needs ≥4 GB RAM (ISO held in ramdisk). Semicolon is NOT escaped in the iPXE line.
+
+**dnsmasq proxy-DHCP gotcha (same fix commit):** in PROXY mode dnsmasq uses `pxe-service=` for the firmware boot stage, NOT `dhcp-boot=` (which is silently ignored under proxy → `PXE-E16: No valid offer received`). `dhcp-boot=` only works in authoritative DHCP mode. `configure-netboot-menu.sh` now extracts kernel/initrd/seed from the ISO on every run and emits both fixes.
+
 ## Development Workflow
 
 ### Standing Rules (MUST follow in every session)
@@ -516,19 +676,28 @@ Every commit to `main` MUST include a `package.json` version bump (same commit o
 
 ### Making Schema Changes
 ```bash
-# 1. Edit apps/web/src/db/schema.ts
-# 2. Generate migration
-npm run db:generate
+# 1. Edit packages/database/src/schema.ts (canonical) or apps/web/src/db/schema.ts (legacy bridge)
+# 2. Generate migration file
+npx drizzle-kit generate --name <short-description>
 
-# 3. Apply to database
-npm run db:push
+# 3. REVIEW the generated drizzle/000N_<name>.sql — Drizzle may propose
+#    DROP statements for orphan tables (sdr_*, AudioMessage, etc.) that
+#    exist in production but aren't declared in schema.ts. Remove those
+#    by hand before commit.
 
-# 4. Rebuild app
+# 4. Commit + push to main. Auto-update.sh on each fleet box runs:
+#      scripts/bootstrap-drizzle-migrations.sh  (idempotent marker bootstrap)
+#      npx drizzle-kit migrate                  (applies new file)
+#    then rebuild + PM2 restart automatically.
+
+# Local-dev one-shot equivalent (if you need to test before push):
+bash scripts/bootstrap-drizzle-migrations.sh
+npx drizzle-kit migrate
 npm run build
-
-# 5. Restart PM2
 pm2 restart sports-bar-tv-controller
 ```
+
+**NEVER use `npm run db:push` in production flow** after v2.54.1 — push silently aborts on pre-existing indexes, leaving subsequent tables uncreated. Was the root cause of the 2026-05-20 24h NeighborhoodEvent outage. See Gotcha #6.
 
 ### Adding New API Endpoints
 1. Create route file: `apps/web/src/app/api/your-endpoint/route.ts`
@@ -648,6 +817,14 @@ Consolidation complete (v2.4.0–v2.4.4). All admin UI lives at `/sports-guide-a
 **Components:** `pattern-analyzer.ts` (historical viewing → optimal channel assignment), `ai-suggest/route.ts` (Ollama llama3.1:8b, 300s timeout), per-location scheduling preferences, default source config, DJ mode (locks TVs during special events).
 **API:** `GET/POST /api/scheduling/preferences`, `GET /api/scheduling/suggestions`, `POST /api/scheduling/apply`.
 
+**Neighborhood RF intelligence stack (v2.51.0+, expanded v2.53.x):** `NeighborhoodEvent` table fed by TWO scrapers running in `packages/scheduler/`:
+- **Bananas** (v2.51.0): small-venue live-music gigs at neighbor bars. ~1 mi radius useful.
+- **Ticketmaster Discovery API** (v2.53.1): big-venue events (Lambeau, Resch Center, EPIC, Fox Cities PAC, Weidner). Default OFF; activates per-location when `TICKETMASTER_API_KEY` is set. 4× daily, 14-day lookahead, 30-mi radius. Free tier 5000 calls/day, we use ~4.
+
+Both share the source-agnostic downstream pipeline: `preemptive-strike` correlator + shift-brief blurb + RF Pattern Digest. Idempotency key `(source, source_event_id)`. Auto-discovered venues land with `review_status='pending_review'` for operator triage via the v2.53.4 review API + `apps/web/scripts/review-pending-venues.ts` CLI. Both decline (`is_active=false`) AND review_status update atomically per Gotcha #14 / `[[feedback-state-machine-belt-suspenders]]`.
+
+**Cross-encoder reranking (v2.53.0+, RAG pipeline):** `bge-reranker-v2-m3-ONNX` (int8) loads in-process via `@huggingface/transformers`. Default OFF — opt-in per location via `RAG_RERANK_ENABLED=true`. Solves the "bi-encoder retrieves correct chunks but LLM blends adjacent similar chunks" failure mode (e.g., cyan vs yellow banner answers). Requires PM2 `max_memory_restart >= 3G` + `--max-old-space-size=2048` since the ONNX model adds ~600 MB resident memory off-heap. Holmgren is the canary; see `[[feedback-reranker-memory-budget]]` for the full memory model and rollout notes.
+
 **Ollama runtime (fleet-standard at v2.32.57+):** Intel Iris Xe iGPU acceleration via the IPEX-LLM Ollama portable build (replaces the upstream CPU-only Ollama systemd service). Yields ~14 tok/s on `llama3.1:8b` Q4 (vs ~3 tok/s CPU on the same i9-13900HK class hardware) — AI Suggest goes from 3+ min to ~100s. Models live unchanged at `/usr/share/ollama/.ollama/models/` (the IPEX unit reads them via `OLLAMA_MODELS=/usr/share/ollama/.ollama/models` and group permissions). Standardized via `scripts/setup-iris-ollama.sh` — run once per location. Verify with `journalctl -u ollama-ipex | grep "using Intel GPU"`. Not all hardware qualifies — the script checks `clinfo` for an Intel platform and refuses on AMD/Nvidia boxes.
 
 **ESPN sync** runs from `apps/web/src/instrumentation.ts` on startup (30s delay) + every 60min. Covers MLB/NBA/NHL/NFL/CFB/MCBB/WCBB → `game_schedules` table (lowercase league labels). AI Game Monitor's `Schedule` row auto-creates on first use; populate `HomeTeam` table for home-team prioritization (Packers/Bucks/Brewers/Badgers).
@@ -745,7 +922,7 @@ git merge origin/main
 #   git checkout --ours apps/web/data/<file>
 #   git checkout --theirs package-lock.json package.json
 npm ci
-npx drizzle-kit push --config drizzle.config.ts  # Create any new DB tables
+npx drizzle-kit migrate  # apply pending migrations (was: push, switched in v2.54.1)
 npm run build
 pm2 restart sports-bar-tv-controller --update-env
 # Check logs for auto-seed: pm2 logs sports-bar-tv-controller --lines 20

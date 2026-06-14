@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { logger } from '@sports-bar/logger'
 import { routeMatrix } from '@/lib/matrix-control'
+import { logSchedulingEvent } from '@/lib/scheduling-logger'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { z } from 'zod'
@@ -27,7 +28,12 @@ export async function POST(request: NextRequest) {
     // rejected by the enum, causing silent revert failure (the calling code
     // logged "revert complete" even though every matrix route was 400'd
     // before reaching the Wolf Pack).
-    source: z.enum(['bartender', 'ai_scheduler', 'manual', 'system', 'auto-reallocator']).optional().default('bartender'),
+    // 'manual_schedule' added (Wave 1, intelligence roadmap) — the
+    // execute-single-game path (AIGamePlanModal, ScheduledGamesPanel) sends
+    // source='manual_schedule'. Previously rejected by the enum, so EVERY
+    // routing call from that path returned HTTP 400 and silently failed with
+    // tvsControlled=0 — the TV never changed, with zero diagnostic.
+    source: z.enum(['bartender', 'ai_scheduler', 'manual', 'manual_schedule', 'system', 'auto-reallocator']).optional().default('bartender'),
     bartenderId: z.string().optional(),
   })
 
@@ -158,17 +164,34 @@ export async function POST(request: NextRequest) {
       // Don't fail the request if tracking fails
     }
 
-    // Override-learn: when a bartender changes a route within 10 min of an
-    // active scheduled allocation, patch that allocation's tv_output_ids so
-    // the hourly pattern-analyzer learns from the correction (the bartender
-    // knows the room better than whoever originally scheduled the TVs).
+    // Override-learn: when a bartender changes a route during an active
+    // scheduled allocation (game has not yet ended), patch that allocation's
+    // tv_output_ids so the hourly pattern-analyzer learns from the correction.
+    // The window is open while the allocation's game is CURRENTLY RUNNING:
+    // it has STARTED (allocated_at <= now) AND has not ended (expected_free_at
+    // >= now, OR still status='active' for overruns).
+    // Bartender corrections frequently happen 10+ minutes after game start
+    // (allocated_at = tuneAtUnix = game start time), and the old
+    // "allocated_at >= now-600" gate silently excluded every such correction,
+    // dropping the strongest pattern-learning signal (fixed v2.55.40).
+    // The OR-status-active leg covers games that run PAST their estimated end
+    // (extra innings, overtime, rain delay): expected_free_at < now there,
+    // but the allocation is still status='active' until the auto-reallocator
+    // marks it completed at real game end — which closes the window naturally
+    // (added v2.55.46).
+    // The allocated_at <= now lower bound (v2.55.72) is CRITICAL: without it,
+    // FUTURE pending allocations (tomorrow's / Friday's games pre-scheduled on
+    // the SAME input source) have expected_free_at days out, pass the filter,
+    // and a tonight-only tweak silently rewrites those future games' layouts
+    // (and triple-logs the override, inflating the digest). The window must
+    // mean "the game on right now", not "any allocation not yet ended".
     // Home-team overrides (Brewers/Bucks/Badgers/etc. from HomeTeam table)
     // are logged at warn level so operators can filter to the strongest
     // signals.
     if (source === 'bartender') {
       try {
         const { sql } = await import('drizzle-orm')
-        const windowStart = Math.floor(Date.now() / 1000) - 600 // 10 min
+        const nowUnix = Math.floor(Date.now() / 1000)
 
         const recent = await db.all(sql`
           SELECT
@@ -190,7 +213,8 @@ export async function POST(request: NextRequest) {
           LEFT JOIN MatrixInput mi ON mi.id = s.matrix_input_id
           LEFT JOIN game_schedules g ON g.id = a.game_schedule_id
           WHERE a.status IN ('active','pending','tuning')
-            AND a.allocated_at >= ${windowStart}
+            AND a.allocated_at <= ${nowUnix}
+            AND (a.expected_free_at >= ${nowUnix} OR a.status = 'active')
         `) as Array<{
           allocation_id: string
           input_source_id: string
@@ -259,6 +283,30 @@ export async function POST(request: NextRequest) {
           })
 
           logger.info(`[OVERRIDE-LEARN] ${msg}`)
+
+          // v2.55.42 — mirror override-learn into the dedicated scheduling
+          // log so the operator can grep one file for the full team-routing
+          // story (manual schedules + AI suggestions + override-learn).
+          // Best-effort: failures don't block the matrix route itself.
+          await logSchedulingEvent({
+            level: isHomeTeam ? 'warn' : 'info',
+            source: 'override-learn',
+            action: 'allocation_updated',
+            game: {
+              home: row.home_team_name ?? undefined,
+              away: row.away_team_name ?? undefined,
+              league: row.league ?? undefined,
+            },
+            targets: {
+              tvOutputIds: newList,
+              inputSourceId: row.input_source_id ?? undefined,
+            },
+            outcome: {
+              allocationId: row.allocation_id,
+              status: 'active',
+            },
+            note: `bartender ${action} output ${outputNum} on team=${team}${isHomeTeam ? ' (HOME TEAM)' : ''} — prev=[${tvList.join(',')}] → new=[${newList.join(',')}]`,
+          })
         }
       } catch (learnError: any) {
         logger.warn(`[OVERRIDE-LEARN] Failed to record override: ${learnError.message}`)

@@ -1,0 +1,20 @@
+[Unit]
+Description=Sports Bar TV Controller — PM2 error-log watcher (Phase 2a, v2.55.23+)
+Documentation=https://github.com/dfultonthebar/Sports-Bar-TV-Controller/blob/main/docs/HOOK_COVERAGE.md
+After=default.target
+
+[Service]
+Type=simple
+ExecStart=/home/ubuntu/Sports-Bar-TV-Controller/scripts/watchers/error-watch.sh
+Restart=always
+RestartSec=15
+# Heartbeat every 5 min by default — override here if a location wants finer granularity.
+Environment=HEARTBEAT_INTERVAL_SEC=300
+Environment=DEDUP_WINDOW_SEC=30
+# Keep stdout/stderr — systemd journal preserves both; DB rows are the durable record.
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sports-bar-error-watch
+
+[Install]
+WantedBy=default.target

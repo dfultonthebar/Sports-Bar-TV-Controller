@@ -44,3 +44,10 @@ export {
   normalizeArtistName,
   type BananasParsedEvent
 } from './bananas-scraper'
+
+// Ticketmaster Discovery API Scraper (v2.53.1+ Neighborhood RF Prediction, task #161)
+export {
+  fetchTicketmasterEvents,
+  type TicketmasterParsedEvent,
+  type TicketmasterFetchOptions
+} from './ticketmaster-scraper'

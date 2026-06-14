@@ -43,23 +43,31 @@ export default function DJControlPanel() {
   const [volumeTimers, setVolumeTimers] = useState<Map<number, ReturnType<typeof setTimeout>>>(new Map())
 
   // Fetch Atlas sources
-  const fetchSources = useCallback(async () => {
+  // NOTE: deps deliberately DO NOT include selectedDJSource — if they did,
+  // every user pick would recreate this callback, re-fire the init useEffect
+  // (which lists fetchSources in its deps), re-run /api/settings/dj-mode GET,
+  // and restore the PREVIOUSLY saved source — overwriting the user's pick.
+  // That's the v2.54.71 "select-doesn't-stick" bug. We pass an
+  // explicit autoSelectIfUnset flag instead (true only on initial load).
+  const fetchSources = useCallback(async (autoSelectIfUnset = false) => {
     if (!processorIp) return
     try {
       const res = await fetch(`/api/atlas/sources?processorIp=${processorIp}`)
       const data = await res.json()
       if (data.success && data.sources) {
         setDjSources(data.sources)
-        // Auto-select DJ Audio if available
-        const djSource = data.sources.find((s: AtlasSource) => s.name.toLowerCase().includes('dj'))
-        if (djSource && selectedDJSource === null) {
-          setSelectedDJSource(djSource.index)
+        if (autoSelectIfUnset) {
+          // Auto-select DJ Audio only when no saved state has set the source
+          const djSource = data.sources.find((s: AtlasSource) => s.name.toLowerCase().includes('dj'))
+          if (djSource) {
+            setSelectedDJSource((prev) => (prev === null ? djSource.index : prev))
+          }
         }
       }
     } catch (err) {
       logger.error('[DJ_PANEL] Failed to fetch sources:', err)
     }
-  }, [processorIp, selectedDJSource])
+  }, [processorIp])
 
   // Fetch Atlas zones
   const fetchZones = useCallback(async () => {
@@ -110,10 +118,22 @@ export default function DJControlPanel() {
       try {
         const res = await fetch('/api/audio-processor')
         const data = await res.json()
-        if (data.processors?.length > 0) {
-          const processor = data.processors[0]
-          setProcessorId(processor.id)
-          setProcessorIp(processor.ipAddress)
+        const processors = data.processors || []
+        // DJ Mode drives Atlas zones/sources via /api/atlas/* + /api/audio-processor/*.
+        // 'shure-slxd' is a wireless mic receiver — monitor-only, no zones/sources.
+        // Without this filter we'd pick processors[0], which at Holmgren is the
+        // Shure receiver, sending the Shure IP to /api/atlas/sources?processorIp=
+        // (returns 404 "No Atlas processor configured at this IP") and the Shure
+        // ID to /api/audio-processor/zones (returns empty []). Same root cause as
+        // the BartenderRemoteAudioPanel fix in remote/page.tsx loadAudioProcessor().
+        const atlasProcessor = processors.find(
+          (p: any) => p.processorType === 'atlas'
+        )
+        if (atlasProcessor) {
+          setProcessorId(atlasProcessor.id)
+          setProcessorIp(atlasProcessor.ipAddress)
+        } else {
+          logger.error('[DJ_PANEL] No Atlas processor found in /api/audio-processor — DJ Mode requires an Atlas processor')
         }
       } catch (err) {
         logger.error('[DJ_PANEL] Failed to fetch processor:', err)
@@ -122,12 +142,21 @@ export default function DJControlPanel() {
     fetchProcessor()
   }, [])
 
-  // Load saved state once processor is loaded
+  // Load saved state once processor is loaded.
+  // ONE-SHOT per (processorId, processorIp) — guarded by initRef so that
+  // changes to fetchSources/fetchZones (callback identity) cannot retrigger
+  // this effect and re-restore saved state on top of user input. This is the
+  // v2.54.71 "select-doesn't-stick" fix.
+  const initRef = useRef<string | null>(null)
   useEffect(() => {
     if (!processorId || !processorIp) return
+    const initKey = `${processorId}:${processorIp}`
+    if (initRef.current === initKey) return
+    initRef.current = initKey
+
     const init = async () => {
       setLoading(true)
-      await Promise.all([fetchSources(), fetchZones()])
+      await Promise.all([fetchSources(true), fetchZones()])
 
       // Restore saved state
       try {

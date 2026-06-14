@@ -137,7 +137,7 @@ export async function runScheduledVenueDiscovery(): Promise<DiscoveryResult> {
         } else if (row.address && row.city) {
           // Auto-geocode via Nominatim + save back to Location row.
           logger.info(`[VENUE-DISCOVERY] Location lat/lon empty — geocoding "${row.address}, ${row.city}, ${row.state}, ${row.zipCode}"...`)
-          const { geocodeAndPersist } = await import('@sports-bar/utils/geocoder')
+          const { geocodeAndPersist } = await import('@sports-bar/utils')
           const geo = await geocodeAndPersist({ db, schema, locationId })
           if (geo) {
             lat = geo.latitude

@@ -4,6 +4,9 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { withRateLimit } from '@/lib/rate-limiting/middleware'
+import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
+import { requireAuth } from '@/lib/auth'
 import { db } from '@/db'
 import * as schema from '@/db/schema'
 import { eq, desc, and, gte, lte, sql } from 'drizzle-orm'
@@ -11,6 +14,10 @@ import { logger } from '@sports-bar/logger'
 
 // GET - Query logs
 export async function GET(request: NextRequest) {
+  // v2.54.46 — Grok audit: rate-limit only (read path).
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.DEFAULT)
+  if (!rateLimit.allowed) return rateLimit.response
+
   try {
     const { searchParams } = new URL(request.url)
     const systemId = searchParams.get('systemId')

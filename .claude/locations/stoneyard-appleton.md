@@ -6,6 +6,17 @@
 
 DB is the source of truth — see CLAUDE.md §6 (Device Data Migration) and `apps/web/src/lib/device-db.ts`. Values below mirror the DB as a quick reference; if they drift, trust the DB.
 
+## Matrix — control protocol is TCP (not HTTP)
+
+- **`MatrixConfiguration.protocol` = `TCP`** (port 5000), set 2026-06-11. Routes via
+  `sendTCPCommand` (1-based `{in}X{out}.` SET) like Holmgren Way — NOT the HTTP `o2ox`
+  toggle (which disconnects an already-set output when re-sent → TV black). TCP is a
+  plain SET, no PHP session, no password at Stoneyard. See
+  `docs/WOLFPACK_HTTP_API_REFERENCE.md` + [[feedback-wolfpack-tcp-not-http-routing]].
+- Config read fresh per route (no cache) → flip took effect with no restart.
+  **Rollback:** `sqlite3 .../production.db "UPDATE MatrixConfiguration SET
+  protocol='HTTP' WHERE name LIKE 'Stoneyard Appleton';"`
+
 ## Matrix — outputOffset is PER-CARD
 
 - **Wolf Pack** — **MULTI-CARD** chassis. `outputOffset` value depends on physical wiring.

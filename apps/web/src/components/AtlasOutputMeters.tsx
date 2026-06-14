@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { Volume2, Users, AlertTriangle } from 'lucide-react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/cards'
 
 import { logger } from '@sports-bar/logger'
 interface OutputMeter {
@@ -155,20 +154,18 @@ export default function AtlasOutputMeters({
 
   if (loading && outputMeters.length === 0) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
+      <div className="rounded-lg border border-slate-700 bg-slate-800/50 p-6">
+        <div className="mb-4">
+          <h3 className="text-lg font-semibold text-slate-100 flex items-center space-x-2">
             <Volume2 className="w-5 h-5 text-teal-400" />
             <span>Output Meters</span>
-          </CardTitle>
-          <CardDescription>Loading meter data...</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-center py-8">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-500"></div>
-          </div>
-        </CardContent>
-      </Card>
+          </h3>
+          <p className="text-sm text-slate-400 mt-1">Loading meter data...</p>
+        </div>
+        <div className="flex items-center justify-center py-8">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-500"></div>
+        </div>
+      </div>
     )
   }
 
@@ -176,12 +173,12 @@ export default function AtlasOutputMeters({
   const groups = outputMeters.filter(m => m.type === 'group')
 
   return (
-    <Card>
-      <CardHeader>
+    <div className="rounded-lg border border-slate-700 bg-slate-800/50 p-6">
+      <div className="mb-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
             <Volume2 className="w-5 h-5 text-teal-400" />
-            <CardTitle>Output & Group Meters</CardTitle>
+            <h3 className="text-lg font-semibold text-slate-100">Output & Group Meters</h3>
             {isConnected && (
               <span className="flex items-center space-x-1 text-xs text-green-400">
                 <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
@@ -190,7 +187,7 @@ export default function AtlasOutputMeters({
             )}
           </div>
           {!autoRefresh && (
-            <button 
+            <button
               onClick={fetchOutputMeters}
               className="btn-secondary text-sm"
               disabled={loading}
@@ -199,11 +196,11 @@ export default function AtlasOutputMeters({
             </button>
           )}
         </div>
-        <CardDescription>
+        <p className="text-sm text-slate-400 mt-1">
           Real-time audio output and group levels
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
+        </p>
+      </div>
+      <div>
         <div className="space-y-6">
           {/* Individual Outputs */}
           {outputs.length > 0 && (
@@ -298,7 +295,7 @@ export default function AtlasOutputMeters({
             </div>
           )}
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   )
 }
