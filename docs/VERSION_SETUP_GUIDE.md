@@ -35,6 +35,27 @@ is the archive.
 
 ---
 
+## v2.58.2 — Hermes self-backup to GitHub WIRED (2026-06-14)
+
+**Branch landed:** main → fleet via auto-update
+**What shipped:** `hermes/scripts/backup.sh` — daily backup of the Hermes "brain" to the **private** repo
+`dfultonthebar/hermes-backup`, per-box subdir. LIVE + verified on Holmgren (3 pushes, cron scheduled 3 AM,
+linger=yes). Auths via the box's existing git credential store (no token embedded). Backs up
+skills/memories/cron/hooks/root-*.md ONLY — excludes `hermes-agent/` program source, caches/blobs, and ALL
+secrets (`.env`, `config.yaml`, credentials). 33 MB brain (mostly community-skill template assets).
+- **Per-box install (each fleet box):**
+  ```bash
+  cp hermes/scripts/backup.sh ~/.hermes/scripts/backup.sh && chmod +x ~/.hermes/scripts/backup.sh
+  loginctl show-user "$USER" | grep -q 'Linger=yes' || sudo loginctl enable-linger "$USER"
+  bash ~/.hermes/scripts/backup.sh        # verify the first push lands in dfultonthebar/hermes-backup/<box>/
+  hermes cron create --name daily-github-backup --no-agent --script backup.sh "0 3 * * *"
+  ```
+- **Note:** every fleet box already has dfultonthebar's git credential store (it clones the main repo), so the
+  same script + same private repo works fleet-wide with zero extra secrets. Each box auto-namespaces by
+  LOCATION_NAME slug → hostname.
+
+---
+
 ## v2.58.1 — Phase 3-5: IT/ops persona refresh + skills wired + primary mode (2026-06-14)
 
 **Branch landed:** main → fleet via auto-update

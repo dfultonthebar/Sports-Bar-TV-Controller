@@ -18,7 +18,26 @@ automation an ops agent can have: a box failure, a bad `rm`, or a corrupt update
 never loses accumulated skill/memory state. Back up TEXT (skills + markdown +
 memory), NOT blobs/caches — the full folder blows past GitHub's size limit.
 
-## Prerequisites
+## Shipped implementation (fleet-canonical, v2.58.2)
+
+The working script is **`hermes/scripts/backup.sh`** (installed to `~/.hermes/scripts/backup.sh`). It:
+- Pushes to the private repo **`dfultonthebar/hermes-backup`**, into a **per-box subdir** (LOCATION_NAME
+  slug → hostname), so every fleet box backs up to one repo without clobbering.
+- Auths via the box's existing **git `credential.helper=store`** (`~/.git-credentials`) — **no token in the
+  script**. (The generic PAT method below is the fallback for a box without a credential store.)
+- Backs up **brain only**: `skills/`, `memories/`, `cron/`, `hooks/`, root `*.md`. Excludes the Hermes
+  program source (`hermes-agent/`), caches/blobs, and **all secrets** (`.env`, `config.yaml`, credentials).
+- Wipes its dest subdir each run (rsync `--delete` protects excluded files, so a clean snapshot avoids bloat).
+
+**Per-box install:**
+```bash
+cp hermes/scripts/backup.sh ~/.hermes/scripts/backup.sh && chmod +x ~/.hermes/scripts/backup.sh
+loginctl show-user "$USER" | grep -q 'Linger=yes' || sudo loginctl enable-linger "$USER"
+bash ~/.hermes/scripts/backup.sh        # verify the first push lands
+hermes cron create --name daily-github-backup --no-agent --script backup.sh "0 3 * * *"
+```
+
+## Prerequisites (generic PAT fallback — only if no git credential store)
 - A **private** GitHub repo (never public — it contains secrets-adjacent config).
 - A fine-grained PAT scoped to ONLY that repo, permission **Contents: read+write**.
 - systemd linger enabled, or a user-scoped cron silently never fires (Gotcha #11).
