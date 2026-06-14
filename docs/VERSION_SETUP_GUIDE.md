@@ -35,6 +35,29 @@ is the archive.
 
 ---
 
+## v2.58.0 — Phase 2: 5 Hermes operating skills mined from YouTube (2026-06-14)
+
+**Branch landed:** main → fleet via auto-update
+**Per-box install where Hermes runs** (version-controlled in `hermes/skills/`, copied to `~/.hermes/skills/`).
+Extracted concrete, transferable operating techniques from 4 Hermes-Agent YouTube videos (NetworkChuck
+"5 reasons", the masterclass, "21 concepts", David Andre "7 levels") into reusable SKILL.md playbooks:
+- `hermes/skills/crystallize-runbook-skill` — after a verified incident fix, auto-author a tight SKILL.md
+  runbook (symptom/root-cause/fix/verify), pin it, mirror to System Admin Todos (the self-improvement loop).
+- `hermes/skills/fleet-heartbeat-watch` — diff-based "silent until something changes" fleet monitor; snapshots
+  health/version/auto-update/RF via MCP tools, only Telegram-alerts on a delta. Wire:
+  `hermes cron create --name fleet-heartbeat --deliver telegram --skill fleet-heartbeat-watch "every 15m"`.
+- `hermes/skills/session-recall` — answer "what did we decide/change on <date>" from `~/.hermes/state.db`
+  (`messages` table) + `hermes sessions` — the time-anchored complement to Honcho's semantic recall.
+- `hermes/skills/hermes-self-backup-to-github` — daily `--no-agent` cron rsyncs TEXT-only `~/.hermes`
+  (skills+memory+md, no blobs) to a **private** repo; PAT via `hermes config set GITHUB_TOKEN`, linger required.
+- `hermes/skills/hermes-curator-skill-hygiene` — drive the (already-enabled) Curator: `curator run --dry-run`,
+  and **`curator pin`** every canonical skill so auto-prune never removes a load-bearing runbook.
+- **Per-box install:** `cp -r hermes/skills/* ~/.hermes/skills/` then pin canonical skills:
+  `for s in sports-bar-troubleshooting sports-bar-investigate sports-bar-shift-check sports-bar-rf-response crystallize-runbook-skill fleet-heartbeat-watch session-recall hermes-self-backup-to-github hermes-curator-skill-hygiene; do hermes curator pin "$s"; done`.
+  On the canary (Holmgren) all 5 are installed + all 9 skills pinned. `hermes/` is OUTSIDE RAG-indexed paths.
+
+---
+
 ## v2.57.6 — expand Hermes skills (3 custom + YouTube) (2026-06-13)
 
 **Branch landed:** main → fleet via auto-update
