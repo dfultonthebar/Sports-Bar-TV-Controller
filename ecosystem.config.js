@@ -29,6 +29,8 @@ module.exports = {
         NODE_ENV: 'production',
         PORT: 3001,
         ADB_VENDOR_KEYS: '/home/ubuntu/.android',
+        // Wave 3c: closed-loop matrix route verify (opt-in per location, default off).
+        ROUTE_VERIFY_ENABLED: process.env.ROUTE_VERIFY_ENABLED,
         // Sports Guide API (The Rail Media) — per-location values from .env
         SPORTS_GUIDE_API_KEY: process.env.SPORTS_GUIDE_API_KEY,
         SPORTS_GUIDE_USER_ID: process.env.SPORTS_GUIDE_USER_ID,

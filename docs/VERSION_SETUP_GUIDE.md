@@ -35,6 +35,33 @@ is the archive.
 
 ---
 
+## v2.60.0 — Wave 3c: closed-loop matrix route verify + Wolf Pack TCP-close fix (2026-06-14)
+
+**Branch landed:** main → fleet via auto-update.
+Two parts:
+1. **Wolf Pack TCP-close fix (ACTIVE, not gated)** — `sendTCPCommand` in BOTH
+   `packages/wolfpack/src/matrix-control.ts` and `packages/wolfpack/src/wolfpack-matrix-service.ts` now use a
+   single `resolved` guard + guaranteed `client.destroy()` on every exit path (mirrors the well-guarded
+   `sendUDPCommand`). Fixes the `data`-then-`close` double-resolve and the leaked half-open socket on `error`
+   that the verify loop's rapid re-issue would accumulate. **Success values unchanged.** Verified live on
+   Holmgren's TCP:5000 path: routed output1→input2 and restored 2→1, both OK; route-verify logic 26/26.
+2. **Closed-loop route verify (GATED, default OFF)** — `scheduler-service.ts` now calls
+   `verifyAndRetryRoute` + `persistVerifyState` (from `route-verify.ts`, shipped v2.55.82) after each
+   successful route, behind **`ROUTE_VERIFY_ENABLED`** (env, default off; forwarded in `ecosystem.config.js`).
+   Reads the crossbar back; only on a GENUINE mismatch re-issues the idempotent SET; records the outcome on
+   the allocation's advisory `verify_*` columns. Advisory only — never throws into the tune path, never blocks
+   the allocation lifecycle. Matrix config cached per-tick like `cachedAudioProcessor`.
+- **Per-box enable (canary):** add `ROUTE_VERIFY_ENABLED=true` to the box's `.env`, then
+  `pm2 delete sports-bar-tv-controller && pm2 start ecosystem.config.js` (env change → Gotcha #2, NOT restart).
+  Holmgren is the canary. Verify fires only on a real scheduler **game-day tune** (no games = nothing to
+  verify), so check `SELECT verify_state, verify_attempts, verify_error FROM input_source_allocations WHERE
+  status='active'` after the next game tune. Leave OFF on every other box until proven.
+- **Why it matters:** this is the detection net for the Leg Lamp / o2ox black-TV class of bug — it reads back
+  after every route and flags (verify_state='failed') when a TV didn't land where it should, instead of the
+  failure being silent. (It detects; it does not fix the o2ox toggle — that's the separate shelved-o2o item.)
+
+---
+
 ## v2.59.0 — channel-guide canonical dedup (Wave 1b-ii) + shift-brief truncation fix (2026-06-14)
 
 **Branch landed:** main → fleet via auto-update. **No manual setup required** (code-only).

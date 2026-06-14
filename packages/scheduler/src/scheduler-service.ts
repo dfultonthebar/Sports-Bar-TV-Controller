@@ -14,9 +14,16 @@ import { runFiretvAppSyncSweep } from './firetv-app-sync'
 import { runFiretvCatalogWalk } from './firetv-catalog-walker'
 import { runBananasIngestion } from './bananas-ingestion'
 import { runTicketmasterIngestion } from './ticketmaster-ingestion'
+import { verifyAndRetryRoute, persistVerifyState } from './route-verify'
 
 // Get API port from environment or default to 3001
 const API_PORT = process.env.PORT || 3001
+// Wave 3c: closed-loop route verification. OFF by default — opt-in per location
+// (Holmgren canary) via env, matching the RAG_RERANK_ENABLED / TICKETMASTER_API_KEY
+// canary pattern. When on, after each route the scheduler reads the crossbar back
+// and (only on a genuine mismatch) re-issues the idempotent SET, then records the
+// verify outcome on the allocation's advisory columns.
+const ROUTE_VERIFY_ENABLED = process.env.ROUTE_VERIFY_ENABLED === 'true'
 
 // Venue timezone for schedule calculations (Central Time)
 const VENUE_TIMEZONE = 'America/Chicago'
@@ -48,6 +55,7 @@ class SchedulerService {
   // hardware on next start.
   private cachedVavaDevices: any[] | null = null;
   private cachedAudioProcessor: any | null = null;
+  private cachedMatrixConfig: any | null = null; // Wave 3c: active Wolf Pack config for route read-back (per-tick cache)
 
   /**
    * v2.31.8 — Register a polling job. Replaces the boilerplate triplet
@@ -572,6 +580,7 @@ class SchedulerService {
     // Drop runtime caches so a subsequent start() reloads from DB.
     this.cachedVavaDevices = null;
     this.cachedAudioProcessor = null;
+    this.cachedMatrixConfig = null;
 
     this.isRunning = false;
 
@@ -1293,6 +1302,46 @@ class SchedulerService {
                       const routeHw = await parseHardwareResult(routeResponse);
                       if (routeHw.ok) {
                         logger.info(`[SCHEDULER] ✅ Routed matrix input ${matrixInput} → output ${outputNumber}`);
+
+                        // Wave 3c: closed-loop verify (opt-in via ROUTE_VERIFY_ENABLED).
+                        // Read the crossbar back; on a GENUINE mismatch re-issue the
+                        // idempotent SET, then record the outcome on the allocation's
+                        // advisory verify_* columns. Advisory only — never throws into
+                        // the tune path, never blocks the allocation lifecycle.
+                        if (ROUTE_VERIFY_ENABLED) {
+                          try {
+                            if (!this.cachedMatrixConfig) {
+                              this.cachedMatrixConfig = await db.select()
+                                .from(schema.matrixConfigurations)
+                                .where(eq(schema.matrixConfigurations.isActive, true))
+                                .limit(1).get();
+                            }
+                            const cfg = this.cachedMatrixConfig;
+                            if (cfg?.ipAddress) {
+                              const verifyResult = await verifyAndRetryRoute(
+                                matrixInput,
+                                outputNumber,
+                                { ipAddress: cfg.ipAddress },
+                                async () => {
+                                  const r = await fetch(`http://127.0.0.1:${API_PORT}/api/matrix/route`, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ input: matrixInput, output: outputNumber }),
+                                  });
+                                  return (await parseHardwareResult(r)).ok;
+                                },
+                              );
+                              await persistVerifyState(allocation.id, verifyResult);
+                              if (verifyResult.state === 'failed') {
+                                logger.error(`[SCHEDULER] ⚠️ Route verify FAILED input ${matrixInput} → output ${outputNumber} after ${verifyResult.attempts} resend(s): ${verifyResult.error || 'persistent mismatch'} (actualInput=${verifyResult.actualInput})`);
+                              } else {
+                                logger.info(`[SCHEDULER] 🔎 Route verify ${verifyResult.state} input ${matrixInput} → output ${outputNumber} (attempts=${verifyResult.attempts})`);
+                              }
+                            }
+                          } catch (verifyError: any) {
+                            logger.warn(`[SCHEDULER] route verify errored (advisory, ignored) input ${matrixInput} → output ${outputNumber}:`, { error: verifyError?.message || verifyError });
+                          }
+                        }
                       } else {
                         if (routeHw.malformedOk) {
                           logger.warn(`[SCHEDULER] ⚠️ Matrix route returned HTTP 200 but no success flag (contract drift) input ${matrixInput} → output ${outputNumber}: ${JSON.stringify(routeHw.body)} — treating as FAILURE`);
