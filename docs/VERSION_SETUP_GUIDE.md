@@ -35,6 +35,123 @@ is the archive.
 
 ---
 
+## v2.60.0 — Wave 3c: closed-loop matrix route verify + Wolf Pack TCP-close fix (2026-06-14)
+
+**Branch landed:** main → fleet via auto-update.
+Two parts:
+1. **Wolf Pack TCP-close fix (ACTIVE, not gated)** — `sendTCPCommand` in BOTH
+   `packages/wolfpack/src/matrix-control.ts` and `packages/wolfpack/src/wolfpack-matrix-service.ts` now use a
+   single `resolved` guard + guaranteed `client.destroy()` on every exit path (mirrors the well-guarded
+   `sendUDPCommand`). Fixes the `data`-then-`close` double-resolve and the leaked half-open socket on `error`
+   that the verify loop's rapid re-issue would accumulate. **Success values unchanged.** Verified live on
+   Holmgren's TCP:5000 path: routed output1→input2 and restored 2→1, both OK; route-verify logic 26/26.
+2. **Closed-loop route verify (GATED, default OFF)** — `scheduler-service.ts` now calls
+   `verifyAndRetryRoute` + `persistVerifyState` (from `route-verify.ts`, shipped v2.55.82) after each
+   successful route, behind **`ROUTE_VERIFY_ENABLED`** (env, default off; forwarded in `ecosystem.config.js`).
+   Reads the crossbar back; only on a GENUINE mismatch re-issues the idempotent SET; records the outcome on
+   the allocation's advisory `verify_*` columns. Advisory only — never throws into the tune path, never blocks
+   the allocation lifecycle. Matrix config cached per-tick like `cachedAudioProcessor`.
+- **Per-box enable (canary):** add `ROUTE_VERIFY_ENABLED=true` to the box's `.env`, then
+  `pm2 delete sports-bar-tv-controller && pm2 start ecosystem.config.js` (env change → Gotcha #2, NOT restart).
+  Holmgren is the canary. Verify fires only on a real scheduler **game-day tune** (no games = nothing to
+  verify), so check `SELECT verify_state, verify_attempts, verify_error FROM input_source_allocations WHERE
+  status='active'` after the next game tune. Leave OFF on every other box until proven.
+- **Why it matters:** this is the detection net for the Leg Lamp / o2ox black-TV class of bug — it reads back
+  after every route and flags (verify_state='failed') when a TV didn't land where it should, instead of the
+  failure being silent. (It detects; it does not fix the o2ox toggle — that's the separate shelved-o2o item.)
+
+---
+
+## v2.59.0 — channel-guide canonical dedup (Wave 1b-ii) + shift-brief truncation fix (2026-06-14)
+
+**Branch landed:** main → fleet via auto-update. **No manual setup required** (code-only).
+Two do-now-safe wins from the todo sweep:
+- **Wave 1b-ii — canonical dedup** (`apps/web/src/lib/channel-guide/dedup-key.ts` + one pass in
+  `channel-guide/route.ts` before the age-filter). The 7 injection paths each had ad-hoc dedup with
+  inconsistent team-casing / time / channel handling, so the same game could appear twice. Now ONE
+  tolerance-based pass: group by normalized teams+channel, same game iff start times within **2h**
+  (skew-tolerant; keeps doubleheaders >2h apart; keeps same game on different channels as two rows;
+  never dedups teamless entries). First-writer-wins → Rail base layer precedence. Drops logged via the
+  existing `DropTracker` as `reason='canonical-dupe'`. Logic unit-verified 5/5.
+- **shift-brief truncation fix** (`apps/web/src/app/api/ai/shift-brief/route.ts:520`): `SHIFT_BRIEF_NUM_PREDICT`
+  320 → **384**. LLM-PERF logs showed ~13% of briefs hit `done=length [TRUNCATED@cap]` at 320 (last section
+  silently cut). +64 tokens ≈ +10s at ~6 tok/s.
+- **Deferred (data-gated):** per-box `OLLAMA_NUM_PREDICT` tuning stays blocked — the LLM-PERF logs are
+  Holmgren-only (2 `ai-suggest` samples fleet-wide). Needs fleet log aggregation first. Wave 2 primary-flip:
+  **decided DON'T-FLIP-YET** (only 2 degenerate shadow runs exist, the `primary` codepath isn't implemented,
+  and the roadmap gates it on Waves 3.5/6/7). Kept `AI_SUGGEST_SOLVER=shadow`.
+
+---
+
+## v2.58.2 — Hermes self-backup to GitHub WIRED (2026-06-14)
+
+**Branch landed:** main → fleet via auto-update
+**What shipped:** `hermes/scripts/backup.sh` — daily backup of the Hermes "brain" to the **private** repo
+`dfultonthebar/hermes-backup`, per-box subdir. LIVE + verified on Holmgren (3 pushes, cron scheduled 3 AM,
+linger=yes). Auths via the box's existing git credential store (no token embedded). Backs up
+skills/memories/cron/hooks/root-*.md ONLY — excludes `hermes-agent/` program source, caches/blobs, and ALL
+secrets (`.env`, `config.yaml`, credentials). 33 MB brain (mostly community-skill template assets).
+- **Per-box install (each fleet box):**
+  ```bash
+  cp hermes/scripts/backup.sh ~/.hermes/scripts/backup.sh && chmod +x ~/.hermes/scripts/backup.sh
+  loginctl show-user "$USER" | grep -q 'Linger=yes' || sudo loginctl enable-linger "$USER"
+  bash ~/.hermes/scripts/backup.sh        # verify the first push lands in dfultonthebar/hermes-backup/<box>/
+  hermes cron create --name daily-github-backup --no-agent --script backup.sh "0 3 * * *"
+  ```
+- **Note:** every fleet box already has dfultonthebar's git credential store (it clones the main repo), so the
+  same script + same private repo works fleet-wide with zero extra secrets. Each box auto-namespaces by
+  LOCATION_NAME slug → hostname.
+
+---
+
+## v2.58.1 — Phase 3-5: IT/ops persona refresh + skills wired + primary mode (2026-06-14)
+
+**Branch landed:** main → fleet via auto-update
+**Per-box install where Hermes runs.** Updates `hermes/SOUL.md` (the agent persona, loaded into the system
+prompt) to reflect the now-shipped capabilities and stop the failure loops seen in the Telegram session:
+- **Action tools documented:** `propose_action`, `create_maintenance_todo`, `ask_claude_code` (the old SOUL
+  said "no write tools yet" — outdated since the MCP gateway shipped).
+- **Delegate-to-Claude rule:** deep code/system changes go to `ask_claude_code` (one clear request, wait —
+  don't spam retries); the operator is not the agent's shell.
+- **Self-management fix:** the restart command is `hermes gateway restart` (NOT `hermes restart`, which
+  errors — root cause of the "asking 400 times to restart" loop); restarting terminates the current turn, so
+  hand restarts to Claude instead of self-restarting mid-task. Honcho memory is the (already-live) cloud
+  store — there is NO self-hosted honcho server to start (that path is a dead end).
+- **Skills index:** the persona now names its skill playbooks so it reaches for them by name.
+- **Phase 4/5 status:** skills already `enabled` in the active profile; periodic monitoring already covered by
+  the existing `sports-bar-anomaly-alert` (every 2h) + `sports-bar-morning-brief` crons, so NO duplicate
+  `fleet-heartbeat` cron was added (skill stays on-demand). The persona IS the single primary mode; Honcho
+  cross-session persistence is live (verified: "retrieved N existing messages" in the gateway log).
+- **Per-box install:** `cp hermes/SOUL.md ~/.hermes/SOUL.md && hermes gateway restart` (SOUL is cached in
+  the system prompt — a gateway restart is required to load an edit; do it when no operator turn is in flight).
+- **Outstanding (operator action):** `hermes-self-backup-to-github` cron needs a private repo + fine-grained
+  PAT before it can be wired (`gh` is not authed on the boxes) — the skill documents the exact steps.
+
+---
+
+## v2.58.0 — Phase 2: 5 Hermes operating skills mined from YouTube (2026-06-14)
+
+**Branch landed:** main → fleet via auto-update
+**Per-box install where Hermes runs** (version-controlled in `hermes/skills/`, copied to `~/.hermes/skills/`).
+Extracted concrete, transferable operating techniques from 4 Hermes-Agent YouTube videos (NetworkChuck
+"5 reasons", the masterclass, "21 concepts", David Andre "7 levels") into reusable SKILL.md playbooks:
+- `hermes/skills/crystallize-runbook-skill` — after a verified incident fix, auto-author a tight SKILL.md
+  runbook (symptom/root-cause/fix/verify), pin it, mirror to System Admin Todos (the self-improvement loop).
+- `hermes/skills/fleet-heartbeat-watch` — diff-based "silent until something changes" fleet monitor; snapshots
+  health/version/auto-update/RF via MCP tools, only Telegram-alerts on a delta. Wire:
+  `hermes cron create --name fleet-heartbeat --deliver telegram --skill fleet-heartbeat-watch "every 15m"`.
+- `hermes/skills/session-recall` — answer "what did we decide/change on <date>" from `~/.hermes/state.db`
+  (`messages` table) + `hermes sessions` — the time-anchored complement to Honcho's semantic recall.
+- `hermes/skills/hermes-self-backup-to-github` — daily `--no-agent` cron rsyncs TEXT-only `~/.hermes`
+  (skills+memory+md, no blobs) to a **private** repo; PAT via `hermes config set GITHUB_TOKEN`, linger required.
+- `hermes/skills/hermes-curator-skill-hygiene` — drive the (already-enabled) Curator: `curator run --dry-run`,
+  and **`curator pin`** every canonical skill so auto-prune never removes a load-bearing runbook.
+- **Per-box install:** `cp -r hermes/skills/* ~/.hermes/skills/` then pin canonical skills:
+  `for s in sports-bar-troubleshooting sports-bar-investigate sports-bar-shift-check sports-bar-rf-response crystallize-runbook-skill fleet-heartbeat-watch session-recall hermes-self-backup-to-github hermes-curator-skill-hygiene; do hermes curator pin "$s"; done`.
+  On the canary (Holmgren) all 5 are installed + all 9 skills pinned. `hermes/` is OUTSIDE RAG-indexed paths.
+
+---
+
 ## v2.57.6 — expand Hermes skills (3 custom + YouTube) (2026-06-13)
 
 **Branch landed:** main → fleet via auto-update

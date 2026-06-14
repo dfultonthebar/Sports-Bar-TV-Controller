@@ -11,6 +11,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSportsGuideApi } from '@/lib/sportsGuideApi'
 import { DropTracker } from '@/lib/channel-guide/drop-tracker'
+import { teamChannelKey, startMs, SAME_GAME_TOLERANCE_MS } from '@/lib/channel-guide/dedup-key'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { db, schema } from '@/db'
@@ -1672,6 +1673,53 @@ export async function POST(request: NextRequest) {
         } catch (nfhsError: any) {
           logError(`Could not fetch NFHS games: ${nfhsError.message}`)
         }
+      }
+    }
+
+    // Wave 1b-ii: canonical cross-path dedup. Every injection path above (Rail,
+    // local-override, game_schedules cable+streaming, catalog walker, ESPN-rail,
+    // NFHS) builds entries independently with subtly different team-casing /
+    // time / channel handling, so the same game could slip past each path's
+    // ad-hoc check and appear twice. Collapse on ONE consistent key —
+    // first-writer-wins, so the Rail base layer (pushed first) wins over later
+    // injections. Teamless entries are never deduped (can't key them safely).
+    {
+      // group key = normalized teams + channel (NO time); within a group, two
+      // entries are the same game iff their start times are within tolerance.
+      const keptTimes = new Map<string, number[]>()
+      const beforeDedup = programs.length
+      programs = programs.filter(p => {
+        const hasTeams = `${p.homeTeam || ''}${p.awayTeam || ''}`.trim().length > 0
+        if (!hasTeams) return true
+        const key = teamChannelKey({
+          homeTeam: p.homeTeam,
+          awayTeam: p.awayTeam,
+          channel: p.channel?.channelNumber ?? p.channel?.number,
+        })
+        const times = keptTimes.get(key)
+        const ms = startMs(p.startTime)
+        const isDupe = times != null && (
+          Number.isNaN(ms)
+            ? times.length > 0                                            // no time + already kept one for this teams+channel
+            : times.some(t => Math.abs(t - ms) < SAME_GAME_TOLERANCE_MS)  // within 2h of a kept start
+        )
+        if (isDupe) {
+          dropTracker.drop({
+            source: 'canonical-dedup',
+            game: `${p.awayTeam} @ ${p.homeTeam}`,
+            reason: 'canonical-dupe',
+            triedChannel: p.channel?.channelNumber ?? p.channel?.number ?? null,
+            startTime: p.startTime ?? null,
+          })
+          return false
+        }
+        if (times) times.push(ms)
+        else keptTimes.set(key, [ms])
+        return true
+      })
+      const dedupRemoved = beforeDedup - programs.length
+      if (dedupRemoved > 0) {
+        logInfo(`[DEDUP] Canonical dedup removed ${dedupRemoved} duplicate game row(s) across injection paths`)
       }
     }
 
