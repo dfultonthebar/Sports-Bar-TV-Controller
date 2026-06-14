@@ -68,14 +68,22 @@ function runClaude(question: string): Promise<{ ok: boolean; text: string }> {
   return new Promise((resolve) => {
     let child
     try {
+      const childEnv: Record<string, string | undefined> = {
+        ...process.env,
+        PATH: `/home/ubuntu/.local/bin:${process.env.PATH || ''}`,
+      }
+      if (CLAUDE_API_KEY) {
+        // Durable unattended auth via the never-expiring API key (metered).
+        childEnv.ANTHROPIC_API_KEY = CLAUDE_API_KEY
+      } else {
+        // OAuth mode (MCP_CLAUDE_USE_OAUTH=true): use the subscription OAuth in
+        // ~/.claude/.credentials.json (free for a subscriber). DELETE any inherited
+        // ANTHROPIC_API_KEY so the spread above can't leak it and force the key path.
+        delete childEnv.ANTHROPIC_API_KEY
+      }
       child = spawn(CLAUDE_BIN, ['-p', question, '--permission-mode', 'plan'], {
         cwd: REPO_ROOT,
-        env: {
-          ...process.env,
-          PATH: `/home/ubuntu/.local/bin:${process.env.PATH || ''}`,
-          // Durable unattended auth — see CLAUDE_API_KEY above.
-          ...(CLAUDE_API_KEY ? { ANTHROPIC_API_KEY: CLAUDE_API_KEY } : {}),
-        },
+        env: childEnv,
       })
     } catch (e) {
       return resolve({ ok: false, text: `Could not start Claude: ${(e as Error).message}` })
