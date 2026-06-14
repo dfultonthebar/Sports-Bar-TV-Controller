@@ -5,8 +5,21 @@ import { logger } from '@sports-bar/logger'
 import { randomUUID } from 'crypto'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
+import { requireAuth } from '@/lib/auth'
 import { z } from 'zod'
 import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
+
+/**
+ * Returns true if the operator has declared this location as a
+ * single-card chassis via `MATRIX_SINGLE_CARD=true` in .env.
+ * Matches the opt-in semantics in scripts/verify-install.sh — when set,
+ * outputOffset MUST be 0 or routing lands on wrong physical outputs.
+ * See CLAUDE.md Gotcha #4.
+ */
+function readSingleCardEnv(): boolean {
+  const raw = (process.env.MATRIX_SINGLE_CARD || '').toLowerCase().trim()
+  return raw === 'true' || raw === '1' || raw === 'yes'
+}
 
 export async function GET(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
@@ -21,7 +34,12 @@ export async function GET(request: NextRequest) {
       .where(eq(schema.matrixConfigurations.isActive, true))
       .limit(1)
       .get()
-    
+
+    // Surface env-declared single-card mode to the UI so the panel can
+    // render a "MISMATCH" warning when outputOffset != 0 here. This mirrors
+    // the verify-install.sh and instrumentation.ts checks.
+    const singleCardModeEnabled = readSingleCardEnv()
+
     if (config) {
       // Get inputs for this configuration
       const inputs = await db.select()
@@ -29,20 +47,21 @@ export async function GET(request: NextRequest) {
         .where(eq(schema.matrixInputs.configId, config.id))
         .orderBy(asc(schema.matrixInputs.channelNumber))
         .all()
-      
+
       // Get outputs for this configuration
       const outputs = await db.select()
         .from(schema.matrixOutputs)
         .where(eq(schema.matrixOutputs.configId, config.id))
         .orderBy(asc(schema.matrixOutputs.channelNumber))
         .all()
-      
+
       // Return format expected by Bartender Remote
       return NextResponse.json({
         configs: [{ ...config, inputs, outputs }],
         config: { ...config, inputs, outputs },
         inputs,
-        outputs
+        outputs,
+        singleCardModeEnabled,
       }, {
         headers: {
           'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
@@ -55,7 +74,8 @@ export async function GET(request: NextRequest) {
         configs: [] as any[],
         config: null,
         inputs: [] as any[],
-        outputs: [] as any[]
+        outputs: [] as any[],
+        singleCardModeEnabled,
       }, {
         headers: {
           'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
@@ -67,6 +87,85 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     logger.error('Error loading matrix configuration:', error)
     return NextResponse.json({ error: 'Failed to load configuration' }, { status: 500 })
+  }
+}
+
+/**
+ * Narrow PATCH endpoint for MatrixConfigPanel — updates ONLY the
+ * outputOffset field on a single MatrixConfiguration row. Intentionally
+ * scoped: the existing POST does a full-record overwrite that would clobber
+ * inputs/outputs if a caller missed loading them first. This PATCH is what
+ * the "Fix to 0" button (and any future narrow editor) wires to.
+ *
+ * Validation:
+ *  - body.id: required UUID-shaped string
+ *  - body.outputOffset: required integer in [0, 256] (256 = 4-card 64x64
+ *    upper bound; nothing in our fleet legitimately exceeds 64)
+ *
+ * CLAUDE.md Gotcha #4 — wrong offset silently misroutes every output.
+ */
+const patchSchema = z.object({
+  id: z.string().min(8).max(64),
+  outputOffset: z.number().int().min(0).max(256),
+})
+
+export async function PATCH(request: NextRequest) {
+  // Admin-only — operators editing the routing offset can move every TV
+  // to the wrong physical output. Same gating as auto-update settings.
+  const authResult = await requireAuth(request, 'ADMIN', {
+    auditAction: 'MATRIX_CONFIG_PATCH',
+    auditResource: 'matrix-config',
+  })
+  if (!authResult.allowed) return authResult.response!
+
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.DATABASE_WRITE)
+  if (!rateLimit.allowed) return rateLimit.response
+
+  const bodyValidation = await validateRequestBody(request, patchSchema)
+  if (isValidationError(bodyValidation)) return bodyValidation.error
+  const { id, outputOffset } = bodyValidation.data
+
+  try {
+    const existing = await db.select()
+      .from(schema.matrixConfigurations)
+      .where(eq(schema.matrixConfigurations.id, id))
+      .limit(1)
+      .get()
+
+    if (!existing) {
+      return NextResponse.json({ error: 'Configuration not found' }, { status: 404 })
+    }
+
+    const now = new Date().toISOString()
+    await db.update(schema.matrixConfigurations)
+      .set({ outputOffset, updatedAt: now })
+      .where(eq(schema.matrixConfigurations.id, id))
+      .run()
+
+    logger.info('[MATRIX-CONFIG] outputOffset updated', {
+      data: {
+        id,
+        name: existing.name,
+        model: existing.model,
+        previousOffset: existing.outputOffset,
+        newOffset: outputOffset,
+        role: authResult.role,
+        sessionId: authResult.sessionId,
+      },
+    })
+
+    return NextResponse.json({
+      success: true,
+      id,
+      outputOffset,
+      previousOutputOffset: existing.outputOffset,
+    })
+  } catch (error) {
+    logger.error('[MATRIX-CONFIG] Failed to update outputOffset:', error)
+    return NextResponse.json({
+      error: 'Failed to update outputOffset',
+      details: error instanceof Error ? error.message : 'Unknown error',
+    }, { status: 500 })
   }
 }
 

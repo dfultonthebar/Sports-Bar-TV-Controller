@@ -1,6 +1,8 @@
 # Fleet Status
 
-**Last updated:** 2026-05-19 (Holmgren on v2.50.7; rest of fleet still on v2.32.94. Big v2.50.x AI-Hub batch staged for rollout — see `docs/VERSION_SETUP_GUIDE.md` v2.50.x section for the per-location runbook. Rollout order: leg-lamp canary → lucky-s-1313 → graystone → stoneyard-appleton → stoneyard-greenville. **Graystone scheduled last in canary-bless order because the box is slower hardware** — RAG re-scan + npm rebuild will take 1.5-2× longer than the rest.)
+**Last updated:** 2026-06-11 (fleet polled live for ground-truth version + matrix protocol. Online boxes healthy on v2.55.69–v2.55.75; v2.55.69 boxes auto-update to v2.55.75 overnight. Matrix-protocol audit: 5/6 online boxes on TCP; **Leg Lamp is the lone HTTP holdout** — latent `o2ox` un-route bug, flip to TCP after verifying its TCP is open. Lime Kiln (7th box) added — fresh ISO, pre-hardware-deploy, offline.)
+
+**Prior (2026-05-26):** post-Memorial-Day Rule 10 sweep — fleet bumped v2.54.21 → v2.54.31 incl. 5 breaking-major npm bumps (serialport 12→13, tesseract.js 6→7, @huggingface/transformers 3→4, typescript 5→6, zod 3→4, tailwindcss 3→4). All 6 verified GREEN.
 
 A snapshot of where each location stands. Update this file after every fleet-wide change so future operators (and Claude) have a single place to see the truth.
 
@@ -8,23 +10,31 @@ A snapshot of where each location stands. Update this file after every fleet-wid
 
 ## Per-location summary
 
-| Location | Branch | OS | Software ver | Bartender proxy | AI Suggest backend | iGPU acceleration | Notes |
-|---|---|---|---|---|---|---|---|
-| holmgren-way | `location/holmgren-way` | noble (24.04) | **v2.50.7** (Node 22.22.0) | Nginx | IPEX-LLM Ollama (Iris Xe, qwen2.5:14b loaded for tools) | ✅ active | Reference deployment; on the big v2.50.x AI-Hub batch since 2026-05-19. Q-A training corpus gen running overnight via Anthropic Haiku |
-| lucky-s-1313 | `location/lucky-s-1313` | noble (24.04) | **v2.49.1** (Node 20.20.0) — target v2.50.7 | Nginx | IPEX-LLM Ollama (Iris Xe) | ⏳ rollout-pending | **CLOSEST to target — only 6 sub-versions behind.** Single-card matrix; same profile as leg-lamp. Probably the fastest upgrade in the fleet at 20-30 min wall-clock |
-| graystone | `location/graystone` | noble (24.04) | **v2.37.2** (Node 20.20.2) — target v2.50.7 | Nginx | IPEX-LLM Ollama (Iris Xe) | ⏳ rollout-pending | **SLOWEST in fleet** — different hardware (AI Suggest 170s vs Appleton 67s). RAG re-scan + npm rebuild will take 1.5-2× longer. Schedule LAST in the rollout; allow 90-120 min wall-clock for full update including post-update rescan. ~14 sub-versions of app updates |
-| stoneyard-appleton | `location/stoneyard-appleton` | noble (24.04) | **v2.37.2** (Node 20.20.2) — target v2.50.7 | Nginx | IPEX-LLM Ollama (Iris Xe) | ⏳ rollout-pending | AI Suggest 67.3s on iGPU (fleet best — perf baseline). If post-update timing slips >80s, perf regression bug. ~14 sub-versions. 50-70 min wall-clock |
-| greenville | `location/stoneyard-greenville` | noble (24.04) | **v2.33.57** (Node 22.22.2) — target v2.50.7 | Nginx | IPEX-LLM Ollama (Iris Xe) | ⏳ rollout-pending | OS upgraded 2026-05-08; AI Suggest 119s on iGPU. Historically most-neglected — needs extra eyes after rollout (outputDefaults / HomeTeam table state per SCHEDULER_FIXES_APRIL_2026.md). ~17 sub-versions. 60-75 min wall-clock |
-| leglamp | `location/leg-lamp` | noble (24.04) | **v2.33.57** (Node 20.20.0) — target v2.50.7 | Nginx | IPEX-LLM Ollama (Iris Xe) | ⏳ canary-first | **CANARY — push v2.50.7 FIRST.** Single-card matrix, smallest install; if it passes verify-install + smoke chat, the `.canary-blessed.json` sidecar greenlights everyone else. ~17 sub-versions. 30-45 min wall-clock |
+| Location | Branch | OS | Software ver | Node | Bartender proxy | AI Suggest backend | iGPU acceleration | Notes |
+|---|---|---|---|---|---|---|---|---|
+| holmgren-way | `location/holmgren-way` (currently on `main` for dev) | noble (24.04) | **v2.55.75** | 22.22.2 (apt/NodeSource) | Nginx | IPEX-LLM Ollama (Iris Xe, llama3.1:8b resident) | ✅ active | **This box doubles as the local Claude/dev box — commits to `main` originate here, so it sits on `main` during sessions; production branch is `location/holmgren-way` (auto-update drift-recovery switches it back).** Reference deployment; **only box with RAG_RERANK_ENABLED** + Shure RF + SDR spectrum + Ticketmaster API key. **Matrix: TCP** |
+| lucky-s-1313 | `location/lucky-s-1313` | noble (24.04) | **v2.55.73** | **22.22.2 (apt/NodeSource)** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | **Single-card** WP matrix; **Matrix: TCP** (offset 0); audio via dbx ZonePRO (audioOut 0) |
+| graystone | `location/graystone` | noble (24.04) | **v2.55.69** | **22.22.2 (apt/NodeSource)** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | **15GB total RAM — fleet smallest** (#343 64GB upgrade queued). **Multi-card (quad-output)** WP; **Matrix: TCP** (offset +32, audioOut 4). AI Suggest ~170s |
+| stoneyard-appleton | `location/stoneyard-appleton` | noble (24.04) | **v2.55.69** | **22.22.2 (apt/NodeSource)** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | Multi-card WP; **Matrix: TCP** (flipped from HTTP 2026-06-11 — un-route fix). AI Suggest 67s — fleet perf baseline |
+| greenville | `location/stoneyard-greenville` | noble (24.04) | **v2.55.69** | 22.22.2 (apt/NodeSource) | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | Multi-card WP; **Matrix: TCP** (flipped from HTTP 2026-06-11 — un-route fix verified live). Samsung TV-20 (10.40.10.20) L2-offline — deferred (#341) |
+| leglamp | `location/leg-lamp` | noble (24.04) | **v2.55.69** | **22.22.3 (nvm)** | Nginx | IPEX-LLM Ollama (Iris Xe) | ✅ active | **Single-card** WP (offset 0, audioOut 4). ⚠️ **Matrix: HTTP — still on the `o2ox` toggle (latent un-route bug). FLIP TO TCP after verifying its Wolf Pack TCP is open (port 5000, no password).** v2.55.73 mutex partially mitigates once it lands overnight |
+| lime-kiln | `main` (pre-deploy) | noble (24.04, fresh v3.1.0 ISO) | **v2.55.49+** (offline) | — | — | IPEX-LLM Ollama (Iris Xe) | — | **7th box — fresh ISO, NOT yet at a location.** Tailscale 100.89.6.80 (offline at last poll). Pre-hardware-install (#340); admin PIN 7819. Matrix not yet configured |
 
-**Node version drift (per Standing Rule 10):** Holmgren on Node 22.22.0, Greenville on Node 22.22.2, the other 4 still on Node 20.20.0/20.20.2. **Not a blocker for v2.50.7** (Next 16.2.6 declares `engines.node = >=20.9.0`), but a separate per-Rule-10 follow-up. Schedule Node 22 LTS bump at the next maintenance window for graystone/appleton/lucky-s/leglamp.
+**Node version status (per Standing Rule 10):** ✅ 6/6 on Node 22 (2026-05-26 end of day). nvm-based: leglamp (22.22.3). apt/NodeSource-based: holmgren/luckys/graystone/appleton/greenville (all 22.22.2 — held back one patch by NodeSource's slower per-major release cadence; Node.js released 22.22.3 on 2026-05-13 but NodeSource hadn't published the .deb as of 2026-05-26). All 5 apt-based boxes will auto-bump to 22.22.3 on next NodeSource publish + cron cycle.
 
-**Aggregate health (2026-05-08 18:00 UTC):**
-- 6/6: bartender remote on Nginx ✓
-- 6/6: noble (24.04) + 6.8.0-111 kernel ✓
-- 6/6: latest software (v2.32.90) ✓ — verified PASS 7/7 across all heartbeats
-- 6/6: iGPU acceleration active ✓
-- 6/6: drift-recovery sidecar bootstrapped at `/home/ubuntu/sports-bar-data/.auto-update-last-success.json` ✓
+**Lesson from 2026-05-26:** the Node-install-method drift in this doc bit Claude twice in one session (greenville + holmgren both originally labeled nvm; both actually apt/NodeSource — `which node` returns `/usr/bin/node` on both). When patching Node on any fleet box, ALWAYS verify with `ssh ubuntu@<host> 'which node && ls -d ~/.nvm 2>/dev/null'` before running an nvm-assuming script. See [[feedback-fleet-node-install-method-drift]].
+
+**Node 22 upgrade procedure (refined after leglamp + 3 NodeSource boxes 2026-05-26):**
+- **nvm-based:** custom procedure with manual PM2 daemon kill required. Leglamp took ~40 min due to first-pass discovery of all 5 gotchas. See `feedback_node_major_upgrade_gotchas.md` memory.
+- **NodeSource-apt:** `/tmp/node22-upgrade-nodesource.sh` end-to-end procedure. Required `--allow-change-held-packages` for apt. **Average wall-clock ~6-8 min per box** once script was correct.
+- **Critical gotchas (all 5 hit during leglamp; script handles all):** (a) prebuild-install ships ABI-mismatched binaries — must force `cd node_modules/better-sqlite3 && rm -rf build prebuilds && npm run build-release`; (b) `pm2 update` can hang 10+ min — use `pm2 save && pm2 kill && pm2 start ecosystem.config.js` instead; (c) `nvm use` in subshells doesn't persist — export PATH manually; (d) `cd /home/ubuntu/Sports-Bar-TV-Controller` REQUIRED before pm2 start; (e) nodejs may be apt-held — `--allow-change-held-packages` required.
+
+**Aggregate health (2026-06-11, live poll):**
+- 6/6 online: health=`healthy` ✓ (Lime Kiln offline — fresh ISO, pre-deploy, expected)
+- Software: holmgren v2.55.75 (dev/main) · lucky's v2.55.73 · graystone/appleton/greenville/leglamp v2.55.69 → all v2.55.69 boxes auto-update to v2.55.75 overnight ✓
+- 6/6: noble (24.04) + iGPU acceleration ✓ · bartender remote on Nginx ✓
+- **Matrix control protocol audit (2026-06-11):** 5/6 online on **TCP** (holmgren, lucky's, graystone, appleton✱, greenville✱ — ✱flipped from HTTP today as the un-route fix). **⚠️ Leg Lamp still on HTTP** = latent `o2ox` toggle un-route bug; flip to TCP after verifying its Wolf Pack TCP is open. See `[[feedback-wolfpack-tcp-not-http-routing]]`.
+- **Claude AI session runs ON Holmgren** — no external SSH needed; HW management is via the local CLI.
 
 **AI Suggest cold-run timings on iGPU (llama3.1:8b):** appleton 67s (fleet best) · greenville 119s · graystone 170s · holmgren ~100s · leglamp ~100s · lucky-s ~100s. Variance correlates with thermals + concurrent load, not procedure.
 
@@ -42,8 +52,9 @@ A snapshot of where each location stands. Update this file after every fleet-wid
 | leglamp | i9-13900HK | Iris Xe | 32 GB | – | – |
 | lucky-s-1313 | i9-13900HK | Iris Xe | 32 GB | Audio via dbx ZonePRO 1260m @ 192.168.10.50 | – |
 | stoneyard-appleton | i9-13900HK | Iris Xe (a7a0) | 32 GB | – | – |
+| lime-kiln | (Intel) | Iris Xe | (TBD) | **7th box — fresh v3.1.0 ISO, pre-hardware-deploy, offline at last poll** | – |
 
-Audio processor and matrix details live in each location's `.claude/locations/<branch>.md` file.
+Audio processor and matrix details live in each location's `.claude/locations/<branch>.md` file. **Matrix control protocol per box is in the per-location summary table above** (TCP everywhere except Leg Lamp, which is the lone HTTP holdout pending a TCP flip).
 
 ---
 

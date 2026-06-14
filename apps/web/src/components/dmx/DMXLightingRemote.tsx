@@ -146,7 +146,7 @@ export default function DMXLightingRemote() {
       >
         <div className="flex items-center gap-3">
           <Lightbulb className="w-6 h-6 text-purple-400" />
-          <h3 className="text-lg font-bold bg-gradient-to-r from-purple-400 via-pink-400 to-red-400 bg-clip-text text-transparent">
+          <h3 className="text-lg font-bold text-white">
             Lighting Control
           </h3>
           {hasControllers && (

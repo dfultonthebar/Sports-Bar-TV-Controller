@@ -79,24 +79,16 @@ export async function POST(request: NextRequest) {
 
   logInfo(`Rate limit check passed: ${rateLimitCheck.result.remaining} requests remaining`)
 
+  // v2.54.57 — close Gotcha #1 violation. Was raw text/JSON.parse with
+  // ad-hoc `body.days || 7` (no schema, no max bound, no type coercion).
+  // The schema accepts undefined / empty body and defaults to {days:7},
+  // so the GET handler (which calls POST(request) with no body) still works.
+  const bodyValidation = await validateRequestBody(request, ValidationSchemas.sportsGuideRequest)
+  if (isValidationError(bodyValidation)) return bodyValidation.error
+  const { days } = bodyValidation.data
+  logInfo(`Fetching ${days} days of sports programming`)
+
   try {
-    // Parse request body (optional) - Body is optional for this endpoint
-    let body: any = {}
-    try {
-      const text = await request.text()
-      if (text && text.trim()) {
-        body = JSON.parse(text)
-        logDebug(`Request body received:`, body)
-      } else {
-        logInfo(`No request body provided - using defaults`)
-      }
-    } catch (e) {
-      logInfo(`No valid request body - using defaults`)
-    }
-    
-    // Default to 7 days if not specified
-    const days = body.days || 7
-    logInfo(`Fetching ${days} days of sports programming`)
 
     // Validate The Rail API configuration
     logInfo(`---------- VALIDATING API CONFIGURATION ----------`)

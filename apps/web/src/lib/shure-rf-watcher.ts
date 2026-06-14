@@ -294,6 +294,59 @@ async function evaluateChannel(args: {
     })
   }
 
+  // ─── Pending resync verification (v2.55.31, task #331) ───────────────
+  // If the operator queued a freq-change via POST /api/shure-rf/queue-freq-
+  // change, an unverified row sits in shure_pending_resync for this
+  // (receiver_id, channel). When the bartender IR-syncs the transmitter
+  // and powers it on, the SAMPLE frame here will show a real TX_MODEL
+  // (not UNKNOWN) AND RSSI above the audio-active threshold (RSSI ≥
+  // ACTIVATE-DEACTIVATE midpoint ~-90 is conservatively "transmitter
+  // present"). We UPDATE-set verified_at on the matching pending row;
+  // the bartender's banner clears on its next poll.
+  //
+  // Audio-silence check additionally ensures we're not just chasing the
+  // power-on transient (see comment above on hasBattery/audioSilent).
+  if (
+    txTypeKnownPresent &&
+    hasBattery &&
+    !audioSilent &&
+    state.frequencyMhz !== undefined
+  ) {
+    const newFreqKhz = Math.round(state.frequencyMhz * 1000)
+    try {
+      await db.run(sql`
+        UPDATE shure_pending_resync
+        SET
+          verified_at = strftime('%s','now'),
+          notes = COALESCE(notes,'') ||
+            ' | verified by TX_MODEL=' || ${state.txType ?? 'present'} ||
+            ' at ' || ${state.frequencyMhz.toFixed(3)} || ' MHz'
+        WHERE receiver_id = ${receiverId}
+          AND channel = ${channel}
+          AND new_freq_khz = ${newFreqKhz}
+          AND verified_at IS NULL
+          AND canceled_at IS NULL
+      `)
+    } catch (err) {
+      // v2.55.31 Grok review fix: was a silent bare-catch (intended to
+      // swallow the pre-migration "no such table" case). Real DB errors
+      // — write lock contention, schema mismatch, disk full — would be
+      // invisible. Now: log at debug when it looks like the table is
+      // missing, warn for everything else so PM2 logs surface the real
+      // problem.
+      const msg = (err as Error)?.message ?? String(err)
+      if (msg.includes('no such table') || msg.includes('does not exist')) {
+        logger.debug(
+          `[SHURE-RF-WATCHER] shure_pending_resync absent — pre-v2.55.31 box, verification skipped`,
+        )
+      } else {
+        logger.warn(
+          `[SHURE-RF-WATCHER] resync verify UPDATE failed for ${receiverName} ch${channel}: ${msg}`,
+        )
+      }
+    }
+  }
+
   counters.set(key, c)
 }
 

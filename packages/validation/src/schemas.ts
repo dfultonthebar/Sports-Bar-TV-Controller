@@ -58,7 +58,7 @@ export const booleanSchema = z.boolean().or(z.enum(['true', 'false']).transform(
 /**
  * IP Address validation (IPv4 and IPv6)
  */
-export const ipAddressSchema = z.string().ip({ message: 'Invalid IP address' })
+export const ipAddressSchema = z.union([z.ipv4(), z.ipv6()], { error: () => 'Invalid IP address' })
 
 /**
  * IPv4 Address validation (strict)
@@ -77,7 +77,7 @@ export const urlSchema = z.string().url({ message: 'Invalid URL format' })
  * Protocol validation (TCP/UDP)
  */
 export const protocolSchema = z.enum(['TCP', 'UDP'], {
-  errorMap: () => ({ message: 'Protocol must be TCP or UDP' })
+  error: () => 'Protocol must be TCP or UDP'
 })
 
 // ============================================================================
@@ -134,7 +134,7 @@ export const deviceTypeSchema = z.enum([
   'wolfpack',
   'atlas'
 ], {
-  errorMap: () => ({ message: 'Invalid device type' })
+  error: () => 'Invalid device type'
 })
 
 /**
@@ -146,7 +146,7 @@ export const directvReceiverTypeSchema = z.enum([
   'HD Receiver',
   'SD Receiver'
 ], {
-  errorMap: () => ({ message: 'Invalid DirecTV receiver type' })
+  error: () => 'Invalid DirecTV receiver type'
 })
 
 // ============================================================================
@@ -167,7 +167,7 @@ export const paginationOffsetSchema = z.coerce.number().int().min(0).default(0)
  * Sort order validation
  */
 export const sortOrderSchema = z.enum(['asc', 'desc'], {
-  errorMap: () => ({ message: 'Sort order must be "asc" or "desc"' })
+  error: () => 'Sort order must be "asc" or "desc"'
 })
 
 // ============================================================================
@@ -184,7 +184,7 @@ export const scheduleTypeSchema = z.enum([
   'monthly',
   'cron'
 ], {
-  errorMap: () => ({ message: 'Invalid schedule type' })
+  error: () => 'Invalid schedule type'
 })
 
 /**
@@ -233,7 +233,7 @@ export const sportsLeagueSchema = z.enum([
   'UFC',
   'NASCAR'
 ], {
-  errorMap: () => ({ message: 'Invalid sports league' })
+  error: () => 'Invalid sports league'
 })
 
 /**
@@ -261,7 +261,7 @@ export const apiKeyProviderSchema = z.enum([
   'soundtrack',
   'other'
 ], {
-  errorMap: () => ({ message: 'Invalid API key provider' })
+  error: () => 'Invalid API key provider'
 })
 
 /**
@@ -493,7 +493,7 @@ export const scriptExecutionSchema = z.object({
  * System restart schema
  */
 export const systemRestartSchema = z.object({
-  confirm: z.literal(true, { errorMap: () => ({ message: 'Must confirm system restart' }) }),
+  confirm: z.literal(true, { error: () => 'Must confirm system restart' }),
   delay: z.number().int().min(0).max(300).optional().default(0),
   reason: z.string().min(1).max(200).optional()
 })
@@ -612,6 +612,19 @@ export const audioProcessorConfigSchema = z.object({
 })
 
 // ============================================================================
+// ============================================================================
+// AUTH SCHEMAS (v2.54.54 — Grok Part 2 P0, closes auth/login Gotcha #1)
+// ============================================================================
+
+/**
+ * PIN login schema. 4-8 digit numeric string per bootstrap-new-location.sh
+ * pin validation. Used by /api/auth/login + /api/auth/pins (admin) POST.
+ */
+export const authLoginSchema = z.object({
+  pin: z.string().regex(/^\d{4,8}$/, 'PIN must be 4-8 digits'),
+})
+
+// ============================================================================
 // AI & ANALYSIS SCHEMAS
 // ============================================================================
 
@@ -696,7 +709,7 @@ export const tvNetworkScanSchema = z.object({
  */
 export const tvPowerControlSchema = z.object({
   action: z.enum(['on', 'off', 'toggle'], {
-    errorMap: () => ({ message: 'Action must be on, off, or toggle' })
+    error: () => 'Action must be on, off, or toggle'
   })
 })
 
@@ -705,7 +718,7 @@ export const tvPowerControlSchema = z.object({
  */
 export const tvVolumeControlSchema = z.object({
   action: z.enum(['up', 'down', 'mute', 'set'], {
-    errorMap: () => ({ message: 'Action must be up, down, mute, or set' })
+    error: () => 'Action must be up, down, mute, or set'
   }),
   value: z.number().int().min(0).max(100).optional()
 }).refine((data) => {
@@ -723,7 +736,7 @@ export const tvVolumeControlSchema = z.object({
  */
 export const tvInputControlSchema = z.object({
   input: z.enum(['hdmi1', 'hdmi2', 'hdmi3', 'hdmi4'], {
-    errorMap: () => ({ message: 'Input must be hdmi1, hdmi2, hdmi3, or hdmi4' })
+    error: () => 'Input must be hdmi1, hdmi2, hdmi3, or hdmi4'
   })
 })
 
@@ -739,9 +752,48 @@ export const tvPairSchema = z.object({
  */
 export const tvBulkPowerSchema = z.object({
   action: z.enum(['on', 'off', 'toggle'], {
-    errorMap: () => ({ message: 'Action must be on, off, or toggle' })
+    error: () => 'Action must be on, off, or toggle'
   }),
   deviceIds: z.array(z.string()).optional()
+})
+
+// ============================================================================
+// SPORTS GUIDE SCHEMAS — v2.54.57
+// (Grok Part 2 P1 — closing validation/rate-limit gaps on the
+// sports-guide + scheduling surface. Schemas are narrow: each route's
+// actual body/query shape, not generic catch-alls.)
+// ============================================================================
+
+/**
+ * POST /api/sports-guide — optional `days` body field.
+ * Defaults to 7 (server-side), capped at 14 to bound The Rail API call
+ * cost. Body is optional; an empty body or no body at all is valid.
+ * Outer .default({days:7}) ensures missing body resolves to {days:7}
+ * (not just `{}`), which matters because the GET handler proxies to
+ * POST(request) with no body.
+ */
+export const sportsGuideRequestSchema = z.object({
+  days: z.coerce.number().int().min(1).max(14).optional().default(7),
+}).partial().optional().default({ days: 7 })
+
+/**
+ * POST /api/sports-guide/update-key — admin key rotation.
+ * Both apiKey + userId are required; apiKey min 10 chars matches the
+ * apiKeyValueSchema policy; userId is The Rail's numeric/alphanumeric
+ * account id.
+ */
+export const sportsGuideUpdateKeySchema = z.object({
+  apiKey: z.string().min(10, 'API key must be at least 10 characters'),
+  userId: z.string().min(1, 'User ID is required').max(100),
+})
+
+/**
+ * DELETE /api/scheduling/input-sources?id=...
+ * Validates the `id` query param so a typo / missing param 400s cleanly
+ * instead of attempting `db.delete(... where id=null)`.
+ */
+export const inputSourceDeleteQuerySchema = z.object({
+  id: nonEmptyStringSchema.max(100),
 })
 
 // ============================================================================
@@ -843,6 +895,9 @@ export const ValidationSchemas = {
   scheduleConfig: scheduleConfigSchema,
   audioProcessorConfig: audioProcessorConfigSchema,
 
+  // Auth
+  authLogin: authLoginSchema,
+
   // AI & Analysis
   aiQuery: aiQuerySchema,
   aiAnalysis: aiAnalysisSchema,
@@ -857,5 +912,10 @@ export const ValidationSchemas = {
   tvVolumeControl: tvVolumeControlSchema,
   tvInputControl: tvInputControlSchema,
   tvPair: tvPairSchema,
-  tvBulkPower: tvBulkPowerSchema
+  tvBulkPower: tvBulkPowerSchema,
+
+  // Sports Guide (v2.54.57)
+  sportsGuideRequest: sportsGuideRequestSchema,
+  sportsGuideUpdateKey: sportsGuideUpdateKeySchema,
+  inputSourceDeleteQuery: inputSourceDeleteQuerySchema,
 }

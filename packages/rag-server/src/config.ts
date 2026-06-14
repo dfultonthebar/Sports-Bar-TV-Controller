@@ -47,15 +47,25 @@ export const RAGConfig = {
     'database': ['db', 'schema', 'migration'],
     'api': ['api', 'route', 'endpoint'],
     'firetv': ['firetv', 'adb'],
-    'matrix': ['matrix', 'switcher'],
-    'ai': ['ai', 'assistant', 'chat'],
+    'matrix': ['matrix', 'switcher', 'wolfpack'],
+    'ai': ['ai', 'assistant', 'chat', 'ollama', 'rag'],
     'testing': ['test', 'jest', 'playwright'],
     'deployment': ['deploy', 'production', 'pm2'],
+    'rf': ['rf_interference', 'rf-interference', 'sdr', 'shure', 'wireless'],
+    'audio': ['atlas', 'dbx', 'bss', 'soundtrack', 'azmp', 'zonepro'],
+    'bartender': ['bartender'],
   },
 
   // Cache settings
   embeddingsCacheDuration: 3600000, // 1 hour in ms
   documentsCacheDuration: 600000, // 10 minutes in ms
+
+  // Cross-encoder reranking (v2.53.0+, task #138)
+  rerankEnabled: process.env.RAG_RERANK_ENABLED === 'true',
+  rerankModel: 'onnx-community/bge-reranker-v2-m3-ONNX',
+  rerankQuantization: (process.env.RAG_RERANK_QUANT || 'int8'),
+  rerankCandidates: parseInt(process.env.RAG_RERANK_CANDIDATES || '30', 10),
+  rerankTopK: parseInt(process.env.RAG_RERANK_TOPK || '8', 10),
 } as const;
 
 export type RAGConfigType = typeof RAGConfig;

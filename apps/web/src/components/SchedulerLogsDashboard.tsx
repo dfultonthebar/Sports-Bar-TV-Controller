@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@sports-bar/ui-utils'
 import {
   RefreshCw,
@@ -547,7 +548,22 @@ export function SchedulerLogsDashboard() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-700">
-                {logs.length === 0 ? (
+                {isLoading && logs.length === 0 ? (
+                  // Initial-fetch skeleton — 6 placeholder rows so the table
+                  // doesn't show a blank "No logs found" pane during the
+                  // first ~1-2 sec while the fetch is in flight.
+                  Array.from({ length: 6 }).map((_, i) => (
+                    <tr key={`skeleton-${i}`} className={cn(i % 2 === 0 ? "bg-slate-800/30" : "bg-slate-800/50")}>
+                      <td className="p-3"><Skeleton className="h-4 w-20" /></td>
+                      <td className="p-3"><Skeleton className="h-5 w-14 rounded-full" /></td>
+                      <td className="p-3"><Skeleton className="h-5 w-20 rounded-full" /></td>
+                      <td className="p-3"><Skeleton className="h-5 w-16 rounded-full" /></td>
+                      <td className="p-3"><Skeleton className="h-4 w-full" /></td>
+                      <td className="p-3"><Skeleton className="h-4 w-4 mx-auto rounded-full" /></td>
+                      <td className="p-3"><Skeleton className="h-4 w-12 ml-auto" /></td>
+                    </tr>
+                  ))
+                ) : logs.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="p-8 text-center text-slate-500">
                       <div className="flex flex-col items-center gap-2">

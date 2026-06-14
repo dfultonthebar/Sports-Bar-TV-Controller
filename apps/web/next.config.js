@@ -1,111 +1,11 @@
-const withPWA = require('next-pwa')({
-  dest: 'public',
-  disable: true, // Temporarily disabled to fix caching issues
-  register: true,
-  skipWaiting: true,
-  runtimeCaching: [
-    {
-      urlPattern: /^https:\/\/fonts\.(?:googleapis|gstatic)\.com\/.*/i,
-      handler: 'CacheFirst',
-      options: {
-        cacheName: 'google-fonts',
-        expiration: {
-          maxEntries: 4,
-          maxAgeSeconds: 365 * 24 * 60 * 60 // 365 days
-        }
-      }
-    },
-    {
-      urlPattern: /\.(?:eot|otf|ttc|ttf|woff|woff2|font.css)$/i,
-      handler: 'StaleWhileRevalidate',
-      options: {
-        cacheName: 'static-font-assets',
-        expiration: {
-          maxEntries: 4,
-          maxAgeSeconds: 7 * 24 * 60 * 60 // 7 days
-        }
-      }
-    },
-    {
-      urlPattern: /\.(?:jpg|jpeg|gif|png|svg|ico|webp)$/i,
-      handler: 'StaleWhileRevalidate',
-      options: {
-        cacheName: 'static-image-assets',
-        expiration: {
-          maxEntries: 64,
-          maxAgeSeconds: 24 * 60 * 60 // 24 hours
-        }
-      }
-    },
-    {
-      urlPattern: /\/_next\/image\?url=.+$/i,
-      handler: 'StaleWhileRevalidate',
-      options: {
-        cacheName: 'next-image',
-        expiration: {
-          maxEntries: 64,
-          maxAgeSeconds: 24 * 60 * 60 // 24 hours
-        }
-      }
-    },
-    {
-      urlPattern: /\.(?:js)$/i,
-      handler: 'StaleWhileRevalidate',
-      options: {
-        cacheName: 'static-js-assets',
-        expiration: {
-          maxEntries: 32,
-          maxAgeSeconds: 24 * 60 * 60 // 24 hours
-        }
-      }
-    },
-    {
-      urlPattern: /\.(?:css|less)$/i,
-      handler: 'StaleWhileRevalidate',
-      options: {
-        cacheName: 'static-style-assets',
-        expiration: {
-          maxEntries: 32,
-          maxAgeSeconds: 24 * 60 * 60 // 24 hours
-        }
-      }
-    },
-    {
-      // Exclude SSE streams from service worker - they need direct network access
-      urlPattern: /\/api\/atlas\/meters\/stream/i,
-      handler: 'NetworkOnly'
-    },
-    {
-      // Exclude any other streaming endpoints
-      urlPattern: /\/api\/.*\/stream/i,
-      handler: 'NetworkOnly'
-    },
-    {
-      urlPattern: /^https?:\/\/.*\/api\/.*/i,
-      handler: 'NetworkFirst',
-      options: {
-        cacheName: 'apis',
-        expiration: {
-          maxEntries: 16,
-          maxAgeSeconds: 60 * 60 // 1 hour
-        },
-        networkTimeoutSeconds: 10
-      }
-    },
-    {
-      urlPattern: /.*/i,
-      handler: 'NetworkFirst',
-      options: {
-        cacheName: 'others',
-        expiration: {
-          maxEntries: 32,
-          maxAgeSeconds: 24 * 60 * 60 // 24 hours
-        },
-        networkTimeoutSeconds: 10
-      }
-    }
-  ]
-})
+// next-pwa removed in v2.54.34 (was disabled via `disable: true`, paying
+// full workbox vuln surface for zero benefit). If PWA support is needed
+// in the future, prefer @serwist/next (modern Workbox successor, Next 16
+// + Turbopack compatible). v2.54.34 commit history has the full archived
+// runtimeCaching config inline if reference is ever needed.
+//
+// /manifest.json in apps/web/src/app/layout.tsx is a plain static web app
+// manifest at apps/web/public/manifest.json and does NOT depend on next-pwa.
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -155,35 +55,31 @@ const nextConfig = {
       { source: '/scheduling',          destination: '/sports-guide-admin?tab=games',         permanent: false },
     ]
   },
-  webpack: (config, { isServer }) => {
-    // Exclude native modules from webpack bundling
-    if (isServer) {
-      config.externals = config.externals || [];
-      config.externals.push('isolated-vm');
-      config.externals.push('serialport');
-      config.externals.push('@serialport/bindings-cpp');
-      config.externals.push('ws');
-      config.externals.push('bufferutil');
-      config.externals.push('utf-8-validate');
-    }
-
-    // Fix React error #31: Ensure React and ReactDOM are properly deduplicated
-    // Only apply to client-side bundle to avoid breaking Next.js internal imports
-    if (!isServer) {
-      const path = require('path');
-      const reactPath = path.dirname(require.resolve('react/package.json'));
-      const reactDomPath = path.dirname(require.resolve('react-dom/package.json'));
-
-      config.resolve.alias = {
-        ...config.resolve.alias,
-        'react': reactPath,
-        'react-dom': reactDomPath,
-      };
-    }
-
-    return config;
-  },
+  // v2.54.41 — full Turbopack migration. Dropped --webpack flag from
+  // dev+build scripts. The webpack: block is gone; native-module
+  // externals are handled exclusively via serverExternalPackages
+  // (Next 16's universal mechanism that works for both bundlers).
+  //
+  // Predecessor: v2.54.36 attempted this but hit Turbopack's static
+  // analyzer choking on spawn() in /api/file-system/execute/route.ts.
+  // v2.54.41 deleted that dead route (zero callers anywhere) which
+  // unblocks the migration.
+  //
+  // Defense-in-depth: list ALL native modules we touch explicitly here,
+  // even ones Next's default list claims to cover (isolated-vm,
+  // better-sqlite3, sharp, postcss). Empirical evidence from v2.54.36
+  // Appleton incident: the default list isn't always honored.
+  serverExternalPackages: [
+    'isolated-vm',
+    'serialport',
+    '@serialport/bindings-cpp',
+    'ws',
+    'bufferutil',
+    'utf-8-validate',
+    'better-sqlite3',
+    'sharp',
+  ],
 };
 
-module.exports = withPWA(nextConfig);
+module.exports = nextConfig;
 

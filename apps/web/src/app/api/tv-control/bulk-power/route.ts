@@ -220,9 +220,19 @@ export async function POST(request: NextRequest) {
     const verifiedCount = deviceResults.filter((r: any) => r.powerVerified === true).length
     const unverifiedCount = deviceResults.filter((r: any) => r.powerVerified === false).length
 
-    // Log failures individually
+    // Log failures individually. A missing MAC for Wake-on-LAN is a CONFIG GAP
+    // (the TV simply has no macAddress set), not a runtime fault — log it at WARN
+    // so it doesn't spam the error log + trip the error-watch on every bulk-power
+    // cycle. Greenville TV 20 (no MAC) produced 85 ERROR rows in 24h this way.
+    // Genuine failures still log at ERROR.
     deviceResults.filter((r: any) => !r.success).forEach((r: any) => {
-      logger.error(`[TV-CONTROL] Bulk power ${action} failed for ${r.brand} TV ${r.deviceId} (${r.ipAddress}): ${r.error || r.message}`)
+      const reason = r.error || r.message || 'unknown error'
+      const msg = `[TV-CONTROL] Bulk power ${action} failed for ${r.brand} TV ${r.deviceId} (${r.ipAddress}): ${reason}`
+      if (/MAC address required for Wake-on-LAN/i.test(reason)) {
+        logger.warn(msg)
+      } else {
+        logger.error(msg)
+      }
     })
 
     logger.info(`[TV-CONTROL] Bulk power ${action} complete: ${successCount} success, ${failCount} failed, ${verifiedCount} verified, ${unverifiedCount} unverified`)

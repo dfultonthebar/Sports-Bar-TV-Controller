@@ -1,15 +1,40 @@
 /**
- * Database Helpers - Bridge to @sports-bar/data
+ * Database Helpers — re-exports from @sports-bar/database.
  *
- * This file bridges the local import path (@/lib/db-helpers) to the shared package.
- * It initializes the factory-based helpers with app-specific dependencies.
+ * Historical note: this file used to wire a `createDbHelpers` factory
+ * from the now-deleted @sports-bar/data package, threading in app-specific
+ * `db`, `schema`, and `logger` instances. The factory pattern was never
+ * used as DI (the only caller passed the production singleton), so v2.54.16
+ * collapsed it: pagination + operation-logger moved into @sports-bar/database
+ * and this bridge is a thin re-export. See VERSION_SETUP_GUIDE.md v2.54.16.
  */
 
-import {
-  createDbHelpers,
+export {
+  // Query functions
+  findMany,
+  findFirst,
+  findUnique,
+  count,
+
+  // Mutation functions
+  create,
+  createMany,
+  update,
+  updateMany,
+  deleteRecord,
+  deleteMany,
+  upsert,
+
+  // Raw SQL
+  executeRaw,
+  transaction,
+
+  // Utilities
   sanitizeData,
   serializeDrizzleResult,
-  // Re-export Drizzle operators
+  setDbHelperLogger,
+
+  // Drizzle operators (re-exported for convenience)
   eq,
   and,
   or,
@@ -22,41 +47,11 @@ import {
   gt,
   lt,
   ne,
+  not,
   sql,
   isNotNull,
-  isNull
-} from '@sports-bar/data'
-import { db, schema } from '@/db'
-import { logger } from './logger'
+  isNull,
+} from '@sports-bar/database'
 
-// Re-export operators for convenience
-export { eq, and, or, desc, asc, inArray, like, gte, lte, gt, lt, ne, sql, isNotNull, isNull }
-
-// Re-export schema for external usage
-export { schema }
-
-// Re-export utilities
-export { sanitizeData, serializeDrizzleResult }
-
-// Initialize helpers with app-specific dependencies
-const helpers = createDbHelpers({ db, schema, logger })
-
-// Export all helper functions
-export const {
-  findMany,
-  findFirst,
-  findUnique,
-  create,
-  createMany,
-  update,
-  updateMany,
-  deleteRecord,
-  deleteMany,
-  count,
-  upsert,
-  executeRaw,
-  transaction
-} = helpers
-
-// Export database instance for direct usage
-export { db }
+// Re-export db + schema from the app's instance (the singleton runtime binding)
+export { db, schema } from '@/db'
