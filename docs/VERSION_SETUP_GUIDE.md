@@ -35,6 +35,27 @@ is the archive.
 
 ---
 
+## v2.59.0 — channel-guide canonical dedup (Wave 1b-ii) + shift-brief truncation fix (2026-06-14)
+
+**Branch landed:** main → fleet via auto-update. **No manual setup required** (code-only).
+Two do-now-safe wins from the todo sweep:
+- **Wave 1b-ii — canonical dedup** (`apps/web/src/lib/channel-guide/dedup-key.ts` + one pass in
+  `channel-guide/route.ts` before the age-filter). The 7 injection paths each had ad-hoc dedup with
+  inconsistent team-casing / time / channel handling, so the same game could appear twice. Now ONE
+  tolerance-based pass: group by normalized teams+channel, same game iff start times within **2h**
+  (skew-tolerant; keeps doubleheaders >2h apart; keeps same game on different channels as two rows;
+  never dedups teamless entries). First-writer-wins → Rail base layer precedence. Drops logged via the
+  existing `DropTracker` as `reason='canonical-dupe'`. Logic unit-verified 5/5.
+- **shift-brief truncation fix** (`apps/web/src/app/api/ai/shift-brief/route.ts:520`): `SHIFT_BRIEF_NUM_PREDICT`
+  320 → **384**. LLM-PERF logs showed ~13% of briefs hit `done=length [TRUNCATED@cap]` at 320 (last section
+  silently cut). +64 tokens ≈ +10s at ~6 tok/s.
+- **Deferred (data-gated):** per-box `OLLAMA_NUM_PREDICT` tuning stays blocked — the LLM-PERF logs are
+  Holmgren-only (2 `ai-suggest` samples fleet-wide). Needs fleet log aggregation first. Wave 2 primary-flip:
+  **decided DON'T-FLIP-YET** (only 2 degenerate shadow runs exist, the `primary` codepath isn't implemented,
+  and the roadmap gates it on Waves 3.5/6/7). Kept `AI_SUGGEST_SOLVER=shadow`.
+
+---
+
 ## v2.58.2 — Hermes self-backup to GitHub WIRED (2026-06-14)
 
 **Branch landed:** main → fleet via auto-update

@@ -517,7 +517,9 @@ async function gatherShiftContext() {
 async function generateBriefViaOllama(ctx: any): Promise<string> {
   const prompt = buildPrompt(ctx)
   const startedAt = Date.now()
-  const SHIFT_BRIEF_NUM_PREDICT = 320
+  // 384 not 320: LLM-PERF logs showed ~13% of briefs hit done=length [TRUNCATED@cap]
+  // at 320 (silent cut-off of the last section). +64 tokens ≈ +10s at ~6 tok/s — worth it.
+  const SHIFT_BRIEF_NUM_PREDICT = 384
   const resp = await fetch(`${HARDWARE_CONFIG.ollama.baseUrl}/api/generate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
