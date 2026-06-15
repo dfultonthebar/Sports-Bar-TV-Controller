@@ -445,15 +445,16 @@ PY
   if ! git -C "$REPO_ROOT" diff --cached --quiet -- ".auto-update-last-success.json" 2>/dev/null; then
     git -C "$REPO_ROOT" commit -q \
       -m "chore(heartbeat): refresh os fields on no-op auto-update ($(date +%Y-%m-%d-%H-%M))" 2>/dev/null || true
-    # v2.52.4 fix (code-reviewer audit Finding #6): rebase before push to
-    # avoid silent no-op pushes when a concurrent run (manual + cron
-    # overlap) already pushed a different heartbeat. The original code's
-    # `|| true` swallowed non-fast-forward errors, so the loser's run
-    # logged "Heartbeat refreshed" but actually wrote nothing to remote.
+    # Push the heartbeat directly — NO `pull --rebase` (it tangles into a stuck
+    # multi-commit rebase against a diverged origin; this very line helped freeze
+    # the whole fleet on 2026-06-14). A heartbeat is just an os-field refresh, so
+    # if the push is rejected (origin diverged) we simply skip it this cycle.
     git -C "$REPO_ROOT" fetch -q origin "$BRANCH" 2>/dev/null || true
-    git -C "$REPO_ROOT" pull -q --rebase origin "$BRANCH" 2>/dev/null || true
-    git -C "$REPO_ROOT" push -q origin "$BRANCH" 2>/dev/null || true
-    log "Heartbeat os.* refreshed (kernel=$kernel)"
+    if git -C "$REPO_ROOT" push -q origin "$BRANCH" 2>/dev/null; then
+      log "Heartbeat os.* refreshed (kernel=$kernel)"
+    else
+      log "Heartbeat push skipped (origin diverged — non-fatal, refreshed locally)"
+    fi
   fi
 }
 
@@ -1783,15 +1784,29 @@ if git rev-parse --abbrev-ref HEAD >/dev/null 2>&1; then
     log "WARNING: detached HEAD — skipping push"
   else
     log "Pushing $CURRENT_BRANCH to origin (fleet-dashboard signal)"
-    # v2.52.4 fix (code-reviewer audit Finding #6): rebase before push so
-    # a concurrent heartbeat from a manual run doesn't cause silent
-    # non-fast-forward rejection.
     git -C "$REPO_ROOT" fetch -q origin "$CURRENT_BRANCH" 2>&1 | tee -a "$LOG_FILE" || true
-    git -C "$REPO_ROOT" pull --rebase origin "$CURRENT_BRANCH" 2>&1 | tee -a "$LOG_FILE" || true
     if git -C "$REPO_ROOT" push origin "$CURRENT_BRANCH" 2>&1 | tee -a "$LOG_FILE"; then
       log "Push succeeded — Fleet Dashboard will reflect this update within 5 min (cache TTL)"
     else
-      log "WARNING: push failed — location is still healthy, but Fleet Dashboard won't see this update until a human pushes manually or next successful auto-update"
+      # Push rejected (origin diverged). Reconcile by MERGE, never `pull --rebase`:
+      # against a badly-diverged origin (e.g. frozen for weeks) a rebase replays
+      # the box's local commits and gets STUCK in a 70+ commit interactive rebase,
+      # silently leaving the working tree detached on old code. That tangle hit
+      # the ENTIRE fleet (2026-06-14) — every box stuck-rebase, origin frozen at
+      # 2.55.48. A merge with -X ours keeps THIS box's authoritative content and
+      # just records origin's history so the retry push fast-forwards. If even the
+      # merge conflicts, abort it and leave the box healthy (push is non-fatal).
+      log "Push rejected (origin diverged) — reconciling via merge (-X ours), NOT rebase"
+      if git -C "$REPO_ROOT" merge --no-edit -X ours "origin/$CURRENT_BRANCH" 2>&1 | tee -a "$LOG_FILE"; then
+        if git -C "$REPO_ROOT" push origin "$CURRENT_BRANCH" 2>&1 | tee -a "$LOG_FILE"; then
+          log "Push succeeded after merge-reconcile"
+        else
+          log "WARNING: push still failed after merge — location healthy, Fleet Dashboard lagging; manual reconcile needed"
+        fi
+      else
+        git -C "$REPO_ROOT" merge --abort 2>/dev/null || true
+        log "WARNING: merge-reconcile conflicted — aborted (NOT rebasing). Location healthy; manual reconcile needed"
+      fi
     fi
   fi
 fi
