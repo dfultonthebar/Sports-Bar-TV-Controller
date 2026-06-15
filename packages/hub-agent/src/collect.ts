@@ -149,7 +149,17 @@ export async function collectErrors(
   const wbody = watchers.body || {}
   for (const [name, w] of Object.entries<any>(wbody)) {
     if (name === 'success' || name === 'now' || w == null || typeof w !== 'object') continue
-    if (w.alive === false || w.status === 'down' || w.healthy === false) {
+    // A watcher with zero evidence of ever running (no events, no startup row, no 24h count)
+    // is hardware-not-present at this location — NOT "down". Only Holmgren has an SDR dongle,
+    // so SDR reports alive:false everywhere else; flagging that floods the feed with false
+    // watcher_down:sdr. Same guard covers any optional-hardware watcher (Shure, etc.). A real
+    // down — a watcher that ran before but is now stale — keeps a non-null lastEventAt.
+    const everRan =
+      w.lastEventAt != null ||
+      w.lastStartupAt != null ||
+      (typeof w.eventCount24h === 'number' && w.eventCount24h > 0)
+    const down = w.alive === false || w.status === 'down' || w.healthy === false
+    if (down && everRan) {
       events.push({
         source: 'watcher-down',
         signature: `watcher_down:${name}`,

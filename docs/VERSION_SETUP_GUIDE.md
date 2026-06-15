@@ -35,6 +35,10 @@ is the archive.
 
 ---
 
+## v2.65.6 — hub-agent: stop false SDR `watcher_down` errors at no-dongle locations (2026-06-15)
+
+**Branch landed:** main. **No fleet-box setup** — this is the central SBCC hub-agent (runs on CT 211 `sbcc-hub`, not the location boxes). Only Holmgren has an SDR dongle, so SDR's watcher reports `alive:false` at the other 5 locations → the agent synthesized a false `watcher_down:sdr` every poll, flooding the fleet error feed. Fix: `collectErrors` (`packages/hub-agent/src/collect.ts`) now only emits `watcher_down:<name>` when the watcher shows evidence of ever running at that location (non-null `lastEventAt`/`lastStartupAt`, or `eventCount24h>0`); a watcher with zero evidence is hardware-not-present, not down. Same guard covers any optional-hardware watcher (Shure). **Redeploy (CT 211):** rebuild `packages/hub-agent` → sync `dist/` to `/opt/sbcc-agent` → `pm2 restart all`. **Purge stale rows:** `DELETE FROM error_events WHERE source='watcher-down' AND signature='watcher_down:sdr' AND location_id != 'holmgren-way';` against the hub DB (`/opt/sbcc-hub-data/hub.db`).
+
 ## v2.61.0 — auto-update.sh: stop `pull --rebase` tangle (fleet-wide root cause) (2026-06-14)
 
 **Branch landed:** main → fleet. **No manual setup** (code-only) — but see the fleet recovery note below.
