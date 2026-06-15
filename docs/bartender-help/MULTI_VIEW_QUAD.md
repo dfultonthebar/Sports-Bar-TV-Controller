@@ -1,108 +1,126 @@
 # Splitting One TV Into Four — Multi-View Help
 
-**For:** the bartender when two (or three or four) big games happen at the same time and there's only one big TV in the section.
-**Goal:** show four different sources on one TV at the same time.
-**Time to set up:** about 90 seconds.
-**You can't break it:** turning Multi-View off puts the TV right back to a single source. Try things.
+**For:** the bartender when several big games are on at once and there's one big TV in the section.
+**Goal:** show up to four sources on one TV at the same time (a 2×2 "quad").
+**You can't break it:** turning Multi-View off puts the TV right back to a single picture. Tap freely.
+
+> **The short version:** Multi-View is a single **on/off toggle**. You tap one button to turn
+> the four-up quad **on**, and tap it again to go back to one picture. **You don't pick which
+> four games appear** from the iPad — the manager sets that up ahead of time. If you need
+> *different* games in the quad, that's a manager change (see the bottom).
 
 ---
 
 ## When you'd use this
 
-NFL Sunday afternoon. Packers AND Bears AND a big SEC game AND the early NBA tip — all at the same time. The corner big-screen TV is the only one big enough that customers across the room can read four small panels. You want a 2x2 grid of all four games on it.
+NFL Sunday — Packers AND Bears AND a big SEC game AND the early NBA tip, all at once, and the
+corner big-screen is the only TV big enough for the room to read four panels. Turn on Multi-View
+and that one screen shows all four.
 
-If you've got plenty of TVs and the customer just wants the Packers, **don't use Multi-View** — put each game on its own TV. Multi-View is fiddly: panels are smaller, audio comes from only one panel, and most customers prefer one big picture. Save it for the genuine "we need them all on this one screen" moments.
+If you've got enough TVs and a customer just wants one game, **don't use Multi-View** — put each
+game on its own TV. The quad makes each game smaller and is meant for genuine "we need them all
+on this one screen" moments.
 
-This feature only works on TVs that are wired to a Multi-View card in the equipment rack. Most bars have one or two TVs set up for this — usually the biggest screen in the main bar. If your bar's biggest TV doesn't show the **Multi-View** option, that TV isn't wired for it. Use four separate TVs instead.
-
----
-
-## Where Multi-View lives
-
-On the iPad behind the bar, tap the **Video** tab. You'll see the floorplan with every TV drawn as a tile.
-
-Tap the tile for the big screen you want to split. The source panel slides up. **Look for a button labeled "Multi-View"** (sometimes "Quad" or "4-Up"). It's usually near the top of the panel, in its own section.
-
-If you don't see the button on this TV, it isn't multi-view-capable. Try a different big screen, or use four separate TVs.
+**This only works on a TV wired to a Multi-View card** (a special box in the equipment rack the
+manager installs). Most bars have one such screen — usually the biggest in the main bar. If you
+don't see the Multi-View control described below, this bar (or this TV) isn't set up for it — use
+separate TVs instead.
 
 ---
 
-## Step-by-step — turning Multi-View on
+## Where to find it
 
-1. On the iPad, tap **Video** at the bottom.
-2. Tap the tile for the big screen TV (the one wired for Multi-View).
-3. In the source panel, tap **Multi-View** (or **Quad**).
-4. The TV's picture switches to a 2x2 grid. Each of the four panels is dark or showing "Pick a source."
-5. The iPad now shows four small slots, labeled **Top-Left, Top-Right, Bottom-Left, Bottom-Right**.
-6. Tap the **Top-Left** slot first. A source list pops up (cable boxes, DirecTV, Fire TV — same list as a normal TV).
-7. Pick the source for that panel. Repeat for Top-Right, Bottom-Left, Bottom-Right.
-8. Within a few seconds, each panel of the TV shows the source you picked.
+On the iPad behind the bar, tap the **Routing** tab at the bottom. Look on the upper right for a
+small panel labeled **"Multi-View Preview"**. (The same toggle also appears on the **Video** tab.)
 
----
-
-## Important: audio only comes from one panel
-
-The audio on the TV comes from the **Top-Left** panel only. That's by design — you can't mix four sound sources without it being chaos.
-
-**Put your most important game in the Top-Left slot.** If the customer most wants to hear the Packers, the Packers go top-left. The other three panels become "visual only."
-
-If you want to swap which game has the audio, just go back into the Multi-View settings on the iPad and put the desired source in Top-Left.
+- If there's **no "Multi-View Preview" panel at all**, this bar doesn't have a quad-view card.
+  Use four separate TVs.
+- If the panel is there, it shows a little 2×2 preview of the four sources the manager set up,
+  plus one button.
 
 ---
 
-## Turning Multi-View off
+## Turning the quad on and off
 
-When the big games end (or the customer crowd thins), put the TV back to a single source:
+It's one button, and its label tells you what tapping it will do:
 
-1. Tap **Video** on the iPad.
-2. Tap the multi-view TV's tile.
-3. In the source panel, tap **Single View** (or simply tap any normal source — Cable Box 1, DirecTV 1, etc.).
-4. The TV switches back to showing one source full-screen.
+1. On the iPad, tap the **Routing** tab.
+2. Find the **Multi-View Preview** panel.
+3. Look at the button:
+   - **"⊞ Quad View"** (gray) — the TV is currently showing **one** picture. Tap it to turn the
+     **four-up quad on**.
+   - **"■ Single View"** (purple) — the TV is currently showing the **quad**. Tap it to go back
+     to **one** full-screen picture.
+4. The button briefly shows "..." while it switches, then a message appears at the top:
+   **"Quad View enabled"** or **"Single View enabled"**.
+5. The big TV changes a second or two later.
 
-That's it. No settings to clean up.
+That's the whole control. There are no other buttons to set.
+
+---
+
+## Which four games show in the quad?
+
+**The manager sets that ahead of time** — it's not something you pick from the bartender iPad.
+The four little squares in the **Multi-View Preview** show you which sources will appear (for
+example "IN 5 · Cable Box", "IN 6 · DirecTV", and so on).
+
+If those four aren't the games you want, you **can't swap them from here** — see "When to text
+the manager" below.
 
 ---
 
 ## How you know it worked
 
-- The TV shows four panels in a 2x2 grid, each with a different game (or whatever sources you picked).
-- The TV's audio plays whatever's in the Top-Left panel.
-- The iPad's Video tab shows the TV tile with a small "4-Up" or "Multi" badge.
+- The big TV shows four pictures in a 2×2 grid (quad on), or one full-screen picture (quad off).
+- The button flips between **"⊞ Quad View"** and **"■ Single View"**, and the panel gets a
+  purple highlight while the quad is on.
+- You see **"Quad View enabled"** or **"Single View enabled"** at the top for a few seconds.
 
 ---
 
-## If this didn't work
+## If it didn't work
 
-- **Quad is showing black tiles in some panels** → the source you picked for that panel isn't outputting anything (the cable box is on a channel with no signal, or the Fire TV's screensaver kicked in). Tap the panel and pick a different source, or change the cable channel for that source first.
-- **Audio is from the wrong corner** → audio always comes from Top-Left. Swap the sources so the audio you want is in the Top-Left slot.
-- **Picture is fuzzy or low-resolution** → multi-view halves the resolution of each panel by design. The picture quality is fine for a wide-room TV, but won't look as crisp as a single-source TV. This is normal.
-- **I tapped Multi-View but nothing happened** → the TV may not be wired for it. Try a different big screen. If you're sure the TV is multi-view-capable and it still doesn't switch, the multi-view card may have lost its connection — text the manager.
-- **One panel keeps reverting to a different source** → check the Schedule tab. There might be a scheduled game queued for that source on this TV; cancel the schedule entry, then re-set the multi-view.
-- **I can't figure out which panel is which on the iPad** → look at the TV itself while you tap. The iPad's slot labels (Top-Left etc.) match the physical position on the screen. If unclear, just experiment — you can change any panel any time without affecting the others.
+- **No "Multi-View Preview" panel anywhere** → this bar or this TV has no quad-view card. Nothing
+  to fix on your end — use separate TVs.
+- **The preview says "(no preview — multi-view card not configured)"** → the card is installed but
+  the manager hasn't set which four sources go in the quad yet. Tap the button if you like, but
+  text the manager to finish the setup.
+- **You tapped and got "Multi-view error" or "Failed to switch multi-view"** → the quad-view box
+  in the rack isn't responding (its cable came loose or it's powered off). The TV stays as it was.
+  Text the manager — this is a rack/hardware check, not a bartender fix.
+- **The quad is on but a panel is black** → one of the manager-set sources has no picture right now
+  (a cable box on a blank channel, a Fire TV asleep). That's the source, not the quad — get that
+  source showing a picture and the panel fills in.
+- **Picture looks lower-resolution** → normal. Splitting one screen into four makes each panel
+  smaller and softer. Fine for a wide-room TV, not as crisp as a single picture.
 
 ---
 
 ## What NOT to do
 
-- **Don't use Multi-View for a single-game request.** "Customer asked for the Bucks game" → just put it on one TV. Multi-View is for genuine multi-game crunches.
-- **Don't leave Multi-View on overnight.** When the bar closes, turn it back to single view. Some TVs have burn-in risk if four small images stay up for hours, and it confuses the next bartender.
-- **Don't try to put the same source in two panels.** Some hardware won't allow it; even if it does, it's a waste of a panel.
+- **Don't use Multi-View for a single-game request.** One game → one TV. The quad is for genuine
+  multi-game crunches.
+- **Don't leave the quad on overnight.** At close, tap back to **Single View** — it's tidier for
+  the next bartender and avoids leaving four small static images up for hours.
+- **Don't hunt for a way to pick the four games on the iPad** — there isn't one. That's set by the
+  manager. Trying to find it just wastes time mid-shift.
 
 ---
 
 ## When to text the manager
 
-- Multi-View button is missing on a TV you're sure used to have it.
-- Multi-View turns on but the TV stays on a single picture (no grid appears).
-- A panel won't accept any source you pick.
-- Audio is completely silent on the TV even though the Top-Left panel has a normal source.
+- You want **different games** in the quad than the four it's showing (the manager changes the
+  Multi-View setup in the admin pages — you can't from the remote).
+- You tapped the button and got a **"Multi-view error"** every time — the rack box needs a look.
+- The TV is wired for Multi-View but **the panel/button is missing**.
 
-Include a photo of the TV and a screenshot of the iPad's multi-view settings.
+Include a photo of the TV and a screenshot of the iPad's **Multi-View Preview** panel.
 
 ---
 
 ## Related
 
-- **[[PUTTING_GAMES_ON_TVS_VIDEO_TAB]]** — putting games on separate TVs (usually a better choice).
+- **[[PUTTING_GAMES_ON_TVS_VIDEO_TAB]]** — putting games on separate TVs (usually the better choice).
 - **[[FINDING_A_LIVE_GAME]]** — locating a live game fast.
-- **[[WRONG_CHANNEL_ON_TV]]** — TV is on the wrong thing.
+- **[[WRONG_CHANNEL_ON_TV]]** — a TV is on the wrong thing.

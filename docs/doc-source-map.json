@@ -102,7 +102,9 @@
       "doc": "docs/bartender-help/MULTI_VIEW_QUAD.md",
       "sources": [
         "apps/web/src/app/api/wolfpack/multiview/**",
-        "packages/multiview/src/**"
+        "packages/multiview/src/**",
+        "apps/web/src/components/InteractiveBartenderLayout.tsx",
+        "apps/web/src/components/MultiViewCardManager.tsx"
       ]
     },
     {
