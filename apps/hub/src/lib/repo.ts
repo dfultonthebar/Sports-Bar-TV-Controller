@@ -132,6 +132,14 @@ export function latestMetricsByLocation() {
   return seen
 }
 
+const latestOf = (table: any, col: any, locationId: string) =>
+  db.select().from(table).where(eq(col, locationId)).orderBy(desc(table.ts)).limit(1).get()
+
+export const latestHealth = (id: string) => latestOf(schema.healthSnapshots, schema.healthSnapshots.locationId, id)
+export const latestMetrics = (id: string) => latestOf(schema.metricsSnapshots, schema.metricsSnapshots.locationId, id)
+export const latestScheduler = (id: string) =>
+  latestOf(schema.schedulerSnapshots, schema.schedulerSnapshots.locationId, id)
+
 /** Open error feed across the fleet, newest first. */
 export function recentErrors(sinceMs: number, locationId?: string) {
   const conds = [gte(schema.errorEvents.occurredAt, sinceMs)]

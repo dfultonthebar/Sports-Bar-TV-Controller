@@ -27,8 +27,10 @@ export default function Home() {
     <main style={{ maxWidth: 1100, margin: '0 auto', padding: 24 }}>
       <h1 style={{ fontSize: 22, marginBottom: 4 }}>SBCC Hub — Fleet</h1>
       <p style={{ color: '#94a3b8', marginTop: 0 }}>
-        {locations.length} location{locations.length === 1 ? '' : 's'} · {errors24h.length} error
-        {errors24h.length === 1 ? '' : 's'} in 24h
+        {locations.length} location{locations.length === 1 ? '' : 's'} ·{' '}
+        <a href="/errors" style={{ color: '#38bdf8' }}>
+          {errors24h.length} error{errors24h.length === 1 ? '' : 's'} in 24h →
+        </a>
       </p>
 
       {locations.length === 0 ? (
@@ -43,7 +45,11 @@ export default function Home() {
             const m = metrics.get(loc.id)
             const status = h?.overallStatus || 'unknown'
             return (
-              <div key={loc.id} style={{ border: '1px solid #1e293b', borderRadius: 8, padding: 14, background: '#0f172a' }}>
+              <a
+                key={loc.id}
+                href={`/locations/${loc.id}`}
+                style={{ textDecoration: 'none', color: 'inherit', display: 'block', border: '1px solid #1e293b', borderRadius: 8, padding: 14, background: '#0f172a' }}
+              >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <strong>{loc.name}</strong>
                   <span style={{ color: STATUS_COLOR[status], fontWeight: 600, fontSize: 13 }}>● {status}</span>
@@ -56,7 +62,7 @@ export default function Home() {
                   {' · '}CPU {m?.cpuUsagePct ?? '—'}%{' · '}Mem {m?.memUsedPct ?? '—'}%{' · '}Disk{' '}
                   {m?.diskUsedPct ?? '—'}%
                 </div>
-              </div>
+              </a>
             )
           })}
         </div>
