@@ -6,7 +6,7 @@ import { drizzle } from 'drizzle-orm/better-sqlite3'
 import Database from 'better-sqlite3'
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
-import * as schema from './schema.js'
+import * as schema from './schema'
 
 const dbPath = process.env.HUB_DB_PATH || '/home/ubuntu/sbcc-hub-data/hub.db'
 mkdirSync(dirname(dbPath), { recursive: true })
