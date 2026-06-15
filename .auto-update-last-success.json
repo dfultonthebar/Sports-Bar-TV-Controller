@@ -1,11 +1,11 @@
 {
-  "version": "2.61.0",
+  "version": "2.64.0",
   "branch": "location/stoneyard-greenville",
-  "commitSha": "1b99fd49db83465dfa21bfa4b0705dee6f1f5843",
-  "successAt": "2026-06-14T08:15:12Z",
-  "successAtUnix": 1781424912,
-  "runId": "auto-update-2026-06-14-03-13",
-  "verifyInstall": {"status":"PASS","passed":18,"total":18,"durationSecs":3,"failed":[],"layers":[{"name":"pm2_online","passed":true,"detail":"status=online restart_time=13"},{"name":"health_http","passed":true,"detail":"status=healthy"},{"name":"metrics_http","passed":true,"detail":"cores=20"},{"name":"bartender_proxy","passed":true,"detail":"http=302"},{"name":"critical_tables","passed":true,"detail":"presets=128 aliases=45 directv=0 firetv=3"},{"name":"schema_completeness","passed":true,"detail":"120/120 tables present, all columns present"},{"name":"matrix_config","passed":true,"detail":"multi-card WP-36X36 offset=0"},{"name":"crash_logs","passed":true,"detail":"clean"},{"name":"linger_enabled","passed":true,"detail":"Linger=yes"},{"name":"autoupdate_timer_fresh","passed":true,"detail":"WARN: sidecar age=167985s (stale timer — non-fatal in update flow)"},{"name":"migration_markers_consistent","passed":true,"detail":"6/6"},{"name":"error_watch_alive","passed":true,"detail":"age=108s"},{"name":"bartender_layout_rooms","passed":true,"detail":"single-room bar"},{"name":"atlas_drop_watcher_alive","passed":true,"detail":"stale 1849091s (warn only)"},{"name":"atlas_priority_watcher_alive","passed":true,"detail":"age=23s"},{"name":"node_symlink_present","passed":true,"detail":"3/3"},{"name":"shure_pending_resync_table_present","passed":true,"detail":"present"},{"name":"auth_bootstrap_complete","passed":true,"detail":"LOCATION_ID set, AuthPin bound=2"}]},
+  "commitSha": "7ec151be8f0e24bd4a9d7455e2665dd9b1c1145e",
+  "successAt": "2026-06-15T14:33:13Z",
+  "successAtUnix": 1781533993,
+  "runId": "auto-update-2026-06-15-09-32",
+  "verifyInstall": {"status":"PASS","passed":18,"total":18,"durationSecs":3,"failed":[],"layers":[{"name":"pm2_online","passed":true,"detail":"status=online restart_time=14"},{"name":"health_http","passed":true,"detail":"status=healthy"},{"name":"metrics_http","passed":true,"detail":"cores=20"},{"name":"bartender_proxy","passed":true,"detail":"http=302"},{"name":"critical_tables","passed":true,"detail":"presets=128 aliases=45 directv=0 firetv=3"},{"name":"schema_completeness","passed":true,"detail":"120/120 tables present, all columns present"},{"name":"matrix_config","passed":true,"detail":"multi-card WP-36X36 offset=0"},{"name":"crash_logs","passed":true,"detail":"clean"},{"name":"linger_enabled","passed":true,"detail":"Linger=yes"},{"name":"autoupdate_timer_fresh","passed":true,"detail":"WARN: sidecar age=109077s (stale timer — non-fatal in update flow)"},{"name":"migration_markers_consistent","passed":true,"detail":"6/6"},{"name":"error_watch_alive","passed":true,"detail":"age=283s"},{"name":"bartender_layout_rooms","passed":true,"detail":"single-room bar"},{"name":"atlas_drop_watcher_alive","passed":true,"detail":"stale 1958172s (warn only)"},{"name":"atlas_priority_watcher_alive","passed":true,"detail":"age=23s"},{"name":"node_symlink_present","passed":true,"detail":"3/3"},{"name":"shure_pending_resync_table_present","passed":true,"detail":"present"},{"name":"auth_bootstrap_complete","passed":true,"detail":"LOCATION_ID set, AuthPin bound=2"}]},
   "os": { "codename": "noble", "version": "24.04", "kernel": "6.8.0-111-generic" },
   "configChecksums": {
     ".env": "d9c071c08af5f7c9",
