@@ -182,6 +182,14 @@
         "apps/web/src/app/api/ir/**",
         "apps/web/src/app/api/ir-devices/**"
       ]
+    },
+    {
+      "doc": "docs/HUB_SETUP.md",
+      "sources": [
+        "scripts/proxmox/**",
+        "packages/hub-agent/src/**",
+        "apps/hub/**"
+      ]
     }
   ]
 }
