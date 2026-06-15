@@ -31,6 +31,10 @@ export default function Home() {
         <a href="/errors" style={{ color: '#38bdf8' }}>
           {errors24h.length} error{errors24h.length === 1 ? '' : 's'} in 24h →
         </a>
+        {' · '}
+        <a href="/chat" style={{ color: '#38bdf8' }}>
+          maintenance chat →
+        </a>
       </p>
 
       {locations.length === 0 ? (
