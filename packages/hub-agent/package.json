@@ -23,7 +23,7 @@
     }
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc --noEmit false",
     "type-check": "tsc --noEmit",
     "dry-run": "tsx src/index.ts --dry-run --once"
   },
