@@ -37,7 +37,7 @@ Look around. Are any TVs still playing sound? If the TVs have sound but the back
 2. On the screen, find the row of tabs near the top. Tap the tab labeled **Music**.
 3. Look at the top of the Music screen. There's a box called **Now Playing**.
 4. **If Now Playing shows a song title and album art:** the music is "playing" but maybe muted somewhere — skip down to Scenario 2.
-5. **If Now Playing is empty or says "Nothing playing":** tap the big **Play** button (a triangle ▶ icon) in the Now Playing box.
+5. **If Now Playing is empty or says "Nothing playing":** tap the green **Start Music** button (play-triangle icon) in the player controls.
 6. Wait about 5 seconds.
 
 ### How you know it worked
@@ -47,7 +47,7 @@ The Now Playing box fills in with a song title and album cover, and you hear mus
 ### If it didn't work
 
 1. Still on the Music tab, **swipe down from the top of the iPad screen** (like you're refreshing a webpage). This refreshes the connection to the music service.
-2. Wait 5 more seconds and try the **Play** button again.
+2. Wait 5 more seconds and try the **Start Music** button again.
 3. If still nothing, scroll down on the Music tab and find the list of **playlists** (squares with album art and names like "Sports Bar Energy," "Classic Rock," "Top 40").
 4. Tap any playlist. This forces the music service to start something fresh.
 5. Wait 10 seconds.
@@ -174,7 +174,7 @@ This step is about getting help on the way, not fixing the problem yourself. You
 If you can't reach anyone and the distortion is bad enough to drive guests away, you can:
 
 1. Lower the affected zone's slider all the way down (mute it). Other zones stay normal.
-2. Or pause the music entirely from the **Music** tab — tap the **Pause** button (two vertical bars ⏸ icon) in the Now Playing box. The bar will be quiet for a few hours until help arrives. Annoying but better than buzzing.
+2. Or stop the music entirely from the **Music** tab — tap the **Stop Music** button (pause icon) in the player controls. The bar will be quiet for a few hours until help arrives. Annoying but better than buzzing.
 
 ---
 

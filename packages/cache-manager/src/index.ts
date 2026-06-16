@@ -527,18 +527,10 @@ export class CacheManager {
   /**
    * Export cache state (for debugging/monitoring)
    */
-  exportState(): {
-    cacheSize: number
-    stats: typeof this.stats
-    configs: typeof this.configs
-    entries: Array<{
-      key: string
-      size: number
-      hits: number
-      age: number
-      ttl: number
-    }>
-  } {
+  exportState() {
+    // Return type is inferred from the object below. (An explicit annotation
+    // using `typeof this.stats` fails under strict type-checking — `this` isn't
+    // available in a method's return-type annotation position.)
     const now = Date.now()
     const entries = Array.from(this.cache.values()).map(entry => ({
       key: entry.key,
