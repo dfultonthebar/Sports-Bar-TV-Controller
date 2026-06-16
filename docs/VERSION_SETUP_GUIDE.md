@@ -35,6 +35,12 @@ is the archive.
 
 ---
 
+## v2.68.1 — Docs: T4-Day Runbook (no setup required) (2026-06-16)
+
+**Branch landed:** main. **No setup required.** New `docs/T4_DAY_RUNBOOK.md` — the live execution plan for installing the T4 GPU into CT 212 (`hermes`, an LXC) and flipping the staged software (OLLAMA_REMOTE_BASE, DIAGNOSE_ENABLED, the diagnose LLM, chat migration, Honcho deriver) onto the GPU. Phased, Holmgren-canaried, each step reversible. Critical path = operator/host GPU passthrough (LXC device bind, not vfio); models (`qwen2.5:14b`, `nomic-embed-text` 768-dim, `llama3.1:8b`) already pulled on hermes. Tracks #358; unblocks #359 + #364.
+
+---
+
 ## v2.68.0 — T4-day prep: ollama-client migration + Hermes Layer 1 scaffold (no setup required; two new default-OFF env vars) (2026-06-16)
 
 **Branch landed:** main. **No setup required now** — both changes are inert until their env flags are set on T4-day (#358).
