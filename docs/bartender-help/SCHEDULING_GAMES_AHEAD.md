@@ -17,7 +17,7 @@ If a customer is at the bar right now asking for a game that's already playing, 
 
 ## Where the Schedule tab lives
 
-On the iPad behind the bar, tap **More** at the bottom (the three-dot icon). A row of extra options slides up. Tap **Schedule**.
+On the iPad behind the bar, tap the **Schedule** tab at the bottom (the clock icon).
 
 The Schedule tab opens with three views you can switch between using buttons across the top:
 
@@ -25,19 +25,19 @@ The Schedule tab opens with three views you can switch between using buttons acr
 - **Today** — every game tonight, including ones that started earlier.
 - **Week ahead** — Sunday through Saturday, useful for big planning conversations with the manager.
 
-If you don't see the tabs, tap **More → Schedule** again — sometimes the iPad opens to an empty state.
+If you don't see the views, tap the **Schedule** tab again — sometimes the iPad opens to an empty state.
 
 ---
 
 ## Step-by-step — assigning TVs to one game
 
-1. On the iPad, tap **More → Schedule**.
+1. On the iPad, tap the **Schedule** tab.
 2. Make sure **Next 12 hours** is selected (the default).
 3. You'll see a list of games. Each row shows the teams, the start time, and the channel.
 4. Find the game you want to assign — tap the row (or the small TV icon on the right).
 5. A picker pops up showing every TV in the bar, drawn as tiles.
 6. **Tap each TV that should show this game.** Tapped TVs turn a different color so you can see what's selected.
-7. Tap **Save** (or **Apply**) at the bottom of the picker.
+7. Your picks **save automatically** as you tap each TV — there's no Save button. Close the picker when you're done.
 8. The row updates with a small badge showing how many TVs it's queued on ("3 TVs").
 
 The system will automatically tune the right cable box (or DirecTV / Fire TV) and route it to those TVs at kickoff. You don't need to be at the bar when the game starts.
@@ -52,7 +52,7 @@ When 6 or 7 games are starting at roughly the same time, picking TVs manually is
 2. Wait. **The spinner runs for 90 seconds to 3 minutes** — the system is sorting which game belongs on which TV based on home-team priority, customer patterns, and TV size. **Don't tap anything else while it's running.**
 3. When it finishes, you see a list of recommended assignments — "Packers → TV 7, 8, 12", "Bucks → TV 4, 5", etc.
 4. Scan the list. Most assignments will be sensible. Tap any row to adjust the TVs it picked.
-5. When you're happy, tap **Apply All** at the bottom.
+5. When you're happy, tap **Approve All (simple)** at the bottom.
 
 All the games are now queued. At each kickoff, the assigned TVs will switch automatically.
 
@@ -60,7 +60,7 @@ All the games are now queued. At each kickoff, the assigned TVs will switch auto
 
 ## Confirming an assignment worked
 
-After you Save (or after Apply All), look at the game's row in the Schedule list. You should see:
+After your picks save (or after Approve All), look at the game's row in the Schedule list. You should see:
 
 - A small badge showing the TV count ("4 TVs").
 - The row's color shifts slightly to "queued" (usually a softer green).
@@ -78,7 +78,7 @@ Plans change. The customer who wanted Packers on TV 7 left, or the manager wants
 2. Find the game.
 3. Tap the row to reopen the picker.
 4. **Tap a TV that's currently selected to un-select it**, OR tap a new TV to add it.
-5. Tap **Save**.
+5. Your change **saves automatically** — there's no Save button.
 
 To cancel the assignment entirely, tap **Cancel game** (or the trash icon on the row, depending on the iPad's layout). The game stays in the Schedule list but no TVs are queued for it.
 
@@ -88,7 +88,7 @@ To cancel the assignment entirely, tap **Cancel game** (or the trash icon on the
 
 - **The schedule shows the wrong game (wrong teams or wrong time)** → ESPN's data is the source for the Schedule list. If a game's start time is off, it's because the league re-scheduled and the system hasn't pulled the update yet. Edit the assignment manually using **[[PUTTING_GAMES_ON_TVS_VIDEO_TAB]]** at kickoff, then text the manager.
 - **The game I added disappeared from the list** → check whether you're still on the **Next 12 hours** view. The game may have moved out of the 12-hour window. Switch to **Today** or **Week ahead**.
-- **AI Suggest gave me a weird answer** (Packers on the patio TV, Bucks on a back TV) → tap each row and adjust manually. The system learns from your corrections, so over a few weeks it gets smarter. Don't fight it row by row — just fix the obvious wrong ones and Apply All.
+- **AI Suggest gave me a weird answer** (Packers on the patio TV, Bucks on a back TV) → tap each row and adjust manually. The system learns from your corrections, so over a few weeks it gets smarter. Don't fight it row by row — just fix the obvious wrong ones and tap Approve All (simple).
 - **AI Suggest has been spinning for over 3 minutes** → the local AI is having a slow day. Tap **Cancel** (or close the spinner) and assign manually. Don't tap AI Suggest again right away; wait a minute.
 - **At kickoff, the TV didn't switch** → wait 60 seconds. The scheduler fires within 30 seconds, but cable boxes are slow. If nothing happens, switch it manually using **[[PUTTING_GAMES_ON_TVS_VIDEO_TAB]]** and text the manager.
 - **I queued 4 TVs but only 3 switched** → the 4th TV may have been off, or its source already showed something a customer was watching and the system held back. Check the TV and switch it manually.
