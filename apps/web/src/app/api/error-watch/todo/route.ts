@@ -16,12 +16,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/db'
 import { sql } from 'drizzle-orm'
-import { findFirst, create, and, eq, ne } from '@/lib/db-helpers'
+import { findFirst, create, and, eq, ne, like } from '@/lib/db-helpers'
 import { schema } from '@/db'
 import { syncTodosToGitHub } from '@/lib/gitSync'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { logger } from '@sports-bar/logger'
+import {
+  isDiagnoseEnabled,
+  runDiagnose,
+  buildDiagnosisDescription,
+  DIAGNOSED_TAG,
+} from '@/lib/error-watch/diagnose'
 
 export const dynamic = 'force-dynamic'
 
@@ -45,8 +51,16 @@ export async function POST(request: NextRequest) {
     const tag = `errorwatch:${signature}`
 
     // Dedup — already an OPEN todo for this signature? Then do nothing.
+    // When diagnose is OFF, tags are stored as the bare `errorwatch:<sig>`, so
+    // the original exact-match `eq` is used unchanged. When diagnose is ON, the
+    // stored tag carries a `,diagnosed:1` suffix, so dedup must prefix-match
+    // (`errorwatch:<sig>%`) to still find the prior open TODO. The OFF branch is
+    // byte-for-byte the pre-Hermes query.
+    const dedupTagMatch = isDiagnoseEnabled()
+      ? like(schema.todos.tags, `${tag}%`)
+      : eq(schema.todos.tags, tag)
     const existing = await findFirst('todos', {
-      where: and(eq(schema.todos.tags, tag), ne(schema.todos.status, 'COMPLETE')),
+      where: and(dedupTagMatch, ne(schema.todos.status, 'COMPLETE')),
     })
     if (existing) {
       return NextResponse.json({ success: true, created: false, reason: 'open todo exists', id: (existing as any).id })
@@ -63,17 +77,39 @@ export async function POST(request: NextRequest) {
     const sample = (rows[0]?.sample || '').slice(0, 400)
     const sourceFile = rows[0]?.source_file || '(unknown)'
 
+    let description =
+      `Auto-filed by the error-watch bot — this error signature appeared in the PM2 logs.\n\n` +
+      `Sample: ${sample || '(no sample captured)'}\n` +
+      `Source: ${sourceFile}\n\n` +
+      `Investigate, fix, then mark COMPLETE. If it recurs after being closed it will re-file.`
+    let tags = tag
+
+    // Hermes Layer 1 — diagnose enrichment (flag-gated, default OFF). When
+    // DIAGNOSE_ENABLED is unset the block below never runs, so the path above
+    // is byte-for-byte unchanged. See docs/HERMES_AUTONOMOUS_OPS_PLAN.md.
+    if (isDiagnoseEnabled()) {
+      try {
+        const diagnosis = await runDiagnose({
+          signature,
+          sample,
+          logContext: `Source: ${sourceFile}`,
+        })
+        description += buildDiagnosisDescription(diagnosis)
+      } catch (err) {
+        // Diagnose must never block the TODO — log and file unchanged.
+        logger.debug(`[ERROR-WATCH-TODO] diagnose skipped: ${(err as Error)?.message}`)
+      }
+      // Mark as diagnosed even when the step found nothing, so it isn't re-run.
+      tags = `${tag},${DIAGNOSED_TAG}`
+    }
+
     const todo = await create('todos', {
       title: `Error watch: ${signature}`,
-      description:
-        `Auto-filed by the error-watch bot — this error signature appeared in the PM2 logs.\n\n` +
-        `Sample: ${sample || '(no sample captured)'}\n` +
-        `Source: ${sourceFile}\n\n` +
-        `Investigate, fix, then mark COMPLETE. If it recurs after being closed it will re-file.`,
+      description,
       priority: priorityForSignature(signature),
       status: 'PLANNED',
       category: 'Error Watch',
-      tags: tag,
+      tags,
     })
 
     syncTodosToGitHub(`chore: auto-file error-watch TODO - ${signature}`).catch((err) =>
