@@ -85,3 +85,19 @@ export const errorEvents = sqliteTable(
     uniqueIndex('error_dedup').on(t.locationId, t.source, t.signature, t.occurredAt),
   ],
 )
+
+/**
+ * Central ESPN game-data cache (Feature B1). The hub runs the 26-league ESPN
+ * sync ONCE and stores each league's raw ESPNGame[] as JSON here; locations pull
+ * from `/api/game-data/espn` and run their existing syncLeague() over the games,
+ * so the per-location DB write-path is byte-identical to a direct ESPN fetch.
+ * One row per `${sport}-${league}`.
+ */
+export const espnCache = sqliteTable('espn_cache', {
+  leagueKey: text('league_key').primaryKey(), // `${sport}-${league}`
+  sport: text('sport').notNull(),
+  league: text('league').notNull(),
+  gamesJson: text('games_json').notNull(), // raw ESPNGame[] as JSON
+  gameCount: integer('game_count').notNull(),
+  updatedAt: integer('updated_at').notNull(), // unix ms of last successful sync
+})
