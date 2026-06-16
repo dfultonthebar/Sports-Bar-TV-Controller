@@ -41,6 +41,11 @@ module.exports = {
         // the bartender guide never depends on the hub.
         ESPN_HUB_ENABLED: process.env.ESPN_HUB_ENABLED || 'false',
         HUB_GAME_URL: process.env.HUB_GAME_URL || 'http://100.124.165.26:3010',
+        // Feature B2 (opt-in, default off): pull the Rail Media guide via the hub
+        // (cached per-market by this box's SPORTS_GUIDE_USER_ID). On ANY hub
+        // failure the box fetches Rail directly. The box sends its own Rail key;
+        // the hub never stores it.
+        RAIL_HUB_ENABLED: process.env.RAIL_HUB_ENABLED || 'false',
         // Auth system — bind to the location row in the DB. Without this,
         // validatePIN() falls back to AUTH_CONFIG.LOCATION_ID='default-location'
         // and every login fails with "Invalid PIN".

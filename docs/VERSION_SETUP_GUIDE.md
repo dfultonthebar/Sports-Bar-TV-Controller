@@ -35,6 +35,10 @@ is the archive.
 
 ---
 
+## v2.67.0 — Feature B2: central Rail Media guide, per-market & on-demand (OFF by default) (2026-06-16)
+
+**Branch landed:** main. **Ships DISABLED — zero behavior change until per-location opt-in.** Completes channel-guide centralization (B1 ESPN already canary-passed at Holmgren). Hub caches the Rail Media guide PER MARKET: `apps/hub/src/lib/rail-cache.ts` (in-memory `Map` keyed by `${userId}:${days}:${today}`, 30-min TTL, in-flight Promise stampede-guard, constructs `new SportsGuideApi({apiKey,userId,baseUrl})` per request — key used transiently, **never stored/logged**); `POST /api/game-data/rail {userId,apiKey,days}` serves it (tailnet-only; caller supplies its own Rail key). Location: `apps/web/src/lib/hub-rail-sync.ts` sends THIS box's `SPORTS_GUIDE_USER_ID`+`SPORTS_GUIDE_API_KEY`; `apps/web/src/app/api/channel-guide/route.ts` wraps both Rail fetches in `fetchRailGuide(days)` = hub-first-with-fallback-to-direct-Rail. Resolver + `channel_presets` + station-aliases + WI RSN split **untouched**. **New location in a new market = new `USER_ID` = new hub cache entry, zero hub setup** (its presets/aliases live on its branch as today). Env (default off): `RAIL_HUB_ENABLED=false`. **Canary (not auto):** enable `RAIL_HUB_ENABLED=true` at Holmgren (Green Bay), verify same channels + fallback; then **Lucky's (Madison) — capture bartender channel numbers before/after, they MUST be identical** (proves per-market isolation, no Green Bay bleed) before fleet rollout.
+
 ## v2.66.0 — Fleet AI offload foundation + central ESPN sync (both OFF by default) (2026-06-16)
 
 **Branch landed:** main. **Ships fully DISABLED — zero behavior change until per-location opt-in.** Two foundations:
