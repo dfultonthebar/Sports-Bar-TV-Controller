@@ -25,7 +25,10 @@ import { spawn } from 'node:child_process'
 import { z } from 'zod'
 
 const APP_PORT = process.env.APP_PORT || '3001'
-const BASE = `http://127.0.0.1:${APP_PORT}`
+// MCP_APP_BASE lets a CENTRAL Hermes (e.g. on the Proxmox hub) point its observe
+// tools at a specific location's app over Tailscale (e.g. http://holmgren:3001).
+// Defaults to localhost so a per-bar-box Hermes is unchanged.
+const BASE = process.env.MCP_APP_BASE || `http://127.0.0.1:${APP_PORT}`
 const API_TIMEOUT_MS = Number(process.env.MCP_API_TIMEOUT_MS) || 10_000
 
 // Claude Code CLI (Anthropic's coding agent) — lets Hermes delegate deep

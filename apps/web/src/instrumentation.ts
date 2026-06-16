@@ -240,10 +240,31 @@ export async function register() {
         //   { sport: 'rugby', league: 'six-nations' },
       ]
 
+      // Feature B1: when ESPN_HUB_ENABLED=true, pull the shared game cache from
+      // the hub ONCE per cycle and run the SAME per-league syncLeague over it. On
+      // ANY hub failure (or when disabled), prefetched stays undefined and
+      // syncLeague does its normal local ESPN fetch — today's exact behavior, so
+      // the bartender guide never depends on the hub.
+      const ESPN_HUB_ENABLED = process.env.ESPN_HUB_ENABLED === 'true'
+
       const runEspnSyncAll = async () => {
+        let hubGamesByLeague: Map<string, any[]> | null = null
+        if (ESPN_HUB_ENABLED) {
+          try {
+            const { pullEspnFromHub } = await import('./lib/hub-espn-sync')
+            const leagues = await pullEspnFromHub()
+            if (leagues) {
+              hubGamesByLeague = new Map(leagues.map((l) => [`${l.sport}-${l.league}`, l.games]))
+              logger.info(`[INSTRUMENTATION][ESPN SYNC] pulled ${leagues.length} leagues from hub`)
+            }
+          } catch (err) {
+            logger.error('[INSTRUMENTATION][ESPN SYNC] hub pull failed, using local ESPN:', err)
+          }
+        }
         for (const { sport, league } of ESPN_SYNC_LEAGUES) {
           try {
-            const result = await espnSyncService.syncLeague(sport, league)
+            const prefetched = hubGamesByLeague?.get(`${sport}-${league}`)
+            const result = await espnSyncService.syncLeague(sport, league, prefetched)
             logger.info(
               `[INSTRUMENTATION][ESPN SYNC] ${sport}/${league}: +${result.gamesAdded} new, ~${result.gamesUpdated} updated, ${result.errors.length} errors`
             )
