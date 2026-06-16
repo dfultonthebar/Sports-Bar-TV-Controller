@@ -35,6 +35,10 @@ is the archive.
 
 ---
 
+## v2.67.2 — Fix: TODO GitHub sync pushes to current branch, best-effort (no setup required) (2026-06-16)
+
+**Branch landed:** main. **No setup required.** `packages/utils/src/git-sync.ts` `commitAndPush()` no longer pushes `TODO_LIST.md` to a hardcoded `main` — it now pushes to the **current branch** (`git rev-parse --abbrev-ref HEAD`; explicit `config.targetBranch` still overrides) and a push failure is **best-effort** (logged at info level, never thrown/ERROR). Root cause: a stray `backup(Leg Lamp)` commit on Leg Lamp's local `main` (1 ahead / 962 behind) made every `git push origin main` from the TODO/venue-discovery sync permanently rejected → continuous `[ERROR] Error syncing TODOs to GitHub` spam. Zero operational impact (TODOs persist in the DB; box runs on its location branch). Also fixes a latent Standing-Rule-9 issue (location boxes must never push to main). **One-time per-box cleanup, already applied to Leg Lamp:** `git update-ref refs/heads/main origin/main` (stray commit preserved under tag `leglamp-stranded-main-358c3954`). Other fleet boxes were 0-ahead (no cleanup needed). Rolls out via auto-update rebuild+restart of `@sports-bar/utils` consumers.
+
 ## v2.67.1 — Docs: Hermes Autonomous Fleet-Ops Loop plan (no setup required) (2026-06-16)
 
 **Branch landed:** main. **No setup required — documentation only.** Adds `docs/HERMES_AUTONOMOUS_OPS_PLAN.md`: the design for the detect→diagnose→correlate→propose loop (task #359), to be built on T4-day (#358) onward. No code, no env, no DB change. Operational context recorded the same day (not a version requirement): the fleet auto-update freeze was resolved by migrating the `auto-update.sh` checkpoint from `ANTHROPIC_API_KEY` to Claude OAuth across all 6 boxes (Anthropic credits exhausted → checkpoint_a 400s), and hub mode (`ESPN_HUB_ENABLED`/`RAIL_HUB_ENABLED`) was enabled fleet-wide (Holmgren + Lucky's + the 4 Green Bay boxes). RAG re-scan of this doc runs via the auto-update path when main merges to each location (Standing Rule 11).
