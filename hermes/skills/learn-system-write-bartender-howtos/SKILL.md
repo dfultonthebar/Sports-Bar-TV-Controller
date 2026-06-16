@@ -20,6 +20,46 @@ mic isn't working" the AI gives a real, correct, do-this-now answer.
 The audience is a bartender with **zero tech background** mid-shift. That governs
 everything (see Gotcha #13 + the bartender-lens rule).
 
+## THE RECIPE (the operator handed this loop to me — run it myself)
+
+The single strongest trigger: **a bartender got a generic, web-grade chatbot answer** —
+"check your remote", links to xfinity.com / directv.com, "consult your provider". That is
+a BUG, not a weak answer: it means the grounding doc for that topic is missing OR thin/wrong,
+so the LLM fell back to its training data instead of OUR system. Treat every one like a
+filed defect. (Real example: "how do I change a channel on a cable box" returned Xfinity +
+DirecTV web links — because change-channel-preset.md was thin and described the wrong flow.)
+
+I (Hermes) drive the loop; **Claude does the code archaeology** (I can't read the codebase,
+Claude can — that's why ask_claude_code exists). Steps:
+
+1. **Reproduce / capture the bad answer.** Note the exact bartender question.
+2. **Delegate the code-trace to Claude** via `ask_claude_code` — give it a precise trace
+   prompt, e.g.:
+   > "Trace the EXACT end-to-end flow of how a bartender does <X> using the bartender
+   >  remote in this codebase. I need ground truth for a plain-English how-to, not
+   >  assumptions. Report with file:line cites: (a) the UI entry point and what they tap
+   >  first; (b) the component + exact on-screen button labels/text they see; (c) the
+   >  API call(s) the tap fires and the payload; (d) what happens server-side down to the
+   >  hardware (IR/TCP/etc); (e) failure modes a bartender hits + the exact on-screen error
+   >  text. Quote real button labels verbatim."
+   Claude reads `CableBoxRemote.tsx`, the route handlers, the IR send path, etc. and returns
+   the real flow. **This is the part that makes the doc correct instead of made-up.**
+3. **Check for an existing doc** in `docs/bartender-help/` — a THIN/WRONG one (like the old
+   change-channel doc) is as bad as none. Improve it **in place, same slug** so chat links
+   hold. Only create a new slug if the topic is genuinely new.
+4. **Write it bartender-grade** from Claude's trace (the register rules below — plain English,
+   look+location not model names, one action per step, recovery inline, escalation at the end,
+   "you can't break anything"). Use the REAL on-screen labels Claude quoted ("Select Source",
+   "Quick Channel Access", the green "ENTER", "✗ Failed: Connection timeout").
+5. **Land it on main** (guarded — via `ask_claude_code` to write+commit, or a maintenance todo
+   carrying the full markdown for a human) + bump version + **RAG-rescan**
+   (`scripts/rag-rescan-if-needed.sh`).
+6. **Verify by asking the chatbot the ORIGINAL question** — confirm it now answers from our
+   doc in plain English, no web links. If it's still generic, the rescan didn't take or the
+   doc's too thin — fix and repeat.
+
+Worked reference commit: `cb174e3e` (v2.64.1) rewrote change-channel-preset.md this exact way.
+
 ## When to use
 - A bartender asks the chatbot something there's no good help doc for yet.
 - A recurring real-world problem has no how-to (mic cutting out, TV showing the

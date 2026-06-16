@@ -185,22 +185,22 @@ At 3:55 PM, customer asks "are you putting the Bears on at 4?" — you can say "
 
 ### Quick check first
 
-On the iPad, tap **Video**, then tap the TV the customer is sitting near. The source list panel slides up. If the TV's already on a cable box, skip ahead — otherwise tap the cable or DirecTV source first.
+First make sure the TV is on the right box: on the iPad tap **Video**, tap the TV the customer is near, and route it to the cable or DirecTV source if it isn't already. Changing the *channel* happens on the **Remote** tab (next).
 
 ### What to do (preset — easiest)
 
 Most popular channels have a one-tap preset. You don't have to remember channel numbers.
 
-1. On the source panel, look for a section called **Channel Presets** or a row of small tiles with channel names.
-2. Find the channel the customer asked for. The presets usually cover Bally Sports Wisconsin+, FanDuel Sports Network, ESPN, Fox Sports 1, the major networks, and the common news channels.
-3. **Tap the preset.** The cable box tunes within 3-5 seconds.
+1. Tap the **Remote** tab at the bottom. Under **Select Source**, tap the box that feeds this TV (e.g. "Cable Box - Spectrum").
+2. Look for the **Quick Channel Access** tiles. They usually cover Bally Sports Wisconsin+, FanDuel Sports Network, ESPN, Fox Sports 1, the major networks, and common news channels.
+3. **Tap the tile** for the channel the customer asked for. The cable box tunes within 3-5 seconds.
 
 ### What to do (no preset — type the number)
 
-1. On the source panel, look for a number pad or a **Channel** field.
+1. Still on the **Remote** tab with that box selected, use the **number pad**.
 2. Tap the digits — for example, **2-0-6** for ESPN.
-3. Tap **Enter** or **Send**. Some setups auto-send after a 1-second pause.
-4. Wait 3-5 seconds. Cable boxes are slow.
+3. Tap the green **ENTER** button (or just wait ~3 seconds — it sends on its own).
+4. Wait 3-5 seconds. Cable boxes are slow. (Full walkthrough: **change-channel-preset.md**.)
 
 ### How you know it worked
 

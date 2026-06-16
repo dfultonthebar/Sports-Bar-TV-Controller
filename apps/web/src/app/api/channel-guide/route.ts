@@ -183,6 +183,25 @@ function parseListingDate(date: string | undefined, time: string): Date {
   return new Date(`${new Date().toDateString()} ${time}`)
 }
 
+// Feature B2: when RAIL_HUB_ENABLED, pull the Rail guide via the hub (cached
+// per-market by the location's own SPORTS_GUIDE_USER_ID) and fall back to a
+// direct Rail fetch on ANY hub failure — today's exact behavior. Everything
+// downstream (resolver, preset mapping, RSN split) is unchanged.
+const RAIL_HUB_ENABLED = process.env.RAIL_HUB_ENABLED === 'true'
+
+async function fetchRailGuide(days: number) {
+  if (RAIL_HUB_ENABLED) {
+    try {
+      const { fetchRailViaHub } = await import('@/lib/hub-rail-sync')
+      const viaHub = await fetchRailViaHub(days)
+      if (viaHub) return viaHub
+    } catch {
+      /* fall through to a direct Rail fetch */
+    }
+  }
+  return getSportsGuideApi().fetchDateRangeGuide(days)
+}
+
 export async function POST(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.SPORTS_DATA)
   if (!rateLimit.allowed) {
@@ -275,9 +294,8 @@ export async function POST(request: NextRequest) {
 
       logInfo(`Built station lookup with ${stationLookup.size} entries`)
 
-      // NOW: Fetch guide data from Rail API
-      const api = getSportsGuideApi()
-      const guide = await api.fetchDateRangeGuide(days)
+      // NOW: Fetch guide data from Rail API (via hub if RAIL_HUB_ENABLED, else direct)
+      const guide = await fetchRailGuide(days)
       logInfo(`The Rail API returned ${guide.listing_groups?.length || 0} listing groups`)
 
       // The lineup key to use for this device type
@@ -1503,9 +1521,8 @@ export async function POST(request: NextRequest) {
         const isEspnFamilyStation = (s: string) =>
           ESPN_FAMILY_PATTERNS.some((re) => re.test(s.trim()))
 
-        const api = getSportsGuideApi()
         const railDays = Math.max(1, days)
-        const railGuide = await api.fetchDateRangeGuide(railDays)
+        const railGuide = await fetchRailGuide(railDays)
 
         let railInjected = 0
         let railSkippedDupe = 0

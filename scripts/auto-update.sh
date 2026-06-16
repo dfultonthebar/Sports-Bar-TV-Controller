@@ -1760,6 +1760,22 @@ if [ -x "$REPO_ROOT/scripts/rag-rescan-if-needed.sh" ]; then
   fi
 fi
 
+# v2.64.x — Self-updating docs (Standing Rule 1 automated): flag code-grounded
+# docs whose source code changed in this merge, so they get refreshed before
+# they rot. Maps live in docs/doc-source-map.json; checker is non-fatal and
+# files ONE aggregated "refresh stale docs" TODO (source=self-updating-docs).
+# See docs/SELF_UPDATING_DOCS.md. A doc with wrong steps is worse than none —
+# a bartender follows it and it fails.
+if [ -f "$REPO_ROOT/scripts/docs/check-stale-docs.mjs" ] && command -v node >/dev/null 2>&1; then
+  STALE_SINCE="${PRE_MERGE_SHA:-HEAD~5}"
+  if node "$REPO_ROOT/scripts/docs/check-stale-docs.mjs" --since "$STALE_SINCE" --file-todo \
+       >/tmp/auto-update-stale-docs.log 2>&1; then
+    log "stale-docs check: $(grep -E 'need refresh|no docs stale' /tmp/auto-update-stale-docs.log | head -1)"
+  else
+    log "⚠ stale-docs check: returned non-zero (continuing — see /tmp/auto-update-stale-docs.log)"
+  fi
+fi
+
 # Push the merge commit back to origin so the Fleet Dashboard (v2.24.0+)
 # sees this location's current version. Before v2.24.6, auto-update.sh
 # merged main locally, built, verified, restarted — but never pushed. The
