@@ -32,7 +32,7 @@ Watch with `nvidia-smi` + `ollama ps`.
 
 - [ ] **Operator (Proxmox host):** snapshot CT 212 — `pct snapshot 212 pre-t4` (rollback anchor).
 - [ ] **Operator (host):** confirm IOMMU/T4 ok — `dmesg | grep -iE 'DMAR|IOMMU'`, decide driver (T4 = Turing → `nvidia-driver-550-server`+ or datacenter `.run`).
-- [ ] **Me:** capture CPU baseline on hermes (`ollama run llama3.1:8b` timed short prompt) so we have before/after tok/s.
+- [x] **CPU baseline captured (2026-06-16):** `llama3.1:8b` on hermes (4c/8 GB, no GPU) = **5.25 gen tok/s** (128 tok; prompt-eval 25.3 tok/s; load 160 ms; 25.7 s total). Phase-2 GPU target ~40–60+ tok/s (≈8–12×); fleet iGPU boxes do ~14 tok/s for reference. `qwen2.5:14b` not CPU-benched (9 GB model on 8 GB RAM would swap — that's exactly what the T4 fixes).
 - [x] Models pre-pulled (verified). Software staged (v2.68.0 on main).
 
 ## Phase 1 — Card + host passthrough  ⟶ **OPERATOR, root on the Proxmox HOST**

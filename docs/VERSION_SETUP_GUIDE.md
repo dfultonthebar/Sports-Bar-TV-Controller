@@ -35,6 +35,12 @@ is the archive.
 
 ---
 
+## v2.68.2 — Docs: record CPU baseline in T4-Day Runbook (no setup required) (2026-06-16)
+
+**Branch landed:** main. **No setup required.** Recorded the pre-GPU CPU baseline in `docs/T4_DAY_RUNBOOK.md` Phase 0 — `llama3.1:8b` on hermes (4c/8 GB, no GPU) = 5.25 gen tok/s — so Phase 2 has a concrete before/after to prove the T4 win (~8–12× expected).
+
+---
+
 ## v2.68.1 — Docs: T4-Day Runbook (no setup required) (2026-06-16)
 
 **Branch landed:** main. **No setup required.** New `docs/T4_DAY_RUNBOOK.md` — the live execution plan for installing the T4 GPU into CT 212 (`hermes`, an LXC) and flipping the staged software (OLLAMA_REMOTE_BASE, DIAGNOSE_ENABLED, the diagnose LLM, chat migration, Honcho deriver) onto the GPU. Phased, Holmgren-canaried, each step reversible. Critical path = operator/host GPU passthrough (LXC device bind, not vfio); models (`qwen2.5:14b`, `nomic-embed-text` 768-dim, `llama3.1:8b`) already pulled on hermes. Tracks #358; unblocks #359 + #364.
