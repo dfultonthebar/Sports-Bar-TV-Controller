@@ -35,6 +35,17 @@ module.exports = {
         SPORTS_GUIDE_API_KEY: process.env.SPORTS_GUIDE_API_KEY,
         SPORTS_GUIDE_USER_ID: process.env.SPORTS_GUIDE_USER_ID,
         SPORTS_GUIDE_API_URL: 'https://guide.thedailyrail.com/api/v1',
+        // Feature B1 (opt-in, default off): pull ESPN game schedules from the
+        // central hub instead of every box hitting ESPN's 24 leagues every 10
+        // min. On ANY hub failure the box falls back to its local ESPN sync, so
+        // the bartender guide never depends on the hub.
+        ESPN_HUB_ENABLED: process.env.ESPN_HUB_ENABLED || 'false',
+        HUB_GAME_URL: process.env.HUB_GAME_URL || 'http://100.124.165.26:3010',
+        // Feature B2 (opt-in, default off): pull the Rail Media guide via the hub
+        // (cached per-market by this box's SPORTS_GUIDE_USER_ID). On ANY hub
+        // failure the box fetches Rail directly. The box sends its own Rail key;
+        // the hub never stores it.
+        RAIL_HUB_ENABLED: process.env.RAIL_HUB_ENABLED || 'false',
         // Auth system — bind to the location row in the DB. Without this,
         // validatePIN() falls back to AUTH_CONFIG.LOCATION_ID='default-location'
         // and every login fails with "Invalid PIN".
