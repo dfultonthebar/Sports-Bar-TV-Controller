@@ -35,6 +35,20 @@ is the archive.
 
 ---
 
+## v2.68.0 — T4-day prep: ollama-client migration + Hermes Layer 1 scaffold (no setup required; two new default-OFF env vars) (2026-06-16)
+
+**Branch landed:** main. **No setup required now** — both changes are inert until their env flags are set on T4-day (#358).
+
+Two additive, default-safe prep items so T4-day is an env-flip, not a code change:
+
+1. **ollama-client call-site migration.** AI Suggest (`api/scheduling/ai-suggest`) and RAG answer-gen (`packages/rag-server/src/llm-client.ts`) now route through `@sports-bar/ollama-client` (remote-first → local fallback). New env **`OLLAMA_REMOTE_BASE`** (in `ecosystem.config.js`, default `''`). **Unset/empty ⇒ byte-identical to today** (every policy resolves to local `localhost:11434`). On T4-day: set `OLLAMA_REMOTE_BASE=<shared GPU Ollama URL>` in `.env` + `pm2 delete && pm2 start ecosystem.config.js` → those calls move to the T4 with automatic local fallback. `chat/route.ts` deliberately NOT migrated (native tool-call streaming; tracked as a follow-up needing live Playwright verification).
+
+2. **Hermes Layer 1 diagnose scaffold (#359).** `api/error-watch/todo` gains a flag-gated diagnose step (RAG enrichment now; LLM call stubbed for T4-day). New env **`DIAGNOSE_ENABLED`** (default `'false'`). **Unset/OFF ⇒ the detect→TODO path is byte-for-byte unchanged.** When ON: a RAG lookup appends "Relevant docs:" to the filed TODO; failures are caught and never block TODO creation.
+
+**Verification (optional, both default-off so production behavior is unchanged):** `grep -E "OLLAMA_REMOTE_BASE|DIAGNOSE_ENABLED" ecosystem.config.js` shows both present. Build is green. No DB/schema changes. Rolls out via normal auto-update rebuild+restart.
+
+---
+
 ## v2.67.2 — Fix: TODO GitHub sync pushes to current branch, best-effort (no setup required) (2026-06-16)
 
 **Branch landed:** main. **No setup required.** `packages/utils/src/git-sync.ts` `commitAndPush()` no longer pushes `TODO_LIST.md` to a hardcoded `main` — it now pushes to the **current branch** (`git rev-parse --abbrev-ref HEAD`; explicit `config.targetBranch` still overrides) and a push failure is **best-effort** (logged at info level, never thrown/ERROR). Root cause: a stray `backup(Leg Lamp)` commit on Leg Lamp's local `main` (1 ahead / 962 behind) made every `git push origin main` from the TODO/venue-discovery sync permanently rejected → continuous `[ERROR] Error syncing TODOs to GitHub` spam. Zero operational impact (TODOs persist in the DB; box runs on its location branch). Also fixes a latent Standing-Rule-9 issue (location boxes must never push to main). **One-time per-box cleanup, already applied to Leg Lamp:** `git update-ref refs/heads/main origin/main` (stray commit preserved under tag `leglamp-stranded-main-358c3954`). Other fleet boxes were 0-ahead (no cleanup needed). Rolls out via auto-update rebuild+restart of `@sports-bar/utils` consumers.
