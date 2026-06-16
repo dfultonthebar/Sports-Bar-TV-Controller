@@ -5,6 +5,7 @@
  */
 
 import { logger } from '@sports-bar/logger';
+import { ollamaGenerate, ollamaStream } from '@sports-bar/ollama-client';
 import { RAGConfig, determineQueryComplexity } from './config';
 
 export interface LLMOptions {
@@ -222,29 +223,21 @@ Question: ${query}
 Answer:`;
 
   try {
-    const response = await fetch(`${RAGConfig.ollamaUrl}/api/generate`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
+    // Routed through @sports-bar/ollama-client (remote-first → local fallback).
+    // With no OLLAMA_REMOTE_BASE configured this resolves to the same local
+    // Ollama as the previous direct fetch. Model/temperature/num_predict/top_p/
+    // top_k preserved verbatim.
+    const data = await ollamaGenerate({
+      model: RAGConfig.llmModel,
+      prompt,
+      temperature: options.temperature || 0.7,
+      options: {
+        num_predict: maxTokens,
+        top_p: 0.9,
+        top_k: 40,
       },
-      body: JSON.stringify({
-        model: RAGConfig.llmModel,
-        prompt,
-        temperature: options.temperature || 0.7,
-        stream: false,
-        options: {
-          num_predict: maxTokens,
-          top_p: 0.9,
-          top_k: 40,
-        },
-      }),
-    });
+    } as any, { feature: 'rag-query' });
 
-    if (!response.ok) {
-      throw new Error(`Ollama API error: ${response.status} ${response.statusText}`);
-    }
-
-    const data = await response.json();
     const duration = Date.now() - startTime;
 
     // Clean up response
@@ -304,55 +297,18 @@ Question: ${query}
 Answer:`;
 
   try {
-    const response = await fetch(`${RAGConfig.ollamaUrl}/api/generate`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
+    // Routed through @sports-bar/ollama-client (remote-first → local fallback).
+    // ollamaStream yields response token strings directly; with no remote base
+    // configured it streams from the same local Ollama as the previous direct
+    // fetch. Model/temperature/num_predict preserved verbatim.
+    yield* ollamaStream({
+      model: RAGConfig.llmModel,
+      prompt,
+      temperature: options.temperature || 0.7,
+      options: {
+        num_predict: maxTokens,
       },
-      body: JSON.stringify({
-        model: RAGConfig.llmModel,
-        prompt,
-        temperature: options.temperature || 0.7,
-        stream: true,
-        options: {
-          num_predict: maxTokens,
-        },
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Ollama API error: ${response.status}`);
-    }
-
-    const reader = response.body?.getReader();
-    if (!reader) {
-      throw new Error('No response body');
-    }
-
-    const decoder = new TextDecoder();
-    let buffer = '';
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
-
-      for (const line of lines) {
-        if (line.trim()) {
-          try {
-            const data = JSON.parse(line);
-            if (data.response) {
-              yield data.response;
-            }
-          } catch (e) {
-            // Skip invalid JSON
-          }
-        }
-      }
-    }
+    } as any, { feature: 'rag-query-stream' });
   } catch (error) {
     logger.error('Error streaming LLM', { error });
     throw error;
