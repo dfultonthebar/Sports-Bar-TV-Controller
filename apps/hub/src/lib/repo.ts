@@ -7,6 +7,7 @@ import type {
   MetricsPayload,
   SchedulerPayload,
   ErrorEvent,
+  UpdateEvent,
 } from '@sports-bar/hub-agent/types'
 
 export function getLocation(id: string) {
@@ -108,6 +109,38 @@ export function insertErrors(locationId: string, events: ErrorEvent[]): number {
         signature: e.signature,
         severity: e.severity,
         sample: e.sample,
+        rawPayload: JSON.stringify(e.raw ?? null),
+      })
+      .onConflictDoNothing()
+      .run()
+    inserted += res.changes
+  }
+  return inserted
+}
+
+/** Insert fleet auto-update outcomes (kind:'update'). Dedups on (location, runId). */
+export function insertFleetUpdate(locationId: string, events: UpdateEvent[]): number {
+  const now = Date.now()
+  let inserted = 0
+  for (const e of events) {
+    const res = db
+      .insert(schema.fleetUpdateEvents)
+      .values({
+        id: randomUUID(),
+        locationId,
+        runId: e.runId,
+        occurredAt: e.occurredAt,
+        receivedAt: now,
+        result: e.result,
+        fromVersion: e.fromVersion ?? null,
+        toVersion: e.toVersion ?? null,
+        fromSha: e.fromSha ?? null,
+        toSha: e.toSha ?? null,
+        durationSecs: e.durationSecs ?? null,
+        rollbackTag: e.rollbackTag ?? null,
+        conflictPaths: e.conflictPaths ? JSON.stringify(e.conflictPaths) : null,
+        triggeredBy: e.triggeredBy ?? null,
+        errorMessage: e.errorMessage ?? null,
         rawPayload: JSON.stringify(e.raw ?? null),
       })
       .onConflictDoNothing()

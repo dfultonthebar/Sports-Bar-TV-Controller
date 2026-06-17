@@ -35,6 +35,14 @@ is the archive.
 
 ---
 
+## v2.70.0 — Fleet-update tracking: hub ingest foundation (#359 / Hermes) — DEPLOY: create table (2026-06-16)
+
+**Branch landed:** main. First slice of the operator directive "Hermes tracks + reviews fleet updates" (Track stage; see System Admin todo + docs/HERMES_AUTONOMOUS_OPS_PLAN.md). Adds the **receiving** side only: `IngestKind` gains `'update'`; new `UpdateEvent`/`UpdatePayload` types (`@sports-bar/hub-agent/types`); hub `fleet_update_events` table (dedup on `location_id` + `run_id`); `insertFleetUpdate()` repo helper; `POST /api/ingest/update` (HMAC-gated, mirrors `/api/ingest/errors`). **No box-side reporting yet** — next slice is the hub-agent collector that reads each box's local `auto_update_history` and posts it.
+
+**DEPLOY STEP (hub / CT211 ONLY):** the new `fleet_update_events` table must be created on the hub SQLite DB before the endpoint works — run `npx drizzle-kit push` for `apps/hub` on the hub, or apply a `CREATE TABLE fleet_update_events (...)` from `apps/hub/src/db/schema.ts`. Locations need **no** action. Additive: existing ingest (errors/health/metrics/scheduler) is byte-unchanged.
+
+---
+
 ## v2.69.0 — RAG retrieve-only mode (no setup required) (2026-06-16)
 
 **Branch landed:** main. **No setup required.** `queryDocs` / `POST /api/rag/query` gain an opt-in **`retrieveOnly`** flag (default off). When true, it returns the ranked chunks + `rawContext` and **skips the LLM answer-generation step** — fast and Ollama-independent. For callers that feed retrieved context to their own model (Hermes diagnose, #359), and to harden diagnosis where retrieval quality (not model choice) dominates — proven by the 2026-06-16 phi4-vs-llama A/B. **Verified:** 5 sources + 14 KB `rawContext` in **501 ms** with no Ollama call, `answer=''`, `metadata.model='(retrieve-only)'`. Pure-additive: existing callers (default false) are byte-unaffected.
