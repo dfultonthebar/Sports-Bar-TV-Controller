@@ -35,6 +35,14 @@ is the archive.
 
 ---
 
+## v2.71.0 — Fleet-update tracking: box-side reporting (#359 / Hermes) (2026-06-16)
+
+**Branch landed:** main. Second slice of "Hermes tracks + reviews fleet updates" (Track stage). Adds the **sending** side that feeds the v2.70.0 hub sink: new `collectUpdates()` collector in `@sports-bar/hub-agent` polls the box's own `GET /api/auto-update/runs` (log-parsed, unauthenticated on localhost — same access model as the other collectors, never opens production.db per the orphan-DB-lock gotcha), maps each finished run → `UpdateEvent` (result ∈ success/rollback/conflict/skipped/failed; from/to version+sha; duration; triggeredBy; failure detail; trimmed checkpoint decisions in `raw`), and POSTs `kind:'update'` in the agent's slow cycle (5-min; updates are ~daily so this is ample). In-memory high-water mark with 7-day first-run lookback to backfill recent history; the hub dedups on `(location, runId)` so restarts re-send harmlessly. `result` mapping checks success **before** rollback because auto-update.sh tags a safety-net rollback point at the start of every run — `rollbackTag` is only surfaced when a rollback actually occurred. **`skipped` rows are intentional and valuable** — a daily no-op cron run proves the box's auto-update timer is still firing (Gotcha #11 stuck-timer detection); a box that stops emitting them is stuck.
+
+**DEPLOY STEP:** none beyond the normal pull. Activation requires (a) the v2.70.0 `fleet_update_events` table already created on the hub (see below) and (b) the per-location `sbcc-hub-agent` PM2 sidecar rebuilt + restarted to pick up the new collector — handled by the standard auto-update build + PM2 restart where the agent is deployed. Verified live on Holmgren against real run history (50 runs: 33 skipped / 13 success / 4 rollback, envelope built + signed correctly in `--dry-run`).
+
+---
+
 ## v2.70.0 — Fleet-update tracking: hub ingest foundation (#359 / Hermes) — DEPLOY: create table (2026-06-16)
 
 **Branch landed:** main. First slice of the operator directive "Hermes tracks + reviews fleet updates" (Track stage; see System Admin todo + docs/HERMES_AUTONOMOUS_OPS_PLAN.md). Adds the **receiving** side only: `IngestKind` gains `'update'`; new `UpdateEvent`/`UpdatePayload` types (`@sports-bar/hub-agent/types`); hub `fleet_update_events` table (dedup on `location_id` + `run_id`); `insertFleetUpdate()` repo helper; `POST /api/ingest/update` (HMAC-gated, mirrors `/api/ingest/errors`). **No box-side reporting yet** — next slice is the hub-agent collector that reads each box's local `auto_update_history` and posts it.
