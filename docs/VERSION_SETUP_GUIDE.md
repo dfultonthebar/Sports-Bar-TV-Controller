@@ -35,6 +35,18 @@ is the archive.
 
 ---
 
+## v2.72.1 — SBCC hub DEPLOYED to v2.72.0 — fleet-update tracking LIVE (#359) (2026-06-16)
+
+**Operational, not code** (doc + version marker only). The central SBCC hub (`100.124.165.26:3010`) was deployed to the v2.72.0 hub build, completing the v2.70.0/v2.72.0 "DEPLOY STEP" items. Done as root (the hub is a build-and-copy deployment — full mechanism now in the `reference-sbcc-hub-deploy` memory):
+- `fleet_update_events` table created in `/opt/sbcc-hub-data/hub.db` (surgical `CREATE TABLE IF NOT EXISTS` — `migration.sql` lacks `IF NOT EXISTS` so re-running `migrate.js` would abort).
+- New hub `apps/hub` standalone bundle shipped + `sbcc-hub` restarted → `POST /api/ingest/update` live (400, was 404); dashboard + static + `/api/locations` all 200.
+- The 6 central `agent-<location>` collectors (`/opt/sbcc-agent`) redeployed with the v2.71.0 `collectUpdates()` and restarted.
+- **Verified end-to-end:** 50 `fleet_update_events` rows flowing from all 6 locations (dedup on `(location, runId)` holding). **First real signal:** Appleton's latest run (`auto-update-2026-06-17-03-42`) reported `failed`, and Appleton/Graystone/Lucky's all carry `rollback`/`failed` history — the fleet is mostly on v2.67.0, behind main.
+
+**No location action.** Fleet boxes already report via the central agents (which poll each box's existing `/api/auto-update/runs`). The Hermes SHADOW reviewer (v2.72.0) activates per-box where `OLLAMA_REMOTE_BASE` is set.
+
+---
+
 ## v2.72.0 — Hermes SHADOW checkpoint review (#359 / Hermes) (2026-06-16)
 
 **Branch landed:** main. Third slice — Hermes starts *reviewing* fleet updates (Review stage), in SHADOW mode. New `scripts/checkpoint-hermes.sh` asks the shared T4 Ollama (the "Hermes" ops-reviewer role, default model `qwen2.5:14b`) for its own GO/CAUTION/STOP verdict on each auto-update checkpoint, grounded by the box's **retrieve-only RAG** (v2.69.0) over the version guide + gotchas. `auto-update.sh` calls it at both decision points in `run_checkpoint` (deterministic fast-path resolve + AI-path final) via the new `hermes_shadow_review()` helper, which logs `[HERMES-SHADOW] Checkpoint X: real=<v> hermes=<v> agree=<yes|NO|n/a>` and appends a JSONL row to `$DATA_DIR/hermes-shadow/checkpoint-shadow.jsonl`. **Advisory ONLY — it never gates the update**; Claude/deterministic remains the sole gate. We accumulate the agreement record; a later slice flips Hermes to primary with Claude as fallback once shadow proves it agrees.
