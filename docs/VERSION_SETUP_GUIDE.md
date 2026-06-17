@@ -35,6 +35,12 @@ is the archive.
 
 ---
 
+## v2.69.0 — RAG retrieve-only mode (no setup required) (2026-06-16)
+
+**Branch landed:** main. **No setup required.** `queryDocs` / `POST /api/rag/query` gain an opt-in **`retrieveOnly`** flag (default off). When true, it returns the ranked chunks + `rawContext` and **skips the LLM answer-generation step** — fast and Ollama-independent. For callers that feed retrieved context to their own model (Hermes diagnose, #359), and to harden diagnosis where retrieval quality (not model choice) dominates — proven by the 2026-06-16 phi4-vs-llama A/B. **Verified:** 5 sources + 14 KB `rawContext` in **501 ms** with no Ollama call, `answer=''`, `metadata.model='(retrieve-only)'`. Pure-additive: existing callers (default false) are byte-unaffected.
+
+---
+
 ## v2.68.2 — Docs: record CPU baseline in T4-Day Runbook (no setup required) (2026-06-16)
 
 **Branch landed:** main. **No setup required.** Recorded the pre-GPU CPU baseline in `docs/T4_DAY_RUNBOOK.md` Phase 0 — `llama3.1:8b` on hermes (4c/8 GB, no GPU) = 5.25 gen tok/s — so Phase 2 has a concrete before/after to prove the T4 win (~8–12× expected).
