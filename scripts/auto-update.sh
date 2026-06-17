@@ -534,6 +534,38 @@ cleanup_on_error() {
 trap cleanup_on_error EXIT
 
 # ---------------------------------------------------------------------------
+# Hermes SHADOW reviewer (#359 Layer 3) — advisory only, NEVER gates the update.
+# After the real (deterministic / Claude) decision is made, ask the shared T4
+# model for its own verdict and log both so we accumulate an agreement record.
+# Once shadow data proves Hermes agrees, a later slice flips it to primary with
+# Claude as fallback. Fully non-fatal: any failure logs UNAVAILABLE and moves on.
+# ---------------------------------------------------------------------------
+hermes_shadow_review() {
+  local label=$1 prompt_file=$2 real_decision=$3
+  [ -x "$REPO_ROOT/scripts/checkpoint-hermes.sh" ] || return 0
+  # Skip the T4 round-trip entirely where no remote model is configured.
+  [ -n "${OLLAMA_REMOTE_BASE:-}" ] || return 0
+
+  local shadow_out hermes_verdict real_verdict agree="n/a"
+  shadow_out=$(timeout 150 bash "$REPO_ROOT/scripts/checkpoint-hermes.sh" "$label" "$prompt_file" 2>/dev/null | head -1 || true)
+  hermes_verdict=$(printf '%s' "$shadow_out" | sed -E 's/^DECISION: ([A-Z]+).*/\1/')
+  [ -n "$hermes_verdict" ] || hermes_verdict="UNAVAILABLE"
+  real_verdict=$(printf '%s' "$real_decision" | sed -E 's/.*DECISION: ([A-Z]+).*/\1/')
+  [ -n "$real_verdict" ] || real_verdict="UNKNOWN"
+  if [ "$hermes_verdict" != "UNAVAILABLE" ]; then
+    [ "$hermes_verdict" = "$real_verdict" ] && agree="yes" || agree="NO"
+  fi
+  log "[HERMES-SHADOW] Checkpoint $label: real=$real_verdict hermes=$hermes_verdict agree=$agree"
+
+  # Accumulate one JSONL row per checkpoint for later agreement analysis.
+  local shadow_dir="$DATA_DIR/hermes-shadow"
+  mkdir -p "$shadow_dir" 2>/dev/null || true
+  printf '{"ts":"%s","run":"%s","branch":"%s","label":"%s","real":"%s","hermes":"%s","agree":"%s"}\n' \
+    "$(date -u +%FT%TZ)" "${RUN_TS:-?}" "${BRANCH:-?}" "$label" "$real_verdict" "$hermes_verdict" "$agree" \
+    >> "$shadow_dir/checkpoint-shadow.jsonl" 2>/dev/null || true
+  return 0
+}
+
 # Checkpoint helper — invokes Claude Code CLI and parses the DECISION line
 # ---------------------------------------------------------------------------
 run_checkpoint() {
@@ -572,6 +604,7 @@ run_checkpoint() {
           decision="$det_decision"
           decision_normalized=$(echo "$decision" | sed -E 's/^[^A-Z]*//')
           rm -f "$det_out" "$out_file"
+          hermes_shadow_review "$label" "$prompt_file" "$decision_normalized"
           # Jump to the case statement at end of function via a goto-style
           # variable. (Bash has no goto; we just inline the case here.)
           case "$decision_normalized" in
@@ -655,6 +688,8 @@ run_checkpoint() {
   cat "$out_file" >> "$LOG_FILE"
   log "--- end Checkpoint $label response ---"
   rm -f "$out_file"
+
+  hermes_shadow_review "$label" "$prompt_file" "$decision_normalized"
 
   case "$decision_normalized" in
     "DECISION: GO"*)
