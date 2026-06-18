@@ -39,15 +39,13 @@ if [ -z "$PROMPT_FILE" ] || [ ! -f "$PROMPT_FILE" ]; then
 fi
 command -v curl >/dev/null 2>&1 || emit "UNAVAILABLE curl not found"
 
-# qwen2.5:14b on the T4 is the stronger reviewer; llama3.1:8b is the
-# fleet-standard model present on every box's local Ollama.
-if [ -n "${HERMES_CHECKPOINT_MODEL:-}" ]; then
-  MODEL="$HERMES_CHECKPOINT_MODEL"
-elif [ -n "${OLLAMA_REMOTE_BASE:-}" ]; then
-  MODEL="qwen2.5:14b"
-else
-  MODEL="llama3.1:8b"
-fi
+# Default to the SMALL model (llama3.1:8b, ~4.9GB) everywhere — on the shared T4
+# it co-resides with the trading bot's phi4-trader (9.1GB) + nomic (0.3GB) =
+# 14.3GB < 15GB, so the checkpoint NEVER evicts "Phil" even if it runs during
+# market hours. It's the fleet-standard model present on every box's local
+# Ollama too. Override with HERMES_CHECKPOINT_MODEL=qwen2.5:14b for a stronger
+# review during off-hours when Phil isn't resident.
+MODEL="${HERMES_CHECKPOINT_MODEL:-llama3.1:8b}"
 LOCAL_API="${LOCAL_API_URL:-http://localhost:3001}"
 PROMPT_BODY="$(cat "$PROMPT_FILE")"
 
