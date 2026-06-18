@@ -35,6 +35,20 @@ is the archive.
 
 ---
 
+## v2.73.4 — checkpoint-hermes embeds the real diff for Checkpoint A (fixes the still-frozen fleet) (2026-06-18)
+
+**Branch landed:** main. **This is the actual fix for the fleet freeze** — v2.73.0 routed Checkpoint A to local AI, but the local model still failed.
+
+**Root cause:** `scripts/prompts/checkpoint-a.txt` is an *agentic* prompt — it tells the reviewer to run `git log -p HEAD..origin/main` to SEE the diff. Cloud Claude (with bash tools) could; the local llama3.1:8b in `checkpoint-hermes.sh` gets it as static text with **no tools and no diff content**, so it ran ~4 min and emitted no parseable `DECISION:` line → `UNAVAILABLE` → cloud fallback → Claude-CLI 401 → STOP. Observed live on graystone 2026-06-18 13:36.
+
+**Fix:** `checkpoint-hermes.sh` now, for `LABEL=A`, gathers the diff **itself** (it runs in the repo): `git log --oneline HEAD..origin/main`, `git diff --stat`, the `schema.ts` diff (capped 250 lines — the real risk surface), and the `package.json` diff. It hands the model a concise, non-agentic judge prompt with explicit STOP rules (non-additive schema change to an EXISTING table / committed secrets / deletion of auto-update.sh|verify-install.sh) plus the embedded evidence. New tables + new-table NOT NULL columns are correctly GO. Smaller prompt than the 6000-token agentic one → faster eval too. Checkpoints B/C unchanged (their prompts already embed verify-install evidence).
+
+**Also:** `.claude/hooks/pre-fleet-ssh-cd.sh` upgraded to AUTO-INJECT `cd /home/ubuntu/Sports-Bar-TV-Controller` into fleet-SSH payloads (was deny-only). Dev-tooling only; inert on locations (settings.local.json that wires it is gitignored).
+
+**No setup required.** Deploy note for the 3 still-frozen boxes (graystone/appleton/greenville on 2.67.0): each needs the v2.73.0+v2.73.4 `checkpoint-hermes.sh` + `auto-update.sh` **committed on its location branch** (so the pre-clean of PRE_MERGE_RESET_PATHS can't revert auto-update.sh before Checkpoint A) — `git fetch && git checkout origin/main -- scripts/checkpoint-hermes.sh scripts/auto-update.sh && git add -A && git commit`, then trigger auto-update. Verify: the run log shows `Checkpoint A: LOCAL AI reviewer` → `DECISION: GO` (not `UNAVAILABLE`).
+
+---
+
 ## v2.73.3 — Cable-box tune sends Select/OK to commit the channel (2026-06-18)
 
 **Branch landed:** main. **No setup required** — purely a behavior fix to IR cable-box tuning.

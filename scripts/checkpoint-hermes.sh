@@ -82,9 +82,45 @@ DECISION: CAUTION   — proceed but monitor closely
 DECISION: STOP      — do not proceed; roll back
 The final line MUST start with "DECISION: " followed by exactly one of GO, CAUTION, or STOP.'
 
-USER_CONTENT="CHECKPOINT: ${LABEL}"$'\n\n'"=== CHECKPOINT PROMPT / EVIDENCE ==="$'\n'"${PROMPT_BODY}"
-if [ -n "$RAG_CONTEXT" ]; then
-  USER_CONTENT="${USER_CONTENT}"$'\n\n'"=== RELEVANT DOCS (version guide / gotchas, retrieved) ==="$'\n'"${RAG_CONTEXT}"
+# Checkpoint A's stock prompt (checkpoint-a.txt) is written for an AGENTIC
+# reviewer with bash tools — it tells the reviewer to run `git log -p
+# HEAD..origin/main` to SEE the diff. The local model has no tools and the diff
+# is NOT in the prompt, so it can't judge and never emits a parseable DECISION
+# (observed: 4-min run → UNAVAILABLE on graystone, v2.73.3). Fix: for LABEL=A we
+# gather the actual diff evidence ourselves (we run in the repo) and hand the
+# model a concise, non-agentic judge task instead of the verbose agentic prompt.
+if [ "$LABEL" = "A" ]; then
+  GH_COMMITS="$(git log --oneline HEAD..origin/main 2>/dev/null | head -40)"
+  GH_STAT="$(git diff --stat HEAD..origin/main 2>/dev/null | tail -60)"
+  GH_SCHEMA="$(git diff HEAD..origin/main -- 'packages/database/src/schema.ts' 'apps/web/src/db/schema.ts' 2>/dev/null | head -250)"
+  GH_PKG="$(git diff HEAD..origin/main -- package.json 2>/dev/null | head -60)"
+  USER_CONTENT="You are reviewing a pending git merge from origin/main onto a location branch of the Sports Bar TV Controller. Decide GO / CAUTION / STOP from the evidence below. You CANNOT run commands — everything you need is already provided.
+
+DECISION RULES:
+- STOP only if you actually SEE one of: (a) a NON-additive schema change to an EXISTING table — a new NOT NULL column WITHOUT a default added to a table that already has rows, a renamed column, or a DROP TABLE that still holds rows; (b) accidentally-committed secrets in source (*.pem, hardcoded API tokens/passwords); (c) deletion of scripts/auto-update.sh or scripts/verify-install.sh.
+- A brand-new table, or a NOT NULL column on a brand-new table, is SAFE (no existing rows to violate) → GO, not STOP.
+- CAUTION for: additive schema change (new table / new nullable column on existing table), an API-contract change, or a minor/patch dependency bump with no documented break.
+- GO otherwise. Location data files (apps/web/data/*.json, .env, data/) and package.json / package-lock.json are auto-resolved by the updater — NEVER STOP for those.
+
+=== PENDING COMMITS (HEAD..origin/main) ===
+${GH_COMMITS:-(none)}
+
+=== FILE CHANGE STAT ===
+${GH_STAT:-(none)}
+
+=== SCHEMA DIFF (main risk surface; empty means no schema change) ===
+${GH_SCHEMA:-(no changes to schema.ts)}
+
+=== package.json DIFF (dependency changes) ===
+${GH_PKG:-(no changes)}"
+  if [ -n "$RAG_CONTEXT" ]; then
+    USER_CONTENT="${USER_CONTENT}"$'\n\n'"=== RELEVANT DOCS (gotchas, retrieved) ==="$'\n'"${RAG_CONTEXT}"
+  fi
+else
+  USER_CONTENT="CHECKPOINT: ${LABEL}"$'\n\n'"=== CHECKPOINT PROMPT / EVIDENCE ==="$'\n'"${PROMPT_BODY}"
+  if [ -n "$RAG_CONTEXT" ]; then
+    USER_CONTENT="${USER_CONTENT}"$'\n\n'"=== RELEVANT DOCS (version guide / gotchas, retrieved) ==="$'\n'"${RAG_CONTEXT}"
+  fi
 fi
 
 REQ="$(python3 -c '
