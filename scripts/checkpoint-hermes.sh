@@ -30,16 +30,24 @@ emit() { printf 'DECISION: %s\n' "$1"; exit 0; }
 if [ "${HERMES_SHADOW_ENABLED:-auto}" = "false" ]; then
   emit "UNAVAILABLE shadow disabled (HERMES_SHADOW_ENABLED=false)"
 fi
-REMOTE_BASE="${OLLAMA_REMOTE_BASE:-}"
-if [ -z "$REMOTE_BASE" ]; then
-  emit "UNAVAILABLE no T4 Ollama configured (OLLAMA_REMOTE_BASE unset)"
-fi
+# Prefer the shared T4 (OLLAMA_REMOTE_BASE) when configured; otherwise use the
+# box's OWN local Ollama (localhost:11434) so every fleet box can self-review
+# its update with no external dependency (no cloud, no central GPU required).
+REMOTE_BASE="${OLLAMA_REMOTE_BASE:-http://localhost:11434}"
 if [ -z "$PROMPT_FILE" ] || [ ! -f "$PROMPT_FILE" ]; then
   emit "UNAVAILABLE prompt file missing"
 fi
 command -v curl >/dev/null 2>&1 || emit "UNAVAILABLE curl not found"
 
-MODEL="${HERMES_CHECKPOINT_MODEL:-qwen2.5:14b}"
+# qwen2.5:14b on the T4 is the stronger reviewer; llama3.1:8b is the
+# fleet-standard model present on every box's local Ollama.
+if [ -n "${HERMES_CHECKPOINT_MODEL:-}" ]; then
+  MODEL="$HERMES_CHECKPOINT_MODEL"
+elif [ -n "${OLLAMA_REMOTE_BASE:-}" ]; then
+  MODEL="qwen2.5:14b"
+else
+  MODEL="llama3.1:8b"
+fi
 LOCAL_API="${LOCAL_API_URL:-http://localhost:3001}"
 PROMPT_BODY="$(cat "$PROMPT_FILE")"
 

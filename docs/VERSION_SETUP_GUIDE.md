@@ -35,6 +35,16 @@ is the archive.
 
 ---
 
+## v2.73.0 — Checkpoint reviewer → LOCAL AI primary (unfreezes the fleet) (2026-06-18)
+
+**Branch landed:** main. **Fixes the fleet-wide auto-update freeze.** Root cause (found via the v2.71 hub tracking): every box was failing `FAIL at step 'checkpoint_a'`. The deterministic pre-check escalates to AI for the big backlog (21 pending commits), and the AI gate was the **Claude Code CLI subscription path** — which returns a 4s empty response (logged-out/monthly-limit) → `UNDETERMINED` → STOP → nothing merges. #363 had removed `ANTHROPIC_API_KEY` to force that CLI/OAuth path; it's inherently fragile.
+
+**Fix:** `run_checkpoint` in `auto-update.sh` now uses **LOCAL AI as the PRIMARY reviewer** — `scripts/checkpoint-hermes.sh` against the box's Ollama (the shared T4 `qwen2.5:14b` if `OLLAMA_REMOTE_BASE` is set, else the box's own `llama3.1:8b` on `localhost:11434`) + retrieve-only RAG → GO/CAUTION/STOP. Cloud (API key → CLI) remains a **fallback only** when local AI returns `UNAVAILABLE`. No cloud auth, no monthly cap, no API key needed. `checkpoint-hermes.sh` updated to fall back to `localhost:11434` + `llama3.1:8b` when no T4 is configured, so every box can self-review. The redundant shadow-review is skipped when local AI was already primary.
+
+**DEPLOY (frozen boxes can't pull this via auto-update — it IS the thing that's broken):** manually `scp scripts/auto-update.sh scripts/checkpoint-hermes.sh` to each frozen box (appleton/graystone/greenville), confirm the box's local Ollama serves `llama3.1:8b`, then re-trigger `auto-update.sh`. The local-AI Checkpoint A passes → the 21-commit backlog merges → box reaches v2.73.x. Verified locally: checkpoint-hermes.sh returns a clean `DECISION: GO` (T4/qwen, ~60s). **Other boxes (leg-lamp/lucky's) get it on their next normal cycle.** Safety net unchanged: deterministic pre-check still catches leaked-secrets / NOT-NULL-without-default migrations BEFORE the AI, and verify-install.sh + rollback still guard the post-merge state.
+
+---
+
 ## v2.72.1 — SBCC hub DEPLOYED to v2.72.0 — fleet-update tracking LIVE (#359) (2026-06-16)
 
 **Operational, not code** (doc + version marker only). The central SBCC hub (`100.124.165.26:3010`) was deployed to the v2.72.0 hub build, completing the v2.70.0/v2.72.0 "DEPLOY STEP" items. Done as root (the hub is a build-and-copy deployment — full mechanism now in the `reference-sbcc-hub-deploy` memory):

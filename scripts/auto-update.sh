@@ -628,15 +628,30 @@ run_checkpoint() {
     fi
   fi
 
-  # v2.32.20 — Default path is direct Anthropic API (pay-per-token, no
-  # subscription cap). The Claude Code CLI subscription path was hitting
-  # "You've hit your org's monthly usage limit" mid-month, failing
-  # Checkpoint B with UNDETERMINED → rollback. API path bills per-token
-  # against ANTHROPIC_API_KEY in .env and has no monthly cap.
-  #
-  # Falls back to the CLI path (with the original PTY/skip-permissions
-  # dance) only when ANTHROPIC_API_KEY is unset — useful for hosts that
-  # haven't been provisioned with an API key yet.
+  # v2.73.0 — LOCAL AI is the PRIMARY checkpoint reviewer (T4 qwen2.5:14b or the
+  # box's own llama3.1:8b via scripts/checkpoint-hermes.sh + retrieve-only RAG).
+  # This removes the cloud-Claude dependency that FROZE the whole fleet: the CLI
+  # subscription path times out / hits the org monthly-limit (4s empty response
+  # → UNDETERMINED → STOP), and the API path needs a key #363 removed. Local AI
+  # has none of those failure modes. Cloud stays a fallback only when local AI
+  # is UNAVAILABLE (no reachable Ollama).
+  local ai_done=0
+  if [ -x "$REPO_ROOT/scripts/checkpoint-hermes.sh" ]; then
+    log "Checkpoint $label: LOCAL AI reviewer (Ollama=${OLLAMA_REMOTE_BASE:-localhost:11434}, timeout ${timeout_secs}s)"
+    if timeout "$timeout_secs" bash "$REPO_ROOT/scripts/checkpoint-hermes.sh" "$label" "$prompt_file" > "$out_file" 2>>"$LOG_FILE"; then
+      case "$(grep -m1 '^DECISION:' "$out_file" 2>/dev/null)" in
+        "DECISION: GO"*|"DECISION: CAUTION"*|"DECISION: STOP"*) ai_done=1 ;;
+        *) log "Checkpoint $label: local AI UNAVAILABLE/unparseable → cloud fallback" ;;
+      esac
+    else
+      log "Checkpoint $label: local AI reviewer errored/timed out → cloud fallback"
+    fi
+  fi
+
+  # v2.32.20 — Cloud FALLBACK (only when local AI yielded no decision). API path
+  # (checkpoint-runner.py, pay-per-token, no monthly cap) when ANTHROPIC_API_KEY
+  # is set; else the Claude Code CLI subscription path.
+  if [ "$ai_done" = "0" ]; then
   if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
     # v2.32.28 — API path now uses tool use via scripts/checkpoint-runner.py.
     # The plain text-completion path failed Checkpoint B at Lucky's + Leg Lamp
@@ -674,6 +689,7 @@ run_checkpoint() {
     fi
     rm -f "$prompt_file_tmp"
   fi
+  fi  # end ai_done==0 cloud-fallback wrapper
 
   local decision
   # Try line-start first, then fall back to anywhere in the response.
@@ -689,7 +705,9 @@ run_checkpoint() {
   log "--- end Checkpoint $label response ---"
   rm -f "$out_file"
 
-  hermes_shadow_review "$label" "$prompt_file" "$decision_normalized"
+  # Shadow-compare only when CLOUD made the call (ai_done=0). When local AI was
+  # already the primary reviewer, re-running it to "shadow itself" is redundant.
+  [ "$ai_done" = "1" ] || hermes_shadow_review "$label" "$prompt_file" "$decision_normalized"
 
   case "$decision_normalized" in
     "DECISION: GO"*)
