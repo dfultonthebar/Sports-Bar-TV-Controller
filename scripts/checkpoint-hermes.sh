@@ -140,7 +140,7 @@ print(json.dumps({
 [ -z "$REQ" ] && emit "UNAVAILABLE failed to build request"
 
 # --- call the T4 model (bounded; never fatal) ------------------------------
-RESP="$(curl -s --max-time "${HERMES_CHECKPOINT_TIMEOUT:-300}" -X POST "${REMOTE_BASE}/api/chat" \
+RESP="$(curl -s --max-time "${HERMES_CHECKPOINT_TIMEOUT:-540}" -X POST "${REMOTE_BASE}/api/chat" \
   -H 'content-type: application/json' -d "$REQ" 2>/dev/null || true)"
 [ -z "$RESP" ] && emit "UNAVAILABLE T4 model unreachable or timed out"
 
