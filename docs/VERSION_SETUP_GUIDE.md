@@ -35,6 +35,18 @@ is the archive.
 
 ---
 
+## v2.73.3 — Cable-box tune sends Select/OK to commit the channel (2026-06-18)
+
+**Branch landed:** main. **No setup required** — purely a behavior fix to IR cable-box tuning.
+
+**What changed:** `apps/web/src/app/api/channel-presets/tune/route.ts` now sends the learned **Select** (or OK/Enter) IR command after the channel digits in `sendCableBoxChannelChange()`. Many Spectrum boxes wait on an internal entry-timeout (~1–2 s) before committing a multi-digit channel; firing Select makes the channel land immediately. If no Select/OK/Enter command is learned for the device, it logs and relies on the box's timeout (today's behavior) — so locations that haven't learned a Select key are unaffected.
+
+**Also fixed a latent compile bug** in the same block: the Select code referenced `net` (`new net.Socket()`) which was only `await import`ed inside the digit loop — out of scope after it. Now imported inside the Select block. The earlier uncommitted draft of this never built; it does now (turbo build 29/29).
+
+**Verification:** trigger any cable preset and confirm the log shows `Sending Select to confirm channel <N>` → `Select sent successfully`. Verified live at Holmgren (Cable Box 2 → 308, both iTach blasters 10.11.3.40/.41 reachable). Boxes with a learned Select key benefit; others see no change. No DB, env, or migration changes.
+
+---
+
 ## v2.73.0 — Checkpoint reviewer → LOCAL AI primary (unfreezes the fleet) (2026-06-18)
 
 **Branch landed:** main. **Fixes the fleet-wide auto-update freeze.** Root cause (found via the v2.71 hub tracking): every box was failing `FAIL at step 'checkpoint_a'`. The deterministic pre-check escalates to AI for the big backlog (21 pending commits), and the AI gate was the **Claude Code CLI subscription path** — which returns a 4s empty response (logged-out/monthly-limit) → `UNDETERMINED` → STOP → nothing merges. #363 had removed `ANTHROPIC_API_KEY` to force that CLI/OAuth path; it's inherently fragile.
