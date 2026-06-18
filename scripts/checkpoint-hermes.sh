@@ -57,7 +57,7 @@ RAG_CONTEXT=""
 RAG_QUERY="auto-update checkpoint ${LABEL}: what must be verified before a fleet update is safe to proceed; rollback and conflict gotchas"
 RAG_JSON="$(curl -s --max-time 10 -X POST "${LOCAL_API}/api/rag/query" \
   -H 'content-type: application/json' \
-  -d "$(printf '{"query":%s,"retrieveOnly":true,"topK":4}' "$(printf '%s' "$RAG_QUERY" | python3 -c 'import json,sys;print(json.dumps(sys.stdin.read()))')")" \
+  -d "$(printf '{"query":%s,"retrieveOnly":true,"topK":3}' "$(printf '%s' "$RAG_QUERY" | python3 -c 'import json,sys;print(json.dumps(sys.stdin.read()))')")" \
   2>/dev/null || true)"
 if [ -n "$RAG_JSON" ]; then
   RAG_CONTEXT="$(printf '%s' "$RAG_JSON" | python3 -c '
@@ -65,7 +65,7 @@ import json,sys
 try:
     d = json.load(sys.stdin)
     ctx = (d.get("data") or {}).get("rawContext") or ""
-    print(ctx[:6000])
+    print(ctx[:2500])
 except Exception:
     pass
 ' 2>/dev/null || true)"
@@ -94,7 +94,7 @@ print(json.dumps({
   "model": model,
   "stream": False,
   "keep_alive": "10m",
-  "options": {"temperature": 0.2, "num_predict": 320},
+  "options": {"temperature": 0.2, "num_predict": 220},
   "messages": [
     {"role": "system", "content": sysmsg},
     {"role": "user", "content": usermsg},
@@ -104,7 +104,7 @@ print(json.dumps({
 [ -z "$REQ" ] && emit "UNAVAILABLE failed to build request"
 
 # --- call the T4 model (bounded; never fatal) ------------------------------
-RESP="$(curl -s --max-time "${HERMES_CHECKPOINT_TIMEOUT:-120}" -X POST "${REMOTE_BASE}/api/chat" \
+RESP="$(curl -s --max-time "${HERMES_CHECKPOINT_TIMEOUT:-300}" -X POST "${REMOTE_BASE}/api/chat" \
   -H 'content-type: application/json' -d "$REQ" 2>/dev/null || true)"
 [ -z "$RESP" ] && emit "UNAVAILABLE T4 model unreachable or timed out"
 
