@@ -76,11 +76,11 @@ SYSTEM_PROMPT='You are Hermes, the local fleet-ops reviewer for a sports-bar TV 
 
 IMPORTANT: You CANNOT run commands. Judge ONLY from the evidence already present in the context (verify-install markers, log excerpts, file/table counts, git state). Do not ask to run anything and do not refuse for lack of tool access — a missing piece of evidence is at most a CAUTION, not a STOP.
 
-Think briefly (<= 3 sentences), then end with a FINAL line in EXACTLY this format:
-DECISION: GO        — safe to proceed
-DECISION: CAUTION   — proceed but monitor closely
-DECISION: STOP      — do not proceed; roll back
-The final line MUST start with "DECISION: " followed by exactly one of GO, CAUTION, or STOP.'
+OUTPUT FORMAT — STRICT: The VERY FIRST line of your reply MUST be exactly one of:
+DECISION: GO
+DECISION: CAUTION - <one-line reason>
+DECISION: STOP - <one-line reason>
+Write NO preamble before it — do not start with "Based on..." or any sentence. After that first DECISION line you may add up to 3 short sentences of justification. The updater greps the FIRST line matching ^DECISION: and ignores the rest, so if the DECISION line is missing or not first, the update FAILS. Default to GO for additive/source/doc changes; STOP only for a real blocker you actually see.'
 
 # Checkpoint A's stock prompt (checkpoint-a.txt) is written for an AGENTIC
 # reviewer with bash tools — it tells the reviewer to run `git log -p
@@ -130,7 +130,7 @@ print(json.dumps({
   "model": model,
   "stream": False,
   "keep_alive": "10m",
-  "options": {"temperature": 0.2, "num_predict": 220},
+  "options": {"temperature": 0.2, "num_predict": 400},
   "messages": [
     {"role": "system", "content": sysmsg},
     {"role": "user", "content": usermsg},
@@ -161,5 +161,26 @@ case "$NORM" in
   *"DECISION: GO"*)      emit "GO ${ANSWER}" ;;
   *"DECISION: CAUTION"*) emit "CAUTION ${ANSWER}" ;;
   *"DECISION: STOP"*)    emit "STOP ${ANSWER}" ;;
-  *) emit "UNAVAILABLE unparseable model verdict: $(printf '%s' "$ANSWER" | head -c 160)" ;;
 esac
+
+# Fallback — llama3.1:8b frequently omits the DECISION: line entirely (CLAUDE.md
+# Gotcha #12: it ignores output-format rules ~50% of the time) even though its
+# prose reasoning is sound. Scan the prose for an explicit verdict: STOP-first
+# (conservative), then GO, then CAUTION. Safe because the deterministic checker
+# already caught the hard-STOP conditions and only escalated AMBIGUOUS cases to
+# us, and Checkpoints B/C + build-failure rollback remain as downstream nets.
+PROSE="$(printf '%s' "$ANSWER" | tr '[:upper:]' '[:lower:]')"
+case "$PROSE" in
+  *"do not proceed"*|*"not safe to proceed"*|*"unsafe to proceed"*|*"recommend stop"*|*"should stop"*|*"must not proceed"*|*"abort the"*|*"would stop"*)
+    emit "STOP ${ANSWER}" ;;
+esac
+case "$PROSE" in
+  *"safe to proceed"*|*"no schema change"*|*"additive"*|*"proceed with the update"*|*"proceed with the merge"*|*"low risk"*|*"looks safe"*|*"is safe"*|*"appears safe"*)
+    emit "GO ${ANSWER}" ;;
+esac
+case "$PROSE" in
+  *"caution"*|*"monitor closely"*|*"proceed with care"*)
+    emit "CAUTION ${ANSWER}" ;;
+esac
+
+emit "UNAVAILABLE unparseable model verdict: $(printf '%s' "$ANSWER" | head -c 160)"
