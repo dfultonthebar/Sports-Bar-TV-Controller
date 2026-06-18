@@ -76,15 +76,51 @@ SYSTEM_PROMPT='You are Hermes, the local fleet-ops reviewer for a sports-bar TV 
 
 IMPORTANT: You CANNOT run commands. Judge ONLY from the evidence already present in the context (verify-install markers, log excerpts, file/table counts, git state). Do not ask to run anything and do not refuse for lack of tool access — a missing piece of evidence is at most a CAUTION, not a STOP.
 
-Think briefly (<= 3 sentences), then end with a FINAL line in EXACTLY this format:
-DECISION: GO        — safe to proceed
-DECISION: CAUTION   — proceed but monitor closely
-DECISION: STOP      — do not proceed; roll back
-The final line MUST start with "DECISION: " followed by exactly one of GO, CAUTION, or STOP.'
+OUTPUT FORMAT — STRICT: The VERY FIRST line of your reply MUST be exactly one of:
+DECISION: GO
+DECISION: CAUTION - <one-line reason>
+DECISION: STOP - <one-line reason>
+Write NO preamble before it — do not start with "Based on..." or any sentence. After that first DECISION line you may add up to 3 short sentences of justification. The updater greps the FIRST line matching ^DECISION: and ignores the rest, so if the DECISION line is missing or not first, the update FAILS. Default to GO for additive/source/doc changes; STOP only for a real blocker you actually see.'
 
-USER_CONTENT="CHECKPOINT: ${LABEL}"$'\n\n'"=== CHECKPOINT PROMPT / EVIDENCE ==="$'\n'"${PROMPT_BODY}"
-if [ -n "$RAG_CONTEXT" ]; then
-  USER_CONTENT="${USER_CONTENT}"$'\n\n'"=== RELEVANT DOCS (version guide / gotchas, retrieved) ==="$'\n'"${RAG_CONTEXT}"
+# Checkpoint A's stock prompt (checkpoint-a.txt) is written for an AGENTIC
+# reviewer with bash tools — it tells the reviewer to run `git log -p
+# HEAD..origin/main` to SEE the diff. The local model has no tools and the diff
+# is NOT in the prompt, so it can't judge and never emits a parseable DECISION
+# (observed: 4-min run → UNAVAILABLE on graystone, v2.73.3). Fix: for LABEL=A we
+# gather the actual diff evidence ourselves (we run in the repo) and hand the
+# model a concise, non-agentic judge task instead of the verbose agentic prompt.
+if [ "$LABEL" = "A" ]; then
+  GH_COMMITS="$(git log --oneline HEAD..origin/main 2>/dev/null | head -40)"
+  GH_STAT="$(git diff --stat HEAD..origin/main 2>/dev/null | tail -60)"
+  GH_SCHEMA="$(git diff HEAD..origin/main -- 'packages/database/src/schema.ts' 'apps/web/src/db/schema.ts' 2>/dev/null | head -250)"
+  GH_PKG="$(git diff HEAD..origin/main -- package.json 2>/dev/null | head -60)"
+  USER_CONTENT="You are reviewing a pending git merge from origin/main onto a location branch of the Sports Bar TV Controller. Decide GO / CAUTION / STOP from the evidence below. You CANNOT run commands — everything you need is already provided.
+
+DECISION RULES:
+- STOP only if you actually SEE one of: (a) a NON-additive schema change to an EXISTING table — a new NOT NULL column WITHOUT a default added to a table that already has rows, a renamed column, or a DROP TABLE that still holds rows; (b) accidentally-committed secrets in source (*.pem, hardcoded API tokens/passwords); (c) deletion of scripts/auto-update.sh or scripts/verify-install.sh.
+- A brand-new table, or a NOT NULL column on a brand-new table, is SAFE (no existing rows to violate) → GO, not STOP.
+- CAUTION for: additive schema change (new table / new nullable column on existing table), an API-contract change, or a minor/patch dependency bump with no documented break.
+- GO otherwise. Location data files (apps/web/data/*.json, .env, data/) and package.json / package-lock.json are auto-resolved by the updater — NEVER STOP for those.
+
+=== PENDING COMMITS (HEAD..origin/main) ===
+${GH_COMMITS:-(none)}
+
+=== FILE CHANGE STAT ===
+${GH_STAT:-(none)}
+
+=== SCHEMA DIFF (main risk surface; empty means no schema change) ===
+${GH_SCHEMA:-(no changes to schema.ts)}
+
+=== package.json DIFF (dependency changes) ===
+${GH_PKG:-(no changes)}"
+  if [ -n "$RAG_CONTEXT" ]; then
+    USER_CONTENT="${USER_CONTENT}"$'\n\n'"=== RELEVANT DOCS (gotchas, retrieved) ==="$'\n'"${RAG_CONTEXT}"
+  fi
+else
+  USER_CONTENT="CHECKPOINT: ${LABEL}"$'\n\n'"=== CHECKPOINT PROMPT / EVIDENCE ==="$'\n'"${PROMPT_BODY}"
+  if [ -n "$RAG_CONTEXT" ]; then
+    USER_CONTENT="${USER_CONTENT}"$'\n\n'"=== RELEVANT DOCS (version guide / gotchas, retrieved) ==="$'\n'"${RAG_CONTEXT}"
+  fi
 fi
 
 REQ="$(python3 -c '
@@ -94,7 +130,7 @@ print(json.dumps({
   "model": model,
   "stream": False,
   "keep_alive": "10m",
-  "options": {"temperature": 0.2, "num_predict": 220},
+  "options": {"temperature": 0.2, "num_predict": 400},
   "messages": [
     {"role": "system", "content": sysmsg},
     {"role": "user", "content": usermsg},
@@ -104,7 +140,7 @@ print(json.dumps({
 [ -z "$REQ" ] && emit "UNAVAILABLE failed to build request"
 
 # --- call the T4 model (bounded; never fatal) ------------------------------
-RESP="$(curl -s --max-time "${HERMES_CHECKPOINT_TIMEOUT:-300}" -X POST "${REMOTE_BASE}/api/chat" \
+RESP="$(curl -s --max-time "${HERMES_CHECKPOINT_TIMEOUT:-540}" -X POST "${REMOTE_BASE}/api/chat" \
   -H 'content-type: application/json' -d "$REQ" 2>/dev/null || true)"
 [ -z "$RESP" ] && emit "UNAVAILABLE T4 model unreachable or timed out"
 
@@ -125,5 +161,26 @@ case "$NORM" in
   *"DECISION: GO"*)      emit "GO ${ANSWER}" ;;
   *"DECISION: CAUTION"*) emit "CAUTION ${ANSWER}" ;;
   *"DECISION: STOP"*)    emit "STOP ${ANSWER}" ;;
-  *) emit "UNAVAILABLE unparseable model verdict: $(printf '%s' "$ANSWER" | head -c 160)" ;;
 esac
+
+# Fallback — llama3.1:8b frequently omits the DECISION: line entirely (CLAUDE.md
+# Gotcha #12: it ignores output-format rules ~50% of the time) even though its
+# prose reasoning is sound. Scan the prose for an explicit verdict: STOP-first
+# (conservative), then GO, then CAUTION. Safe because the deterministic checker
+# already caught the hard-STOP conditions and only escalated AMBIGUOUS cases to
+# us, and Checkpoints B/C + build-failure rollback remain as downstream nets.
+PROSE="$(printf '%s' "$ANSWER" | tr '[:upper:]' '[:lower:]')"
+case "$PROSE" in
+  *"do not proceed"*|*"not safe to proceed"*|*"unsafe to proceed"*|*"recommend stop"*|*"should stop"*|*"must not proceed"*|*"abort the"*|*"would stop"*)
+    emit "STOP ${ANSWER}" ;;
+esac
+case "$PROSE" in
+  *"safe to proceed"*|*"no schema change"*|*"additive"*|*"proceed with the update"*|*"proceed with the merge"*|*"low risk"*|*"looks safe"*|*"is safe"*|*"appears safe"*)
+    emit "GO ${ANSWER}" ;;
+esac
+case "$PROSE" in
+  *"caution"*|*"monitor closely"*|*"proceed with care"*)
+    emit "CAUTION ${ANSWER}" ;;
+esac
+
+emit "UNAVAILABLE unparseable model verdict: $(printf '%s' "$ANSWER" | head -c 160)"
