@@ -86,6 +86,34 @@ export const errorEvents = sqliteTable(
   ],
 )
 
+/** Fleet auto-update outcomes — one row per auto-update.sh run, reported by the agent. */
+export const fleetUpdateEvents = sqliteTable(
+  'fleet_update_events',
+  {
+    id: text('id').primaryKey(),
+    locationId: text('location_id').notNull(),
+    runId: text('run_id').notNull(),
+    occurredAt: integer('occurred_at').notNull(), // unix ms (run finished)
+    receivedAt: integer('received_at').notNull(), // unix ms (hub insert)
+    result: text('result').notNull(), // success|rollback|conflict|skipped|failed
+    fromVersion: text('from_version'),
+    toVersion: text('to_version'),
+    fromSha: text('from_sha'),
+    toSha: text('to_sha'),
+    durationSecs: integer('duration_secs'),
+    rollbackTag: text('rollback_tag'),
+    conflictPaths: text('conflict_paths'), // JSON array
+    triggeredBy: text('triggered_by'),
+    errorMessage: text('error_message'),
+    rawPayload: text('raw_payload'),
+  },
+  (t) => [
+    index('update_loc_ts').on(t.locationId, t.occurredAt),
+    // idempotency: same run reported twice (agent restart) collapses.
+    uniqueIndex('update_dedup').on(t.locationId, t.runId),
+  ],
+)
+
 /**
  * Central ESPN game-data cache (Feature B1). The hub runs the 26-league ESPN
  * sync ONCE and stores each league's raw ESPNGame[] as JSON here; locations pull
