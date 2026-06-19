@@ -14,6 +14,118 @@ import { getStateReader, SystemState, OutputState, AvailableInput } from './stat
 import { getPriorityCalculator, GameInfo, PriorityScore } from './priority-calculator'
 import { getFireTVContentDetector, StreamingGame } from './firetv-content-detector'
 import { logger } from '@sports-bar/logger'
+import { db, sql } from '@sports-bar/database'
+
+/**
+ * #349 Wave 6 (Piece B) — engine learning loop.
+ *
+ * Default OFF. When OFF, the engine behaves byte-for-byte as before: no
+ * scheduling_patterns query runs and no bias is applied. When 'on', the engine
+ * biases toward bartender-override-learned team→input/output preferences, but
+ * STRICTLY as a last-resort tie-breaker — it never changes the home-team minTV
+ * floor, never filters/removes/skips a candidate, never changes any count.
+ */
+const ENGINE_LEARNING = (process.env.DISTRIBUTION_ENGINE_LEARNING || 'off').toLowerCase() === 'on'
+
+/**
+ * Learned routing preference for one team.
+ *
+ * `preferredInputNumber` is the matrix HDMI input NUMBER (MatrixInput.channelNumber),
+ * which is the field AvailableInput actually carries (AvailableInput.inputNumber).
+ *
+ * IMPORTANT (silent-no-op trap): the scheduling_patterns pattern_data stores
+ * `preferredInputId`, which is `input_sources.id` (a text uuid). The engine's
+ * candidate inputs (AvailableInput) do NOT carry input_sources.id — they only
+ * carry inputNumber (= MatrixInput.channelNumber) and deviceId. So loading the
+ * raw preferredInputId and comparing it to AvailableInput.inputNumber would be
+ * ALWAYS-FALSE. We resolve it in the loader by joining
+ *   input_sources.matrix_input_id -> MatrixInput.id -> MatrixInput.channelNumber
+ * so the tie-breaker compares like-for-like and the match is real.
+ */
+interface TeamEnginePreference {
+  preferredInputNumber: number | null
+  preferredOutputs: number[]
+}
+
+/**
+ * Load per-team learned routing preferences for the deterministic engine.
+ *
+ * Returns an empty Map immediately when the flag is OFF (no DB query at all).
+ * Table-missing / parse errors are swallowed → empty Map (safe no-op).
+ *
+ * Resolves preferredInputId (input_sources.id) down to the matrix input NUMBER
+ * via input_sources.matrix_input_id -> MatrixInput.channelNumber so the value
+ * stored in the map (preferredInputNumber) genuinely equals
+ * AvailableInput.inputNumber at the tie-breaker comparison site.
+ */
+async function loadTeamPreferencesForEngine(): Promise<Map<string, TeamEnginePreference>> {
+  const prefs = new Map<string, TeamEnginePreference>()
+  if (!ENGINE_LEARNING) return prefs
+
+  try {
+    const rows = (await db.all(sql`
+      SELECT pattern_key, pattern_data, sample_size, confidence
+      FROM scheduling_patterns
+      WHERE pattern_type = 'team_routing' AND confidence >= 0.3 AND is_stale = 0
+    `)) as Array<{
+      pattern_key: string
+      pattern_data: string
+      sample_size: number
+      confidence: number
+    }>
+
+    if (!rows || rows.length === 0) return prefs
+
+    // Resolve input_sources.id -> matrix input channelNumber once, up front.
+    // (input_sources.matrix_input_id is a text uuid FK to MatrixInput.id;
+    //  MatrixInput.channelNumber is the integer that equals AvailableInput.inputNumber.)
+    const mapRows = (await db.all(sql`
+      SELECT ins.id AS input_source_id, mi.channelNumber AS channel_number
+      FROM input_sources ins
+      INNER JOIN MatrixInput mi ON ins.matrix_input_id = mi.id
+    `)) as Array<{ input_source_id: string; channel_number: number }>
+
+    const inputSourceIdToChannel = new Map<string, number>()
+    for (const r of mapRows || []) {
+      if (r.input_source_id != null && r.channel_number != null) {
+        inputSourceIdToChannel.set(r.input_source_id, r.channel_number)
+      }
+    }
+
+    for (const row of rows) {
+      if (!row.pattern_key) continue
+      let data: any
+      try {
+        data = JSON.parse(row.pattern_data)
+      } catch {
+        continue
+      }
+
+      const preferredInputId: string | undefined = data?.preferredInputId
+      const preferredInputNumber =
+        preferredInputId != null && inputSourceIdToChannel.has(preferredInputId)
+          ? inputSourceIdToChannel.get(preferredInputId)!
+          : null
+
+      const preferredOutputs: number[] = Array.isArray(data?.preferredOutputs)
+        ? data.preferredOutputs.filter((n: any) => typeof n === 'number')
+        : []
+
+      prefs.set(row.pattern_key.toLowerCase(), {
+        preferredInputNumber,
+        preferredOutputs,
+      })
+    }
+
+    logger.info(`[DISTRIBUTION] Engine learning ON — loaded ${prefs.size} team routing preference(s)`)
+  } catch (error: any) {
+    // Table missing / query error → no bias (safe). Never let learning break the plan.
+    logger.debug('[DISTRIBUTION] Engine learning preferences unavailable:', error?.message || error)
+    return new Map()
+  }
+
+  return prefs
+}
 
 export interface DistributionPlan {
   timestamp: string
@@ -91,6 +203,11 @@ export class DistributionEngine {
 
     // Get current system state
     const systemState = await this.stateReader.getSystemState()
+
+    // #349 Wave 6 (Piece B) — load learned team routing preferences ONCE.
+    // Returns an empty Map (no DB query) when DISTRIBUTION_ENGINE_LEARNING is off,
+    // so flag-OFF behavior is byte-for-byte unchanged.
+    const teamPrefs = await loadTeamPreferencesForEngine()
 
     // Get available channels from presets
     const cableChannels = await this.stateReader.getAvailableChannels('cable')
@@ -198,7 +315,8 @@ export class DistributionEngine {
         directvChannels,
         preferredZones,
         minTVs,
-        allowedInputsSet
+        allowedInputsSet,
+        teamPrefs
       )
 
       const minTVsMet = assignments.length >= minTVs
@@ -325,7 +443,23 @@ export class DistributionEngine {
             if (aUsage !== bUsage) return aUsage - bUsage
 
             const deviceTypeOrder = { directv: 1, cable: 2, firetv: 3, atmosphere: 4 }
-            return (deviceTypeOrder[a.deviceType] || 999) - (deviceTypeOrder[b.deviceType] || 999)
+            const aDevice = deviceTypeOrder[a.deviceType] || 999
+            const bDevice = deviceTypeOrder[b.deviceType] || 999
+            if (aDevice !== bDevice) return aDevice - bDevice
+
+            // #349 Wave 6 (Piece B) — THIRD-LEVEL TIE-BREAKER ONLY (same shape as
+            // assignGameToTVs). Fires only when usage AND deviceTypeOrder are equal.
+            // teamPrefs is empty when the flag is OFF → always a no-op then.
+            const rrPref =
+              teamPrefs.get(game.homeTeam.toLowerCase()) || teamPrefs.get(game.awayTeam.toLowerCase())
+            const rrLearnedInput =
+              rrPref && rrPref.preferredInputNumber != null ? rrPref.preferredInputNumber : null
+            if (rrLearnedInput != null) {
+              const aPref = a.inputNumber === rrLearnedInput ? 0 : 1
+              const bPref = b.inputNumber === rrLearnedInput ? 0 : 1
+              if (aPref !== bPref) return aPref - bPref
+            }
+            return 0
           })
 
         if (availableInputs.length > 0 && (game.cableChannel || game.directvChannel)) {
@@ -419,9 +553,24 @@ export class DistributionEngine {
     directvChannels: Set<string>,
     preferredZones: string[],
     minTVs: number,
-    allowedInputsSet: Set<number> | null
+    allowedInputsSet: Set<number> | null,
+    teamPrefs: Map<string, TeamEnginePreference>
   ): Promise<TVAssignment[]> {
     const assignments: TVAssignment[] = []
+
+    // #349 Wave 6 (Piece B) — resolve this game's learned preference (if any).
+    // Matched by home team first, then away team, lowercased. When the flag is
+    // OFF, teamPrefs is empty so this is always undefined and no bias applies.
+    const matchedPref =
+      teamPrefs.get(game.homeTeam.toLowerCase()) || teamPrefs.get(game.awayTeam.toLowerCase())
+    const learnedInputNumber =
+      matchedPref && matchedPref.preferredInputNumber != null
+        ? matchedPref.preferredInputNumber
+        : null
+    const learnedOutputSet =
+      matchedPref && matchedPref.preferredOutputs.length > 0
+        ? new Set<number>(matchedPref.preferredOutputs)
+        : undefined
 
     // Check if game is already playing on any input
     const existingInput = state.inputs.find(input => {
@@ -471,7 +620,7 @@ export class DistributionEngine {
         return true
       })
 
-      const sortedOutputs = this.sortOutputsByZonePreference(availableOutputs, preferredZones)
+      const sortedOutputs = this.sortOutputsByZonePreference(availableOutputs, preferredZones, learnedOutputSet)
 
       const sportsInputs = await this.stateReader.getSportsInputs()
 
@@ -505,7 +654,20 @@ export class DistributionEngine {
           if (aUsage !== bUsage) return aUsage - bUsage
 
           const deviceTypeOrder = { directv: 1, cable: 2, firetv: 3, atmosphere: 4 }
-          return (deviceTypeOrder[a.deviceType] || 999) - (deviceTypeOrder[b.deviceType] || 999)
+          const aDevice = deviceTypeOrder[a.deviceType] || 999
+          const bDevice = deviceTypeOrder[b.deviceType] || 999
+          if (aDevice !== bDevice) return aDevice - bDevice
+
+          // #349 Wave 6 (Piece B) — THIRD-LEVEL TIE-BREAKER ONLY.
+          // Fires solely when usage AND deviceTypeOrder are equal. Never a
+          // magnitude added to a combined score; never removes a candidate.
+          // Prefer the input whose number matches the learned preferred input.
+          if (learnedInputNumber != null) {
+            const aPref = a.inputNumber === learnedInputNumber ? 0 : 1
+            const bPref = b.inputNumber === learnedInputNumber ? 0 : 1
+            if (aPref !== bPref) return aPref - bPref
+          }
+          return 0
         })
 
       if (availableInputs.length > 0 && (game.cableChannel || game.directvChannel)) {
@@ -623,7 +785,8 @@ export class DistributionEngine {
    */
   private sortOutputsByZonePreference(
     outputs: OutputState[],
-    preferredZones: string[]
+    preferredZones: string[],
+    learnedOutputSet?: Set<number>
   ): OutputState[] {
     return [...outputs].sort((a, b) => {
       const aZone = a.zoneType || 'other'
@@ -632,12 +795,26 @@ export class DistributionEngine {
       const aIndex = preferredZones.indexOf(aZone)
       const bIndex = preferredZones.indexOf(bZone)
 
+      // Zone comparison is PRIMARY and authoritative — a learned-output nudge can
+      // NEVER promote a lower zone above a higher zone (it only orders WITHIN the
+      // same zone group).
       if (aIndex !== -1 && bIndex !== -1) {
-        return aIndex - bIndex
+        if (aIndex !== bIndex) return aIndex - bIndex
+      } else if (aIndex !== -1) {
+        return -1
+      } else if (bIndex !== -1) {
+        return 1
       }
 
-      if (aIndex !== -1) return -1
-      if (bIndex !== -1) return 1
+      // #349 Wave 6 (Piece B) — learned-output nudge, SAME-ZONE-GROUP ONLY.
+      // Reached only when a and b are in the same preference position (same
+      // preferred zone, or both unpreferred). learnedOutputSet is undefined when
+      // the flag is OFF or no preferred outputs were learned → no-op.
+      if (learnedOutputSet && learnedOutputSet.size > 0) {
+        const aPref = learnedOutputSet.has(a.outputNumber) ? 0 : 1
+        const bPref = learnedOutputSet.has(b.outputNumber) ? 0 : 1
+        if (aPref !== bPref) return aPref - bPref
+      }
 
       return 0
     })

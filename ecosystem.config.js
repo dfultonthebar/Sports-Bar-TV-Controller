@@ -111,6 +111,16 @@ module.exports = {
         // T4 with automatic local fallback. PM2 only forwards listed vars
         // (Gotcha #2), so this line is required for the flip to take effect.
         OLLAMA_REMOTE_BASE: process.env.OLLAMA_REMOTE_BASE || '',
+        // #349 Wave 6 (Piece B) — deterministic DistributionEngine learning loop.
+        // Default 'off' ⇒ engine behavior is byte-for-byte unchanged (no
+        // scheduling_patterns query, no bias). Set 'on' in .env to make the engine
+        // bias toward bartender-override-learned team→input/output preferences,
+        // strictly as a LAST tie-breaker (never changes the home-team minTV floor
+        // or removes any candidate). Holmgren is the canary. PM2 only forwards env
+        // vars listed here (Gotcha #2), so flipping this requires
+        // `pm2 delete && pm2 start ecosystem.config.js` (a plain restart will NOT
+        // pick up the new value).
+        DISTRIBUTION_ENGINE_LEARNING: process.env.DISTRIBUTION_ENGINE_LEARNING || 'off',
         // #364 — T4 offload for the interactive AI Hub chat ONLY (/api/chat).
         // Default 'false' ⇒ chat is byte-for-byte today's behavior: local iGPU,
         // qwen2.5:14b for tool calls / llama3.1:8b for plain chat. Set 'true' in

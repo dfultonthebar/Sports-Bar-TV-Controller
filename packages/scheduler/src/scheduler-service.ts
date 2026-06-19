@@ -9,6 +9,7 @@ import { db, schema, eq, and, findMany } from '@sports-bar/database'
 import { logger } from '@sports-bar/logger'
 import { parseHardwareResult } from '@sports-bar/utils'
 import { schedulerLogger } from './scheduler-logger'
+import { runContentionDigest } from './contention-digest'
 import { probeAllDirecTVTuned } from './directv-probe'
 import { runFiretvAppSyncSweep } from './firetv-app-sync'
 import { runFiretvCatalogWalk } from './firetv-catalog-walker'
@@ -132,6 +133,11 @@ class SchedulerService {
     this.registerPoll('runFiretvAppSync', () => this.runFiretvAppSync(), 300000, 60000);
     this.registerPoll('maybeRunCatalogWalk', () => this.maybeRunCatalogWalk(), 300000, 300000);
     this.registerPoll('pollFiretvCurrentApp', () => this.pollFiretvCurrentApp(), 60000, 45000);
+
+    // #349 Wave 3.7/Hermes — daily contention roll-up. Files ONE operator TODO
+    // per ISO week ("N games had no screen") from distribution-engine 'drop'
+    // rows; the dedupeKey collapses the daily runs to one TODO/week. Fail-open.
+    this.registerPoll('runContentionDigest', () => { void runContentionDigest(); }, 86400000, 180000);
 
     // v2.51.0 — Bananas Entertainment ingestion for the Neighborhood RF
     // Interference Prediction subsystem. Pulls the agency's public

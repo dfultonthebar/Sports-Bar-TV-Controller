@@ -40,6 +40,9 @@ export {
 // Device health - Wave 3.5 health-aware assignment (exclude offline devices)
 export { getOfflineDeviceIds } from './device-health'
 
+// Contention digest - Wave 3.7/Hermes (#349): weekly "N games had no screen" TODO
+export { runContentionDigest } from './contention-digest'
+
 // Priority Calculator - Game scoring
 export {
   PriorityCalculator,

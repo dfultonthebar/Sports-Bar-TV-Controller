@@ -35,6 +35,25 @@ is the archive.
 
 ---
 
+## v2.76.0 — #349 Wave 3.7 + 6 + 7: engine observability, learning loop, bartender "why" (2026-06-19)
+
+**Branch landed:** main. Researched (4 parallel mapping agents) → planned → debugged with **Grok + local AI** → built by 3 parallel agents → integrated + verified.
+
+**What shipped (5 pieces):**
+- **Wave 3.7 (obs):** DistributionEngine reasoning rows in SchedulerLog now use ops `assign`/`drop`/`under-served` + `metadata.reason` ∈ {assigned, no_screen, under_minimum} (was a single `distribute` op). Query `GET /api/scheduler/logs?component=distribution-engine`; SchedulerLogsDashboard colors the new ops. The persistence itself shipped with #348; this completes it.
+- **Wave 6 (learning) — GATED, default OFF:** `DISTRIBUTION_ENGINE_LEARNING=off|on`. When ON, the deterministic engine biases input/output selection toward bartender-override-learned `scheduling_patterns` (confidence≥0.3 ≈ 3+ samples) **as a strict TIE-BREAKER only** (Grok-reviewed: never a unified score — a popular input can't hog screens), applied only when usage-count + device-type rank are equal, in both the first-pass and round-robin sorts. The home-team minTV **floor is count-based and untouched** — the bias only reorders candidates, never filters. ID-mapping trap fixed: `preferredInputId` (input_sources.id) is resolved to `MatrixInput.channelNumber` so the match is real, not a silent no-op. Default OFF = byte-for-byte unchanged.
+- **Wave 7 (why) — live:** `apps/web/src/lib/scheduler/why-builder.ts` builds a one-line server-side rationale per game (e.g. "Chicago White Sox @ Detroit Tigers → assigned here 3× before"), pure TS, NO LLM (Gotcha #12), rendered in `GameCard`. Verified live: 77/77 team games show it; channel-only entries correctly blank.
+- **Hermes consumption:** weekly `runContentionDigest` (scheduler poll, daily, dedup→one TODO/ISO-week) files "N games had no screen this week" via `POST /api/maintenance-todo` from the Wave-3.7 `drop` rows. Fail-open.
+- **Honcho inclusion:** `scripts/hermes-learn-scheduling-prefs.sh` — a CT212-side reference cron (NOT repo/app code) that pulls `GET /api/override-learn/digest` and feeds stable patterns into a `hermes -z` turn → `sports-bar` Honcho workspace. Repo holds nothing Honcho-specific (domain isolation preserved).
+
+**Required Manual Steps:**
+1. **(Optional, per-location) enable Wave-6 learning canary:** set `DISTRIBUTION_ENGINE_LEARNING=on` in the location's `.env` AND `ecosystem.config.js` env block, then `pm2 delete sports-bar-tv-controller && pm2 start ecosystem.config.js` (Gotcha #2). Recommend Holmgren canary ~1 week, watch SchedulerLog `assign` rows + the Game Plan "why" before fleet-wide. Default OFF ships safe everywhere.
+2. **(Optional, CT212) Honcho learning mirror:** copy `scripts/hermes-learn-scheduling-prefs.sh` to CT212 and `hermes cron create --name learn-scheduling-prefs --schedule "0 6 * * *" --command <path>`. Verify with `hermes honcho status`. Fail-open; skip if not using Honcho.
+
+No DB schema/migration changes. No setup required for the default (Wave 3.7 + 7 + the contention TODO are live; Wave 6 is opt-in).
+
+---
+
 ## v2.75.0 — AI Hub chat can offload to the T4 GPU (opt-in, default OFF) (2026-06-19)
 
 **Branch landed:** main. **No setup required for the default** — ships OFF, behavior byte-for-byte unchanged (verified live: chat → HTTP 200, model `llama3.1:8b`, 8 RAG sources).

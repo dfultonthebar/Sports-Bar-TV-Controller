@@ -16,6 +16,7 @@ import { logger } from '@sports-bar/logger'
 import { espnScoreboardAPI } from '@/lib/sports-apis/espn-scoreboard-api'
 import { findMany } from '@/lib/db-helpers'
 import { resolveChannelsForGame, getStreamingAppInfoForStation } from '@/lib/network-channel-resolver'
+import { buildWhyReason } from '@/lib/scheduler/why-builder'
 
 // Streaming station resolution is centralized in the shared helper via
 // `getStreamingAppInfoForStation(code, sport?)` from
@@ -225,6 +226,27 @@ function getTeamPreferredInput(
         inputId: routing.data.preferredInputId,
         confidence: routing.confidence,
       }
+    }
+  }
+  return null
+}
+
+/**
+ * Get the historical occurrence count (frequency / sample_size) for a team's
+ * routing pattern — i.e. how many times this team has been assigned to its
+ * preferred input before. Used by buildWhyReason for the
+ * "assigned here N× before" clause. Returns null when no pattern exists.
+ */
+function getTeamPatternSampleSize(
+  game: any,
+  patterns: SchedulingPatterns
+): number | null {
+  for (const teamName of [game.homeTeam, game.awayTeam]) {
+    if (!teamName) continue
+    const key = teamName.toLowerCase()
+    const routing = patterns.teamRouting.get(key)
+    if (routing && routing.confidence >= 0.3) {
+      return typeof routing.data.frequency === 'number' ? routing.data.frequency : null
     }
   }
   return null
@@ -685,6 +707,15 @@ export async function GET(request: NextRequest) {
           game.patternPreferredOutputs = preferredOutputs.outputs
           game.patternOutputConfidence = preferredOutputs.confidence
         }
+
+        // Server-built one-line "why" rationale (NO LLM — Gotcha #12).
+        // Upcoming games have no known TV assignment yet → pass null.
+        game.whyReason = buildWhyReason(
+          game,
+          game.isHomeTeamGame ?? false,
+          null,
+          getTeamPatternSampleSize(game, schedulingPatterns)
+        )
       }
 
       // Sort upcoming/unassigned games using league priority patterns
@@ -863,6 +894,13 @@ export async function GET(request: NextRequest) {
               }
             }
 
+            // Stash the pattern sample size so the response-building loop
+            // (where the authoritative isHomeTeamGame is computed) can build
+            // the whyReason string with the correct home-team flag.
+            gameEntry._patternSampleSize = schedulingPatterns
+              ? getTeamPatternSampleSize(gameOnChannel, schedulingPatterns)
+              : null
+
             inputGameMap.set(input.id, gameEntry)
             logger.debug(`[AI_GAME_PLAN] Matched ${channelInfo.inputLabel} (${channelInfo.deviceType}) on channel ${channelInfo.channelNumber} to ${gameOnChannel.homeTeam} vs ${gameOnChannel.awayTeam}`)
           } else {
@@ -940,6 +978,18 @@ export async function GET(request: NextRequest) {
         startTime: null, // We don't have exact start time from cable box data
         liveData, // Add live ESPN data if available
       }
+
+      // Server-built one-line "why" rationale (NO LLM — Gotcha #12), built
+      // here so it uses the authoritative isHomeTeamGame computed above.
+      // Number of TVs actually routed for a currently-showing game is not
+      // tracked → pass null (TV count omitted from the string).
+      game.whyReason = buildWhyReason(
+        game,
+        isHomeTeamGame,
+        null,
+        gameData._patternSampleSize ?? null
+      )
+      delete game._patternSampleSize
 
       games.push(game)
 
