@@ -69,6 +69,19 @@ if command -v ollama >/dev/null 2>&1; then
   models=\$(ollama list 2>/dev/null | awk 'NR>1{print \$1}' | tr '\n' ',')
   echo "OK ollama (models: \${models:-none})"
 else echo "ESCALATE ollama (absent — IPEX/CUDA build, manual)"; fi
+# OS version + pending updates (report-only — OS upgrades + security patches need
+# off-hours + reboots, NEVER auto-applied here; see docs/OS_UPGRADE_RUNBOOK.md).
+. /etc/os-release 2>/dev/null || true
+if [ "\${VERSION_CODENAME:-}" = "noble" ]; then
+  echo "OK os (\${VERSION_ID:-?} \${VERSION_CODENAME})"
+else
+  echo "ESCALATE os (\${VERSION_ID:-?} \${VERSION_CODENAME:-?} — fleet target is noble 24.04, OS_UPGRADE_RUNBOOK)"
+fi
+if [ -x /usr/lib/update-notifier/apt-check ]; then
+  ac=\$(/usr/lib/update-notifier/apt-check 2>&1); echo "INFO apt (\${ac%;*} updates, \${ac#*;} security)"
+fi
+[ -f /var/run/reboot-required ] && echo "INFO reboot (REQUIRED)" || echo "INFO reboot (not required)"
+echo "INFO kernel (\$(uname -r))"
 REMOTE_EOF
 
 WORK=$(mktemp -d); trap 'rm -rf "$WORK"' EXIT
