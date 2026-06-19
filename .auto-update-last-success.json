@@ -1,14 +1,14 @@
 {
-  "version": "2.67.0",
+  "version": "2.73.8",
   "branch": "location/graystone",
-  "commitSha": "9c5f34945d06a5e901acc1fa0b04c20c17e7c450",
-  "successAt": "2026-06-16T04:29:09Z",
-  "successAtUnix": 1781584149,
-  "runId": "auto-update-2026-06-15-23-22",
-  "verifyInstall": {"status":"PASS","passed":18,"total":18,"durationSecs":5,"failed":[],"layers":[{"name":"pm2_online","passed":true,"detail":"status=online restart_time=10"},{"name":"health_http","passed":true,"detail":"status=healthy"},{"name":"metrics_http","passed":true,"detail":"cores=16"},{"name":"bartender_proxy","passed":true,"detail":"http=302"},{"name":"critical_tables","passed":true,"detail":"presets=193 aliases=49 directv=8 firetv=4"},{"name":"schema_completeness","passed":true,"detail":"120/120 tables present, all columns present"},{"name":"matrix_config","passed":true,"detail":"multi-card WP-36X36 offset=32"},{"name":"crash_logs","passed":true,"detail":"clean"},{"name":"linger_enabled","passed":true,"detail":"Linger=yes"},{"name":"autoupdate_timer_fresh","passed":true,"detail":"sidecar age=4737s"},{"name":"migration_markers_consistent","passed":true,"detail":"6/6"},{"name":"error_watch_alive","passed":true,"detail":"age=179s"},{"name":"bartender_layout_rooms","passed":true,"detail":"4 rooms / 4 refs / clean"},{"name":"atlas_drop_watcher_alive","passed":true,"detail":"no rows yet"},{"name":"atlas_priority_watcher_alive","passed":true,"detail":"age=23s"},{"name":"node_symlink_present","passed":true,"detail":"3/3"},{"name":"shure_pending_resync_table_present","passed":true,"detail":"present"},{"name":"auth_bootstrap_complete","passed":true,"detail":"LOCATION_ID set, AuthPin bound=2"}]},
+  "commitSha": "da8a3da8f74331ef03ac9ef1efce2ec61cf7366f",
+  "successAt": "2026-06-19T05:04:09Z",
+  "successAtUnix": 1781845449,
+  "runId": "auto-update-2026-06-18-23-53",
+  "verifyInstall": {"status":"PASS","passed":18,"total":18,"durationSecs":4,"failed":[],"layers":[{"name":"pm2_online","passed":true,"detail":"status=online restart_time=2"},{"name":"health_http","passed":true,"detail":"status=healthy"},{"name":"metrics_http","passed":true,"detail":"cores=16"},{"name":"bartender_proxy","passed":true,"detail":"http=302"},{"name":"critical_tables","passed":true,"detail":"presets=193 aliases=49 directv=8 firetv=4"},{"name":"schema_completeness","passed":true,"detail":"120/120 tables present, all columns present"},{"name":"matrix_config","passed":true,"detail":"multi-card WP-36X36 offset=32"},{"name":"crash_logs","passed":true,"detail":"clean"},{"name":"linger_enabled","passed":true,"detail":"Linger=yes"},{"name":"autoupdate_timer_fresh","passed":true,"detail":"sidecar age=879s"},{"name":"migration_markers_consistent","passed":true,"detail":"6/6"},{"name":"error_watch_alive","passed":true,"detail":"age=154s"},{"name":"bartender_layout_rooms","passed":true,"detail":"4 rooms / 4 refs / clean"},{"name":"atlas_drop_watcher_alive","passed":true,"detail":"no rows yet"},{"name":"atlas_priority_watcher_alive","passed":true,"detail":"age=23s"},{"name":"node_symlink_present","passed":true,"detail":"3/3"},{"name":"shure_pending_resync_table_present","passed":true,"detail":"present"},{"name":"auth_bootstrap_complete","passed":true,"detail":"LOCATION_ID set, AuthPin bound=2"}]},
   "os": { "codename": "noble", "version": "24.04", "kernel": "6.8.0-117-generic" },
   "configChecksums": {
-    ".env": "3c61297bb43eefb7",
+    ".env": "a56307c1c6b7bfdc",
     "apps/web/data/tv-layout.json": "32cdbd2120ba9ea5",
     "apps/web/data/station-aliases-local.json": "4c136f829dd122e0",
     "apps/web/src/lib/hardware-config.ts": "43d5fa0813ed8b22"
