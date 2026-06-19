@@ -148,4 +148,33 @@ if [ -f scripts/fleet-firmware-audit.sh ]; then
   grep -E 'FINDING|RESULT' /tmp/hermes-firmware.out | sed 's/^/  /'
 fi
 
+# ── Phase 3: feed the run digest to HERMES MEMORY (Honcho) so it learns over time ──
+# Records each run's findings/fixes/outcomes into the sports-bar Honcho workspace
+# so Hermes tracks recurring issues across days and improves its recommendations.
+HERMES_CMD="${HERMES_CMD:-/home/ubuntu/.local/bin/hermes -z}"
+DIGEST=$(python3 -c "
+import json, glob, os
+parts=[]
+labels={'deps':'deps/OS','security':'security','config':'config','data-integrity':'data','update-health':'update','schema':'schema','firmware':'firmware'}
+for f in sorted(glob.glob('/tmp/fleet-*-audit.json')):
+    try:
+        d=json.load(open(f)); key=os.path.basename(f).replace('fleet-','').replace('-audit.json','')
+        nm=labels.get(key,key); boxes=d.get('boxes',[])
+        flags=sum(len(b.get('findings') or b.get('missing') or b.get('escalate') or []) for b in boxes if isinstance(b,dict))
+        fixed=sum((b.get('fixed') or b.get('installed') or 0) for b in boxes if isinstance(b,dict))
+        drift=d.get('drift') or d.get('needsAttention') or d.get('leakedInHistory')
+        if flags or fixed or drift:
+            parts.append(f\"{nm}: {flags} finding(s), {fixed} auto-fixed\"+(' [drift]' if drift else ''))
+        else:
+            parts.append(f\"{nm}: clean\")
+    except Exception: pass
+print(' | '.join(parts) or 'no audit json found')
+" 2>/dev/null)
+if [ -n "$DIGEST" ]; then
+  LOG "recording run digest to Hermes/Honcho memory: $DIGEST"
+  PROMPT="Record to sports-bar fleet memory — daily consistency run $(date -I): ${DIGEST}. These are fleet-wide schema/deps/OS/security/config/data/firmware audit results. Track which issues RECUR across days; if a box shows the same finding 3+ runs, flag it as a chronic issue and recommend the durable fix. sports-bar workspace only."
+  printf '%s' "$PROMPT" | $HERMES_CMD 2>&1 | tail -3 | sed 's/^/  /' \
+    || LOG "hermes memory record failed (HERMES_CMD='$HERMES_CMD') — digest in /tmp/fleet-*-audit.json"
+fi
+
 LOG "done."
