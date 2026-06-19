@@ -21,9 +21,10 @@
 #
 # Required env (set in the cron environment, NEVER committed):
 #   FLEET_SSH_PW    fleet SSH password (for the audit + remote fix)
-#   ASK_CLAUDE_CMD  command that delegates to Claude Code; receives the prompt on
-#                   stdin. Default: 'hermes -z' (the same ask_claude_code path the
-#                   localworker profile uses). Override per your Hermes setup.
+#   ASK_CLAUDE_CMD  command that delegates to Claude Code; receives the prompt as
+#                   its LAST ARGUMENT (not stdin). Default: 'hermes -z' (the same
+#                   ask_claude_code path the localworker profile uses; `hermes -z`
+#                   requires the prompt as an arg). Override per your Hermes setup.
 #
 # Fail-open: any unreachable box or tool error is logged and skipped; the
 # scheduler/app never depend on this task.
@@ -60,7 +61,7 @@ except Exception: pass
     LOG "dependency escalation needed (version/special) — handing to Claude:"
     echo "$esc" | sed 's/^/    /'
     PROMPT="Fleet dependency/software drift the safe auto-installer could not resolve (these are version-sensitive or special-install items, NOT plain apt). Per box: ${esc}. Diagnose and remediate SAFELY: for a Node major-version gap follow the documented 20-40min native-rebuild upgrade procedure (better-sqlite3 rebuild, pm2 daemon match) and run it OFF-HOURS, NOT mid-day; for missing pm2 run 'npm install -g pm2'; for missing ollama install the IPEX/CUDA build per scripts/setup-iris-ollama.sh. ESCALATE for human approval anything that causes downtime (Node upgrades, PM2 daemon restarts) — do not run those unattended. Re-run scripts/fleet-deps-audit.sh to confirm."
-    printf '%s' "$PROMPT" | $ASK_CLAUDE_CMD 2>&1 | tail -15 | sed 's/^/    /' \
+    $ASK_CLAUDE_CMD "$PROMPT" 2>&1 | tail -15 | sed 's/^/    /' \
       || LOG "ask_claude_code invocation failed (ASK_CLAUDE_CMD='$ASK_CLAUDE_CMD') — left for manual fix."
   fi
 fi
@@ -137,7 +138,7 @@ for x in d.get('driftDetails',[]):
     if x['box']=='$box': print('; '.join(x.get('missing',[])))
 " 2>/dev/null)
   PROMPT="Fleet schema drift on sports-bar box '$box'. The safe tier (scripts/fix-schema-drift.sh -> drizzle-kit migrate of committed migrations) ran but did NOT resolve it. Missing structure vs the version cohort: ${detail}. Diagnose and AUTO-APPLY the safe DDL to create the missing tables/columns on $box's production DB (/home/ubuntu/sports-bar-data/production.db), matching packages/database/src/schema.ts and the committed drizzle migrations EXACTLY. Use CREATE TABLE / ALTER TABLE ADD COLUMN only. Do NOT use drizzle-kit push. Back up the DB first. ESCALATE for human approval (do not run) any DROP, data-affecting ALTER, or anything you are not certain mirrors the committed schema. Then re-run scripts/fleet-schema-audit.sh to confirm $box matches its cohort."
-  printf '%s' "$PROMPT" | $ASK_CLAUDE_CMD 2>&1 | tail -20 | sed 's/^/    /' \
+  $ASK_CLAUDE_CMD "$PROMPT" 2>&1 | tail -20 | sed 's/^/    /' \
     || LOG "$box: ask_claude_code invocation failed (ASK_CLAUDE_CMD='$ASK_CLAUDE_CMD') — left for manual fix."
 done
 
@@ -173,7 +174,7 @@ print(' | '.join(parts) or 'no audit json found')
 if [ -n "$DIGEST" ]; then
   LOG "recording run digest to Hermes/Honcho memory: $DIGEST"
   PROMPT="Record to sports-bar fleet memory — daily consistency run $(date -I): ${DIGEST}. These are fleet-wide schema/deps/OS/security/config/data/firmware audit results. Track which issues RECUR across days; if a box shows the same finding 3+ runs, flag it as a chronic issue and recommend the durable fix. sports-bar workspace only."
-  printf '%s' "$PROMPT" | $HERMES_CMD 2>&1 | tail -3 | sed 's/^/  /' \
+  $HERMES_CMD "$PROMPT" 2>&1 | tail -3 | sed 's/^/  /' \
     || LOG "hermes memory record failed (HERMES_CMD='$HERMES_CMD') — digest in /tmp/fleet-*-audit.json"
 fi
 
