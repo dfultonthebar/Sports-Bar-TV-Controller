@@ -50,6 +50,7 @@ interface GameData {
   channelNumber: string
   venue?: string
   isHomeTeamGame: boolean
+  whyReason?: string // server-built one-line rationale (NO LLM — Gotcha #12)
   streamingApp?: string // e.g., "Peacock", "ESPN+"
   streamingOnly?: boolean // True if only available on streaming
   liveData?: {
@@ -1086,6 +1087,11 @@ function GameCard({
               </div>
             )}
           </div>
+
+          {/* Server-built one-line "why" rationale (read-only text — NO LLM) */}
+          {game.whyReason && (
+            <p className="text-sm text-slate-400 mt-2 leading-snug">{game.whyReason}</p>
+          )}
         </div>
       </div>
     </div>

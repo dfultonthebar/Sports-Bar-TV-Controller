@@ -25,6 +25,7 @@ import {
   ToolDefinition,
 } from '@/lib/ai-tools'
 import { HARDWARE_CONFIG } from '@/lib/hardware-config'
+import { ollamaChat, ollamaChatStream } from '@sports-bar/ollama-client'
 
 interface ChatMessage {
   role: 'user' | 'assistant' | 'system' | 'tool'
@@ -66,7 +67,23 @@ const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'llama3.1:8b'
 // ~94%. Already iGPU-resident per FLEET_STATUS. Plain chat stays on
 // llama3.1:8b (~2× faster, fine for non-tool answers).
 const OLLAMA_TOOLS_MODEL = process.env.OLLAMA_TOOLS_MODEL || 'qwen2.5:14b'
+
+// #364 T4 offload — gate everything behind AI_HUB_T4_ENABLED (default false).
+// With the flag false the chat is byte-for-byte unchanged: local iGPU,
+// qwen2.5:14b for tools / llama3.1:8b for plain chat, policy 'local-only'
+// (skips the remote breaker entirely). When 'true', the @sports-bar/ollama-client
+// uses 'remote-first' so calls offload to the shared T4 GPU with automatic
+// local fallback on a connection error.
+const AI_HUB_T4_ENABLED = (process.env.AI_HUB_T4_ENABLED || 'false').toLowerCase() === 'true'
+// On the T4 we MUST force a small model: the T4 co-hosts the trading bot's
+// phi4-trader ("Phil") on a ~15GB VRAM budget. VERIFIED 2026-06-19: even
+// llama3.1:8b (5.3GB) evicts Phil (9.3GB) — only llama3.2:3b (2.6GB) co-resides
+// (Phil + 3b + nomic = 12.0GB). The T4 path always uses it regardless of enableTools.
+const OLLAMA_TOOLS_MODEL_T4 = process.env.OLLAMA_TOOLS_MODEL_T4 || 'llama3.2:3b'
+const chatPolicy: 'remote-first' | 'local-only' = AI_HUB_T4_ENABLED ? 'remote-first' : 'local-only'
 function pickModel(enableTools: boolean): string {
+  // T4 path: force the small model (llama3.2:3b) so we never evict Phil.
+  if (AI_HUB_T4_ENABLED) return OLLAMA_TOOLS_MODEL_T4
   return enableTools ? OLLAMA_TOOLS_MODEL : OLLAMA_MODEL
 }
 
@@ -628,34 +645,6 @@ what's there.`,
       ? convertToOllamaToolsFormat(availableTools)
       : undefined
 
-    const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: streamModel,
-        messages: [systemMessage, ...messages],
-        stream: true, // Enable streaming from Ollama
-        keep_alive: OLLAMA_KEEP_ALIVE, // v2.50.0 #1: stay resident → warm prefix cache
-        ...(ollamaTools ? { tools: ollamaTools } : {}), // v2.50.3
-        options: {
-          temperature: 0.3, // v2.46.3: lowered from 0.7 for RAG fidelity
-          top_p: 0.9,
-        },
-      }),
-    })
-
-    logger.info('[STREAMING] Ollama response status:', { data: response.status })
-    if (!response.ok) {
-      throw new Error(`Ollama API error: ${response.status}`)
-    }
-
-    // Stream the response
-    logger.info('[STREAMING] Getting response reader...')
-    const reader = response.body?.getReader()
-    if (!reader) {
-      throw new Error('No response body')
-    }
-
     logger.info('[STREAMING] Starting to read stream...')
     let fullResponse = ''
     // v2.50.3: collect native tool_calls from the stream. Ollama emits
@@ -664,47 +653,46 @@ what's there.`,
     // any tool_calls seen at any point in the stream.
     type NativeToolCall = { function: { name: string; arguments: Record<string, unknown> } }
     const collectedToolCalls: NativeToolCall[] = []
-    const decoder = new TextDecoder()
 
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) {
-        logger.info('[STREAMING] Stream reading complete')
-        break
+    // #364: stream via @sports-bar/ollama-client. Policy 'local-only' (default)
+    // is byte-for-byte today's localhost behavior; 'remote-first' (AI_HUB_T4_ENABLED)
+    // offloads to the T4 with connection-error fallback to local. Streaming only
+    // falls back BEFORE the first chunk, so SSE writer semantics are preserved.
+    for await (const delta of ollamaChatStream(
+      {
+        model: streamModel,
+        messages: [systemMessage, ...messages],
+        keep_alive: OLLAMA_KEEP_ALIVE, // v2.50.0 #1: stay resident → warm prefix cache
+        ...(ollamaTools ? { tools: ollamaTools } : {}), // v2.50.3
+        options: {
+          temperature: 0.3, // v2.46.3: lowered from 0.7 for RAG fidelity
+          top_p: 0.9,
+        },
+      },
+      { feature: 'ai-hub-chat', policy: chatPolicy },
+    )) {
+      if (delta.content) {
+        const content = delta.content
+        fullResponse += content
+
+        // Send content chunk to client
+        await sendSSE({
+          type: 'content',
+          content,
+          done: false
+        })
       }
 
-      const chunk = decoder.decode(value)
-      const lines = chunk.split('\n').filter(line => line.trim())
-
-      for (const line of lines) {
-        try {
-          const data = JSON.parse(line)
-
-          if (data.message?.content) {
-            const content = data.message.content
-            fullResponse += content
-
-            // Send content chunk to client
-            await sendSSE({
-              type: 'content',
-              content,
-              done: false
-            })
-          }
-
-          // v2.50.3: native tool_calls — structured, no regex needed
-          if (Array.isArray(data.message?.tool_calls) && data.message.tool_calls.length > 0) {
-            for (const tc of data.message.tool_calls) {
-              if (tc?.function?.name) collectedToolCalls.push(tc)
-            }
-          }
-
-          if (data.done) {
-            break
-          }
-        } catch (e) {
-          // Skip invalid JSON lines
+      // v2.50.3: native tool_calls — structured, no regex needed
+      if (Array.isArray(delta.tool_calls) && delta.tool_calls.length > 0) {
+        for (const tc of delta.tool_calls as NativeToolCall[]) {
+          if (tc?.function?.name) collectedToolCalls.push(tc)
         }
+      }
+
+      if (delta.done) {
+        logger.info('[STREAMING] Stream reading complete')
+        break
       }
     }
 
@@ -757,21 +745,20 @@ what's there.`,
         role: 'tool' as const,
         content: `Tool ${r.name} returned: ${JSON.stringify(r.result)}`,
       }))
-      const followUp = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: streamModel,
-          messages: [systemMessage, ...messages, { role: 'assistant', content: fullResponse }, ...toolMessages],
-          stream: false,
-          keep_alive: OLLAMA_KEEP_ALIVE,
-        }),
-      })
-      if (followUp.ok) {
-        const followUpData = await followUp.json()
-        const followUpContent = followUpData.message?.content || ''
+      try {
+        const followUpData = await ollamaChat(
+          {
+            model: streamModel,
+            messages: [systemMessage, ...messages, { role: 'assistant', content: fullResponse }, ...toolMessages],
+            keep_alive: OLLAMA_KEEP_ALIVE,
+          },
+          { feature: 'ai-hub-chat-toolfollowup', policy: chatPolicy },
+        )
+        const followUpContent = followUpData.content || ''
         await sendSSE({ type: 'content', content: followUpContent, done: true })
         fullResponse += '\n\n' + followUpContent
+      } catch (err) {
+        logger.warn(`[STREAMING] tool follow-up call failed: ${(err as Error)?.message ?? err}`)
       }
     }
 
@@ -949,26 +936,24 @@ NONE of the snippets address the question. Do not refuse on uncertainty.`,
   // dump a raw error on a bartender. If we pre-resolved a confident
   // QA fallback at top-of-function, short-circuit to that. Otherwise
   // re-throw so the existing catch + 500 response fires.
-  let response: Response
+  let data: { content: string; tool_calls?: unknown[] }
   try {
-    response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+    // #364: route through @sports-bar/ollama-client. The client throws on
+    // non-2xx and on exhausted fallback — caught below to serve the curated
+    // QA fallback, matching the prior fetch-!ok-throw behavior.
+    data = await ollamaChat(
+      {
         model: nsModel,
         messages: [systemMessage, ...messages],
-        stream: false,
         keep_alive: OLLAMA_KEEP_ALIVE, // v2.50.0 #1: stay resident → warm prefix cache
         ...(nsOllamaTools ? { tools: nsOllamaTools } : {}), // v2.50.3
         options: {
           temperature: 0.3, // v2.46.3: match streaming-path fidelity setting
           top_p: 0.9,
         },
-      }),
-    })
-    if (!response.ok) {
-      throw new Error(`Ollama API error: ${response.status}`)
-    }
+      },
+      { feature: 'ai-hub-chat-nonstream', policy: chatPolicy },
+    )
   } catch (err) {
     if (qaFallback) {
       logger.warn(`[CHAT API] Ollama unreachable, serving curated QA fallback for "${message.slice(0, 60)}": ${(err as Error)?.message ?? err}`)
@@ -983,13 +968,12 @@ NONE of the snippets address the question. Do not refuse on uncertainty.`,
     throw err
   }
 
-  const data = await response.json()
-  let aiResponse = data.message?.content || ''
+  let aiResponse = data.content || ''
 
   // v2.50.3: native tool_calls path (preferred). Ollama returns a
   // structured tool_calls array in the message — no regex parsing.
   let nsPersistedToolResults: ToolResult[] = []
-  const nsNativeToolCalls = Array.isArray(data.message?.tool_calls) ? data.message.tool_calls : []
+  const nsNativeToolCalls = Array.isArray(data.tool_calls) ? data.tool_calls : []
   if (enableTools && nsNativeToolCalls.length > 0) {
     const ctx = createDefaultContext()
     const results: ToolResult[] = []
@@ -1024,19 +1008,18 @@ NONE of the snippets address the question. Do not refuse on uncertainty.`,
       role: 'tool' as const,
       content: `Tool ${r.name} returned: ${JSON.stringify(r.result)}`,
     }))
-    const followUp = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: nsModel,
-        messages: [systemMessage, ...messages, { role: 'assistant', content: aiResponse }, ...toolMessages],
-        stream: false,
-        keep_alive: OLLAMA_KEEP_ALIVE,
-      }),
-    })
-    if (followUp.ok) {
-      const followUpData = await followUp.json()
-      aiResponse += '\n\n' + (followUpData.message?.content || '')
+    try {
+      const followUpData = await ollamaChat(
+        {
+          model: nsModel,
+          messages: [systemMessage, ...messages, { role: 'assistant', content: aiResponse }, ...toolMessages],
+          keep_alive: OLLAMA_KEEP_ALIVE,
+        },
+        { feature: 'ai-hub-chat-nonstream-toolfollowup', policy: chatPolicy },
+      )
+      aiResponse += '\n\n' + (followUpData.content || '')
+    } catch (err) {
+      logger.warn(`[CHAT API] non-stream tool follow-up call failed: ${(err as Error)?.message ?? err}`)
     }
   } else if (enableTools && aiResponse.includes('TOOL_CALL:')) {
     // LEGACY REGEX FALLBACK — only for non-tool-trained models
@@ -1183,21 +1166,15 @@ async function getFollowUpResponse(
 
   // v2.50.0: follow-up after tool execution always uses the tools model
   // (we got here because the prior call used tools). Same keep_alive.
-  const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
+  // #364: route through the ollama-client (throws on non-2xx / exhausted
+  // fallback, matching the prior !response.ok throw).
+  const data = await ollamaChat(
+    {
       model: pickModel(true),
       messages: followUpMessages,
-      stream: false,
       keep_alive: OLLAMA_KEEP_ALIVE,
-    }),
-  })
-
-  if (!response.ok) {
-    throw new Error('Failed to get follow-up response')
-  }
-
-  const data = await response.json()
-  return data.message?.content || 'Tool execution completed.'
+    },
+    { feature: 'ai-hub-chat-followup-helper', policy: chatPolicy },
+  )
+  return data.content || 'Tool execution completed.'
 }
