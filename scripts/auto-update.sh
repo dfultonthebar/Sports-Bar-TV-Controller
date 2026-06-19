@@ -1161,6 +1161,14 @@ LOCATION_PATHS_THEIRS=(
   # auto-update across the fleet for 4+ days. CLAUDE.md Standing Rule 9
   # codifies "CLAUDE.md is main-only" — this entry enforces it at merge time.
   "CLAUDE.md"
+  # v2.73.7 — apps/web/TODO_LIST.md is a shared dev TODO updated on main
+  # ("chore: Update TODO" commits). It sits directly under apps/web/, NOT under
+  # apps/web/src/, so the SHARED_SOFTWARE_PREFIXES fallback below does NOT catch
+  # it — without this explicit entry a content conflict on it aborts the whole
+  # update as a "non-whitelisted file" (observed on graystone 2026-06-18 14:03,
+  # the first conflict to surface once the local-AI Checkpoint A fix let the
+  # 29-commit backlog reach the merge step). Main always wins.
+  "apps/web/TODO_LIST.md"
 )
 
 # Prefix-based fallback: any remaining conflict under a shared-software
