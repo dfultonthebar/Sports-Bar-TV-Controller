@@ -230,15 +230,22 @@ else
   echo "OK ollama-group (ollama not installed on this box — group check N/A)"
 fi
 
-# 3d — recent ROLLBACK / CONFLICT / modify-delete in the newest update log. ESCALATE.
+# 3d — newest update log. Only ESCALATE if the run actually FAILED. A CONFLICT
+# that auto-resolved (-X ours) and ended in SUCCESS is NORMAL (TODO_LIST.md churn
+# every cycle) — do NOT cry wolf on conflict text alone. Check the FINAL outcome.
 LATEST_LOG=\$(ls -t "\$DATA_DIR/update-logs/"*.log 2>/dev/null | head -1)
 if [ -z "\$LATEST_LOG" ]; then
   echo "REPORT updatelog (no update-logs/*.log found — auto-update may have never produced a log here)"
-elif grep -qE 'ROLLBACK|CONFLICT|modify/delete' "\$LATEST_LOG" 2>/dev/null; then
-  HIT=\$(grep -aoE 'ROLLBACK|CONFLICT|modify/delete' "\$LATEST_LOG" 2>/dev/null | sort -u | paste -sd, -)
-  echo "ESCALATE updatelog (newest log \$(basename "\$LATEST_LOG") has [\$HIT] — last run rolled back / hit a merge conflict; manual resolution needed; Gotcha #11.2)"
+elif grep -qaE 'SUCCESS: updated|Push succeeded after merge-reconcile' "\$LATEST_LOG" 2>/dev/null; then
+  if grep -qaE 'CONFLICT|merge-reconcile' "\$LATEST_LOG" 2>/dev/null; then
+    echo "OK updatelog (newest run SUCCEEDED — auto-resolved a transient conflict, expected)"
+  else
+    echo "OK updatelog (newest run succeeded clean)"
+  fi
+elif grep -qaE 'ROLLBACK|rolled back|\[STOP\]|GO=STOP' "\$LATEST_LOG" 2>/dev/null; then
+  echo "ESCALATE updatelog (newest run \$(basename "\$LATEST_LOG") ended in ROLLBACK/STOP with NO success line — a REAL failure; Gotcha #11.2)"
 else
-  echo "OK updatelog (newest log clean)"
+  echo "OK updatelog (newest log has no failure outcome)"
 fi
 
 # ===========================================================================
