@@ -25,6 +25,10 @@ export interface OllamaCallOpts {
   timeoutMs?: number
   /** Tag for logging which feature made the call. */
   feature?: string
+  /** Forwarded as `keep_alive` on the request body when set (e.g. -1 to pin a
+   *  model resident locally). Omitted when undefined so callers that don't care
+   *  keep Ollama's default idle timer. */
+  keepAlive?: number
 }
 
 export interface GenerateResult {
@@ -121,21 +125,41 @@ export async function ollamaGenerate(
   }
 }
 
+/** Non-streaming /api/chat — returns the assistant message (native tool-call support). */
+export async function ollamaChat(
+  params: {
+    model: string
+    messages: Array<{ role: string; content: string }>
+    tools?: unknown[]
+    options?: Record<string, unknown>
+    keep_alive?: number
+  },
+  opts: OllamaCallOpts = {},
+): Promise<{ content: string; tool_calls?: unknown[] }> {
+  const { data } = await postJsonWithFallback('/api/chat', { ...params, stream: false }, opts)
+  const msg = data?.message ?? {}
+  return {
+    content: (msg?.content ?? '').toString(),
+    tool_calls: Array.isArray(msg?.tool_calls) ? msg.tool_calls : undefined,
+  }
+}
+
 /** Batch embeddings via /api/embed (new) with /api/embeddings legacy fallback. */
 export async function ollamaEmbed(
   texts: string[],
   model: string,
   opts: OllamaCallOpts = {},
 ): Promise<number[][]> {
+  const ka = opts.keepAlive !== undefined ? { keep_alive: opts.keepAlive } : {}
   try {
-    const { data } = await postJsonWithFallback('/api/embed', { model, input: texts }, opts)
+    const { data } = await postJsonWithFallback('/api/embed', { model, input: texts, ...ka }, opts)
     if (Array.isArray(data?.embeddings)) return data.embeddings
   } catch {
     /* fall through to legacy single-input endpoint */
   }
   const out: number[][] = []
   for (const text of texts) {
-    const { data } = await postJsonWithFallback('/api/embeddings', { model, prompt: text }, opts)
+    const { data } = await postJsonWithFallback('/api/embeddings', { model, prompt: text, ...ka }, opts)
     out.push(data?.embedding ?? [])
   }
   return out
