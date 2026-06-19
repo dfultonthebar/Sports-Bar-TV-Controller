@@ -445,15 +445,16 @@ PY
   if ! git -C "$REPO_ROOT" diff --cached --quiet -- ".auto-update-last-success.json" 2>/dev/null; then
     git -C "$REPO_ROOT" commit -q \
       -m "chore(heartbeat): refresh os fields on no-op auto-update ($(date +%Y-%m-%d-%H-%M))" 2>/dev/null || true
-    # v2.52.4 fix (code-reviewer audit Finding #6): rebase before push to
-    # avoid silent no-op pushes when a concurrent run (manual + cron
-    # overlap) already pushed a different heartbeat. The original code's
-    # `|| true` swallowed non-fast-forward errors, so the loser's run
-    # logged "Heartbeat refreshed" but actually wrote nothing to remote.
+    # Push the heartbeat directly — NO `pull --rebase` (it tangles into a stuck
+    # multi-commit rebase against a diverged origin; this very line helped freeze
+    # the whole fleet on 2026-06-14). A heartbeat is just an os-field refresh, so
+    # if the push is rejected (origin diverged) we simply skip it this cycle.
     git -C "$REPO_ROOT" fetch -q origin "$BRANCH" 2>/dev/null || true
-    git -C "$REPO_ROOT" pull -q --rebase origin "$BRANCH" 2>/dev/null || true
-    git -C "$REPO_ROOT" push -q origin "$BRANCH" 2>/dev/null || true
-    log "Heartbeat os.* refreshed (kernel=$kernel)"
+    if git -C "$REPO_ROOT" push -q origin "$BRANCH" 2>/dev/null; then
+      log "Heartbeat os.* refreshed (kernel=$kernel)"
+    else
+      log "Heartbeat push skipped (origin diverged — non-fatal, refreshed locally)"
+    fi
   fi
 }
 
@@ -533,6 +534,38 @@ cleanup_on_error() {
 trap cleanup_on_error EXIT
 
 # ---------------------------------------------------------------------------
+# Hermes SHADOW reviewer (#359 Layer 3) — advisory only, NEVER gates the update.
+# After the real (deterministic / Claude) decision is made, ask the shared T4
+# model for its own verdict and log both so we accumulate an agreement record.
+# Once shadow data proves Hermes agrees, a later slice flips it to primary with
+# Claude as fallback. Fully non-fatal: any failure logs UNAVAILABLE and moves on.
+# ---------------------------------------------------------------------------
+hermes_shadow_review() {
+  local label=$1 prompt_file=$2 real_decision=$3
+  [ -x "$REPO_ROOT/scripts/checkpoint-hermes.sh" ] || return 0
+  # Skip the T4 round-trip entirely where no remote model is configured.
+  [ -n "${OLLAMA_REMOTE_BASE:-}" ] || return 0
+
+  local shadow_out hermes_verdict real_verdict agree="n/a"
+  shadow_out=$(timeout 150 bash "$REPO_ROOT/scripts/checkpoint-hermes.sh" "$label" "$prompt_file" 2>/dev/null | head -1 || true)
+  hermes_verdict=$(printf '%s' "$shadow_out" | sed -E 's/^DECISION: ([A-Z]+).*/\1/')
+  [ -n "$hermes_verdict" ] || hermes_verdict="UNAVAILABLE"
+  real_verdict=$(printf '%s' "$real_decision" | sed -E 's/.*DECISION: ([A-Z]+).*/\1/')
+  [ -n "$real_verdict" ] || real_verdict="UNKNOWN"
+  if [ "$hermes_verdict" != "UNAVAILABLE" ]; then
+    [ "$hermes_verdict" = "$real_verdict" ] && agree="yes" || agree="NO"
+  fi
+  log "[HERMES-SHADOW] Checkpoint $label: real=$real_verdict hermes=$hermes_verdict agree=$agree"
+
+  # Accumulate one JSONL row per checkpoint for later agreement analysis.
+  local shadow_dir="$DATA_DIR/hermes-shadow"
+  mkdir -p "$shadow_dir" 2>/dev/null || true
+  printf '{"ts":"%s","run":"%s","branch":"%s","label":"%s","real":"%s","hermes":"%s","agree":"%s"}\n' \
+    "$(date -u +%FT%TZ)" "${RUN_TS:-?}" "${BRANCH:-?}" "$label" "$real_verdict" "$hermes_verdict" "$agree" \
+    >> "$shadow_dir/checkpoint-shadow.jsonl" 2>/dev/null || true
+  return 0
+}
+
 # Checkpoint helper — invokes Claude Code CLI and parses the DECISION line
 # ---------------------------------------------------------------------------
 run_checkpoint() {
@@ -571,6 +604,7 @@ run_checkpoint() {
           decision="$det_decision"
           decision_normalized=$(echo "$decision" | sed -E 's/^[^A-Z]*//')
           rm -f "$det_out" "$out_file"
+          hermes_shadow_review "$label" "$prompt_file" "$decision_normalized"
           # Jump to the case statement at end of function via a goto-style
           # variable. (Bash has no goto; we just inline the case here.)
           case "$decision_normalized" in
@@ -594,15 +628,30 @@ run_checkpoint() {
     fi
   fi
 
-  # v2.32.20 — Default path is direct Anthropic API (pay-per-token, no
-  # subscription cap). The Claude Code CLI subscription path was hitting
-  # "You've hit your org's monthly usage limit" mid-month, failing
-  # Checkpoint B with UNDETERMINED → rollback. API path bills per-token
-  # against ANTHROPIC_API_KEY in .env and has no monthly cap.
-  #
-  # Falls back to the CLI path (with the original PTY/skip-permissions
-  # dance) only when ANTHROPIC_API_KEY is unset — useful for hosts that
-  # haven't been provisioned with an API key yet.
+  # v2.73.0 — LOCAL AI is the PRIMARY checkpoint reviewer (T4 qwen2.5:14b or the
+  # box's own llama3.1:8b via scripts/checkpoint-hermes.sh + retrieve-only RAG).
+  # This removes the cloud-Claude dependency that FROZE the whole fleet: the CLI
+  # subscription path times out / hits the org monthly-limit (4s empty response
+  # → UNDETERMINED → STOP), and the API path needs a key #363 removed. Local AI
+  # has none of those failure modes. Cloud stays a fallback only when local AI
+  # is UNAVAILABLE (no reachable Ollama).
+  local ai_done=0
+  if [ -x "$REPO_ROOT/scripts/checkpoint-hermes.sh" ]; then
+    log "Checkpoint $label: LOCAL AI reviewer (Ollama=${OLLAMA_REMOTE_BASE:-localhost:11434}, timeout ${timeout_secs}s)"
+    if timeout "$timeout_secs" bash "$REPO_ROOT/scripts/checkpoint-hermes.sh" "$label" "$prompt_file" > "$out_file" 2>>"$LOG_FILE"; then
+      case "$(grep -m1 '^DECISION:' "$out_file" 2>/dev/null)" in
+        "DECISION: GO"*|"DECISION: CAUTION"*|"DECISION: STOP"*) ai_done=1 ;;
+        *) log "Checkpoint $label: local AI UNAVAILABLE/unparseable → cloud fallback" ;;
+      esac
+    else
+      log "Checkpoint $label: local AI reviewer errored/timed out → cloud fallback"
+    fi
+  fi
+
+  # v2.32.20 — Cloud FALLBACK (only when local AI yielded no decision). API path
+  # (checkpoint-runner.py, pay-per-token, no monthly cap) when ANTHROPIC_API_KEY
+  # is set; else the Claude Code CLI subscription path.
+  if [ "$ai_done" = "0" ]; then
   if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
     # v2.32.28 — API path now uses tool use via scripts/checkpoint-runner.py.
     # The plain text-completion path failed Checkpoint B at Lucky's + Leg Lamp
@@ -640,6 +689,7 @@ run_checkpoint() {
     fi
     rm -f "$prompt_file_tmp"
   fi
+  fi  # end ai_done==0 cloud-fallback wrapper
 
   local decision
   # Try line-start first, then fall back to anywhere in the response.
@@ -654,6 +704,10 @@ run_checkpoint() {
   cat "$out_file" >> "$LOG_FILE"
   log "--- end Checkpoint $label response ---"
   rm -f "$out_file"
+
+  # Shadow-compare only when CLOUD made the call (ai_done=0). When local AI was
+  # already the primary reviewer, re-running it to "shadow itself" is redundant.
+  [ "$ai_done" = "1" ] || hermes_shadow_review "$label" "$prompt_file" "$decision_normalized"
 
   case "$decision_normalized" in
     "DECISION: GO"*)
@@ -804,20 +858,30 @@ if [ "$TRIGGERED_BY" = "cron" ]; then
   fi
 fi
 
-# 2. Claude reachability — API path preferred, CLI as fallback
+# 2. Reviewer reachability — LOCAL AI (v2.73.0+) is PRIMARY; Claude is fallback.
+# If the local-AI checkpoint (checkpoint-hermes.sh + a reachable Ollama) is
+# available, a missing Claude reviewer is DOWNGRADED to a warning instead of a
+# hard preflight fail — local AI alone is sufficient to gate the update. This is
+# what lets a fresh box that has Ollama (e.g. Lime Kiln) self-update without the
+# Claude Code CLI installed (v2.81.2 — "push the local AI").
+LOCAL_AI_REVIEWER=0
+if [ -x "$REPO_ROOT/scripts/checkpoint-hermes.sh" ]; then
+  _ollama_base="${OLLAMA_REMOTE_BASE:-http://localhost:11434}"
+  if curl -s --max-time 5 "${_ollama_base}/api/version" >/dev/null 2>&1; then
+    LOCAL_AI_REVIEWER=1
+    log "Reviewer: LOCAL AI primary (checkpoint-hermes + Ollama ${_ollama_base})"
+  fi
+fi
 if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
   command -v curl >/dev/null 2>&1 || fail "curl not on PATH (required for Anthropic API)" 2
   command -v python3 >/dev/null 2>&1 || fail "python3 not on PATH (required for API JSON build)" 2
-  log "Claude path: Anthropic API (model=${CLAUDE_API_MODEL:-claude-opus-4-7})"
+  log "Claude path: Anthropic API (model=${CLAUDE_API_MODEL:-claude-opus-4-7}) — fallback to local AI primary"
+elif command -v claude >/dev/null 2>&1 && timeout 15 claude --version >/dev/null 2>&1; then
+  log "Claude path: Claude Code CLI ($(claude --version 2>/dev/null | head -1)) — fallback to local AI primary"
+elif [ "$LOCAL_AI_REVIEWER" = "1" ]; then
+  log "WARN: no Claude reviewer (no ANTHROPIC_API_KEY, no Claude CLI) — LOCAL AI is sufficient; proceeding with local-AI-only checkpoints."
 else
-  command -v claude >/dev/null 2>&1 || fail "Neither ANTHROPIC_API_KEY set nor Claude Code CLI installed" 2
-  if ! timeout 15 claude --version >/dev/null 2>&1; then
-    fail "Claude Code CLI not responding (--version failed or timed out)" 2
-  fi
-  log "Claude path: Claude Code CLI ($(claude --version 2>/dev/null | head -1))"
-  log "WARN: ANTHROPIC_API_KEY missing from .env — using subscription CLI path."
-  log "WARN: This path has a monthly token cap. To switch to the API path:"
-  log "WARN:   echo 'ANTHROPIC_API_KEY=sk-ant-...' >> $REPO_ROOT/.env"
+  fail "No reviewer available: neither LOCAL AI (Ollama + checkpoint-hermes.sh) nor ANTHROPIC_API_KEY nor Claude Code CLI" 2
 fi
 
 # 3. Verify/rollback scripts present and executable
@@ -1107,6 +1171,14 @@ LOCATION_PATHS_THEIRS=(
   # auto-update across the fleet for 4+ days. CLAUDE.md Standing Rule 9
   # codifies "CLAUDE.md is main-only" — this entry enforces it at merge time.
   "CLAUDE.md"
+  # v2.73.7 — apps/web/TODO_LIST.md is a shared dev TODO updated on main
+  # ("chore: Update TODO" commits). It sits directly under apps/web/, NOT under
+  # apps/web/src/, so the SHARED_SOFTWARE_PREFIXES fallback below does NOT catch
+  # it — without this explicit entry a content conflict on it aborts the whole
+  # update as a "non-whitelisted file" (observed on graystone 2026-06-18 14:03,
+  # the first conflict to surface once the local-AI Checkpoint A fix let the
+  # 29-commit backlog reach the merge step). Main always wins.
+  "apps/web/TODO_LIST.md"
 )
 
 # Prefix-based fallback: any remaining conflict under a shared-software
@@ -1759,6 +1831,22 @@ if [ -x "$REPO_ROOT/scripts/rag-rescan-if-needed.sh" ]; then
   fi
 fi
 
+# v2.64.x — Self-updating docs (Standing Rule 1 automated): flag code-grounded
+# docs whose source code changed in this merge, so they get refreshed before
+# they rot. Maps live in docs/doc-source-map.json; checker is non-fatal and
+# files ONE aggregated "refresh stale docs" TODO (source=self-updating-docs).
+# See docs/SELF_UPDATING_DOCS.md. A doc with wrong steps is worse than none —
+# a bartender follows it and it fails.
+if [ -f "$REPO_ROOT/scripts/docs/check-stale-docs.mjs" ] && command -v node >/dev/null 2>&1; then
+  STALE_SINCE="${PRE_MERGE_SHA:-HEAD~5}"
+  if node "$REPO_ROOT/scripts/docs/check-stale-docs.mjs" --since "$STALE_SINCE" --file-todo \
+       >/tmp/auto-update-stale-docs.log 2>&1; then
+    log "stale-docs check: $(grep -E 'need refresh|no docs stale' /tmp/auto-update-stale-docs.log | head -1)"
+  else
+    log "⚠ stale-docs check: returned non-zero (continuing — see /tmp/auto-update-stale-docs.log)"
+  fi
+fi
+
 # Push the merge commit back to origin so the Fleet Dashboard (v2.24.0+)
 # sees this location's current version. Before v2.24.6, auto-update.sh
 # merged main locally, built, verified, restarted — but never pushed. The
@@ -1783,15 +1871,29 @@ if git rev-parse --abbrev-ref HEAD >/dev/null 2>&1; then
     log "WARNING: detached HEAD — skipping push"
   else
     log "Pushing $CURRENT_BRANCH to origin (fleet-dashboard signal)"
-    # v2.52.4 fix (code-reviewer audit Finding #6): rebase before push so
-    # a concurrent heartbeat from a manual run doesn't cause silent
-    # non-fast-forward rejection.
     git -C "$REPO_ROOT" fetch -q origin "$CURRENT_BRANCH" 2>&1 | tee -a "$LOG_FILE" || true
-    git -C "$REPO_ROOT" pull --rebase origin "$CURRENT_BRANCH" 2>&1 | tee -a "$LOG_FILE" || true
     if git -C "$REPO_ROOT" push origin "$CURRENT_BRANCH" 2>&1 | tee -a "$LOG_FILE"; then
       log "Push succeeded — Fleet Dashboard will reflect this update within 5 min (cache TTL)"
     else
-      log "WARNING: push failed — location is still healthy, but Fleet Dashboard won't see this update until a human pushes manually or next successful auto-update"
+      # Push rejected (origin diverged). Reconcile by MERGE, never `pull --rebase`:
+      # against a badly-diverged origin (e.g. frozen for weeks) a rebase replays
+      # the box's local commits and gets STUCK in a 70+ commit interactive rebase,
+      # silently leaving the working tree detached on old code. That tangle hit
+      # the ENTIRE fleet (2026-06-14) — every box stuck-rebase, origin frozen at
+      # 2.55.48. A merge with -X ours keeps THIS box's authoritative content and
+      # just records origin's history so the retry push fast-forwards. If even the
+      # merge conflicts, abort it and leave the box healthy (push is non-fatal).
+      log "Push rejected (origin diverged) — reconciling via merge (-X ours), NOT rebase"
+      if git -C "$REPO_ROOT" merge --no-edit -X ours "origin/$CURRENT_BRANCH" 2>&1 | tee -a "$LOG_FILE"; then
+        if git -C "$REPO_ROOT" push origin "$CURRENT_BRANCH" 2>&1 | tee -a "$LOG_FILE"; then
+          log "Push succeeded after merge-reconcile"
+        else
+          log "WARNING: push still failed after merge — location healthy, Fleet Dashboard lagging; manual reconcile needed"
+        fi
+      else
+        git -C "$REPO_ROOT" merge --abort 2>/dev/null || true
+        log "WARNING: merge-reconcile conflicted — aborted (NOT rebasing). Location healthy; manual reconcile needed"
+      fi
     fi
   fi
 fi
