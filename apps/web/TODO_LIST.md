@@ -50,6 +50,26 @@ ALTERNATIVES: used RTX 3090 24GB (~$700-900) only if Hermes moves to a different
 - **Created**: 6/19/2026, 1:52:02 PM
 - **Updated**: 6/19/2026, 8:52:02 AM
 
+### SECURITY: rotate default admin/staff PINs (7819/1234) — ALL 7 boxes
+
+- **ID**: `0e9a2aab-59a7-4caf-8db6-024fb845859e`
+- **Priority**: high
+- **Status**: PLANNED
+- **Category**: security
+- **Description**: fleet-security-audit.sh found EVERY box on the default ADMIN (7819) + STAFF (1234) PINs from the bootstrap runbook examples. Trivial admin access (matrix/audio/auto-update) from the bartender LAN. Cannot auto-rotate (would lock out bartenders mid-shift). Operator: rotate per location via Device Config. Re-run scripts/fleet-security-audit.sh to confirm.
+- **Created**: 6/19/2026, 5:26:04 PM
+- **Updated**: 6/19/2026, 12:26:04 PM
+
+### Fix Brewers->669 DirecTV misroute at Holmgren (should be 670 BallyWIPlus)
+
+- **ID**: `77ff1f24-20ea-4493-b07d-1221d0e13718`
+- **Priority**: high
+- **Status**: PLANNED
+- **Category**: bug
+- **Description**: Research found Holmgren local_channel_overrides has Milwaukee Brewers + Brewers.TV -> 669 (directv). 669 = FanDuelWI/Fan Duel = BUCKS channel (CLAUDE.md WI RSN split CRITICAL). Brewers DirecTV is 670 (MILBRE/BallyWIPlus). Cable side (308) is correct. So Brewers games on DirecTV route to the Bucks channel. Verify 670 is the right Holmgren DirecTV Brewers channel (670 MILBRE is currently isActive=0 — check provider lineup) then fix the override. Backup DB first (like the matrix_input_id fix).
+- **Created**: 6/19/2026, 5:26:04 PM
+- **Updated**: 6/19/2026, 12:26:04 PM
+
 ### Atlas: 3 zone-gain drops VERIFIED REAL (not firmware artifacts) — on-site investigation needed
 
 - **ID**: `93f20110-9691-42db-bd36-eb9709e4e5c7`
@@ -686,8 +706,8 @@ Wired the first automated monitoring job. Hermes GATEWAY now installed as a user
 
 ---
 
-**Total TODOs**: 59
-- Planned: 18
+**Total TODOs**: 61
+- Planned: 20
 - In Progress: 3
 - Testing: 1
 - Complete: 36
