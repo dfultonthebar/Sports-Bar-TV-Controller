@@ -9,12 +9,14 @@
  *
  * Env:
  *   HUB_OLLAMA_BASE   default http://100.70.56.34:11434  (CT 212 `hermes`, tailnet)
- *   HUB_OLLAMA_MODEL  default llama3.1:8b
+ *   HUB_OLLAMA_MODEL  default llama3.2:3b  (small model: co-resides with the
+ *                     trading bot's phi4-trader "Phil" on CT212's ~15GB T4 —
+ *                     llama3.1:8b/5.3GB evicts Phil, llama3.2:3b/2.6GB does not)
  */
 import { listLocations, latestHealthByLocation, latestMetricsByLocation, recentErrors } from './repo'
 
 const OLLAMA_BASE = process.env.HUB_OLLAMA_BASE || 'http://100.70.56.34:11434'
-const OLLAMA_MODEL = process.env.HUB_OLLAMA_MODEL || 'llama3.1:8b'
+const OLLAMA_MODEL = process.env.HUB_OLLAMA_MODEL || 'llama3.2:3b'
 
 export type ChatMsg = { role: 'user' | 'assistant' | 'system'; content: string }
 
