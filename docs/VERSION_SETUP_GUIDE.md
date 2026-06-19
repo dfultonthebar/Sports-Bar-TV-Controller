@@ -35,6 +35,20 @@ is the archive.
 
 ---
 
+## v2.74.0 — Wave 3.5: health-aware assignment (scheduler excludes offline devices) (2026-06-19)
+
+**Branch landed:** main. **No setup required** — additive scheduler logic, no schema/env/migration changes.
+
+**What changed:** new `getOfflineDeviceIds()` helper (`packages/scheduler/src/device-health.ts`, exported from the package index) returns the set of genuinely-offline device IDs. Wired into both assignment paths so a game is never assigned to a dead screen:
+- `StateReader.getAvailableInputs()` (`packages/scheduler/src/state-reader.ts`) — folds `!isOffline` into `isAvailable`, so the deterministic DistributionEngine skips offline inputs. A game left with zero eligible screens flows through the existing #348 contention path (`unservedGames`).
+- `loadInputSources()` (`apps/web/src/app/api/scheduling/ai-suggest/route.ts`) — filters offline-device inputs out of the LLM candidate list.
+
+**v1 scope is Fire TV only.** Cable boxes + DirecTV carry an `isOnline` column but it's operator-set, NOT actively monitored, so excluding on it would wrongly drop working boxes — they're intentionally left in the candidate set. **Exempts expected-powered-down devices** (`/atmosphere|epson|projector/i`) — verified live at Holmgren: the offline Epson Projector is correctly KEPT, not excluded. Also requires `lastSeen` staleness > 10 min (avoids bouncing a device on a transient ADB blip). **Fails open** — any query error returns an empty set (assign as before), never starves the schedule.
+
+**Verify:** trigger a schedule with a genuinely-offline Fire TV (not Atmosphere/Epson) and confirm `[STATE_READER] Input N (label) device offline - excluded` + the game routes elsewhere or reports in `unservedGames`. Fast-follow (#347b): cable/DirecTV reachability probe, keep-awake off-hours window, streaming-catalog gating for offline Fire TVs.
+
+---
+
 ## v2.73.4 — checkpoint-hermes embeds the real diff for Checkpoint A (fixes the still-frozen fleet) (2026-06-18)
 
 **Branch landed:** main. **This is the actual fix for the fleet freeze** — v2.73.0 routed Checkpoint A to local AI, but the local model still failed.

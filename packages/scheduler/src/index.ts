@@ -37,6 +37,9 @@ export {
   type AvailableInput
 } from './state-reader'
 
+// Device health - Wave 3.5 health-aware assignment (exclude offline devices)
+export { getOfflineDeviceIds } from './device-health'
+
 // Priority Calculator - Game scoring
 export {
   PriorityCalculator,
