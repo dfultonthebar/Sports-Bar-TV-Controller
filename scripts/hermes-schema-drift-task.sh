@@ -65,6 +65,27 @@ except Exception: pass
   fi
 fi
 
+# ── Phase 0.55: config/service consistency (auto-fix safe: systemd/nginx/pm2) ──
+if [ -f scripts/fleet-config-audit.sh ]; then
+  LOG "config/service consistency sweep (auto-fix linger/timer/ollama-ipex/nginx/pm2)..."
+  FLEET_SSH_PW="$FLEET_SSH_PW" bash scripts/fleet-config-audit.sh --fix > /tmp/hermes-config-audit.out 2>&1 || true
+  grep -E 'FIXED|FINDING|ESCALATE|RESULT' /tmp/hermes-config-audit.out | sed 's/^/  /'
+fi
+
+# ── Phase 0.57: data-integrity invariants (REPORT-ONLY — data fixes need operator) ──
+if [ -f scripts/fleet-data-integrity-audit.sh ]; then
+  LOG "data-integrity invariants (report-only; findings -> operator, never auto-fixed)..."
+  FLEET_SSH_PW="$FLEET_SSH_PW" bash scripts/fleet-data-integrity-audit.sh > /tmp/hermes-dataintegrity.out 2>&1 || true
+  grep -E 'FINDING|RESULT' /tmp/hermes-dataintegrity.out | sed 's/^/  /'
+fi
+
+# ── Phase 0.58: auto-update health (auto-fix host-state; branch/conflict = REPORT) ──
+if [ -f scripts/fleet-update-health-audit.sh ]; then
+  LOG "auto-update health (auto-fix linger/node-path/ollama-group; branch-drift+conflicts reported, NOT auto-resolved)..."
+  FLEET_SSH_PW="$FLEET_SSH_PW" bash scripts/fleet-update-health-audit.sh --fix > /tmp/hermes-updatehealth.out 2>&1 || true
+  grep -E 'FIXED|FINDING|ESCALATE|CRIPPLED|RESULT' /tmp/hermes-updatehealth.out | sed 's/^/  /'
+fi
+
 # ── Phase 0.5: security hygiene (auto-fix only secret-file perms) ──
 LOG "security hygiene sweep (auto-chmod 600 on secret files)..."
 FLEET_SSH_PW="$FLEET_SSH_PW" bash scripts/fleet-security-audit.sh --fix > /tmp/hermes-security-audit.out 2>&1 || true
@@ -119,5 +140,12 @@ for x in d.get('driftDetails',[]):
   printf '%s' "$PROMPT" | $ASK_CLAUDE_CMD 2>&1 | tail -20 | sed 's/^/    /' \
     || LOG "$box: ask_claude_code invocation failed (ASK_CLAUDE_CMD='$ASK_CLAUDE_CMD') — left for manual fix."
 done
+
+# ── Phase 2: hardware firmware (REPORT-ONLY — never auto-flash) ──
+if [ -f scripts/fleet-firmware-audit.sh ]; then
+  LOG "hardware firmware audit (report-only; never auto-flash)..."
+  FLEET_SSH_PW="$FLEET_SSH_PW" bash scripts/fleet-firmware-audit.sh > /tmp/hermes-firmware.out 2>&1 || true
+  grep -E 'FINDING|RESULT' /tmp/hermes-firmware.out | sed 's/^/  /'
+fi
 
 LOG "done."

@@ -35,6 +35,26 @@ is the archive.
 
 ---
 
+## v2.81.0 — Fleet consistency: config + data-integrity + update-health + firmware audits (2026-06-19)
+
+**Branch landed:** main. Four more fleet-consistency dimensions (built by 4 parallel agents from the enhancement research), wired into `hermes-schema-drift-task.sh`. Full pipeline is now: deps → config → data-integrity → update-health → security → schema → firmware.
+
+**New scripts:**
+- **`fleet-config-audit.sh`** (AUTO-FIX safe): ecosystem.config.js hash match, systemd units (linger / autoupdate.timer / ollama-ipex — idempotent enables), .env required-key presence (names only), nginx allow-list (live vs committed script, re-run on drift), PM2 process set (bartender-proxy split-brain).
+- **`fleet-data-integrity-audit.sh`** (REPORT-ONLY): per-box invariants — matrix_input_id resolvable (regression guard), Brewers→RSN misroute, station_aliases JSON valid + override→preset, device_id FK orphans, BartenderLayout rooms (Gotcha #8).
+- **`fleet-update-health-audit.sh`** (AUTO-FIX host-state; branch/conflict REPORT): version-stall 3-state classifier (HEALTHY/STALLED/CRIPPLED), branch-drift (on-main, lime-kiln whitelisted), the 4 Gotcha-#11 classes (linger/node-PATH/ollama-group auto-fix, rollback-conflict escalate).
+- **`fleet-firmware-audit.sh`** (REPORT-ONLY, never auto-flash): Shure ≥1.1.0 via /api/shure-rf/status, Atlas (no fw endpoint — manual), Crestron VER. Wolf Pack/DirecTV excluded (no clean accessor).
+
+**CRITICAL findings surfaced on first run (logged as todos):**
+- **🔴 Fleet auto-update is BROKEN on all 5 location boxes** — every nightly run hits `CONFLICT (content) in apps/web/TODO_LIST.md`, auto-resolves, then `error: failed to push` → rollback. This is why the fleet is frozen at v2.73.8 and none of v2.76–2.81 has propagated. Needs a dedicated fix (untrack TODO_LIST.md and/or fix the push-failure).
+- matrix_input_id unresolvable still at Graystone (16), Greenville (4), Appleton (1) — the fleet-wide DirecTV/cable mapping gap (only Holmgren fixed so far).
+- Brewers→669 (Bucks channel) DirecTV misroute confirmed at Holmgren.
+- BartenderLayout rooms empty at Holmgren/Lucky's/Greenville/Appleton (Gotcha #8).
+
+**Required Manual Steps:** none new (scripts pull via auto-update — once it's unblocked). The fleet-update-health auto-fixes (linger/node/ollama-group) run via the CT212 cron.
+
+---
+
 ## v2.80.0 — Fleet SECURITY hygiene audit + Hermes auto-fix (2026-06-19)
 
 **Branch landed:** main. Fourth fleet-consistency dimension (after schema/deps/OS). From the multi-agent enhancement research.
