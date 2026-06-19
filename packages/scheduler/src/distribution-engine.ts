@@ -38,9 +38,11 @@ const ENGINE_LEARNING = (process.env.DISTRIBUTION_ENGINE_LEARNING || 'off').toLo
  * candidate inputs (AvailableInput) do NOT carry input_sources.id — they only
  * carry inputNumber (= MatrixInput.channelNumber) and deviceId. So loading the
  * raw preferredInputId and comparing it to AvailableInput.inputNumber would be
- * ALWAYS-FALSE. We resolve it in the loader by joining
- *   input_sources.matrix_input_id -> MatrixInput.id -> MatrixInput.channelNumber
- * so the tie-breaker compares like-for-like and the match is real.
+ * ALWAYS-FALSE. We resolve it in the loader by mapping
+ *   input_sources.matrix_input_id -> MatrixInput.channelNumber
+ * tolerating BOTH lineages (matrix_input_id is a UUID FK to MatrixInput.id at
+ * some sites, the channelNumber string directly at others) so the tie-breaker
+ * compares like-for-like and the match is real.
  */
 interface TeamEnginePreference {
   preferredInputNumber: number | null
@@ -77,19 +79,43 @@ async function loadTeamPreferencesForEngine(): Promise<Map<string, TeamEnginePre
     if (!rows || rows.length === 0) return prefs
 
     // Resolve input_sources.id -> matrix input channelNumber once, up front.
-    // (input_sources.matrix_input_id is a text uuid FK to MatrixInput.id;
-    //  MatrixInput.channelNumber is the integer that equals AvailableInput.inputNumber.)
-    const mapRows = (await db.all(sql`
-      SELECT ins.id AS input_source_id, mi.channelNumber AS channel_number
-      FROM input_sources ins
-      INNER JOIN MatrixInput mi ON ins.matrix_input_id = mi.id
-    `)) as Array<{ input_source_id: string; channel_number: number }>
+    // input_sources.matrix_input_id is UNRELIABLE: a UUID FK to MatrixInput.id at
+    // some sites, the channelNumber string directly at others (e.g. Holmgren cable
+    // boxes = "1".."4", DirecTV = "5".."10"), NULL/'' on fresh installs. A strict
+    // id-join silently resolves NOTHING at channelNumber-convention sites, leaving
+    // this map empty and the learned-preference bias a no-op. Resolve BOTH lineages
+    // the same way ai-suggest-solver-shadow.ts does.
+    const srcRows = (await db.all(sql`
+      SELECT id AS input_source_id, matrix_input_id
+      FROM input_sources
+      WHERE matrix_input_id IS NOT NULL AND matrix_input_id != ''
+    `)) as Array<{ input_source_id: string; matrix_input_id: string }>
+    const miRows = (await db.all(sql`
+      SELECT id, channelNumber FROM MatrixInput
+    `)) as Array<{ id: string; channelNumber: number }>
+
+    const channelById = new Map<string, number>()
+    const validChannels = new Set<number>()
+    for (const mi of miRows || []) {
+      const ch = Number(mi.channelNumber)
+      if (Number.isFinite(ch)) {
+        validChannels.add(ch)
+        if (mi.id != null) channelById.set(String(mi.id), ch)
+      }
+    }
 
     const inputSourceIdToChannel = new Map<string, number>()
-    for (const r of mapRows || []) {
-      if (r.input_source_id != null && r.channel_number != null) {
-        inputSourceIdToChannel.set(r.input_source_id, r.channel_number)
+    for (const r of srcRows || []) {
+      if (r.input_source_id == null) continue
+      const raw = r.matrix_input_id
+      let ch: number | null = null
+      if (channelById.has(String(raw))) {
+        ch = channelById.get(String(raw))!            // UUID FK lineage
+      } else {
+        const n = Number(raw)
+        if (Number.isFinite(n) && validChannels.has(n)) ch = n   // direct channelNumber lineage
       }
+      if (ch != null) inputSourceIdToChannel.set(r.input_source_id, ch)
     }
 
     for (const row of rows) {
