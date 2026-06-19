@@ -37,6 +37,12 @@ export {
   type AvailableInput
 } from './state-reader'
 
+// Device health - Wave 3.5 health-aware assignment (exclude offline devices)
+export { getOfflineDeviceIds } from './device-health'
+
+// Contention digest - Wave 3.7/Hermes (#349): weekly "N games had no screen" TODO
+export { runContentionDigest } from './contention-digest'
+
 // Priority Calculator - Game scoring
 export {
   PriorityCalculator,
@@ -200,3 +206,12 @@ export {
 
 // v2.52.14: Tier 3 — Daily Ollama-powered RF Pattern Digest
 export { generateRfPatternDigest } from './rf-pattern-digest'
+
+// v2.55.82: Wave 3/3b — closed-loop matrix route verification (advisory)
+export {
+  checkRouteMatch,
+  verifyAndRetryRoute,
+  persistVerifyState,
+  type VerifyState,
+  type RouteVerifyResult,
+} from './route-verify'

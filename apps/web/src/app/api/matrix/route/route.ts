@@ -28,7 +28,12 @@ export async function POST(request: NextRequest) {
     // rejected by the enum, causing silent revert failure (the calling code
     // logged "revert complete" even though every matrix route was 400'd
     // before reaching the Wolf Pack).
-    source: z.enum(['bartender', 'ai_scheduler', 'manual', 'system', 'auto-reallocator']).optional().default('bartender'),
+    // 'manual_schedule' added (Wave 1, intelligence roadmap) — the
+    // execute-single-game path (AIGamePlanModal, ScheduledGamesPanel) sends
+    // source='manual_schedule'. Previously rejected by the enum, so EVERY
+    // routing call from that path returned HTTP 400 and silently failed with
+    // tvsControlled=0 — the TV never changed, with zero diagnostic.
+    source: z.enum(['bartender', 'ai_scheduler', 'manual', 'manual_schedule', 'system', 'auto-reallocator']).optional().default('bartender'),
     bartenderId: z.string().optional(),
   })
 
@@ -162,8 +167,9 @@ export async function POST(request: NextRequest) {
     // Override-learn: when a bartender changes a route during an active
     // scheduled allocation (game has not yet ended), patch that allocation's
     // tv_output_ids so the hourly pattern-analyzer learns from the correction.
-    // The window is open while the allocation is still active OR
-    // expected_free_at has not passed — NOT bounded by allocated_at.
+    // The window is open while the allocation's game is CURRENTLY RUNNING:
+    // it has STARTED (allocated_at <= now) AND has not ended (expected_free_at
+    // >= now, OR still status='active' for overruns).
     // Bartender corrections frequently happen 10+ minutes after game start
     // (allocated_at = tuneAtUnix = game start time), and the old
     // "allocated_at >= now-600" gate silently excluded every such correction,
@@ -173,6 +179,12 @@ export async function POST(request: NextRequest) {
     // but the allocation is still status='active' until the auto-reallocator
     // marks it completed at real game end — which closes the window naturally
     // (added v2.55.46).
+    // The allocated_at <= now lower bound (v2.55.72) is CRITICAL: without it,
+    // FUTURE pending allocations (tomorrow's / Friday's games pre-scheduled on
+    // the SAME input source) have expected_free_at days out, pass the filter,
+    // and a tonight-only tweak silently rewrites those future games' layouts
+    // (and triple-logs the override, inflating the digest). The window must
+    // mean "the game on right now", not "any allocation not yet ended".
     // Home-team overrides (Brewers/Bucks/Badgers/etc. from HomeTeam table)
     // are logged at warn level so operators can filter to the strongest
     // signals.
@@ -201,6 +213,7 @@ export async function POST(request: NextRequest) {
           LEFT JOIN MatrixInput mi ON mi.id = s.matrix_input_id
           LEFT JOIN game_schedules g ON g.id = a.game_schedule_id
           WHERE a.status IN ('active','pending','tuning')
+            AND a.allocated_at <= ${nowUnix}
             AND (a.expected_free_at >= ${nowUnix} OR a.status = 'active')
         `) as Array<{
           allocation_id: string

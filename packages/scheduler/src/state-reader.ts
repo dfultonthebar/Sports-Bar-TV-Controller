@@ -11,6 +11,7 @@
 
 import { db, schema, eq, and, sql } from '@sports-bar/database'
 import { logger } from '@sports-bar/logger'
+import { getOfflineDeviceIds } from './device-health'
 
 export interface InputChannelState {
   inputNumber: number
@@ -230,6 +231,10 @@ export class StateReader {
     // Get manual override status for all inputs
     const manualOverrides = await this.getManualOverrides()
 
+    // Wave 3.5 — health-aware assignment: device IDs that are genuinely offline
+    // (Fire TV only in v1) so we never assign a game to a dead screen.
+    const offlineDeviceIds = await getOfflineDeviceIds()
+
     for (const input of matrixInputs) {
       const deviceType = this.normalizeDeviceType(input.deviceType || 'unknown')
 
@@ -243,14 +248,22 @@ export class StateReader {
       // Check if input has an active manual override
       const hasManualOverride = manualOverrides.has(input.channelNumber)
 
+      // Wave 3.5 — health-aware: exclude inputs whose device is genuinely
+      // offline so a game never gets assigned to a dead screen.
+      const isOffline = input.deviceId ? offlineDeviceIds.has(input.deviceId) : false
+
       // Check if input is available for scheduling
       // Must have:
       // 1. isSchedulingEnabled is truthy (handles SQLite 0/1 integers)
       // 2. NO active manual override (bartender protection)
-      const isAvailable = !!input.isSchedulingEnabled && !hasManualOverride
+      // 3. device NOT genuinely offline (Wave 3.5)
+      const isAvailable = !!input.isSchedulingEnabled && !hasManualOverride && !isOffline
 
       if (hasManualOverride) {
         logger.info(`[STATE_READER] Input ${input.channelNumber} (${input.label}) is protected by manual override - excluded from scheduling`)
+      }
+      if (isOffline) {
+        logger.info(`[STATE_READER] Input ${input.channelNumber} (${input.label}) device offline - excluded from scheduling`)
       }
 
       availableInputs.push({

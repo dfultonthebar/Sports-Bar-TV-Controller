@@ -103,6 +103,23 @@ export async function register() {
     }
 
     try {
+      // MAC auto-discovery: backfill any NetworkTVDevice missing its macAddress
+      // by reading it off the LAN (ARP-after-ping) whenever the TV is reachable.
+      // Once filled, Wake-on-LAN power-on works and the missing-MAC warning stops.
+      // Initial run 60s after boot (give the network a moment), then every 30 min.
+      const { backfillMissingMacs } = await import('./lib/mac-discovery')
+      registerTimeout(() => {
+        backfillMissingMacs().catch(e => logger.warn('[MAC-DISCOVERY] initial backfill failed:', e))
+      }, 60_000)
+      registerInterval(() => {
+        backfillMissingMacs().catch(e => logger.warn('[MAC-DISCOVERY] periodic backfill failed:', e))
+      }, 30 * 60_000)
+      logger.info('[INSTRUMENTATION] MAC auto-discovery scheduled (60s + every 30min)')
+    } catch (error) {
+      logger.error('[INSTRUMENTATION] Failed to schedule MAC auto-discovery:', error)
+    }
+
+    try {
       // Import auto-reallocator worker
       const { autoReallocatorWorker } = await import('./lib/scheduling/auto-reallocator-worker')
 
@@ -223,10 +240,31 @@ export async function register() {
         //   { sport: 'rugby', league: 'six-nations' },
       ]
 
+      // Feature B1: when ESPN_HUB_ENABLED=true, pull the shared game cache from
+      // the hub ONCE per cycle and run the SAME per-league syncLeague over it. On
+      // ANY hub failure (or when disabled), prefetched stays undefined and
+      // syncLeague does its normal local ESPN fetch — today's exact behavior, so
+      // the bartender guide never depends on the hub.
+      const ESPN_HUB_ENABLED = process.env.ESPN_HUB_ENABLED === 'true'
+
       const runEspnSyncAll = async () => {
+        let hubGamesByLeague: Map<string, any[]> | null = null
+        if (ESPN_HUB_ENABLED) {
+          try {
+            const { pullEspnFromHub } = await import('./lib/hub-espn-sync')
+            const leagues = await pullEspnFromHub()
+            if (leagues) {
+              hubGamesByLeague = new Map(leagues.map((l) => [`${l.sport}-${l.league}`, l.games]))
+              logger.info(`[INSTRUMENTATION][ESPN SYNC] pulled ${leagues.length} leagues from hub`)
+            }
+          } catch (err) {
+            logger.error('[INSTRUMENTATION][ESPN SYNC] hub pull failed, using local ESPN:', err)
+          }
+        }
         for (const { sport, league } of ESPN_SYNC_LEAGUES) {
           try {
-            const result = await espnSyncService.syncLeague(sport, league)
+            const prefetched = hubGamesByLeague?.get(`${sport}-${league}`)
+            const result = await espnSyncService.syncLeague(sport, league, prefetched)
             logger.info(
               `[INSTRUMENTATION][ESPN SYNC] ${sport}/${league}: +${result.gamesAdded} new, ~${result.gamesUpdated} updated, ${result.errors.length} errors`
             )

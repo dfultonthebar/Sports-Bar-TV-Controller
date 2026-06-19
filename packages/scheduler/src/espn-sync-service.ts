@@ -83,7 +83,7 @@ class ESPNSyncService {
   /**
    * Sync a single league (7-day window)
    */
-  async syncLeague(sport: string, league: string): Promise<SyncResult> {
+  async syncLeague(sport: string, league: string, prefetchedGames?: ESPNGame[]): Promise<SyncResult> {
     const key = `${sport}-${league}`;
 
     // Prevent concurrent syncs for same league
@@ -113,9 +113,13 @@ class ESPNSyncService {
     try {
       logger.info(`[ESPN SYNC] Starting sync for ${sport}/${league}`);
 
-      // Fetch games from ESPN (7-day window)
-      const games = await espnScoreboardAPI.getWeekGames(sport, league);
-      logger.info(`[ESPN SYNC] Fetched ${games.length} games for ${sport}/${league}`);
+      // Fetch games from ESPN (7-day window) — or use games pre-fetched by the
+      // hub (Feature B1). Either way the SAME syncGame loop below runs, so the DB
+      // write-path is identical whether the games came from ESPN or the hub cache.
+      const games = prefetchedGames ?? (await espnScoreboardAPI.getWeekGames(sport, league));
+      logger.info(
+        `[ESPN SYNC] ${prefetchedGames ? 'Using' : 'Fetched'} ${games.length} games for ${sport}/${league}${prefetchedGames ? ' (from hub)' : ''}`,
+      );
 
       // Sync each game
       for (const game of games) {

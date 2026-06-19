@@ -6,6 +6,7 @@ import { logger } from '@sports-bar/logger'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { HARDWARE_CONFIG } from '@/lib/hardware-config'
+import { logLlmPerf } from '@/lib/llm-perf-logger'
 
 // v2.52.20 (audit security #2): sanitize free-form scraper-sourced
 // strings before LLM interpolation. Bananas Entertainment + venue
@@ -51,7 +52,17 @@ export async function GET(request: NextRequest) {
     cachedBrief = { text: brief, generatedAt: Date.now() }
     return NextResponse.json({ success: true, brief, generatedAt: cachedBrief.generatedAt, fromCache: false })
   } catch (error: any) {
-    logger.error('[SHIFT-BRIEF] Error:', error)
+    // Build an always-informative reason. A bare AbortSignal.timeout rejection
+    // (or any DOMException) frequently has an EMPTY `.message`, which is why this
+    // previously logged "[SHIFT-BRIEF] Error:" with nothing after it — completely
+    // undiagnosable. Name the timeout case explicitly and fall back through
+    // message → cause.message → name so the log is never blank.
+    const errName = error?.name || 'Error'
+    const reason =
+      errName === 'TimeoutError' || errName === 'AbortError'
+        ? 'Ollama request timed out after 90s (model not resident or box under load)'
+        : error?.message || error?.cause?.message || errName
+    logger.error(`[SHIFT-BRIEF] LLM generation failed: ${reason}`, error)
     // Degrade gracefully — still return something useful without the LLM
     try {
       const context = await gatherShiftContext()
@@ -60,10 +71,11 @@ export async function GET(request: NextRequest) {
         brief: fallbackBrief(context),
         generatedAt: Date.now(),
         fromCache: false,
-        llmError: error.message,
+        llmError: reason,
       })
     } catch (e: any) {
-      return NextResponse.json({ success: false, error: e.message }, { status: 500 })
+      logger.error(`[SHIFT-BRIEF] Fallback also failed (context gather): ${e?.message || e?.name || 'unknown'}`, e)
+      return NextResponse.json({ success: false, error: e?.message || 'shift-brief failed' }, { status: 500 })
     }
   }
 }
@@ -504,6 +516,10 @@ async function gatherShiftContext() {
 
 async function generateBriefViaOllama(ctx: any): Promise<string> {
   const prompt = buildPrompt(ctx)
+  const startedAt = Date.now()
+  // 384 not 320: LLM-PERF logs showed ~13% of briefs hit done=length [TRUNCATED@cap]
+  // at 320 (silent cut-off of the last section). +64 tokens ≈ +10s at ~6 tok/s — worth it.
+  const SHIFT_BRIEF_NUM_PREDICT = 384
   const resp = await fetch(`${HARDWARE_CONFIG.ollama.baseUrl}/api/generate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -519,7 +535,7 @@ async function generateBriefViaOllama(ctx: any): Promise<string> {
       // section before the Atlas line could render; 280 still cut the
       // tail; 320 reliably fits the full brief).
       keep_alive: -1,
-      options: { temperature: 0.2, num_predict: 320 },
+      options: { temperature: 0.2, num_predict: SHIFT_BRIEF_NUM_PREDICT },
     }),
     signal: AbortSignal.timeout(90_000),
   })
@@ -527,6 +543,16 @@ async function generateBriefViaOllama(ctx: any): Promise<string> {
     throw new Error(`Ollama returned ${resp.status}`)
   }
   const data = await resp.json()
+  void logLlmPerf({
+    feature: 'shift-brief',
+    model: HARDWARE_CONFIG.ollama.model,
+    totalMs: Date.now() - startedAt,
+    evalCount: data.eval_count,
+    promptEvalCount: data.prompt_eval_count,
+    doneReason: data.done_reason,
+    numPredict: SHIFT_BRIEF_NUM_PREDICT,
+    outcome: 'ok',
+  })
   return (data.response || '').trim()
 }
 

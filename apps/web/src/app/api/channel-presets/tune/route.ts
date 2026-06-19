@@ -855,6 +855,98 @@ async function sendCableBoxChannelChange(channelNumber: string, cableBoxId?: str
 
     logger.info(`[CHANNEL TUNE] All ${digitsSent} digits sent successfully for channel ${channelNumber}`)
 
+    // Send "Select" (OK/enter) after the digits — required on many Spectrum cable boxes
+    // to confirm the 3-digit channel entry. "Select" is the learned navigation key.
+    const selectCommand = commands.find(
+      (cmd) => cmd.functionName.toLowerCase() === 'select' || cmd.functionName.toLowerCase() === 'ok' || cmd.functionName.toLowerCase() === 'enter'
+    )
+    if (selectCommand && selectCommand.irCode) {
+      logger.info(`[CHANNEL TUNE] Sending Select to confirm channel ${channelNumber}`)
+      const net = await import('net')
+      const selectResult = await new Promise<{ success: boolean; error?: string }>((resolve) => {
+        const client = new net.Socket()
+        let resolved = false
+        const timeout = 10000
+
+        const timeoutId = setTimeout(() => {
+          if (!resolved) {
+            resolved = true
+            client.destroy()
+            resolve({ success: false, error: 'Connection timeout' })
+          }
+        }, timeout)
+
+        client.on('connect', () => {
+          let adjustedCode = selectCommand.irCode
+          if (targetDevice.globalCachePortNumber) {
+            adjustedCode = adjustedCode.replace(
+              /^(sendir,\d+:)\d+/,
+              `$1${targetDevice.globalCachePortNumber}`
+            )
+          }
+          client.write(adjustedCode + '\r')
+        })
+
+        client.on('data', (data) => {
+          const response = data.toString()
+          if (response.includes('completeir') || response.includes('busyIR')) {
+            if (!resolved) {
+              resolved = true
+              clearTimeout(timeoutId)
+              client.destroy()
+              resolve({ success: true })
+            }
+          }
+          if (response.includes('ERR')) {
+            if (!resolved) {
+              resolved = true
+              clearTimeout(timeoutId)
+              client.destroy()
+              resolve({ success: false, error: response.trim() })
+            }
+          }
+        })
+
+        client.on('error', (error) => {
+          if (!resolved) {
+            resolved = true
+            clearTimeout(timeoutId)
+            resolve({ success: false, error: error.message })
+          }
+        })
+
+        client.on('close', () => {
+          if (!resolved) {
+            resolved = true
+            clearTimeout(timeoutId)
+            resolve({ success: true })
+          }
+        })
+
+        try {
+          client.connect(gcDevice.port, gcDevice.ipAddress)
+        } catch (error) {
+          if (!resolved) {
+            resolved = true
+            clearTimeout(timeoutId)
+            resolve({ success: false, error: error instanceof Error ? error.message : 'Connection failed' })
+          }
+        }
+      })
+
+      if (!selectResult.success) {
+        logger.warn(`[CHANNEL TUNE] Failed to send Select after digits: ${selectResult.error}`)
+        // Still consider the tune successful — some boxes auto-commit on 3 digits
+      } else {
+        logger.info(`[CHANNEL TUNE] Select sent successfully for channel ${channelNumber}`)
+      }
+
+      // Small delay after select to let the box settle
+      await new Promise(resolve => setTimeout(resolve, 250))
+    } else {
+      logger.info(`[CHANNEL TUNE] No Select/OK/Enter command learned — relying on digits + box timeout for channel ${channelNumber}`)
+    }
+
     return {
       success: true,
       message: `${targetDevice.name} tuned to channel ${channelNumber} via IR`,

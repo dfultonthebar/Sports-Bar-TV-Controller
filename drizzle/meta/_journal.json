@@ -29,6 +29,20 @@
       "when": 1781064853218,
       "tag": "0003_shure_pending_resync",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1781273233328,
+      "tag": "0004_allocation_verify_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1781365088221,
+      "tag": "0005_agent_tool_invocations",
+      "breakpoints": true
     }
   ]
 }

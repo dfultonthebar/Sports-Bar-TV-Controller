@@ -1,0 +1,195 @@
+{
+  "version": 1,
+  "comment": "Maps each doc to the source files/globs it documents. When auto-update.sh merges a commit that touches a doc's sources, scripts/docs/check-stale-docs.mjs flags that doc stale and files a refresh TODO. Sources may be exact paths or 'dir/**' globs. Add a row whenever you write a new code-grounded doc. See docs/SELF_UPDATING_DOCS.md.",
+  "docs": [
+    {
+      "doc": "docs/bartender-help/change-channel-preset.md",
+      "sources": [
+        "apps/web/src/components/remotes/CableBoxRemote.tsx",
+        "apps/web/src/components/BartenderRemoteSelector.tsx",
+        "apps/web/src/app/api/channel-presets/tune/route.ts",
+        "apps/web/src/app/api/ir/commands/send/route.ts",
+        "apps/web/src/app/api/ir-devices/send-command/route.ts"
+      ]
+    },
+    {
+      "doc": "docs/bartender-help/WRONG_CHANNEL_ON_TV.md",
+      "sources": [
+        "apps/web/src/components/InteractiveBartenderLayout.tsx",
+        "apps/web/src/components/BartenderRemoteSelector.tsx",
+        "apps/web/src/app/api/matrix/route/route.ts",
+        "apps/web/src/app/api/matrix/routes/route.ts"
+      ]
+    },
+    {
+      "doc": "docs/bartender-help/PUTTING_GAMES_ON_TVS.md",
+      "sources": [
+        "apps/web/src/components/InteractiveBartenderLayout.tsx",
+        "apps/web/src/app/api/matrix/route/route.ts",
+        "apps/web/src/app/api/matrix/current-channels/route.ts"
+      ]
+    },
+    {
+      "doc": "docs/bartender-help/PUTTING_GAMES_ON_TVS_VIDEO_TAB.md",
+      "sources": [
+        "apps/web/src/components/InteractiveBartenderLayout.tsx",
+        "apps/web/src/app/api/matrix/route/route.ts"
+      ]
+    },
+    {
+      "doc": "docs/bartender-help/FINDING_A_LIVE_GAME.md",
+      "sources": [
+        "apps/web/src/components/EnhancedChannelGuideBartenderRemote.tsx",
+        "apps/web/src/components/ChannelPresetGrid.tsx",
+        "apps/web/src/app/api/channel-guide/route.ts",
+        "apps/web/src/app/api/channel-presets/**"
+      ]
+    },
+    {
+      "doc": "docs/bartender-help/MUSIC_OR_AUDIO_PROBLEM.md",
+      "sources": [
+        "apps/web/src/components/BartenderMusicControl.tsx",
+        "apps/web/src/app/api/soundtrack/**",
+        "packages/soundtrack/src/**"
+      ]
+    },
+    {
+      "doc": "docs/bartender-help/AUDIO_ZONES_AND_GROUPS.md",
+      "sources": [
+        "apps/web/src/components/BartenderRemoteAudioPanel.tsx",
+        "apps/web/src/app/api/atlas/**",
+        "packages/atlas/src/**"
+      ]
+    },
+    {
+      "doc": "docs/bartender-help/READING_AUDIO_METERS.md",
+      "sources": [
+        "apps/web/src/components/AtlasRealtimeMeters.tsx",
+        "apps/web/src/app/api/atlas/meters/**"
+      ]
+    },
+    {
+      "doc": "docs/bartender-help/DJ_MODE.md",
+      "sources": [
+        "apps/web/src/components/DJControlPanel.tsx",
+        "apps/web/src/app/api/settings/dj-mode/route.ts"
+      ]
+    },
+    {
+      "doc": "docs/bartender-help/LIGHTING_AND_SCENES.md",
+      "sources": [
+        "apps/web/src/components/DMXLightingRemote.tsx",
+        "apps/web/src/components/CommercialLightingRemote.tsx",
+        "apps/web/src/app/api/dmx/**",
+        "apps/web/src/app/api/commercial-lighting/**"
+      ]
+    },
+    {
+      "doc": "docs/bartender-help/POWER_AND_NETWORK_TVS.md",
+      "sources": [
+        "apps/web/src/app/api/tv-control/**",
+        "apps/web/src/app/api/tv-discovery/**"
+      ]
+    },
+    {
+      "doc": "docs/bartender-help/TV_POWER_OPEN_CLOSE.md",
+      "sources": [
+        "apps/web/src/app/api/tv-control/**",
+        "apps/web/src/app/api/tv-discovery/**"
+      ]
+    },
+    {
+      "doc": "docs/bartender-help/MULTI_VIEW_QUAD.md",
+      "sources": [
+        "apps/web/src/app/api/wolfpack/multiview/**",
+        "packages/multiview/src/**",
+        "apps/web/src/components/InteractiveBartenderLayout.tsx",
+        "apps/web/src/components/MultiViewCardManager.tsx"
+      ]
+    },
+    {
+      "doc": "docs/bartender-help/SCHEDULING_GAMES_AHEAD.md",
+      "sources": [
+        "apps/web/src/app/api/schedules/**",
+        "apps/web/src/app/api/scheduling/**",
+        "packages/scheduler/src/distribution-engine.ts"
+      ]
+    },
+    {
+      "doc": "docs/bartender-help/OVERRIDE_LEARN.md",
+      "sources": [
+        "apps/web/src/app/api/override-learn/**",
+        "packages/scheduler/src/override-digester.ts",
+        "packages/scheduler/src/pattern-analyzer.ts"
+      ]
+    },
+    {
+      "doc": "docs/bartender-help/RF_INTERFERENCE_FOR_BARTENDERS.md",
+      "sources": [
+        "apps/web/src/app/api/shure-rf/**",
+        "packages/shure-slxd/src/**",
+        "apps/web/src/lib/shure-rf-watcher.ts"
+      ]
+    },
+    {
+      "doc": "docs/bartender-help/MIC_NOT_WORKING.md",
+      "sources": [
+        "apps/web/src/app/api/shure-rf/**",
+        "packages/shure-slxd/src/**"
+      ]
+    },
+    {
+      "doc": "docs/bartender-help/SHIFT_BRIEF_AT_CLOCK_IN.md",
+      "sources": [
+        "apps/web/src/app/api/ai/shift-brief/route.ts"
+      ]
+    },
+    {
+      "doc": "docs/bartender-help/add-replace-fire-tv.md",
+      "sources": [
+        "apps/web/src/app/api/firetv-devices/**",
+        "packages/firecube/src/**"
+      ]
+    },
+    {
+      "doc": "docs/bartender-help/add-replace-directv-box.md",
+      "sources": [
+        "apps/web/src/app/api/directv-devices/**",
+        "apps/web/src/app/api/directv/**",
+        "packages/directv/src/**"
+      ]
+    },
+    {
+      "doc": "docs/bartender-help/add-replace-wireless-mic.md",
+      "sources": [
+        "apps/web/src/app/api/shure-rf/**",
+        "packages/shure-slxd/src/**"
+      ]
+    },
+    {
+      "doc": "docs/bartender-help/app-wont-launch.md",
+      "sources": [
+        "apps/web/src/app/api/firetv-devices/**",
+        "apps/web/src/app/api/firestick-scout/**",
+        "packages/firecube/src/**",
+        "packages/streaming/src/**"
+      ]
+    },
+    {
+      "doc": "docs/bartender-help/remote-isnt-working.md",
+      "sources": [
+        "apps/web/src/components/BartenderRemoteSelector.tsx",
+        "apps/web/src/app/api/ir/**",
+        "apps/web/src/app/api/ir-devices/**"
+      ]
+    },
+    {
+      "doc": "docs/HUB_SETUP.md",
+      "sources": [
+        "scripts/proxmox/**",
+        "packages/hub-agent/src/**",
+        "apps/hub/**"
+      ]
+    }
+  ]
+}

@@ -29,10 +29,23 @@ module.exports = {
         NODE_ENV: 'production',
         PORT: 3001,
         ADB_VENDOR_KEYS: '/home/ubuntu/.android',
+        // Wave 3c: closed-loop matrix route verify (opt-in per location, default off).
+        ROUTE_VERIFY_ENABLED: process.env.ROUTE_VERIFY_ENABLED,
         // Sports Guide API (The Rail Media) — per-location values from .env
         SPORTS_GUIDE_API_KEY: process.env.SPORTS_GUIDE_API_KEY,
         SPORTS_GUIDE_USER_ID: process.env.SPORTS_GUIDE_USER_ID,
         SPORTS_GUIDE_API_URL: 'https://guide.thedailyrail.com/api/v1',
+        // Feature B1 (opt-in, default off): pull ESPN game schedules from the
+        // central hub instead of every box hitting ESPN's 24 leagues every 10
+        // min. On ANY hub failure the box falls back to its local ESPN sync, so
+        // the bartender guide never depends on the hub.
+        ESPN_HUB_ENABLED: process.env.ESPN_HUB_ENABLED || 'false',
+        HUB_GAME_URL: process.env.HUB_GAME_URL || 'http://100.124.165.26:3010',
+        // Feature B2 (opt-in, default off): pull the Rail Media guide via the hub
+        // (cached per-market by this box's SPORTS_GUIDE_USER_ID). On ANY hub
+        // failure the box fetches Rail directly. The box sends its own Rail key;
+        // the hub never stores it.
+        RAIL_HUB_ENABLED: process.env.RAIL_HUB_ENABLED || 'false',
         // Auth system — bind to the location row in the DB. Without this,
         // validatePIN() falls back to AUTH_CONFIG.LOCATION_ID='default-location'
         // and every login fails with "Invalid PIN".
@@ -71,6 +84,65 @@ module.exports = {
         RAG_RERANK_QUANT: process.env.RAG_RERANK_QUANT || 'int8',
         RAG_RERANK_CANDIDATES: process.env.RAG_RERANK_CANDIDATES || '30',
         RAG_RERANK_TOPK: process.env.RAG_RERANK_TOPK || '8',
+        // Channel-guide per-game drop detail (Wave 1b-i, v2.55.61). Default OFF;
+        // set CHANNEL_GUIDE_DROP_DEBUG=true in .env to emit the per-game
+        // [GUIDE-RECON] detail fleet-wide (e.g. to gather Wave-4 data on which
+        // broadcast_networks fail to resolve). ?debugDrops=1 works per-request
+        // without this. Audit (wf_0e9838db) Blue MED: PM2 only forwards env vars
+        // listed here (Gotcha #2 / SDR_* precedent), so this line is required
+        // for the env path to work at all. Needs pm2 delete+start to take effect.
+        CHANNEL_GUIDE_DROP_DEBUG: process.env.CHANNEL_GUIDE_DROP_DEBUG || 'false',
+        // Wave 2 (v2.55.62): AI Suggest deterministic-solver mode. off (default)
+        // = LLM only; shadow = also run the engine + log a diff (no output change);
+        // primary (later) = engine plan is the answer. Needs pm2 delete+start.
+        AI_SUGGEST_SOLVER: process.env.AI_SUGGEST_SOLVER || 'off',
+        // Hermes Layer 1 — error-watch diagnose enrichment (#359). Default OFF;
+        // when off the detect→TODO path is byte-for-byte unchanged. When 'true',
+        // /api/error-watch/todo runs a RAG lookup (+ a stubbed LLM call landing
+        // on T4-day) before filing the TODO and appends "Relevant docs:". PM2
+        // only forwards env vars listed here (Gotcha #2 / SDR_* precedent), so
+        // this line is required. Needs pm2 delete+start to take effect.
+        DIAGNOSE_ENABLED: process.env.DIAGNOSE_ENABLED || 'false',
+        // v2.68.0 — @sports-bar/ollama-client remote base. UNSET/empty ⇒ every
+        // policy resolves to the local Ollama (localhost:11434) = today's exact
+        // behavior; AI Suggest + RAG answer-gen already route through the client.
+        // On T4-day (#358) set this in .env to the shared GPU Ollama URL and
+        // pm2 delete+start — that single env flip moves those LLM calls to the
+        // T4 with automatic local fallback. PM2 only forwards listed vars
+        // (Gotcha #2), so this line is required for the flip to take effect.
+        OLLAMA_REMOTE_BASE: process.env.OLLAMA_REMOTE_BASE || '',
+        // #349 Wave 6 (Piece B) — deterministic DistributionEngine learning loop.
+        // Default 'off' ⇒ engine behavior is byte-for-byte unchanged (no
+        // scheduling_patterns query, no bias). Set 'on' in .env to make the engine
+        // bias toward bartender-override-learned team→input/output preferences,
+        // strictly as a LAST tie-breaker (never changes the home-team minTV floor
+        // or removes any candidate). Holmgren is the canary. PM2 only forwards env
+        // vars listed here (Gotcha #2), so flipping this requires
+        // `pm2 delete && pm2 start ecosystem.config.js` (a plain restart will NOT
+        // pick up the new value).
+        DISTRIBUTION_ENGINE_LEARNING: process.env.DISTRIBUTION_ENGINE_LEARNING || 'off',
+        // #364 — T4 offload for the interactive AI Hub chat ONLY (/api/chat).
+        // Default 'false' ⇒ chat is byte-for-byte today's behavior: local iGPU,
+        // qwen2.5:14b for tool calls / llama3.1:8b for plain chat. Set 'true' in
+        // .env (alongside OLLAMA_REMOTE_BASE) to offload chat to the shared T4 GPU
+        // with automatic local fallback. The T4 path FORCES the small model
+        // (OLLAMA_TOOLS_MODEL_T4, default llama3.2:3b) so it never evicts the
+        // trading bot's resident phi4-trader ("Phil") on the ~15GB VRAM budget.
+        // VERIFIED 2026-06-19: llama3.1:8b (5.3GB) DOES evict Phil (9.3GB); only
+        // llama3.2:3b (2.6GB) co-resides — so the default is the 3b model.
+        // PM2 only forwards env vars listed here (Gotcha #2 / SDR_* precedent),
+        // so flipping this requires `pm2 delete && pm2 start ecosystem.config.js`
+        // (a plain restart will NOT pick up the new value).
+        AI_HUB_T4_ENABLED: process.env.AI_HUB_T4_ENABLED || 'false',
+        OLLAMA_TOOLS_MODEL_T4: process.env.OLLAMA_TOOLS_MODEL_T4 || 'llama3.2:3b',
+        // Per-box AI tuning (#339). MUST be forwarded here or a value set only in
+        // .env never reaches the process (Gotcha #2 / SDR_* precedent). ai-suggest
+        // reads OLLAMA_NUM_PREDICT (cap, default 2048 via hardware-config.ts) and
+        // OLLAMA_TIMEOUT_MS (floor 300s). Slow local-iGPU boxes (e.g. Graystone
+        // ~6.7 tok/s) set OLLAMA_NUM_PREDICT=1100 in their .env so a long
+        // suggestion can't exceed the 300s timeout; T4-routed boxes leave default.
+        OLLAMA_NUM_PREDICT: process.env.OLLAMA_NUM_PREDICT || '',
+        OLLAMA_TIMEOUT_MS: process.env.OLLAMA_TIMEOUT_MS || '',
         // Persistent Server Actions encryption key (v2.52.6). Generated by
         // scripts/ensure-server-actions-key.sh on first run. Stays stable
         // across builds so client bundles' encrypted refs remain valid

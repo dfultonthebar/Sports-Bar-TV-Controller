@@ -441,8 +441,14 @@ class FireTVHealthMonitor {
         const health = this.healthStatus.get(deviceId)
         const deviceName = health?.deviceName || deviceId
 
-        logger.error(`[HEALTH MONITOR] 🚨 ALERT: Device ${deviceName} has been down for ${Math.floor(downTime / 1000 / 60)} minutes`)
-        logger.error(`[HEALTH MONITOR] Last error: ${health?.error || 'Unknown'}`)
+        // WARN, not ERROR: an AV endpoint (Atmosphere TV, Epson projector, a TV
+        // powered off after close) being unreachable is an OPERATIONAL state, not
+        // an application fault. Logging it at ERROR spammed the error log + tripped
+        // error-watch every time a TV flapped (Holmgren's Atmosphere TV = 34
+        // ERROR rows/24h when powered down off-hours). The alertsSent dedup still
+        // fires this once per down-period.
+        logger.warn(`[HEALTH MONITOR] Device ${deviceName} has been down for ${Math.floor(downTime / 1000 / 60)} minutes`)
+        logger.warn(`[HEALTH MONITOR] Last error: ${health?.error || 'Unknown'}`)
 
         // Mark alert as sent
         this.alertsSent.add(deviceId)

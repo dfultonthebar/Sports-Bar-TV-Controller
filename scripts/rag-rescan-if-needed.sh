@@ -100,10 +100,16 @@ echo "[rag-rescan] (scan runs ~25-40 min; this script does NOT block)"
 # then SIGKILL 10s later (timeout's defaults).
 (
   trap 'rm -f "$LOCK"' EXIT
-  timeout --kill-after=10s 45m npx tsx scripts/scan-system-docs.ts >> "$LOGFILE" 2>&1
+  # Run at lowest CPU + idle IO priority so a doc-commit rescan never starves an
+  # interactive pre-shift AI Suggest / shift-brief generation (Holmgren
+  # 2026-06-11 — a daytime rescan timed out AI Suggest's 300s budget). The
+  # in-scan per-batch GPU yield (RAG_SCAN_BATCH_DELAY_MS) is the primary fix;
+  # nice/ionice is belt-and-suspenders for CPU/IO contention.
+  NICE="nice -n 19"; command -v ionice >/dev/null 2>&1 && NICE="$NICE ionice -c3"
+  $NICE timeout --kill-after=10s 45m npx tsx scripts/scan-system-docs.ts >> "$LOGFILE" 2>&1
   if printf '%s\n' "${CHANGED[@]}" | grep -qE '\.(ts|tsx)$'; then
     echo "[rag-rescan] TypeScript paths changed — running scan-code-docs.ts now" >> "$LOGFILE"
-    timeout --kill-after=10s 45m npx tsx scripts/scan-code-docs.ts >> "$LOGFILE" 2>&1
+    $NICE timeout --kill-after=10s 45m npx tsx scripts/scan-code-docs.ts >> "$LOGFILE" 2>&1
   fi
 ) >> "$LOGFILE" 2>&1 &
 SCAN_PID=$!

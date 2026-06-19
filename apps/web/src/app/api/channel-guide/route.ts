@@ -10,6 +10,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { getSportsGuideApi } from '@/lib/sportsGuideApi'
+import { DropTracker } from '@/lib/channel-guide/drop-tracker'
+import { teamChannelKey, startMs, SAME_GAME_TOLERANCE_MS } from '@/lib/channel-guide/dedup-key'
 import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { db, schema } from '@/db'
@@ -181,6 +183,25 @@ function parseListingDate(date: string | undefined, time: string): Date {
   return new Date(`${new Date().toDateString()} ${time}`)
 }
 
+// Feature B2: when RAIL_HUB_ENABLED, pull the Rail guide via the hub (cached
+// per-market by the location's own SPORTS_GUIDE_USER_ID) and fall back to a
+// direct Rail fetch on ANY hub failure — today's exact behavior. Everything
+// downstream (resolver, preset mapping, RSN split) is unchanged.
+const RAIL_HUB_ENABLED = process.env.RAIL_HUB_ENABLED === 'true'
+
+async function fetchRailGuide(days: number) {
+  if (RAIL_HUB_ENABLED) {
+    try {
+      const { fetchRailViaHub } = await import('@/lib/hub-rail-sync')
+      const viaHub = await fetchRailViaHub(days)
+      if (viaHub) return viaHub
+    } catch {
+      /* fall through to a direct Rail fetch */
+    }
+  }
+  return getSportsGuideApi().fetchDateRangeGuide(days)
+}
+
 export async function POST(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.SPORTS_DATA)
   if (!rateLimit.allowed) {
@@ -201,6 +222,13 @@ export async function POST(request: NextRequest) {
 
 
   const requestId = Math.random().toString(36).substring(7)
+  // Wave 1b-i: per-game drop observability. Pure logging, changes no output.
+  // Per-game detail gated behind ?debugDrops=1 (non-bartender calls) or
+  // CHANNEL_GUIDE_DROP_DEBUG=true so normal iPad traffic stays quiet.
+  const dropTracker = new DropTracker()
+  const dropDebug =
+    request.nextUrl.searchParams.get('debugDrops') === '1' ||
+    process.env.CHANNEL_GUIDE_DROP_DEBUG === 'true'
   logInfo(`========== CHANNEL GUIDE REQUEST [${requestId}] ==========`)
 
   try {
@@ -266,9 +294,8 @@ export async function POST(request: NextRequest) {
 
       logInfo(`Built station lookup with ${stationLookup.size} entries`)
 
-      // NOW: Fetch guide data from Rail API
-      const api = getSportsGuideApi()
-      const guide = await api.fetchDateRangeGuide(days)
+      // NOW: Fetch guide data from Rail API (via hub if RAIL_HUB_ENABLED, else direct)
+      const guide = await fetchRailGuide(days)
       logInfo(`The Rail API returned ${guide.listing_groups?.length || 0} listing groups`)
 
       // The lineup key to use for this device type
@@ -548,6 +575,13 @@ export async function POST(request: NextRequest) {
             }
             if (!resolvedStreamingApp) {
               gsSkippedNoChannel++
+              dropTracker.drop({
+                source: 'gs-stream',
+                game: `${game.awayTeamName} @ ${game.homeTeamName}`,
+                reason: 'gs-stream-no-app',
+                triedNetworks: broadcastNetworks,
+                startTime: new Date(game.scheduledStart * 1000).toISOString(),
+              })
               continue
             }
           } else {
@@ -559,6 +593,16 @@ export async function POST(request: NextRequest) {
             const resolvedForDevice = presetDeviceType === 'directv' ? resolution.directv : resolution.cable
             if (!resolvedForDevice) {
               gsSkippedNoChannel++
+              // Wave 1b-i: the broadcast_networks we TRIED but couldn't resolve to
+              // a channel — the exact Brewers-ch308 / Wave-4 signal.
+              dropTracker.drop({
+                source: presetDeviceType === 'directv' ? 'gs-directv' : 'gs-cable',
+                game: `${game.awayTeamName} @ ${game.homeTeamName}`,
+                reason: 'gs-no-channel',
+                triedNetworks: broadcastNetworks,
+                triedChannel: game.primaryNetwork ?? null,
+                startTime: new Date(game.scheduledStart * 1000).toISOString(),
+              })
               continue
             }
             resolvedPreset = {
@@ -587,6 +631,12 @@ export async function POST(request: NextRequest) {
           )
           if (dupe) {
             gsSkippedDupe++
+            dropTracker.drop({
+              source: presetDeviceType === 'directv' ? 'gs-directv' : 'gs-cable',
+              game: `${game.awayTeamName} @ ${game.homeTeamName}`,
+              reason: 'gs-dupe',
+              triedChannel: resolvedPreset!.channelNumber,
+            })
             continue
           }
 
@@ -913,6 +963,7 @@ export async function POST(request: NextRequest) {
           const dupeKey = `${row.app}::${row.contentTitle}`
           if (seenInCatalog.has(dupeKey)) {
             catSkippedDupe++
+            dropTracker.drop({ source: 'catalog', game: `${row.app}: ${row.contentTitle}`, reason: 'catalog-dupe' })
             continue
           }
           seenInCatalog.add(dupeKey)
@@ -922,6 +973,7 @@ export async function POST(request: NextRequest) {
             const tier = detectEspnTier(row.contentTitle, !!row.isLive)
             if (tier && !deviceSubscribedTiers.has(tier)) {
               catSkippedNoSubscription++
+              dropTracker.drop({ source: 'catalog', game: `${row.app}: ${row.contentTitle}`, reason: 'catalog-tier-paywall', triedChannel: tier })
               continue
             }
           }
@@ -946,6 +998,7 @@ export async function POST(request: NextRequest) {
             // Game is over — don't include it. Same behavior as cable/sat
             // path which filters status='completed'/'final' rows out.
             catSkippedCompleted++
+            dropTracker.drop({ source: 'catalog', game: `${row.app}: ${row.contentTitle}`, reason: 'catalog-completed' })
             continue
           }
 
@@ -964,6 +1017,7 @@ export async function POST(request: NextRequest) {
           if (row.isLive && !scheduleMatch &&
               (nowSec - row.capturedAt) > STALE_LIVE_SECONDS) {
             catSkippedCompleted++
+            dropTracker.drop({ source: 'catalog', game: `${row.app}: ${row.contentTitle}`, reason: 'catalog-stale-live' })
             continue
           }
 
@@ -1331,14 +1385,32 @@ export async function POST(request: NextRequest) {
               bestPref = pref
             }
           }
-          if (!matchedApp) { gsStreamSkippedNoApp++; continue }
+          if (!matchedApp) {
+            gsStreamSkippedNoApp++
+            dropTracker.drop({
+              source: 'gs-stream',
+              game: `${game.awayTeamName} @ ${game.homeTeamName}`,
+              reason: 'gs-stream-no-app',
+              triedNetworks: broadcastNetworks,
+              startTime: new Date(game.scheduledStart * 1000).toISOString(),
+            })
+            continue
+          }
 
           // Dedup against catalog-injected programs for same teams
           const dupe = programs.some(p =>
             p.homeTeam?.toLowerCase() === game.homeTeamName.toLowerCase() &&
             p.awayTeam?.toLowerCase() === game.awayTeamName.toLowerCase()
           )
-          if (dupe) { gsStreamSkippedDupe++; continue }
+          if (dupe) {
+            gsStreamSkippedDupe++
+            dropTracker.drop({
+              source: 'gs-stream',
+              game: `${game.awayTeamName} @ ${game.homeTeamName}`,
+              reason: 'gs-stream-dupe',
+            })
+            continue
+          }
 
           const appChannelId = `stream-${matchedApp.replace(/\s+/g, '-').toLowerCase()}`
           let appChan = channels.get(appChannelId)
@@ -1449,9 +1521,8 @@ export async function POST(request: NextRequest) {
         const isEspnFamilyStation = (s: string) =>
           ESPN_FAMILY_PATTERNS.some((re) => re.test(s.trim()))
 
-        const api = getSportsGuideApi()
         const railDays = Math.max(1, days)
-        const railGuide = await api.fetchDateRangeGuide(railDays)
+        const railGuide = await fetchRailGuide(railDays)
 
         let railInjected = 0
         let railSkippedDupe = 0
@@ -1622,6 +1693,53 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Wave 1b-ii: canonical cross-path dedup. Every injection path above (Rail,
+    // local-override, game_schedules cable+streaming, catalog walker, ESPN-rail,
+    // NFHS) builds entries independently with subtly different team-casing /
+    // time / channel handling, so the same game could slip past each path's
+    // ad-hoc check and appear twice. Collapse on ONE consistent key —
+    // first-writer-wins, so the Rail base layer (pushed first) wins over later
+    // injections. Teamless entries are never deduped (can't key them safely).
+    {
+      // group key = normalized teams + channel (NO time); within a group, two
+      // entries are the same game iff their start times are within tolerance.
+      const keptTimes = new Map<string, number[]>()
+      const beforeDedup = programs.length
+      programs = programs.filter(p => {
+        const hasTeams = `${p.homeTeam || ''}${p.awayTeam || ''}`.trim().length > 0
+        if (!hasTeams) return true
+        const key = teamChannelKey({
+          homeTeam: p.homeTeam,
+          awayTeam: p.awayTeam,
+          channel: p.channel?.channelNumber ?? p.channel?.number,
+        })
+        const times = keptTimes.get(key)
+        const ms = startMs(p.startTime)
+        const isDupe = times != null && (
+          Number.isNaN(ms)
+            ? times.length > 0                                            // no time + already kept one for this teams+channel
+            : times.some(t => Math.abs(t - ms) < SAME_GAME_TOLERANCE_MS)  // within 2h of a kept start
+        )
+        if (isDupe) {
+          dropTracker.drop({
+            source: 'canonical-dedup',
+            game: `${p.awayTeam} @ ${p.homeTeam}`,
+            reason: 'canonical-dupe',
+            triedChannel: p.channel?.channelNumber ?? p.channel?.number ?? null,
+            startTime: p.startTime ?? null,
+          })
+          return false
+        }
+        if (times) times.push(ms)
+        else keptTimes.set(key, [ms])
+        return true
+      })
+      const dedupRemoved = beforeDedup - programs.length
+      if (dedupRemoved > 0) {
+        logInfo(`[DEDUP] Canonical dedup removed ${dedupRemoved} duplicate game row(s) across injection paths`)
+      }
+    }
+
     // Filter out games that started more than 2 hours ago to keep the guide fresh.
     // v2.28.2 — EXCEPT keep games that are explicitly isLive=true regardless of
     // start time. ESPN sometimes leaves OT games in_progress for hours past
@@ -1632,7 +1750,17 @@ export async function POST(request: NextRequest) {
       if (program.isLive) return true // never filter live-now games on age
       if (program.startTime) {
         const gameStart = new Date(program.startTime)
-        return gameStart >= twoHoursAgo
+        const keep = gameStart >= twoHoursAgo
+        if (!keep) {
+          dropTracker.drop({
+            source: 'age-filter',
+            game: program.awayTeam && program.homeTeam ? `${program.awayTeam} @ ${program.homeTeam}` : (program.channel?.name || 'unknown'),
+            reason: 'age-filter',
+            triedChannel: program.channel?.channelNumber ?? program.channel?.number ?? null,
+            startTime: program.startTime,
+          })
+        }
+        return keep
       }
       return true // Keep programs without startTime
     })
@@ -1665,6 +1793,13 @@ export async function POST(request: NextRequest) {
           logInfo(`Filtering out channel ${channelNumber} - not in presets`, {
             league: program.league,
             channel: program.channel?.name
+          })
+          dropTracker.drop({
+            source: 'preset-filter',
+            game: program.awayTeam && program.homeTeam ? `${program.awayTeam} @ ${program.homeTeam}` : (program.channel?.name || 'unknown'),
+            reason: 'preset-filter',
+            triedChannel: channelNumber ?? null,
+            startTime: program.startTime ?? null,
           })
         }
 
@@ -1701,6 +1836,15 @@ export async function POST(request: NextRequest) {
         presetFiltered: true,
         presetChannelCount: presetChannels.size
       }
+    }
+
+    // Wave 1b-i: one structured reconciliation line per request — turns
+    // "a game is missing" from a 1700-line guessing game into a logged event
+    // with the reason + the broadcast_networks tried. Per-game detail only
+    // when ?debugDrops=1 / CHANNEL_GUIDE_DROP_DEBUG=true.
+    const recon = dropTracker.summarize(requestId, presetFilteredPrograms.length, dropDebug)
+    if (dropDebug) {
+      ;(response as any).debug = { dropped: recon.dropped, byReason: recon.byReason, sample: recon.sample }
     }
 
     logInfo(`========== REQUEST COMPLETE [${requestId}] ==========`)

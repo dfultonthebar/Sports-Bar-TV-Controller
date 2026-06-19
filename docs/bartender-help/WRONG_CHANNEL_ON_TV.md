@@ -74,11 +74,11 @@ Look on the iPad for a **preset button** for the team the customer asked about. 
 
 ### What to do
 
-1. On the iPad, tap the **Video** tab if you're not already there.
-2. Tap the tile for **TV 4**.
-3. Look for a section labeled **Channel Presets** or a row of colored buttons with team names or logos.
-4. Tap the **Brewers** button (or whichever team the customer asked for).
-5. The cable box will change channels. Give it 3-5 seconds — cable boxes are slow.
+1. On the iPad, tap the **Remote** tab at the bottom.
+2. Under **Select Source** on the left, tap the box that feeds **TV 4** (something like "Cable Box - Spectrum"). Not sure which box? Use the **Video** tab to see what's routed to TV 4, then come back to **Remote**.
+3. Look for the **Quick Channel Access** tiles — a grid of channel logos (ESPN, Bally Sports Wisconsin+, and so on).
+4. Tap the **Brewers** tile (or whichever team the customer asked for).
+5. The cable box changes channels. Give it 3-5 seconds — cable boxes are slow.
 
 ### How you know it worked
 
@@ -86,15 +86,15 @@ Walk over to TV 4. The picture should now show the game the customer asked for. 
 
 ### If there's no preset button for what they want
 
-1. On TV 4's tile, look for a number pad (buttons 0-9) or a field labeled **Channel**.
+1. Still on the **Remote** tab with that box selected, use the **number pad** (1–9, 0 — just like a real remote).
 2. Tap the channel number from this list:
    - **Brewers:** 308 (Bally Sports Wisconsin+)
    - **Bucks:** 40 (FanDuel Sports Network Wisconsin)
    - **Packers (national):** 5 (Fox), 9 (CBS), or 13 (NBC) — depends on the game
    - **ESPN:** 206
    - **Fox Sports 1:** 219
-3. Tap **Enter** or **Send** after typing the number.
-4. Wait 3-5 seconds for the cable box to tune.
+3. Tap the green **ENTER** button after typing (or just wait ~3 seconds — it sends on its own).
+4. Wait 3-5 seconds for the cable box to tune. (Full walkthrough: **change-channel-preset.md**.)
 
 ### If it didn't work
 

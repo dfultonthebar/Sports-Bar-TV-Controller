@@ -38,6 +38,10 @@ export {
 // File locking
 export { withFileLock } from './file-lock'
 
+// Hardware-control response contract (kills the "OR-gate" bug class)
+export { parseHardwareResult } from './hardware-result'
+export type { HardwareResult } from './hardware-result'
+
 // Path utilities
 export {
   getProjectRoot,

@@ -1,0 +1,152 @@
+---
+name: learn-system-write-bartender-howtos
+description: Explore how a part of the system actually works (via Claude Code + the docs), then write a plain-English bartender how-to and put it in the chatbot's knowledge so bartenders get good answers.
+version: 1.0.0
+author: Sports-Bar TV Controller
+license: MIT
+platforms: [linux]
+metadata:
+  hermes:
+    tags: [bartender, howto, documentation, rag, chatbot, self-improvement, claude]
+---
+
+# Learn the System → Write Bartender How-Tos
+
+Turn how the system REALLY works into help a bartender can actually use. You learn
+the truth from the code + docs (you don't make it up), then write it in plain
+English and feed it into the chatbot's knowledge, so when a bartender asks "the
+mic isn't working" the AI gives a real, correct, do-this-now answer.
+
+The audience is a bartender with **zero tech background** mid-shift. That governs
+everything (see Gotcha #13 + the bartender-lens rule).
+
+## THE RECIPE (the operator handed this loop to me — run it myself)
+
+The single strongest trigger: **a bartender got a generic, web-grade chatbot answer** —
+"check your remote", links to xfinity.com / directv.com, "consult your provider". That is
+a BUG, not a weak answer: it means the grounding doc for that topic is missing OR thin/wrong,
+so the LLM fell back to its training data instead of OUR system. Treat every one like a
+filed defect. (Real example: "how do I change a channel on a cable box" returned Xfinity +
+DirecTV web links — because change-channel-preset.md was thin and described the wrong flow.)
+
+I (Hermes) drive the loop; **Claude does the code archaeology** (I can't read the codebase,
+Claude can — that's why ask_claude_code exists). Steps:
+
+1. **Reproduce / capture the bad answer.** Note the exact bartender question.
+2. **Delegate the code-trace to Claude** via `ask_claude_code` — give it a precise trace
+   prompt, e.g.:
+   > "Trace the EXACT end-to-end flow of how a bartender does <X> using the bartender
+   >  remote in this codebase. I need ground truth for a plain-English how-to, not
+   >  assumptions. Report with file:line cites: (a) the UI entry point and what they tap
+   >  first; (b) the component + exact on-screen button labels/text they see; (c) the
+   >  API call(s) the tap fires and the payload; (d) what happens server-side down to the
+   >  hardware (IR/TCP/etc); (e) failure modes a bartender hits + the exact on-screen error
+   >  text. Quote real button labels verbatim."
+   Claude reads `CableBoxRemote.tsx`, the route handlers, the IR send path, etc. and returns
+   the real flow. **This is the part that makes the doc correct instead of made-up.**
+3. **Check for an existing doc** in `docs/bartender-help/` — a THIN/WRONG one (like the old
+   change-channel doc) is as bad as none. Improve it **in place, same slug** so chat links
+   hold. Only create a new slug if the topic is genuinely new.
+4. **Write it bartender-grade** from Claude's trace (the register rules below — plain English,
+   look+location not model names, one action per step, recovery inline, escalation at the end,
+   "you can't break anything"). Use the REAL on-screen labels Claude quoted ("Select Source",
+   "Quick Channel Access", the green "ENTER", "✗ Failed: Connection timeout").
+5. **Land it on main** (guarded — via `ask_claude_code` to write+commit, or a maintenance todo
+   carrying the full markdown for a human) + bump version + **RAG-rescan**
+   (`scripts/rag-rescan-if-needed.sh`).
+6. **Verify by asking the chatbot the ORIGINAL question** — confirm it now answers from our
+   doc in plain English, no web links. If it's still generic, the rescan didn't take or the
+   doc's too thin — fix and repeat.
+
+Worked reference commit: `cb174e3e` (v2.64.1) rewrote change-channel-preset.md this exact way.
+
+## When to use
+- A bartender asks the chatbot something there's no good help doc for yet.
+- A recurring real-world problem has no how-to (mic cutting out, TV showing the
+  wrong game, no sound on a TV, music stopped, a remote/Fire TV issue, a black TV).
+- After a fix ships, write the bartender-facing "if this happens, do this."
+- **Maintain the EXISTING how-tos** — `docs/bartender-help/` already holds ~18
+  guides (MIC_NOT_WORKING, FINDING_A_LIVE_GAME, MUSIC_OR_AUDIO_PROBLEM, etc.).
+  These go STALE as the system changes — your job is to keep them correct, not
+  just add new ones. See "Update existing how-tos" below.
+
+## Update existing how-tos (don't let them rot)
+A how-to with wrong steps is worse than none — a bartender follows it and it fails.
+Audit + refresh the existing guides:
+1. **Trigger to re-check a guide:** a fix shipped that changes its procedure; a
+   bartender reports the steps didn't work; a device/hardware change; a periodic
+   sweep (e.g. monthly, one or two guides at a time).
+2. **Re-learn the truth** for that guide's topic (`search_system_docs` + a focused
+   `ask_claude_code`: "Has anything changed in how <X> works or is fixed? Here's the
+   current how-to — are any steps now wrong or missing?"). Compare against the live
+   behavior with the observe tools where relevant.
+3. **Edit the existing file in place** — keep its filename/slug so its chat answers
+   and any links stay stable. Fix wrong/outdated steps, strip jargon that crept in,
+   add a recovery path or escalation if missing, and align it to the bartender-lens
+   rules below. Note what changed in the commit message.
+4. **Never silently delete** a guide. If a feature is gone (e.g. a CEC how-to), the
+   guide should say so plainly and point to the current path, not vanish.
+5. Re-verify via the chatbot + RAG-rescan (same as a new one).
+
+## Workflow
+1. **Pick ONE concrete topic** — a real question/problem, not a whole subsystem.
+   Keep a running list of covered vs uncovered topics so you don't repeat.
+2. **Learn the truth (don't guess):**
+   - `search_system_docs("<topic>")` for the runbook + the gotchas.
+   - For anything the docs don't fully cover, `ask_claude_code`: "Explain end to
+     end how <X> works in this codebase and the EXACT steps to fix <problem> — give
+     me both the operator-level cause and the simplest bartender-level action."
+     Claude reads the real code so the steps are correct.
+   - Cross-check the live state with the observe tools if relevant (e.g. what the
+     Shure/Atlas status actually looks like when a mic is ghosting).
+3. **Write it bartender-grade** (this is the whole point — get the register right):
+   - Plain English. NO acronyms/model names. Identify hardware by **look + location**
+     ("the silver box with the antenna on the top rack", "the black box under TV 3"),
+     never "the SLX-D receiver".
+   - ONE action per numbered step. Recovery path inline ("if that didn't work, …").
+   - Reassurance ("you can't break anything by trying this").
+   - Always end with an escalation path ("if none of this worked, snap a photo of
+     the screen and text the manager").
+   - **Mics: never "karaoke mic"** — it's the wireless/paging/hosted-event mic
+     (karaoke is BYO). Cable boxes: it's a remote/IR thing, don't mention CEC.
+4. **Put it in the chatbot's knowledge:**
+   - Save to `docs/bartender-help/<short-topic-slug>.md` (the RAG-indexed bartender
+     help dir — this is what the chat answers from).
+   - Hand the file write to `ask_claude_code` (it can create the file + commit on
+     main) OR file it as a maintenance todo with the full markdown for a human to
+     commit. The doc must land on `main` and be committed (it's shared, not per-box).
+   - Trigger a RAG rescan so the chatbot can use it immediately
+     (`scripts/rag-rescan-if-needed.sh`, or note it in the todo). A how-to that
+     isn't rescanned is invisible to the chat (Standing Rule 11).
+5. **Verify it works:** ask the chatbot (the bartender register) the original
+   question and confirm it now answers from your new how-to, in plain English.
+   If the answer is jargon-y or wrong, fix the how-to and rescan.
+
+## Also write OPERATOR SOPs (runbooks), not just bartender how-tos
+Same workflow (learn the truth → write → save → rescan → verify), but a different
+audience + home:
+- **Audience:** the operator / Claude Code — technical is FINE here. Use real
+  commands, file paths, table names, exit codes, gotcha numbers. The bartender-lens
+  rules above do NOT apply to SOPs.
+- **Home:** `docs/runbooks/` (or `docs/<TOPIC>.md` for bigger procedures), NOT
+  `docs/bartender-help/`. Examples already there: AUTO_UPDATE_RECOVERY,
+  DRIZZLE_MIGRATION_DRIFT_RECOVERY, HERMES_AGENT_OPERATIONS, OS_UPGRADE_RUNBOOK.
+- **Shape of an SOP:** Purpose · Symptoms (when to run it) · Diagnose (read-only
+  checks) · Procedure (numbered, real commands) · Verify (success signals) ·
+  Prevention. Capture a recurring operational procedure so the next person (or the
+  next Claude) follows it instead of re-deriving it.
+- **When:** a recurring ops task has no clean step-by-step (deploy/update, recover a
+  box, add a device, bring up a location, an RF/audio procedure); or a hard incident
+  just got solved and the procedure should be reusable (this overlaps
+  `crystallize-runbook-skill` — use that for incident→runbook, use THIS for proactive
+  "document how X works/is done"). Keep both registers' docs current (audit + update
+  the old ones, don't let them rot).
+
+## Guardrails
+- Truth first: the steps must match what the code/hardware actually does. If you
+  can't confirm a step, say so — don't invent a fix.
+- One how-to per topic; improve the existing file rather than duplicating.
+- Bartender register is non-negotiable — if a bartender couldn't follow it without
+  asking what a word means, rewrite it.
+- Writing the file + committing to main is a guarded action (it's shared docs):
+  go through `ask_claude_code` or a human-confirmed todo, and always RAG-rescan after.

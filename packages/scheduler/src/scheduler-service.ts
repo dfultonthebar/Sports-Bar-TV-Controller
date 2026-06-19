@@ -7,15 +7,24 @@
 
 import { db, schema, eq, and, findMany } from '@sports-bar/database'
 import { logger } from '@sports-bar/logger'
+import { parseHardwareResult } from '@sports-bar/utils'
 import { schedulerLogger } from './scheduler-logger'
+import { runContentionDigest } from './contention-digest'
 import { probeAllDirecTVTuned } from './directv-probe'
 import { runFiretvAppSyncSweep } from './firetv-app-sync'
 import { runFiretvCatalogWalk } from './firetv-catalog-walker'
 import { runBananasIngestion } from './bananas-ingestion'
 import { runTicketmasterIngestion } from './ticketmaster-ingestion'
+import { verifyAndRetryRoute, persistVerifyState } from './route-verify'
 
 // Get API port from environment or default to 3001
 const API_PORT = process.env.PORT || 3001
+// Wave 3c: closed-loop route verification. OFF by default — opt-in per location
+// (Holmgren canary) via env, matching the RAG_RERANK_ENABLED / TICKETMASTER_API_KEY
+// canary pattern. When on, after each route the scheduler reads the crossbar back
+// and (only on a genuine mismatch) re-issues the idempotent SET, then records the
+// verify outcome on the allocation's advisory columns.
+const ROUTE_VERIFY_ENABLED = process.env.ROUTE_VERIFY_ENABLED === 'true'
 
 // Venue timezone for schedule calculations (Central Time)
 const VENUE_TIMEZONE = 'America/Chicago'
@@ -47,6 +56,7 @@ class SchedulerService {
   // hardware on next start.
   private cachedVavaDevices: any[] | null = null;
   private cachedAudioProcessor: any | null = null;
+  private cachedMatrixConfig: any | null = null; // Wave 3c: active Wolf Pack config for route read-back (per-tick cache)
 
   /**
    * v2.31.8 — Register a polling job. Replaces the boilerplate triplet
@@ -123,6 +133,11 @@ class SchedulerService {
     this.registerPoll('runFiretvAppSync', () => this.runFiretvAppSync(), 300000, 60000);
     this.registerPoll('maybeRunCatalogWalk', () => this.maybeRunCatalogWalk(), 300000, 300000);
     this.registerPoll('pollFiretvCurrentApp', () => this.pollFiretvCurrentApp(), 60000, 45000);
+
+    // #349 Wave 3.7/Hermes — daily contention roll-up. Files ONE operator TODO
+    // per ISO week ("N games had no screen") from distribution-engine 'drop'
+    // rows; the dedupeKey collapses the daily runs to one TODO/week. Fail-open.
+    this.registerPoll('runContentionDigest', () => { void runContentionDigest(); }, 86400000, 180000);
 
     // v2.51.0 — Bananas Entertainment ingestion for the Neighborhood RF
     // Interference Prediction subsystem. Pulls the agency's public
@@ -571,6 +586,7 @@ class SchedulerService {
     // Drop runtime caches so a subsequent start() reloads from DB.
     this.cachedVavaDevices = null;
     this.cachedAudioProcessor = null;
+    this.cachedMatrixConfig = null;
 
     this.isRunning = false;
 
@@ -1140,21 +1156,20 @@ class SchedulerService {
             })
           });
 
-          const result = await response.json();
+          // v2.55.41 OR-gate fix, now routed through the shared parseHardwareResult
+          // helper (Wave-1 "one place" invariant — the inline copy used to drift from
+          // the matrix/audio route sites). The tune endpoint returns HTTP 200 with
+          // {success:false,error:'…'} for soft failures (cable box not found, device
+          // offline, channel missing); a raw `result.success || response.ok` flipped
+          // the allocation to 'active' + mirrored currentlyAllocated + fired Wolf Pack
+          // routing for the WRONG channel while the bartender saw a green tile. Every
+          // path (manual/ai/auto/override-learn) routes through here — the single most
+          // likely cause of the Greenville-Brewers 'didn't switch'. success===true only.
+          const tuneHw = await parseHardwareResult(response);
+          const result = tuneHw.body; // alias so downstream result.* references are unchanged
           const tuneDurationMs = Date.now() - tuneStartTime;
-
-          // v2.55.41 — OR-gate bug fix. Previously: `if (result.success || response.ok)`.
-          // The tune endpoint returns HTTP 200 with `{success:false, error:'…'}` for soft
-          // failures (e.g. cable box not found, device offline, channel missing). The OR
-          // fell through to response.ok=true and flipped the allocation to 'active' +
-          // mirrored currentlyAllocated onto input_sources + fired Wolf Pack routing for
-          // the WRONG channel. Bartender saw a green 'Scheduled' tile, nothing actually
-          // switched, no error surfaced. Single most likely cause of the Greenville
-          // Brewers 'didn't switch' symptom — every code path (manual, ai, auto,
-          // override-learn) routes through here. Treat success as `result.success===true`
-          // strictly; treat HTTP 200 with missing/false success as a failure.
-          const tuneSucceeded = result?.success === true;
-          const malformedOk = !tuneSucceeded && response.ok && result?.success !== false;
+          const tuneSucceeded = tuneHw.ok;
+          const malformedOk = tuneHw.malformedOk;
 
           if (malformedOk) {
             // HTTP 200 but no explicit success flag — neither a clear success nor an
@@ -1284,11 +1299,60 @@ class SchedulerService {
                         }),
                       });
 
-                      if (routeResponse.ok) {
+                      // OR-gate fix (Wave 1, intelligence roadmap): a raw
+                      // `if (routeResponse.ok)` here treated HTTP 200 +
+                      // {success:false} as a routed TV — the allocation was
+                      // already flipped to 'active' above, so the TV silently
+                      // stayed on the wrong feed. Strict success===true only;
+                      // malformed-OK (contract drift) logs loud and is a failure.
+                      const routeHw = await parseHardwareResult(routeResponse);
+                      if (routeHw.ok) {
                         logger.info(`[SCHEDULER] ✅ Routed matrix input ${matrixInput} → output ${outputNumber}`);
+
+                        // Wave 3c: closed-loop verify (opt-in via ROUTE_VERIFY_ENABLED).
+                        // Read the crossbar back; on a GENUINE mismatch re-issue the
+                        // idempotent SET, then record the outcome on the allocation's
+                        // advisory verify_* columns. Advisory only — never throws into
+                        // the tune path, never blocks the allocation lifecycle.
+                        if (ROUTE_VERIFY_ENABLED) {
+                          try {
+                            if (!this.cachedMatrixConfig) {
+                              this.cachedMatrixConfig = await db.select()
+                                .from(schema.matrixConfigurations)
+                                .where(eq(schema.matrixConfigurations.isActive, true))
+                                .limit(1).get();
+                            }
+                            const cfg = this.cachedMatrixConfig;
+                            if (cfg?.ipAddress) {
+                              const verifyResult = await verifyAndRetryRoute(
+                                matrixInput,
+                                outputNumber,
+                                { ipAddress: cfg.ipAddress },
+                                async () => {
+                                  const r = await fetch(`http://127.0.0.1:${API_PORT}/api/matrix/route`, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ input: matrixInput, output: outputNumber }),
+                                  });
+                                  return (await parseHardwareResult(r)).ok;
+                                },
+                              );
+                              await persistVerifyState(allocation.id, verifyResult);
+                              if (verifyResult.state === 'failed') {
+                                logger.error(`[SCHEDULER] ⚠️ Route verify FAILED input ${matrixInput} → output ${outputNumber} after ${verifyResult.attempts} resend(s): ${verifyResult.error || 'persistent mismatch'} (actualInput=${verifyResult.actualInput})`);
+                              } else {
+                                logger.info(`[SCHEDULER] 🔎 Route verify ${verifyResult.state} input ${matrixInput} → output ${outputNumber} (attempts=${verifyResult.attempts})`);
+                              }
+                            }
+                          } catch (verifyError: any) {
+                            logger.warn(`[SCHEDULER] route verify errored (advisory, ignored) input ${matrixInput} → output ${outputNumber}:`, { error: verifyError?.message || verifyError });
+                          }
+                        }
                       } else {
-                        const routeResult = await routeResponse.json().catch(() => ({}));
-                        logger.error(`[SCHEDULER] ❌ Failed to route matrix input ${matrixInput} → output ${outputNumber}: ${routeResult.error || routeResponse.statusText}`);
+                        if (routeHw.malformedOk) {
+                          logger.warn(`[SCHEDULER] ⚠️ Matrix route returned HTTP 200 but no success flag (contract drift) input ${matrixInput} → output ${outputNumber}: ${JSON.stringify(routeHw.body)} — treating as FAILURE`);
+                        }
+                        logger.error(`[SCHEDULER] ❌ Failed to route matrix input ${matrixInput} → output ${outputNumber}: ${routeHw.error}`);
                       }
                     } catch (routeError: any) {
                       logger.error(`[SCHEDULER] ❌ Error routing matrix input ${matrixInput} → output ${outputNumber}:`, { error: routeError });
@@ -1345,11 +1409,14 @@ class SchedulerService {
                           }),
                         });
 
-                        if (audioResponse.ok) {
+                        const audioHw = await parseHardwareResult(audioResponse);
+                        if (audioHw.ok) {
                           logger.info(`[SCHEDULER] ✅ Audio zone ${zoneNumber} → source ${allocation.audioSourceIndex}`);
                         } else {
-                          const audioResult = await audioResponse.json().catch(() => ({}));
-                          logger.error(`[SCHEDULER] ❌ Failed to switch audio zone ${zoneNumber}: ${(audioResult as any).error || audioResponse.statusText}`);
+                          if (audioHw.malformedOk) {
+                            logger.warn(`[SCHEDULER] ⚠️ Audio switch returned HTTP 200 but no success flag (contract drift) zone ${zoneNumber}: ${JSON.stringify(audioHw.body)} — treating as FAILURE`);
+                          }
+                          logger.error(`[SCHEDULER] ❌ Failed to switch audio zone ${zoneNumber}: ${audioHw.error}`);
                         }
                       } catch (audioError: any) {
                         logger.error(`[SCHEDULER] ❌ Error switching audio zone ${zoneNumber}:`, { error: audioError });

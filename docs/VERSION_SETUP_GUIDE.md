@@ -35,6 +35,728 @@ is the archive.
 
 ---
 
+## v2.81.0 — Fleet consistency: config + data-integrity + update-health + firmware audits (2026-06-19)
+
+**Branch landed:** main. Four more fleet-consistency dimensions (built by 4 parallel agents from the enhancement research), wired into `hermes-schema-drift-task.sh`. Full pipeline is now: deps → config → data-integrity → update-health → security → schema → firmware.
+
+**New scripts:**
+- **`fleet-config-audit.sh`** (AUTO-FIX safe): ecosystem.config.js hash match, systemd units (linger / autoupdate.timer / ollama-ipex — idempotent enables), .env required-key presence (names only), nginx allow-list (live vs committed script, re-run on drift), PM2 process set (bartender-proxy split-brain).
+- **`fleet-data-integrity-audit.sh`** (REPORT-ONLY): per-box invariants — matrix_input_id resolvable (regression guard), Brewers→RSN misroute, station_aliases JSON valid + override→preset, device_id FK orphans, BartenderLayout rooms (Gotcha #8).
+- **`fleet-update-health-audit.sh`** (AUTO-FIX host-state; branch/conflict REPORT): version-stall 3-state classifier (HEALTHY/STALLED/CRIPPLED), branch-drift (on-main, lime-kiln whitelisted), the 4 Gotcha-#11 classes (linger/node-PATH/ollama-group auto-fix, rollback-conflict escalate).
+- **`fleet-firmware-audit.sh`** (REPORT-ONLY, never auto-flash): Shure ≥1.1.0 via /api/shure-rf/status, Atlas (no fw endpoint — manual), Crestron VER. Wolf Pack/DirecTV excluded (no clean accessor).
+
+**CRITICAL findings surfaced on first run (logged as todos):**
+- **🔴 Fleet auto-update is BROKEN on all 5 location boxes** — every nightly run hits `CONFLICT (content) in apps/web/TODO_LIST.md`, auto-resolves, then `error: failed to push` → rollback. This is why the fleet is frozen at v2.73.8 and none of v2.76–2.81 has propagated. Needs a dedicated fix (untrack TODO_LIST.md and/or fix the push-failure).
+- matrix_input_id unresolvable still at Graystone (16), Greenville (4), Appleton (1) — the fleet-wide DirecTV/cable mapping gap (only Holmgren fixed so far).
+- Brewers→669 (Bucks channel) DirecTV misroute confirmed at Holmgren.
+- BartenderLayout rooms empty at Holmgren/Lucky's/Greenville/Appleton (Gotcha #8).
+
+**Required Manual Steps:** none new (scripts pull via auto-update — once it's unblocked). The fleet-update-health auto-fixes (linger/node/ollama-group) run via the CT212 cron.
+
+---
+
+## v2.80.0 — Fleet SECURITY hygiene audit + Hermes auto-fix (2026-06-19)
+
+**Branch landed:** main. Fourth fleet-consistency dimension (after schema/deps/OS). From the multi-agent enhancement research.
+
+**What shipped:** `scripts/fleet-security-audit.sh` — per-box checks: A1 secret-file perms (.env + cron env must be 0600 — **AUTO-FIX `chmod 600`**), A3 default/weak active PINs (bcrypt-compare vs denylist — REPORT, role only, never the PIN), A4 AUTH_COOKIE_SECURE-on-http (REPORT), A2 leaked-token-in-git-history (LOCAL, REPORT). NEVER logs a PIN/secret value. Wired into `hermes-schema-drift-task.sh` as Phase 0.5 (runs `--fix` for perms only; findings stay in JSON for the operator, NOT escalated to Claude — rotating PINs / rewriting history are operator decisions).
+
+**First live run + auto-fix applied:** `.env` was **644/664 (world-readable) on all 6 configured boxes** → auto-chmod'd to 600 fleet-wide. **OUTSTANDING (operator action — cannot auto-fix):**
+- **Every box is on the DEFAULT admin/staff PINs** (7819 / 1234). Rotate via Device Config per location.
+- The fleet SSH password `6809233DjD` is in **79 commits of git history** — rotate the credential (history rewrite is destructive).
+
+**Required Manual Steps:** rotate the default PINs per location; rotate the leaked SSH password. No app behavior change.
+
+---
+
+## v2.78.0 — Fleet DEPENDENCY/software consistency + Hermes auto-install (2026-06-19)
+
+**Branch landed:** main. Extends the v2.77.0 schema-consistency task to also keep **software/dependencies identical across every box** (operator: "the hermes script should do it at all locations for dependencies and software").
+
+**What shipped:**
+- **`scripts/fleet-deps-audit.sh`** — checks every fleet box for the required toolchain (`sqlite3`, `jq`, `curl`, `git`, `sshpass`, `python3`, `coreutils`). With `--fix` it AUTO-INSTALLS missing **safe apt** packages (idempotent). Version-sensitive / special-install items — Node MAJOR (`< 22`), `pm2`, `ollama`+models — are REPORTED + escalated, NEVER auto-changed (a Node major bump is the 20-40min risky native-rebuild procedure; ollama is the IPEX/CUDA build). Emits `/tmp/fleet-deps-audit.json`, exit 2 if anything needs attention.
+- **`scripts/hermes-schema-drift-task.sh`** now runs **Phase 0: deps ensure (`fleet-deps-audit.sh --fix`)** before the schema phase, escalating only the version/special items to Claude via `ask_claude_code`.
+
+**First live run:** found + auto-installed missing `sshpass` on leg-lamp/graystone/appleton and `jq` on greenville; all 7 boxes now have the full toolchain. holmgren/luckys/lime-kiln were already complete. (Lime Kiln is online — no hardware yet, so its device data is empty, but its schema + deps compare normally.)
+
+**Required Manual Steps:** none new beyond the v2.77.0 CT212 cron (now also runs the deps phase). The cron env already carries `FLEET_SSH_PW` + `ASK_CLAUDE_CMD`.
+
+---
+
+## v2.77.0 — Fleet DB schema-consistency audit + Hermes auto-fix task (2026-06-19)
+
+**Branch landed:** main. Motivated by fleet drift found while fixing the DirecTV `matrix_input_id` data gap — DATA is location-specific (expected to differ), but the schema (tables/columns) must be identical across boxes. This is the Gotcha #6 failure class (NeighborhoodEvent missing on 5/6 boxes for 24h).
+
+**What shipped (3 read-safe scripts):**
+- **`scripts/fleet-schema-audit.sh`** — read-only fleet schema comparator. Captures each box's `(version, table|column fingerprint)` via `sqlite_master` + `pragma_table_info` (NEVER reads row data). Groups boxes by version cohort; the consensus structure within a cohort is canonical, and any box MISSING canonical tables/cols is flagged DRIFT. Extra lines = orphan (informational); behind-version = lag (expected). Emits `/tmp/fleet-schema-audit.json`, exit 2 on drift. Reads `$FLEET_SSH_PW` (never hardcoded).
+- **`scripts/fix-schema-drift.sh <box>`** — tier-1 SAFE fixer: `bootstrap-drizzle-migrations.sh` + `drizzle-kit migrate` (committed migrations only — never push, never DROP, never touch data) then re-verifies. Exit 3 = ESCALATE if drift persists.
+- **`scripts/hermes-schema-drift-task.sh`** — Hermes cron wrapper: detect → tier-1 auto-fix each drifted box → on persist, escalate to Claude via `ask_claude_code` (auto-applies safe DDL, escalates DROP/data-affecting for approval). Fail-open.
+
+**First live run:** v2.73.8 cohort (5 boxes) structurally identical; Greenville +17 orphan lines (informational); Holmgren ahead on version (lag). No missing-table drift — detector verified working.
+
+**Required Manual Steps:**
+1. **(CT212, optional) install the Hermes cron:** copy nothing — the repo script is pulled by auto-update. On CT212 run `hermes cron create --name fleet-schema-drift --schedule "0 5 * * *" --command "/home/ubuntu/Sports-Bar-TV-Controller/scripts/hermes-schema-drift-task.sh"`. Set `FLEET_SSH_PW` + `ASK_CLAUDE_CMD` (default `hermes -z`) in the cron env. Until installed, run `FLEET_SSH_PW=... bash scripts/fleet-schema-audit.sh` manually.
+
+No DB schema/migration changes. No app behavior change (scripts only).
+
+---
+
+## v2.76.0 — #349 Wave 3.7 + 6 + 7: engine observability, learning loop, bartender "why" (2026-06-19)
+
+**Branch landed:** main. Researched (4 parallel mapping agents) → planned → debugged with **Grok + local AI** → built by 3 parallel agents → integrated + verified.
+
+**What shipped (5 pieces):**
+- **Wave 3.7 (obs):** DistributionEngine reasoning rows in SchedulerLog now use ops `assign`/`drop`/`under-served` + `metadata.reason` ∈ {assigned, no_screen, under_minimum} (was a single `distribute` op). Query `GET /api/scheduler/logs?component=distribution-engine`; SchedulerLogsDashboard colors the new ops. The persistence itself shipped with #348; this completes it.
+- **Wave 6 (learning) — GATED, default OFF:** `DISTRIBUTION_ENGINE_LEARNING=off|on`. When ON, the deterministic engine biases input/output selection toward bartender-override-learned `scheduling_patterns` (confidence≥0.3 ≈ 3+ samples) **as a strict TIE-BREAKER only** (Grok-reviewed: never a unified score — a popular input can't hog screens), applied only when usage-count + device-type rank are equal, in both the first-pass and round-robin sorts. The home-team minTV **floor is count-based and untouched** — the bias only reorders candidates, never filters. ID-mapping trap fixed: `preferredInputId` (input_sources.id) is resolved to `MatrixInput.channelNumber` so the match is real, not a silent no-op. Default OFF = byte-for-byte unchanged.
+- **Wave 7 (why) — live:** `apps/web/src/lib/scheduler/why-builder.ts` builds a one-line server-side rationale per game (e.g. "Chicago White Sox @ Detroit Tigers → assigned here 3× before"), pure TS, NO LLM (Gotcha #12), rendered in `GameCard`. Verified live: 77/77 team games show it; channel-only entries correctly blank.
+- **Hermes consumption:** weekly `runContentionDigest` (scheduler poll, daily, dedup→one TODO/ISO-week) files "N games had no screen this week" via `POST /api/maintenance-todo` from the Wave-3.7 `drop` rows. Fail-open.
+- **Honcho inclusion:** `scripts/hermes-learn-scheduling-prefs.sh` — a CT212-side reference cron (NOT repo/app code) that pulls `GET /api/override-learn/digest` and feeds stable patterns into a `hermes -z` turn → `sports-bar` Honcho workspace. Repo holds nothing Honcho-specific (domain isolation preserved).
+
+**Required Manual Steps:**
+1. **(Optional, per-location) enable Wave-6 learning canary:** set `DISTRIBUTION_ENGINE_LEARNING=on` in the location's `.env` AND `ecosystem.config.js` env block, then `pm2 delete sports-bar-tv-controller && pm2 start ecosystem.config.js` (Gotcha #2). Recommend Holmgren canary ~1 week, watch SchedulerLog `assign` rows + the Game Plan "why" before fleet-wide. Default OFF ships safe everywhere.
+2. **(Optional, CT212) Honcho learning mirror:** copy `scripts/hermes-learn-scheduling-prefs.sh` to CT212 and `hermes cron create --name learn-scheduling-prefs --schedule "0 6 * * *" --command <path>`. Verify with `hermes honcho status`. Fail-open; skip if not using Honcho.
+
+No DB schema/migration changes. No setup required for the default (Wave 3.7 + 7 + the contention TODO are live; Wave 6 is opt-in).
+
+---
+
+## v2.75.0 — AI Hub chat can offload to the T4 GPU (opt-in, default OFF) (2026-06-19)
+
+**Branch landed:** main. **No setup required for the default** — ships OFF, behavior byte-for-byte unchanged (verified live: chat → HTTP 200, model `llama3.1:8b`, 8 RAG sources).
+
+**What changed (#364):** `apps/web/src/app/api/chat/route.ts` and the RAG embedding path (`packages/rag-server/src/llm-client.ts`) now call `@sports-bar/ollama-client` instead of direct `fetch`, so they can offload to the shared T4 GPU with automatic local-iGPU fallback. New non-streaming `ollamaChat` helper added to the client; all 5 `/api/chat` call sites + RAG embeds migrated. Gated behind **`AI_HUB_T4_ENABLED`** (default `false` → `policy: 'local-only'`, today's exact behavior).
+
+**Phil protection (critical):** when the flag is ON, the chat is forced to the small model **`llama3.1:8b`** (`OLLAMA_TOOLS_MODEL_T4`, never qwen2.5:14b) so it can't evict the trading bot's `phi4-trader` from the T4's ~15GB VRAM. RAG embeddings stay unpinned on the T4 (pinned only on local) for the same reason.
+
+**To ENABLE the T4 offload at a location** (optional, off-hours): in that location's `.env` AND its `ecosystem.config.js` env block (ecosystem is per-location / `LOCATION_PATHS_OURS`, so the main template's new lines do NOT auto-propagate) set `OLLAMA_REMOTE_BASE=http://100.70.56.34:11434` + `AI_HUB_T4_ENABLED=true`, then `pm2 delete sports-bar-tv-controller && pm2 start ecosystem.config.js` (PM2 only forwards listed env). Pre-check: `nomic-embed-text` + `llama3.1:8b` present on CT212; after enabling, Playwright `/ai-hub` chat, confirm the answer streams and the log shows model `llama3.1:8b` (NOT qwen), and `ollama ps` on CT212 still shows `phi4-trader` resident.
+
+---
+
+## v2.74.0 — Wave 3.5: health-aware assignment (scheduler excludes offline devices) (2026-06-19)
+
+**Branch landed:** main. **No setup required** — additive scheduler logic, no schema/env/migration changes.
+
+**What changed:** new `getOfflineDeviceIds()` helper (`packages/scheduler/src/device-health.ts`, exported from the package index) returns the set of genuinely-offline device IDs. Wired into both assignment paths so a game is never assigned to a dead screen:
+- `StateReader.getAvailableInputs()` (`packages/scheduler/src/state-reader.ts`) — folds `!isOffline` into `isAvailable`, so the deterministic DistributionEngine skips offline inputs. A game left with zero eligible screens flows through the existing #348 contention path (`unservedGames`).
+- `loadInputSources()` (`apps/web/src/app/api/scheduling/ai-suggest/route.ts`) — filters offline-device inputs out of the LLM candidate list.
+
+**v1 scope is Fire TV only.** Cable boxes + DirecTV carry an `isOnline` column but it's operator-set, NOT actively monitored, so excluding on it would wrongly drop working boxes — they're intentionally left in the candidate set. **Exempts expected-powered-down devices** (`/atmosphere|epson|projector/i`) — verified live at Holmgren: the offline Epson Projector is correctly KEPT, not excluded. Also requires `lastSeen` staleness > 10 min (avoids bouncing a device on a transient ADB blip). **Fails open** — any query error returns an empty set (assign as before), never starves the schedule.
+
+**Verify:** trigger a schedule with a genuinely-offline Fire TV (not Atmosphere/Epson) and confirm `[STATE_READER] Input N (label) device offline - excluded` + the game routes elsewhere or reports in `unservedGames`. Fast-follow (#347b): cable/DirecTV reachability probe, keep-awake off-hours window, streaming-catalog gating for offline Fire TVs.
+
+---
+
+## v2.73.4 — checkpoint-hermes embeds the real diff for Checkpoint A (fixes the still-frozen fleet) (2026-06-18)
+
+**Branch landed:** main. **This is the actual fix for the fleet freeze** — v2.73.0 routed Checkpoint A to local AI, but the local model still failed.
+
+**Root cause:** `scripts/prompts/checkpoint-a.txt` is an *agentic* prompt — it tells the reviewer to run `git log -p HEAD..origin/main` to SEE the diff. Cloud Claude (with bash tools) could; the local llama3.1:8b in `checkpoint-hermes.sh` gets it as static text with **no tools and no diff content**, so it ran ~4 min and emitted no parseable `DECISION:` line → `UNAVAILABLE` → cloud fallback → Claude-CLI 401 → STOP. Observed live on graystone 2026-06-18 13:36.
+
+**Fix:** `checkpoint-hermes.sh` now, for `LABEL=A`, gathers the diff **itself** (it runs in the repo): `git log --oneline HEAD..origin/main`, `git diff --stat`, the `schema.ts` diff (capped 250 lines — the real risk surface), and the `package.json` diff. It hands the model a concise, non-agentic judge prompt with explicit STOP rules (non-additive schema change to an EXISTING table / committed secrets / deletion of auto-update.sh|verify-install.sh) plus the embedded evidence. New tables + new-table NOT NULL columns are correctly GO. Smaller prompt than the 6000-token agentic one → faster eval too. Checkpoints B/C unchanged (their prompts already embed verify-install evidence). **v2.73.5 tuning:** llama3.1:8b reasons correctly but ignores the DECISION-line output format ~50% of the time (Gotcha #12), so the parser now (a) demands the DECISION line first + num_predict 400, and (b) falls back to scanning the prose for a verdict (STOP-first → GO → CAUTION) when no `DECISION:` line is emitted. Proven on graystone: standalone Checkpoint A → `DECISION: GO` in ~3m57s on the iGPU.
+
+**Also:** `.claude/hooks/pre-fleet-ssh-cd.sh` upgraded to AUTO-INJECT `cd /home/ubuntu/Sports-Bar-TV-Controller` into fleet-SSH payloads (was deny-only). Dev-tooling only; inert on locations (settings.local.json that wires it is gitignored).
+
+**No setup required.** Deploy note for the 3 still-frozen boxes (graystone/appleton/greenville on 2.67.0): each needs the v2.73.0+v2.73.4 `checkpoint-hermes.sh` + `auto-update.sh` **committed on its location branch** (so the pre-clean of PRE_MERGE_RESET_PATHS can't revert auto-update.sh before Checkpoint A) — `git fetch && git checkout origin/main -- scripts/checkpoint-hermes.sh scripts/auto-update.sh && git add -A && git commit`, then trigger auto-update. Verify: the run log shows `Checkpoint A: LOCAL AI reviewer` → `DECISION: GO` (not `UNAVAILABLE`).
+
+---
+
+## v2.73.3 — Cable-box tune sends Select/OK to commit the channel (2026-06-18)
+
+**Branch landed:** main. **No setup required** — purely a behavior fix to IR cable-box tuning.
+
+**What changed:** `apps/web/src/app/api/channel-presets/tune/route.ts` now sends the learned **Select** (or OK/Enter) IR command after the channel digits in `sendCableBoxChannelChange()`. Many Spectrum boxes wait on an internal entry-timeout (~1–2 s) before committing a multi-digit channel; firing Select makes the channel land immediately. If no Select/OK/Enter command is learned for the device, it logs and relies on the box's timeout (today's behavior) — so locations that haven't learned a Select key are unaffected.
+
+**Also fixed a latent compile bug** in the same block: the Select code referenced `net` (`new net.Socket()`) which was only `await import`ed inside the digit loop — out of scope after it. Now imported inside the Select block. The earlier uncommitted draft of this never built; it does now (turbo build 29/29).
+
+**Verification:** trigger any cable preset and confirm the log shows `Sending Select to confirm channel <N>` → `Select sent successfully`. Verified live at Holmgren (Cable Box 2 → 308, both iTach blasters 10.11.3.40/.41 reachable). Boxes with a learned Select key benefit; others see no change. No DB, env, or migration changes.
+
+---
+
+## v2.73.0 — Checkpoint reviewer → LOCAL AI primary (unfreezes the fleet) (2026-06-18)
+
+**Branch landed:** main. **Fixes the fleet-wide auto-update freeze.** Root cause (found via the v2.71 hub tracking): every box was failing `FAIL at step 'checkpoint_a'`. The deterministic pre-check escalates to AI for the big backlog (21 pending commits), and the AI gate was the **Claude Code CLI subscription path** — which returns a 4s empty response (logged-out/monthly-limit) → `UNDETERMINED` → STOP → nothing merges. #363 had removed `ANTHROPIC_API_KEY` to force that CLI/OAuth path; it's inherently fragile.
+
+**Fix:** `run_checkpoint` in `auto-update.sh` now uses **LOCAL AI as the PRIMARY reviewer** — `scripts/checkpoint-hermes.sh` against the box's Ollama (the shared T4 if `OLLAMA_REMOTE_BASE` is set, else the box's own `localhost:11434`) + retrieve-only RAG → GO/CAUTION/STOP. Cloud (API key → CLI) remains a **fallback only** when local AI returns `UNAVAILABLE`. No cloud auth, no monthly cap, no API key needed. The redundant shadow-review is skipped when local AI was already primary.
+
+**v2.73.1 — checkpoint model = `llama3.1:8b` (small), NOT qwen2.5:14b.** Operator rule: the bar must use the SMALL model on the shared T4 so it doesn't evict the trading bot's `phi4-trader` ("Phil"). `checkpoint-hermes.sh` now defaults to `llama3.1:8b` (~4.9GB) everywhere — on the T4 it co-resides with phi4-trader (9.1GB) + nomic (0.3GB) = 14.3GB < 15GB, zero eviction even if the checkpoint runs during market hours. Override with `HERMES_CHECKPOINT_MODEL=qwen2.5:14b` for a stronger review only when Phil isn't resident (off-hours). Same principle already applied to the Honcho deriver (qwen→llama3.1:8b) — keep all daytime bar T4 work on the 8B.
+
+**DEPLOY (frozen boxes can't pull this via auto-update — it IS the thing that's broken):** manually `scp scripts/auto-update.sh scripts/checkpoint-hermes.sh` to each frozen box (appleton/graystone/greenville), confirm the box's local Ollama serves `llama3.1:8b`, then re-trigger `auto-update.sh`. The local-AI Checkpoint A passes → the 21-commit backlog merges → box reaches v2.73.x. Verified locally: checkpoint-hermes.sh returns a clean `DECISION: GO` (T4/qwen, ~60s). **Other boxes (leg-lamp/lucky's) get it on their next normal cycle.** Safety net unchanged: deterministic pre-check still catches leaked-secrets / NOT-NULL-without-default migrations BEFORE the AI, and verify-install.sh + rollback still guard the post-merge state.
+
+---
+
+## v2.72.1 — SBCC hub DEPLOYED to v2.72.0 — fleet-update tracking LIVE (#359) (2026-06-16)
+
+**Operational, not code** (doc + version marker only). The central SBCC hub (`100.124.165.26:3010`) was deployed to the v2.72.0 hub build, completing the v2.70.0/v2.72.0 "DEPLOY STEP" items. Done as root (the hub is a build-and-copy deployment — full mechanism now in the `reference-sbcc-hub-deploy` memory):
+- `fleet_update_events` table created in `/opt/sbcc-hub-data/hub.db` (surgical `CREATE TABLE IF NOT EXISTS` — `migration.sql` lacks `IF NOT EXISTS` so re-running `migrate.js` would abort).
+- New hub `apps/hub` standalone bundle shipped + `sbcc-hub` restarted → `POST /api/ingest/update` live (400, was 404); dashboard + static + `/api/locations` all 200.
+- The 6 central `agent-<location>` collectors (`/opt/sbcc-agent`) redeployed with the v2.71.0 `collectUpdates()` and restarted.
+- **Verified end-to-end:** 50 `fleet_update_events` rows flowing from all 6 locations (dedup on `(location, runId)` holding). **First real signal:** Appleton's latest run (`auto-update-2026-06-17-03-42`) reported `failed`, and Appleton/Graystone/Lucky's all carry `rollback`/`failed` history — the fleet is mostly on v2.67.0, behind main.
+
+**No location action.** Fleet boxes already report via the central agents (which poll each box's existing `/api/auto-update/runs`). The Hermes SHADOW reviewer (v2.72.0) activates per-box where `OLLAMA_REMOTE_BASE` is set.
+
+---
+
+## v2.72.0 — Hermes SHADOW checkpoint review (#359 / Hermes) (2026-06-16)
+
+**Branch landed:** main. Third slice — Hermes starts *reviewing* fleet updates (Review stage), in SHADOW mode. New `scripts/checkpoint-hermes.sh` asks the shared T4 Ollama (the "Hermes" ops-reviewer role, default model `qwen2.5:14b`) for its own GO/CAUTION/STOP verdict on each auto-update checkpoint, grounded by the box's **retrieve-only RAG** (v2.69.0) over the version guide + gotchas. `auto-update.sh` calls it at both decision points in `run_checkpoint` (deterministic fast-path resolve + AI-path final) via the new `hermes_shadow_review()` helper, which logs `[HERMES-SHADOW] Checkpoint X: real=<v> hermes=<v> agree=<yes|NO|n/a>` and appends a JSONL row to `$DATA_DIR/hermes-shadow/checkpoint-shadow.jsonl`. **Advisory ONLY — it never gates the update**; Claude/deterministic remains the sole gate. We accumulate the agreement record; a later slice flips Hermes to primary with Claude as fallback once shadow proves it agrees.
+
+Safety: fully non-fatal (auto-update.sh has no `set -e`; helper returns 0 unconditionally and all refs are `set -u`-guarded). The reviewer's system prompt tells it it CANNOT run commands and to treat missing evidence as at most CAUTION, never STOP — avoiding the "I can't execute → STOP" failure mode that bit the plain-text Claude path historically. Bounded by a 150s outer timeout; within one run the T4 model stays warm (`keep_alive`) so only checkpoint A pays the cold-load (~80s), B/C are ~15s.
+
+**DEPLOY STEP:** none. **Activation is automatic where the T4 is configured** — runs only when `OLLAMA_REMOTE_BASE` is set in the box's `.env` (auto-update.sh sources `.env` with `set -a` at step 0a, so the child inherits it). Boxes without a T4 no-op cleanly (`DECISION: UNAVAILABLE`). Tunables (all optional, read from `.env`): `HERMES_SHADOW_ENABLED=false` force-disables; `HERMES_CHECKPOINT_MODEL` (default `qwen2.5:14b`); `HERMES_CHECKPOINT_TIMEOUT` (default 120s). Verified live on Holmgren: standalone reviewer returned a correct `DECISION: GO` against the real T4, and the wrapper's agreement logic unit-tested across GO/CAUTION/STOP/UNAVAILABLE/disagreement cases. **Review the accumulated `checkpoint-shadow.jsonl` agreement rate before considering the primary flip.**
+
+---
+
+## v2.71.0 — Fleet-update tracking: box-side reporting (#359 / Hermes) (2026-06-16)
+
+**Branch landed:** main. Second slice of "Hermes tracks + reviews fleet updates" (Track stage). Adds the **sending** side that feeds the v2.70.0 hub sink: new `collectUpdates()` collector in `@sports-bar/hub-agent` polls the box's own `GET /api/auto-update/runs` (log-parsed, unauthenticated on localhost — same access model as the other collectors, never opens production.db per the orphan-DB-lock gotcha), maps each finished run → `UpdateEvent` (result ∈ success/rollback/conflict/skipped/failed; from/to version+sha; duration; triggeredBy; failure detail; trimmed checkpoint decisions in `raw`), and POSTs `kind:'update'` in the agent's slow cycle (5-min; updates are ~daily so this is ample). In-memory high-water mark with 7-day first-run lookback to backfill recent history; the hub dedups on `(location, runId)` so restarts re-send harmlessly. `result` mapping checks success **before** rollback because auto-update.sh tags a safety-net rollback point at the start of every run — `rollbackTag` is only surfaced when a rollback actually occurred. **`skipped` rows are intentional and valuable** — a daily no-op cron run proves the box's auto-update timer is still firing (Gotcha #11 stuck-timer detection); a box that stops emitting them is stuck.
+
+**DEPLOY STEP:** none beyond the normal pull. Activation requires (a) the v2.70.0 `fleet_update_events` table already created on the hub (see below) and (b) the per-location `sbcc-hub-agent` PM2 sidecar rebuilt + restarted to pick up the new collector — handled by the standard auto-update build + PM2 restart where the agent is deployed. Verified live on Holmgren against real run history (50 runs: 33 skipped / 13 success / 4 rollback, envelope built + signed correctly in `--dry-run`).
+
+---
+
+## v2.70.0 — Fleet-update tracking: hub ingest foundation (#359 / Hermes) — DEPLOY: create table (2026-06-16)
+
+**Branch landed:** main. First slice of the operator directive "Hermes tracks + reviews fleet updates" (Track stage; see System Admin todo + docs/HERMES_AUTONOMOUS_OPS_PLAN.md). Adds the **receiving** side only: `IngestKind` gains `'update'`; new `UpdateEvent`/`UpdatePayload` types (`@sports-bar/hub-agent/types`); hub `fleet_update_events` table (dedup on `location_id` + `run_id`); `insertFleetUpdate()` repo helper; `POST /api/ingest/update` (HMAC-gated, mirrors `/api/ingest/errors`). **No box-side reporting yet** — next slice is the hub-agent collector that reads each box's local `auto_update_history` and posts it.
+
+**DEPLOY STEP (hub / CT211 ONLY):** the new `fleet_update_events` table must be created on the hub SQLite DB before the endpoint works — run `npx drizzle-kit push` for `apps/hub` on the hub, or apply a `CREATE TABLE fleet_update_events (...)` from `apps/hub/src/db/schema.ts`. Locations need **no** action. Additive: existing ingest (errors/health/metrics/scheduler) is byte-unchanged.
+
+---
+
+## v2.69.0 — RAG retrieve-only mode (no setup required) (2026-06-16)
+
+**Branch landed:** main. **No setup required.** `queryDocs` / `POST /api/rag/query` gain an opt-in **`retrieveOnly`** flag (default off). When true, it returns the ranked chunks + `rawContext` and **skips the LLM answer-generation step** — fast and Ollama-independent. For callers that feed retrieved context to their own model (Hermes diagnose, #359), and to harden diagnosis where retrieval quality (not model choice) dominates — proven by the 2026-06-16 phi4-vs-llama A/B. **Verified:** 5 sources + 14 KB `rawContext` in **501 ms** with no Ollama call, `answer=''`, `metadata.model='(retrieve-only)'`. Pure-additive: existing callers (default false) are byte-unaffected.
+
+---
+
+## v2.68.2 — Docs: record CPU baseline in T4-Day Runbook (no setup required) (2026-06-16)
+
+**Branch landed:** main. **No setup required.** Recorded the pre-GPU CPU baseline in `docs/T4_DAY_RUNBOOK.md` Phase 0 — `llama3.1:8b` on hermes (4c/8 GB, no GPU) = 5.25 gen tok/s — so Phase 2 has a concrete before/after to prove the T4 win (~8–12× expected).
+
+---
+
+## v2.68.1 — Docs: T4-Day Runbook (no setup required) (2026-06-16)
+
+**Branch landed:** main. **No setup required.** New `docs/T4_DAY_RUNBOOK.md` — the live execution plan for installing the T4 GPU into CT 212 (`hermes`, an LXC) and flipping the staged software (OLLAMA_REMOTE_BASE, DIAGNOSE_ENABLED, the diagnose LLM, chat migration, Honcho deriver) onto the GPU. Phased, Holmgren-canaried, each step reversible. Critical path = operator/host GPU passthrough (LXC device bind, not vfio); models (`qwen2.5:14b`, `nomic-embed-text` 768-dim, `llama3.1:8b`) already pulled on hermes. Tracks #358; unblocks #359 + #364.
+
+---
+
+## v2.68.0 — T4-day prep: ollama-client migration + Hermes Layer 1 scaffold (no setup required; two new default-OFF env vars) (2026-06-16)
+
+**Branch landed:** main. **No setup required now** — both changes are inert until their env flags are set on T4-day (#358).
+
+Two additive, default-safe prep items so T4-day is an env-flip, not a code change:
+
+1. **ollama-client call-site migration.** AI Suggest (`api/scheduling/ai-suggest`) and RAG answer-gen (`packages/rag-server/src/llm-client.ts`) now route through `@sports-bar/ollama-client` (remote-first → local fallback). New env **`OLLAMA_REMOTE_BASE`** (in `ecosystem.config.js`, default `''`). **Unset/empty ⇒ byte-identical to today** (every policy resolves to local `localhost:11434`). On T4-day: set `OLLAMA_REMOTE_BASE=<shared GPU Ollama URL>` in `.env` + `pm2 delete && pm2 start ecosystem.config.js` → those calls move to the T4 with automatic local fallback. `chat/route.ts` deliberately NOT migrated (native tool-call streaming; tracked as a follow-up needing live Playwright verification).
+
+2. **Hermes Layer 1 diagnose scaffold (#359).** `api/error-watch/todo` gains a flag-gated diagnose step (RAG enrichment now; LLM call stubbed for T4-day). New env **`DIAGNOSE_ENABLED`** (default `'false'`). **Unset/OFF ⇒ the detect→TODO path is byte-for-byte unchanged.** When ON: a RAG lookup appends "Relevant docs:" to the filed TODO; failures are caught and never block TODO creation.
+
+**Verification (optional, both default-off so production behavior is unchanged):** `grep -E "OLLAMA_REMOTE_BASE|DIAGNOSE_ENABLED" ecosystem.config.js` shows both present. Build is green. No DB/schema changes. Rolls out via normal auto-update rebuild+restart.
+
+---
+
+## v2.67.2 — Fix: TODO GitHub sync pushes to current branch, best-effort (no setup required) (2026-06-16)
+
+**Branch landed:** main. **No setup required.** `packages/utils/src/git-sync.ts` `commitAndPush()` no longer pushes `TODO_LIST.md` to a hardcoded `main` — it now pushes to the **current branch** (`git rev-parse --abbrev-ref HEAD`; explicit `config.targetBranch` still overrides) and a push failure is **best-effort** (logged at info level, never thrown/ERROR). Root cause: a stray `backup(Leg Lamp)` commit on Leg Lamp's local `main` (1 ahead / 962 behind) made every `git push origin main` from the TODO/venue-discovery sync permanently rejected → continuous `[ERROR] Error syncing TODOs to GitHub` spam. Zero operational impact (TODOs persist in the DB; box runs on its location branch). Also fixes a latent Standing-Rule-9 issue (location boxes must never push to main). **One-time per-box cleanup, already applied to Leg Lamp:** `git update-ref refs/heads/main origin/main` (stray commit preserved under tag `leglamp-stranded-main-358c3954`). Other fleet boxes were 0-ahead (no cleanup needed). Rolls out via auto-update rebuild+restart of `@sports-bar/utils` consumers.
+
+## v2.67.1 — Docs: Hermes Autonomous Fleet-Ops Loop plan (no setup required) (2026-06-16)
+
+**Branch landed:** main. **No setup required — documentation only.** Adds `docs/HERMES_AUTONOMOUS_OPS_PLAN.md`: the design for the detect→diagnose→correlate→propose loop (task #359), to be built on T4-day (#358) onward. No code, no env, no DB change. Operational context recorded the same day (not a version requirement): the fleet auto-update freeze was resolved by migrating the `auto-update.sh` checkpoint from `ANTHROPIC_API_KEY` to Claude OAuth across all 6 boxes (Anthropic credits exhausted → checkpoint_a 400s), and hub mode (`ESPN_HUB_ENABLED`/`RAIL_HUB_ENABLED`) was enabled fleet-wide (Holmgren + Lucky's + the 4 Green Bay boxes). RAG re-scan of this doc runs via the auto-update path when main merges to each location (Standing Rule 11).
+
+## v2.67.0 — Feature B2: central Rail Media guide, per-market & on-demand (OFF by default) (2026-06-16)
+
+**Branch landed:** main. **Ships DISABLED — zero behavior change until per-location opt-in.** Completes channel-guide centralization (B1 ESPN already canary-passed at Holmgren). Hub caches the Rail Media guide PER MARKET: `apps/hub/src/lib/rail-cache.ts` (in-memory `Map` keyed by `${userId}:${days}:${today}`, 30-min TTL, in-flight Promise stampede-guard, constructs `new SportsGuideApi({apiKey,userId,baseUrl})` per request — key used transiently, **never stored/logged**); `POST /api/game-data/rail {userId,apiKey,days}` serves it (tailnet-only; caller supplies its own Rail key). Location: `apps/web/src/lib/hub-rail-sync.ts` sends THIS box's `SPORTS_GUIDE_USER_ID`+`SPORTS_GUIDE_API_KEY`; `apps/web/src/app/api/channel-guide/route.ts` wraps both Rail fetches in `fetchRailGuide(days)` = hub-first-with-fallback-to-direct-Rail. Resolver + `channel_presets` + station-aliases + WI RSN split **untouched**. **New location in a new market = new `USER_ID` = new hub cache entry, zero hub setup** (its presets/aliases live on its branch as today). Env (default off): `RAIL_HUB_ENABLED=false`. **Canary (not auto):** enable `RAIL_HUB_ENABLED=true` at Holmgren (Green Bay), verify same channels + fallback; then **Lucky's (Madison) — capture bartender channel numbers before/after, they MUST be identical** (proves per-market isolation, no Green Bay bleed) before fleet rollout.
+
+## v2.66.0 — Fleet AI offload foundation + central ESPN sync (both OFF by default) (2026-06-16)
+
+**Branch landed:** main. **Ships fully DISABLED — zero behavior change until per-location opt-in.** Two foundations:
+
+**Feature A foundation — `packages/ollama-client`** (`@sports-bar/ollama-client`): remote-first Ollama with fast local fallback (probe `/api/tags` as the connectivity oracle; fall back only on connection-layer failure, never mid-stream). Default OFF: `OLLAMA_REMOTE_BASE` unset ⇒ every call stays local. Call-site migration (AI Suggest, chat, RAG generate) + load-shedding land on T4-day. Shift-brief + RF digest + embeddings stay LOCAL by decision. **Required step (T4-day only):** set `OLLAMA_REMOTE_BASE=http://100.70.56.34:11434` in a location's `.env` to opt in; `pm2 delete && pm2 start` (Gotcha #2).
+
+**Feature B1 — central ESPN game sync.** Hub (`apps/hub`) runs the 24-league ESPN sync once (`apps/hub/src/lib/espn-sync.ts` + `instrumentation.ts`, every 10 min) into a new `espn_cache` table, served unauth (tailnet-only, read-only) at `GET /api/game-data/espn`. Locations pull it (`apps/web/src/lib/hub-espn-sync.ts`) and run their EXISTING `syncLeague(sport,league,prefetchedGames)` over it — the `syncGame` write-path is byte-identical, and on ANY hub failure the box falls back to its local ESPN fetch. The channel resolver + every per-location table are untouched. Env (default off): `ESPN_HUB_ENABLED=false`, `HUB_GAME_URL=http://100.124.165.26:3010`. **Required steps to enable (canary, not auto):** (1) create the `espn_cache` table on the hub DB; (2) set `ESPN_HUB_ENABLED=true` at a canary location; (3) verify bartender guide shows the same games + the local-fallback fires when the hub is stopped. Also fixed a latent `cache-manager` `exportState()` type bug surfaced by the hub importing `@sports-bar/sports-apis`. **B2 (Rail/Lucky's-Madison per-market) is NOT in this release.**
+
+## v2.65.8 — SBCC Hub Phase C (v1): fleet-grounded maintenance chat (2026-06-15)
+
+**Branch landed:** main. **No fleet-box setup** — this is the central hub app (CT 211 `sbcc-hub`). Adds `/chat` + `POST /api/chat` to `apps/hub`: builds a FLEET STATUS context from the hub's own time-series DB (per-location health/metrics + grouped 24h error feed) and asks the shared local model on CT 212 (`llama3.1:8b`) — same brain Hermes runs on, no cloud. New files: `apps/hub/src/lib/ai.ts`, `apps/hub/src/app/api/chat/route.ts`, `apps/hub/src/app/chat/page.tsx`; dashboard header links to it. **Env (optional):** `HUB_OLLAMA_BASE` (default `http://100.70.56.34:11434`), `HUB_OLLAMA_MODEL` (default `llama3.1:8b`). **Deploy (CT 211):** `cd apps/hub && npm run build:next` → ship the standalone `apps/hub` subtree (server.js + `.next` + merged static) to `/opt/sbcc-hub/apps/hub` (node_modules unchanged) → `pm2 restart sbcc-hub`. Verified end-to-end + Playwright; CPU inference ~40s (faster on the T4). **Follow-up:** the richer "Ask Claude-Opus (code-grounded)" + "Ask Hermes-agent (with MCP tools)" paths need a claude CLI + repo clone on the hub and a warm synchronous Hermes HTTP bridge respectively — not built yet.
+
+## v2.65.6 — hub-agent: stop false SDR `watcher_down` errors at no-dongle locations (2026-06-15)
+
+**Branch landed:** main. **No fleet-box setup** — this is the central SBCC hub-agent (runs on CT 211 `sbcc-hub`, not the location boxes). Only Holmgren has an SDR dongle, so SDR's watcher reports `alive:false` at the other 5 locations → the agent synthesized a false `watcher_down:sdr` every poll, flooding the fleet error feed. Fix: `collectErrors` (`packages/hub-agent/src/collect.ts`) now only emits `watcher_down:<name>` when the watcher shows evidence of ever running at that location (non-null `lastEventAt`/`lastStartupAt`, or `eventCount24h>0`); a watcher with zero evidence is hardware-not-present, not down. Same guard covers any optional-hardware watcher (Shure). **Redeploy (CT 211):** rebuild `packages/hub-agent` → sync `dist/` to `/opt/sbcc-agent` → `pm2 restart all`. **Purge stale rows:** `DELETE FROM error_events WHERE source='watcher-down' AND signature='watcher_down:sdr' AND location_id != 'holmgren-way';` against the hub DB (`/opt/sbcc-hub-data/hub.db`).
+
+## v2.61.0 — auto-update.sh: stop `pull --rebase` tangle (fleet-wide root cause) (2026-06-14)
+
+**Branch landed:** main → fleet. **No manual setup** (code-only) — but see the fleet recovery note below.
+**Root cause fixed:** `scripts/auto-update.sh` did `git pull --rebase origin <branch>` before pushing (two
+sites: the main push path ~line 1790 + the heartbeat path ~line 454). Against a badly-diverged origin (frozen
+for weeks) the rebase replays the box's local commits and gets STUCK in a 70+ commit interactive rebase,
+silently leaving the working tree **detached on old code**. On 2026-06-14 this had frozen **the entire fleet**
+— every location box stuck-rebase, every `origin/location/*` frozen at 2.55.48, boxes auto-updating locally
+but never pushing (and still serving fine, since PM2 runs the built `.next` regardless of git state).
+- **Fix:** push first; on rejection reconcile by **merge (`-X ours`), never rebase** — keeps the box's
+  authoritative content, records origin's history so the retry push fast-forwards, aborts cleanly if even the
+  merge conflicts (push is non-fatal). Heartbeat path: push-or-skip, no rebase.
+- **Detection added (Hermes):** `~/.hermes/scripts/fleet-update-monitor.sh` + cron `fleet-update-watch`
+  (every 6h) — SSHes each location box, flags stuck-rebase / origin-frozen divergence / health≠200 / rollback /
+  unreachable, and on any problem calls `ask_claude_code` for the remediation, files a deduped todo, and
+  Telegram-alerts. This is what would have caught the freeze weeks ago.
+- **One-time fleet recovery (per stuck box, 2026-06-14):** `git rebase --abort` (unstick, non-destructive) →
+  bring current → `git push --force-with-lease` to reconcile the stale single-consumer origin → verify health.
+  Appleton done first (2.60.0). After reconcile, the fixed script keeps origin in sync going forward.
+
+---
+
+## v2.60.0 — Wave 3c: closed-loop matrix route verify + Wolf Pack TCP-close fix (2026-06-14)
+
+**Branch landed:** main → fleet via auto-update.
+Two parts:
+1. **Wolf Pack TCP-close fix (ACTIVE, not gated)** — `sendTCPCommand` in BOTH
+   `packages/wolfpack/src/matrix-control.ts` and `packages/wolfpack/src/wolfpack-matrix-service.ts` now use a
+   single `resolved` guard + guaranteed `client.destroy()` on every exit path (mirrors the well-guarded
+   `sendUDPCommand`). Fixes the `data`-then-`close` double-resolve and the leaked half-open socket on `error`
+   that the verify loop's rapid re-issue would accumulate. **Success values unchanged.** Verified live on
+   Holmgren's TCP:5000 path: routed output1→input2 and restored 2→1, both OK; route-verify logic 26/26.
+2. **Closed-loop route verify (GATED, default OFF)** — `scheduler-service.ts` now calls
+   `verifyAndRetryRoute` + `persistVerifyState` (from `route-verify.ts`, shipped v2.55.82) after each
+   successful route, behind **`ROUTE_VERIFY_ENABLED`** (env, default off; forwarded in `ecosystem.config.js`).
+   Reads the crossbar back; only on a GENUINE mismatch re-issues the idempotent SET; records the outcome on
+   the allocation's advisory `verify_*` columns. Advisory only — never throws into the tune path, never blocks
+   the allocation lifecycle. Matrix config cached per-tick like `cachedAudioProcessor`.
+- **Per-box enable (canary):** add `ROUTE_VERIFY_ENABLED=true` to the box's `.env`, then
+  `pm2 delete sports-bar-tv-controller && pm2 start ecosystem.config.js` (env change → Gotcha #2, NOT restart).
+  Holmgren is the canary. Verify fires only on a real scheduler **game-day tune** (no games = nothing to
+  verify), so check `SELECT verify_state, verify_attempts, verify_error FROM input_source_allocations WHERE
+  status='active'` after the next game tune. Leave OFF on every other box until proven.
+- **Why it matters:** this is the detection net for the Leg Lamp / o2ox black-TV class of bug — it reads back
+  after every route and flags (verify_state='failed') when a TV didn't land where it should, instead of the
+  failure being silent. (It detects; it does not fix the o2ox toggle — that's the separate shelved-o2o item.)
+
+---
+
+## v2.59.0 — channel-guide canonical dedup (Wave 1b-ii) + shift-brief truncation fix (2026-06-14)
+
+**Branch landed:** main → fleet via auto-update. **No manual setup required** (code-only).
+Two do-now-safe wins from the todo sweep:
+- **Wave 1b-ii — canonical dedup** (`apps/web/src/lib/channel-guide/dedup-key.ts` + one pass in
+  `channel-guide/route.ts` before the age-filter). The 7 injection paths each had ad-hoc dedup with
+  inconsistent team-casing / time / channel handling, so the same game could appear twice. Now ONE
+  tolerance-based pass: group by normalized teams+channel, same game iff start times within **2h**
+  (skew-tolerant; keeps doubleheaders >2h apart; keeps same game on different channels as two rows;
+  never dedups teamless entries). First-writer-wins → Rail base layer precedence. Drops logged via the
+  existing `DropTracker` as `reason='canonical-dupe'`. Logic unit-verified 5/5.
+- **shift-brief truncation fix** (`apps/web/src/app/api/ai/shift-brief/route.ts:520`): `SHIFT_BRIEF_NUM_PREDICT`
+  320 → **384**. LLM-PERF logs showed ~13% of briefs hit `done=length [TRUNCATED@cap]` at 320 (last section
+  silently cut). +64 tokens ≈ +10s at ~6 tok/s.
+- **Deferred (data-gated):** per-box `OLLAMA_NUM_PREDICT` tuning stays blocked — the LLM-PERF logs are
+  Holmgren-only (2 `ai-suggest` samples fleet-wide). Needs fleet log aggregation first. Wave 2 primary-flip:
+  **decided DON'T-FLIP-YET** (only 2 degenerate shadow runs exist, the `primary` codepath isn't implemented,
+  and the roadmap gates it on Waves 3.5/6/7). Kept `AI_SUGGEST_SOLVER=shadow`.
+
+---
+
+## v2.58.2 — Hermes self-backup to GitHub WIRED (2026-06-14)
+
+**Branch landed:** main → fleet via auto-update
+**What shipped:** `hermes/scripts/backup.sh` — daily backup of the Hermes "brain" to the **private** repo
+`dfultonthebar/hermes-backup`, per-box subdir. LIVE + verified on Holmgren (3 pushes, cron scheduled 3 AM,
+linger=yes). Auths via the box's existing git credential store (no token embedded). Backs up
+skills/memories/cron/hooks/root-*.md ONLY — excludes `hermes-agent/` program source, caches/blobs, and ALL
+secrets (`.env`, `config.yaml`, credentials). 33 MB brain (mostly community-skill template assets).
+- **Per-box install (each fleet box):**
+  ```bash
+  cp hermes/scripts/backup.sh ~/.hermes/scripts/backup.sh && chmod +x ~/.hermes/scripts/backup.sh
+  loginctl show-user "$USER" | grep -q 'Linger=yes' || sudo loginctl enable-linger "$USER"
+  bash ~/.hermes/scripts/backup.sh        # verify the first push lands in dfultonthebar/hermes-backup/<box>/
+  hermes cron create --name daily-github-backup --no-agent --script backup.sh "0 3 * * *"
+  ```
+- **Note:** every fleet box already has dfultonthebar's git credential store (it clones the main repo), so the
+  same script + same private repo works fleet-wide with zero extra secrets. Each box auto-namespaces by
+  LOCATION_NAME slug → hostname.
+
+---
+
+## v2.58.1 — Phase 3-5: IT/ops persona refresh + skills wired + primary mode (2026-06-14)
+
+**Branch landed:** main → fleet via auto-update
+**Per-box install where Hermes runs.** Updates `hermes/SOUL.md` (the agent persona, loaded into the system
+prompt) to reflect the now-shipped capabilities and stop the failure loops seen in the Telegram session:
+- **Action tools documented:** `propose_action`, `create_maintenance_todo`, `ask_claude_code` (the old SOUL
+  said "no write tools yet" — outdated since the MCP gateway shipped).
+- **Delegate-to-Claude rule:** deep code/system changes go to `ask_claude_code` (one clear request, wait —
+  don't spam retries); the operator is not the agent's shell.
+- **Self-management fix:** the restart command is `hermes gateway restart` (NOT `hermes restart`, which
+  errors — root cause of the "asking 400 times to restart" loop); restarting terminates the current turn, so
+  hand restarts to Claude instead of self-restarting mid-task. Honcho memory is the (already-live) cloud
+  store — there is NO self-hosted honcho server to start (that path is a dead end).
+- **Skills index:** the persona now names its skill playbooks so it reaches for them by name.
+- **Phase 4/5 status:** skills already `enabled` in the active profile; periodic monitoring already covered by
+  the existing `sports-bar-anomaly-alert` (every 2h) + `sports-bar-morning-brief` crons, so NO duplicate
+  `fleet-heartbeat` cron was added (skill stays on-demand). The persona IS the single primary mode; Honcho
+  cross-session persistence is live (verified: "retrieved N existing messages" in the gateway log).
+- **Per-box install:** `cp hermes/SOUL.md ~/.hermes/SOUL.md && hermes gateway restart` (SOUL is cached in
+  the system prompt — a gateway restart is required to load an edit; do it when no operator turn is in flight).
+- **Outstanding (operator action):** `hermes-self-backup-to-github` cron needs a private repo + fine-grained
+  PAT before it can be wired (`gh` is not authed on the boxes) — the skill documents the exact steps.
+
+---
+
+## v2.58.0 — Phase 2: 5 Hermes operating skills mined from YouTube (2026-06-14)
+
+**Branch landed:** main → fleet via auto-update
+**Per-box install where Hermes runs** (version-controlled in `hermes/skills/`, copied to `~/.hermes/skills/`).
+Extracted concrete, transferable operating techniques from 4 Hermes-Agent YouTube videos (NetworkChuck
+"5 reasons", the masterclass, "21 concepts", David Andre "7 levels") into reusable SKILL.md playbooks:
+- `hermes/skills/crystallize-runbook-skill` — after a verified incident fix, auto-author a tight SKILL.md
+  runbook (symptom/root-cause/fix/verify), pin it, mirror to System Admin Todos (the self-improvement loop).
+- `hermes/skills/fleet-heartbeat-watch` — diff-based "silent until something changes" fleet monitor; snapshots
+  health/version/auto-update/RF via MCP tools, only Telegram-alerts on a delta. Wire:
+  `hermes cron create --name fleet-heartbeat --deliver telegram --skill fleet-heartbeat-watch "every 15m"`.
+- `hermes/skills/session-recall` — answer "what did we decide/change on <date>" from `~/.hermes/state.db`
+  (`messages` table) + `hermes sessions` — the time-anchored complement to Honcho's semantic recall.
+- `hermes/skills/hermes-self-backup-to-github` — daily `--no-agent` cron rsyncs TEXT-only `~/.hermes`
+  (skills+memory+md, no blobs) to a **private** repo; PAT via `hermes config set GITHUB_TOKEN`, linger required.
+- `hermes/skills/hermes-curator-skill-hygiene` — drive the (already-enabled) Curator: `curator run --dry-run`,
+  and **`curator pin`** every canonical skill so auto-prune never removes a load-bearing runbook.
+- **Per-box install:** `cp -r hermes/skills/* ~/.hermes/skills/` then pin canonical skills:
+  `for s in sports-bar-troubleshooting sports-bar-investigate sports-bar-shift-check sports-bar-rf-response crystallize-runbook-skill fleet-heartbeat-watch session-recall hermes-self-backup-to-github hermes-curator-skill-hygiene; do hermes curator pin "$s"; done`.
+  On the canary (Holmgren) all 5 are installed + all 9 skills pinned. `hermes/` is OUTSIDE RAG-indexed paths.
+
+---
+
+## v2.57.6 — expand Hermes skills (3 custom + YouTube) (2026-06-13)
+
+**Branch landed:** main → fleet via auto-update
+**Per-box install where Hermes runs** (the custom skills are version-controlled in `hermes/skills/`; the
+YouTube skill is a hub install). Adds Hermes Agent skills that operationalize the MCP tools:
+- `hermes/skills/sports-bar-investigate` — delegate deep code/diagnostic questions or a todo's fix plan to
+  Claude Code via `ask_claude_code`; relay + file the plan (operator-brain → builder workflow).
+- `hermes/skills/sports-bar-shift-check` — on-demand pre-shift readiness audit chaining the observe tools.
+- `hermes/skills/sports-bar-rf-response` — wireless/paging-mic RF interference diagnosis + response (never
+  autonomously changes a freq — propose + human-confirm).
+- (existing `sports-bar-troubleshooting` from v2.56.3 — reactive "X is broken" diagnostics.)
+- **YouTube:** `hermes skills install lobehub/youtube-summarizer-pro` (community) — Hermes can summarize a
+  YouTube URL. (A `youtube-content` skill also ships built-in.)
+- **Per-box install:** `cp -r hermes/skills/sports-bar-* ~/.hermes/skills/ && hermes skills install
+  lobehub/youtube-summarizer-pro`. Bake into the future `setup-hermes-agent.sh`. Skills are thin (orchestrate
+  tools + `search_system_docs`); RAG stays the single doc source. `hermes/` is OUTSIDE the RAG-indexed paths.
+
+---
+
+## v2.57.5 — `ask_claude_code` durable unattended auth (2026-06-13)
+
+**Branch landed:** main → fleet via auto-update
+**No setup required** (the key already exists per-box). `runClaude` now reads `ANTHROPIC_API_KEY` from the
+repo `.env` (the same one auto-update's checkpoints use) and injects it **into the `claude -p` spawn only**
+(not Hermes-wide). This makes the Hermes↔Claude bridge work **unattended forever** — it no longer depends
+on the interactive-login OAuth token (`~/.claude/.credentials.json`), which can eventually need re-auth.
+- **Scoped + opt-out:** the key reaches only the `claude` subprocess. Set `MCP_CLAUDE_USE_OAUTH=true` to
+  use the subscription OAuth (free) instead of the pay-per-call API key.
+- **Cost note:** `claude -p` now bills the **same `ANTHROPIC_API_KEY` as auto-update checkpoints** — so a
+  burst of `ask_claude_code` calls shares that credit pool (heavy use could deplete it and break BOTH the
+  bridge and auto-update). `ask_claude_code` is operator-driven + low-volume, so this is minor — but watch
+  credits (`[[feedback-anthropic-credits-block-auto-update]]`). No secret is committed (the key stays in
+  the gitignored `.env`); the code just reads the existing per-box key. Verified: `KEY_PATH_OK` via the
+  key-injected `claude -p`.
+
+### Also: gateway default model → Grok (runtime, per-box; bake into setup-hermes-agent.sh)
+For the **autonomous** gateway-Hermes to use its MCP tools (incl. `ask_claude_code`) when *you* aren't
+driving it, its default model must be tool-capable. `hermes config set model.provider xai-oauth` +
+`model.default grok-4`. (`hermes3:8b` can't tool-call.) Cheap `--no-agent` cron monitoring is unaffected;
+the in-app bartender chat (`qwen2.5:14b`) is unaffected. Proven autonomous: `CLAUDE_VIA_HERMES_OK`.
+
+---
+
+## v2.57.3 — Hermes ↔ Claude Code bridge: `ask_claude_code` MCP tool (2026-06-13)
+
+**Branch landed:** main → fleet via auto-update
+**No setup required.** Adds an 11th tool to `@sports-bar/mcp`: **`ask_claude_code`** — lets the Hermes
+agent delegate deep code/diagnostic questions to **Claude Code** (the coding agent on the same box).
+Completes the agent team: Hermes = always-on operator brain; Claude = on-demand builder/analyst.
+- **READ-ONLY by design:** spawns `claude -p "<question>" --permission-mode plan` — Claude reads the real
+  repo + system to analyze/explain/draft a plan, but **cannot edit, commit, or run mutating commands**.
+  A mutating "task mode" is deliberately NOT exposed.
+- **Safe spawn:** the question is passed as an argv element (no shell → no injection), full path to the
+  `claude` binary, 180 s timeout, output truncated, audited to `agent_tool_invocations` like every tool.
+- **Already live where Hermes is installed** (the MCP server runs from source via `tsx`, no rebuild).
+  Proven e2e via Grok: Hermes → `ask_claude_code` → Claude read `verify-install.sh` → accurate answer
+  relayed, 19.7 s. Requires the `claude` CLI present + authed on the box (it is, fleet-wide).
+
+---
+
+## v2.57.2 — Hermes Phase 3a: confirm-action backend (one-tap confirm) (2026-06-13)
+
+**Branch landed:** main → fleet via auto-update
+**No setup required.** New endpoint `POST /api/agent/confirm-action` — the human-only execution path for a
+proposal the agent made via `propose_action`. The agent CANNOT call it (it's not an MCP tool); only a UI
+Confirm button (a deliberate human tap) does. Whitelisted: `route_tv {input,output}` → `/api/matrix/route`
+(source `manual`); `tune_channel {channelNumber,deviceType,deviceId}` → `/api/channel-presets/tune`.
+Rate-limited HARDWARE; every execution audited to `agent_tool_invocations` (`confirm_action:<action>`).
+- This is the backend the Phase-3b bartender Confirm button calls. There is still **no autonomous-write
+  path** — propose (agent) → confirm (human) → deterministic API.
+- **Phase 3b (the bartender iPad UI confirm button)** is NOT in this release — it touches the
+  operator-locked bartender remote and needs a deployed build + Playwright verification on the live iPad
+  (an off-hours task). Build-verified (35/35).
+
+---
+
+## v2.57.1 — Hermes Phase 2c: watcher auto-files todos (Atlas drop) (2026-06-13)
+
+**Branch landed:** main → fleet via auto-update
+**No setup required.** The Atlas drop-watcher now auto-files a deduped maintenance todo (via
+`POST /api/maintenance-todo`, source `watcher`) when it records an **unexplained** zone volume drop —
+the events a human should investigate. One todo per processor/zone/day; explained drops (a bartender
+changed it) don't file. Fire-and-forget — a todo-file failure never affects the watcher. The same
+pattern extends to the Shure-RF and SDR watchers next; this ships the representative integration.
+
+---
+
+## v2.57.0 — Hermes Phase 2: agent guardrail layer (propose + audited todo-write) (2026-06-13)
+
+**Branch landed:** main → fleet via auto-update
+**Schema migration — runs automatically** (`drizzle/0005_agent_tool_invocations.sql`, additive CREATE TABLE
++ 2 indexes; auto-update's `drizzle-kit migrate` applies it). The agent brain can now safely *act* — but
+only by proposing (a human confirms) or appending a reviewable todo. Nothing here issues an autonomous
+hardware command.
+- **New table `agent_tool_invocations`** + endpoint `POST /api/agent/tool-log`: every MCP tool call is
+  fire-and-forget audited (tool, args, result summary, surface, error). Accountability trail.
+- **New endpoint `POST /api/maintenance-todo`**: general source-tagged todo creator (deduped by key),
+  reused by the agent AND (Phase 2c) by watchers.
+- **MCP server now 10 tools**: + `create_maintenance_todo` (guarded write — files a reviewable todo,
+  source `ai-chat`) and `propose_action` (returns a proposal mapped to the deterministic API call;
+  **never executes** — verified e2e via Grok). All 8 existing tools are now audited.
+- **No setup beyond the migration.** Optional env `MCP_SURFACE` (default `operator`) tags audit rows;
+  the Phase-3 bartender bridge will set it to `bartender`. Verified: audit-table data path + propose_action
+  e2e; endpoints build-verified (a full HTTP e2e lands when a box rebuilds to this version).
+
+---
+
+## v2.56.4 — CRITICAL: stale auto-update timer no longer rolls back a healthy update (2026-06-13)
+
+**Branch landed:** main → fleet via auto-update
+**No setup required — fixes a fleet-wide infinite-rollback trap.** In `verify-install.sh`, the
+`autoupdate_timer_fresh` layer was a hard FAIL (exit 19) when the timer's last-attempt sidecar/log was
+stale (>26h). During an auto-update, that FAIL triggers a full ROLLBACK — even though the update built
+green and the app is healthy. But a successful update can't freshen the *timer*, so a box whose timer
+went stale (e.g. after a prior wedge) gets stuck: every update succeeds + healthy → verify fails on the
+stale timer → rollback → still stale → repeat forever.
+- **Caught at Appleton 2026-06-13:** verify reported `17/18 passed, failed=[autoupdate_timer_fresh]
+  (sidecar age=214258s)` — the one stale-timer check rolled back an otherwise-perfect update.
+- **Fix:** the two stale-timer branches now follow the SAME pattern the unit-file-missing case already
+  used — **non-fatal WARN in `--json`/auto-update mode** (so it never rolls back a healthy build),
+  **hard FAIL only in interactive mode** (so an operator auditing a box still sees the stuck timer).
+- **Effect:** once a stale box merges this fix (the merge happens before the verify step, so the very
+  update that pulls it benefits), its update completes instead of rolling back. Related: Gotcha #11,
+  `[[feedback-auto-update-failure-modes]]`.
+
+---
+
+## v2.56.3 — teach Hermes the system: SOUL.md + troubleshooting skill (2026-06-13)
+
+**Branch landed:** main → fleet via auto-update
+**New repo dir `hermes/`** (deliberately OUTSIDE the RAG-indexed paths so it can't create a
+doc-divergence loop — the plan's guardrail): version-controlled Hermes Agent templates.
+- `hermes/SOUL.md` — Hermes' standing identity: it IS the operator agent for THIS install (not a generic
+  LLM); its 8 MCP observe tools + the directive to USE them (and `search_system_docs` to look things up
+  rather than guess); the bartender-vs-operator register rules; anti-hallucination/anti-inversion
+  grounding; the must-never-get-wrong gotchas (outputOffset, IR-only cable boxes, wireless/paging-mic ≠
+  karaoke). Adapted from the proven in-app chat system prompt.
+- `hermes/skills/sports-bar-troubleshooting/SKILL.md` — thin diagnostic playbooks (wrong/black TV, mic,
+  audio drop, todos) that orchestrate the MCP tools + `search_system_docs`. No duplicated doc content.
+- **Per-box manual step (where Hermes Agent is installed — Holmgren so far):**
+  `cp hermes/SOUL.md ~/.hermes/SOUL.md && cp -r hermes/skills/sports-bar-troubleshooting ~/.hermes/skills/`.
+  A future `scripts/setup-hermes-agent.sh` will automate it. SOUL.md loads fresh every message (no restart).
+- Verified via Grok: agent self-identifies as the operator AI, knows outputOffset, references the tools.
+
+---
+
+## v2.56.2 — audit fixes for Phase 1 (2026-06-13)
+
+**Branch landed:** main → fleet via auto-update
+**No setup required.** Fixes from the 3-agent adversarial audit of today's work:
+- **CRITICAL:** `get_atlas_status` read `drops?.events` / `.zone` but `/api/atlas-drops` returns
+  `{drops:[{zone_number,zone_name}]}` — so it ALWAYS reported "no drops" (was hiding 14 real ones).
+  Fixed to `drops?.drops` + `zone_name`. Verified e2e via Grok.
+- **Security:** `get_firetv_status` no longer emits internal LAN IPs into the LLM context (matters with
+  cloud Grok). And `/api/system/health` no longer returns `details`/`stack` in its 500 body (could carry
+  the Soundtrack API key; full stack still server-logged) — pre-existing, made reachable via MCP.
+- **Efficiency:** `get_atlas_status` now runs its two reads with `Promise.all`.
+- The two arg-taking MCP tools keep `inputSchema as any` — empirically re-confirmed TS2589 returns at
+  SDK 1.29 + zod 4 without it (an audit agent claimed it was removable; it is not). Handler args stay
+  explicitly typed.
+- Clarified `route-verify.ts` header: helper is NOT yet wired into the scheduler (Wave 3c does that).
+
+---
+
+## v2.56.1 — Hermes Agent Phase 1b: 6 more observe tools (2026-06-13)
+
+**Branch landed:** main → fleet via auto-update
+**No setup beyond v2.56.0.** Adds six read-only tools to the `@sports-bar/mcp` server:
+`get_matrix_routes`, `explain_tv_output` (arg: outputNumber), `get_shure_rf_status`, `get_atlas_status`,
+`get_firetv_status`, `search_system_docs` (RAG — args query/tech). Still thin adapters over existing
+audited APIs; nothing writes hardware. All 8 tools proven end-to-end via Grok (explain_tv_output(20) →
+"input 11"; mics connected; outputOffset doc lookup correct).
+- Aligned the package's `zod` range to `^4.0.0` (repo is on zod v4.4.3). The two arg-taking tools cast
+  `inputSchema as any` to defeat a known TS2589 deep-instantiation between the MCP SDK generics and zod
+  v4 — runtime validation is unaffected, handler args are explicitly typed.
+- If a box already registered `sports-bar` (v2.56.0), the new tools appear automatically (registered as
+  "all tools enabled"); no re-`add` needed. Verify with `hermes mcp test sports-bar` → "Tools discovered: 8".
+
+---
+
+## v2.56.0 — Hermes Agent Phase 1a: `@sports-bar/mcp` observe gateway (2026-06-13)
+
+**Branch landed:** main → fleet via auto-update
+**New package `@sports-bar/mcp`** — a stdio MCP server exposing the system to Hermes Agent as
+**read-only observe tools** (Phase 1a: `get_system_health`, `list_open_todos`). Thin adapters over the
+existing audited HTTP APIs; nothing writes hardware. Adds dep `@modelcontextprotocol/sdk@^1.0.0`
+(pure-JS, no native build). No-op `build` script (runs via `tsx`, like scheduler/services).
+- **Auto-applied:** `npm ci` on auto-update installs the new dep; the package is inert unless Hermes
+  Agent is installed on the box and registered to it. The web build is unaffected (nothing imports it).
+- **Per-box manual step (only where Hermes Agent is installed — Holmgren so far):** register the server:
+  `hermes mcp add sports-bar --command /home/ubuntu/Sports-Bar-TV-Controller/packages/mcp/start.sh`
+  (answer `Y` to the enable-tools prompt). This writes to `~/.hermes/config.yaml` (per-box runtime
+  config, NOT in the repo). A future `scripts/setup-hermes-agent.sh` will automate it.
+- **Model note:** tool-using turns need **Grok or a 14B local** — `hermes3:8b` is too weak (prints the
+  tool-call as text instead of invoking it). Proven end-to-end via Grok: agent → `get_system_health` →
+  `/api/system/health` → correct live answer. Full context: `[[project-hermes-agent-adoption]]`.
+
+---
+
+## v2.55.82 — Wave 3 / 3b: routeAndVerify helper (2026-06-12)
+
+**Branch landed:** main → fleet via auto-update
+**No setup required — new code, not yet wired into the tune path (3c does that).** Adds `packages/scheduler/src/route-verify.ts`: read the Wolf Pack route back after a route command and confirm the targeted output actually carries the input we sent. Exported `checkRouteMatch` / `verifyAndRetryRoute` / `runVerifyLoop` / `persistVerifyState`.
+- **Advisory only** (Standing Rule 3): never throws into the tune path, never rolls back an allocation. A failed verify sets `verify_state='failed'` + `verify_error` and is surfaced for escalation (3e).
+- **outputOffset = NONE in the compare** (the subtle part): the scheduler's send (`routeMatrix`) applies no offset, so verify mirrors it — `routingArray[outputNumber-1] === matrixInput-1`. Adding `+outputOffset` (as a literal reading of Gotcha #4 suggested) would FALSE-ALARM on multi-card boxes like Graystone (+32 belongs only to the Atlas audio path `routeWolfpackToMatrix`, which the scheduler never uses). Confirmed empirically against live Holmgren o2ox. Full reasoning in the file header.
+- **Test:** `npx tsx scripts/test-route-verify.ts` — 26 assertions (index/off-by-one + 5 orchestration outcomes), all pass with injected mocks, no hardware.
+
+---
+
+## v2.55.81 — Wave 3 / 3a: allocation verify columns (2026-06-12)
+
+**Branch landed:** main → fleet via auto-update
+**Schema migration — runs automatically.** First sub-step of Wave 3 `routeAndVerify` (closed-loop tune verification). Adds 4 additive columns to `input_source_allocations`: `verified_at` (int), `verify_state` (text NOT NULL default `'unverified'`), `verify_attempts` (int NOT NULL default 0), `verify_error` (text). Migration `drizzle/0004_allocation_verify_columns.sql`.
+- **No manual step:** auto-update runs `bootstrap-drizzle-migrations.sh` + `drizzle-kit migrate` (Gotcha #6 — NOT push). All four are `ADD COLUMN` with defaults, so the ALTER is instant on a live SQLite DB and existing rows backfill to `unverified`/`0`. No code consumes the columns yet (the verifier helper lands in 3b), so the running build keeps working unchanged before/after the migration.
+- **Verify:** `sqlite3 production.db "PRAGMA table_info(input_source_allocations)" | grep verif` shows columns 25–28; `verify-install.sh` `schema_completeness` layer passes.
+- **Trap honored:** verify state lives in its OWN column, never a `status` value — a stuck verify can't strand the allocation lifecycle (status stays pending/active/completed).
+
+---
+
+## v2.55.76–v2.55.79 — System Admin TODO list: usability + error-bot auto-file (2026-06-11)
+
+**Versions covered:** v2.55.76 (FLEET_STATUS refresh), v2.55.77 (todo sort), v2.55.78 (todo filter), v2.55.79 (error-watch auto-file)
+**Branch landed:** main → fleet via auto-update
+**No setup required.** Operator wants the System Admin → Todos tab as the source of truth for project work.
+- v2.55.77: list now sorts **needs-work to the top** (semantic IN_PROGRESS→PLANNED→TESTING→COMPLETE, CRITICAL→HIGH→MEDIUM→LOW), was alphabetical.
+- v2.55.78: "All Priorities"/"All Status" filters now actually show everything (fixed a stale-closure bug where the dropdown fetched the *previous* filter value).
+- v2.55.79: **the error-watch bot now auto-files a TODO** when it matches an error signature in the PM2 logs — deduped to one open TODO per signature (re-files if it recurs after being marked COMPLETE). New endpoint `POST /api/error-watch/todo`; `scripts/watchers/error-watch.sh` calls it. **The watcher must restart to pick up the new script** (auto-update's PM2 restart cycle handles this; on a box you're hands-on with, restart the error-watch watcher). Category `Error Watch`, priority CRITICAL for integrity-class signatures else HIGH.
+**Standing rule (Claude):** log every work item/fix we do or schedule on this list, mark COMPLETE when shipped+verified. See `[[feedback-log-work-to-system-admin-todos]]`.
+
+---
+
+## v2.55.73 + v2.55.75 — Wolf Pack: per-IP HTTP session mutex + route over TCP (2026-06-11)
+
+**Versions covered:** v2.55.73 (code), v2.55.75 (docs)
+**Branch landed:** main → fleet via auto-update
+**Code (v2.55.73, no setup):** per-IP serialization of Wolf Pack HTTP sessions (`acquireWolfPackHttpLock`) so the bartender Video-tab route-state READ can't run concurrently with a scheduler route WRITE. Auto-applies fleet-wide.
+**Per-location operational step (the actual un-route fix):** any location whose Wolf Pack routes over **HTTP** uses the `o2ox` TOGGLE, which disconnects an already-set output when re-sent (intermittent black TV when the Video tab opens). **Fix = flip that box to TCP** (Holmgren precedent): `sqlite3 /home/ubuntu/sports-bar-data/production.db "UPDATE MatrixConfiguration SET protocol='TCP' WHERE protocol='HTTP';"` — config is read fresh per route, so NO restart needed; rollback is the same UPDATE back to `'HTTP'`. Confirm TCP is open (no password) on that unit first. **Applied 2026-06-11 to Stoneyard Greenville + Appleton.** Validate by a real TV switch. Full rationale: `[[feedback-wolfpack-tcp-not-http-routing]]`. (The shelved HTTP-`o2o`-idempotent code alternative lives on branch `wip/wolfpack-o2o-idempotent`, not shipped.)
+
+---
+
+## v2.55.72 — override-learn must not patch future pending allocations (2026-06-11)
+
+**Versions covered:** v2.55.72
+**Branch landed:** main → fleet via auto-update (overnight)
+**No code setup required.** Bug fix: the override-learn window (matrix/route/route.ts) had no `allocated_at <= now` lower bound, so a bartender's tonight-only TV tweak silently rewrote FUTURE pending allocations (tomorrow's/Friday's pre-scheduled games on the same input source) and triple-logged the override. Added the lower bound.
+**Per-location data check (recommended):** locations that pre-schedule future games AND do heavy same-day bartender overrides may have already-corrupted future allocations. Detect: `SELECT id, channel_number, tv_output_ids, datetime(allocated_at,'unixepoch','localtime') FROM input_source_allocations WHERE allocated_at > unixepoch('now') AND updated_at >= unixepoch('now','-1 day') AND status IN ('pending','active','tuning');` — any future-dated row touched today is suspect. Reconstruct the pre-bug set from the override-learn SchedulerLog `prevOutputs` chain (first prev = original). Holmgren's 3 corrupted rows were repaired 2026-06-11 (backup at `sports-bar-data/override-learn-future-corruption-backup-2026-06-11.sql`).
+
+---
+
+## v2.55.71 — override-digester idempotency + timestamp fix (2026-06-11)
+
+**Versions covered:** v2.55.71
+**Branch landed:** main → fleet via auto-update (overnight)
+**No setup required.** Bug fix: override-digest was re-emitting an identical `recommend` SchedulerLog row for every stable pattern on every hourly run (~720/month/pattern); now only emits when a pattern is new or has strengthened. Also fixes firstSeen/lastSeen (was run-time, now real event timestamps). No DB migration; existing duplicate rows are harmless history and stop accumulating after deploy.
+
+---
+
+## v2.55.70 — complete Wave 1a OR-gate sweep (auto-reallocator) (2026-06-11)
+
+**Versions covered:** v2.55.70
+**Branch landed:** main → fleet via auto-update (overnight, no mid-game restart)
+**No setup required.** Behavior-preserving refactor: routes auto-reallocator.ts's revert + tune-back paths through the shared `parseHardwareResult` helper instead of hand-rolled `malformedOk` logic (the 2 sites a 6-team audit found the v2.55.57 Wave 1a sweep had missed). Same `{success:true}` contract, centralized in one place. No DB, no env, no manual step.
+
+---
+
+## v2.55.56 — LLM perf logging + per-box num_predict/timeout (2026-06-11)
+
+**Versions covered:** v2.55.56
+**Branch landed:** main → all 6 location branches
+**Required Manual Step (slow boxes only):** Graystone (~6.7 tok/s iGPU) — set `OLLAMA_TIMEOUT_MS=420000` in `.env` + `pm2 delete && pm2 start ecosystem.config.js` (Gotcha #2). Already applied 2026-06-11. Other boxes need nothing (defaults: timeout 300000, num_predict 2048).
+
+**Why:** AI Suggest timed out on Holmgren (RAG-scan contention, fixed in v2.55.55) — but the deeper question was whether `num_predict: 2048` is even right per box. Generation time ≈ num_predict ÷ tok_s; Holmgren ~11 tok/s (2048 → ~183s ✓) vs Graystone ~6.7 (2048 → ~306s ✗ over the 300s timeout). `num_predict` is only a CEILING though — we had no data on real output sizes because AI Suggest discarded `eval_count`/`done_reason`.
+
+**What shipped:**
+- **`lib/llm-perf-logger.ts`** (new) — `logLlmPerf()` writes one line per Ollama generation to `/home/ubuntu/sports-bar-data/logs/llm-perf-YYYY-MM-DD.log`: feature, model, box, `out` (real output tokens), `prompt` tokens, `done` (`stop`=natural / `length`=**truncated at cap**), `cap`, real-world `tok_s`, `total_ms`, outcome (ok/timeout/error). Mirrors to `[LLM-PERF]` in PM2; truncations log at WARN.
+- **AI Suggest** (`callOllama`) + **shift-brief** (`generateBriefViaOllama`) call it. AI Suggest's `num_predict` is now `HARDWARE_CONFIG.ollama.numPredict`.
+- **`hardware-config.ts`** — `ollama.timeout` now reads `OLLAMA_TIMEOUT_MS` (default 300000); new `ollama.numPredict` reads `OLLAMA_NUM_PREDICT` (default 2048). Both per-box env-tunable.
+
+**Next:** after a few days, `grep ai-suggest llm-perf-*.log` per box → read the `out` p95 + `done` distribution → set `OLLAMA_NUM_PREDICT` (and timeout) per box from real numbers. If any `[TRUNCATED@cap]` appears, suggestions are silently incomplete and the cap must go UP, not down.
+
+---
+
+## v2.55.55 — RAG rescan yields the iGPU so it can't starve AI Suggest (2026-06-11)
+
+**Versions covered:** v2.55.55
+**Branch landed:** main → all 6 location branches
+**Required Manual Step:** None. Script-only change — no app rebuild needed; the next rescan on each box uses the throttled scripts.
+
+**Root cause (Holmgren 2026-06-11):** AI Suggest timed out (300s) because a doc-commit RAG rescan (`scan-system-docs.ts`, Standing Rule 11) was running during pre-shift. The single Intel iGPU serializes Ollama work, so the scan's back-to-back `nomic-embed-text` embeddings monopolized the queue and the `llama3.1:8b` AI Suggest generation got starved. Compounded by AI Suggest's `num_predict: 2048` (~220s even uncontended).
+
+**Fix:**
+- `scan-system-docs.ts` + `scan-code-docs.ts` now `await` a per-batch delay (`RAG_SCAN_BATCH_DELAY_MS`, default 1200ms) so the iGPU queue gets gaps an interactive request can slip into — max wait drops from "the whole remaining scan" to ~one batch.
+- `rag-rescan-if-needed.sh` runs the scans under `nice -n 19 ionice -c3` (belt-and-suspenders for CPU/IO).
+
+**Note (not changed):** AI Suggest's `num_predict: 2048` is inherently near the 300s budget at ~9 tok/s. If timeouts recur even with rescans throttled, the follow-up is to trim it. The keep_alive=-1 multi-model residency ([[feedback-ollama-ram-pressure]]) is unchanged — only the embedding model + llama3.1:8b are pinned (~5.6 GB), within budget on a 31 GB box.
+
+---
+
+## v2.55.54 — Shift-brief: make the LLM-error log diagnosable (2026-06-11)
+
+**Versions covered:** v2.55.54
+**Branch landed:** main → all 6 location branches
+**Required Manual Step:** None.
+
+`/api/ai/shift-brief` caught LLM-generation failures with `logger.error('[SHIFT-BRIEF] Error:', error)`. When the Ollama call hit its `AbortSignal.timeout(90s)`, the rejection is a `TimeoutError`/`AbortError`/DOMException whose `.message` is empty — so the log read `[SHIFT-BRIEF] Error:` with nothing after it (seen overnight at Holmgren, undiagnosable). Now the catch builds an always-informative reason: timeout/abort → "Ollama request timed out after 90s (model not resident or box under load)"; otherwise `message → cause.message → name`. The `llmError` field in the degraded response carries the same reason, and the inner fallback failure is logged too. Behavior unchanged — the brief still degrades to `fallbackBrief()`; only the diagnostics improved. Tonight's logs will name the real cause (almost certainly an Ollama timeout under load).
+
+---
+
+## v2.55.53 — MAC auto-discovery for network TVs (2026-06-10)
+
+**Versions covered:** v2.55.53
+**Branch landed:** main → all 6 location branches
+**Required Manual Step:** None. New capability; no config required.
+
+A `NetworkTVDevice` with no `macAddress` can't do Wake-on-LAN power-on (and logs a warning every bulk-power cycle — see v2.55.52). The box can now read the MAC straight off the LAN instead of hand-entering it:
+- **`apps/web/src/lib/mac-discovery.ts`** — `resolveMacForIp(ip)` pings once to populate the kernel ARP/neighbor cache, then reads the MAC back via `ip neigh show` (fallback `/proc/net/arp`). `backfillMissingMacs()` fills every TV missing a MAC. Same-LAN + Linux only; deterministic (no LLM).
+- **`POST /api/tv-control/detect-macs`** — on-demand backfill (optional `{deviceId}`). Admin-only surface (device-config, port 3001) — NOT in the bartender :3002 allow-list (not needed).
+- **`instrumentation.ts`** — scheduled backfill 60s after boot + every 30 min, so a TV self-populates its MAC the moment it's powered on and reachable.
+- **UI** — "Detect MACs" button on the TV Network Discovery panel (Device Config).
+
+**Effect at Greenville:** once TV 20 (10.40.10.20, currently MAC-less) is powered on, the next scheduled run (or the button) fills its MAC automatically → WoL power-on starts working and the v2.55.52 warning stops for good.
+
+---
+
+## v2.55.52 — Demote two operational log-spam ERRORs to WARN (2026-06-10)
+
+**Versions covered:** v2.55.52
+**Branch landed:** main → all 6 location branches
+**Required Manual Step:** None. Pure log-level changes; no behavior change.
+
+Fleet error scan found two ERROR-level log-spam sources (both operational states wrongly logged as application faults, tripping the error-watch every cycle):
+- **`bulk-power/route.ts`** — a TV with no `macAddress` fails Wake-on-LAN power-on and logged ERROR on every bulk-power cycle (Greenville TV 20 = 85 ERROR rows/24h). The missing-MAC case is a CONFIG GAP, now logged at WARN; genuine failures still ERROR. (Config-side: add the TV's MAC so WoL actually works.)
+- **`firetv-health-monitor.ts`** — "Device X has been down for N minutes" logged ERROR; an AV endpoint (Atmosphere TV, Epson projector, a TV off after close) being unreachable is operational, not a fault (Holmgren Atmosphere = 34 ERROR rows/24h flapping off-hours). Now WARN; the `alertsSent` dedup still fires once per down-period.
+
+---
+
 ## v2.55.50–51 — verify-install auth check: bind to LOCATION_ID, not id format; wizard lspci (2026-06-10)
 
 **Versions covered:** v2.55.50, v2.55.51

@@ -36,6 +36,12 @@ export interface QueryOptions {
   topK?: number;
   includeContext?: boolean;
   temperature?: number;
+  /**
+   * Retrieve-only: return the ranked chunks + rawContext WITHOUT the LLM
+   * answer-generation step. Fast and Ollama-independent — for callers (e.g.
+   * Hermes diagnose) that feed the context to their own model. `answer` is ''.
+   */
+  retrieveOnly?: boolean;
 }
 
 export interface QueryResult {
@@ -63,7 +69,7 @@ export interface QueryResult {
  */
 export async function queryDocs(options: QueryOptions): Promise<QueryResult> {
   const startTime = Date.now();
-  const { query, tech, topK = RAGConfig.topK, includeContext = false, temperature } = options;
+  const { query, tech, topK = RAGConfig.topK, includeContext = false, temperature, retrieveOnly = false } = options;
 
   logger.info('Processing documentation query', {
     data: {
@@ -101,10 +107,7 @@ export async function queryDocs(options: QueryOptions): Promise<QueryResult> {
     // Build context from retrieved chunks
     const context = buildContext(searchResults);
 
-    // Query LLM with context
-    const llmResponse = await queryLLM(query, context, { temperature });
-
-    // Extract source information
+    // Extract source information (shared by retrieve-only + full paths)
     const sources = searchResults.map(result => ({
       filename: result.chunk.metadata.filename,
       filepath: result.chunk.metadata.filepath,
@@ -113,6 +116,26 @@ export async function queryDocs(options: QueryOptions): Promise<QueryResult> {
       relevanceScore: result.score,
       techTags: result.chunk.metadata.techTags,
     }));
+
+    // Retrieve-only: skip the LLM answer-gen (slow + Ollama-dependent) and
+    // return the ranked chunks + rawContext for the caller to use directly.
+    if (retrieveOnly) {
+      return {
+        answer: '',
+        sources,
+        metadata: {
+          model: '(retrieve-only)',
+          tokensUsed: 0,
+          duration: Date.now() - startTime,
+          chunksRetrieved: searchResults.length,
+          contextLength: context.length,
+        },
+        rawContext: context,
+      };
+    }
+
+    // Query LLM with context
+    const llmResponse = await queryLLM(query, context, { temperature });
 
     const duration = Date.now() - startTime;
 

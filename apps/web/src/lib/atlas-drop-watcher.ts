@@ -217,6 +217,30 @@ async function pollOnce() {
               const tag = explained ? 'EXPLAINED' : 'SILENT'
               const fn = explained ? logger.info : logger.warn
               fn(`[ATLAS-DROP] ${tag} drop on "${zone.name}" (Atlas zone ${atlasZone}): ${prev.volume} → ${volume} (Δ${delta}, gap ${now - prev.observedAt}s, src=${source}, muted=${muted})`)
+
+              // v2.57.1 (Hermes Phase 2c): an UNEXPLAINED drop (no matching
+              // bartender write) is genuinely "a human should look at this" —
+              // auto-file a deduped todo (one per processor/zone/day) onto the
+              // System Admin → Todos list. Fire-and-forget; never blocks the
+              // watcher. Explained drops don't file (a bartender changed it).
+              if (!explained) {
+                const day = new Date(now * 1000).toISOString().slice(0, 10)
+                const port = process.env.PORT || '3001'
+                fetch(`http://127.0.0.1:${port}/api/maintenance-todo`, {
+                  method: 'POST',
+                  headers: { 'content-type': 'application/json' },
+                  body: JSON.stringify({
+                    title: `Audio dropped on "${zone.name}" (Atlas zone ${atlasZone})`,
+                    description: `Unexplained zone volume drop ${prev.volume} → ${volume} (Δ${delta}) with no matching bartender write in the correlation window. Investigate: a real fault vs Atlas firmware 4.5+ Custom Priority Volume (which looks identical to a drop — check Atlas GUI → Sources → Priority first). Details: GET /api/atlas-drops.`,
+                    priority: 'HIGH',
+                    source: 'watcher',
+                    category: 'Audio',
+                    dedupeKey: `atlas-drop-${p.id}-${atlasZone}-${day}`,
+                  }),
+                }).catch(() => {
+                  /* fire-and-forget — a todo-file failure must never affect the watcher */
+                })
+              }
             }
           }
         }

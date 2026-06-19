@@ -1596,6 +1596,25 @@ export const inputSourceAllocations = sqliteTable('input_source_allocations', {
   allocationQuality: text('allocation_quality'), // 'optimal', 'suboptimal', 'degraded'
   qualityNotes: text('quality_notes'), // explanation of quality rating
 
+  // Closed-loop verification (v2.55.81+ — Wave 3 routeAndVerify)
+  // After a tune/route command is acked, the scheduler reads the device
+  // state back (matrix route via queryWolfpackRouteState, DirecTV via
+  // getTuned, Fire TV via getCurrentApp) and records whether the TV is
+  // ACTUALLY showing the intended input. ADVISORY ONLY — a failed verify
+  // logs loud + escalates but never blocks/rolls back the tune (Standing
+  // Rule 3). Verify lives in its OWN column, NOT a `status` value, so a
+  // stuck verify can never strand the allocation lifecycle (still
+  // pending/active/completed). verifyState: 'unverified' (default, never
+  // checked) | 'verified' (read-back matched) | 'failed' (read-back
+  // mismatched after retries) | 'unsupported' (device type has no
+  // read-back path). verifyAttempts counts route/tune retries the verifier
+  // triggered. verifyError holds the last mismatch detail for the
+  // escalation surface.
+  verifiedAt: integer('verified_at'), // Unix timestamp of last verify pass (NULL = never verified)
+  verifyState: text('verify_state').notNull().default('unverified'),
+  verifyAttempts: integer('verify_attempts').notNull().default(0),
+  verifyError: text('verify_error'),
+
   // Metadata
   createdAt: integer('created_at').notNull().default(sql`(strftime('%s', 'now'))`), // Unix timestamp
   updatedAt: integer('updated_at').notNull().default(sql`(strftime('%s', 'now'))`), // Unix timestamp
@@ -3089,4 +3108,24 @@ export const shurePendingResync = sqliteTable('shure_pending_resync', {
 }, (table) => ({
   activeIdx: index('shure_pending_resync_active_idx').on(table.receiverId, table.channel, table.verifiedAt, table.canceledAt),
   setAtIdx: index('shure_pending_resync_set_at_idx').on(table.setAt),
+}))
+
+// agent_tool_invocations (v2.57.0, Hermes Phase 2) — audit trail of every tool
+// the agent brain (via the @sports-bar/mcp gateway) invokes. The MCP server
+// fire-and-forget POSTs one row per tool call to /api/agent/tool-log. This is
+// the accountability layer: proposals + todo-writes especially must leave a
+// record (who/what/when), and read tools are logged too so an operator can see
+// exactly what the agent looked at. Nothing here authorizes a hardware write —
+// it only records intent + result.
+export const agentToolInvocations = sqliteTable('agent_tool_invocations', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  tool: text('tool').notNull(),                 // tool name, e.g. 'get_system_health', 'propose_action'
+  args: text('args'),                           // JSON string of the tool arguments (may be null/empty)
+  resultSummary: text('result_summary'),        // first ~500 chars of the tool's text result
+  surface: text('surface').notNull().default('unknown'), // 'operator' | 'bartender' | 'unknown'
+  isError: integer('is_error', { mode: 'boolean' }).notNull().default(false),
+  createdAt: integer('created_at').notNull().$defaultFn(() => Math.floor(Date.now() / 1000)),
+}, (table) => ({
+  toolIdx: index('agent_tool_invocations_tool_created_at_idx').on(table.tool, table.createdAt),
+  createdAtIdx: index('agent_tool_invocations_created_at_idx').on(table.createdAt),
 }))
