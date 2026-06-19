@@ -1,11 +1,11 @@
 {
-  "version": "2.73.8",
+  "version": "2.81.1",
   "branch": "location/stoneyard-appleton",
-  "commitSha": "736c20d22acac185934183381bd7217e163ac4ce",
-  "successAt": "2026-06-19T05:14:45Z",
-  "successAtUnix": 1781846085,
-  "runId": "auto-update-2026-06-19-00-12",
-  "verifyInstall": {"status":"PASS","passed":18,"total":18,"durationSecs":4,"failed":[],"layers":[{"name":"pm2_online","passed":true,"detail":"status=online restart_time=1"},{"name":"health_http","passed":true,"detail":"status=healthy"},{"name":"metrics_http","passed":true,"detail":"cores=20"},{"name":"bartender_proxy","passed":true,"detail":"http=302"},{"name":"critical_tables","passed":true,"detail":"presets=128 aliases=45 directv=0 firetv=3"},{"name":"schema_completeness","passed":true,"detail":"120/120 tables present, all columns present"},{"name":"matrix_config","passed":true,"detail":"multi-card WP-36X36 offset=0"},{"name":"crash_logs","passed":true,"detail":"clean"},{"name":"linger_enabled","passed":true,"detail":"Linger=yes"},{"name":"autoupdate_timer_fresh","passed":true,"detail":"sidecar age=91243s"},{"name":"migration_markers_consistent","passed":true,"detail":"6/6"},{"name":"error_watch_alive","passed":true,"detail":"age=12s"},{"name":"bartender_layout_rooms","passed":true,"detail":"single-room bar"},{"name":"atlas_drop_watcher_alive","passed":true,"detail":"age=459118s"},{"name":"atlas_priority_watcher_alive","passed":true,"detail":"age=23s"},{"name":"node_symlink_present","passed":true,"detail":"3/3"},{"name":"shure_pending_resync_table_present","passed":true,"detail":"present"},{"name":"auth_bootstrap_complete","passed":true,"detail":"LOCATION_ID set, AuthPin bound=2"}]},
+  "commitSha": "7ddaed4f8da072e3da3994ba6b405dc9296cc975",
+  "successAt": "2026-06-19T17:51:40Z",
+  "successAtUnix": 1781891500,
+  "runId": "auto-update-2026-06-19-12-50",
+  "verifyInstall": {"status":"PASS","passed":18,"total":18,"durationSecs":3,"failed":[],"layers":[{"name":"pm2_online","passed":true,"detail":"status=online restart_time=2"},{"name":"health_http","passed":true,"detail":"status=healthy"},{"name":"metrics_http","passed":true,"detail":"cores=20"},{"name":"bartender_proxy","passed":true,"detail":"http=302"},{"name":"critical_tables","passed":true,"detail":"presets=129 aliases=45 directv=0 firetv=3"},{"name":"schema_completeness","passed":true,"detail":"120/120 tables present, all columns present"},{"name":"matrix_config","passed":true,"detail":"multi-card WP-36X36 offset=0"},{"name":"crash_logs","passed":true,"detail":"clean"},{"name":"linger_enabled","passed":true,"detail":"Linger=yes"},{"name":"autoupdate_timer_fresh","passed":true,"detail":"sidecar age=45411s"},{"name":"migration_markers_consistent","passed":true,"detail":"6/6"},{"name":"error_watch_alive","passed":true,"detail":"age=124s"},{"name":"bartender_layout_rooms","passed":true,"detail":"single-room bar"},{"name":"atlas_drop_watcher_alive","passed":true,"detail":"age=504533s"},{"name":"atlas_priority_watcher_alive","passed":true,"detail":"age=23s"},{"name":"node_symlink_present","passed":true,"detail":"3/3"},{"name":"shure_pending_resync_table_present","passed":true,"detail":"present"},{"name":"auth_bootstrap_complete","passed":true,"detail":"LOCATION_ID set, AuthPin bound=2"}]},
   "os": { "codename": "noble", "version": "24.04", "kernel": "6.8.0-111-generic" },
   "configChecksums": {
     ".env": "12f44d71706d916b",
@@ -18,7 +18,7 @@
     "AuthPin": 2,
     "MatrixConfiguration": 1,
     "HomeTeam": 4,
-    "ChannelPreset": 128,
+    "ChannelPreset": 129,
     "station_aliases": 45
   },
   "heartbeatSchemaVersion": 3
