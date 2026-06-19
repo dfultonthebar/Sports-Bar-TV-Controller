@@ -35,6 +35,18 @@ is the archive.
 
 ---
 
+## v2.75.0 — AI Hub chat can offload to the T4 GPU (opt-in, default OFF) (2026-06-19)
+
+**Branch landed:** main. **No setup required for the default** — ships OFF, behavior byte-for-byte unchanged (verified live: chat → HTTP 200, model `llama3.1:8b`, 8 RAG sources).
+
+**What changed (#364):** `apps/web/src/app/api/chat/route.ts` and the RAG embedding path (`packages/rag-server/src/llm-client.ts`) now call `@sports-bar/ollama-client` instead of direct `fetch`, so they can offload to the shared T4 GPU with automatic local-iGPU fallback. New non-streaming `ollamaChat` helper added to the client; all 5 `/api/chat` call sites + RAG embeds migrated. Gated behind **`AI_HUB_T4_ENABLED`** (default `false` → `policy: 'local-only'`, today's exact behavior).
+
+**Phil protection (critical):** when the flag is ON, the chat is forced to the small model **`llama3.1:8b`** (`OLLAMA_TOOLS_MODEL_T4`, never qwen2.5:14b) so it can't evict the trading bot's `phi4-trader` from the T4's ~15GB VRAM. RAG embeddings stay unpinned on the T4 (pinned only on local) for the same reason.
+
+**To ENABLE the T4 offload at a location** (optional, off-hours): in that location's `.env` AND its `ecosystem.config.js` env block (ecosystem is per-location / `LOCATION_PATHS_OURS`, so the main template's new lines do NOT auto-propagate) set `OLLAMA_REMOTE_BASE=http://100.70.56.34:11434` + `AI_HUB_T4_ENABLED=true`, then `pm2 delete sports-bar-tv-controller && pm2 start ecosystem.config.js` (PM2 only forwards listed env). Pre-check: `nomic-embed-text` + `llama3.1:8b` present on CT212; after enabling, Playwright `/ai-hub` chat, confirm the answer streams and the log shows model `llama3.1:8b` (NOT qwen), and `ollama ps` on CT212 still shows `phi4-trader` resident.
+
+---
+
 ## v2.74.0 — Wave 3.5: health-aware assignment (scheduler excludes offline devices) (2026-06-19)
 
 **Branch landed:** main. **No setup required** — additive scheduler logic, no schema/env/migration changes.
