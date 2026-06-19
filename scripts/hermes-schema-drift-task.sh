@@ -65,6 +65,15 @@ except Exception: pass
   fi
 fi
 
+# ── Phase 0.5: security hygiene (auto-fix only secret-file perms) ──
+LOG "security hygiene sweep (auto-chmod 600 on secret files)..."
+FLEET_SSH_PW="$FLEET_SSH_PW" bash scripts/fleet-security-audit.sh --fix > /tmp/hermes-security-audit.out 2>&1 || true
+grep -E 'FIXED|FINDING|ROTATE|RESULT' /tmp/hermes-security-audit.out | sed 's/^/  /'
+# Security FINDINGS (default PINs, AUTH_COOKIE_SECURE, leaked-in-history) are
+# deliberately NOT escalated to Claude — rotating a PIN/secret or rewriting git
+# history is an operator decision (would lock out bartenders / break clones).
+# They stay in /tmp/fleet-security-audit.json for the hub/operator todo surface.
+
 # ── Phase 1: schema consistency ──
 LOG "running fleet schema audit..."
 FLEET_SSH_PW="$FLEET_SSH_PW" bash scripts/fleet-schema-audit.sh > /tmp/hermes-schema-audit.out 2>&1

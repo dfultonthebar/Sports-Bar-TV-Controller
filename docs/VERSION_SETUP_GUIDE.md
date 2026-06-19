@@ -35,6 +35,20 @@ is the archive.
 
 ---
 
+## v2.80.0 — Fleet SECURITY hygiene audit + Hermes auto-fix (2026-06-19)
+
+**Branch landed:** main. Fourth fleet-consistency dimension (after schema/deps/OS). From the multi-agent enhancement research.
+
+**What shipped:** `scripts/fleet-security-audit.sh` — per-box checks: A1 secret-file perms (.env + cron env must be 0600 — **AUTO-FIX `chmod 600`**), A3 default/weak active PINs (bcrypt-compare vs denylist — REPORT, role only, never the PIN), A4 AUTH_COOKIE_SECURE-on-http (REPORT), A2 leaked-token-in-git-history (LOCAL, REPORT). NEVER logs a PIN/secret value. Wired into `hermes-schema-drift-task.sh` as Phase 0.5 (runs `--fix` for perms only; findings stay in JSON for the operator, NOT escalated to Claude — rotating PINs / rewriting history are operator decisions).
+
+**First live run + auto-fix applied:** `.env` was **644/664 (world-readable) on all 6 configured boxes** → auto-chmod'd to 600 fleet-wide. **OUTSTANDING (operator action — cannot auto-fix):**
+- **Every box is on the DEFAULT admin/staff PINs** (7819 / 1234). Rotate via Device Config per location.
+- The fleet SSH password `6809233DjD` is in **79 commits of git history** — rotate the credential (history rewrite is destructive).
+
+**Required Manual Steps:** rotate the default PINs per location; rotate the leaked SSH password. No app behavior change.
+
+---
+
 ## v2.78.0 — Fleet DEPENDENCY/software consistency + Hermes auto-install (2026-06-19)
 
 **Branch landed:** main. Extends the v2.77.0 schema-consistency task to also keep **software/dependencies identical across every box** (operator: "the hermes script should do it at all locations for dependencies and software").
