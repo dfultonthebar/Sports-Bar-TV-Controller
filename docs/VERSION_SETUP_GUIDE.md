@@ -35,6 +35,117 @@ is the archive.
 
 ---
 
+## v2.81.0 — Fleet consistency: config + data-integrity + update-health + firmware audits (2026-06-19)
+
+**Branch landed:** main. Four more fleet-consistency dimensions (built by 4 parallel agents from the enhancement research), wired into `hermes-schema-drift-task.sh`. Full pipeline is now: deps → config → data-integrity → update-health → security → schema → firmware.
+
+**New scripts:**
+- **`fleet-config-audit.sh`** (AUTO-FIX safe): ecosystem.config.js hash match, systemd units (linger / autoupdate.timer / ollama-ipex — idempotent enables), .env required-key presence (names only), nginx allow-list (live vs committed script, re-run on drift), PM2 process set (bartender-proxy split-brain).
+- **`fleet-data-integrity-audit.sh`** (REPORT-ONLY): per-box invariants — matrix_input_id resolvable (regression guard), Brewers→RSN misroute, station_aliases JSON valid + override→preset, device_id FK orphans, BartenderLayout rooms (Gotcha #8).
+- **`fleet-update-health-audit.sh`** (AUTO-FIX host-state; branch/conflict REPORT): version-stall 3-state classifier (HEALTHY/STALLED/CRIPPLED), branch-drift (on-main, lime-kiln whitelisted), the 4 Gotcha-#11 classes (linger/node-PATH/ollama-group auto-fix, rollback-conflict escalate).
+- **`fleet-firmware-audit.sh`** (REPORT-ONLY, never auto-flash): Shure ≥1.1.0 via /api/shure-rf/status, Atlas (no fw endpoint — manual), Crestron VER. Wolf Pack/DirecTV excluded (no clean accessor).
+
+**CRITICAL findings surfaced on first run (logged as todos):**
+- **🔴 Fleet auto-update is BROKEN on all 5 location boxes** — every nightly run hits `CONFLICT (content) in apps/web/TODO_LIST.md`, auto-resolves, then `error: failed to push` → rollback. This is why the fleet is frozen at v2.73.8 and none of v2.76–2.81 has propagated. Needs a dedicated fix (untrack TODO_LIST.md and/or fix the push-failure).
+- matrix_input_id unresolvable still at Graystone (16), Greenville (4), Appleton (1) — the fleet-wide DirecTV/cable mapping gap (only Holmgren fixed so far).
+- Brewers→669 (Bucks channel) DirecTV misroute confirmed at Holmgren.
+- BartenderLayout rooms empty at Holmgren/Lucky's/Greenville/Appleton (Gotcha #8).
+
+**Required Manual Steps:** none new (scripts pull via auto-update — once it's unblocked). The fleet-update-health auto-fixes (linger/node/ollama-group) run via the CT212 cron.
+
+---
+
+## v2.80.0 — Fleet SECURITY hygiene audit + Hermes auto-fix (2026-06-19)
+
+**Branch landed:** main. Fourth fleet-consistency dimension (after schema/deps/OS). From the multi-agent enhancement research.
+
+**What shipped:** `scripts/fleet-security-audit.sh` — per-box checks: A1 secret-file perms (.env + cron env must be 0600 — **AUTO-FIX `chmod 600`**), A3 default/weak active PINs (bcrypt-compare vs denylist — REPORT, role only, never the PIN), A4 AUTH_COOKIE_SECURE-on-http (REPORT), A2 leaked-token-in-git-history (LOCAL, REPORT). NEVER logs a PIN/secret value. Wired into `hermes-schema-drift-task.sh` as Phase 0.5 (runs `--fix` for perms only; findings stay in JSON for the operator, NOT escalated to Claude — rotating PINs / rewriting history are operator decisions).
+
+**First live run + auto-fix applied:** `.env` was **644/664 (world-readable) on all 6 configured boxes** → auto-chmod'd to 600 fleet-wide. **OUTSTANDING (operator action — cannot auto-fix):**
+- **Every box is on the DEFAULT admin/staff PINs** (7819 / 1234). Rotate via Device Config per location.
+- The fleet SSH password `6809233DjD` is in **79 commits of git history** — rotate the credential (history rewrite is destructive).
+
+**Required Manual Steps:** rotate the default PINs per location; rotate the leaked SSH password. No app behavior change.
+
+---
+
+## v2.78.0 — Fleet DEPENDENCY/software consistency + Hermes auto-install (2026-06-19)
+
+**Branch landed:** main. Extends the v2.77.0 schema-consistency task to also keep **software/dependencies identical across every box** (operator: "the hermes script should do it at all locations for dependencies and software").
+
+**What shipped:**
+- **`scripts/fleet-deps-audit.sh`** — checks every fleet box for the required toolchain (`sqlite3`, `jq`, `curl`, `git`, `sshpass`, `python3`, `coreutils`). With `--fix` it AUTO-INSTALLS missing **safe apt** packages (idempotent). Version-sensitive / special-install items — Node MAJOR (`< 22`), `pm2`, `ollama`+models — are REPORTED + escalated, NEVER auto-changed (a Node major bump is the 20-40min risky native-rebuild procedure; ollama is the IPEX/CUDA build). Emits `/tmp/fleet-deps-audit.json`, exit 2 if anything needs attention.
+- **`scripts/hermes-schema-drift-task.sh`** now runs **Phase 0: deps ensure (`fleet-deps-audit.sh --fix`)** before the schema phase, escalating only the version/special items to Claude via `ask_claude_code`.
+
+**First live run:** found + auto-installed missing `sshpass` on leg-lamp/graystone/appleton and `jq` on greenville; all 7 boxes now have the full toolchain. holmgren/luckys/lime-kiln were already complete. (Lime Kiln is online — no hardware yet, so its device data is empty, but its schema + deps compare normally.)
+
+**Required Manual Steps:** none new beyond the v2.77.0 CT212 cron (now also runs the deps phase). The cron env already carries `FLEET_SSH_PW` + `ASK_CLAUDE_CMD`.
+
+---
+
+## v2.77.0 — Fleet DB schema-consistency audit + Hermes auto-fix task (2026-06-19)
+
+**Branch landed:** main. Motivated by fleet drift found while fixing the DirecTV `matrix_input_id` data gap — DATA is location-specific (expected to differ), but the schema (tables/columns) must be identical across boxes. This is the Gotcha #6 failure class (NeighborhoodEvent missing on 5/6 boxes for 24h).
+
+**What shipped (3 read-safe scripts):**
+- **`scripts/fleet-schema-audit.sh`** — read-only fleet schema comparator. Captures each box's `(version, table|column fingerprint)` via `sqlite_master` + `pragma_table_info` (NEVER reads row data). Groups boxes by version cohort; the consensus structure within a cohort is canonical, and any box MISSING canonical tables/cols is flagged DRIFT. Extra lines = orphan (informational); behind-version = lag (expected). Emits `/tmp/fleet-schema-audit.json`, exit 2 on drift. Reads `$FLEET_SSH_PW` (never hardcoded).
+- **`scripts/fix-schema-drift.sh <box>`** — tier-1 SAFE fixer: `bootstrap-drizzle-migrations.sh` + `drizzle-kit migrate` (committed migrations only — never push, never DROP, never touch data) then re-verifies. Exit 3 = ESCALATE if drift persists.
+- **`scripts/hermes-schema-drift-task.sh`** — Hermes cron wrapper: detect → tier-1 auto-fix each drifted box → on persist, escalate to Claude via `ask_claude_code` (auto-applies safe DDL, escalates DROP/data-affecting for approval). Fail-open.
+
+**First live run:** v2.73.8 cohort (5 boxes) structurally identical; Greenville +17 orphan lines (informational); Holmgren ahead on version (lag). No missing-table drift — detector verified working.
+
+**Required Manual Steps:**
+1. **(CT212, optional) install the Hermes cron:** copy nothing — the repo script is pulled by auto-update. On CT212 run `hermes cron create --name fleet-schema-drift --schedule "0 5 * * *" --command "/home/ubuntu/Sports-Bar-TV-Controller/scripts/hermes-schema-drift-task.sh"`. Set `FLEET_SSH_PW` + `ASK_CLAUDE_CMD` (default `hermes -z`) in the cron env. Until installed, run `FLEET_SSH_PW=... bash scripts/fleet-schema-audit.sh` manually.
+
+No DB schema/migration changes. No app behavior change (scripts only).
+
+---
+
+## v2.76.0 — #349 Wave 3.7 + 6 + 7: engine observability, learning loop, bartender "why" (2026-06-19)
+
+**Branch landed:** main. Researched (4 parallel mapping agents) → planned → debugged with **Grok + local AI** → built by 3 parallel agents → integrated + verified.
+
+**What shipped (5 pieces):**
+- **Wave 3.7 (obs):** DistributionEngine reasoning rows in SchedulerLog now use ops `assign`/`drop`/`under-served` + `metadata.reason` ∈ {assigned, no_screen, under_minimum} (was a single `distribute` op). Query `GET /api/scheduler/logs?component=distribution-engine`; SchedulerLogsDashboard colors the new ops. The persistence itself shipped with #348; this completes it.
+- **Wave 6 (learning) — GATED, default OFF:** `DISTRIBUTION_ENGINE_LEARNING=off|on`. When ON, the deterministic engine biases input/output selection toward bartender-override-learned `scheduling_patterns` (confidence≥0.3 ≈ 3+ samples) **as a strict TIE-BREAKER only** (Grok-reviewed: never a unified score — a popular input can't hog screens), applied only when usage-count + device-type rank are equal, in both the first-pass and round-robin sorts. The home-team minTV **floor is count-based and untouched** — the bias only reorders candidates, never filters. ID-mapping trap fixed: `preferredInputId` (input_sources.id) is resolved to `MatrixInput.channelNumber` so the match is real, not a silent no-op. Default OFF = byte-for-byte unchanged.
+- **Wave 7 (why) — live:** `apps/web/src/lib/scheduler/why-builder.ts` builds a one-line server-side rationale per game (e.g. "Chicago White Sox @ Detroit Tigers → assigned here 3× before"), pure TS, NO LLM (Gotcha #12), rendered in `GameCard`. Verified live: 77/77 team games show it; channel-only entries correctly blank.
+- **Hermes consumption:** weekly `runContentionDigest` (scheduler poll, daily, dedup→one TODO/ISO-week) files "N games had no screen this week" via `POST /api/maintenance-todo` from the Wave-3.7 `drop` rows. Fail-open.
+- **Honcho inclusion:** `scripts/hermes-learn-scheduling-prefs.sh` — a CT212-side reference cron (NOT repo/app code) that pulls `GET /api/override-learn/digest` and feeds stable patterns into a `hermes -z` turn → `sports-bar` Honcho workspace. Repo holds nothing Honcho-specific (domain isolation preserved).
+
+**Required Manual Steps:**
+1. **(Optional, per-location) enable Wave-6 learning canary:** set `DISTRIBUTION_ENGINE_LEARNING=on` in the location's `.env` AND `ecosystem.config.js` env block, then `pm2 delete sports-bar-tv-controller && pm2 start ecosystem.config.js` (Gotcha #2). Recommend Holmgren canary ~1 week, watch SchedulerLog `assign` rows + the Game Plan "why" before fleet-wide. Default OFF ships safe everywhere.
+2. **(Optional, CT212) Honcho learning mirror:** copy `scripts/hermes-learn-scheduling-prefs.sh` to CT212 and `hermes cron create --name learn-scheduling-prefs --schedule "0 6 * * *" --command <path>`. Verify with `hermes honcho status`. Fail-open; skip if not using Honcho.
+
+No DB schema/migration changes. No setup required for the default (Wave 3.7 + 7 + the contention TODO are live; Wave 6 is opt-in).
+
+---
+
+## v2.75.0 — AI Hub chat can offload to the T4 GPU (opt-in, default OFF) (2026-06-19)
+
+**Branch landed:** main. **No setup required for the default** — ships OFF, behavior byte-for-byte unchanged (verified live: chat → HTTP 200, model `llama3.1:8b`, 8 RAG sources).
+
+**What changed (#364):** `apps/web/src/app/api/chat/route.ts` and the RAG embedding path (`packages/rag-server/src/llm-client.ts`) now call `@sports-bar/ollama-client` instead of direct `fetch`, so they can offload to the shared T4 GPU with automatic local-iGPU fallback. New non-streaming `ollamaChat` helper added to the client; all 5 `/api/chat` call sites + RAG embeds migrated. Gated behind **`AI_HUB_T4_ENABLED`** (default `false` → `policy: 'local-only'`, today's exact behavior).
+
+**Phil protection (critical):** when the flag is ON, the chat is forced to the small model **`llama3.1:8b`** (`OLLAMA_TOOLS_MODEL_T4`, never qwen2.5:14b) so it can't evict the trading bot's `phi4-trader` from the T4's ~15GB VRAM. RAG embeddings stay unpinned on the T4 (pinned only on local) for the same reason.
+
+**To ENABLE the T4 offload at a location** (optional, off-hours): in that location's `.env` AND its `ecosystem.config.js` env block (ecosystem is per-location / `LOCATION_PATHS_OURS`, so the main template's new lines do NOT auto-propagate) set `OLLAMA_REMOTE_BASE=http://100.70.56.34:11434` + `AI_HUB_T4_ENABLED=true`, then `pm2 delete sports-bar-tv-controller && pm2 start ecosystem.config.js` (PM2 only forwards listed env). Pre-check: `nomic-embed-text` + `llama3.1:8b` present on CT212; after enabling, Playwright `/ai-hub` chat, confirm the answer streams and the log shows model `llama3.1:8b` (NOT qwen), and `ollama ps` on CT212 still shows `phi4-trader` resident.
+
+---
+
+## v2.74.0 — Wave 3.5: health-aware assignment (scheduler excludes offline devices) (2026-06-19)
+
+**Branch landed:** main. **No setup required** — additive scheduler logic, no schema/env/migration changes.
+
+**What changed:** new `getOfflineDeviceIds()` helper (`packages/scheduler/src/device-health.ts`, exported from the package index) returns the set of genuinely-offline device IDs. Wired into both assignment paths so a game is never assigned to a dead screen:
+- `StateReader.getAvailableInputs()` (`packages/scheduler/src/state-reader.ts`) — folds `!isOffline` into `isAvailable`, so the deterministic DistributionEngine skips offline inputs. A game left with zero eligible screens flows through the existing #348 contention path (`unservedGames`).
+- `loadInputSources()` (`apps/web/src/app/api/scheduling/ai-suggest/route.ts`) — filters offline-device inputs out of the LLM candidate list.
+
+**v1 scope is Fire TV only.** Cable boxes + DirecTV carry an `isOnline` column but it's operator-set, NOT actively monitored, so excluding on it would wrongly drop working boxes — they're intentionally left in the candidate set. **Exempts expected-powered-down devices** (`/atmosphere|epson|projector/i`) — verified live at Holmgren: the offline Epson Projector is correctly KEPT, not excluded. Also requires `lastSeen` staleness > 10 min (avoids bouncing a device on a transient ADB blip). **Fails open** — any query error returns an empty set (assign as before), never starves the schedule.
+
+**Verify:** trigger a schedule with a genuinely-offline Fire TV (not Atmosphere/Epson) and confirm `[STATE_READER] Input N (label) device offline - excluded` + the game routes elsewhere or reports in `unservedGames`. Fast-follow (#347b): cable/DirecTV reachability probe, keep-awake off-hours window, streaming-catalog gating for offline Fire TVs.
+
+---
+
 ## v2.73.4 — checkpoint-hermes embeds the real diff for Checkpoint A (fixes the still-frozen fleet) (2026-06-18)
 
 **Branch landed:** main. **This is the actual fix for the fleet freeze** — v2.73.0 routed Checkpoint A to local AI, but the local model still failed.

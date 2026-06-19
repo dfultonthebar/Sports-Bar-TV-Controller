@@ -5,8 +5,26 @@
  */
 
 import { logger } from '@sports-bar/logger';
-import { ollamaGenerate, ollamaStream } from '@sports-bar/ollama-client';
+import { ollamaGenerate, ollamaStream, ollamaEmbed } from '@sports-bar/ollama-client';
 import { RAGConfig, determineQueryComplexity } from './config';
+
+/**
+ * v2.73.x (item #364) — Embedding T4-offload gate.
+ *
+ * The shared central T4 GPU may NOT have the `nomic-embed-text` model pulled.
+ * A 404 "model not found" is an HTTP error, NOT a connection error, so the
+ * ollama-client's remote→local fallback (which only triggers on connection
+ * failures) will NOT catch it — a missing model on the remote would hard-fail
+ * the embed instead of silently using local.
+ *
+ * Therefore embeddings stay LOCAL unless explicitly opted in via
+ * AI_HUB_T4_ENABLED=true. Default (flag off / unset) ⇒ policy 'local-only'
+ * ⇒ byte-for-byte today's behavior (same local Ollama as the old direct fetch).
+ */
+function ragEmbedPolicy(): 'remote-first' | 'local-only' {
+  const t4 = (process.env.AI_HUB_T4_ENABLED || 'false').toLowerCase() === 'true';
+  return t4 ? 'remote-first' : 'local-only';
+}
 
 export interface LLMOptions {
   temperature?: number;
@@ -88,53 +106,50 @@ export interface EmbeddingResponse {
  * N round-trips. Single-text callers route through the same batch path with
  * a length-1 array for code unity.
  *
- * Both paths set `keep_alive: -1` so the embedding model never unloads —
- * pairs with the chat-route v2.50.0 #1 change for the same reason.
+ * v2.73.x (item #364): both embed paths now route through
+ * `ollamaEmbed` from @sports-bar/ollama-client, which handles the
+ * /api/embed (new) → /api/embeddings (legacy 404) fallback internally AND
+ * the remote→local connection fallback. Gated by AI_HUB_T4_ENABLED (see
+ * ragEmbedPolicy above): default-off keeps embeddings LOCAL (policy
+ * 'local-only'), identical to the previous direct-fetch behavior.
  *
- * Backwards-compatible: if Ollama is too old to support /api/embed (returns
- * 404), falls back to serial /api/embeddings calls.
+ * keep_alive: on the LOCAL path we pass `keepAlive: -1` to pin the embedding
+ * model resident (preserving the previous direct-fetch behavior). On the T4
+ * path (flag on) we do NOT pin — pinning nomic on the shared T4 would eat VRAM
+ * the trading bot's phi4-trader ("Phil") needs, so we let it use Ollama's
+ * default idle timer there.
  */
 
 async function embedBatchViaNewApi(texts: string[]): Promise<number[][] | null> {
-  // Returns null on 404 so the caller can fall back. Throws on other errors.
-  const response = await fetch(`${RAGConfig.ollamaUrl}/api/embed`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: RAGConfig.embeddingModel,
-      input: texts,
-      keep_alive: -1,
-    }),
+  // Delegates to ollamaEmbed (new-API + legacy fallback handled internally).
+  // Returns the embeddings directly; the caller no longer needs a separate
+  // legacy fall-through path, but the signature/null-contract is preserved.
+  const policy = ragEmbedPolicy();
+  const embeddings = await ollamaEmbed(texts, RAGConfig.embeddingModel, {
+    feature: 'rag-embed',
+    policy,
+    keepAlive: policy === 'local-only' ? -1 : undefined,
   });
-  if (response.status === 404) return null; // old Ollama, fall back
-  if (!response.ok) {
-    throw new Error(`Ollama /api/embed error: ${response.status} ${response.statusText}`);
-  }
-  const data = await response.json();
-  // Response shape: { model, embeddings: [[...], [...], ...], total_duration, ... }
-  if (!Array.isArray(data.embeddings) || data.embeddings.length !== texts.length) {
+  if (!Array.isArray(embeddings) || embeddings.length !== texts.length) {
     throw new Error(
-      `Ollama /api/embed returned malformed result: expected ${texts.length} embeddings, got ${data.embeddings?.length ?? 0}`,
+      `ollamaEmbed returned malformed result: expected ${texts.length} embeddings, got ${embeddings?.length ?? 0}`,
     );
   }
-  return data.embeddings as number[][];
+  return embeddings;
 }
 
 async function embedSingleViaLegacyApi(text: string): Promise<number[]> {
-  const response = await fetch(`${RAGConfig.ollamaUrl}/api/embeddings`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: RAGConfig.embeddingModel,
-      prompt: text,
-      keep_alive: -1, // v2.50.1: keep embedding model resident across scans
-    }),
+  // Delegates to ollamaEmbed with a length-1 array (legacy fallback is
+  // internal to ollamaEmbed now). Kept as a named function because
+  // generateEmbedding / generateEmbeddings still reference it as the
+  // per-text fallback path.
+  const policy = ragEmbedPolicy();
+  const embeddings = await ollamaEmbed([text], RAGConfig.embeddingModel, {
+    feature: 'rag-embed',
+    policy,
+    keepAlive: policy === 'local-only' ? -1 : undefined,
   });
-  if (!response.ok) {
-    throw new Error(`Ollama /api/embeddings error: ${response.status} ${response.statusText}`);
-  }
-  const data = await response.json();
-  return data.embedding || [];
+  return embeddings[0] || [];
 }
 
 export async function generateEmbedding(text: string): Promise<number[]> {

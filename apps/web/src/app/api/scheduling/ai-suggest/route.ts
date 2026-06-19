@@ -17,6 +17,7 @@ import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { validateQueryParams, z } from '@/lib/validation'
 import { HARDWARE_CONFIG } from '@/lib/hardware-config'
 import { ollamaGenerate } from '@sports-bar/ollama-client'
+import { getOfflineDeviceIds } from '@sports-bar/scheduler'
 import {
   logSchedulingEvent,
   newSchedulingRequestId,
@@ -444,7 +445,16 @@ async function loadSchedulingPatterns(): Promise<SchedulingPattern[]> {
 // Brewers clears.
 
 async function loadInputSources() {
-  const sources = await db.select().from(schema.inputSources).where(eq(schema.inputSources.isActive, true))
+  const allSources = await db.select().from(schema.inputSources).where(eq(schema.inputSources.isActive, true))
+
+  // Wave 3.5 — health-aware: drop inputs whose device is genuinely offline so
+  // the LLM never proposes routing a game to a dead screen (Fire TV only in v1;
+  // cable/DirecTV isOnline is operator-set, not monitored).
+  const offlineDeviceIds = await getOfflineDeviceIds()
+  const sources = allSources.filter(s => !(s.deviceId && offlineDeviceIds.has(s.deviceId)))
+  if (sources.length < allSources.length) {
+    logger.info(`[AI-SUGGEST] Excluded ${allSources.length - sources.length} offline-device input(s) from suggestions`)
+  }
 
   const nowUnix = Math.floor(Date.now() / 1000)
   const windowEnd = nowUnix + 12 * 60 * 60
