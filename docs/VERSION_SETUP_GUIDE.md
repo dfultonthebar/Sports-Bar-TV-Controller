@@ -35,6 +35,24 @@ is the archive.
 
 ---
 
+## v2.77.0 — Fleet DB schema-consistency audit + Hermes auto-fix task (2026-06-19)
+
+**Branch landed:** main. Motivated by fleet drift found while fixing the DirecTV `matrix_input_id` data gap — DATA is location-specific (expected to differ), but the schema (tables/columns) must be identical across boxes. This is the Gotcha #6 failure class (NeighborhoodEvent missing on 5/6 boxes for 24h).
+
+**What shipped (3 read-safe scripts):**
+- **`scripts/fleet-schema-audit.sh`** — read-only fleet schema comparator. Captures each box's `(version, table|column fingerprint)` via `sqlite_master` + `pragma_table_info` (NEVER reads row data). Groups boxes by version cohort; the consensus structure within a cohort is canonical, and any box MISSING canonical tables/cols is flagged DRIFT. Extra lines = orphan (informational); behind-version = lag (expected). Emits `/tmp/fleet-schema-audit.json`, exit 2 on drift. Reads `$FLEET_SSH_PW` (never hardcoded).
+- **`scripts/fix-schema-drift.sh <box>`** — tier-1 SAFE fixer: `bootstrap-drizzle-migrations.sh` + `drizzle-kit migrate` (committed migrations only — never push, never DROP, never touch data) then re-verifies. Exit 3 = ESCALATE if drift persists.
+- **`scripts/hermes-schema-drift-task.sh`** — Hermes cron wrapper: detect → tier-1 auto-fix each drifted box → on persist, escalate to Claude via `ask_claude_code` (auto-applies safe DDL, escalates DROP/data-affecting for approval). Fail-open.
+
+**First live run:** v2.73.8 cohort (5 boxes) structurally identical; Greenville +17 orphan lines (informational); Holmgren ahead on version (lag). No missing-table drift — detector verified working.
+
+**Required Manual Steps:**
+1. **(CT212, optional) install the Hermes cron:** copy nothing — the repo script is pulled by auto-update. On CT212 run `hermes cron create --name fleet-schema-drift --schedule "0 5 * * *" --command "/home/ubuntu/Sports-Bar-TV-Controller/scripts/hermes-schema-drift-task.sh"`. Set `FLEET_SSH_PW` + `ASK_CLAUDE_CMD` (default `hermes -z`) in the cron env. Until installed, run `FLEET_SSH_PW=... bash scripts/fleet-schema-audit.sh` manually.
+
+No DB schema/migration changes. No app behavior change (scripts only).
+
+---
+
 ## v2.76.0 — #349 Wave 3.7 + 6 + 7: engine observability, learning loop, bartender "why" (2026-06-19)
 
 **Branch landed:** main. Researched (4 parallel mapping agents) → planned → debugged with **Grok + local AI** → built by 3 parallel agents → integrated + verified.
