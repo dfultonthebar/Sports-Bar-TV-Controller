@@ -75,13 +75,14 @@ const OLLAMA_TOOLS_MODEL = process.env.OLLAMA_TOOLS_MODEL || 'qwen2.5:14b'
 // uses 'remote-first' so calls offload to the shared T4 GPU with automatic
 // local fallback on a connection error.
 const AI_HUB_T4_ENABLED = (process.env.AI_HUB_T4_ENABLED || 'false').toLowerCase() === 'true'
-// On the T4 we MUST force the small model: the T4 co-hosts the trading bot's
-// phi4-trader ("Phil") on a ~15GB VRAM budget. qwen2.5:14b would evict Phil,
-// so the T4 path always uses llama3.1:8b regardless of enableTools.
-const OLLAMA_TOOLS_MODEL_T4 = process.env.OLLAMA_TOOLS_MODEL_T4 || 'llama3.1:8b'
+// On the T4 we MUST force a small model: the T4 co-hosts the trading bot's
+// phi4-trader ("Phil") on a ~15GB VRAM budget. VERIFIED 2026-06-19: even
+// llama3.1:8b (5.3GB) evicts Phil (9.3GB) — only llama3.2:3b (2.6GB) co-resides
+// (Phil + 3b + nomic = 12.0GB). The T4 path always uses it regardless of enableTools.
+const OLLAMA_TOOLS_MODEL_T4 = process.env.OLLAMA_TOOLS_MODEL_T4 || 'llama3.2:3b'
 const chatPolicy: 'remote-first' | 'local-only' = AI_HUB_T4_ENABLED ? 'remote-first' : 'local-only'
 function pickModel(enableTools: boolean): string {
-  // T4 path: force the small model (llama3.1:8b) so we never evict Phil.
+  // T4 path: force the small model (llama3.2:3b) so we never evict Phil.
   if (AI_HUB_T4_ENABLED) return OLLAMA_TOOLS_MODEL_T4
   return enableTools ? OLLAMA_TOOLS_MODEL : OLLAMA_MODEL
 }
