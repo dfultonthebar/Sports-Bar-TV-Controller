@@ -38,6 +38,34 @@ LOG() { echo "[hermes-schema $(date -Iseconds)] $*"; }
 cd "$REPO" || { LOG "repo not found at $REPO"; exit 0; }
 if [ -z "${FLEET_SSH_PW:-}" ]; then LOG "FLEET_SSH_PW unset — cannot audit; skipping (fail-open)"; exit 0; fi
 
+# ── Phase 0: ensure dependencies/software on every box (auto-install safe apt) ──
+LOG "ensuring fleet dependencies/software (auto-install safe apt deps)..."
+FLEET_SSH_PW="$FLEET_SSH_PW" bash scripts/fleet-deps-audit.sh --fix > /tmp/hermes-deps-audit.out 2>&1
+drc=$?
+tail -20 /tmp/hermes-deps-audit.out | sed 's/^/  /'
+if [ "$drc" -eq 2 ]; then
+  # safe apt deps are auto-installed above; rc=2 means version/special items remain
+  # (Node major < min, pm2 absent, ollama absent) — escalate, never auto-change.
+  esc=$(python3 -c "
+import json
+try:
+    d=json.load(open('/tmp/fleet-deps-audit.json'))
+    for b in d.get('boxes',[]):
+        e=b.get('escalate') or []
+        m=b.get('missing') or []
+        if e or m: print(f\"{b['box']}: missing={m} escalate={e}\")
+except Exception: pass
+" 2>/dev/null)
+  if [ -n "$esc" ]; then
+    LOG "dependency escalation needed (version/special) — handing to Claude:"
+    echo "$esc" | sed 's/^/    /'
+    PROMPT="Fleet dependency/software drift the safe auto-installer could not resolve (these are version-sensitive or special-install items, NOT plain apt). Per box: ${esc}. Diagnose and remediate SAFELY: for a Node major-version gap follow the documented 20-40min native-rebuild upgrade procedure (better-sqlite3 rebuild, pm2 daemon match) and run it OFF-HOURS, NOT mid-day; for missing pm2 run 'npm install -g pm2'; for missing ollama install the IPEX/CUDA build per scripts/setup-iris-ollama.sh. ESCALATE for human approval anything that causes downtime (Node upgrades, PM2 daemon restarts) — do not run those unattended. Re-run scripts/fleet-deps-audit.sh to confirm."
+    printf '%s' "$PROMPT" | $ASK_CLAUDE_CMD 2>&1 | tail -15 | sed 's/^/    /' \
+      || LOG "ask_claude_code invocation failed (ASK_CLAUDE_CMD='$ASK_CLAUDE_CMD') — left for manual fix."
+  fi
+fi
+
+# ── Phase 1: schema consistency ──
 LOG "running fleet schema audit..."
 FLEET_SSH_PW="$FLEET_SSH_PW" bash scripts/fleet-schema-audit.sh > /tmp/hermes-schema-audit.out 2>&1
 rc=$?

@@ -35,6 +35,20 @@ is the archive.
 
 ---
 
+## v2.78.0 — Fleet DEPENDENCY/software consistency + Hermes auto-install (2026-06-19)
+
+**Branch landed:** main. Extends the v2.77.0 schema-consistency task to also keep **software/dependencies identical across every box** (operator: "the hermes script should do it at all locations for dependencies and software").
+
+**What shipped:**
+- **`scripts/fleet-deps-audit.sh`** — checks every fleet box for the required toolchain (`sqlite3`, `jq`, `curl`, `git`, `sshpass`, `python3`, `coreutils`). With `--fix` it AUTO-INSTALLS missing **safe apt** packages (idempotent). Version-sensitive / special-install items — Node MAJOR (`< 22`), `pm2`, `ollama`+models — are REPORTED + escalated, NEVER auto-changed (a Node major bump is the 20-40min risky native-rebuild procedure; ollama is the IPEX/CUDA build). Emits `/tmp/fleet-deps-audit.json`, exit 2 if anything needs attention.
+- **`scripts/hermes-schema-drift-task.sh`** now runs **Phase 0: deps ensure (`fleet-deps-audit.sh --fix`)** before the schema phase, escalating only the version/special items to Claude via `ask_claude_code`.
+
+**First live run:** found + auto-installed missing `sshpass` on leg-lamp/graystone/appleton and `jq` on greenville; all 7 boxes now have the full toolchain. holmgren/luckys/lime-kiln were already complete. (Lime Kiln is online — no hardware yet, so its device data is empty, but its schema + deps compare normally.)
+
+**Required Manual Steps:** none new beyond the v2.77.0 CT212 cron (now also runs the deps phase). The cron env already carries `FLEET_SSH_PW` + `ASK_CLAUDE_CMD`.
+
+---
+
 ## v2.77.0 — Fleet DB schema-consistency audit + Hermes auto-fix task (2026-06-19)
 
 **Branch landed:** main. Motivated by fleet drift found while fixing the DirecTV `matrix_input_id` data gap — DATA is location-specific (expected to differ), but the schema (tables/columns) must be identical across boxes. This is the Gotcha #6 failure class (NeighborhoodEvent missing on 5/6 boxes for 24h).
