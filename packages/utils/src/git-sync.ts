@@ -212,10 +212,25 @@ async function commitAndPush(
       // Commit
       await execAsync(`git commit -m "${message}"`, { cwd: config.projectRoot });
 
-      // Push
-      await execAsync(`git push origin ${config.targetBranch}`, { cwd: config.projectRoot });
+      // Push to the CURRENT branch — never a hardcoded 'main'. Location boxes must
+      // not push to main (Standing Rule 9); a stray commit on a box's local main
+      // otherwise causes a permanent non-fast-forward rejection loop (the Leg Lamp
+      // ERROR-spam, v2.67.2). An explicit config.targetBranch still overrides.
+      const { stdout: branchOut } = await execAsync('git rev-parse --abbrev-ref HEAD', { cwd: config.projectRoot });
+      const pushBranch = config.targetBranch || branchOut.trim();
 
-      logger.info(`Git sync successful: ${message}`);
+      if (!pushBranch || pushBranch === 'HEAD') {
+        logger.info('Git sync: committed locally; skipping push (detached/unknown branch)');
+      } else {
+        // Best-effort mirror: a push failure must NOT throw or ERROR-spam — the DB
+        // stays the source of truth. Log at info level and move on.
+        try {
+          await execAsync(`git push origin ${pushBranch}`, { cwd: config.projectRoot });
+          logger.info(`Git sync successful: ${message}`);
+        } catch (pushError: any) {
+          logger.info(`Git sync: committed locally; push to ${pushBranch} deferred (best-effort): ${(pushError?.message || String(pushError)).split('\n')[0]}`);
+        }
+      }
     } else {
       logger.info('No changes to commit');
     }
@@ -238,7 +253,7 @@ export async function syncTodosToGitHub(
     projectRoot: config.projectRoot || process.cwd(),
     gitUserName: config.gitUserName || 'Sports Bar TV Controller',
     gitUserEmail: config.gitUserEmail || 'system@sportsbar.local',
-    targetBranch: config.targetBranch || 'main',
+    targetBranch: config.targetBranch || '', // '' → commitAndPush pushes to the current branch (never hardcoded main)
     todoListFilename: config.todoListFilename || 'TODO_LIST.md'
   };
 

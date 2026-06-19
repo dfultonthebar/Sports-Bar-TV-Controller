@@ -16,6 +16,7 @@ import { withRateLimit } from '@/lib/rate-limiting/middleware'
 import { RateLimitConfigs } from '@/lib/rate-limiting/rate-limiter'
 import { validateQueryParams, z } from '@/lib/validation'
 import { HARDWARE_CONFIG } from '@/lib/hardware-config'
+import { ollamaGenerate } from '@sports-bar/ollama-client'
 import {
   logSchedulingEvent,
   newSchedulingRequestId,
@@ -24,7 +25,6 @@ import { logLlmPerf } from '@/lib/llm-perf-logger'
 import { runAiSuggestSolverShadow } from '@/lib/scheduling/ai-suggest-solver-shadow'
 import { resolveChannelsForGame } from '@/lib/network-channel-resolver'
 
-const OLLAMA_URL = `${HARDWARE_CONFIG.ollama.baseUrl}/api/generate`
 // AI Suggest runs Ollama with a longer prompt (up to 12 diverse suggestions)
 // than other routes. CPU-only llama3.1:8b takes ~20s per suggestion generated,
 // so 10-12 suggestions = ~240s. Extend past the shared HARDWARE_CONFIG default
@@ -538,18 +538,19 @@ async function loadTVOutputs() {
 // ---------- helper: call Ollama ----------
 
 async function callOllama(prompt: string): Promise<string> {
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), OLLAMA_TIMEOUT_MS)
   const startedAt = Date.now()
 
   try {
-    const response = await fetch(OLLAMA_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+    // Routed through @sports-bar/ollama-client (remote-first → local fallback).
+    // With no OLLAMA_REMOTE_BASE configured this resolves to the same local
+    // Ollama (HARDWARE_CONFIG.ollama.baseUrl) as the previous direct fetch.
+    // model/format/temperature/num_predict and the ≥300s timeout are preserved
+    // verbatim. ollamaGenerate enforces the timeout via AbortSignal.timeout(),
+    // which throws a TimeoutError on expiry (handled below + by the GET catch).
+    const data = await ollamaGenerate(
+      {
         model: OLLAMA_MODEL,
         prompt,
-        stream: false,
         format: 'json',
         options: {
           temperature: 0.3,
@@ -557,15 +558,10 @@ async function callOllama(prompt: string): Promise<string> {
           // num_predict is only a CAP; logLlmPerf records the real eval_count.
           num_predict: OLLAMA_NUM_PREDICT,
         },
-      }),
-      signal: controller.signal,
-    })
+      },
+      { feature: 'ai-suggest', timeoutMs: OLLAMA_TIMEOUT_MS },
+    )
 
-    if (!response.ok) {
-      throw new Error(`Ollama returned status ${response.status}`)
-    }
-
-    const data = await response.json()
     // Record real throughput so num_predict + timeout can be tuned from data.
     void logLlmPerf({
       feature: 'ai-suggest',
@@ -591,8 +587,6 @@ async function callOllama(prompt: string): Promise<string> {
         : (err?.message || err?.name || 'unknown'),
     })
     throw err
-  } finally {
-    clearTimeout(timeout)
   }
 }
 
@@ -1476,7 +1470,10 @@ export async function GET(request: NextRequest) {
     try {
       ollamaResponse = await callOllama(prompt)
     } catch (err: any) {
-      if (err.name === 'AbortError') {
+      // ollama-client enforces the timeout via AbortSignal.timeout() which
+      // throws TimeoutError; the legacy AbortController path threw AbortError.
+      // Treat both as the timeout case so the 504 behavior is preserved.
+      if (err.name === 'AbortError' || err.name === 'TimeoutError') {
         logger.error(`[AI-SUGGEST] Ollama request timed out after ${Math.round(OLLAMA_TIMEOUT_MS / 1000)}s`)
         await logSchedulingEvent({
           level: 'error',

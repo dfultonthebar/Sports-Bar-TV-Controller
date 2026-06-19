@@ -11,6 +11,8 @@ import type {
   ErrorEvent,
   ErrorsPayload,
   ErrorSeverity,
+  UpdateEvent,
+  UpdateResult,
   OverallStatus,
 } from './types.js'
 
@@ -171,6 +173,83 @@ export async function collectErrors(
     }
   }
   void watcherStaleSec // reserved; see note above
+
+  return { events, watermark }
+}
+
+interface UpdatesResult {
+  events: UpdateEvent[]
+  /** newest run occurredAt the agent has reported; it resumes from here next poll */
+  watermark: number
+}
+
+/** Map a parsed auto-update run's outcome onto the hub's UpdateResult enum. */
+function mapUpdateResult(run: any): UpdateResult {
+  if (run.finalResult === 'success') return 'success'
+  if (run.rollbackTag) return 'rollback'
+  const failed = String(run.failedStep || '').toLowerCase()
+  if (/merge|conflict/.test(failed)) return 'conflict'
+  if (run.finalResult === 'fail') return 'failed'
+  return 'skipped'
+}
+
+/**
+ * Auto-update outcomes come from GET /api/auto-update/runs (log-parsed, unauthenticated
+ * on localhost — same access model as the other collectors; the DB-backed status route
+ * needs ADMIN auth the agent doesn't carry). Only FINISHED runs newer than `sinceMs` are
+ * emitted; an in-progress run (no finish timestamp) is skipped and picked up next cycle.
+ * The hub dedups on (location, runId), so a resend after restart is harmless.
+ */
+export async function collectUpdates(base: string, sinceMs: number): Promise<UpdatesResult> {
+  const events: UpdateEvent[] = []
+  let watermark = sinceMs
+
+  const r = await fetchJson(`${base}/api/auto-update/runs?limit=50`)
+  const runs: any[] = Array.isArray(r.body?.runs) ? r.body.runs : []
+  for (const run of runs) {
+    // skip still-running rows: no finish timestamp and no terminal result yet
+    if (run.finishedUnix == null && run.finalResult === 'unknown') continue
+    const finishedUnix = run.finishedUnix ?? run.startedUnix
+    if (!finishedUnix) continue
+    const occurredAt = finishedUnix * 1000
+    if (occurredAt <= sinceMs) continue
+
+    const result = mapUpdateResult(run)
+    const errorMessage =
+      result === 'failed' || result === 'conflict'
+        ? [
+            run.failedStep ? `FAIL at step '${run.failedStep}'` : null,
+            run.verifyInstallStatus === 'FAIL' ? 'verify-install FAIL' : null,
+          ]
+            .filter(Boolean)
+            .join('; ') || undefined
+        : undefined
+
+    events.push({
+      runId: String(run.id),
+      occurredAt,
+      result,
+      fromVersion: run.preMergeVersion || undefined,
+      toVersion: run.postMergeVersion || run.preMergeVersion || undefined,
+      fromSha: run.preMergeSha || undefined,
+      toSha: run.postMergeSha || undefined,
+      durationSecs: run.totalDurationMs != null ? Math.round(run.totalDurationMs / 1000) : undefined,
+      // auto-update.sh tags a safety-net rollback point at the START of every run, so a
+      // tag exists even on success; only surface it when a rollback actually happened.
+      rollbackTag: result === 'rollback' ? run.rollbackTag || undefined : undefined,
+      triggeredBy: run.triggeredBy || undefined,
+      errorMessage,
+      raw: {
+        checkpoints: Array.isArray(run.checkpoints)
+          ? run.checkpoints.map((c: any) => ({ name: c.name, decision: c.decision, reason: c.reason }))
+          : undefined,
+        verifyInstallStatus: run.verifyInstallStatus,
+        failedStep: run.failedStep,
+        steps: Array.isArray(run.steps) ? run.steps.length : undefined,
+      },
+    })
+    if (occurredAt > watermark) watermark = occurredAt
+  }
 
   return { events, watermark }
 }
