@@ -13,7 +13,7 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
-import { collectHealth, collectMetrics, collectScheduler, collectErrors } from './collect.js'
+import { collectHealth, collectMetrics, collectScheduler, collectErrors, collectUpdates } from './collect.js'
 import { signPayload } from './hmac.js'
 import {
   type AgentConfig,
@@ -98,6 +98,11 @@ async function send<T>(cfg: AgentConfig, kind: IngestKind, payload: T): Promise<
 // the hub dedups by (location, source, signature, occurredAt))
 let errorWatermark = Date.now() - 6 * 60 * 60_000 // first run: look back 6h
 
+// auto-update high-water mark (in-memory; resets on restart — the hub dedups by
+// (location, runId), so re-reporting recent runs after a restart is harmless).
+// Updates are ~daily, so a 7-day first-run lookback backfills the recent fleet history.
+let updateWatermark = Date.now() - 7 * 24 * 60 * 60_000
+
 async function fastCycle(cfg: AgentConfig) {
   const now = Date.now()
   const [health, metrics, errors] = await Promise.all([
@@ -118,6 +123,14 @@ async function fastCycle(cfg: AgentConfig) {
 async function slowCycle(cfg: AgentConfig) {
   const scheduler = await collectScheduler(cfg.localApiUrl)
   await send(cfg, 'scheduler', scheduler)
+
+  const updates = await collectUpdates(cfg.localApiUrl, updateWatermark)
+  if (updates.events.length) {
+    await send(cfg, 'update', { events: updates.events })
+    updateWatermark = updates.watermark
+  } else {
+    log(`no new auto-update runs (watermark ${new Date(updateWatermark).toISOString()})`)
+  }
 }
 
 async function main() {
