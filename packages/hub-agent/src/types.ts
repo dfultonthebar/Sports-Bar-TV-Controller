@@ -3,7 +3,7 @@
  * Both `packages/hub-agent` (sender) and `apps/hub` (ingest) import these.
  */
 
-export type IngestKind = 'health' | 'metrics' | 'scheduler' | 'errors'
+export type IngestKind = 'health' | 'metrics' | 'scheduler' | 'errors' | 'update'
 
 /** Every POST to the hub is one of these, JSON-stringified then HMAC-signed. */
 export interface IngestEnvelope<T = unknown> {
@@ -61,6 +61,29 @@ export interface ErrorEvent {
   sample: string
   occurredAt: number // unix ms
   raw?: unknown
+}
+
+export type UpdateResult = 'success' | 'rollback' | 'conflict' | 'skipped' | 'failed'
+
+/** One auto-update.sh run outcome, reported by the agent for fleet-update tracking. */
+export interface UpdateEvent {
+  runId: string
+  occurredAt: number // unix ms (run finished)
+  result: UpdateResult
+  fromVersion?: string
+  toVersion?: string
+  fromSha?: string
+  toSha?: string
+  durationSecs?: number
+  rollbackTag?: string
+  conflictPaths?: string[]
+  triggeredBy?: string
+  errorMessage?: string
+  raw?: unknown
+}
+
+export interface UpdatePayload {
+  events: UpdateEvent[]
 }
 
 export interface ErrorsPayload {
