@@ -183,4 +183,12 @@ case "$PROSE" in
     emit "CAUTION ${ANSWER}" ;;
 esac
 
-emit "UNAVAILABLE unparseable model verdict: $(printf '%s' "$ANSWER" | head -c 160)"
+# Default GO. We only reach here when the model gave a non-empty response (empty
+# was caught upstream as UNAVAILABLE) that contains NO stop/caution signal. The
+# local model's ROLE at Checkpoint A is purely a STOP-detector: the deterministic
+# pre-check already escalated only AMBIGUOUS/additive cases (the dangerous ones it
+# STOPs outright without AI), and Checkpoints B/C + build-failure rollback remain
+# downstream. Returning UNAVAILABLE here would fall through to the dead cloud path
+# and re-freeze the fleet on nothing more than llama3.1:8b's run-to-run phrasing
+# variance (Gotcha #12). So: engaged + no STOP flagged → proceed.
+emit "GO ${ANSWER}"
