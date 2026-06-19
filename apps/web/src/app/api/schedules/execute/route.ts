@@ -635,26 +635,28 @@ async function findHomeTeamGames(homeTeamIds: string[], schedule: any, allowedOu
           const assignedTVs = ga.assignments.length;
           // Pass the raw object — SchedulerLogger.log() JSON.stringifies metadata
           // itself; pre-stringifying here would double-encode it in the DB.
-          const ctx = {
-            metadata: {
-              game: label,
-              league: ga.game.league ?? null,
-              priority: ga.priority?.finalScore ?? null,
-              isHomeTeam: ga.priority?.isHomeTeamGame ?? null,
-              assignedTVs,
-              minTVsRequired: ga.minTVsRequired,
-              minTVsMet: ga.minTVsMet,
-              inputs: [...new Set(ga.assignments.map((a) => a.inputLabel))],
-            },
+          // machine-readable reason set per-outcome below before each log call
+          const metadata: Record<string, unknown> = {
+            game: label,
+            league: ga.game.league ?? null,
+            priority: ga.priority?.finalScore ?? null,
+            isHomeTeam: ga.priority?.isHomeTeamGame ?? null,
+            assignedTVs,
+            minTVsRequired: ga.minTVsRequired,
+            minTVsMet: ga.minTVsMet,
+            inputs: [...new Set(ga.assignments.map((a) => a.inputLabel))],
           };
           if (assignedTVs === 0) {
+            metadata.reason = 'no_screen';
             unservedGames.push({ game: label, assignedTVs, minTVsRequired: ga.minTVsRequired, reason: 'no available screen (all matching inputs busy/unavailable)' });
-            await schedulerLogger.warn('distribution-engine', 'distribute', `No screen: ${label} got 0/${ga.minTVsRequired} TVs`, planCorrelationId, ctx);
+            await schedulerLogger.warn('distribution-engine', 'drop', `No screen: ${label} got 0/${ga.minTVsRequired} TVs`, planCorrelationId, { metadata });
           } else if (!ga.minTVsMet) {
+            metadata.reason = 'under_minimum';
             unservedGames.push({ game: label, assignedTVs, minTVsRequired: ga.minTVsRequired, reason: 'below minimum TVs' });
-            await schedulerLogger.warn('distribution-engine', 'distribute', `Under-served: ${label} got ${assignedTVs}/${ga.minTVsRequired} TVs`, planCorrelationId, ctx);
+            await schedulerLogger.warn('distribution-engine', 'under-served', `Under-served: ${label} got ${assignedTVs}/${ga.minTVsRequired} TVs`, planCorrelationId, { metadata });
           } else {
-            await schedulerLogger.info('distribution-engine', 'distribute', `Assigned ${assignedTVs} TVs to ${label}`, planCorrelationId, ctx);
+            metadata.reason = 'assigned';
+            await schedulerLogger.info('distribution-engine', 'assign', `Assigned ${assignedTVs} TVs to ${label}`, planCorrelationId, { metadata });
           }
         }
         if (unservedGames.length > 0) {

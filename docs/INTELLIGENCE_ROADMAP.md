@@ -64,20 +64,20 @@ builders that gate the flip.**
   minTVsMet=false) — surface a "N games had no screen" line in the bartender Game Plan.
   Value HIGH · **S**. (Multiview/quad-card integration is a separate XL — do NOT
   conflate; multiview consumes 4 inputs/card, wiring-specific like outputOffset.)
-- **Wave 3.7 — persist engine reasoning to SchedulerLog.** Engine "why" only goes to
+- **Wave 3.7 — persist engine reasoning to SchedulerLog.** [SHIPPED v2.76.0 — assign/drop/under-served ops + metadata.reason] Engine "why" only goes to
   PM2 buffer today — not queryable. Write structured rows (`component='distribution-
   engine'`, op `assign`/`drop`, metadata {game, priority, assignedTVs, minTVsRequired,
   reason}) like the guide drop-logging. Value MED-HIGH · **S**. Foundation for trust.
 
 ### GATED ON THE PRIMARY FLIP (#346)
 
-- **Wave 6 — engine learning loops.** The DistributionEngine reads NO learned prefs;
+- **Wave 6 — engine learning loops.** [SHIPPED v2.76.0 — tie-breaker bias behind DISTRIBUTION_ENGINE_LEARNING=off|on, default off] The DistributionEngine reads NO learned prefs;
   the LLM reads `scheduling_patterns` (team→input/output, built from bartender
   overrides — "Packers on the big wall TVs"). Feed `preferredInputId`/`preferredOutputs`
   in as a scoring bias (reuse the 3+ override-digester threshold; emulate, don't copy,
   `lib/ai/distribution-optimizer.ts`). THE thing that makes the deterministic engine
   genuinely *better* than the LLM, not just faster. Value HIGH · M.
-- **Wave 7 — bartender-facing "why" (server-built per Gotcha #12).** One-line rationale
+- **Wave 7 — bartender-facing "why" (server-built per Gotcha #12).** [SHIPPED v2.76.0 — why-builder.ts, live-verified] One-line rationale
   per suggestion ("Packers home → 20 TVs; cable ch6; you've put them here 12× before").
   Build the string in TS, never let the LLM paraphrase ([[feedback-llm-server-built-verbatim]]).
   Value HIGH · S-M · critical for trusting the new primary.
