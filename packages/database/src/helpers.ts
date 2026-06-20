@@ -234,7 +234,19 @@ export async function createMany<T extends TableName>(tableName: T, data: any[])
 /**
  * Update record
  */
+// Guard: a raw string/number `where` (e.g. a bare id) silently matches EVERY
+// row in Drizzle's .where(), so update/delete would hit the whole table. The
+// /api/todos/:id/complete bug (2026-06-19) marked all 67 todos COMPLETE this way.
+// Callers MUST pass a real condition like eq(table.id, value).
+function assertWhereCondition(fn: string, tableName: string, where: any): void {
+  const t = typeof where
+  if (where == null || t === 'string' || t === 'number' || t === 'boolean') {
+    throw new Error(`${fn}('${tableName}'): 'where' must be a Drizzle condition like eq(table.id, value), not a raw ${t} — a bare id would match EVERY row.`)
+  }
+}
+
 export async function update<T extends TableName>(tableName: T, where: any, data: any) {
+  assertWhereCondition('update', tableName, where)
   const table = schema[tableName] as any
   const displayName = getTableDisplayName(tableName)
 
@@ -259,6 +271,7 @@ export async function update<T extends TableName>(tableName: T, where: any, data
  * Update many records
  */
 export async function updateMany<T extends TableName>(tableName: T, where: any, data: any) {
+  assertWhereCondition('updateMany', tableName, where)
   const table = schema[tableName] as any
   const displayName = getTableDisplayName(tableName)
 
@@ -283,6 +296,7 @@ export async function updateMany<T extends TableName>(tableName: T, where: any, 
  * Delete record
  */
 export async function deleteRecord<T extends TableName>(tableName: T, where: any) {
+  assertWhereCondition('deleteRecord', tableName, where)
   const table = schema[tableName] as any
   const displayName = getTableDisplayName(tableName)
 
@@ -302,6 +316,7 @@ export async function deleteRecord<T extends TableName>(tableName: T, where: any
  * Delete many records
  */
 export async function deleteMany<T extends TableName>(tableName: T, where: any) {
+  assertWhereCondition('deleteMany', tableName, where)
   const table = schema[tableName] as any
   const displayName = getTableDisplayName(tableName)
 
