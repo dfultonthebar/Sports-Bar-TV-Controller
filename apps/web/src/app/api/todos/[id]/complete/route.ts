@@ -48,7 +48,7 @@ export async function POST(
     }
 
     // Update the todo using Drizzle
-    await update('todos', id, {
+    await update('todos', eq(schema.todos.id, id), {
       status: 'COMPLETE',
       completedAt: new Date()
     })
