@@ -144,8 +144,9 @@ export async function PUT(
       dataToUpdate.commonVariations = updateData.commonVariations ? JSON.stringify(updateData.commonVariations) : null;
     }
 
-    // Update team
-    const updatedTeam = await update('homeTeams', teamId, dataToUpdate);
+    // Update team — MUST pass a condition; a raw id matches every row (see
+    // db-helpers assertWhereCondition / the 2026-06-19 todos-complete bug).
+    const updatedTeam = await update('homeTeams', eq(schema.homeTeams.id, teamId), dataToUpdate);
 
     logger.api.response('PUT', `/api/home-teams/${teamId}`, 200, { teamId });
     return NextResponse.json({ success: true, team: updatedTeam });
