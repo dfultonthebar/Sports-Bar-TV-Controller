@@ -35,6 +35,25 @@ is the archive.
 
 ---
 
+## v2.82.0 — SBCC Hub Phase C: "Ask Claude" path in the dashboard chat (2026-06-21)
+
+**Branch landed:** main. Hub-only change (`apps/hub`); does NOT ship via location auto-update — the hub is deployed manually on CT 211. Adds the deferred Phase C item (a): the dashboard maintenance chat at `hub:/chat` now has a **mode toggle** — *Fleet model* (existing, fast, small local model on CT 212, answers from hub DB) vs *Claude (deep)* (new, read-only Claude Code, reads the codebase for how/why diagnostics). Both are grounded with the same live `buildFleetContext()` snapshot.
+
+**New files:**
+- `apps/hub/src/lib/claude.ts` — `askClaude(messages)` spawns `claude -p <prompt> --permission-mode plan` (read-only; question passed as argv, not shell → not injectable). Mirrors the proven `runClaude()` in `packages/mcp/src/server.ts`: never-expiring `ANTHROPIC_API_KEY` from env or `{HUB_REPO_ROOT}/.env`, 300s timeout, graceful "not available" text if the CLI/key is missing (never crashes the route).
+- `apps/hub/src/app/api/chat/claude/route.ts` — `POST { messages | question } → { answer }`, `runtime = 'nodejs'`.
+- `apps/hub/src/app/chat/page.tsx` — mode toggle pills + Claude-aware "thinking" copy + per-mode subtitle.
+
+**Build:** `apps/hub` type-check clean + `next build` green; `/api/chat/claude` route registered. NOT live-verified on CT 211 yet (built + verified on Holmgren only — runtime needs the deploy below).
+
+**Required Manual Steps (on the hub box, CT 211 `100.124.165.26`, as root):**
+1. Ensure the Claude Code CLI is installed and on PATH (default expected at `/home/ubuntu/.local/bin/claude`; override with `CLAUDE_BIN`).
+2. Ensure `ANTHROPIC_API_KEY` is available to the `sbcc-hub` PM2 process — either in its env or in `{HUB_REPO_ROOT}/.env` (set `HUB_REPO_ROOT` to a repo checkout on CT 211 so Claude also gets codebase context; without a checkout it still answers, just without repo files).
+3. Deploy as usual: build the hub bundle, copy to `/opt/sbcc-hub/apps/hub`, `pm2 restart sbcc-hub` (see `docs/HUB_SETUP.md`).
+4. **Verify (do NOT skip — standing rule):** open `hub:3010/chat`, toggle to **Claude (deep)**, ask a code question (e.g. "what does the override-learn window do?"), confirm a real answer returns. If it says "Claude is not available on the hub", revisit steps 1-2.
+
+Until deployed, the toggle is harmless on the running hub: the Fleet-model path is unchanged and default-selected.
+
 ## v2.81.0 — Fleet consistency: config + data-integrity + update-health + firmware audits (2026-06-19)
 
 **Branch landed:** main. Four more fleet-consistency dimensions (built by 4 parallel agents from the enhancement research), wired into `hermes-schema-drift-task.sh`. Full pipeline is now: deps → config → data-integrity → update-health → security → schema → firmware.
