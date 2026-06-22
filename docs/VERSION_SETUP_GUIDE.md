@@ -35,6 +35,49 @@ is the archive.
 
 ---
 
+## v2.82.1 — FLEET-FREEZE FIX: stop location boxes pushing TODO_LIST.md (2026-06-21)
+
+**Branch landed:** main. **This is the root-cause fix for the fleet auto-update freeze** (boxes stuck ~v2.73.8; v2.76–2.81 never propagated).
+
+**Root cause:** `apps/web/TODO_LIST.md` is a git-tracked, write-only mirror of the DB `Todo` table. `generateTodoListMarkdown` stamps a `Last Updated` timestamp so it diffs on *every* sync, and `commitAndPush` (`packages/utils/src/git-sync.ts`) ran on every todo change (watchers auto-file todos all day), doing `git commit` + `git push origin <current-branch>`. On a location box that's a continuous stream of pushes to `origin/location/*` that **raced auto-update's own push** to the same ref (non-fast-forward) and **guaranteed a TODO_LIST.md merge conflict every cycle** → rollback. Nothing reads TODO_LIST.md; the DB / System Admin UI is the source of truth.
+
+**Fix:** `commitAndPush` now commits/pushes the mirror **only from `main`** (the dev/hub box) or when an explicit `targetBranch` is set. Location boxes still *write* the local file (harmless DB mirror) but never commit/push it. Removes the racing pushes and the per-cycle conflict; the GitHub mirror on main is unchanged. No `auto-update.sh` change required.
+
+**Required Manual Steps — BREAK-GLASS per currently-frozen location box** (they can't receive this via auto-update — chicken-and-egg: the merge that delivers the fix is the merge that's failing). Run on each frozen box (SSH), or hand to hub-claude:
+```bash
+cd /home/ubuntu/Sports-Bar-TV-Controller
+git fetch origin main
+# Grab ONLY the fix files (NOT a blanket merge — -X theirs would blank location data, Gotcha #7):
+git checkout origin/main -- packages/utils/src/git-sync.ts scripts/auto-update.sh scripts/checkpoint-hermes.sh
+git commit -m "break-glass: v2.82.1 todo-sync gate + current auto-update on $(git branch --show-current)"
+rm -rf apps/web/.next .turbo node_modules/.cache
+npx turbo run build --force --filter=@sports-bar/web
+pm2 restart sports-bar-tv-controller
+# Bleeding stopped (box no longer pushes TODO_LIST.md). Now a normal run catches up the rest of main:
+bash scripts/auto-update.sh --triggered-by=manual_cli
+bash scripts/verify-install.sh   # confirm PASS
+```
+After break-glass, confirm the box advances off v2.73.8 (`node -p "require('./package.json').version"`) and that `origin/location/<branch>` stops accumulating `chore: Update TODO` commits. Boxes that are NOT frozen pick this up on their next normal auto-update.
+
+## v2.82.0 — SBCC Hub Phase C: "Ask Claude" path in the dashboard chat (2026-06-21)
+
+**Branch landed:** main. Hub-only change (`apps/hub`); does NOT ship via location auto-update — the hub is deployed manually on CT 211. Adds the deferred Phase C item (a): the dashboard maintenance chat at `hub:/chat` now has a **mode toggle** — *Fleet model* (existing, fast, small local model on CT 212, answers from hub DB) vs *Claude (deep)* (new, read-only Claude Code, reads the codebase for how/why diagnostics). Both are grounded with the same live `buildFleetContext()` snapshot.
+
+**New files:**
+- `apps/hub/src/lib/claude.ts` — `askClaude(messages)` spawns `claude -p <prompt> --permission-mode plan` (read-only; question passed as argv, not shell → not injectable). Mirrors the proven `runClaude()` in `packages/mcp/src/server.ts`: never-expiring `ANTHROPIC_API_KEY` from env or `{HUB_REPO_ROOT}/.env`, 300s timeout, graceful "not available" text if the CLI/key is missing (never crashes the route).
+- `apps/hub/src/app/api/chat/claude/route.ts` — `POST { messages | question } → { answer }`, `runtime = 'nodejs'`.
+- `apps/hub/src/app/chat/page.tsx` — mode toggle pills + Claude-aware "thinking" copy + per-mode subtitle.
+
+**Build:** `apps/hub` type-check clean + `next build` green; `/api/chat/claude` route registered. NOT live-verified on CT 211 yet (built + verified on Holmgren only — runtime needs the deploy below).
+
+**Required Manual Steps (on the hub box, CT 211 `100.124.165.26`, as root):**
+1. Ensure the Claude Code CLI is installed and on PATH (default expected at `/home/ubuntu/.local/bin/claude`; override with `CLAUDE_BIN`).
+2. Ensure `ANTHROPIC_API_KEY` is available to the `sbcc-hub` PM2 process — either in its env or in `{HUB_REPO_ROOT}/.env` (set `HUB_REPO_ROOT` to a repo checkout on CT 211 so Claude also gets codebase context; without a checkout it still answers, just without repo files).
+3. Deploy as usual: build the hub bundle, copy to `/opt/sbcc-hub/apps/hub`, `pm2 restart sbcc-hub` (see `docs/HUB_SETUP.md`).
+4. **Verify (do NOT skip — standing rule):** open `hub:3010/chat`, toggle to **Claude (deep)**, ask a code question (e.g. "what does the override-learn window do?"), confirm a real answer returns. If it says "Claude is not available on the hub", revisit steps 1-2.
+
+Until deployed, the toggle is harmless on the running hub: the Fleet-model path is unchanged and default-selected.
+
 ## v2.81.0 — Fleet consistency: config + data-integrity + update-health + firmware audits (2026-06-19)
 
 **Branch landed:** main. Four more fleet-consistency dimensions (built by 4 parallel agents from the enhancement research), wired into `hermes-schema-drift-task.sh`. Full pipeline is now: deps → config → data-integrity → update-health → security → schema → firmware.
