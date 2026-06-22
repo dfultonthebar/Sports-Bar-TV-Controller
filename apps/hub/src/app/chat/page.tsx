@@ -10,11 +10,14 @@ const SUGGESTIONS = [
   'Which box has the highest CPU or memory?',
 ]
 
+type Mode = 'fleet' | 'claude'
+
 export default function ChatPage() {
   const [messages, setMessages] = useState<Msg[]>([])
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [mode, setMode] = useState<Mode>('fleet')
   const endRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -30,7 +33,8 @@ export default function ChatPage() {
     setInput('')
     setBusy(true)
     try {
-      const res = await fetch('/api/chat', {
+      const endpoint = mode === 'claude' ? '/api/chat/claude' : '/api/chat'
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ messages: next }),
@@ -64,8 +68,38 @@ export default function ChatPage() {
         </a>
       </div>
       <p style={{ color: '#94a3b8', marginTop: 0, fontSize: 13 }}>
-        Grounded in live fleet health + the error feed · shared local model on the hub
+        Grounded in live fleet health + the error feed.{' '}
+        {mode === 'fleet'
+          ? 'Fast shared local model on the hub.'
+          : 'Claude Code (read-only) — deeper code/diagnostic answers, slower.'}
       </p>
+
+      {/* Mode toggle: fast local fleet model vs. deep Claude path (Phase C item a) */}
+      <div style={{ display: 'flex', gap: 6, margin: '0 0 10px' }}>
+        {([
+          ['fleet', 'Fleet model', 'Fast · answers from hub data'],
+          ['claude', 'Claude (deep)', 'Slower · reads the codebase'],
+        ] as const).map(([m, label, title]) => (
+          <button
+            key={m}
+            onClick={() => setMode(m)}
+            disabled={busy}
+            title={title}
+            style={{
+              padding: '5px 12px',
+              borderRadius: 999,
+              border: `1px solid ${mode === m ? '#2563eb' : '#1e293b'}`,
+              background: mode === m ? '#1d4ed8' : '#0b1220',
+              color: mode === m ? 'white' : '#94a3b8',
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: busy ? 'default' : 'pointer',
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
 
       <div
         style={{
@@ -117,7 +151,11 @@ export default function ChatPage() {
             </div>
           </div>
         ))}
-        {busy && <div style={{ color: '#64748b', fontSize: 13, marginTop: 8 }}>thinking…</div>}
+        {busy && (
+          <div style={{ color: '#64748b', fontSize: 13, marginTop: 8 }}>
+            {mode === 'claude' ? 'asking Claude… (deep reads can take a minute or two)' : 'thinking…'}
+          </div>
+        )}
         {error && (
           <div style={{ color: '#ef4444', fontSize: 13, marginTop: 8 }}>error: {error}</div>
         )}
