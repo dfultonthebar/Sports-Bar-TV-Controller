@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Update the preset's usage count and last used timestamp
-    await update('channelPresets', presetId as string, {
+    await update('channelPresets', eq(schema.channelPresets.id, presetId as string), {
       usageCount: currentPreset.usageCount + 1,
       lastUsed: new Date().toISOString()
     })

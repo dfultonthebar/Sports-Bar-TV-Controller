@@ -34,7 +34,7 @@ export async function DELETE(request: NextRequest) {
     clearSoundtrackAPI()
 
     // Update the config to mark it as needing re-authentication
-    await update('soundtrackConfigs', config.id, {
+    await update('soundtrackConfigs', eq(schema.soundtrackConfigs.id, config.id), {
       isActive: false,
       lastSync: null
     })
