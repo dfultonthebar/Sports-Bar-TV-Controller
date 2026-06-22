@@ -35,6 +35,30 @@ is the archive.
 
 ---
 
+## v2.82.1 — FLEET-FREEZE FIX: stop location boxes pushing TODO_LIST.md (2026-06-21)
+
+**Branch landed:** main. **This is the root-cause fix for the fleet auto-update freeze** (boxes stuck ~v2.73.8; v2.76–2.81 never propagated).
+
+**Root cause:** `apps/web/TODO_LIST.md` is a git-tracked, write-only mirror of the DB `Todo` table. `generateTodoListMarkdown` stamps a `Last Updated` timestamp so it diffs on *every* sync, and `commitAndPush` (`packages/utils/src/git-sync.ts`) ran on every todo change (watchers auto-file todos all day), doing `git commit` + `git push origin <current-branch>`. On a location box that's a continuous stream of pushes to `origin/location/*` that **raced auto-update's own push** to the same ref (non-fast-forward) and **guaranteed a TODO_LIST.md merge conflict every cycle** → rollback. Nothing reads TODO_LIST.md; the DB / System Admin UI is the source of truth.
+
+**Fix:** `commitAndPush` now commits/pushes the mirror **only from `main`** (the dev/hub box) or when an explicit `targetBranch` is set. Location boxes still *write* the local file (harmless DB mirror) but never commit/push it. Removes the racing pushes and the per-cycle conflict; the GitHub mirror on main is unchanged. No `auto-update.sh` change required.
+
+**Required Manual Steps — BREAK-GLASS per currently-frozen location box** (they can't receive this via auto-update — chicken-and-egg: the merge that delivers the fix is the merge that's failing). Run on each frozen box (SSH), or hand to hub-claude:
+```bash
+cd /home/ubuntu/Sports-Bar-TV-Controller
+git fetch origin main
+# Grab ONLY the fix files (NOT a blanket merge — -X theirs would blank location data, Gotcha #7):
+git checkout origin/main -- packages/utils/src/git-sync.ts scripts/auto-update.sh scripts/checkpoint-hermes.sh
+git commit -m "break-glass: v2.82.1 todo-sync gate + current auto-update on $(git branch --show-current)"
+rm -rf apps/web/.next .turbo node_modules/.cache
+npx turbo run build --force --filter=@sports-bar/web
+pm2 restart sports-bar-tv-controller
+# Bleeding stopped (box no longer pushes TODO_LIST.md). Now a normal run catches up the rest of main:
+bash scripts/auto-update.sh --triggered-by=manual_cli
+bash scripts/verify-install.sh   # confirm PASS
+```
+After break-glass, confirm the box advances off v2.73.8 (`node -p "require('./package.json').version"`) and that `origin/location/<branch>` stops accumulating `chore: Update TODO` commits. Boxes that are NOT frozen pick this up on their next normal auto-update.
+
 ## v2.82.0 — SBCC Hub Phase C: "Ask Claude" path in the dashboard chat (2026-06-21)
 
 **Branch landed:** main. Hub-only change (`apps/hub`); does NOT ship via location auto-update — the hub is deployed manually on CT 211. Adds the deferred Phase C item (a): the dashboard maintenance chat at `hub:/chat` now has a **mode toggle** — *Fleet model* (existing, fast, small local model on CT 212, answers from hub DB) vs *Claude (deep)* (new, read-only Claude Code, reads the codebase for how/why diagnostics). Both are grounded with the same live `buildFleetContext()` snapshot.
