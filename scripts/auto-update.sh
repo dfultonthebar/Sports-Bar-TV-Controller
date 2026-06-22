@@ -858,20 +858,30 @@ if [ "$TRIGGERED_BY" = "cron" ]; then
   fi
 fi
 
-# 2. Claude reachability — API path preferred, CLI as fallback
+# 2. Reviewer reachability — LOCAL AI (v2.73.0+) is PRIMARY; Claude is fallback.
+# If the local-AI checkpoint (checkpoint-hermes.sh + a reachable Ollama) is
+# available, a missing Claude reviewer is DOWNGRADED to a warning instead of a
+# hard preflight fail — local AI alone is sufficient to gate the update. This is
+# what lets a fresh box that has Ollama (e.g. Lime Kiln) self-update without the
+# Claude Code CLI installed (v2.81.2 — "push the local AI").
+LOCAL_AI_REVIEWER=0
+if [ -x "$REPO_ROOT/scripts/checkpoint-hermes.sh" ]; then
+  _ollama_base="${OLLAMA_REMOTE_BASE:-http://localhost:11434}"
+  if curl -s --max-time 5 "${_ollama_base}/api/version" >/dev/null 2>&1; then
+    LOCAL_AI_REVIEWER=1
+    log "Reviewer: LOCAL AI primary (checkpoint-hermes + Ollama ${_ollama_base})"
+  fi
+fi
 if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
   command -v curl >/dev/null 2>&1 || fail "curl not on PATH (required for Anthropic API)" 2
   command -v python3 >/dev/null 2>&1 || fail "python3 not on PATH (required for API JSON build)" 2
-  log "Claude path: Anthropic API (model=${CLAUDE_API_MODEL:-claude-opus-4-7})"
+  log "Claude path: Anthropic API (model=${CLAUDE_API_MODEL:-claude-opus-4-7}) — fallback to local AI primary"
+elif command -v claude >/dev/null 2>&1 && timeout 15 claude --version >/dev/null 2>&1; then
+  log "Claude path: Claude Code CLI ($(claude --version 2>/dev/null | head -1)) — fallback to local AI primary"
+elif [ "$LOCAL_AI_REVIEWER" = "1" ]; then
+  log "WARN: no Claude reviewer (no ANTHROPIC_API_KEY, no Claude CLI) — LOCAL AI is sufficient; proceeding with local-AI-only checkpoints."
 else
-  command -v claude >/dev/null 2>&1 || fail "Neither ANTHROPIC_API_KEY set nor Claude Code CLI installed" 2
-  if ! timeout 15 claude --version >/dev/null 2>&1; then
-    fail "Claude Code CLI not responding (--version failed or timed out)" 2
-  fi
-  log "Claude path: Claude Code CLI ($(claude --version 2>/dev/null | head -1))"
-  log "WARN: ANTHROPIC_API_KEY missing from .env — using subscription CLI path."
-  log "WARN: This path has a monthly token cap. To switch to the API path:"
-  log "WARN:   echo 'ANTHROPIC_API_KEY=sk-ant-...' >> $REPO_ROOT/.env"
+  fail "No reviewer available: neither LOCAL AI (Ollama + checkpoint-hermes.sh) nor ANTHROPIC_API_KEY nor Claude Code CLI" 2
 fi
 
 # 3. Verify/rollback scripts present and executable
