@@ -118,5 +118,7 @@ the Hermes host:
 mkdir -p ~/.hermes/skills/sports-bar-iso-audit
 cp /path/to/repo/scripts/hermes-skills/sports-bar-iso-audit/SKILL.md \
    ~/.hermes/skills/sports-bar-iso-audit/SKILL.md
-systemctl --user restart hermes-gateway   # reload skills
+sudo systemctl restart hermes-gateway   # reload skills — gateway is SYSTEM-scoped
+                                        # (NOT `systemctl --user` — that wakes a
+                                        #  removed user-unit duplicate into a crash-loop)
 ```
