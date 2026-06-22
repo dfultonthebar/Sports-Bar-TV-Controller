@@ -202,6 +202,29 @@ async function commitAndPush(
       await execAsync(`git config user.email "${config.gitUserEmail}"`, { cwd: config.projectRoot });
     }
 
+    // Determine the branch BEFORE touching the index, so a location box bails
+    // out without ever staging the file.
+    const { stdout: branchOut } = await execAsync('git rev-parse --abbrev-ref HEAD', { cwd: config.projectRoot });
+    const currentBranch = branchOut.trim();
+    const pushBranch = config.targetBranch || currentBranch;
+
+    // FLEET-FREEZE FIX (v2.82.1): the TODO_LIST.md git mirror is maintained ONLY
+    // from `main` (the dev/hub box). On a location box the file is still written
+    // locally (a DB mirror — see syncTodosToGitHub) but is NEVER committed/pushed.
+    //
+    // Why: TODO_LIST.md churns on every todo change (watchers auto-file todos all
+    // day) AND always diffs because generateTodoListMarkdown stamps a "Last Updated"
+    // timestamp. Committing+pushing that to origin/location/* on every change raced
+    // auto-update's own push to the same ref (non-fast-forward) and guaranteed a
+    // TODO_LIST.md merge conflict every cycle — which froze the entire fleet at
+    // v2.73.8 (v2.76-2.81 never propagated). Nothing reads TODO_LIST.md; the DB
+    // (Todo table / System Admin UI) is the source of truth. An explicit
+    // config.targetBranch still forces a sync (e.g. a deliberate hub-side push).
+    if (!config.targetBranch && currentBranch !== 'main') {
+      logger.info(`Git sync: on '${currentBranch}' (not main) — TODO_LIST.md written locally, not committed/pushed (DB is source of truth)`);
+      return;
+    }
+
     // Add TODO_LIST.md
     await execAsync(`git add ${config.todoListFilename}`, { cwd: config.projectRoot });
 
@@ -212,12 +235,7 @@ async function commitAndPush(
       // Commit
       await execAsync(`git commit -m "${message}"`, { cwd: config.projectRoot });
 
-      // Push to the CURRENT branch — never a hardcoded 'main'. Location boxes must
-      // not push to main (Standing Rule 9); a stray commit on a box's local main
-      // otherwise causes a permanent non-fast-forward rejection loop (the Leg Lamp
-      // ERROR-spam, v2.67.2). An explicit config.targetBranch still overrides.
-      const { stdout: branchOut } = await execAsync('git rev-parse --abbrev-ref HEAD', { cwd: config.projectRoot });
-      const pushBranch = config.targetBranch || branchOut.trim();
+      // Push to the resolved branch (main, or an explicit targetBranch override).
 
       if (!pushBranch || pushBranch === 'HEAD') {
         logger.info('Git sync: committed locally; skipping push (detached/unknown branch)');
