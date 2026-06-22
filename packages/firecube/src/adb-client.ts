@@ -22,6 +22,11 @@ export class ADBClient {
   private reconnectAttempts: number = 0
   private maxReconnectAttempts: number = 5
   private baseReconnectDelay: number = 1000
+  // v2.82.5 — per-device command chain. ALL adb shell commands to this Cube
+  // run in-order through this single promise chain so two callers can never
+  // race the same device's adb connection (the #1 Fire TV reliability gap per
+  // the T4 architecture review). A failed job never poisons the chain.
+  private commandChain: Promise<unknown> = Promise.resolve()
 
   constructor(ipAddress: string, port: number = 5555, options: ADBConnectionOptions = {}) {
     this.ipAddress = ipAddress
@@ -250,23 +255,70 @@ export class ADBClient {
     }
   }
 
-  async executeShellCommand(command: string, timeoutMs: number = 3000): Promise<string> {
+  /**
+   * Serialize a job onto this device's single command chain (v2.82.5). Two
+   * callers can never have an `adb shell` to the same Cube in flight at once.
+   * A job that throws does NOT poison the chain — the next job still runs.
+   */
+  private enqueue<T>(job: () => Promise<T>): Promise<T> {
+    const run = this.commandChain.then(job, job)
+    this.commandChain = run.then(() => {}, () => {})
+    return run as Promise<T>
+  }
+
+  /**
+   * Lightweight reconnect used between command retries: just re-issues
+   * `adb connect` (idempotent — "already connected" is fine). Deliberately
+   * does NOT call connect()/startKeepAlive() so retries don't churn the
+   * keep-alive timer; the keep-alive loop owns sustained-outage reconnection.
+   */
+  private async lightReconnect(): Promise<void> {
     try {
-      // Use -T flag (no TTY allocation) for faster execution - 2x speed improvement
-      const adbCommand = `adb -s ${this.deviceAddress} shell -T "${command}"`
-      const { stdout } = await execAsync(adbCommand, { timeout: timeoutMs })
-      return stdout.trim()
-    } catch (error: any) {
-      const errorMsg = error.message || 'Unknown error'
-      const stderr = error.stderr || ''
-      const fullError = stderr ? `${errorMsg} - ${stderr}` : errorMsg
-      // DEBUG, not ERROR — this function throws, callers decide whether
-      // the failure is worth logging. Avoids the triple-log pattern with
-      // sendKey/launchApp + the API route's catch block when a Fire TV
-      // is powered off. Demote pattern mirrors v2.54.6 (firetv-health-monitor).
-      logger.debug(`[ADB CLIENT] Execute command error for ${this.deviceAddress}: ${fullError}`)
-      throw error
+      await execAsync(`adb connect ${this.deviceAddress}`, { timeout: this.options.connectionTimeout })
+    } catch {
+      // best-effort; if the device is truly gone the retry will surface it
     }
+  }
+
+  /**
+   * Execute an adb shell command on this Cube.
+   *
+   * - SERIALIZED per-device (via the command chain) — always on, transparent.
+   * - `timeoutMs` is per-call ON PURPOSE: uiautomator dumps need >=10000ms,
+   *   taps/keyevents ~3000ms. The 3000ms default silently truncates dumps
+   *   (documented gotcha) — pass a larger value for dump-style commands.
+   * - `opts.retries` (default 0 = unchanged fast-fail behavior) adds bounded
+   *   retry-with-lightweight-reconnect for callers that prefer resilience over
+   *   fast offline-detection. Backoff is 300ms * 2^attempt.
+   */
+  async executeShellCommand(command: string, timeoutMs: number = 3000, opts: { retries?: number } = {}): Promise<string> {
+    const retries = opts.retries ?? 0
+    return this.enqueue(async () => {
+      for (let attempt = 0; ; attempt++) {
+        try {
+          // Use -T flag (no TTY allocation) for faster execution - 2x speed improvement
+          const adbCommand = `adb -s ${this.deviceAddress} shell -T "${command}"`
+          const { stdout } = await execAsync(adbCommand, { timeout: timeoutMs })
+          return stdout.trim()
+        } catch (error: any) {
+          if (attempt >= retries) {
+            const errorMsg = error.message || 'Unknown error'
+            const stderr = error.stderr || ''
+            const fullError = stderr ? `${errorMsg} - ${stderr}` : errorMsg
+            // DEBUG, not ERROR — this function throws, callers decide whether
+            // the failure is worth logging. Avoids the triple-log pattern with
+            // sendKey/launchApp + the API route's catch block when a Fire TV
+            // is powered off. Demote pattern mirrors v2.54.6 (firetv-health-monitor).
+            logger.debug(`[ADB CLIENT] Execute command error for ${this.deviceAddress}: ${fullError}`)
+            throw error
+          }
+          // Transient failure (usually a dead socket): lightweight reconnect +
+          // exponential backoff, then retry. Only reached when retries > 0.
+          await this.lightReconnect()
+          await new Promise(resolve => setTimeout(resolve, 300 * Math.pow(2, attempt)))
+        }
+      }
+    })
   }
 
   /**
