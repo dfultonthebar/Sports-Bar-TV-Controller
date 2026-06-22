@@ -948,7 +948,7 @@ check_shure_pending_resync_table_present() {
 # code when only one check failed (helps the auto-updater decide what to roll
 # back), but always run every check so the operator sees the full picture.
 # ---------------------------------------------------------------------------
-TOTAL=18
+TOTAL=20
 PASSED=0
 FAILED_NAMES=""
 FIRST_FAIL_CODE=0
@@ -1086,6 +1086,151 @@ check_auth_bootstrap_complete() {
     return 0
 }
 
+# ---------------------------------------------------------------------------
+# Check 28 (Lime Kiln audit 2026-06-22): production build artifact present.
+# ---------------------------------------------------------------------------
+# Root cause of the Lime Kiln 2-day invisible outage: PM2 started Next.js in
+# production mode with NO production build, so every boot died on
+#   "Could not find a production build in the '.next' directory"
+# PM2 restarted, died again, 5251x — health was down, no green signal anywhere.
+# `npm run build` writes apps/web/.next/BUILD_ID on a successful build; its
+# absence is the deterministic tell that the build never produced a runnable
+# artifact (build failed, was interrupted, or .next was wiped after build but
+# before `pm2 start`). check_pm2 catches the resulting crash loop, but THIS
+# check names the actual cause so the operator fixes it in one step.
+check_production_build_present() {
+    log_info "Checking production build artifact (apps/web/.next/BUILD_ID)..."
+    local app_dir="/home/ubuntu/Sports-Bar-TV-Controller"
+    local next_dir="$app_dir/apps/web/.next"
+    local build_id="$next_dir/BUILD_ID"
+
+    if [ ! -d "$next_dir" ]; then
+        log_fail ".next directory missing ($next_dir) — no production build. PM2 will restart-storm on 'Could not find a production build in the .next directory'. Run: cd $app_dir && npm run build && pm2 restart sports-bar-tv-controller"
+        record "production_build_present" 0 ".next dir missing"
+        return 28
+    fi
+    if [ ! -f "$build_id" ]; then
+        log_fail ".next exists but BUILD_ID missing ($build_id) — build incomplete/interrupted. PM2 will restart-storm on a missing production build. Run: cd $app_dir && rm -rf apps/web/.next && npm run build && pm2 restart sports-bar-tv-controller"
+        record "production_build_present" 0 "BUILD_ID missing"
+        return 28
+    fi
+
+    log_pass "Production build present (BUILD_ID=$(head -c 16 "$build_id" 2>/dev/null))"
+    record "production_build_present" 1 "BUILD_ID present"
+    return 0
+}
+
+# ---------------------------------------------------------------------------
+# Check 29 (Lime Kiln audit 2026-06-22): registered on the SBCC fleet hub.
+# ---------------------------------------------------------------------------
+# Second half of the Lime Kiln invisible outage: the box was restart-storming
+# AND was never registered on the central SBCC hub (CT211, 100.124.165.26), so
+# no fleet dashboard / heartbeat ever showed it down. The hub runs one PM2
+# process per location named `agent-<slug>` (e.g. agent-graystone,
+# agent-luckys-1313). This check resolves THIS box's slug, reaches the hub over
+# Tailscale SSH, pulls the hub's PM2 list, and confirms an `agent-<slug>` proc
+# exists and is online.
+#
+# WARN (non-fatal) if the hub is UNREACHABLE from this box — a down
+# Tailscale/SSH/hub is not a reason to fail or roll back a local install, and
+# in --json/auto-update mode a FAIL here would trap a healthy build in an
+# infinite rollback loop (same rule as check_autoupdate_timer_fresh /
+# check_auth_bootstrap_complete). FAIL if the hub IS reachable but has no
+# online agent for this box — the exact gap that made Lime Kiln invisible.
+SBCC_HUB_HOST="${SBCC_HUB_HOST:-100.124.165.26}"     # CT211
+SBCC_HUB_USER="${SBCC_HUB_USER:-root}"               # hub agents run under ROOT's pm2 (ubuntu has no sudo there)
+check_hub_agent_registered() {
+    log_info "Checking SBCC hub (${SBCC_HUB_USER}@${SBCC_HUB_HOST}) for this box's agent-<slug> proc..."
+
+    # Mode-aware (mirrors check_autoupdate_timer_fresh): hard-FAIL interactively so
+    # an operator sees the gap loud, but WARN (return 0) in --json/auto-update mode
+    # — a missing/offline hub agent is a fleet-VISIBILITY gap, not a reason to roll
+    # back a healthy box's software. Hub-UNREACHABLE is WARN in both modes (purely
+    # environmental). The audit skill runs --json, so it sees WARN + spotlights it.
+    local env_file="/home/ubuntu/Sports-Bar-TV-Controller/.env"
+    local loc_name="" loc_id=""
+    if [ -f "$env_file" ]; then
+        loc_name=$(grep -E '^LOCATION_NAME=' "$env_file" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'")
+        loc_id=$(grep -E '^LOCATION_ID=' "$env_file" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'")
+    fi
+    # LOCATION_NAME is the human label ("Holmgren"); LOCATION_ID is a UUID (useless
+    # for slug matching). Prefer the name, fall back to hostname.
+    local raw="${loc_name:-$(hostname)}"
+    local slug
+    slug=$(echo "$raw" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-//; s/-$//')
+
+    if [ -z "$slug" ]; then
+        log_warn "Could not resolve a location slug (LOCATION_NAME / hostname empty) — skipping hub-agent check"
+        record "hub_agent_registered" 1 "WARN: slug unresolved (skipped)"
+        return 0
+    fi
+
+    local hub_jlist
+    hub_jlist=$(ssh -o BatchMode=yes -o ConnectTimeout=8 -o StrictHostKeyChecking=accept-new \
+        "${SBCC_HUB_USER}@${SBCC_HUB_HOST}" 'pm2 jlist' 2>/dev/null || echo "")
+
+    if [ -z "$hub_jlist" ]; then
+        log_warn "SBCC hub ${SBCC_HUB_HOST} unreachable as ${SBCC_HUB_USER} (Tailscale/SSH/pm2 down or key not authorized) — cannot confirm agent-${slug} registration. Non-fatal."
+        record "hub_agent_registered" 1 "WARN: hub unreachable (slug=${slug})"
+        return 0
+    fi
+
+    # Fuzzy bidirectional match: LOCATION_NAME "Holmgren" -> slug "holmgren" must
+    # match hub proc "agent-holmgren-way"; "Stoneyard Greenville" -> slug contains
+    # the agent's "greenville". Compare alphanumeric-only, length>=4 to avoid
+    # trivial collisions.
+    local match
+    match=$(node -e "
+        try {
+            const list = JSON.parse(process.argv[1]);
+            const norm = s => String(s).toLowerCase().replace(/[^a-z0-9]/g,'');
+            const slug = norm(process.argv[2]);
+            const agents = list.filter(p => p && typeof p.name === 'string' && p.name.startsWith('agent-'));
+            const hit = agents.find(p => { const a = norm(p.name.slice(6)); return a.length>=4 && slug.length>=4 && (a.includes(slug) || slug.includes(a)); });
+            if (!hit) { console.log('NONE|' + agents.map(a => a.name).join(',')); process.exit(0); }
+            const status = (hit.pm2_env && hit.pm2_env.status) || 'unknown';
+            console.log('FOUND|' + hit.name + '|' + status);
+        } catch (e) { console.log('PARSEERR'); }
+    " "$hub_jlist" "$slug" 2>/dev/null || echo "PARSEERR")
+
+    if [ "$match" = "PARSEERR" ]; then
+        log_warn "Could not parse hub pm2 jlist output — non-fatal, re-check the hub manually"
+        record "hub_agent_registered" 1 "WARN: hub jlist parse error"
+        return 0
+    fi
+
+    local kind="${match%%|*}"
+    if [ "$kind" = "FOUND" ]; then
+        local rest="${match#FOUND|}"
+        local name="${rest%%|*}"
+        local status="${rest#*|}"
+        if [ "$status" = "online" ]; then
+            log_pass "Registered on SBCC hub as ${name} (online)"
+            record "hub_agent_registered" 1 "${name} online"
+            return 0
+        fi
+        if [ "$JSON" -eq 1 ]; then
+            log_warn "Hub agent ${name} status='${status}' (not online) — NOT failing the update (hub-side state). Restart on the hub: ssh ${SBCC_HUB_USER}@${SBCC_HUB_HOST} 'pm2 restart ${name}'"
+            record "hub_agent_registered" 1 "WARN: ${name} status=${status}"
+            return 0
+        fi
+        log_fail "Hub agent ${name} exists but status='${status}' (not online). Restart it on the hub: ssh ${SBCC_HUB_USER}@${SBCC_HUB_HOST} 'pm2 restart ${name}'"
+        record "hub_agent_registered" 0 "${name} status=${status}"
+        return 29
+    fi
+
+    # NONE — hub reachable but no agent for this box (the Lime Kiln visibility gap).
+    local existing="${match#NONE|}"
+    if [ "$JSON" -eq 1 ]; then
+        log_warn "SBCC hub ${SBCC_HUB_HOST} reachable but has NO agent for this box (slug=${slug}) — fleet-visibility gap, NOT failing the update (hub-side deploy). This box is INVISIBLE to the dashboard (Lime Kiln 2-day-outage class). Deploy agent-<slug> on the hub. Existing: ${existing:-none}"
+        record "hub_agent_registered" 1 "WARN: no agent for ${slug} (hub has: ${existing:-none})"
+        return 0
+    fi
+    log_fail "SBCC hub ${SBCC_HUB_HOST} reachable but has NO agent for this box (slug=${slug}). This box is INVISIBLE to the fleet dashboard (Lime Kiln 2-day-outage class). Deploy the per-location central agent on the hub (start its agent-<slug> PM2 proc per the hub deploy runbook). Existing hub agents: ${existing:-none}"
+    record "hub_agent_registered" 0 "no agent for ${slug} (hub has: ${existing:-none})"
+    return 29
+}
+
 run_check check_pm2             "pm2_online"
 run_check check_health_http     "health_http"
 run_check check_metrics_http    "metrics_http"
@@ -1105,6 +1250,9 @@ run_check check_atlas_priority_watcher_alive "atlas_priority_watcher_alive"
 run_check check_node_symlink_present         "node_symlink_present"
 run_check check_shure_pending_resync_table_present "shure_pending_resync_table_present"
 run_check check_auth_bootstrap_complete      "auth_bootstrap_complete"
+# Lime Kiln audit 2026-06-22 — restart-storm root cause + fleet visibility gap
+run_check check_production_build_present "production_build_present"
+run_check check_hub_agent_registered     "hub_agent_registered"
 
 END_EPOCH=$(date +%s)
 DURATION=$((END_EPOCH - START_EPOCH))
