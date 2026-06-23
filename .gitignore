@@ -173,3 +173,6 @@ apps/web/data/tree-dumps/
 
 # Agent worktrees (transient subagent workspaces)
 .claude/worktrees/
+
+# Bartender-doc LLM review queue (transient suggestions, regenerated nightly)
+docs/bartender-help/_reviews/
