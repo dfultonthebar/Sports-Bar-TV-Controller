@@ -66,17 +66,22 @@ export async function POST(request: NextRequest) {
   try {
     const now = new Date().toISOString()
     const id = crypto.randomUUID()
+    const fileType = body.fileType || 'md'
     const tagsJson = body.tags && body.tags.length ? JSON.stringify(body.tags) : null
+    // prod TrainingDocument has fileName/filePath/fileSize NOT NULL — provide all three.
+    const slug = body.title.replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase().slice(0, 60) || id
     const doc = {
       id,
       title: body.title,
       content: body.content,
-      fileType: body.fileType || 'md',
+      fileType,
+      fileName: `${slug}.${fileType}`,
       category: body.category ?? null,
       tags: tagsJson,
       description: body.description ?? null,
-      filePath: trainingDocFilepath({ id, category: body.category, fileType: body.fileType }),
+      filePath: trainingDocFilepath({ id, category: body.category, fileType }),
       fileSize: body.content.length,
+      viewCount: 0,
       isActive: true,
       createdAt: now,
       updatedAt: now,
