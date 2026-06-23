@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db, schema } from '@/db'
-import { eq, and, or, gte, lte, inArray } from 'drizzle-orm'
+import { eq, and, or, gte, lte, inArray, sql } from 'drizzle-orm'
 import { logger } from '@sports-bar/logger'
 import {
   logSchedulingEvent,
@@ -419,6 +419,22 @@ export async function POST(request: NextRequest) {
     }
 
     await db.insert(schema.inputSourceAllocations).values(allocation)
+
+    // v2.82.16 — Close the AI-suggestion audit loop: if this allocation fulfills a game the
+    // AI suggested, flip the matching ai_schedule_suggestions row to 'applied', link the
+    // allocation, and record the actual TVs (so suggested_tv_output_ids vs modified_tv_output_ids
+    // shows whether the operator changed the AI's pick). Best-effort — the table may not exist
+    // on a box that never ran AI Suggest; never blocks. Manual (non-AI) schedules match 0 rows.
+    try {
+      const reviewUnix = Math.floor(Date.now() / 1000)
+      await db.run(sql`UPDATE ai_schedule_suggestions
+        SET status='applied', applied_allocation_id=${allocation.id},
+            modified_tv_output_ids=${JSON.stringify(finalTvOutputIds)},
+            reviewed_by='bartender', reviewed_at=${reviewUnix}, updated_at=${reviewUnix}
+        WHERE game_schedule_id=${gameSchedule.id} AND status='suggested'`)
+    } catch (e) {
+      logger.warn('[BARTENDER-SCHEDULE] Failed to mark AI suggestion applied (non-fatal):', e)
+    }
 
     logger.info(`[BARTENDER-SCHEDULE] Created allocation: ${allocation.id} for ${inputSource.name} to ch ${channelNumber} at ${tuneAt}`)
 

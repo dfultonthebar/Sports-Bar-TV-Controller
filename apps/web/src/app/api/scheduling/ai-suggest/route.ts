@@ -1557,6 +1557,42 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // v2.82.16 — Persist the AI's suggestions to ai_schedule_suggestions so there is a real
+    // audit trail of WHAT the AI proposed (operator request 2026-06-23). The table existed in
+    // prod but was never written by any code. Best-effort: a failure here MUST NOT block the
+    // response. Raw SQL + CREATE TABLE IF NOT EXISTS because the table isn't modeled in the
+    // Drizzle schema (orphan) — this also self-heals it onto any box that lacks it, without a
+    // risky migration on a pre-existing table (Gotcha #6). The apply path
+    // (bartender-schedule) flips status to 'applied' + links the allocation.
+    if (suggestions.length > 0) {
+      try {
+        const batchId = crypto.randomUUID()
+        const nowUnix = Math.floor(Date.now() / 1000)
+        const expiresAt = nowUnix + 12 * 60 * 60
+        await db.run(sql`CREATE TABLE IF NOT EXISTS ai_schedule_suggestions (
+          id TEXT PRIMARY KEY, batch_id TEXT, game_schedule_id TEXT, suggested_input_source_id TEXT,
+          suggested_channel_number TEXT, suggested_app_name TEXT, suggested_tv_output_ids TEXT,
+          suggested_tv_count INTEGER, confidence_score REAL, reasoning TEXT, reasoning_factors TEXT,
+          game_priority_score INTEGER, conflicts_detected TEXT, status TEXT, reviewed_by TEXT,
+          reviewed_at INTEGER, review_notes TEXT, modified_input_source_id TEXT,
+          modified_channel_number TEXT, modified_tv_output_ids TEXT, applied_allocation_id TEXT,
+          created_at INTEGER, updated_at INTEGER, expires_at INTEGER)`)
+        for (const s of suggestions) {
+          const outs = Array.isArray(s.suggestedOutputs) ? s.suggestedOutputs : []
+          await db.run(sql`INSERT INTO ai_schedule_suggestions
+            (id, batch_id, game_schedule_id, suggested_input_source_id, suggested_channel_number,
+             suggested_app_name, suggested_tv_output_ids, suggested_tv_count, confidence_score,
+             reasoning, status, created_at, updated_at, expires_at)
+            VALUES (${crypto.randomUUID()}, ${batchId}, ${s.gameId}, ${s.suggestedInputId || ''},
+             ${s.channelNumber || ''}, ${s.appName || ''}, ${JSON.stringify(outs)}, ${outs.length},
+             ${s.confidence}, ${s.reasoning || ''}, 'suggested', ${nowUnix}, ${nowUnix}, ${expiresAt})`)
+        }
+        logger.info(`[AI-SUGGEST] Persisted ${suggestions.length} suggestion(s) to ai_schedule_suggestions (batch ${batchId})`)
+      } catch (persistErr) {
+        logger.warn('[AI-SUGGEST] Failed to persist suggestions audit:', persistErr)
+      }
+    }
+
     logger.api.response('GET', '/api/scheduling/ai-suggest', 200, {
       gamesAnalyzed: games.length,
       suggestionsReturned: suggestions.length,
