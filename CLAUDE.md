@@ -633,6 +633,16 @@ Three non-obvious requirements (each cost an iteration):
 
 **dnsmasq proxy-DHCP gotcha (same fix commit):** in PROXY mode dnsmasq uses `pxe-service=` for the firmware boot stage, NOT `dhcp-boot=` (which is silently ignored under proxy → `PXE-E16: No valid offer received`). `dhcp-boot=` only works in authoritative DHCP mode. `configure-netboot-menu.sh` now extracts kernel/initrd/seed from the ISO on every run and emits both fixes.
 
+### 20. Fleet SSH is KEYS-ONLY + ufw-firewalled (2026-06-22 cryptominer incident)
+
+Graystone was root-compromised via the **leaked, shared fleet SSH password** (an automated bot SSH'd in as `ubuntu`, sudo'd to root, dropped a fileless XMRig miner — full IOCs in the `project_security_incident_graystone_xmrig` memory). All 7 boxes were then hardened — know this before you try to reach a box:
+
+- **SSH password auth is OFF on every box** (`PasswordAuthentication no` via `/etc/ssh/sshd_config.d/00-fleet-keysonly.conf`). **Key auth only.** If `sshpass`/password SSH suddenly returns "Permission denied (publickey)", *this is why* — use the `holmgren-claude-fleet` key (Holmgren `~/.ssh/id_ed25519`, present in every box's `authorized_keys`; CT212 also has `ct212-hermes-fleet`). luckys runs older OpenSSH (needs bare `PasswordAuthentication no`, no `KbdInteractiveAuthentication`, + `/run/sshd` to exist for `sshd -t`).
+- **ufw active on all 7** — default deny incoming, allow only `tailscale0` + RFC1918 + `100.64.0.0/10`. **Public SSH / RDP(3389) / Ollama(:11434) / app are BLOCKED** — reach boxes over Tailscale or LAN. A new service that must be publicly reachable won't work without a ufw rule (don't add one — keep it Tailscale/LAN). ufw was applied with a 120s `systemd-run` auto-revert per box to avoid lockout.
+- **Outbound mining pools sinkholed** (`/etc/hosts` 0.0.0.0 + `ufw deny out` to the Kryptex IPs) as defense-in-depth.
+- **Re-infection watch:** `fleet-miner-watch` Hermes cron (every 15 min, IOC scan → Telegram) on CT212.
+- The leaked password (`feedback_password_leak_in_git_history`) is **defanged** (password auth off) but **not yet rotated** — still an open hygiene item.
+
 ## Development Workflow
 
 ### Standing Rules (MUST follow in every session)
