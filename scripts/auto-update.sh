@@ -218,6 +218,12 @@ fail() {
       "http://localhost:3001/api/auto-update/failures" -d "$payload" >/dev/null 2>&1 || true
   fi
 
+  # Flywheel hook (best-effort): log the auto-update FAILURE outcome to the Honcho
+  # ops corpus (sports-bar/fleet-ops) so the fleet-ops-LLM learns failure->cause.
+  curl -sS -m 6 -X POST -H 'Content-Type: application/json' \
+    "http://100.90.175.125:8000/v3/workspaces/sports-bar/sessions/fleet-ops-log/messages" \
+    -d "$(printf '%s' "auto-update FAILED on $(hostname) at step '$CURRENT_STEP': $reason (version ${PRE_MERGE_VERSION:-?}, triggered-by ${TRIGGERED_BY:-?})" | python3 -c 'import sys,json; print(json.dumps({"messages":[{"peer_id":"fleet-ops","content":sys.stdin.read()}]}))')" >/dev/null 2>&1 || true
+
   update_last_attempt_sidecar "fail"
   exit "${2:-4}"
 }
