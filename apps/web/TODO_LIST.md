@@ -10,6 +10,17 @@ Last Updated: 6/22/2026, 9:44:22 PM
 
 ## 📋 Planned
 
+### Rotate the leaked/shared fleet SSH password (defanged by keys-only, not yet rotated)
+
+- **ID**: `422c111e-d18f-499f-8645-90dd881a2d00`
+- **Priority**: medium
+- **Status**: PLANNED
+- **Category**: security
+- **Description**: Shared fleet SSH password (leaked in git history, feedback_password_leak_in_git_history) was the graystone-compromise vector 2026-06-22. Password auth now OFF fleet-wide (keys-only) -> DEFANGED, but the password is still set + still in git history. Rotate + scrub per threat model. Low urgency (vector closed), open hygiene.
+- **Tags**: security, ssh, fleet
+- **Created**: 6/23/2026, 2:44:22 AM
+- **Updated**: 6/22/2026, 9:44:22 PM
+
 ### Guard against PM2 restart-storm on missing .next build (fresh-box / failed-build)
 
 - **ID**: `514b131c-baa5-446f-ade9-87cbbcc73e9c`
@@ -61,9 +72,11 @@ This directly improves SOURCE PROBING reliability (operator goal 2026-06-22: pro
 
 === SHIPPED (heartbeat) 2026-06-22 ===
 fleet-heartbeat LIVE on CT212: ~/.hermes/fleet-heartbeat.sh + */10 cron. Deterministic curl sweep of all 7 boxes' :3001/ -> writes ~/.hermes/fleet-heartbeat.json snapshot (up/total/down + per-box) + daily log + journal ALERT on any DOWN. No Grok/T4/MCP needed (cheap+reliable). First run: 7/7 up. This is the recurring liveness layer; Hermes can READ the snapshot for fleet state (fixes the 'no snapshot found' gap). Richer device-level data (matrix/Shure/Atlas via MCP) still needs the gateway-cron path.
+
+PROGRESS 2026-06-23: fleet-heartbeat (10m) + fleet-miner-watch (15m) live as hermes-cron --no-agent jobs w/ Telegram alerts. agent-bus responder exercised (model-consolidation coordination relayed). Interactive Hermes blocked on T4 speed -> see 24GB-GPU todo.
 - **Tags**: hermes, skills, monitoring, fleet
 - **Created**: 6/22/2026, 5:19:21 AM
-- **Updated**: 6/22/2026, 1:44:11 PM
+- **Updated**: 6/22/2026, 9:44:22 PM
 
 ### ADB security: isolate Fire TV fleet on management VLAN + firewall port 5555
 
@@ -445,9 +458,11 @@ VECTOR CONFIRMED: attacker 165.154.127.151 (PUBLIC internet IP) logged in as ubu
 === CONTAINED + HARDENED 2026-06-22 (graystone stays UP — can't go down) ===
 Malware fully removed; graystone DEEP backdoor sweep CLEAN (no rogue UID0/keys/ld.so.preload/cron/persistence) -> verified-clean-in-place, NO rebuild (live bar). DONE fleet-wide: (1) keys-only SSH all 7 (PasswordAuthentication no, key access verified); (2) ufw firewall all 7 (deny incoming, allow tailscale0+RFC1918+CGNAT -> public SSH/RDP/Ollama/app BLOCKED); (3) outbound pool-block all 7 (hosts sinkhole + ufw deny-out to kryptex IPs); (4) re-infection watch. Monitoring MOVED to Hermes/CT212: fleet-heartbeat (10m) + fleet-miner-watch (15m) as hermes cron --no-agent jobs, Telegram alerts. CT212 granted fleet SSH (operator-authorized). Abuse reports drafted in Gmail. Full detail: memory project_security_incident_graystone_xmrig.
 OPEN: rotate leaked fleet password (defanged since password-auth OFF, but still set); optional graystone rebuild off-hours.
+
+FINAL 2026-06-23: fleet fully hardened (keys-only SSH + ufw firewall + outbound pool-block + fleet-miner-watch, all 7). graystone deep-swept clean, NOT rebuilt (operator: can't go down; verified-clean-in-place). Abuse reports SENT by operator. Documented CLAUDE.md Gotcha #20. OPEN: rotate leaked fleet SSH password.
 - **Tags**: security, incident, graystone, cryptominer, ssh, fleet
 - **Created**: 6/22/2026, 6:59:26 PM
-- **Updated**: 6/22/2026, 2:43:54 PM
+- **Updated**: 6/22/2026, 9:44:22 PM
 
 ### Wave 3c routeAndVerify — SHIPPED + Holmgren canary armed (v2.60.0)
 
@@ -1183,8 +1198,8 @@ Checked the .auto-update-last-success.json 'version' vs the actual package.json 
 
 ---
 
-**Total TODOs**: 84
-- Planned: 20
+**Total TODOs**: 85
+- Planned: 21
 - In Progress: 5
 - Testing: 2
 - Complete: 57
