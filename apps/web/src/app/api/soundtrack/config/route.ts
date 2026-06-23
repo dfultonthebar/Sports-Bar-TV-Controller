@@ -125,7 +125,7 @@ export async function POST(request: NextRequest) {
     }
 
     const config = existingConfig
-      ? await update('soundtrackConfigs', existingConfig.id, configData)
+      ? await update('soundtrackConfigs', eq(schema.soundtrackConfigs.id, existingConfig.id), configData)
       : await create('soundtrackConfigs', configData)
 
     // Fetch sound zones ONCE during initial setup
@@ -161,7 +161,7 @@ export async function POST(request: NextRequest) {
           if (existing) {
             // Update existing player
             logger.debug(`[Soundtrack] Updating existing player: ${existing.id}`)
-            await update('soundtrackPlayers', existing.id, {
+            await update('soundtrackPlayers', eq(schema.soundtrackPlayers.id, existing.id), {
               playerName: zone.name
             })
           } else {
