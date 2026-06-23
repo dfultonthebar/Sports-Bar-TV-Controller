@@ -951,6 +951,27 @@ fi
 COMMITS_TO_MERGE=$(git log --oneline HEAD..origin/main | wc -l)
 log "Commits pending merge: $COMMITS_TO_MERGE"
 
+# v2.82.15 — Move aside UNTRACKED files that collide with incoming tracked files.
+# git merge aborts ("untracked working tree files would be overwritten by merge") when a
+# non-ignored untracked local file (e.g. .env.bak, a stray scripts/*.ts) shares a path with
+# a file main ADDS. The clean-check above uses --untracked-files=no, so it misses these —
+# this rolled back 4 of 6 boxes on 2026-06-23. Back them up (never destroy) so the merge
+# proceeds; operator can recover from .auto-update-untracked-bak/<ts>/ if ever needed.
+# --exclude-standard scopes to non-ignored files (the ones git actually blocks on), so it
+# won't touch legitimately-ignored .env / data files.
+mapfile -t _collisions < <(comm -12 \
+  <(git ls-files --others --exclude-standard | sort) \
+  <(git diff --name-only HEAD origin/main | sort))
+if [ "${#_collisions[@]}" -gt 0 ]; then
+  COLLIDE_BAK="$REPO_ROOT/.auto-update-untracked-bak/$RUN_TS"
+  log "Untracked collisions with incoming files (${#_collisions[@]}) — backing up to ${COLLIDE_BAK#"$REPO_ROOT"/}/ so the merge can proceed:"
+  for u in "${_collisions[@]}"; do
+    mkdir -p "$COLLIDE_BAK/$(dirname "$u")"
+    log "  moving aside: $u"
+    mv "$REPO_ROOT/$u" "$COLLIDE_BAK/$u" 2>&1 | tee -a "$LOG_FILE" || true
+  done
+fi
+
 # v2.32.6 — Canary location gate. When scripts/canary-config.json has
 # enabled=true AND this is NOT the canary branch, refuse to merge a
 # commit until the canary has successfully installed it AND soaked for

@@ -176,3 +176,6 @@ apps/web/data/tree-dumps/
 
 # Bartender-doc LLM review queue (transient suggestions, regenerated nightly)
 docs/bartender-help/_reviews/
+
+# auto-update untracked-collision backups (Gotcha: untracked files that would block a merge)
+.auto-update-untracked-bak/
