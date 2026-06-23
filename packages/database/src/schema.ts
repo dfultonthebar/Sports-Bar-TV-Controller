@@ -41,6 +41,32 @@ export const fireTVDevices = sqliteTable('FireTVDevice', {
   updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
 })
 
+// Training Documents — DB-backed knowledge the local AI is trained on. Re-wired v2.82.x
+// (was stripped in v2.48.5 as an unused orphan; operator 2026-06-23 wants the local AI to
+// have all system knowledge → these rows are ingested into the RAG vector store so the
+// chatbot answers from them, alongside the filesystem docs). Binds to the existing prod
+// TrainingDocument table (no migration needed). Ingestion: scripts/index-training-docs.ts
+// + the /api/training-docs POST path; RAG pickup via scan-system-docs.
+export const trainingDocuments = sqliteTable('TrainingDocument', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  title: text('title').notNull(),
+  content: text('content').notNull(),
+  fileType: text('fileType').notNull().default('md'),
+  fileName: text('fileName'),
+  filePath: text('filePath'),
+  fileSize: integer('fileSize'),
+  category: text('category'),
+  tags: text('tags'),                 // JSON array of strings
+  description: text('description'),
+  metadata: text('metadata'),         // JSON object
+  processedAt: text('processedAt'),   // last time this row was indexed into RAG
+  viewCount: integer('viewCount').notNull().default(0),
+  lastViewed: text('lastViewed'),
+  isActive: integer('isActive', { mode: 'boolean' }).notNull().default(true),
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+})
+
 // DirecTV Device Model (single source of truth — replaces directv-devices.json)
 export const direcTVDevices = sqliteTable('DirecTVDevice', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
