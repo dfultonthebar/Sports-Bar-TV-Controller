@@ -293,6 +293,23 @@ if ! command -v pm2 &>/dev/null; then
     npm install -g pm2
 fi
 
+# ─── Step 6 guard (Lime Kiln 2026-06-22): assert a production build EXISTS ───
+# A box PM2-restart-stormed 5251x on "Could not find a production build in the
+# '.next' directory" because pm2 start ran with no usable build. The earlier
+# `npm run build` can exit 0 (or have its failure masked) yet leave no runnable
+# artifact. apps/web/.next/BUILD_ID is the deterministic proof the build
+# produced something PM2 can serve. Fail LOUD here instead of handing PM2 a
+# missing build to restart-storm on for two invisible days.
+BUILD_ID_FILE="$APP_DIR/apps/web/.next/BUILD_ID"
+if [ ! -f "$BUILD_ID_FILE" ]; then
+    err "Production build artifact missing: $BUILD_ID_FILE"
+    err "The earlier 'npm run build' did not produce a runnable .next build — NOT starting PM2."
+    err "(Starting PM2 now would restart-storm on 'Could not find a production build in the .next directory'.)"
+    err "Recover: cd $APP_DIR && rm -rf apps/web/.next && sudo -u ubuntu npm run build, then re-run first-boot-fresh.sh."
+    exit 1
+fi
+log "  Production build verified ($BUILD_ID_FILE present) — safe to start PM2."
+
 cd "$APP_DIR"
 sudo -u ubuntu bash -c "
     export PATH='/usr/local/bin:/usr/bin:\$PATH'

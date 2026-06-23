@@ -130,7 +130,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Step 2: Update the matrix output with selected video input info
-    await update('matrixOutputs', matrixOutput.id, {
+    await update('matrixOutputs', eq(schema.matrixOutputs.id, matrixOutput.id), {
       selectedVideoInput: videoInputNumber,
       videoInputLabel: videoInput.label,
       label: videoInput.label
@@ -142,7 +142,7 @@ export async function POST(request: NextRequest) {
     })
 
     if (existingRouting) {
-      await update('wolfpackMatrixRoutings', existingRouting.id, {
+      await update('wolfpackMatrixRoutings', eq(schema.wolfpackMatrixRoutings.id, existingRouting.id), {
         wolfpackInputNumber: videoInputNumber,
         wolfpackInputLabel: videoInput.label,
         atlasInputLabel: `Matrix ${matrixOutputNumber}`,
