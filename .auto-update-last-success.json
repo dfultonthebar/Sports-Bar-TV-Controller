@@ -1,17 +1,17 @@
 {
-  "version": "2.82.10",
+  "version": "2.82.33",
   "branch": "location/lime-kiln",
-  "commitSha": "2ea45e9dfd67fd01dd7d73747b0c035a0c855734",
-  "successAt": "2026-06-23T02:51:21Z",
-  "successAtUnix": 1782183081,
-  "runId": "auto-update-2026-06-22-21-50",
-  "verifyInstall": {"status":"PASS","passed":20,"total":20,"durationSecs":6,"failed":[],"layers":[{"name":"pm2_online","passed":true,"detail":"status=online restart_time=9474"},{"name":"health_http","passed":true,"detail":"status=healthy"},{"name":"metrics_http","passed":true,"detail":"cores=20"},{"name":"bartender_proxy","passed":true,"detail":"http=302"},{"name":"critical_tables","passed":true,"detail":"presets=107 aliases=41 directv=0 firetv=0"},{"name":"schema_completeness","passed":true,"detail":"120/120 tables present, all columns present"},{"name":"matrix_config","passed":true,"detail":"no active matrix"},{"name":"crash_logs","passed":true,"detail":"clean"},{"name":"linger_enabled","passed":true,"detail":"Linger=yes"},{"name":"autoupdate_timer_fresh","passed":true,"detail":"sidecar age=45037s"},{"name":"migration_markers_consistent","passed":true,"detail":"6/6"},{"name":"error_watch_alive","passed":true,"detail":"age=115s"},{"name":"bartender_layout_rooms","passed":true,"detail":"no layout configured"},{"name":"atlas_drop_watcher_alive","passed":true,"detail":"no rows yet"},{"name":"atlas_priority_watcher_alive","passed":true,"detail":"age=22s"},{"name":"node_symlink_present","passed":true,"detail":"3/3"},{"name":"shure_pending_resync_table_present","passed":true,"detail":"present"},{"name":"auth_bootstrap_complete","passed":true,"detail":"LOCATION_ID set, AuthPin bound=2"},{"name":"production_build_present","passed":true,"detail":"BUILD_ID present"},{"name":"hub_agent_registered","passed":true,"detail":"agent-lime-kiln online"}]},
+  "commitSha": "646d0f484b6ecba284766e16e89649fd18ba80c8",
+  "successAt": "2026-06-24T14:59:32Z",
+  "successAtUnix": 1782313172,
+  "runId": "auto-update-2026-06-24-09-58",
+  "verifyInstall": {"status":"PASS","passed":20,"total":20,"durationSecs":3,"failed":[],"layers":[{"name":"pm2_online","passed":true,"detail":"status=online restart_time=1"},{"name":"health_http","passed":true,"detail":"status=healthy"},{"name":"metrics_http","passed":true,"detail":"cores=20"},{"name":"bartender_proxy","passed":true,"detail":"http=302"},{"name":"critical_tables","passed":true,"detail":"presets=107 aliases=41 directv=0 firetv=0"},{"name":"schema_completeness","passed":true,"detail":"120/120 tables present, all columns present"},{"name":"matrix_config","passed":true,"detail":"no active matrix"},{"name":"crash_logs","passed":true,"detail":"clean"},{"name":"linger_enabled","passed":true,"detail":"Linger=yes"},{"name":"autoupdate_timer_fresh","passed":true,"detail":"WARN: sidecar age=130087s (stale timer — non-fatal in update flow)"},{"name":"migration_markers_consistent","passed":true,"detail":"9/9"},{"name":"error_watch_alive","passed":true,"detail":"age=2s"},{"name":"bartender_layout_rooms","passed":true,"detail":"no layout configured"},{"name":"atlas_drop_watcher_alive","passed":true,"detail":"no rows yet"},{"name":"atlas_priority_watcher_alive","passed":true,"detail":"age=21s"},{"name":"node_symlink_present","passed":true,"detail":"3/3"},{"name":"shure_pending_resync_table_present","passed":true,"detail":"present"},{"name":"auth_bootstrap_complete","passed":true,"detail":"LOCATION_ID set, AuthPin bound=2"},{"name":"production_build_present","passed":true,"detail":"BUILD_ID present"},{"name":"hub_agent_registered","passed":true,"detail":"agent-lime-kiln online"}]},
   "os": { "codename": "noble", "version": "24.04", "kernel": "6.8.0-124-generic" },
   "configChecksums": {
-    ".env": "82e5d816d8d72597",
+    ".env": "afb27bb921cf0c2b",
     "apps/web/data/tv-layout.json": "5775e58849e6140f",
     "apps/web/data/station-aliases-local.json": "995e7908f42e8164",
-    "apps/web/src/lib/hardware-config.ts": "43d5fa0813ed8b22"
+    "apps/web/src/lib/hardware-config.ts": "a519ea68fd08fab8"
   },
   "dbRowCounts": {
     "Location": 1,
