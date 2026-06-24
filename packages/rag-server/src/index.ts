@@ -53,6 +53,10 @@ export {
 } from './vector-store';
 export type { VectorEntry, VectorStoreData, SearchResult } from './vector-store';
 
+// Training Documents → RAG ingestion (v2.82.x)
+export { indexTrainingDocs, trainingDocFilepath } from './training-docs';
+export type { TrainingDocInput } from './training-docs';
+
 // Query Engine
 export {
   queryDocs,

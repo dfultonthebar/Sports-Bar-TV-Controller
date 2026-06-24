@@ -338,6 +338,32 @@ async function main() {
     }
   }
 
+  // v2.82.x — re-index DB-backed Training Documents (operator-managed knowledge) on top of the
+  // filesystem docs so the chatbot answers from them too. clearVectorStore() above wiped them,
+  // so they must be re-added on every full scan. Best-effort: never fails the scan.
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const Database = require('better-sqlite3')
+    const dbPath = process.env.DATABASE_PATH || '/home/ubuntu/sports-bar-data/production.db'
+    const tdb = new Database(dbPath, { readonly: true })
+    const rows = tdb.prepare(
+      "SELECT id, title, content, category, tags, fileType FROM TrainingDocument WHERE isActive = 1 AND content IS NOT NULL AND content != ''"
+    ).all()
+    tdb.close()
+    if (rows.length > 0) {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { indexTrainingDocs } = require('../apps/web/src/lib/rag-server/training-docs')
+      const n = await indexTrainingDocs(rows)
+      totalDocs += rows.length
+      totalChunks += n
+      console.log(`    + ${rows.length} training documents indexed (${n} chunks)`)
+    } else {
+      console.log('    (no active training documents to index)')
+    }
+  } catch (e: any) {
+    console.warn('    ⚠ training-docs index skipped:', e && e.message ? e.message : e)
+  }
+
   const stats = await getVectorStoreStats()
   console.log('\n6. Final vector store:')
   console.log(`    total chunks:    ${stats.totalChunks}`)
