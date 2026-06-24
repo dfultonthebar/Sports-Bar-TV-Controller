@@ -7,6 +7,9 @@
 
 import { connectionManager } from './firetv-connection-manager'
 import { STREAMING_APPS_DATABASE, StreamingApp, getStreamingAppById, findStreamingAppByPackageName } from '@/lib/streaming/streaming-apps-database'
+import { getDriver } from '@/lib/device-drivers'
+import { db, schema } from '@/db'
+import { eq } from 'drizzle-orm'
 
 import { logger } from '@sports-bar/logger'
 export interface InstalledStreamingApp {
@@ -155,12 +158,22 @@ class StreamingServiceManager {
       // Get ADB connection
       const client = await connectionManager.getOrCreateConnection(deviceId, ipAddress, port)
 
-      // Find a package variant actually installed on this device. Fire TV Cubes
-      // ship Amazon-specific builds (com.apple.atve.amazon.appletv) while
-      // generic Android TVs use androidtv builds — different physical devices
-      // at the same venue may even have different variants. Try the primary
-      // first, then aliases.
-      const candidatePackages = [app.packageName, ...(app.packageAliases || [])]
+      // v2.82.37 — resolve the per-manufacturer/model device driver. Defaults to Amazon Fire TV
+      // when manufacturer is unset, so the existing Fire-TV install base is byte-for-byte
+      // unchanged. The driver supplies manufacturer-specific package candidates (e.g. NVIDIA
+      // Shield → com.espn.score_center) and whether the Fire-TV DPAD autoplay sequences apply.
+      let manufacturer = 'amazon'
+      try {
+        const devRow = await db.select({ m: schema.fireTVDevices.manufacturer })
+          .from(schema.fireTVDevices).where(eq(schema.fireTVDevices.id, deviceId)).get()
+        if (devRow?.m) manufacturer = devRow.m
+      } catch { /* default amazon */ }
+      const driver = getDriver(manufacturer)
+
+      // Find a package variant actually installed on this device. The driver returns the
+      // best-first candidates (manufacturer-specific builds first), then catalog primary +
+      // aliases. Try each until one is installed.
+      const candidatePackages = driver.appPackages(app)
       let installedPackage: string | null = null
       for (const pkg of candidatePackages) {
         if (await client.isAppInstalled(pkg)) {
@@ -187,7 +200,7 @@ class StreamingServiceManager {
         )
       }
 
-      if (options?.deepLink && app.deepLinkSupport && app.id === 'amazon-prime') {
+      if (options?.deepLink && app.deepLinkSupport && app.id === 'amazon-prime' && driver.usesFireTvAutoplay) {
         // v2.32.84 — Prime Video on AFTR Cubes (com.amazon.firebat) registers
         // for `https://watch.amazon.com/search?phrase=...` but not the older
         // `aiv://` schemes. Instead of just landing on the search page, the
@@ -206,7 +219,7 @@ class StreamingServiceManager {
           logger.info(`[STREAMING MANAGER] Prime Video deep link (no phrase): ${options.deepLink}`)
           await client.launchAppWithDeepLink(options.deepLink, installedPackage)
         }
-      } else if (options?.deepLink && app.deepLinkSupport && app.id === 'espn-plus') {
+      } else if (options?.deepLink && app.deepLinkSupport && app.id === 'espn-plus' && driver.usesFireTvAutoplay) {
         // v2.32.94 — Per-tile ESPN search-by-title autoplay. The walker
         // now writes `sportscenter://x-callback-url/showHomeTab?q=<title>`
         // for every captured tile (v2.32.94 walker change). We extract `q`
