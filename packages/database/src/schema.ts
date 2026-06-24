@@ -1650,6 +1650,11 @@ export const inputSourceAllocations = sqliteTable('input_source_allocations', {
   tuneError: text('tune_error'),
   tuneAttempts: integer('tune_attempts').notNull().default(0),
   tuneLastAttemptAt: integer('tune_last_attempt_at'),
+  // v2.82.x — audio-zone switch outcome (audio-follows-video). null=not-attempted; else whether
+  // every zone switched to the intended source. audioZoneError lists the zones that failed, so a
+  // silent "video moved but audio didn't follow" is visible instead of only PM2-logged.
+  audioZoneSuccess: integer('audio_zone_success', { mode: 'boolean' }),
+  audioZoneError: text('audio_zone_error'),
 
   // Metadata
   createdAt: integer('created_at').notNull().default(sql`(strftime('%s', 'now'))`), // Unix timestamp

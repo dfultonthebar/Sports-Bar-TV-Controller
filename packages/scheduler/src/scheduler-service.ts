@@ -1398,6 +1398,7 @@ class SchedulerService {
                   } else {
                     logger.info(`[SCHEDULER] 🔊 Switching ${audioZones.length} audio zone(s) to source ${allocation.audioSourceIndex}${allocation.audioSourceName ? ` (${allocation.audioSourceName})` : ''}`);
 
+                    const failedZones: number[] = []
                     for (const zoneNumber of audioZones) {
                       try {
                         const audioResponse = await fetch(`http://127.0.0.1:${API_PORT}/api/audio-processor/control`, {
@@ -1421,11 +1422,25 @@ class SchedulerService {
                             logger.warn(`[SCHEDULER] ⚠️ Audio switch returned HTTP 200 but no success flag (contract drift) zone ${zoneNumber}: ${JSON.stringify(audioHw.body)} — treating as FAILURE`);
                           }
                           logger.error(`[SCHEDULER] ❌ Failed to switch audio zone ${zoneNumber}: ${audioHw.error}`);
+                          failedZones.push(zoneNumber)
                         }
                       } catch (audioError: any) {
                         logger.error(`[SCHEDULER] ❌ Error switching audio zone ${zoneNumber}:`, { error: audioError });
+                        failedZones.push(zoneNumber)
                       }
                     }
+
+                    // v2.82.x — persist the audio-zone switch outcome so an "audio didn't follow
+                    // video" failure is visible on the allocation, not just in PM2 logs.
+                    await db.update(schema.inputSourceAllocations)
+                      .set({
+                        audioZoneSuccess: failedZones.length === 0,
+                        audioZoneError: failedZones.length
+                          ? `zones [${failedZones.join(', ')}] failed to switch to source ${allocation.audioSourceIndex}`
+                          : null,
+                        updatedAt: nowUnix,
+                      })
+                      .where(eq(schema.inputSourceAllocations.id, allocation.id))
 
                     await schedulerLogger.info(
                       'scheduler-service',
