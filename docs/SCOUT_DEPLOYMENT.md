@@ -51,8 +51,17 @@ The Shield additionally has a deep monitor (`scripts/hermes/shield-probe.py`, ev
 - **Longer host window** — `sendScoutPlayGameBroadcast` default `maxAttempts` 60→120.
 - **Prime now triggers Scout** — was ESPN-only; Prime relied on DPAD alone.
 
-Deferred (future APK pass): fuzzy token matching (risky vs the tuned thresholds), on-device
-"reached the player" verification.
+## v2.2.13 reliability changes
+- **Fuzzy tile-matching** — text + query tokens are normalized (punctuation stripped, whitespace
+  collapsed) so `ESPN+`↔`espn`, `St. Louis`↔`St Louis`, `team@team`↔`team team` match; plus a
+  conservative word-prefix match for longer tokens (len≥4) to catch plurals/truncations. Kept
+  intentionally conservative to preserve the tuned confidence thresholds (Pat-McAfee reject +
+  Navy/Bucknell accept verified unchanged).
+- **On-device playback verification** — after a successful click, Scout watches for a player window
+  within 8s and reports **`clicked_verified`** (reached the player) or **`clicked_unverified`** (click
+  registered but no player) to the flywheel. The system now learns whether a click actually played
+  the game, not just that ACTION_CLICK returned true. Functional risk nil — only the reported
+  outcome changes, never what Scout clicks.
 
 ## New location / ISO provisioning
 A fresh box (subiquity ISO) comes up without the Android SDK. When the location's Fire TVs / Shield

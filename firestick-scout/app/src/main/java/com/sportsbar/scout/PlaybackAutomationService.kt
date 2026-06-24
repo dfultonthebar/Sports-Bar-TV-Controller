@@ -75,6 +75,17 @@ class PlaybackAutomationService : AccessibilityService() {
     @Volatile private var ticksSinceLastScroll = 0
     private val TICKS_BETWEEN_SCROLLS = 5
 
+    // v2.2.13 — post-click playback verification. After a successful tile click we watch for a
+    // player window to appear within VERIFY_MS and report clicked_verified if it does, else
+    // clicked_unverified — so the flywheel/Hermes learns whether the click actually reached
+    // playback (not just that ACTION_CLICK returned true). Functional risk is nil: only the
+    // REPORTED outcome changes, never what Scout clicks.
+    @Volatile private var verifyUntilMs = 0L
+    @Volatile private var verifyPkg = ""
+    @Volatile private var verifyMatched = ""
+    private val VERIFY_MS = 8000L
+    private val PLAYER_CLASS_RE = Regex("player|playback")
+
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
 
@@ -86,6 +97,27 @@ class PlaybackAutomationService : AccessibilityService() {
         ) {
             lastWindowSettledAtMs = System.currentTimeMillis()
             lastWindowPackage = event.packageName?.toString().orEmpty()
+        }
+
+        // v2.2.13 — post-click playback verification. While the verify window is open, a
+        // WINDOW_STATE_CHANGED whose activity class looks like a player ⇒ clicked_verified;
+        // window expiry with no player ⇒ clicked_unverified. Reported to the flywheel only.
+        if (verifyUntilMs > 0L) {
+            val nowMs = System.currentTimeMillis()
+            if (nowMs > verifyUntilMs) {
+                postPlayResult(
+                    "clicked_unverified",
+                    "Clicked but no player window appeared within ${VERIFY_MS}ms",
+                    verifyMatched, verifyPkg, "",
+                )
+                verifyUntilMs = 0L
+            } else if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+                val cn = event.className?.toString()?.lowercase().orEmpty()
+                if (PLAYER_CLASS_RE.containsMatchIn(cn)) {
+                    postPlayResult("clicked_verified", "Player window reached: $cn", verifyMatched, verifyPkg, "")
+                    verifyUntilMs = 0L
+                }
+            }
         }
 
         // v2.2.6 + v2.2.8 + v2.2.10 — Watch-Live prompt handler. Two
@@ -186,7 +218,7 @@ class PlaybackAutomationService : AccessibilityService() {
     private fun tryClickMatchingTile() {
         val tokensCsv = pendingMatchTokens() ?: return
         val tokens = tokensCsv.split(",")
-            .map { it.trim().lowercase() }
+            .map { normalizeForMatch(it) }
             .filter { it.length >= 2 }
         if (tokens.isEmpty()) {
             writeResult("bad_tokens", "Token list was empty after parsing", matchedText = "")
@@ -294,6 +326,12 @@ class PlaybackAutomationService : AccessibilityService() {
             if (ok) "Clicked tile matching ${tokens.size}-token query" else "performAction(ACTION_CLICK) returned false",
             matchedText = matchedText,
         )
+        // v2.2.13 — arm post-click playback verification (pending values still valid pre-clear).
+        if (ok) {
+            verifyUntilMs = System.currentTimeMillis() + VERIFY_MS
+            verifyPkg = pendingTargetPackage() ?: ""
+            verifyMatched = matchedText
+        }
         // v1.5.0 — Capture the current session's queued_at BEFORE clearing
         // so settledSessionId is set correctly. clearPending() removes the
         // queued_at entry, so we'd read 0 if we read after.
@@ -576,11 +614,11 @@ class PlaybackAutomationService : AccessibilityService() {
         while (queue.isNotEmpty() && visited < 5000) {
             val n = queue.removeFirst()
             visited++
-            val txt = (n.text?.toString().orEmpty() + " " + n.contentDescription?.toString().orEmpty())
-                .lowercase()
-                .trim()
+            val txt = normalizeForMatch(
+                n.text?.toString().orEmpty() + " " + n.contentDescription?.toString().orEmpty()
+            )
             if (txt.isNotEmpty()) {
-                val score = tokens.count { txt.contains(it) }
+                val score = tokens.count { tokenMatches(it, txt) }
                 if (score > 0) {
                     // Only report nodes that are visible on screen.
                     val rect = Rect()
@@ -594,6 +632,25 @@ class PlaybackAutomationService : AccessibilityService() {
                 n.getChild(i)?.let { queue.add(it) }
             }
         }
+    }
+
+    // v2.2.13 — normalize for tile matching: lowercase, strip punctuation to spaces, collapse
+    // whitespace. Makes "St. Louis"/"St Louis", "team@team"/"team team", "ESPN+"/"espn" match.
+    private fun normalizeForMatch(s: String): String =
+        s.lowercase().replace(Regex("[^a-z0-9 ]"), " ").replace(Regex("\\s+"), " ").trim()
+
+    // v2.2.13 — a token matches if it's a substring of the (normalized) text, OR — for longer,
+    // specific tokens (len>=4) — a word-prefix either direction (plurals / truncations / minor
+    // variations). The length gate keeps short-token false-positives out, preserving the tuned
+    // confidence thresholds (verified: Pat-McAfee reject + Navy/Bucknell accept both unchanged).
+    private fun tokenMatches(token: String, normText: String): Boolean {
+        if (normText.contains(token)) return true
+        if (token.length >= 4) {
+            for (w in normText.split(' ')) {
+                if (w.length >= 4 && (w.startsWith(token) || token.startsWith(w))) return true
+            }
+        }
+        return false
     }
 
     private fun findClickableAncestor(start: AccessibilityNodeInfo): AccessibilityNodeInfo? {
@@ -650,32 +707,32 @@ class PlaybackAutomationService : AccessibilityService() {
             "PlaybackAutomation",
             "Result=$result message='$message' matched='$matchedText'",
         )
-        // v2.2.12 — report the outcome back to the location's box (serverUrl) so Scout outcomes
-        // feed the ops flywheel and Hermes can learn which titles/apps reliably play. Capture the
-        // pending package/tokens NOW (writeResult runs before clearPending), then POST on a worker
-        // thread so the AccessibilityService callback is never blocked. Best-effort.
-        try {
-            val pkg = pendingTargetPackage() ?: ""
-            val toks = pendingMatchTokens() ?: ""
-            val ctx = applicationContext
-            Thread {
-                try {
-                    com.sportsbar.scout.MainActivity.detectDevice(ctx)
-                    val serverUrl = com.sportsbar.scout.MainActivity.getServerUrl(ctx)
-                    com.sportsbar.scout.api.ScoutApiClient(serverUrl).sendPlayResult(
-                        com.sportsbar.scout.MainActivity.deviceId,
-                        com.sportsbar.scout.MainActivity.deviceName,
-                        com.sportsbar.scout.MainActivity.ipAddress,
-                        com.sportsbar.scout.MainActivity.VERSION,
-                        result, message, matchedText, pkg, toks, 0,
-                    )
-                } catch (e: Throwable) {
-                    Log.w("PlaybackAutomation", "play-result POST failed: ${e.message}")
-                }
-            }.start()
-        } catch (e: Throwable) {
-            Log.w("PlaybackAutomation", "play-result dispatch failed: ${e.message}")
-        }
+        // v2.2.12 — report the outcome back to the location's box (pending values valid pre-clear).
+        postPlayResult(result, message, matchedText, pendingTargetPackage() ?: "", pendingMatchTokens() ?: "")
+    }
+
+    /**
+     * v2.2.12 — POST a play outcome to the location's box on a worker thread (never blocks the AS
+     * callback). serverUrl is per-location → each location reports to its own IP. v2.2.13 reuses
+     * this for the post-click playback-verification result (clicked_verified / clicked_unverified).
+     */
+    private fun postPlayResult(result: String, message: String, matchedText: String, pkg: String, tokens: String) {
+        val ctx = applicationContext
+        Thread {
+            try {
+                com.sportsbar.scout.MainActivity.detectDevice(ctx)
+                val serverUrl = com.sportsbar.scout.MainActivity.getServerUrl(ctx)
+                com.sportsbar.scout.api.ScoutApiClient(serverUrl).sendPlayResult(
+                    com.sportsbar.scout.MainActivity.deviceId,
+                    com.sportsbar.scout.MainActivity.deviceName,
+                    com.sportsbar.scout.MainActivity.ipAddress,
+                    com.sportsbar.scout.MainActivity.VERSION,
+                    result, message, matchedText, pkg, tokens, 0,
+                )
+            } catch (e: Throwable) {
+                Log.w("PlaybackAutomation", "play-result POST failed: ${e.message}")
+            }
+        }.start()
     }
 
     // ─── v2.2.0: companion entry points for active extraction ────────
