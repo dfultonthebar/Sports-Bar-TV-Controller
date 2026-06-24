@@ -230,7 +230,20 @@ class FireTVConnectionManager {
       // Demote pattern mirrors Atlas -32604 (v2.54.4/.5) to keep error log focused
       // on novel failures, not steady-state powered-off devices.
       if (isFirstFailure) {
-        logger.error(`[CONNECTION MANAGER] Connection error for ${deviceAddress}:`, error.message)
+        // v2.82.x — devices intentionally powered off by schedule (Atmosphere TV, Epson
+        // projector) shouldn't ERROR even on the first failure of a streak: their offline-ness
+        // is EXPECTED, not novel. Only true Fire TVs (should be online) get the first-failure
+        // ERROR. Stops recurring false-alarm error-watch tickets for e.g. 10.11.3.48 (Atmosphere).
+        let expectedOffline = false
+        try {
+          const dev = await db.select({ t: fireTVDevices.deviceType }).from(fireTVDevices).where(eq(fireTVDevices.id, deviceId)).limit(1)
+          expectedOffline = /atmosphere|epson|projector/i.test(dev[0]?.t || '')
+        } catch { /* lookup best-effort — fall through to ERROR */ }
+        if (expectedOffline) {
+          logger.debug(`[CONNECTION MANAGER] Connection error for ${deviceAddress} (intentionally-intermittent device type, likely powered off): ${error.message}`)
+        } else {
+          logger.error(`[CONNECTION MANAGER] Connection error for ${deviceAddress}:`, error.message)
+        }
       } else {
         logger.debug(`[CONNECTION MANAGER] Reconnect attempt ${connectionInfo.connectionAttempts} for ${deviceAddress} failed (device may be powered off): ${error.message}`)
       }

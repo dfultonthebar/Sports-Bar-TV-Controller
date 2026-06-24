@@ -35,6 +35,10 @@ export default function Home() {
         <a href="/chat" style={{ color: '#38bdf8' }}>
           maintenance chat →
         </a>
+        {' · '}
+        <a href="/honcho" style={{ color: '#38bdf8' }}>
+          AI ops →
+        </a>
       </p>
 
       {locations.length === 0 ? (
