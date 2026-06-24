@@ -36,6 +36,19 @@ const OLLAMA_MODEL = HARDWARE_CONFIG.ollama.model
 // slow iGPUs (Graystone ~6.7 tok/s) hit the 300s timeout at 2048. logLlmPerf
 // records real eval_count + done_reason so this gets set from data.
 const OLLAMA_NUM_PREDICT = HARDWARE_CONFIG.ollama.numPredict
+// v2.82.31 — pin the model warm (keep_alive) so AI Suggest never cold-loads (~30s on iGPU).
+const OLLAMA_KEEP_ALIVE = HARDWARE_CONFIG.ollama.keepAlive
+// Central flywheel: report each AI Suggest LLM run to Honcho (CT213) so Hermes/Honcho see
+// what the scheduler is doing. Best-effort, fire-and-forget — never blocks or throws.
+const HONCHO_BASE = process.env.HONCHO_BASE || 'http://100.90.175.125:8000'
+function reportRunToFlywheel(content: string): void {
+  void fetch(`${HONCHO_BASE}/v3/workspaces/sports-bar/sessions/fleet-ops-log/messages`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messages: [{ peer_id: 'fleet-ops', content }] }),
+    signal: AbortSignal.timeout(5000),
+  }).catch(() => {})
+}
 // Wave 2 (intelligence roadmap): deterministic DistributionEngine solver.
 // off (default) = LLM only, no engine call. shadow = also run the engine after
 // the response is sent and LOG a diff (no output change). primary (later patch)
@@ -569,7 +582,7 @@ async function callOllama(prompt: string): Promise<string> {
           num_predict: OLLAMA_NUM_PREDICT,
         },
       },
-      { feature: 'ai-suggest', timeoutMs: OLLAMA_TIMEOUT_MS },
+      { feature: 'ai-suggest', timeoutMs: OLLAMA_TIMEOUT_MS, keepAlive: OLLAMA_KEEP_ALIVE },
     )
 
     // Record real throughput so num_predict + timeout can be tuned from data.
@@ -583,6 +596,7 @@ async function callOllama(prompt: string): Promise<string> {
       numPredict: OLLAMA_NUM_PREDICT,
       outcome: 'ok',
     })
+    reportRunToFlywheel(`AI Suggest @ ${process.env.LOCATION_ID || 'unknown'}: ok · ${OLLAMA_MODEL} · ${Date.now() - startedAt}ms · ${data.eval_count ?? '?'} tok`)
     return data.response || ''
   } catch (err: any) {
     const isTimeout = err?.name === 'TimeoutError' || err?.name === 'AbortError'
@@ -596,6 +610,7 @@ async function callOllama(prompt: string): Promise<string> {
         ? `aborted at OLLAMA_TIMEOUT_MS=${OLLAMA_TIMEOUT_MS}ms — likely num_predict too high for this box's tok/s, or Ollama contended`
         : (err?.message || err?.name || 'unknown'),
     })
+    reportRunToFlywheel(`AI Suggest @ ${process.env.LOCATION_ID || 'unknown'}: ${isTimeout ? 'TIMEOUT' : 'error'} · ${OLLAMA_MODEL} · ${Date.now() - startedAt}ms`)
     throw err
   }
 }
