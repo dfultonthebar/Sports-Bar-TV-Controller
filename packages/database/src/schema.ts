@@ -1650,6 +1650,10 @@ export const inputSourceAllocations = sqliteTable('input_source_allocations', {
   tuneError: text('tune_error'),
   tuneAttempts: integer('tune_attempts').notNull().default(0),
   tuneLastAttemptAt: integer('tune_last_attempt_at'),
+  // v2.82.x — tune hardware response time (ms): how long the tune POST took to ack at game time.
+  // Already measured in scheduler-service (tuneDurationMs) but never stored — persist it for
+  // slow-box detection + SLA (e.g. a cable box that consistently takes 8s+ to tune).
+  tuneLatencyMs: integer('tune_latency_ms'),
   // v2.82.x — audio-zone switch outcome (audio-follows-video). null=not-attempted; else whether
   // every zone switched to the intended source. audioZoneError lists the zones that failed, so a
   // silent "video moved but audio didn't follow" is visible instead of only PM2-logged.

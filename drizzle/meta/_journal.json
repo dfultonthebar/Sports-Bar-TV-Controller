@@ -57,6 +57,13 @@
       "when": 1782273284743,
       "tag": "0007_add_audio_zone_telemetry",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1782273728807,
+      "tag": "0008_add_tune_latency",
+      "breakpoints": true
     }
   ]
 }

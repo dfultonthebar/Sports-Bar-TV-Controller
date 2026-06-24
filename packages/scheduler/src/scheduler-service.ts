@@ -1217,6 +1217,7 @@ class SchedulerService {
                 tuneError: null,
                 tuneAttempts: ((allocation as any).tuneAttempts ?? 0) + 1,
                 tuneLastAttemptAt: nowUnix,
+                tuneLatencyMs: tuneDurationMs,
                 updatedAt: nowUnix,
               })
               .where(eq(schema.inputSourceAllocations.id, allocation.id));
@@ -1491,6 +1492,7 @@ class SchedulerService {
                 tuneError: reason,
                 tuneAttempts: attempts,
                 tuneLastAttemptAt: nowUnix,
+                tuneLatencyMs: tuneDurationMs,
                 ...(giveUp ? { status: 'failed' as const } : {}),
                 updatedAt: nowUnix,
               })
@@ -1525,7 +1527,7 @@ class SchedulerService {
             const reason = String(tuneError?.message || tuneError || 'tune exception').slice(0, 500)
             const giveUp = attempts >= 5 || nowUnix > (allocation.allocatedAt + 2 * 3600)
             await db.update(schema.inputSourceAllocations)
-              .set({ tuneSuccess: false, tuneError: reason, tuneAttempts: attempts, tuneLastAttemptAt: nowUnix, ...(giveUp ? { status: 'failed' as const } : {}), updatedAt: nowUnix })
+              .set({ tuneSuccess: false, tuneError: reason, tuneAttempts: attempts, tuneLastAttemptAt: nowUnix, tuneLatencyMs: (Date.now() - tuneStartTime), ...(giveUp ? { status: 'failed' as const } : {}), updatedAt: nowUnix })
               .where(eq(schema.inputSourceAllocations.id, allocation.id))
             if (giveUp) logger.error(`[SCHEDULER] ⛔ Allocation ${allocation.id} marked FAILED after ${attempts} attempt(s) (exception): ${reason}`)
           } catch { /* best-effort telemetry — never let it mask the original error */ }
