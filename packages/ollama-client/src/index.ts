@@ -27,8 +27,9 @@ export interface OllamaCallOpts {
   feature?: string
   /** Forwarded as `keep_alive` on the request body when set (e.g. -1 to pin a
    *  model resident locally). Omitted when undefined so callers that don't care
-   *  keep Ollama's default idle timer. */
-  keepAlive?: number
+   *  keep Ollama's default idle timer. Number = seconds (-1 pins forever); string =
+   *  Ollama duration like '20m'. */
+  keepAlive?: number | string
 }
 
 export interface GenerateResult {
@@ -112,7 +113,7 @@ export async function ollamaGenerate(
     prompt: string
     format?: 'json'
     options?: Record<string, unknown>
-    keep_alive?: number
+    keep_alive?: number | string
   },
   opts: OllamaCallOpts = {},
 ): Promise<GenerateResult> {
@@ -132,7 +133,7 @@ export async function ollamaChat(
     messages: Array<{ role: string; content: string }>
     tools?: unknown[]
     options?: Record<string, unknown>
-    keep_alive?: number
+    keep_alive?: number | string
   },
   opts: OllamaCallOpts = {},
 ): Promise<{ content: string; tool_calls?: unknown[] }> {
@@ -247,7 +248,7 @@ export async function* ollamaChatStream(
     messages: Array<{ role: string; content: string }>
     tools?: unknown[]
     options?: Record<string, unknown>
-    keep_alive?: number
+    keep_alive?: number | string
   },
   opts: OllamaCallOpts = {},
 ): AsyncGenerator<{ content?: string; tool_calls?: unknown[]; done?: boolean }> {

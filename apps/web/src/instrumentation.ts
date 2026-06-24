@@ -102,6 +102,25 @@ export async function register() {
       logger.error('[INSTRUMENTATION] Failed to initialize Fire TV services:', error)
     }
 
+    // v2.82.31 — warm the sports-bar LLM at boot so the first AI Suggest / shift-brief never
+    // pays the ~30s cold-load (operator: "it should always be warm"). Pinned via keep_alive
+    // (HARDWARE_CONFIG.ollama.keepAlive, default -1). Fire-and-forget 25s after boot.
+    registerTimeout(() => {
+      void (async () => {
+        try {
+          const { ollamaGenerate } = await import('@sports-bar/ollama-client')
+          const { HARDWARE_CONFIG } = await import('./lib/hardware-config')
+          await ollamaGenerate(
+            { model: HARDWARE_CONFIG.ollama.model, prompt: 'ok', options: { num_predict: 1 } },
+            { feature: 'warmup', timeoutMs: 120000, keepAlive: HARDWARE_CONFIG.ollama.keepAlive },
+          )
+          logger.info(`[WARMUP] ${HARDWARE_CONFIG.ollama.model} pinned warm (keep_alive=${HARDWARE_CONFIG.ollama.keepAlive})`)
+        } catch (e: any) {
+          logger.debug(`[WARMUP] model warm-up skipped: ${e?.message || e}`)
+        }
+      })()
+    }, 25000)
+
     try {
       // MAC auto-discovery: backfill any NetworkTVDevice missing its macAddress
       // by reading it off the LAN (ARP-after-ping) whenever the TV is reachable.

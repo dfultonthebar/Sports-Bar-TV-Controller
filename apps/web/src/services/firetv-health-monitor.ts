@@ -20,6 +20,38 @@ export interface HealthCheckResult {
   lastCheck: Date
   error?: string
   reconnectAttempts: number
+  deviceType?: string
+}
+
+// v2.82.x — dead-Cube alarm channels (rising-edge; fired from checkDownTimeAlerts + clearDownTime).
+// Best-effort, never throws into the monitor loop. Telegram needs TELEGRAM_BOT_TOKEN +
+// TELEGRAM_CHAT_ID in env (forwarded via ecosystem.config.js); flywheel posts to Honcho.
+async function sendTelegramAlarm(text: string): Promise<void> {
+  const token = process.env.TELEGRAM_BOT_TOKEN
+  const chat = process.env.TELEGRAM_CHAT_ID
+  if (!token || !chat) return
+  try {
+    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chat, text }),
+    })
+  } catch { /* best-effort — alarm must never break the monitor */ }
+}
+async function logFlywheelAlarm(text: string): Promise<void> {
+  const base = process.env.HONCHO_BASE || 'http://100.90.175.125:8000'
+  try {
+    await fetch(`${base}/v3/workspaces/sports-bar/sessions/fleet-ops-log/messages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages: [{ peer_id: 'fleet-ops', content: text }] }),
+    })
+  } catch { /* best-effort */ }
+}
+/** Fire both alarm channels for a Fire TV state change. Fire-and-forget. */
+function fireCubeAlarm(text: string): void {
+  void sendTelegramAlarm(text)
+  void logFlywheelAlarm(text)
 }
 
 /**
@@ -353,7 +385,8 @@ class FireTVHealthMonitor {
       isHealthy,
       lastCheck: new Date(),
       error,
-      reconnectAttempts: attempts
+      reconnectAttempts: attempts,
+      deviceType: device.deviceType,
     })
   }
 
@@ -421,9 +454,15 @@ class FireTVHealthMonitor {
   private clearDownTime(deviceId: string): void {
     if (this.downSince.has(deviceId)) {
       const downTime = Date.now() - this.downSince.get(deviceId)!.getTime()
+      const wasAlerted = this.alertsSent.has(deviceId)
+      const name = this.healthStatus.get(deviceId)?.deviceName || deviceId
       logger.info(`[HEALTH MONITOR] Device ${deviceId} recovered after ${Math.floor(downTime / 1000)}s downtime`)
       this.downSince.delete(deviceId)
       this.alertsSent.delete(deviceId)
+      // v2.82.x — recovery alarm only if we raised the down alarm (matched up/down pair).
+      if (wasAlerted) {
+        fireCubeAlarm(`🟢 Fire TV RECOVERED: ${name} — back online after ${Math.floor(downTime / 1000 / 60)} min down`)
+      }
     }
   }
 
@@ -450,10 +489,15 @@ class FireTVHealthMonitor {
         logger.warn(`[HEALTH MONITOR] Device ${deviceName} has been down for ${Math.floor(downTime / 1000 / 60)} minutes`)
         logger.warn(`[HEALTH MONITOR] Last error: ${health?.error || 'Unknown'}`)
 
-        // Mark alert as sent
+        // Mark alert as sent (rising-edge dedup — one alarm per down-period)
         this.alertsSent.add(deviceId)
 
-        // In the future, this could send notifications via email, Slack, etc.
+        // v2.82.x — rising-edge alarm (Telegram + flywheel), but ONLY for real Fire TVs.
+        // Atmosphere TVs / Epson projectors are off by schedule, so alarming them is noise
+        // (mirrors the connection-manager intentionally-off carve-out, v2.82.25).
+        if (!/atmosphere|epson|projector/i.test(health?.deviceType || '')) {
+          fireCubeAlarm(`🔴 Fire TV DOWN: ${deviceName} (${health?.deviceAddress || deviceId}) — unreachable ${Math.floor(downTime / 1000 / 60)} min. Last error: ${health?.error || 'unknown'}`)
+        }
       }
     }
   }
