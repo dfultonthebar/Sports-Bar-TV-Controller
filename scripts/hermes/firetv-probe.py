@@ -11,7 +11,7 @@ READ-ONLY: device list + current app (API) + Scout state (adb). Safe while a bar
 Usage:  firetv-probe.py [LOCATION_BASE_URL] [LOCATION_LABEL]
         default base = http://localhost:3001, label = "local"
 """
-import sys, json, urllib.request, subprocess
+import sys, json, urllib.request, subprocess, re
 
 BASE = (sys.argv[1] if len(sys.argv) > 1 else "http://localhost:3001").rstrip("/")
 LABEL = sys.argv[2] if len(sys.argv) > 2 else "local"
@@ -70,19 +70,22 @@ for d in rows:
     model = d.get("deviceModel") or d.get("model") or "?"
     fos = d.get("softwareVersion") or d.get("fireOsVersion") or "?"
     online = bool(d.get("isOnline"))
-    cur, scout = "-", "-"
+    cur, scout, scoutver = "-", "-", ""
     if online and did:
         ca = get(f"/api/firetv-devices/{did}/current-app", timeout=25)
         cur = ((ca.get("currentApp") or {}) if isinstance(ca, dict) else {}).get("packageName") \
             or (ca.get("packageName") if isinstance(ca, dict) else None) or "?"
         scout = scout_state(ip)
-    insights.append({"name": name, "ip": ip, "model": model, "fireOS": fos, "online": online, "app": cur, "scout": scout})
+        if scout != "absent":  # APK version so Hermes can spot Scout-version drift across the fleet
+            m = re.search(r"versionName=(\S+)", adb(ip, "dumpsys package com.sportsbar.scout | grep versionName"))
+            scoutver = m.group(1) if m else "?"
+    insights.append({"name": name, "ip": ip, "model": model, "fireOS": fos, "online": online, "app": cur, "scout": scout, "scoutver": scoutver})
 
 online_n = sum(1 for i in insights if i["online"])
 scout_broken = [i["name"] for i in insights if i["scout"] == "installed-not-bound"]
 scout_healed = [i["name"] for i in insights if i["scout"] == "self-healed"]
 lines = [f"{i['name']} ({i['ip']}) model={i['model']} fireOS={i['fireOS']} "
-         f"{'ONLINE app=' + i['app'] + ' scout=' + i['scout'] if i['online'] else 'offline'}" for i in insights]
+         f"{'ONLINE app=' + i['app'] + ' scout=' + i['scout'] + ('@' + i['scoutver'] if i['scoutver'] else '') if i['online'] else 'offline'}" for i in insights]
 summary = (f"Fire TV probe @ {LABEL}: {len(insights)} devices, {online_n} online.\n"
            + "\n".join("  - " + l for l in lines)
            + (f"\n  ↻ SCOUT SELF-HEALED on: {', '.join(scout_healed)} (was unbound, re-enabled this run)." if scout_healed else "")

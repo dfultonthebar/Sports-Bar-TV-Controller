@@ -276,7 +276,15 @@ class PlaybackAutomationService : AccessibilityService() {
             )
             return
         }
-        val ok = clickable.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+        // v2.2.12 — retry the click up to 3× with short backoff. A one-shot ACTION_CLICK can hit a
+        // transient "not yet focusable" moment (especially right after a rail settles) and burn the
+        // whole attempt budget on a single failed click. Cheap to retry on the right tile.
+        var ok = false
+        for (retry in 0 until 3) {
+            ok = clickable.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            if (ok) break
+            if (retry < 2) try { Thread.sleep(120L * (retry + 1)) } catch (_: InterruptedException) {}
+        }
         Log.i(
             "PlaybackAutomation",
             "Click ${if (ok) "ok" else "FAILED"}: matched='$matchedText' (score=${best!!.score}/${tokens.size})",
@@ -642,6 +650,32 @@ class PlaybackAutomationService : AccessibilityService() {
             "PlaybackAutomation",
             "Result=$result message='$message' matched='$matchedText'",
         )
+        // v2.2.12 — report the outcome back to the location's box (serverUrl) so Scout outcomes
+        // feed the ops flywheel and Hermes can learn which titles/apps reliably play. Capture the
+        // pending package/tokens NOW (writeResult runs before clearPending), then POST on a worker
+        // thread so the AccessibilityService callback is never blocked. Best-effort.
+        try {
+            val pkg = pendingTargetPackage() ?: ""
+            val toks = pendingMatchTokens() ?: ""
+            val ctx = applicationContext
+            Thread {
+                try {
+                    com.sportsbar.scout.MainActivity.detectDevice(ctx)
+                    val serverUrl = com.sportsbar.scout.MainActivity.getServerUrl(ctx)
+                    com.sportsbar.scout.api.ScoutApiClient(serverUrl).sendPlayResult(
+                        com.sportsbar.scout.MainActivity.deviceId,
+                        com.sportsbar.scout.MainActivity.deviceName,
+                        com.sportsbar.scout.MainActivity.ipAddress,
+                        com.sportsbar.scout.MainActivity.VERSION,
+                        result, message, matchedText, pkg, toks, 0,
+                    )
+                } catch (e: Throwable) {
+                    Log.w("PlaybackAutomation", "play-result POST failed: ${e.message}")
+                }
+            }.start()
+        } catch (e: Throwable) {
+            Log.w("PlaybackAutomation", "play-result dispatch failed: ${e.message}")
+        }
     }
 
     // ─── v2.2.0: companion entry points for active extraction ────────
