@@ -1,0 +1,5 @@
+const Database = require('/opt/sbcc-hub/node_modules/better-sqlite3')
+const fs = require('fs')
+const db = new Database(process.env.HUB_DB_PATH)
+db.exec(fs.readFileSync('/root/migration.sql', 'utf8'))
+console.log('tables', db.prepare("select count(*) c from sqlite_master where type='table'").get().c)
