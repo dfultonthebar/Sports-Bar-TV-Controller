@@ -13,6 +13,9 @@ import { validateRequestBody, ValidationSchemas, isValidationError } from '@/lib
 import { logger } from '@sports-bar/logger'
 import { db, schema } from '@/db'
 import { eq } from 'drizzle-orm'
+import { reportToFlywheel } from '@/lib/flywheel'
+
+const LOC = () => process.env.LOCATION_ID || process.env.LOCATION_NAME || 'unknown'
 
 // Validation schema for launching streaming apps
 const launchAppSchema = z.object({
@@ -118,6 +121,7 @@ export async function POST(request: NextRequest) {
         logger.warn(`[API] Failed to mirror launched app into inputCurrentChannels: ${mirrorErr.message}`)
       }
 
+      reportToFlywheel('fleet-firetv-tune', `Streaming launch @ ${LOC()}: ${appId} on ${deviceId} → OK${deepLink ? ' (deep-link)' : ''}`)
       return NextResponse.json({
         success: true,
         message: `Successfully launched app ${appId}`,
@@ -125,6 +129,7 @@ export async function POST(request: NextRequest) {
         appId
       })
     } else {
+      reportToFlywheel('fleet-firetv-tune', `Streaming launch @ ${LOC()}: ${appId} on ${deviceId} → FAILED`)
       return NextResponse.json(
         {
           success: false,
@@ -137,6 +142,7 @@ export async function POST(request: NextRequest) {
     }
   } catch (error: any) {
     logger.error('[API] Error launching app:', error)
+    reportToFlywheel('fleet-firetv-tune', `Streaming launch @ ${LOC()}: ${appId ?? '?'} on ${deviceId ?? '?'} → ERROR: ${error?.message || error}`)
     return NextResponse.json(
       {
         success: false,
