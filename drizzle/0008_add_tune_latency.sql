@@ -1,0 +1,1 @@
+ALTER TABLE `input_source_allocations` ADD `tune_latency_ms` integer;

@@ -218,6 +218,12 @@ fail() {
       "http://localhost:3001/api/auto-update/failures" -d "$payload" >/dev/null 2>&1 || true
   fi
 
+  # Flywheel hook (best-effort): log the auto-update FAILURE outcome to the Honcho
+  # ops corpus (sports-bar/fleet-ops) so the fleet-ops-LLM learns failure->cause.
+  curl -sS -m 6 -X POST -H 'Content-Type: application/json' \
+    "http://100.90.175.125:8000/v3/workspaces/sports-bar/sessions/fleet-ops-log/messages" \
+    -d "$(printf '%s' "auto-update FAILED on $(hostname) at step '$CURRENT_STEP': $reason (version ${PRE_MERGE_VERSION:-?}, triggered-by ${TRIGGERED_BY:-?})" | python3 -c 'import sys,json; print(json.dumps({"messages":[{"peer_id":"fleet-ops","content":sys.stdin.read()}]}))')" >/dev/null 2>&1 || true
+
   update_last_attempt_sidecar "fail"
   exit "${2:-4}"
 }
@@ -793,6 +799,13 @@ PRE_MERGE_RESET_PATHS=(
   "CLAUDE.md"
   "package.json"
   "package-lock.json"
+  # v2.82.32 — app writes apps/web/TODO_LIST.md at runtime (error-watch auto-file +
+  # /api/todos mirror), leaving a tracked-modified file that aborts `git merge` ("Please
+  # commit your changes or stash them before you merge"). This silently stalled the WHOLE
+  # fleet at 2.82.10 (every nightly auto-update failed at the merge step → rollback). Reset
+  # it to HEAD pre-merge; main's version wins and the app rewrites it after. The TODO data
+  # itself lives in the DB (/api/todos), so the .md is a regenerable mirror — safe to discard.
+  "apps/web/TODO_LIST.md"
 )
 
 # v2.32.81 — branch drift recovery (sidecar fix in v2.32.82).
@@ -944,6 +957,27 @@ fi
 
 COMMITS_TO_MERGE=$(git log --oneline HEAD..origin/main | wc -l)
 log "Commits pending merge: $COMMITS_TO_MERGE"
+
+# v2.82.15 — Move aside UNTRACKED files that collide with incoming tracked files.
+# git merge aborts ("untracked working tree files would be overwritten by merge") when a
+# non-ignored untracked local file (e.g. .env.bak, a stray scripts/*.ts) shares a path with
+# a file main ADDS. The clean-check above uses --untracked-files=no, so it misses these —
+# this rolled back 4 of 6 boxes on 2026-06-23. Back them up (never destroy) so the merge
+# proceeds; operator can recover from .auto-update-untracked-bak/<ts>/ if ever needed.
+# --exclude-standard scopes to non-ignored files (the ones git actually blocks on), so it
+# won't touch legitimately-ignored .env / data files.
+mapfile -t _collisions < <(comm -12 \
+  <(git ls-files --others --exclude-standard | sort) \
+  <(git diff --name-only HEAD origin/main | sort))
+if [ "${#_collisions[@]}" -gt 0 ]; then
+  COLLIDE_BAK="$REPO_ROOT/.auto-update-untracked-bak/$RUN_TS"
+  log "Untracked collisions with incoming files (${#_collisions[@]}) — backing up to ${COLLIDE_BAK#"$REPO_ROOT"/}/ so the merge can proceed:"
+  for u in "${_collisions[@]}"; do
+    mkdir -p "$COLLIDE_BAK/$(dirname "$u")"
+    log "  moving aside: $u"
+    mv "$REPO_ROOT/$u" "$COLLIDE_BAK/$u" 2>&1 | tee -a "$LOG_FILE" || true
+  done
+fi
 
 # v2.32.6 — Canary location gate. When scripts/canary-config.json has
 # enabled=true AND this is NOT the canary branch, refuse to merge a

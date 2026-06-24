@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db, schema } from '@/db'
-import { eq, and, or, gte, lte, inArray } from 'drizzle-orm'
+import { eq, and, or, gte, lte, inArray, sql } from 'drizzle-orm'
 import { logger } from '@sports-bar/logger'
 import {
   logSchedulingEvent,
@@ -128,7 +128,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 2. Find or create game schedule
-    const tuneAtUnix = Math.floor(new Date(tuneAt).getTime() / 1000)
+    let tuneAtUnix = Math.floor(new Date(tuneAt).getTime() / 1000)
     const startTimeUnix = Math.floor(new Date(gameInfo.startTime).getTime() / 1000)
     // endTime derivation order: explicit caller value > learned per-league
     // average from historical durations > 3h fallback. The per-league
@@ -159,13 +159,26 @@ export async function POST(request: NextRequest) {
     // realizing the channel guide entry resolved to yesterday's day.
     const nowUnix = Math.floor(Date.now() / 1000)
     if (endTimeUnix < nowUnix) {
-      const gameTime = new Date(gameInfo.startTime).toLocaleString()
-      const msg = `Game already ended at ${new Date(endTimeUnix * 1000).toLocaleString()} (started ${gameTime}). Pick the next session if this is a multi-day event (e.g. NFL Draft Day 2/3).`
-      logger.warn(`[BARTENDER-SCHEDULE] ${msg}`)
-      return NextResponse.json(
-        { success: false, error: msg },
-        { status: 400 }
-      )
+      // The computed window already elapsed. Two cases:
+      //  • Started a PRIOR day (truly stale, e.g. NFL Draft Day 1 picked on Day 2) → reject.
+      //  • Started TODAY (e.g. an all-day tennis/golf card whose first-session start + default
+      //    duration elapsed, but play is still live) → the operator is approving it because it's
+      //    on RIGHT NOW, so re-base the tune to now (tune immediately) instead of rejecting.
+      const startedToday =
+        new Date(startTimeUnix * 1000).toDateString() === new Date(nowUnix * 1000).toDateString()
+      if (startedToday) {
+        const win = Math.max(endTimeUnix - startTimeUnix, 2 * 3600)
+        logger.warn(
+          `[BARTENDER-SCHEDULE] "${gameInfo.league || 'event'}" listed window elapsed but it started today (still live) — re-basing tune to now (+${Math.round(win / 3600)}h window)`
+        )
+        tuneAtUnix = nowUnix
+        endTimeUnix = nowUnix + win
+      } else {
+        const gameTime = new Date(gameInfo.startTime).toLocaleString()
+        const msg = `Game already ended at ${new Date(endTimeUnix * 1000).toLocaleString()} (started ${gameTime}). Pick the next session if this is a multi-day event (e.g. NFL Draft Day 2/3).`
+        logger.warn(`[BARTENDER-SCHEDULE] ${msg}`)
+        return NextResponse.json({ success: false, error: msg }, { status: 400 })
+      }
     }
 
     let gameSchedule = null
@@ -419,6 +432,22 @@ export async function POST(request: NextRequest) {
     }
 
     await db.insert(schema.inputSourceAllocations).values(allocation)
+
+    // v2.82.16 — Close the AI-suggestion audit loop: if this allocation fulfills a game the
+    // AI suggested, flip the matching ai_schedule_suggestions row to 'applied', link the
+    // allocation, and record the actual TVs (so suggested_tv_output_ids vs modified_tv_output_ids
+    // shows whether the operator changed the AI's pick). Best-effort — the table may not exist
+    // on a box that never ran AI Suggest; never blocks. Manual (non-AI) schedules match 0 rows.
+    try {
+      const reviewUnix = Math.floor(Date.now() / 1000)
+      await db.run(sql`UPDATE ai_schedule_suggestions
+        SET status='applied', applied_allocation_id=${allocation.id},
+            modified_tv_output_ids=${JSON.stringify(finalTvOutputIds)},
+            reviewed_by='bartender', reviewed_at=${reviewUnix}, updated_at=${reviewUnix}
+        WHERE game_schedule_id=${gameSchedule.id} AND status='suggested'`)
+    } catch (e) {
+      logger.warn('[BARTENDER-SCHEDULE] Failed to mark AI suggestion applied (non-fatal):', e)
+    }
 
     logger.info(`[BARTENDER-SCHEDULE] Created allocation: ${allocation.id} for ${inputSource.name} to ch ${channelNumber} at ${tuneAt}`)
 

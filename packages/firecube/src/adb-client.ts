@@ -391,7 +391,7 @@ export class ADBClient {
   async getInstalledPackages(): Promise<string[]> {
     try {
       logger.info(`[ADB CLIENT] Getting installed packages from ${this.deviceAddress}`)
-      const output = await this.executeShellCommand('pm list packages')
+      const output = await this.executeShellCommand('pm list packages', 5000, { retries: 2 })
       const packages = output
         .split('\n')
         .filter(line => line.startsWith('package:'))
@@ -426,7 +426,7 @@ export class ADBClient {
   async getCurrentApp(): Promise<{ packageName: string; activityName: string } | null> {
     try {
       logger.info(`[ADB CLIENT] Getting current app on ${this.deviceAddress}`)
-      const output = await this.executeShellCommand('dumpsys window windows | grep -E "mCurrentFocus"')
+      const output = await this.executeShellCommand('dumpsys window windows | grep -E "mCurrentFocus"', 4000, { retries: 2 })
 
       // Parse output like: mCurrentFocus=Window{abc123 u0 com.amazon.tv.launcher/com.amazon.tv.launcher.ui.HomeActivity}
       const match = output.match(/([a-zA-Z0-9._]+)\/([a-zA-Z0-9._]+)/)
@@ -831,7 +831,7 @@ export class ADBClient {
   private async _verifyFocusedOnRailItem(targetDesc: string): Promise<boolean> {
     try {
       const dumpPath = `/sdcard/espn_focus_${Date.now()}.xml`
-      await this.executeShellCommand(`uiautomator dump ${dumpPath}`, 8000)
+      await this.executeShellCommand(`uiautomator dump ${dumpPath}`, 10000, { retries: 2 })
       const xml = await this.executeShellCommand(`cat ${dumpPath}`, 8000)
       this.executeShellCommand(`rm -f ${dumpPath}`, 3000).catch(() => {})
       if (!xml || xml.length < 200) return false
@@ -918,7 +918,7 @@ export class ADBClient {
   ): Promise<{ text: string; cx: number; cy: number } | null> {
     try {
       const dumpPath = `/sdcard/espn_tap_${Date.now()}.xml`
-      await this.executeShellCommand(`uiautomator dump ${dumpPath}`, 8000)
+      await this.executeShellCommand(`uiautomator dump ${dumpPath}`, 10000, { retries: 2 })
       const xml = await this.executeShellCommand(`cat ${dumpPath}`, 8000)
       this.executeShellCommand(`rm -f ${dumpPath}`, 3000).catch(() => {})
 
@@ -1071,7 +1071,7 @@ export class ADBClient {
       // Dump the current UI state. Use a fresh path each time so a stale
       // dump from a previous walker run doesn't get re-read.
       const dumpPath = `/sdcard/espn_verify_${Date.now()}.xml`
-      await this.executeShellCommand(`uiautomator dump ${dumpPath}`, 8000)
+      await this.executeShellCommand(`uiautomator dump ${dumpPath}`, 10000, { retries: 2 })
       const xml = await this.executeShellCommand(`cat ${dumpPath}`, 8000)
       // Best-effort cleanup; not critical if it fails.
       this.executeShellCommand(`rm -f ${dumpPath}`, 3000).catch(() => {})
