@@ -147,6 +147,10 @@ module.exports = {
         OLLAMA_MODEL_SHURE: process.env.OLLAMA_MODEL_SHURE || '',
         RF_DIGEST_MODEL: process.env.RF_DIGEST_MODEL || '',
         OLLAMA_MODEL_NEIGHBORHOOD: process.env.OLLAMA_MODEL_NEIGHBORHOOD || '',
+        // v2.82.x — Fire TV dead-Cube alarm (firetv-health-monitor → Telegram). Per-box value in
+        // .env (bot token + chat id). Gotcha #2: must be listed here to reach the process.
+        TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN || '',
+        TELEGRAM_CHAT_ID: process.env.TELEGRAM_CHAT_ID || '',
         // Per-box AI tuning (#339). MUST be forwarded here or a value set only in
         // .env never reaches the process (Gotcha #2 / SDR_* precedent). ai-suggest
         // reads OLLAMA_NUM_PREDICT (cap, default 2048 via hardware-config.ts) and
