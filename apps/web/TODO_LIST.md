@@ -253,6 +253,21 @@ RECOMMENDATION: keep LLM primary. Prereqs before re-review: (a) fix unresolvedIn
 - **Updated**: 6/19/2026, 1:09:48 PM
 - **Completed**: 6/19/2026, 1:09:48 PM
 
+### Error watch: error_level
+
+- **ID**: `88b913e2-4408-4328-8f96-5d1554b7f491`
+- **Priority**: HIGH
+- **Status**: PLANNED
+- **Category**: Error Watch
+- **Description**: Auto-filed by the error-watch bot — this error signature appeared in the PM2 logs.
+
+Sample: 2026-06-09 19:39:51 -05:00: [2026-06-10T00:39:51.419Z][ERROR] [CONNECTION MANAGER] Connection error for 10.11.3.48:5555:
+Source: /home/ubuntu/.pm2/logs/sports-bar-tv-controller-error*.log
+
+Investigate, fix, then mark COMPLETE. If it recurs after being closed it will re-file.
+- **Created**: 6/24/2026, 4:24:25 AM
+- **Updated**: 6/23/2026, 11:24:25 PM
+
 ### Hermes: track fleet updates + REPLACE Claude in auto-update checkpoints (shadow-first)
 
 - **ID**: `e1a1a8f3-e0bc-4270-a70b-e380d854038c`
@@ -1352,8 +1367,8 @@ FIXED v2.82.25: 10.11.3.48 is the Atmosphere TV (off by schedule). The rising-ed
 
 ---
 
-**Total TODOs**: 96
-- Planned: 18
+**Total TODOs**: 97
+- Planned: 19
 - In Progress: 8
 - Testing: 4
 - Complete: 65
