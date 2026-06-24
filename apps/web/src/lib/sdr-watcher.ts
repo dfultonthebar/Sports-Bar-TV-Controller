@@ -493,6 +493,10 @@ function registerSignalHandlers(): void {
   process.on('SIGINT', shutdown)
 }
 
+// Rising-edge guard for the "no dongle" warning (avoids 288×/day WARN spam on
+// dongleless boxes; warns once in force-mode, debug thereafter). Reset when a
+// dongle appears so a later disconnect warns again.
+let sdrUnavailableWarned = false
 export async function startSdrWatcher(): Promise<void> {
   registerSignalHandlers()
   // Always create the tables even when disabled — keeps /api/sdr/history
@@ -508,10 +512,20 @@ export async function startSdrWatcher(): Promise<void> {
   }
   const check = await checkRtlPower()
   if (!check.available) {
-    logger.warn(`[SDR-WATCHER] ${check.error} — retry in 5 min`)
+    // AUTO mode: a missing dongle is the expected idle state (we poll until one
+    // is plugged in), so log at debug — avoids 288×/day WARN spam on dongleless
+    // boxes (e.g. Lime Kiln). FORCE mode (SDR_ENABLED=true): warn once on the
+    // rising edge then debug, since the operator asked for SDR but none is present.
+    if (AUTO_MODE || sdrUnavailableWarned) {
+      logger.debug(`[SDR-WATCHER] ${check.error} — retry in 5 min`)
+    } else {
+      logger.warn(`[SDR-WATCHER] ${check.error} — retry in 5 min`)
+      sdrUnavailableWarned = true
+    }
     setTimeout(() => startSdrWatcher().catch(() => {}), 5 * 60 * 1000)
     return
   }
+  sdrUnavailableWarned = false // dongle present — re-arm the rising-edge warn
   const band = await computeBand()
   currentBandStartMhz = band.startMhz
   currentBandEndMhz = band.endMhz
