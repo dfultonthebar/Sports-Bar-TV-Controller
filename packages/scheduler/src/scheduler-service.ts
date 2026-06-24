@@ -1209,10 +1209,14 @@ class SchedulerService {
               }
             );
 
-            // Update allocation status to 'active'
+            // Update allocation status to 'active' + record the successful tune (v2.82.x telemetry)
             await db.update(schema.inputSourceAllocations)
               .set({
                 status: 'active',
+                tuneSuccess: true,
+                tuneError: null,
+                tuneAttempts: ((allocation as any).tuneAttempts ?? 0) + 1,
+                tuneLastAttemptAt: nowUnix,
                 updatedAt: nowUnix,
               })
               .where(eq(schema.inputSourceAllocations.id, allocation.id));
@@ -1459,6 +1463,27 @@ class SchedulerService {
             });
 
             logger.error(`[SCHEDULER] ❌ Failed to tune ${inputSource.name}: ${result.error || result.message}`);
+
+            // v2.82.x — record the failed tune + give up after a cap OR once the game window has
+            // passed, so a bad tune (box offline, unknown channel) stops re-hammering every tick
+            // and the failure becomes visible instead of the allocation hanging 'pending' forever.
+            const attempts = ((allocation as any).tuneAttempts ?? 0) + 1
+            const reason = String(result.error || result.message || 'Unknown tune error').slice(0, 500)
+            const giveUp = attempts >= 5 || nowUnix > (allocation.allocatedAt + 2 * 3600)
+            await db.update(schema.inputSourceAllocations)
+              .set({
+                tuneSuccess: false,
+                tuneError: reason,
+                tuneAttempts: attempts,
+                tuneLastAttemptAt: nowUnix,
+                ...(giveUp ? { status: 'failed' as const } : {}),
+                updatedAt: nowUnix,
+              })
+              .where(eq(schema.inputSourceAllocations.id, allocation.id))
+            if (giveUp) {
+              logger.error(`[SCHEDULER] ⛔ Allocation ${allocation.id} marked FAILED after ${attempts} tune attempt(s) — last error: ${reason}`)
+              await schedulerLogger.warn('scheduler-service', 'tune', `Allocation ${allocation.id} FAILED after ${attempts} attempts: ${reason}`, correlationId, { gameId: game.id, inputSourceId: inputSource.id, allocationId: allocation.id })
+            }
           }
         } catch (tuneError: any) {
           await schedulerLogger.error(
@@ -1478,6 +1503,17 @@ class SchedulerService {
           );
 
           logger.error(`[SCHEDULER] ❌ Error executing scheduled tune for ${inputSource.name}:`, { error: tuneError });
+          // v2.82.x — exception path (box unreachable / fetch threw) also records the failure +
+          // gives up after the cap/window so it doesn't hang 'pending' forever. Best-effort.
+          try {
+            const attempts = ((allocation as any).tuneAttempts ?? 0) + 1
+            const reason = String(tuneError?.message || tuneError || 'tune exception').slice(0, 500)
+            const giveUp = attempts >= 5 || nowUnix > (allocation.allocatedAt + 2 * 3600)
+            await db.update(schema.inputSourceAllocations)
+              .set({ tuneSuccess: false, tuneError: reason, tuneAttempts: attempts, tuneLastAttemptAt: nowUnix, ...(giveUp ? { status: 'failed' as const } : {}), updatedAt: nowUnix })
+              .where(eq(schema.inputSourceAllocations.id, allocation.id))
+            if (giveUp) logger.error(`[SCHEDULER] ⛔ Allocation ${allocation.id} marked FAILED after ${attempts} attempt(s) (exception): ${reason}`)
+          } catch { /* best-effort telemetry — never let it mask the original error */ }
         }
       }
 

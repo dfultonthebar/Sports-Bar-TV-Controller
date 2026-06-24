@@ -1640,6 +1640,16 @@ export const inputSourceAllocations = sqliteTable('input_source_allocations', {
   verifyState: text('verify_state').notNull().default('unverified'),
   verifyAttempts: integer('verify_attempts').notNull().default(0),
   verifyError: text('verify_error'),
+  // v2.82.x — tune-outcome telemetry. At game time the scheduler tunes a cable box / launches
+  // a Fire TV app; if that FAILS (box offline, unknown channel) the allocation used to hang
+  // 'pending' forever with nothing recorded. Now: tuneSuccess null=not-attempted else outcome;
+  // tuneError = last failure reason; tuneAttempts = number of tune tries; the failure-sweep
+  // flips status to 'failed' once attempts hit the cap OR the game window has passed, so a bad
+  // tune stops hanging and is visible to the operator.
+  tuneSuccess: integer('tune_success', { mode: 'boolean' }),
+  tuneError: text('tune_error'),
+  tuneAttempts: integer('tune_attempts').notNull().default(0),
+  tuneLastAttemptAt: integer('tune_last_attempt_at'),
 
   // Metadata
   createdAt: integer('created_at').notNull().default(sql`(strftime('%s', 'now'))`), // Unix timestamp
