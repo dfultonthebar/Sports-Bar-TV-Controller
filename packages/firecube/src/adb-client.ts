@@ -550,8 +550,8 @@ export class ADBClient {
       const searchUrl = `https://watch.amazon.com/search?phrase=${encodeURIComponent(contentTitle)}`
       await this.launchAppWithDeepLink(searchUrl, packageName)
 
-      logger.info(`[ADB CLIENT] Waiting 5s for Prime Video search results to render`)
-      await new Promise((r) => setTimeout(r, 5000))
+      logger.info(`[ADB CLIENT] Waiting 6.5s for Prime Video search results to render`)
+      await new Promise((r) => setTimeout(r, 6500))
 
       // v2.32.91 — pass timeoutMs=8000 to each keyevent in the autoplay
       // sequence. The default 3s timeout in executeShellCommand can fire
@@ -578,8 +578,27 @@ export class ADBClient {
       logger.info(`[ADB CLIENT] DPAD_CENTER → trigger Watch now`)
       await this.sendKey(23, 8000) // KEYCODE_DPAD_CENTER
 
-      logger.info(`[ADB CLIENT] Prime Video autoplay sequence dispatched`)
-      return 'Prime Video autoplay sequence dispatched'
+      // v2.82.35 — VERIFY we actually reached playback instead of blindly returning success.
+      // Prime search for a title it has no match for (e.g. a generic sports-guide listing like
+      // the 2026-06-24 tennis case) silently leaves the app on the search/launcher screen — the
+      // old code returned "dispatched" anyway, so tune_success=1 while nothing played. Poll the
+      // foreground activity; retry the Watch press once; if it never lands on a player, FAIL
+      // honestly so the caller (and the flywheel) records the real outcome and can fall back.
+      for (let attempt = 0; attempt < 2; attempt++) {
+        await new Promise((r) => setTimeout(r, 3000))
+        const cur = await this.getCurrentApp().catch(() => null)
+        const act = (cur?.activityName || '').toLowerCase()
+        if (/player|playback|playeractivity|watchnow/.test(act)) {
+          logger.info(`[ADB CLIENT] Prime Video reached playback (${cur?.activityName})`)
+          return `Prime Video playing: ${cur?.activityName}`
+        }
+        logger.warn(`[ADB CLIENT] Prime not on a player yet (foreground=${cur?.activityName || '?'}) — retry Watch press`)
+        await this.sendKey(23, 8000)
+      }
+      throw new Error(
+        `Prime Video did not reach playback for "${contentTitle}" — foreground stayed off-player. ` +
+        `Likely no matching title in Prime Video (the content may not stream on Prime).`
+      )
     } catch (error) {
       logger.error(`[ADB CLIENT] Prime Video autoplay error:`, error)
       throw error
