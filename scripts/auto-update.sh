@@ -799,6 +799,13 @@ PRE_MERGE_RESET_PATHS=(
   "CLAUDE.md"
   "package.json"
   "package-lock.json"
+  # v2.82.32 — app writes apps/web/TODO_LIST.md at runtime (error-watch auto-file +
+  # /api/todos mirror), leaving a tracked-modified file that aborts `git merge` ("Please
+  # commit your changes or stash them before you merge"). This silently stalled the WHOLE
+  # fleet at 2.82.10 (every nightly auto-update failed at the merge step → rollback). Reset
+  # it to HEAD pre-merge; main's version wins and the app rewrites it after. The TODO data
+  # itself lives in the DB (/api/todos), so the .md is a regenerable mirror — safe to discard.
+  "apps/web/TODO_LIST.md"
 )
 
 # v2.32.81 — branch drift recovery (sidecar fix in v2.32.82).
