@@ -45,6 +45,11 @@ export const HARDWARE_CONFIG = {
     // done_reason so these get set from data, not guesses.
     timeout: Number(process.env.OLLAMA_TIMEOUT_MS) || 300000,
     numPredict: Number(process.env.OLLAMA_NUM_PREDICT) || 2048,
+    // v2.82.31 — keep the sports-bar model pinned resident so AI Suggest et al never
+    // pay the ~30s cold-load (operator: "it should always be warm"). Default -1 = pin
+    // forever; a RAM-tight box can set OLLAMA_KEEP_ALIVE='20m' (duration string) instead.
+    // Forwarded as `keep_alive` on every ollamaGenerate call + by the startup warmer.
+    keepAlive: ((v) => (v === undefined || v === '' ? -1 : /^-?\d+$/.test(v) ? Number(v) : v))(process.env.OLLAMA_KEEP_ALIVE),
   },
   venue: {
     timezone: 'America/Chicago',

@@ -36,6 +36,19 @@ const OLLAMA_MODEL = HARDWARE_CONFIG.ollama.model
 // slow iGPUs (Graystone ~6.7 tok/s) hit the 300s timeout at 2048. logLlmPerf
 // records real eval_count + done_reason so this gets set from data.
 const OLLAMA_NUM_PREDICT = HARDWARE_CONFIG.ollama.numPredict
+// v2.82.31 — pin the model warm (keep_alive) so AI Suggest never cold-loads (~30s on iGPU).
+const OLLAMA_KEEP_ALIVE = HARDWARE_CONFIG.ollama.keepAlive
+// Central flywheel: report each AI Suggest LLM run to Honcho (CT213) so Hermes/Honcho see
+// what the scheduler is doing. Best-effort, fire-and-forget — never blocks or throws.
+const HONCHO_BASE = process.env.HONCHO_BASE || 'http://100.90.175.125:8000'
+function reportRunToFlywheel(content: string): void {
+  void fetch(`${HONCHO_BASE}/v3/workspaces/sports-bar/sessions/fleet-ops-log/messages`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messages: [{ peer_id: 'fleet-ops', content }] }),
+    signal: AbortSignal.timeout(5000),
+  }).catch(() => {})
+}
 // Wave 2 (intelligence roadmap): deterministic DistributionEngine solver.
 // off (default) = LLM only, no engine call. shadow = also run the engine after
 // the response is sent and LOG a diff (no output change). primary (later patch)
@@ -569,7 +582,7 @@ async function callOllama(prompt: string): Promise<string> {
           num_predict: OLLAMA_NUM_PREDICT,
         },
       },
-      { feature: 'ai-suggest', timeoutMs: OLLAMA_TIMEOUT_MS },
+      { feature: 'ai-suggest', timeoutMs: OLLAMA_TIMEOUT_MS, keepAlive: OLLAMA_KEEP_ALIVE },
     )
 
     // Record real throughput so num_predict + timeout can be tuned from data.
@@ -583,6 +596,7 @@ async function callOllama(prompt: string): Promise<string> {
       numPredict: OLLAMA_NUM_PREDICT,
       outcome: 'ok',
     })
+    reportRunToFlywheel(`AI Suggest @ ${process.env.LOCATION_ID || 'unknown'}: ok · ${OLLAMA_MODEL} · ${Date.now() - startedAt}ms · ${data.eval_count ?? '?'} tok`)
     return data.response || ''
   } catch (err: any) {
     const isTimeout = err?.name === 'TimeoutError' || err?.name === 'AbortError'
@@ -596,6 +610,7 @@ async function callOllama(prompt: string): Promise<string> {
         ? `aborted at OLLAMA_TIMEOUT_MS=${OLLAMA_TIMEOUT_MS}ms — likely num_predict too high for this box's tok/s, or Ollama contended`
         : (err?.message || err?.name || 'unknown'),
     })
+    reportRunToFlywheel(`AI Suggest @ ${process.env.LOCATION_ID || 'unknown'}: ${isTimeout ? 'TIMEOUT' : 'error'} · ${OLLAMA_MODEL} · ${Date.now() - startedAt}ms`)
     throw err
   }
 }
@@ -1554,6 +1569,42 @@ export async function GET(request: NextRequest) {
         )
       } catch (logErr) {
         logger.warn('[AI-SUGGEST] Failed to persist rejection telemetry:', logErr)
+      }
+    }
+
+    // v2.82.16 — Persist the AI's suggestions to ai_schedule_suggestions so there is a real
+    // audit trail of WHAT the AI proposed (operator request 2026-06-23). The table existed in
+    // prod but was never written by any code. Best-effort: a failure here MUST NOT block the
+    // response. Raw SQL + CREATE TABLE IF NOT EXISTS because the table isn't modeled in the
+    // Drizzle schema (orphan) — this also self-heals it onto any box that lacks it, without a
+    // risky migration on a pre-existing table (Gotcha #6). The apply path
+    // (bartender-schedule) flips status to 'applied' + links the allocation.
+    if (suggestions.length > 0) {
+      try {
+        const batchId = crypto.randomUUID()
+        const nowUnix = Math.floor(Date.now() / 1000)
+        const expiresAt = nowUnix + 12 * 60 * 60
+        await db.run(sql`CREATE TABLE IF NOT EXISTS ai_schedule_suggestions (
+          id TEXT PRIMARY KEY, batch_id TEXT, game_schedule_id TEXT, suggested_input_source_id TEXT,
+          suggested_channel_number TEXT, suggested_app_name TEXT, suggested_tv_output_ids TEXT,
+          suggested_tv_count INTEGER, confidence_score REAL, reasoning TEXT, reasoning_factors TEXT,
+          game_priority_score INTEGER, conflicts_detected TEXT, status TEXT, reviewed_by TEXT,
+          reviewed_at INTEGER, review_notes TEXT, modified_input_source_id TEXT,
+          modified_channel_number TEXT, modified_tv_output_ids TEXT, applied_allocation_id TEXT,
+          created_at INTEGER, updated_at INTEGER, expires_at INTEGER)`)
+        for (const s of suggestions) {
+          const outs = Array.isArray(s.suggestedOutputs) ? s.suggestedOutputs : []
+          await db.run(sql`INSERT INTO ai_schedule_suggestions
+            (id, batch_id, game_schedule_id, suggested_input_source_id, suggested_channel_number,
+             suggested_app_name, suggested_tv_output_ids, suggested_tv_count, confidence_score,
+             reasoning, status, created_at, updated_at, expires_at)
+            VALUES (${crypto.randomUUID()}, ${batchId}, ${s.gameId}, ${s.suggestedInputId || ''},
+             ${s.channelNumber || ''}, ${s.appName || ''}, ${JSON.stringify(outs)}, ${outs.length},
+             ${s.confidence}, ${s.reasoning || ''}, 'suggested', ${nowUnix}, ${nowUnix}, ${expiresAt})`)
+        }
+        logger.info(`[AI-SUGGEST] Persisted ${suggestions.length} suggestion(s) to ai_schedule_suggestions (batch ${batchId})`)
+      } catch (persistErr) {
+        logger.warn('[AI-SUGGEST] Failed to persist suggestions audit:', persistErr)
       }
     }
 

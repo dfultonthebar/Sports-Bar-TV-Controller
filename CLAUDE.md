@@ -641,7 +641,7 @@ Graystone was root-compromised via the **leaked, shared fleet SSH password** (an
 - **ufw active on all 7** — default deny incoming, allow only `tailscale0` + RFC1918 + `100.64.0.0/10`. **Public SSH / RDP(3389) / Ollama(:11434) / app are BLOCKED** — reach boxes over Tailscale or LAN. A new service that must be publicly reachable won't work without a ufw rule (don't add one — keep it Tailscale/LAN). ufw was applied with a 120s `systemd-run` auto-revert per box to avoid lockout.
 - **Outbound mining pools sinkholed** (`/etc/hosts` 0.0.0.0 + `ufw deny out` to the Kryptex IPs) as defense-in-depth.
 - **Re-infection watch:** `fleet-miner-watch` Hermes cron (every 15 min, IOC scan → Telegram) on CT212.
-- The leaked password (`feedback_password_leak_in_git_history`) is **defanged** (password auth off) but **not yet rotated** — still an open hygiene item.
+- The leaked password (`feedback_password_leak_in_git_history`) was **rotated 2026-06-23** across all 7 boxes (new value deliberately kept out of git + every file per operator — it lives nowhere on disk). Combined with keys-only SSH, the git-history value is now fully dead. Closed.
 
 ## Development Workflow
 

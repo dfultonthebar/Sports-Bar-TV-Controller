@@ -41,6 +41,32 @@ export const fireTVDevices = sqliteTable('FireTVDevice', {
   updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
 })
 
+// Training Documents — DB-backed knowledge the local AI is trained on. Re-wired v2.82.x
+// (was stripped in v2.48.5 as an unused orphan; operator 2026-06-23 wants the local AI to
+// have all system knowledge → these rows are ingested into the RAG vector store so the
+// chatbot answers from them, alongside the filesystem docs). Binds to the existing prod
+// TrainingDocument table (no migration needed). Ingestion: scripts/index-training-docs.ts
+// + the /api/training-docs POST path; RAG pickup via scan-system-docs.
+export const trainingDocuments = sqliteTable('TrainingDocument', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  title: text('title').notNull(),
+  content: text('content').notNull(),
+  fileType: text('fileType').notNull().default('md'),
+  fileName: text('fileName'),
+  filePath: text('filePath'),
+  fileSize: integer('fileSize'),
+  category: text('category'),
+  tags: text('tags'),                 // JSON array of strings
+  description: text('description'),
+  metadata: text('metadata'),         // JSON object
+  processedAt: text('processedAt'),   // last time this row was indexed into RAG
+  viewCount: integer('viewCount').notNull().default(0),
+  lastViewed: text('lastViewed'),
+  isActive: integer('isActive', { mode: 'boolean' }).notNull().default(true),
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+})
+
 // DirecTV Device Model (single source of truth — replaces directv-devices.json)
 export const direcTVDevices = sqliteTable('DirecTVDevice', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -1614,6 +1640,25 @@ export const inputSourceAllocations = sqliteTable('input_source_allocations', {
   verifyState: text('verify_state').notNull().default('unverified'),
   verifyAttempts: integer('verify_attempts').notNull().default(0),
   verifyError: text('verify_error'),
+  // v2.82.x — tune-outcome telemetry. At game time the scheduler tunes a cable box / launches
+  // a Fire TV app; if that FAILS (box offline, unknown channel) the allocation used to hang
+  // 'pending' forever with nothing recorded. Now: tuneSuccess null=not-attempted else outcome;
+  // tuneError = last failure reason; tuneAttempts = number of tune tries; the failure-sweep
+  // flips status to 'failed' once attempts hit the cap OR the game window has passed, so a bad
+  // tune stops hanging and is visible to the operator.
+  tuneSuccess: integer('tune_success', { mode: 'boolean' }),
+  tuneError: text('tune_error'),
+  tuneAttempts: integer('tune_attempts').notNull().default(0),
+  tuneLastAttemptAt: integer('tune_last_attempt_at'),
+  // v2.82.x — tune hardware response time (ms): how long the tune POST took to ack at game time.
+  // Already measured in scheduler-service (tuneDurationMs) but never stored — persist it for
+  // slow-box detection + SLA (e.g. a cable box that consistently takes 8s+ to tune).
+  tuneLatencyMs: integer('tune_latency_ms'),
+  // v2.82.x — audio-zone switch outcome (audio-follows-video). null=not-attempted; else whether
+  // every zone switched to the intended source. audioZoneError lists the zones that failed, so a
+  // silent "video moved but audio didn't follow" is visible instead of only PM2-logged.
+  audioZoneSuccess: integer('audio_zone_success', { mode: 'boolean' }),
+  audioZoneError: text('audio_zone_error'),
 
   // Metadata
   createdAt: integer('created_at').notNull().default(sql`(strftime('%s', 'now'))`), // Unix timestamp

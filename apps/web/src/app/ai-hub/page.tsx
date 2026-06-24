@@ -5,6 +5,8 @@ import { useState, useEffect, useRef } from 'react'
 import { Brain, MessageSquare, Cpu, Settings as SettingsIcon, Key, RefreshCw, Database, FileCode, CheckCircle, AlertCircle, Loader2, Bot, ArrowLeft, Activity, FileText } from 'lucide-react'
 import Link from 'next/link'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import TrainingDocsPanel from '@/components/ai/TrainingDocsPanel'
+import SafeBoundary from '@/components/SafeBoundary'
 import ApiKeysManager from '@/components/ApiKeysManager'
 import DeviceAIAssistant from '@/components/DeviceAIAssistant'
 import { makeSessionId } from '@/lib/uuid-safe'
@@ -449,6 +451,10 @@ export default function AIHubPage() {
             <TabsTrigger value="keys" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
               <Key className="w-4 h-4 mr-2" />
               API Keys
+            </TabsTrigger>
+            <TabsTrigger value="knowledge" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
+              <Database className="w-4 h-4 mr-2" />
+              Knowledge
             </TabsTrigger>
           </TabsList>
 
@@ -1036,6 +1042,12 @@ export default function AIHubPage() {
                 </div>
               </div>
             </div>
+          </TabsContent>
+
+          <TabsContent value="knowledge" className="space-y-6">
+            <SafeBoundary label="Training Documents">
+              <TrainingDocsPanel />
+            </SafeBoundary>
           </TabsContent>
         </Tabs>
       </main>

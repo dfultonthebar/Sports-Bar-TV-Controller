@@ -43,6 +43,27 @@
       "when": 1781365088221,
       "tag": "0005_agent_tool_invocations",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1782272181544,
+      "tag": "0006_add_tune_telemetry",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1782273284743,
+      "tag": "0007_add_audio_zone_telemetry",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1782273728807,
+      "tag": "0008_add_tune_latency",
+      "breakpoints": true
     }
   ]
 }
