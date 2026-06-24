@@ -11,6 +11,7 @@ import { z } from 'zod'
 import { validateRequestBody, validateQueryParams, isValidationError } from '@/lib/validation'
 import { HARDWARE_CONFIG } from '@/lib/hardware-config'
 import { requireAtlasProcessor } from '@/lib/atlas-guard'
+import { resolveProcessorConnection } from '@/lib/audio-processor-drivers'
 const CONFIG_DIR = path.join(process.cwd(), 'data', 'atlas-configs')
 
 // Ensure config directory exists
@@ -38,13 +39,24 @@ export async function GET(request: NextRequest) {
     const processorIp = searchParams.get('processorIp')
     const param = searchParams.get('param')
 
-    // If processorIp and param are provided, fetch from Atlas hardware directly
-    if (processorIp && param) {
-      const guard = await requireAtlasProcessor(processorIp, 'ATLAS CONFIG')
+    // If a param is requested, fetch from Atlas hardware directly. Resolve the
+    // saved IP from the DB (by processorId preferred) so an empty in-memory IP
+    // no longer fails with "Processor IP is required" — only error when neither
+    // an IP nor a resolvable processorId is available.
+    if (param && (processorIp || processorId)) {
+      const conn = await resolveProcessorConnection({ processorId, processorIp })
+      if (!conn) {
+        return NextResponse.json(
+          { success: false, error: 'Processor IP is required' },
+          { status: 400 }
+        )
+      }
+      const resolvedIp = conn.ipAddress
+      const guard = await requireAtlasProcessor(resolvedIp, 'ATLAS CONFIG')
       if (guard) return guard
       const client = new AtlasTCPClient({
-        ipAddress: processorIp,
-        tcpPort: HARDWARE_CONFIG.atlas.tcpPort,
+        ipAddress: resolvedIp,
+        tcpPort: conn.tcpPort,
         timeout: 5000
       })
       try {

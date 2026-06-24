@@ -61,10 +61,12 @@ export default function BartenderRemoteAudioPanel({
 
   const [useGroups, setUseGroups] = useState(false)
 
-  // Check if processor has active groups
+  // Check if processor has active groups. Groups is opt-in: useGroups only
+  // flips true when the hardware actually reports active groups. Otherwise
+  // the panel stays on the default Zone control.
   useEffect(() => {
-    if (!processorIp) return
-    fetch(`/api/atlas/groups?processorIp=${encodeURIComponent(processorIp)}`)
+    if (!processorIp && !processorId) return
+    fetch(`/api/atlas/groups?processorIp=${encodeURIComponent(processorIp || '')}&processorId=${encodeURIComponent(processorId || '')}`)
       .then(res => res.ok ? res.json() : null)
       .then(data => {
         if (data?.groups) {
@@ -73,7 +75,7 @@ export default function BartenderRemoteAudioPanel({
         }
       })
       .catch(() => {})
-  }, [processorIp])
+  }, [processorIp, processorId])
 
   // Fetch HTD settings and devices
   const fetchHTDSettings = useCallback(async () => {
@@ -271,13 +273,19 @@ export default function BartenderRemoteAudioPanel({
               </h3>
 
               <div className="w-full">
-                {!processorId || useGroups ? (
+                {/* Zone control is the DEFAULT. Groups is opt-in only: it
+                    renders ONLY when the processor actually has active groups
+                    (useGroups === true) AND we have a processorId. A briefly
+                    absent processorId must NOT fall to Groups with an empty IP
+                    (that produced the 400 "Processor IP is required"). */}
+                {useGroups && processorId ? (
                   <AtlasGroupsControl
+                    processorId={processorId}
                     processorIp={processorIp}
                   />
                 ) : (
                   <AtlasZoneControl
-                    processorId={processorId}
+                    processorId={processorId || ''}
                     processorIp={processorIp}
                   />
                 )}
