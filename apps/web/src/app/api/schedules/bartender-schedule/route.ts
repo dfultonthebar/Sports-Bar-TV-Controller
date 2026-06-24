@@ -128,7 +128,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 2. Find or create game schedule
-    const tuneAtUnix = Math.floor(new Date(tuneAt).getTime() / 1000)
+    let tuneAtUnix = Math.floor(new Date(tuneAt).getTime() / 1000)
     const startTimeUnix = Math.floor(new Date(gameInfo.startTime).getTime() / 1000)
     // endTime derivation order: explicit caller value > learned per-league
     // average from historical durations > 3h fallback. The per-league
@@ -159,13 +159,26 @@ export async function POST(request: NextRequest) {
     // realizing the channel guide entry resolved to yesterday's day.
     const nowUnix = Math.floor(Date.now() / 1000)
     if (endTimeUnix < nowUnix) {
-      const gameTime = new Date(gameInfo.startTime).toLocaleString()
-      const msg = `Game already ended at ${new Date(endTimeUnix * 1000).toLocaleString()} (started ${gameTime}). Pick the next session if this is a multi-day event (e.g. NFL Draft Day 2/3).`
-      logger.warn(`[BARTENDER-SCHEDULE] ${msg}`)
-      return NextResponse.json(
-        { success: false, error: msg },
-        { status: 400 }
-      )
+      // The computed window already elapsed. Two cases:
+      //  • Started a PRIOR day (truly stale, e.g. NFL Draft Day 1 picked on Day 2) → reject.
+      //  • Started TODAY (e.g. an all-day tennis/golf card whose first-session start + default
+      //    duration elapsed, but play is still live) → the operator is approving it because it's
+      //    on RIGHT NOW, so re-base the tune to now (tune immediately) instead of rejecting.
+      const startedToday =
+        new Date(startTimeUnix * 1000).toDateString() === new Date(nowUnix * 1000).toDateString()
+      if (startedToday) {
+        const win = Math.max(endTimeUnix - startTimeUnix, 2 * 3600)
+        logger.warn(
+          `[BARTENDER-SCHEDULE] "${gameInfo.league || 'event'}" listed window elapsed but it started today (still live) — re-basing tune to now (+${Math.round(win / 3600)}h window)`
+        )
+        tuneAtUnix = nowUnix
+        endTimeUnix = nowUnix + win
+      } else {
+        const gameTime = new Date(gameInfo.startTime).toLocaleString()
+        const msg = `Game already ended at ${new Date(endTimeUnix * 1000).toLocaleString()} (started ${gameTime}). Pick the next session if this is a multi-day event (e.g. NFL Draft Day 2/3).`
+        logger.warn(`[BARTENDER-SCHEDULE] ${msg}`)
+        return NextResponse.json({ success: false, error: msg }, { status: 400 })
+      }
     }
 
     let gameSchedule = null

@@ -31,6 +31,10 @@ export const fireTVDevices = sqliteTable('FireTVDevice', {
   deviceModel: text('deviceModel'),
   softwareVersion: text('softwareVersion'),
   model: text('model'), // Hardware model (e.g. 'HA90' for Epson)
+  // v2.82.x — manufacturer keys the per-manufacturer/model device DRIVER (Amazon Fire TV vs
+  // NVIDIA Shield vs generic Android TV). Defaults 'amazon' so the existing Fire-TV install
+  // base resolves to the Fire-TV driver (identical behavior). See lib/device-drivers.
+  manufacturer: text('manufacturer').default('amazon'),
   keepAwakeEnabled: integer('keepAwakeEnabled', { mode: 'boolean' }),
   keepAwakeStart: text('keepAwakeStart'),
   keepAwakeEnd: text('keepAwakeEnd'),

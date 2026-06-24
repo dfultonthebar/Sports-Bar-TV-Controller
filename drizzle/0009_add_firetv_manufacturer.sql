@@ -1,0 +1,1 @@
+ALTER TABLE `FireTVDevice` ADD `manufacturer` text DEFAULT 'amazon';
