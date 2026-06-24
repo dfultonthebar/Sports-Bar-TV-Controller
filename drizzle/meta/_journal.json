@@ -64,6 +64,13 @@
       "when": 1782273728807,
       "tag": "0008_add_tune_latency",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1782319989223,
+      "tag": "0009_add_firetv_manufacturer",
+      "breakpoints": true
     }
   ]
 }
