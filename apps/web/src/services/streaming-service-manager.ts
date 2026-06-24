@@ -200,6 +200,17 @@ class StreamingServiceManager {
         )
       }
 
+      // v2.82.41 — fire Scout (content-based tile click; works on Fire TV AND the Shield) for
+      // Prime sports content BEFORE the launch sequence. Scout clicks the matching tile in-app;
+      // the DPAD autoplay (Fire TV) / deep-link launch (Shield) is the belt-and-suspenders
+      // fallback. ESPN already fires its own Scout below. (Was ESPN-only — Prime relied on DPAD,
+      // which is why the 2026-06-24 Prime tennis case had no Scout assist.)
+      if (options?.deepLink && app.id === 'amazon-prime') {
+        const m = options.deepLink.match(/[?&](?:phrase|q|query)=([^&]+)/)
+        const scoutTitle = m ? decodeURIComponent(m[1]) : ''
+        if (scoutTitle) await client.sendScoutPlayGameBroadcast(installedPackage, scoutTitle, scoutTitle)
+      }
+
       if (options?.deepLink && app.deepLinkSupport && app.id === 'amazon-prime' && driver.usesFireTvAutoplay) {
         // v2.32.84 — Prime Video on AFTR Cubes (com.amazon.firebat) registers
         // for `https://watch.amazon.com/search?phrase=...` but not the older

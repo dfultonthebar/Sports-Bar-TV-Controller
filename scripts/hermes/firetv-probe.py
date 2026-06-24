@@ -32,18 +32,31 @@ def adb(ip, cmd, t=12):
     except Exception:
         return ""
 
+SCOUT_SVC = f"{SCOUT_PKG}/{SCOUT_PKG}.PlaybackAutomationService"
+
 def scout_state(ip):
-    """absent | installed-not-bound | bound | ? — Scout's automation health on this device."""
+    """absent | bound | self-healed | installed-not-bound | ? — Scout health WITH auto-recovery.
+    When Scout is installed but its AccessibilityService isn't bound (the #1 silent autoplay
+    failure), re-enable it via adb — appending to enabled_accessibility_services so any OTHER
+    accessibility services are preserved — and recheck. So Scout self-heals instead of silently
+    staying off across all locations."""
     if not ip:
         return "?"
     try:
         subprocess.run([ADB, "connect", f"{ip}:5555"], capture_output=True, text=True, timeout=8)
     except Exception:
         return "?"
-    installed = SCOUT_PKG in adb(ip, f"pm path {SCOUT_PKG}")
-    if not installed:
+    if SCOUT_PKG not in adb(ip, f"pm path {SCOUT_PKG}"):
         return "absent"
-    return "bound" if "scout" in adb(ip, "dumpsys accessibility").lower() else "installed-not-bound"
+    if "scout" in adb(ip, "dumpsys accessibility").lower():
+        return "bound"
+    # installed but not bound → SELF-HEAL: re-enable the service, preserving any others.
+    cur = adb(ip, "settings get secure enabled_accessibility_services").strip()
+    cur = "" if cur in ("null", "") else cur
+    newval = SCOUT_SVC if not cur else (cur if SCOUT_PKG in cur else cur + ":" + SCOUT_SVC)
+    adb(ip, f"settings put secure enabled_accessibility_services {newval}")
+    adb(ip, "settings put secure accessibility_enabled 1")
+    return "self-healed" if "scout" in adb(ip, "dumpsys accessibility").lower() else "installed-not-bound"
 
 dev = get("/api/firetv-devices")
 rows = dev if isinstance(dev, list) else (dev.get("data") or dev.get("devices") or [])
@@ -67,11 +80,13 @@ for d in rows:
 
 online_n = sum(1 for i in insights if i["online"])
 scout_broken = [i["name"] for i in insights if i["scout"] == "installed-not-bound"]
+scout_healed = [i["name"] for i in insights if i["scout"] == "self-healed"]
 lines = [f"{i['name']} ({i['ip']}) model={i['model']} fireOS={i['fireOS']} "
          f"{'ONLINE app=' + i['app'] + ' scout=' + i['scout'] if i['online'] else 'offline'}" for i in insights]
 summary = (f"Fire TV probe @ {LABEL}: {len(insights)} devices, {online_n} online.\n"
            + "\n".join("  - " + l for l in lines)
-           + (f"\n  ⚠ SCOUT NOT BOUND on: {', '.join(scout_broken)} — autoplay will silently fail; re-enable accessibility." if scout_broken else ""))
+           + (f"\n  ↻ SCOUT SELF-HEALED on: {', '.join(scout_healed)} (was unbound, re-enabled this run)." if scout_healed else "")
+           + (f"\n  ⚠ SCOUT STILL NOT BOUND on: {', '.join(scout_broken)} — re-enable failed; manual check needed." if scout_broken else ""))
 print(summary)
 
 try:
