@@ -65,6 +65,12 @@ const SHIELD_PACKAGES: Record<string, string> = {
   youtube: 'com.google.android.youtube.tv',
   'youtube-tv': 'com.google.android.youtube.tv',
   plex: 'com.plexapp.android',
+  // Verified installed on the Lime Kiln Shield 2026-06-24 (probed live):
+  'hulu-live': 'com.hulu.livingroomplus', // NOT com.hulu.plus (Fire/mobile)
+  hulu: 'com.hulu.livingroomplus',
+  'paramount-plus': 'com.cbs.ott',
+  peacock: 'com.peacocktv.peacockandroid',
+  'nfhs-network': 'com.playon.nfhslive.googletv', // .googletv Android-TV build (catalog has the Fire one)
 }
 class NvidiaShieldDriver extends BaseAndroidTVDriver {
   manufacturer = 'nvidia'
