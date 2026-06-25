@@ -16,6 +16,7 @@ import { runFiretvCatalogWalk } from './firetv-catalog-walker'
 import { runBananasIngestion } from './bananas-ingestion'
 import { runTicketmasterIngestion } from './ticketmaster-ingestion'
 import { verifyAndRetryRoute, persistVerifyState } from './route-verify'
+import { reportSchedulerToFlywheel } from './flywheel-report'
 
 // Get API port from environment or default to 3001
 const API_PORT = process.env.PORT || 3001
@@ -1254,6 +1255,27 @@ class SchedulerService {
 
             logger.info(`[SCHEDULER] ✅ Successfully tuned ${inputSource.name} to channel ${allocation.channelNumber}`);
 
+            // v2.82.x — Hermes/flywheel capture of the scheduled auto-tune outcome.
+            // Success path reports ch + device + TV count + latency; the 0-TV
+            // guardrail catches the Greenville mode (game tuned on the box but routed
+            // to no screens). Fire-and-forget — never blocks the tune.
+            {
+              const flLoc = process.env.LOCATION_NAME || process.env.LOCATION_ID || 'unknown';
+              const flGame = `${game.homeTeamName} vs ${game.awayTeamName}`;
+              let flTvCount = 0;
+              try {
+                if (allocation.tvOutputIds) {
+                  const flOut = JSON.parse(allocation.tvOutputIds);
+                  if (Array.isArray(flOut)) flTvCount = flOut.length;
+                }
+              } catch { /* malformed tvOutputIds — treat as 0, the guardrail will fire */ }
+              if (flTvCount === 0) {
+                reportSchedulerToFlywheel('fleet-scheduler', `⚠ Scheduler: ${flGame} tuned to ch ${allocation.channelNumber} but 0 TVs routed — game is on no screens @ ${flLoc}`);
+              } else {
+                reportSchedulerToFlywheel('fleet-scheduler', `Scheduler tuned ${flGame} → ch ${allocation.channelNumber} on ${inputSource.name} for ${flTvCount} TVs (${tuneDurationMs}ms) @ ${flLoc}`);
+              }
+            }
+
             // Route matrix inputs to TV outputs if tvOutputIds is set.
             // inputSource.matrixInputId is a UUID FK to MatrixInput.id, NOT the
             // physical input channel. Prior to v2.18.2 this code did
@@ -1480,6 +1502,13 @@ class SchedulerService {
 
             logger.error(`[SCHEDULER] ❌ Failed to tune ${inputSource.name}: ${result.error || result.message}`);
 
+            // v2.82.x — Hermes/flywheel capture of the failed scheduled tune.
+            {
+              const flLoc = process.env.LOCATION_NAME || process.env.LOCATION_ID || 'unknown';
+              const flErr = String(result.error || result.message || 'Unknown error').slice(0, 300);
+              reportSchedulerToFlywheel('fleet-scheduler', `Scheduler FAILED to tune ${game.homeTeamName} vs ${game.awayTeamName} → ch ${allocation.channelNumber} on ${inputSource.name}: ${flErr} @ ${flLoc}`);
+            }
+
             // v2.82.x — record the failed tune + give up after a cap OR once the game window has
             // passed, so a bad tune (box offline, unknown channel) stops re-hammering every tick
             // and the failure becomes visible instead of the allocation hanging 'pending' forever.
@@ -1520,6 +1549,12 @@ class SchedulerService {
           );
 
           logger.error(`[SCHEDULER] ❌ Error executing scheduled tune for ${inputSource.name}:`, { error: tuneError });
+          // v2.82.x — Hermes/flywheel capture of the exception-path tune failure.
+          {
+            const flLoc = process.env.LOCATION_NAME || process.env.LOCATION_ID || 'unknown';
+            const flErr = String(tuneError?.message || tuneError || 'tune exception').slice(0, 300);
+            reportSchedulerToFlywheel('fleet-scheduler', `Scheduler FAILED to tune ${game.homeTeamName} vs ${game.awayTeamName} → ch ${allocation.channelNumber} on ${inputSource.name}: ${flErr} @ ${flLoc}`);
+          }
           // v2.82.x — exception path (box unreachable / fetch threw) also records the failure +
           // gives up after the cap/window so it doesn't hang 'pending' forever. Best-effort.
           try {

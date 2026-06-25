@@ -577,6 +577,13 @@ async function callOllama(prompt: string): Promise<string> {
         format: 'json',
         options: {
           temperature: 0.3,
+          // v2.82.50 — pin num_ctx so the FULL prompt (inputs + games + rules + patterns) fits.
+          // Ollama defaults num_ctx to ~2048; our prompt overruns it, and Ollama truncates the
+          // OLDEST tokens — which dropped the INPUTS + GAMES list (built early) out of context,
+          // leaving only the "Home teams: Packers/Bucks…" line + rules. The model then invented
+          // games for those teams and emitted placeholders ("NBA Team A"), never seeing the real
+          // slate. 8192 holds the whole prompt. Env-tunable per box via OLLAMA_NUM_CTX.
+          num_ctx: Number(process.env.OLLAMA_NUM_CTX) || 8192,
           // Output-token ceiling — per-box env-tunable (OLLAMA_NUM_PREDICT).
           // num_predict is only a CAP; logLlmPerf records the real eval_count.
           num_predict: OLLAMA_NUM_PREDICT,
@@ -832,11 +839,11 @@ RULES:
 10. RESPECT EXISTING BOOKINGS. Each input line may include a "BOOKED: <start>-<end> <game>" suffix listing allocations that already overlap the 12-hour window. Do NOT suggest a game for an input whose booking window overlaps the game's start time. Only re-use a booked input if the new game's start is AFTER the booking's end time.
 11. MANDATORY OUTPUTS: Every suggestion MUST include at least 1 TV output number in suggestedOutputs. Empty arrays are REJECTED server-side. Use any TV channel number from 1 to ${tvCount}.
 12. HOME-TEAM TV MINIMUMS (NON-NEGOTIABLE): Each game line carries an "assign N TVs" clause. For lines tagged [HOME TEAM: <name>] the N is a HARD MINIMUM — your suggestedOutputs.length MUST be >= N. Server-side enforcement WILL pad your output to N if you under-assign, but the LLM should respect the rule directly so it can pick visually-grouped TVs rather than getting padded with TVs 1..N. Operator-set: Packers=20, Bucks=5, Brewers=3, Badgers=3.
-13. PRIORITY ORDER: Home-team games get top priority — always propose them first. Then diverse options across leagues (MLB, NBA, NHL, MLS, UFL, UFC, Premier League, college sports) so the manager can compare.
+13. ONLY REAL LISTED GAMES — NEVER INVENT ONE: Every suggestion MUST be one of the EXACT games in the GAMES list above, with homeTeam/awayTeam copied verbatim from its line. Do NOT invent or guess a game, do NOT use placeholder names (e.g. "Team A"), and do NOT propose any team that has no game in the list. If a team you expect is not listed, it simply has no game — skip it. Home-team games that ARE listed get top priority — propose them first. Then a diverse spread across whatever leagues are actually in the list so the manager can compare.
 14. SAME-CHANNEL GROUPING: When the SAME-CHANNEL GROUPS section above lists multiple games on the same channel (e.g. "cable ch 27: games #3, #7, #11"), prefer to put ALL those games on the SAME input. Reasons: (a) saves tunes — no channel change needed, (b) the bartender's view stays consistent, (c) frees other inputs for content on different channels. Only split the group across inputs if the home-team minimums (Rule 12) force you to spread that game across many TVs and there isn't enough room on one input.
 
-Return ONLY valid JSON:
-{"suggestions":[{"gameIndex":1,"suggestedInput":"${exampleInput}","channelNumber":"669","suggestedOutputs":[1,2,3],"confidence":0.9,"reasoning":"Brewers home game on DirecTV"}]}
+Return ONLY valid JSON. For EACH suggestion, copy "homeTeam" and "awayTeam" VERBATIM from the GAMES line you picked — the server matches your suggestion to the game by these team names, so a wrong or rephrased name mis-tags the game's league (e.g. a soccer pick showing up as NBA). "gameIndex" alone is NOT enough.
+{"suggestions":[{"gameIndex":1,"homeTeam":"<home team copied verbatim from that GAMES line>","awayTeam":"<away team copied verbatim>","suggestedInput":"${exampleInput}","channelNumber":"669","suggestedOutputs":[1,2,3],"confidence":0.9,"reasoning":"Brewers home game on DirecTV"}]}
 
 Return ${Math.min(totalInputs * 2, games.length, 12)} suggestions — at least one per input when possible, plus alternatives across different leagues for the manager to pick from. JSON only, no other text.`
 }
@@ -938,7 +945,30 @@ function parseOllamaResponse(
     }
 
     for (const s of parsed.suggestions || []) {
-      const gameIdx = (s.gameIndex || 0) - 1
+      // v2.82.46 — resolve the game by the LLM's stated team names FIRST (order-independent,
+      // fuzzy), and use the bare numeric gameIndex only as a fallback. The index is unreliable on
+      // a long numbered list — the model miscounts / goes off-by-one and lands a soccer/tennis pick
+      // on an NBA/NHL row, mis-tagging the league. Matching on the teams it named fixes that.
+      const normTeam = (x: any) => String(x || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+      const sTeams = [normTeam(s.homeTeam), normTeam(s.awayTeam)].filter((t) => t.length >= 3)
+      let gameIdx = (s.gameIndex || 0) - 1
+      if (sTeams.length) {
+        const byTeam = games.findIndex((g: any) => {
+          const gTeams = [normTeam(g.homeTeam), normTeam(g.awayTeam)].filter(Boolean)
+          return sTeams.every((st) => gTeams.some((gt) => gt.includes(st) || st.includes(gt)))
+        })
+        if (byTeam >= 0) {
+          gameIdx = byTeam
+        } else {
+          // v2.82.47 — the LLM named teams that match NO game in today's list: it HALLUCINATED a
+          // game (e.g. a "Bucks/Badgers/Cowboys home game" when they don't play today). DROP it
+          // rather than fall back to the bare gameIndex, which lands on an unrelated real game and
+          // mislabels it (the Whai/Southland-as-NBA, Wimbledon-as-NFL garbage). The index fallback
+          // below only applies when the model returned no team names at all (legacy).
+          logger.info(`[AI-SUGGEST] Dropped hallucinated suggestion — LLM named "${s.homeTeam} / ${s.awayTeam}" but no such game is listed`)
+          continue
+        }
+      }
       const game = games[gameIdx]
       if (!game) continue
 
@@ -1068,7 +1098,16 @@ function parseOllamaResponse(
         suggestedDeviceType: resolvedDeviceType,
         suggestedOutputs: suggestedOutputsInt,
         confidence: typeof s.confidence === 'number' ? Math.min(1, Math.max(0, s.confidence)) : 0.5,
-        reasoning: s.reasoning || 'No reasoning provided',
+        // v2.82.48 — server-build the reasoning from the RESOLVED game so the blurb ALWAYS matches
+        // the pick. The LLM's free-text reasoning was unreliable (it described an "NBA game" under a
+        // tennis pick after team-match corrected the game), so we don't surface it.
+        reasoning:
+          ((game.homeTeam && game.homeTeam !== 'Unknown')
+            ? `${game.homeTeam} vs ${game.awayTeam}`
+            : (game.awayTeam || game.homeTeam || 'event')) +
+          ((game.league && game.league !== 'Unknown') ? ` · ${game.league}` : '') +
+          ` on ${resolvedInput?.name || 'input'}` +
+          (channelNumberStr ? ` (${channelNumberStr})` : ''),
       })
     }
 
@@ -1423,6 +1462,15 @@ export async function GET(request: NextRequest) {
       fetchStreamingCatalogCandidates(firetvInputs),
     ])
     const games = [...cableSatGames, ...streamingGames]
+
+    // v2.82.49 — rank real team-vs-team matchups AHEAD of generic "Unknown"-team event tiles
+    // (tennis aggregates like "Tennis Today Live-Eastbourne…", FIFA-events streaming listings) so
+    // the LLM fills its picks with real games first instead of non-matchup tiles. Array.sort is
+    // stable in V8, so the priority/time order within each group (from fetchUpcomingGames + the
+    // catalog cap) is preserved. The team-match resolver (v2.82.46) makes reindexing here safe.
+    const isRealMatchup = (g: any) =>
+      !!g.homeTeam && g.homeTeam !== 'Unknown' && !!g.awayTeam && g.awayTeam !== 'Unknown'
+    games.sort((a: any, b: any) => (isRealMatchup(b) ? 1 : 0) - (isRealMatchup(a) ? 1 : 0))
 
     // Phase 2 (v2.26.0): Dual-run diff harness when USE_UNIFIED_CONTEXT=true.
     // Builds the same 12h window via the new buildGameContexts() composer
