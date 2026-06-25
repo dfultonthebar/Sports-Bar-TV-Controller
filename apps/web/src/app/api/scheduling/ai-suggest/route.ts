@@ -1091,7 +1091,16 @@ function parseOllamaResponse(
         suggestedDeviceType: resolvedDeviceType,
         suggestedOutputs: suggestedOutputsInt,
         confidence: typeof s.confidence === 'number' ? Math.min(1, Math.max(0, s.confidence)) : 0.5,
-        reasoning: s.reasoning || 'No reasoning provided',
+        // v2.82.48 — server-build the reasoning from the RESOLVED game so the blurb ALWAYS matches
+        // the pick. The LLM's free-text reasoning was unreliable (it described an "NBA game" under a
+        // tennis pick after team-match corrected the game), so we don't surface it.
+        reasoning:
+          ((game.homeTeam && game.homeTeam !== 'Unknown')
+            ? `${game.homeTeam} vs ${game.awayTeam}`
+            : (game.awayTeam || game.homeTeam || 'event')) +
+          ((game.league && game.league !== 'Unknown') ? ` · ${game.league}` : '') +
+          ` on ${resolvedInput?.name || 'input'}` +
+          (channelNumberStr ? ` (${channelNumberStr})` : ''),
       })
     }
 
