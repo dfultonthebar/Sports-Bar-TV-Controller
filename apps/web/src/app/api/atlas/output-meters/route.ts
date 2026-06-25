@@ -8,6 +8,7 @@ import { z } from 'zod'
 import { validateQueryParams, isValidationError } from '@/lib/validation'
 import { HARDWARE_CONFIG } from '@/lib/hardware-config'
 import { requireAtlasProcessor } from '@/lib/atlas-guard'
+import { resolveProcessorConnection } from '@/lib/audio-processor-drivers'
 export async function GET(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
   if (!rateLimit.allowed) {
@@ -22,15 +23,20 @@ export async function GET(request: NextRequest) {
 
   try {
     const searchParams = request.nextUrl.searchParams
-    const processorIp = searchParams.get('processorIp')
+    const processorIpParam = searchParams.get('processorIp')
+    const processorId = searchParams.get('processorId')
     const showGroups = searchParams.get('showGroups') === 'true'
 
-    if (!processorIp) {
+    // Resolve saved IP from DB (by processorId preferred) so an empty
+    // in-memory IP no longer fails with "Processor IP is required".
+    const conn = await resolveProcessorConnection({ processorId, processorIp: processorIpParam })
+    if (!conn) {
       return NextResponse.json(
         { success: false, error: 'Processor IP is required' },
         { status: 400 }
       )
     }
+    const processorIp = conn.ipAddress
 
     const guard = await requireAtlasProcessor(processorIp, 'OUTPUT METERS')
     if (guard) return guard
