@@ -832,7 +832,7 @@ RULES:
 10. RESPECT EXISTING BOOKINGS. Each input line may include a "BOOKED: <start>-<end> <game>" suffix listing allocations that already overlap the 12-hour window. Do NOT suggest a game for an input whose booking window overlaps the game's start time. Only re-use a booked input if the new game's start is AFTER the booking's end time.
 11. MANDATORY OUTPUTS: Every suggestion MUST include at least 1 TV output number in suggestedOutputs. Empty arrays are REJECTED server-side. Use any TV channel number from 1 to ${tvCount}.
 12. HOME-TEAM TV MINIMUMS (NON-NEGOTIABLE): Each game line carries an "assign N TVs" clause. For lines tagged [HOME TEAM: <name>] the N is a HARD MINIMUM — your suggestedOutputs.length MUST be >= N. Server-side enforcement WILL pad your output to N if you under-assign, but the LLM should respect the rule directly so it can pick visually-grouped TVs rather than getting padded with TVs 1..N. Operator-set: Packers=20, Bucks=5, Brewers=3, Badgers=3.
-13. PRIORITY ORDER: Home-team games get top priority — always propose them first. Then diverse options across leagues (MLB, NBA, NHL, MLS, UFL, UFC, Premier League, college sports) so the manager can compare.
+13. ONLY REAL LISTED GAMES — NEVER INVENT ONE: Every suggestion MUST be a game from the GAMES list above, with homeTeam/awayTeam copied verbatim from its line. Do NOT invent a game — e.g. do NOT propose a Bucks/Packers/Brewers/Badgers/NFL/NBA game unless it actually appears in the GAMES list. Home-team games that ARE listed get top priority — propose them first. Then diverse options across the listed leagues (whatever is actually there) so the manager can compare.
 14. SAME-CHANNEL GROUPING: When the SAME-CHANNEL GROUPS section above lists multiple games on the same channel (e.g. "cable ch 27: games #3, #7, #11"), prefer to put ALL those games on the SAME input. Reasons: (a) saves tunes — no channel change needed, (b) the bartender's view stays consistent, (c) frees other inputs for content on different channels. Only split the group across inputs if the home-team minimums (Rule 12) force you to spread that game across many TVs and there isn't enough room on one input.
 
 Return ONLY valid JSON. For EACH suggestion, copy "homeTeam" and "awayTeam" VERBATIM from the GAMES line you picked — the server matches your suggestion to the game by these team names, so a wrong or rephrased name mis-tags the game's league (e.g. a soccer pick showing up as NBA). "gameIndex" alone is NOT enough.
@@ -950,7 +950,17 @@ function parseOllamaResponse(
           const gTeams = [normTeam(g.homeTeam), normTeam(g.awayTeam)].filter(Boolean)
           return sTeams.every((st) => gTeams.some((gt) => gt.includes(st) || st.includes(gt)))
         })
-        if (byTeam >= 0) gameIdx = byTeam
+        if (byTeam >= 0) {
+          gameIdx = byTeam
+        } else {
+          // v2.82.47 — the LLM named teams that match NO game in today's list: it HALLUCINATED a
+          // game (e.g. a "Bucks/Badgers/Cowboys home game" when they don't play today). DROP it
+          // rather than fall back to the bare gameIndex, which lands on an unrelated real game and
+          // mislabels it (the Whai/Southland-as-NBA, Wimbledon-as-NFL garbage). The index fallback
+          // below only applies when the model returned no team names at all (legacy).
+          logger.info(`[AI-SUGGEST] Dropped hallucinated suggestion — LLM named "${s.homeTeam} / ${s.awayTeam}" but no such game is listed`)
+          continue
+        }
       }
       const game = games[gameIdx]
       if (!game) continue
