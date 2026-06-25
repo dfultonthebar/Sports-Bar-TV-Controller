@@ -1308,7 +1308,29 @@ function parseOllamaResponse(
       // time. Logs the pad event so operators can see the LLM was lazy here.
       if (origGame && homeTeamRules.length > 0 && tvCount > 0) {
         const rule = matchHomeTeamRule(origGame.homeTeam || '', origGame.awayTeam || '', homeTeamRules)
-        if (rule && sug.suggestedOutputs.length < rule.minTVs) {
+        // v2.82.40 — prefer the operator's LEARNED layout for this home team: the exact TVs used
+        // for that team's most recent prior game. Makes e.g. "the Brewers" come back up on the TVs
+        // you actually set last time instead of the generic 1..N static pad. Falls back to the pad
+        // when there's no history. (db.all is sync; wrap in try/catch — see feedback memory.)
+        let learnedLayout: number[] | null = null
+        if (rule) {
+          try {
+            const rows = db.all(sql`SELECT a.tv_output_ids AS tv FROM input_source_allocations a JOIN game_schedules g ON a.game_schedule_id = g.id WHERE g.home_team_name LIKE ${'%' + rule.teamName + '%'} AND a.tv_output_ids IS NOT NULL AND a.tv_output_ids NOT IN ('', '[]') ORDER BY a.created_at DESC LIMIT 1`) as any[]
+            const tv = rows?.[0]?.tv
+            if (tv) {
+              const arr = JSON.parse(tv)
+              if (Array.isArray(arr) && arr.length) {
+                learnedLayout = arr.map((n: any) => Number(n)).filter((n: number) => Number.isFinite(n) && n >= 1 && n <= tvCount)
+              }
+            }
+          } catch { /* fall back to the static pad */ }
+        }
+        if (rule && learnedLayout && learnedLayout.length) {
+          prePadByGameId.set(sug.gameId, [...sug.suggestedOutputs])
+          sug.suggestedOutputs = learnedLayout
+          sug.reasoning = `${sug.reasoning} [reusing your last-used ${learnedLayout.length}-TV layout for ${rule.teamName}]`
+          logger.info(`[AI-SUGGEST] Learned-layout: ${rule.teamName} (${origGame.awayTeam} @ ${origGame.homeTeam}) → reused last-used ${learnedLayout.length} TVs [${learnedLayout.join(',')}]`)
+        } else if (rule && sug.suggestedOutputs.length < rule.minTVs) {
           const target = Math.min(rule.minTVs, tvCount)
           const have = new Set(sug.suggestedOutputs)
           let n = 1

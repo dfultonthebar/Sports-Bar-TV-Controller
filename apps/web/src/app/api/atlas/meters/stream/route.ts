@@ -12,6 +12,7 @@ import { atlasMeterManager } from '@/lib/atlas-meter-manager'
 import { logger } from '@sports-bar/logger'
 import { HARDWARE_CONFIG } from '@/lib/hardware-config'
 import { requireAtlasProcessor } from '@/lib/atlas-guard'
+import { resolveProcessorConnection } from '@/lib/audio-processor-drivers'
 
 // Store zone metadata (names, mute states) - refreshed periodically
 const zoneMetadataCache = new Map<string, {
@@ -156,11 +157,16 @@ export const runtime = 'nodejs'
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams
-  const processorIp = searchParams.get('processorIp')
+  const processorIpParam = searchParams.get('processorIp')
+  const processorId = searchParams.get('processorId')
 
-  if (!processorIp) {
+  // Resolve saved IP from DB (by processorId preferred) so an empty
+  // in-memory IP no longer fails with "Processor IP is required".
+  const conn = await resolveProcessorConnection({ processorId, processorIp: processorIpParam })
+  if (!conn) {
     return new Response('Processor IP is required', { status: 400 })
   }
+  const processorIp = conn.ipAddress
 
   const guard = await requireAtlasProcessor(processorIp, 'METER_STREAM')
   if (guard) return guard
