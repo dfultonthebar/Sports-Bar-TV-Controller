@@ -8,6 +8,7 @@ import { z } from 'zod'
 import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 import { HARDWARE_CONFIG } from '@/lib/hardware-config'
 import { requireAtlasProcessor } from '@/lib/atlas-guard'
+import { resolveProcessorConnection } from '@/lib/audio-processor-drivers'
 
 export async function GET(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
@@ -24,19 +25,26 @@ export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams
     const processorIp = searchParams.get('processorIp')
+    const processorId = searchParams.get('processorId')
 
-    if (!processorIp) {
+    // Resolve the saved IP from the DB (by processorId, preferred) so a
+    // stale/empty in-memory ipAddress no longer produces "Processor IP is
+    // required" when the processor WAS saved with an IP. Falls back to the
+    // explicitly-provided IP. Only error when neither resolves.
+    const conn = await resolveProcessorConnection({ processorId, processorIp })
+    if (!conn) {
       return NextResponse.json(
         { success: false, error: 'Processor IP is required' },
         { status: 400 }
       )
     }
+    const resolvedIp = conn.ipAddress
 
-    const guard = await requireAtlasProcessor(processorIp, 'ATLAS SOURCES')
+    const guard = await requireAtlasProcessor(resolvedIp, 'ATLAS SOURCES')
     if (guard) return guard
 
     // Cache key based on processor IP
-    const cacheKey = `sources:${processorIp}`
+    const cacheKey = `sources:${resolvedIp}`
 
     // Try to get from cache first (30 second TTL for hardware status)
     const cached = cacheManager.get('hardware-status', cacheKey)
@@ -49,8 +57,8 @@ export async function GET(request: NextRequest) {
     }
 
     const client = new AtlasTCPClient({
-      ipAddress: processorIp,
-      tcpPort: HARDWARE_CONFIG.atlas.tcpPort,
+      ipAddress: resolvedIp,
+      tcpPort: conn.tcpPort,
       timeout: 5000
     })
 

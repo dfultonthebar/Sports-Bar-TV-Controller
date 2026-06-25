@@ -58,6 +58,51 @@ class ScoutApiClient(private val serverUrl: String) {
         }
     }
 
+    /**
+     * v2.2.12 — report a PLAY_GAME outcome back to the location's box so Scout's success/failure
+     * becomes visible to the system + feeds the ops flywheel (Hermes learns which titles/apps
+     * reliably play). POSTs to <serverUrl>/play-result — serverUrl is the per-location box
+     * (built-in SERVER_URL_DEFAULT or ConfigReceiver), so every location reports to its OWN IP.
+     * Fire-and-forget; the caller runs this off the AccessibilityService thread.
+     */
+    fun sendPlayResult(
+        deviceId: String, deviceName: String, ipAddress: String?, scoutVersion: String,
+        result: String, message: String, matchedText: String, targetPackage: String,
+        tokens: String, attempts: Int,
+    ): Boolean {
+        var connection: HttpURLConnection? = null
+        try {
+            val url = URL(serverUrl.trimEnd('/') + "/play-result")
+            connection = url.openConnection() as HttpURLConnection
+            connection.requestMethod = "POST"
+            connection.setRequestProperty("Content-Type", "application/json")
+            connection.connectTimeout = 8000
+            connection.readTimeout = 8000
+            connection.doOutput = true
+            val json = JSONObject().apply {
+                put("deviceId", deviceId)
+                put("deviceName", deviceName)
+                put("ipAddress", ipAddress ?: "")
+                put("scoutVersion", scoutVersion)
+                put("result", result)
+                put("message", message)
+                put("matchedText", matchedText)
+                put("targetPackage", targetPackage)
+                put("tokens", tokens)
+                put("attempts", attempts)
+            }
+            OutputStreamWriter(connection.outputStream).use { it.write(json.toString()); it.flush() }
+            val rc = connection.responseCode
+            Log.d(TAG, "PlayResult ($result) response: $rc")
+            return rc == 200
+        } catch (e: Exception) {
+            Log.e(TAG, "Error sending play result", e)
+            return false
+        } finally {
+            connection?.disconnect()
+        }
+    }
+
     companion object {
         private const val TAG = "ScoutApiClient"
     }

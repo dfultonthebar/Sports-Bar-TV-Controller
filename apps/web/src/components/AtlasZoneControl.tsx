@@ -70,7 +70,7 @@ export default function AtlasZoneControl({
       const data = await response.json()
 
       // Zones come from the database
-      const res2 = await fetch(`/api/atlas/output-meters?processorIp=${processorIp}`)
+      const res2 = await fetch(`/api/atlas/output-meters?processorIp=${encodeURIComponent(processorIp || '')}&processorId=${encodeURIComponent(processorId || '')}`)
       const meterData = res2.ok ? await res2.json() : { meters: [] }
 
       // Get zones with live hardware state sync
@@ -90,14 +90,14 @@ export default function AtlasZoneControl({
 
   const fetchSources = useCallback(async () => {
     try {
-      const response = await fetch(`/api/atlas/sources?processorIp=${processorIp}`)
+      const response = await fetch(`/api/atlas/sources?processorIp=${encodeURIComponent(processorIp || '')}&processorId=${encodeURIComponent(processorId || '')}`)
       if (!response.ok) throw new Error('Failed to fetch sources')
       const data = await response.json()
       setSources(data.sources || [])
     } catch (err) {
       logger.error('Error fetching sources:', err)
     }
-  }, [processorIp])
+  }, [processorIp, processorId])
 
   useEffect(() => {
     if (processorId && processorIp) {

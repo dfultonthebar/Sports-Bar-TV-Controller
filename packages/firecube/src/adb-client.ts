@@ -341,13 +341,15 @@ export class ADBClient {
    *                      tile accessibility content. Will be lowercased
    *                      and joined with commas before sending.
    * @param maxAttempts   How many onAccessibilityEvent ticks Scout should
-   *                      try before giving up. Default 60.
+   *                      try before giving up. Default 120 (v2.82.41 — raised from 60;
+   *                      ESPN/Prime can take 7-10s to render their tile grid, and 60 ticks
+   *                      (~6-8s) sometimes exhausted the budget before tiles existed).
    */
   async sendScoutPlayGameBroadcast(
     targetPackage: string,
     contentTitle: string,
     matchTokens: string,
-    maxAttempts: number = 60,
+    maxAttempts: number = 120,
   ): Promise<void> {
     try {
       const escTitle = contentTitle.replace(/'/g, "'\\''").replace(/ /g, '%s')
