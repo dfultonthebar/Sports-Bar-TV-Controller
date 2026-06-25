@@ -20,11 +20,13 @@ interface AtlasSource {
 
 interface AtlasGroupsControlProps {
   processorIp: string
+  processorId?: string
   onGroupChange?: (groupIndex: number, action: string, value: any) => void
 }
 
 export default function AtlasGroupsControl({
   processorIp,
+  processorId,
   onGroupChange
 }: AtlasGroupsControlProps) {
   const [groups, setGroups] = useState<AtlasGroup[]>([])
@@ -42,7 +44,7 @@ export default function AtlasGroupsControl({
     if (!processorIp) return
     try {
       setLoading(true)
-      const response = await fetch(`/api/atlas/groups?processorIp=${processorIp}`)
+      const response = await fetch(`/api/atlas/groups?processorIp=${encodeURIComponent(processorIp || '')}&processorId=${encodeURIComponent(processorId || '')}`)
 
       if (!response.ok) {
         throw new Error('Failed to fetch groups')
@@ -62,7 +64,7 @@ export default function AtlasGroupsControl({
   const fetchSources = async () => {
     if (!processorIp) return
     try {
-      const response = await fetch(`/api/atlas/sources?processorIp=${processorIp}`)
+      const response = await fetch(`/api/atlas/sources?processorIp=${encodeURIComponent(processorIp || '')}&processorId=${encodeURIComponent(processorId || '')}`)
 
       if (!response.ok) {
         throw new Error('Failed to fetch sources')

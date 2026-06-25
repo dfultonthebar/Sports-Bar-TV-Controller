@@ -1,21 +1,23 @@
 #!/usr/bin/env python3
 """
-Hermes Fire TV probe (v1, read-only) — gathers per-device insight from a location's
-Fire TVs and captures it to the Honcho fleet-ops flywheel so the local fleet-ops model
-learns each device's profile over time.
+Hermes Fire TV probe (v2, read-only) — per-device insight from a location's Fire TVs / Android-TV
+devices, captured to the Honcho fleet-ops flywheel so the local fleet-ops model learns each
+device's profile. v2 adds SCOUT health (our AccessibilityService automation): installed +
+bound/running per device, so Hermes monitors Scout across ALL locations and flags any device
+where Scout is installed-but-not-bound (the #1 reason autoplay silently stops working).
 
-READ-ONLY: only queries device list + current foreground app. Does NOT launch/change
-anything, so it is safe to run while a bar is open. (Active autoplay-timing tests —
-which DO change a TV — are a separate off-hours mode, added later.)
+READ-ONLY: device list + current app (API) + Scout state (adb). Safe while a bar is open.
 
 Usage:  firetv-probe.py [LOCATION_BASE_URL] [LOCATION_LABEL]
         default base = http://localhost:3001, label = "local"
 """
-import sys, json, urllib.request
+import sys, json, urllib.request, subprocess, re
 
 BASE = (sys.argv[1] if len(sys.argv) > 1 else "http://localhost:3001").rstrip("/")
 LABEL = sys.argv[2] if len(sys.argv) > 2 else "local"
 HONCHO = "http://100.90.175.125:8000"
+ADB = "/usr/bin/adb"
+SCOUT_PKG = "com.sportsbar.scout"
 
 def get(path, timeout=25):
     try:
@@ -23,6 +25,38 @@ def get(path, timeout=25):
             return json.load(r)
     except Exception as e:
         return {"_error": str(e)}
+
+def adb(ip, cmd, t=12):
+    try:
+        return subprocess.run([ADB, "-s", f"{ip}:5555", "shell", cmd], capture_output=True, text=True, timeout=t).stdout
+    except Exception:
+        return ""
+
+SCOUT_SVC = f"{SCOUT_PKG}/{SCOUT_PKG}.PlaybackAutomationService"
+
+def scout_state(ip):
+    """absent | bound | self-healed | installed-not-bound | ? — Scout health WITH auto-recovery.
+    When Scout is installed but its AccessibilityService isn't bound (the #1 silent autoplay
+    failure), re-enable it via adb — appending to enabled_accessibility_services so any OTHER
+    accessibility services are preserved — and recheck. So Scout self-heals instead of silently
+    staying off across all locations."""
+    if not ip:
+        return "?"
+    try:
+        subprocess.run([ADB, "connect", f"{ip}:5555"], capture_output=True, text=True, timeout=8)
+    except Exception:
+        return "?"
+    if SCOUT_PKG not in adb(ip, f"pm path {SCOUT_PKG}"):
+        return "absent"
+    if "scout" in adb(ip, "dumpsys accessibility").lower():
+        return "bound"
+    # installed but not bound → SELF-HEAL: re-enable the service, preserving any others.
+    cur = adb(ip, "settings get secure enabled_accessibility_services").strip()
+    cur = "" if cur in ("null", "") else cur
+    newval = SCOUT_SVC if not cur else (cur if SCOUT_PKG in cur else cur + ":" + SCOUT_SVC)
+    adb(ip, f"settings put secure enabled_accessibility_services {newval}")
+    adb(ip, "settings put secure accessibility_enabled 1")
+    return "self-healed" if "scout" in adb(ip, "dumpsys accessibility").lower() else "installed-not-bound"
 
 dev = get("/api/firetv-devices")
 rows = dev if isinstance(dev, list) else (dev.get("data") or dev.get("devices") or [])
@@ -36,18 +70,26 @@ for d in rows:
     model = d.get("deviceModel") or d.get("model") or "?"
     fos = d.get("softwareVersion") or d.get("fireOsVersion") or "?"
     online = bool(d.get("isOnline"))
-    cur = "-"
+    cur, scout, scoutver = "-", "-", ""
     if online and did:
         ca = get(f"/api/firetv-devices/{did}/current-app", timeout=25)
         cur = ((ca.get("currentApp") or {}) if isinstance(ca, dict) else {}).get("packageName") \
             or (ca.get("packageName") if isinstance(ca, dict) else None) or "?"
-    insights.append({"name": name, "ip": ip, "model": model, "fireOS": fos, "online": online, "app": cur})
+        scout = scout_state(ip)
+        if scout != "absent":  # APK version so Hermes can spot Scout-version drift across the fleet
+            m = re.search(r"versionName=(\S+)", adb(ip, "dumpsys package com.sportsbar.scout | grep versionName"))
+            scoutver = m.group(1) if m else "?"
+    insights.append({"name": name, "ip": ip, "model": model, "fireOS": fos, "online": online, "app": cur, "scout": scout, "scoutver": scoutver})
 
 online_n = sum(1 for i in insights if i["online"])
+scout_broken = [i["name"] for i in insights if i["scout"] == "installed-not-bound"]
+scout_healed = [i["name"] for i in insights if i["scout"] == "self-healed"]
 lines = [f"{i['name']} ({i['ip']}) model={i['model']} fireOS={i['fireOS']} "
-         f"{'ONLINE app=' + i['app'] if i['online'] else 'offline'}" for i in insights]
+         f"{'ONLINE app=' + i['app'] + ' scout=' + i['scout'] + ('@' + i['scoutver'] if i['scoutver'] else '') if i['online'] else 'offline'}" for i in insights]
 summary = (f"Fire TV probe @ {LABEL}: {len(insights)} devices, {online_n} online.\n"
-           + "\n".join("  - " + l for l in lines))
+           + "\n".join("  - " + l for l in lines)
+           + (f"\n  ↻ SCOUT SELF-HEALED on: {', '.join(scout_healed)} (was unbound, re-enabled this run)." if scout_healed else "")
+           + (f"\n  ⚠ SCOUT STILL NOT BOUND on: {', '.join(scout_broken)} — re-enable failed; manual check needed." if scout_broken else ""))
 print(summary)
 
 try:
