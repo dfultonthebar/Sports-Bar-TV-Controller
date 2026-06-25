@@ -1456,6 +1456,15 @@ export async function GET(request: NextRequest) {
     ])
     const games = [...cableSatGames, ...streamingGames]
 
+    // v2.82.49 — rank real team-vs-team matchups AHEAD of generic "Unknown"-team event tiles
+    // (tennis aggregates like "Tennis Today Live-Eastbourne…", FIFA-events streaming listings) so
+    // the LLM fills its picks with real games first instead of non-matchup tiles. Array.sort is
+    // stable in V8, so the priority/time order within each group (from fetchUpcomingGames + the
+    // catalog cap) is preserved. The team-match resolver (v2.82.46) makes reindexing here safe.
+    const isRealMatchup = (g: any) =>
+      !!g.homeTeam && g.homeTeam !== 'Unknown' && !!g.awayTeam && g.awayTeam !== 'Unknown'
+    games.sort((a: any, b: any) => (isRealMatchup(b) ? 1 : 0) - (isRealMatchup(a) ? 1 : 0))
+
     // Phase 2 (v2.26.0): Dual-run diff harness when USE_UNIFIED_CONTEXT=true.
     // Builds the same 12h window via the new buildGameContexts() composer
     // and logs a per-request summary of how its output compares to the
