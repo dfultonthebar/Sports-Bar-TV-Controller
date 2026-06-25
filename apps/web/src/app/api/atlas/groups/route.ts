@@ -8,6 +8,7 @@ import { z } from 'zod'
 import { validateRequestBody, validateQueryParams, validatePathParams, ValidationSchemas, isValidationError, isValidationSuccess} from '@/lib/validation'
 import { HARDWARE_CONFIG } from '@/lib/hardware-config'
 import { requireAtlasProcessor } from '@/lib/atlas-guard'
+import { resolveProcessorConnection } from '@/lib/audio-processor-drivers'
 export async function GET(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.HARDWARE)
   if (!rateLimit.allowed) {
@@ -21,20 +22,25 @@ export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams
     const processorIp = searchParams.get('processorIp')
+    const processorId = searchParams.get('processorId')
 
-    if (!processorIp) {
+    // Resolve saved IP from the DB (by processorId preferred), so an empty
+    // in-memory IP no longer fails with "Processor IP is required".
+    const conn = await resolveProcessorConnection({ processorId, processorIp })
+    if (!conn) {
       return NextResponse.json(
         { success: false, error: 'Processor IP is required' },
         { status: 400 }
       )
     }
+    const resolvedIp = conn.ipAddress
 
-    const guard = await requireAtlasProcessor(processorIp, 'ATLAS GROUPS')
+    const guard = await requireAtlasProcessor(resolvedIp, 'ATLAS GROUPS')
     if (guard) return guard
 
     const client = new AtlasTCPClient({
-      ipAddress: processorIp,
-      tcpPort: HARDWARE_CONFIG.atlas.tcpPort,
+      ipAddress: resolvedIp,
+      tcpPort: conn.tcpPort,
       timeout: 3000,      // 3 seconds for UI responsiveness
       maxRetries: 1       // Single retry
     })

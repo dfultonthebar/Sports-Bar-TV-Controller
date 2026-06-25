@@ -10,6 +10,7 @@ import { validateRequestBody, validateQueryParams, validatePathParams, Validatio
 import { db, schema } from '@/db'
 import { eq } from 'drizzle-orm'
 import { updateRoutesCache } from '@/app/api/matrix/routes/route'
+import { reportToFlywheel } from '@/lib/flywheel'
 
 
 export async function POST(request: NextRequest) {
@@ -200,7 +201,7 @@ export async function POST(request: NextRequest) {
             a.tv_output_ids,
             a.game_schedule_id,
             s.matrix_input_id,
-            mi.channelNumber AS matrix_input_num,
+            COALESCE(mi.channelNumber, CASE WHEN s.matrix_input_id != '' AND s.matrix_input_id NOT GLOB '*[^0-9]*' THEN CAST(s.matrix_input_id AS INTEGER) END) AS matrix_input_num,
             g.home_team_name,
             g.away_team_name,
             g.league,
@@ -231,6 +232,13 @@ export async function POST(request: NextRequest) {
         for (const row of recent) {
           let tvList: number[] = []
           try { tvList = JSON.parse(row.tv_output_ids) } catch { continue }
+          // v2.82.45 — if we can't resolve the source's channel, do NOT risk mis-stripping a TV
+          // off an active game. The 2026-06-24 Greenville Brewers bug: matrix_input_num was NULL
+          // for cable sources (matrix_input_id holds the channel number, not the MatrixInput UUID),
+          // so a bartender re-route ONTO the game's own input was misread as "removed" and every
+          // TV got stripped. The COALESCE above now resolves the channel for both id forms; this
+          // guard is the belt-and-suspenders for any source we still can't resolve.
+          if (row.matrix_input_num == null) continue
           const hadOutput = tvList.includes(outputNum)
           const movedOntoScheduled = row.matrix_input_num === inputNum
           if (!hadOutput && !movedOntoScheduled) continue
@@ -283,6 +291,20 @@ export async function POST(request: NextRequest) {
           })
 
           logger.info(`[OVERRIDE-LEARN] ${msg}`)
+
+          // v2.82.x — Hermes/flywheel capture of the override-learn correction.
+          // CRITICAL guardrail (the Greenville mode): if this removal emptied an
+          // active game's allocation, the game is now playing on NO screens —
+          // report a WARNING so Hermes sees it. Fire-and-forget, never blocks.
+          {
+            const flLoc = process.env.LOCATION_NAME || process.env.LOCATION_ID || 'unknown'
+            const flGame = `${row.home_team_name || '?'} vs ${row.away_team_name || '?'}`
+            if (action === 'removed' && newList.length === 0) {
+              reportToFlywheel('fleet-scheduler', `⚠ Scheduler: bartender removed last TV (output ${outputNum}) from active game ${flGame} — game is on no screens @ ${flLoc}`)
+            } else {
+              reportToFlywheel('fleet-scheduler', `Override-learn: bartender ${action} output ${outputNum} ${action === 'added' ? 'onto' : 'from'} ${flGame}${isHomeTeam ? ' (home team)' : ''} — now ${newList.length} TVs @ ${flLoc}`)
+            }
+          }
 
           // v2.55.42 — mirror override-learn into the dedicated scheduling
           // log so the operator can grep one file for the full team-routing
