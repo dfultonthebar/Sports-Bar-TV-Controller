@@ -835,8 +835,8 @@ RULES:
 13. PRIORITY ORDER: Home-team games get top priority — always propose them first. Then diverse options across leagues (MLB, NBA, NHL, MLS, UFL, UFC, Premier League, college sports) so the manager can compare.
 14. SAME-CHANNEL GROUPING: When the SAME-CHANNEL GROUPS section above lists multiple games on the same channel (e.g. "cable ch 27: games #3, #7, #11"), prefer to put ALL those games on the SAME input. Reasons: (a) saves tunes — no channel change needed, (b) the bartender's view stays consistent, (c) frees other inputs for content on different channels. Only split the group across inputs if the home-team minimums (Rule 12) force you to spread that game across many TVs and there isn't enough room on one input.
 
-Return ONLY valid JSON:
-{"suggestions":[{"gameIndex":1,"suggestedInput":"${exampleInput}","channelNumber":"669","suggestedOutputs":[1,2,3],"confidence":0.9,"reasoning":"Brewers home game on DirecTV"}]}
+Return ONLY valid JSON. For EACH suggestion, copy "homeTeam" and "awayTeam" VERBATIM from the GAMES line you picked — the server matches your suggestion to the game by these team names, so a wrong or rephrased name mis-tags the game's league (e.g. a soccer pick showing up as NBA). "gameIndex" alone is NOT enough.
+{"suggestions":[{"gameIndex":1,"homeTeam":"<home team copied verbatim from that GAMES line>","awayTeam":"<away team copied verbatim>","suggestedInput":"${exampleInput}","channelNumber":"669","suggestedOutputs":[1,2,3],"confidence":0.9,"reasoning":"Brewers home game on DirecTV"}]}
 
 Return ${Math.min(totalInputs * 2, games.length, 12)} suggestions — at least one per input when possible, plus alternatives across different leagues for the manager to pick from. JSON only, no other text.`
 }
@@ -938,7 +938,20 @@ function parseOllamaResponse(
     }
 
     for (const s of parsed.suggestions || []) {
-      const gameIdx = (s.gameIndex || 0) - 1
+      // v2.82.46 — resolve the game by the LLM's stated team names FIRST (order-independent,
+      // fuzzy), and use the bare numeric gameIndex only as a fallback. The index is unreliable on
+      // a long numbered list — the model miscounts / goes off-by-one and lands a soccer/tennis pick
+      // on an NBA/NHL row, mis-tagging the league. Matching on the teams it named fixes that.
+      const normTeam = (x: any) => String(x || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+      const sTeams = [normTeam(s.homeTeam), normTeam(s.awayTeam)].filter((t) => t.length >= 3)
+      let gameIdx = (s.gameIndex || 0) - 1
+      if (sTeams.length) {
+        const byTeam = games.findIndex((g: any) => {
+          const gTeams = [normTeam(g.homeTeam), normTeam(g.awayTeam)].filter(Boolean)
+          return sTeams.every((st) => gTeams.some((gt) => gt.includes(st) || st.includes(gt)))
+        })
+        if (byTeam >= 0) gameIdx = byTeam
+      }
       const game = games[gameIdx]
       if (!game) continue
 
