@@ -110,6 +110,57 @@ async function getLocalChannelOverrideRows(): Promise<{ teamName: string; channe
   }))
 }
 
+/**
+ * Build a set of NORMALIZED team names whose game in [startSec, endSec] is a
+ * streaming-exclusive broadcast where the local RSN is BLACKED OUT
+ * (e.g. an Apple TV+ / Peacock / Roku / Prime MLB "exclusive"). For those
+ * games the local_channel_overrides RSN injection (e.g. Brewers → Bally
+ * ch 308) is WRONG — the RSN does not carry the game and on Spectrum cable
+ * there is no Apple-TV-style channel at all.
+ *
+ * "Streaming-exclusive" is defined authoritatively from
+ * game_schedules.broadcast_networks: a game whose networks resolve to NO
+ * cable channel AND NO directv channel via the preset/alias resolver. If a
+ * game ALSO has an RSN/MLB-network feed (broadcast array includes Brewers.TV
+ * etc., which DO resolve to ch 308), it is NOT an exclusive and the override
+ * stays — only the truly RSN-dark games are guarded.
+ */
+async function getStreamingExclusiveTeamSet(startSec: number, endSec: number): Promise<Set<string>> {
+  const out = new Set<string>()
+  try {
+    const games = await db
+      .select()
+      .from(schema.gameSchedules)
+      .where(
+        and(
+          lte(schema.gameSchedules.scheduledStart, endSec),
+          gte(schema.gameSchedules.estimatedEnd, startSec),
+        ),
+      )
+      .all()
+    for (const game of games) {
+      if (game.status === 'completed') continue
+      let networks: string[] = []
+      try { networks = JSON.parse(game.broadcastNetworks || '[]') } catch { networks = [] }
+      if (networks.length === 0) continue
+      const resolution = await resolveChannelsForNetworks(networks, game.primaryNetwork ?? null)
+      // Exclusive ⇔ no cable AND no directv preset resolves for ANY of its
+      // networks. (e.g. ["Apple TV"] → cable null, directv null on cable,
+      // but directv DOES resolve to 9528 — so we only block the CABLE
+      // override below. We still record the team so the cable RSN injection
+      // is suppressed.)
+      if (!resolution.cable) {
+        if (game.homeTeamName) out.add(normalizeStation(game.homeTeamName))
+        if (game.awayTeamName) out.add(normalizeStation(game.awayTeamName))
+      }
+    }
+  } catch {
+    // Non-fatal — if game_schedules read fails, fall through with empty set
+    // (preserves prior behavior, override still injected).
+  }
+  return out
+}
+
 interface DeviceGuideRequest {
   inputNumber: number
   deviceType: 'cable' | 'satellite' | 'streaming'
@@ -376,6 +427,15 @@ export async function POST(request: NextRequest) {
       // findLocalChannelOverride() so the normalization rules stay in one place.
       const localOverrideRows = await getLocalChannelOverrideRows()
 
+      // Teams whose game in this window is a streaming-exclusive where the
+      // local RSN is blacked out (e.g. Brewers on an Apple TV+ exclusive).
+      // For these the RSN override (ch 308) is WRONG — Bally/Spectrum does
+      // not carry the game. Suppress the cable-override injection for them.
+      const exclusiveTeamSet = await getStreamingExclusiveTeamSet(
+        Math.floor(new Date(startTime).getTime() / 1000),
+        Math.floor(new Date(endTime).getTime() / 1000),
+      )
+
       if (deviceType !== 'satellite' && localOverrideRows.length > 0) {
         // Scan ALL listings (not just matched ones) for local override teams
         for (const group of guide.listing_groups || []) {
@@ -383,6 +443,18 @@ export async function POST(request: NextRequest) {
             const homeTeam = listing.data?.['home team'] || listing.data?.['team'] || ''
             const awayTeam = listing.data?.['visiting team'] || listing.data?.['opponent'] || ''
             if (!homeTeam.trim() && !awayTeam.trim()) continue
+
+            // Skip the RSN override when this team's game tonight is a
+            // streaming-exclusive (RSN dark). The override forces ch 308
+            // purely on team name and ignores broadcast_networks, which is
+            // exactly the Apple TV+ Brewers-Cubs misroute.
+            if (
+              (homeTeam.trim() && exclusiveTeamSet.has(normalizeStation(homeTeam))) ||
+              (awayTeam.trim() && exclusiveTeamSet.has(normalizeStation(awayTeam)))
+            ) {
+              logInfo(`Skipping RSN local-override for streaming-exclusive game: ${awayTeam} @ ${homeTeam}`)
+              continue
+            }
 
             // Use the shared helper to check both team names against the
             // overrides table (it normalizes + does bidirectional substring match).
