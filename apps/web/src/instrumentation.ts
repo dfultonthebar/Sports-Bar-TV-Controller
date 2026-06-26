@@ -227,10 +227,14 @@ export async function register() {
         { sport: 'football', league: 'nfl' },
         { sport: 'football', league: 'college-football' },
         { sport: 'football', league: 'ufl' },
-        // Soccer — MLS, Premier League, Champions League
+        // Soccer — MLS, Premier League, Champions League, FIFA World Cup
         { sport: 'soccer', league: 'usa.1' },
         { sport: 'soccer', league: 'eng.1' },
         { sport: 'soccer', league: 'uefa.champions' },
+        // 2026 FIFA World Cup (US/Canada/Mexico, Jun–Jul 2026). ESPN slug
+        // soccer/fifa.world. Airs FOX/FS1/Telemundo/Universo. Returns empty
+        // when off-tournament — the sync loop tolerates 0-event responses.
+        { sport: 'soccer', league: 'fifa.world' },
         // Racing — F1, NASCAR Cup, IndyCar
         { sport: 'racing', league: 'f1' },
         { sport: 'racing', league: 'nascar-premier' },

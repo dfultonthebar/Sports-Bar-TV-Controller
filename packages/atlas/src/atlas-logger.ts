@@ -21,6 +21,12 @@ const MAX_LOG_BYTES = 100 * 1024 * 1024 // 100 MB
 const ROTATE_CHECK_EVERY_N = 1000       // amortize fstat() calls
 let writeCounter = 0
 
+// Per-IP command-timeout throttle state (Holmgren 2026-06-26). See
+// commandTimeout() below for the rationale. Keyed by processor IP:
+//   lastErrorAt  — epoch ms of the last ERROR-level timeout we surfaced
+//   suppressed   — count of timeouts demoted to DEBUG since that ERROR
+const timeoutThrottle = new Map<string, { lastErrorAt: number; suppressed: number }>()
+
 // Ensure log directory exists
 function ensureLogDir() {
   if (!fs.existsSync(LOG_DIR)) {
@@ -159,6 +165,11 @@ export const atlasLogger = {
    * Log response received from processor
    */
   responseReceived(response: any, ipAddress: string) {
+    // A real reply means the command channel is alive again — clear any
+    // timeout throttle so the next failure (if the device re-wedges)
+    // surfaces immediately as ERROR rather than being demoted to DEBUG.
+    if (timeoutThrottle.has(ipAddress)) timeoutThrottle.delete(ipAddress)
+
     // Skip meter subscription responses — bulk telemetry, not loggable
     const params = response?.result?.params || response?.params
     if (Array.isArray(params) && params.some((p: any) => String(p?.param || '').includes('Meter'))) return
@@ -172,10 +183,36 @@ export const atlasLogger = {
   },
 
   /**
-   * Log command timeout
+   * Log command timeout.
+   *
+   * Per-IP throttle (Holmgren 2026-06-26): when an Atlas command channel
+   * wedges (TCP ESTABLISHED + UDP meters flowing, so the device still reads
+   * 'online', but it stops answering ANY JSON-RPC command), every poller
+   * command runs to its full timeout and lands here. At Holmgren that was
+   * ~184 timeouts/min (drop-watcher 8 zones/30s + priority-watcher's
+   * 14 SourceName GETs/5s) → ~62k ERROR lines/day, rotating a 10 MB PM2 log
+   * every ~3 hours and burying real errors. The drop-watcher now has its own
+   * circuit breaker, but this throttle is the catch-all for any timer-driven
+   * caller: log ERROR on the FIRST timeout per device, demote subsequent
+   * timeouts to DEBUG, and re-surface a single ERROR at most once every
+   * RESURFACE_MS so the operator still learns the device is sick. The full
+   * forensic record is always written to atlas-communication.log regardless.
+   * A successful response clears the throttle (see responseReceived).
    */
   commandTimeout(commandId: number, ipAddress: string) {
-    writeLog('ERROR', 'TIMEOUT', `Command timed out`, {
+    const RESURFACE_MS = 5 * 60 * 1000
+    const now = Date.now()
+    const t = timeoutThrottle.get(ipAddress)
+    const firstOrResurface = !t || (now - t.lastErrorAt) >= RESURFACE_MS
+    timeoutThrottle.set(ipAddress, {
+      lastErrorAt: firstOrResurface ? now : t!.lastErrorAt,
+      suppressed: firstOrResurface ? 0 : t!.suppressed + 1,
+    })
+    const level = firstOrResurface ? 'ERROR' : 'DEBUG'
+    const suppressedNote = firstOrResurface && t && t.suppressed > 0
+      ? ` (suppressed ${t.suppressed} repeat timeouts in the last ${RESURFACE_MS / 60000} min)`
+      : ''
+    writeLog(level, 'TIMEOUT', `Command timed out${suppressedNote}`, {
       ipAddress,
       commandId
     })
