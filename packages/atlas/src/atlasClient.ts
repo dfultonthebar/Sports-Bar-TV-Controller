@@ -1052,8 +1052,16 @@ export class AtlasTCPClient {
       // this GET log site too — avoids double-logging the same benign event.
       const msg = error instanceof Error ? error.message : String(error)
       const isParamNotFound = /could not be found/i.test(msg)
+      // A "Command timeout" rejection means sendCommand's timer already fired
+      // atlasLogger.commandTimeout (which is per-IP throttled). Re-logging the
+      // same event here at ERROR would double the spam when a device's command
+      // channel is wedged — demote to debug. The TIMEOUT line is the canonical
+      // record. (Holmgren 2026-06-26 — see commandTimeout throttle.)
+      const isTimeout = /command timeout/i.test(msg)
       if (isParamNotFound) {
         atlasLogger.debug('GET', 'param not found (benign)', { param, format, msg })
+      } else if (isTimeout) {
+        atlasLogger.debug('GET', 'get timed out (see throttled TIMEOUT log)', { param, format, msg })
       } else {
         atlasLogger.error('GET', 'Error getting parameter', { param, format, error })
       }

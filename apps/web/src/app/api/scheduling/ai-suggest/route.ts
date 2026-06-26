@@ -949,24 +949,49 @@ function parseOllamaResponse(
       // fuzzy), and use the bare numeric gameIndex only as a fallback. The index is unreliable on
       // a long numbered list — the model miscounts / goes off-by-one and lands a soccer/tennis pick
       // on an NBA/NHL row, mis-tagging the league. Matching on the teams it named fixes that.
-      const normTeam = (x: any) => String(x || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+      // v2.82.53 — strip diacritics BEFORE removing non-alnum, so accented names
+      // (Türkiye, Curaçao, México) don't collapse to mangled tokens (trkiye/curaao)
+      // that never match the LLM's plain-ASCII rendering (Turkiye/Curacao). Without
+      // the NFD decompose the combining mark is dropped along with its base letter.
+      const normTeam = (x: any) =>
+        String(x || '')
+          .normalize('NFD')
+          .replace(/[̀-ͯ]/g, '')
+          .toLowerCase()
+          .replace(/[^a-z0-9]/g, '')
       const sTeams = [normTeam(s.homeTeam), normTeam(s.awayTeam)].filter((t) => t.length >= 3)
       let gameIdx = (s.gameIndex || 0) - 1
       if (sTeams.length) {
+        // v2.82.53 — match if EITHER named team hits the game (was: require BOTH).
+        // The LLM frequently returns only one team, or the home/away order differs,
+        // or one name is abbreviated — a single solid token match is enough to bind
+        // the right game and is far better than the silent drop below.
         const byTeam = games.findIndex((g: any) => {
           const gTeams = [normTeam(g.homeTeam), normTeam(g.awayTeam)].filter(Boolean)
-          return sTeams.every((st) => gTeams.some((gt) => gt.includes(st) || st.includes(gt)))
+          return sTeams.some((st) => gTeams.some((gt) => gt.includes(st) || st.includes(gt)))
         })
         if (byTeam >= 0) {
+          // Prefer the team-match (preserves the v2.82.46 intent: don't let a
+          // miscounted index mislabel the league).
           gameIdx = byTeam
         } else {
-          // v2.82.47 — the LLM named teams that match NO game in today's list: it HALLUCINATED a
-          // game (e.g. a "Bucks/Badgers/Cowboys home game" when they don't play today). DROP it
-          // rather than fall back to the bare gameIndex, which lands on an unrelated real game and
-          // mislabels it (the Whai/Southland-as-NBA, Wimbledon-as-NFL garbage). The index fallback
-          // below only applies when the model returned no team names at all (legacy).
-          logger.info(`[AI-SUGGEST] Dropped hallucinated suggestion — LLM named "${s.homeTeam} / ${s.awayTeam}" but no such game is listed`)
-          continue
+          // v2.82.53 — team-match missed. Do NOT silently drop a pick whose
+          // gameIndex is valid: a valid index is a real pick the operator should
+          // see (the fuzzy name match can miss on abbreviations / one-name picks).
+          // Only treat it as a hallucination — and drop it — when the index is also
+          // useless: out of range, OR it lands on a game that shares ZERO token
+          // overlap with the names the LLM stated (so the index is just noise).
+          const idxGame = games[gameIdx]
+          const idxGameShareToken = !!idxGame && (() => {
+            const gTeams = [normTeam(idxGame.homeTeam), normTeam(idxGame.awayTeam)].filter(Boolean)
+            return sTeams.some((st) => gTeams.some((gt) => gt.includes(st) || st.includes(gt)))
+          })()
+          if (!idxGame || !idxGameShareToken) {
+            logger.info(`[AI-SUGGEST] Dropped hallucinated suggestion — LLM named "${s.homeTeam} / ${s.awayTeam}" with gameIndex=${s.gameIndex} matching no listed game`)
+            continue
+          }
+          // Index is in range and its game shares a token with the named teams —
+          // keep it via the index fallback.
         }
       }
       const game = games[gameIdx]
@@ -1098,7 +1123,7 @@ function parseOllamaResponse(
         suggestedDeviceType: resolvedDeviceType,
         suggestedOutputs: suggestedOutputsInt,
         confidence: typeof s.confidence === 'number' ? Math.min(1, Math.max(0, s.confidence)) : 0.5,
-        // v2.82.48 — server-build the reasoning from the RESOLVED game so the blurb ALWAYS matches
+        // v2.82.53 — server-build the reasoning from the RESOLVED game so the blurb ALWAYS matches
         // the pick. The LLM's free-text reasoning was unreliable (it described an "NBA game" under a
         // tennis pick after team-match corrected the game), so we don't surface it.
         reasoning:

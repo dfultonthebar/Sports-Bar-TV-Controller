@@ -53,6 +53,27 @@ const lastSeen = new Map<string, ZoneState>()
 // a drop event. Reset when volume recovers above the floor.
 const dropCooldown = new Map<string, number>()
 
+// Per-processor circuit breaker (v2.82.x — Holmgren 2026-06-26).
+// The AZM8 at 10.11.3.246 hit a firmware control-port lockup: TCP stays
+// ESTABLISHED and UDP meters keep flowing (so status='online'), but the
+// device stops answering ANY JSON-RPC command. The watcher kept issuing
+// 8 zones × 3 GETs every 30s into the dead channel; each GET ran to its
+// 5s timeout deep inside atlasClient, which logs at ERROR level
+// (atlasClient.ts:673 commandTimeout + :1058 getParameter catch) — BEFORE
+// this watcher's per-zone catch can demote it. Result: ~62k ERROR lines/day
+// rotating a 10 MB log every ~3 hours. The breaker stops POKING a wedged
+// command channel: after PROC_FAIL_THRESHOLD consecutive fully-failed polls
+// (every enabled zone returned null/threw) we skip the processor for an
+// escalating cooldown, so atlasClient never gets the chance to log. One
+// poll is allowed through after each cooldown to detect recovery (the
+// channel un-wedges on device reboot/scene-recall). Reachable processors
+// are unaffected — a single good read resets the breaker.
+const PROC_FAIL_THRESHOLD = 3
+const PROC_BACKOFF_BASE_SEC = 5 * 60       // first skip window after tripping
+const PROC_BACKOFF_MAX_SEC = 30 * 60       // ceiling for the escalating window
+type ProcBreaker = { consecutiveFails: number; skipUntilSec: number; tripped: boolean }
+const procBreaker = new Map<string, ProcBreaker>()
+
 async function ensureTable() {
   await db.run(sql`
     CREATE TABLE IF NOT EXISTS atlas_drop_events (
@@ -130,14 +151,30 @@ function readVal(resp: any): number | null {
 async function pollOnce() {
   const processors = await db.select().from(schema.audioProcessors).all()
 
+  const nowSec = Math.floor(Date.now() / 1000)
+
   for (const p of processors) {
     if (!p.ipAddress) continue
     if (p.processorType && p.processorType !== 'atlas') continue
+
+    // Circuit breaker: skip a processor whose command channel is wedged
+    // until its cooldown elapses. We let exactly one probe through per
+    // cooldown (skipUntilSec in the past) to detect recovery; that probe's
+    // outcome below either resets the breaker or escalates the window.
+    const breaker = procBreaker.get(p.id)
+    if (breaker?.tripped && nowSec < breaker.skipUntilSec) {
+      continue
+    }
 
     const zones = await db.select().from(schema.audioZones)
       .where(and(eq(schema.audioZones.processorId, p.id), eq(schema.audioZones.enabled, true)))
       .all()
     if (zones.length === 0) continue
+
+    // Track whether ANY zone produced a usable reading this poll. If every
+    // enabled zone returns null/throws, the command channel is dead and we
+    // count this as a processor-level failure for the breaker.
+    let anyZoneRead = false
 
     let client
     try {
@@ -159,6 +196,8 @@ async function pollOnce() {
         const gainResp = await client.getParameter(`ZoneGain_${zone.zoneNumber}`, 'pct')
         const volume = readPct(gainResp)
         if (volume === null) continue
+        // First usable reading this poll — the command channel is alive.
+        anyZoneRead = true
 
         const sourceResp = await client.getParameter(`ZoneSource_${zone.zoneNumber}`, 'val')
         const source = readVal(sourceResp) ?? -1
@@ -304,6 +343,34 @@ async function pollOnce() {
         // shure-rf-watcher logger.error gotcha (v2.34.2).
         const e = err as Error
         logger.debug(`[ATLAS-DROP-WATCHER] Zone ${zone.zoneNumber} (${zone.name}) query failed: ${e?.message ?? err}\n${e?.stack ?? ''}`)
+      }
+    }
+
+    // Circuit-breaker bookkeeping for this processor's poll.
+    const prevBreaker = procBreaker.get(p.id) ?? { consecutiveFails: 0, skipUntilSec: 0, tripped: false }
+    if (anyZoneRead) {
+      // Channel answered — clear any breaker state. Log recovery once.
+      if (prevBreaker.tripped) {
+        logger.info(`[ATLAS-DROP-WATCHER] ${p.name}@${p.ipAddress} command channel recovered — resuming normal polling`)
+      }
+      procBreaker.set(p.id, { consecutiveFails: 0, skipUntilSec: 0, tripped: false })
+    } else {
+      // Every enabled zone failed this poll — the command channel is dead
+      // (TCP up, but device not answering). Count toward the trip threshold.
+      const fails = prevBreaker.consecutiveFails + 1
+      if (fails >= PROC_FAIL_THRESHOLD) {
+        // Escalate the skip window each time we trip again, capped.
+        const tripCount = prevBreaker.tripped ? prevBreaker.consecutiveFails - PROC_FAIL_THRESHOLD + 2 : 1
+        const window = Math.min(PROC_BACKOFF_BASE_SEC * tripCount, PROC_BACKOFF_MAX_SEC)
+        if (!prevBreaker.tripped) {
+          logger.warn(`[ATLAS-DROP-WATCHER] ${p.name}@${p.ipAddress} command channel unresponsive after ${fails} polls (TCP up, no JSON-RPC reply) — backing off ${Math.round(window / 60)} min to stop error spam. Likely an Atlas control-port lockup; reboot/scene-recall the processor to clear it.`)
+        }
+        procBreaker.set(p.id, { consecutiveFails: fails, skipUntilSec: nowSec + window, tripped: true })
+        // Clear cached baselines so we don't false-positive a "drop" when
+        // the channel comes back and reads return after a long gap.
+        for (const zone of zones) lastSeen.delete(`${p.id}:${zone.zoneNumber}`)
+      } else {
+        procBreaker.set(p.id, { consecutiveFails: fails, skipUntilSec: 0, tripped: false })
       }
     }
   }
