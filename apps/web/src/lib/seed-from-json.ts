@@ -28,6 +28,13 @@ const STANDARD_ALIASES = [
   { standardName: 'FS1', aliases: ['FS1HD', 'FOX SPORTS 1', 'FOX SPORTS1', 'Fox Sports 1'] },
   { standardName: 'FS2', aliases: ['FS2HD', 'FOX SPORTS 2', 'Fox Sports 2'] },
   { standardName: 'FSN', aliases: ['FSNHD', 'FOX SPORTS NORTH', 'FSNWI', 'BSNOR'] },
+  // Spanish-language World Cup broadcasters. ESPN's fifa.world scoreboard
+  // emits the bare strings "Tele" (Telemundo) and "Universo" (NBC Universo);
+  // these standard_names normalize to the existing "Telemundo" / "NBC Universo"
+  // presets so the resolver binds them. Without these, WC games carried only
+  // on Spanish nets would surface in AI Suggest with no resolvable channel.
+  { standardName: 'Telemundo', aliases: ['Tele', 'TELE', 'TELEMUNDO'] },
+  { standardName: 'NBC Universo', aliases: ['Universo', 'UNIVERSO', 'NBCUN', 'NBC Universo'] },
   // Main Wisconsin RSN — preset name "Fan Duel" (channel 40 on Spectrum GB,
   // channel 669 on DirecTV). Carries Bucks and general WI sports content.
   // The Rail Media API returns these games under station code "FSWI".
