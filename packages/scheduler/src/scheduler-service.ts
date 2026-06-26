@@ -991,8 +991,13 @@ class SchedulerService {
       .where(eq(schema.inputSourceAllocations.status, 'pending'))
       .all();
 
-      // Filter to allocations that are due (5-minute early buffer: allocatedAt - 300 <= now)
-      const EARLY_BUFFER_SECONDS = 300; // 5 minutes before scheduled time
+      // Filter to allocations that are due. EARLY_BUFFER = how many minutes BEFORE the game's
+      // scheduled start (kickoff — ESPN gives kickoff, not the pregame slot) we tune the channel.
+      // Per-location tunable via TUNE_LEAD_MINUTES (.env); default 5. Bump it (e.g. 20-30) to land
+      // on the pregame. Requires the var in ecosystem.config.js env: block + pm2 delete/start.
+      const TUNE_LEAD_MINUTES = Number(process.env.TUNE_LEAD_MINUTES);
+      const EARLY_BUFFER_SECONDS =
+        (Number.isFinite(TUNE_LEAD_MINUTES) && TUNE_LEAD_MINUTES >= 0 ? TUNE_LEAD_MINUTES : 5) * 60;
       const MAX_DELAY_SECONDS = 1800; // 30 minutes max delay for live game protection
 
       const dueAllocations = pendingAllocations.filter(
@@ -1296,7 +1301,18 @@ class SchedulerService {
                   .where(eq(schema.matrixInputs.id, inputSource.matrixInputId))
                   .limit(1)
                   .all();
-                const matrixInput = matrixInputRow[0]?.channelNumber ?? NaN;
+                let matrixInput = matrixInputRow[0]?.channelNumber ?? NaN;
+                // v2.82.55 — tolerate legacy/mis-seeded data where matrix_input_id holds the
+                // integer Wolf Pack input number (the MatrixInput.channelNumber) instead of the
+                // MatrixInput UUID FK. Without this the UUID lookup above returns nothing →
+                // matrixInput=NaN → the route block below is SILENTLY skipped: the channel tunes
+                // but the TVs never switch (Holmgren, 2026-06-26 — every scheduled cable/DirecTV
+                // tune routed to no screens). If the UUID lookup missed but matrixInputId is a
+                // bare integer, use it directly as the Wolf Pack input number.
+                if (isNaN(matrixInput) && /^\d+$/.test(String(inputSource.matrixInputId))) {
+                  matrixInput = Number(inputSource.matrixInputId);
+                  logger.warn(`[SCHEDULER] matrix_input_id="${inputSource.matrixInputId}" is a bare integer, not a MatrixInput UUID — using it directly as Wolf Pack input ${matrixInput}. Run the matrix_input_id→UUID data fix to clean this up.`);
+                }
 
                 if (outputIds.length > 0 && !isNaN(matrixInput)) {
                   // v2.31.8 — Use the per-tick claimedOutputs set hoisted
