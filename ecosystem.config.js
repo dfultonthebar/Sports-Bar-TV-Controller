@@ -50,6 +50,10 @@ module.exports = {
         // validatePIN() falls back to AUTH_CONFIG.LOCATION_ID='default-location'
         // and every login fails with "Invalid PIN".
         LOCATION_ID: process.env.LOCATION_ID || 'default-location',
+        // Scheduler tune lead: minutes before kickoff to tune+route the channel.
+        // Per-location (.env), default 5. Bump (e.g. 20-30) for pregame coverage.
+        // Read in packages/scheduler/src/scheduler-service.ts (EARLY_BUFFER).
+        TUNE_LEAD_MINUTES: process.env.TUNE_LEAD_MINUTES,
         // Logger minimum level. Defaults to INFO in production, set
         // LOG_LEVEL=DEBUG in .env to surface verbose traces from
         // [CHANNEL_RESOLVER], [AUTO_UPDATE_API], and other component tags.
