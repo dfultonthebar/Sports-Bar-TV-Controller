@@ -842,8 +842,8 @@ RULES:
 13. ONLY REAL LISTED GAMES — NEVER INVENT ONE: Every suggestion MUST be one of the EXACT games in the GAMES list above, with homeTeam/awayTeam copied verbatim from its line. Do NOT invent or guess a game, do NOT use placeholder names (e.g. "Team A"), and do NOT propose any team that has no game in the list. If a team you expect is not listed, it simply has no game — skip it. Home-team games that ARE listed get top priority — propose them first. Then a diverse spread across whatever leagues are actually in the list so the manager can compare.
 14. SAME-CHANNEL GROUPING: When the SAME-CHANNEL GROUPS section above lists multiple games on the same channel (e.g. "cable ch 27: games #3, #7, #11"), prefer to put ALL those games on the SAME input. Reasons: (a) saves tunes — no channel change needed, (b) the bartender's view stays consistent, (c) frees other inputs for content on different channels. Only split the group across inputs if the home-team minimums (Rule 12) force you to spread that game across many TVs and there isn't enough room on one input.
 
-Return ONLY valid JSON. For EACH suggestion, copy "homeTeam" and "awayTeam" VERBATIM from the GAMES line you picked — the server matches your suggestion to the game by these team names, so a wrong or rephrased name mis-tags the game's league (e.g. a soccer pick showing up as NBA). "gameIndex" alone is NOT enough.
-{"suggestions":[{"gameIndex":1,"homeTeam":"<home team copied verbatim from that GAMES line>","awayTeam":"<away team copied verbatim>","suggestedInput":"${exampleInput}","channelNumber":"669","suggestedOutputs":[1,2,3],"confidence":0.9,"reasoning":"Brewers home game on DirecTV"}]}
+Return ONLY valid JSON, COMPACT — no newlines or extra spaces inside the array. Each object has EXACTLY these 5 keys: gameIndex, homeTeam, awayTeam, suggestedInput, suggestedOutputs. Do NOT add "reasoning", "channelNumber", or "confidence" — the server fills those, and including them makes the response long enough to TRUNCATE, which makes the JSON invalid and your ENTIRE response is discarded. Copy "homeTeam"/"awayTeam" VERBATIM from the GAMES line you picked (the server matches by those names). Keep it short.
+{"suggestions":[{"gameIndex":1,"homeTeam":"<home verbatim>","awayTeam":"<away verbatim>","suggestedInput":"${exampleInput}","suggestedOutputs":[1,2,3]}]}
 
 Return ${Math.min(totalInputs * 2, games.length, 12)} suggestions — at least one per input when possible, plus alternatives across different leagues for the manager to pick from. JSON only, no other text.`
 }
@@ -949,24 +949,49 @@ function parseOllamaResponse(
       // fuzzy), and use the bare numeric gameIndex only as a fallback. The index is unreliable on
       // a long numbered list — the model miscounts / goes off-by-one and lands a soccer/tennis pick
       // on an NBA/NHL row, mis-tagging the league. Matching on the teams it named fixes that.
-      const normTeam = (x: any) => String(x || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+      // v2.82.53 — strip diacritics BEFORE removing non-alnum, so accented names
+      // (Türkiye, Curaçao, México) don't collapse to mangled tokens (trkiye/curaao)
+      // that never match the LLM's plain-ASCII rendering (Turkiye/Curacao). Without
+      // the NFD decompose the combining mark is dropped along with its base letter.
+      const normTeam = (x: any) =>
+        String(x || '')
+          .normalize('NFD')
+          .replace(/[̀-ͯ]/g, '')
+          .toLowerCase()
+          .replace(/[^a-z0-9]/g, '')
       const sTeams = [normTeam(s.homeTeam), normTeam(s.awayTeam)].filter((t) => t.length >= 3)
       let gameIdx = (s.gameIndex || 0) - 1
       if (sTeams.length) {
+        // v2.82.53 — match if EITHER named team hits the game (was: require BOTH).
+        // The LLM frequently returns only one team, or the home/away order differs,
+        // or one name is abbreviated — a single solid token match is enough to bind
+        // the right game and is far better than the silent drop below.
         const byTeam = games.findIndex((g: any) => {
           const gTeams = [normTeam(g.homeTeam), normTeam(g.awayTeam)].filter(Boolean)
-          return sTeams.every((st) => gTeams.some((gt) => gt.includes(st) || st.includes(gt)))
+          return sTeams.some((st) => gTeams.some((gt) => gt.includes(st) || st.includes(gt)))
         })
         if (byTeam >= 0) {
+          // Prefer the team-match (preserves the v2.82.46 intent: don't let a
+          // miscounted index mislabel the league).
           gameIdx = byTeam
         } else {
-          // v2.82.47 — the LLM named teams that match NO game in today's list: it HALLUCINATED a
-          // game (e.g. a "Bucks/Badgers/Cowboys home game" when they don't play today). DROP it
-          // rather than fall back to the bare gameIndex, which lands on an unrelated real game and
-          // mislabels it (the Whai/Southland-as-NBA, Wimbledon-as-NFL garbage). The index fallback
-          // below only applies when the model returned no team names at all (legacy).
-          logger.info(`[AI-SUGGEST] Dropped hallucinated suggestion — LLM named "${s.homeTeam} / ${s.awayTeam}" but no such game is listed`)
-          continue
+          // v2.82.53 — team-match missed. Do NOT silently drop a pick whose
+          // gameIndex is valid: a valid index is a real pick the operator should
+          // see (the fuzzy name match can miss on abbreviations / one-name picks).
+          // Only treat it as a hallucination — and drop it — when the index is also
+          // useless: out of range, OR it lands on a game that shares ZERO token
+          // overlap with the names the LLM stated (so the index is just noise).
+          const idxGame = games[gameIdx]
+          const idxGameShareToken = !!idxGame && (() => {
+            const gTeams = [normTeam(idxGame.homeTeam), normTeam(idxGame.awayTeam)].filter(Boolean)
+            return sTeams.some((st) => gTeams.some((gt) => gt.includes(st) || st.includes(gt)))
+          })()
+          if (!idxGame || !idxGameShareToken) {
+            logger.info(`[AI-SUGGEST] Dropped hallucinated suggestion — LLM named "${s.homeTeam} / ${s.awayTeam}" with gameIndex=${s.gameIndex} matching no listed game`)
+            continue
+          }
+          // Index is in range and its game shares a token with the named teams —
+          // keep it via the index fallback.
         }
       }
       const game = games[gameIdx]
@@ -1098,7 +1123,7 @@ function parseOllamaResponse(
         suggestedDeviceType: resolvedDeviceType,
         suggestedOutputs: suggestedOutputsInt,
         confidence: typeof s.confidence === 'number' ? Math.min(1, Math.max(0, s.confidence)) : 0.5,
-        // v2.82.48 — server-build the reasoning from the RESOLVED game so the blurb ALWAYS matches
+        // v2.82.53 — server-build the reasoning from the RESOLVED game so the blurb ALWAYS matches
         // the pick. The LLM's free-text reasoning was unreliable (it described an "NBA game" under a
         // tennis pick after team-match corrected the game), so we don't surface it.
         reasoning:
