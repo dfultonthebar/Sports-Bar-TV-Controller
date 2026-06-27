@@ -101,9 +101,28 @@ class AutoReallocator {
 
       const now = Math.floor(Date.now() / 1000); // Unix timestamp
 
+      // v2.82.52 — HARD RULE: never end an allocation (and thus never revert /
+      // steal the TVs) for a game ESPN confirms is still in progress. The
+      // estimated_end check below (Check 3) is purely wall-clock; a game that
+      // runs long (extra innings / 9th-inning rally, OT) blows past its
+      // estimated end while still LIVE. Pre-fix, that fired
+      // `estimated_end_exceeded` and cut the live Brewers game off its TVs
+      // (Holmgren, 2026-06-26 21:34 — game still in the 9th). Fetch one ESPN
+      // live-status snapshot per tick and pass it to shouldEndAllocation so a
+      // CONFIRMED-live game holds its outputs indefinitely. Non-fatal: if the
+      // fetch fails we fall through to the wall-clock cap (the unconfirmable
+      // case keeps its old safety-valve behaviour).
+      let tickLiveData: any = null;
+      try {
+        const espnResp = await fetch(`http://127.0.0.1:${API_PORT}/api/scheduling/live-status`);
+        if (espnResp.ok) tickLiveData = await espnResp.json();
+      } catch (liveErr: any) {
+        logger.warn(`[AUTO-REALLOCATOR] live-status fetch failed (non-fatal): ${liveErr.message}`);
+      }
+
       // Step 2: Check each allocation to see if game has ended
       for (const { allocation, game, inputSource } of activeAllocations) {
-        const shouldEnd = this.shouldEndAllocation(game, allocation, now);
+        const shouldEnd = this.shouldEndAllocation(game, allocation, now, tickLiveData);
 
         if (shouldEnd.shouldEnd) {
           const endStartTime = Date.now();
@@ -282,7 +301,8 @@ class AutoReallocator {
   private shouldEndAllocation(
     game: any,
     allocation: any,
-    currentTime: number
+    currentTime: number,
+    liveData?: any
   ): { shouldEnd: boolean; reason: string } {
     // Check 1: Game status indicates completion
     const completedStatuses = ['final', 'completed', 'finished', 'F', 'FT'];
@@ -302,7 +322,32 @@ class AutoReallocator {
     const endTimeWithBuffer = allocation.expectedFreeAt + bufferSeconds;
 
     if (currentTime > endTimeWithBuffer) {
-      return { shouldEnd: true, reason: 'estimated_end_exceeded' };
+      // v2.82.52 — HARD RULE before ending on wall-clock: if ESPN CONFIRMS this
+      // game is still in progress, do NOT end it. A game that runs long (extra
+      // innings, OT) is past its estimated end yet still live; ending here would
+      // revert/steal the TVs off a live game (the Holmgren-Brewers bug). Hold
+      // the allocation indefinitely while confirmed-live.
+      if (this.isGameConfirmedLive(game, liveData)) {
+        logger.info(
+          `[AUTO-REALLOCATOR] ⏳ Holding ${game.awayTeamName} @ ${game.homeTeamName} — past estimated end but ESPN confirms still in progress (extra innings / OT)`
+        );
+        return { shouldEnd: false, reason: 'confirmed_live_holding' };
+      }
+
+      // Safety valve for the UNCONFIRMABLE case only (ESPN missing/stale —
+      // no live row matched). Base the hard cap on the CURRENT game's own
+      // estimated end, NOT the next game's lateness: if we're a large margin
+      // (3h) past this game's estimated end with no live confirmation, the
+      // live feed is probably stuck, so release rather than hold forever.
+      const STALE_LIVE_MARGIN_SECONDS = 3 * 3600;
+      const hardCap = allocation.expectedFreeAt + STALE_LIVE_MARGIN_SECONDS;
+      if (currentTime > hardCap) {
+        return { shouldEnd: true, reason: 'estimated_end_exceeded_unconfirmed_stale' };
+      }
+      // Between est_end+30min and the 3h hard cap, with no live confirmation,
+      // give the game the benefit of the doubt and keep holding (re-checked
+      // each tick once ESPN catches up or the hard cap trips).
+      return { shouldEnd: false, reason: 'past_estimate_awaiting_live_confirmation' };
     }
 
     // Check 4: Actual end time is recorded
@@ -311,6 +356,56 @@ class AutoReallocator {
     }
 
     return { shouldEnd: false, reason: '' };
+  }
+
+  /**
+   * v2.82.52 — Returns true ONLY when ESPN live-status positively confirms the
+   * game is in progress. Mirrors checkCurrentGameStatus()'s in-progress
+   * detection in scheduler-service.ts (incl. extra innings / OT). A missing
+   * live feed, no matching game row, or a 'final'-ish status all return false
+   * (we do NOT block on the unconfirmable case — the wall-clock hard cap covers
+   * that). Matches by espnGameId first, then home+away team names.
+   */
+  private isGameConfirmedLive(game: any, liveData: any): boolean {
+    if (!liveData || !liveData.success || !Array.isArray(liveData.games)) return false;
+
+    const liveGame = liveData.games.find((g: any) =>
+      (game.espnEventId && g.espnGameId === game.espnEventId) ||
+      (g.homeTeam === game.homeTeamName && g.awayTeam === game.awayTeamName)
+    );
+    if (!liveGame) return false;
+
+    const status = (liveGame.status || '').toLowerCase();
+
+    // Explicitly completed → not live.
+    if (
+      status.includes('final') ||
+      status.includes('completed') ||
+      status.includes('postponed') ||
+      status.includes('cancelled') ||
+      status.includes('canceled')
+    ) {
+      return false;
+    }
+
+    // Positive in-progress signals (ESPN isLive flag is authoritative; the
+    // string checks catch MLB innings, halftime, quarters/periods, OT, and
+    // baseball extra innings via 'inning'/'top'/'bot'/'mid').
+    return (
+      liveGame.isLive === true ||
+      status.includes('in progress') ||
+      status.includes('halftime') ||
+      status.includes('inning') ||
+      status.includes(' top ') ||
+      status.includes(' bot ') ||
+      status.includes('1st') ||
+      status.includes('2nd') ||
+      status.includes('3rd') ||
+      status.includes('4th') ||
+      status.includes('quarter') ||
+      status.includes('period') ||
+      status.includes('overtime')
+    );
   }
 
   /**
