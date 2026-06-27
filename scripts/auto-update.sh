@@ -602,7 +602,8 @@ run_checkpoint() {
   # GO under deterministic-A).
   if [ -x "$REPO_ROOT/scripts/checkpoint-deterministic.sh" ]; then
     local det_out="$out_file.det"
-    if timeout 30 bash "$REPO_ROOT/scripts/checkpoint-deterministic.sh" "$label" "$prompt_file" \
+    if PRE_MERGE_SHA="${PRE_MERGE_SHA:-}" POST_MERGE_SHA="${POST_MERGE_SHA:-}" \
+       timeout 30 bash "$REPO_ROOT/scripts/checkpoint-deterministic.sh" "$label" "$prompt_file" \
          > "$det_out" 2>>"$LOG_FILE"; then
       local det_decision
       det_decision=$(grep -m1 '^DECISION:' "$det_out" || true)
