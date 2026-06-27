@@ -150,18 +150,6 @@ ON-SITE: check Atlas GUI -> Sources -> Priority + scheduled scene recalls + Grou
 - **Updated**: 6/19/2026, 1:09:48 PM
 - **Completed**: 6/19/2026, 1:09:48 PM
 
-### Fleet update recovery needed for box1 and box2
-
-- **ID**: `77c863d6-037b-46cb-853d-928a5df8910c`
-- **Priority**: MEDIUM
-- **Status**: PLANNED
-- **Category**: Maintenance
-- **Description**: box1: git rebase --abort; reconcile stale origin reference, then sync to current; verify health. box2: fix stale origin refs first, proceed with sync steps, verify after every change.
-
-(auto-filed via /api/maintenance-todo, source=ai-chat)
-- **Created**: 6/24/2026, 11:47:52 PM
-- **Updated**: 6/24/2026, 6:47:52 PM
-
 ### Verify 3 genuine Atlas zone-gain drops (Upstairs / Pavillion / Main Bar)
 
 - **ID**: `95f8aa64-1a47-480d-ae95-f06ad8284789`
@@ -1417,7 +1405,7 @@ FIXED v2.82.25: 10.11.3.48 is the Atmosphere TV (off by schedule). The rising-ed
 ---
 
 **Total TODOs**: 103
-- Planned: 20
+- Planned: 19
 - In Progress: 9
 - Testing: 4
 - Complete: 66
