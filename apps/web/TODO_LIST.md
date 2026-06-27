@@ -265,18 +265,6 @@ RECOMMENDATION: keep LLM primary. Prereqs before re-review: (a) fix unresolvedIn
 - **Updated**: 6/19/2026, 1:09:48 PM
 - **Completed**: 6/19/2026, 1:09:48 PM
 
-### Fleet update recovery needed
-
-- **ID**: `a33a7398-14b3-4773-a996-51ed6d91c8d3`
-- **Priority**: HIGH
-- **Status**: PLANNED
-- **Category**: Maintenance
-- **Description**: Fleet health check shows multiple locations rolled-back on v2.82.10 (greenville, graystone, leglamp, appleton). A fix plan has been filed following Claude Code recommendations.
-
-(auto-filed via /api/maintenance-todo, source=ai-chat)
-- **Created**: 6/24/2026, 5:12:16 AM
-- **Updated**: 6/24/2026, 12:12:16 AM
-
 ### Error watch: error_level
 
 - **ID**: `88b913e2-4408-4328-8f96-5d1554b7f491`
@@ -1429,7 +1417,7 @@ FIXED v2.82.25: 10.11.3.48 is the Atmosphere TV (off by schedule). The rising-ed
 ---
 
 **Total TODOs**: 103
-- Planned: 21
+- Planned: 20
 - In Progress: 9
 - Testing: 4
 - Complete: 66
