@@ -104,6 +104,72 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // v2.82.52 — ALSO cover active input_source_allocations directly.
+    // Previously this route only walked cableBoxes.currentProgram, so games
+    // tuned on DirecTV / Fire TV (e.g. the Brewers on DirecTV ch 9528) never
+    // appeared here. The auto-reallocator's "is this game still live?" guard
+    // relies on this feed, so a missing DirecTV game meant a long-running game
+    // (extra innings) got cut off its TVs on the wall-clock estimate. Query
+    // every active allocation's game and resolve its live ESPN status by
+    // espnEventId first, then team names — device-agnostic.
+    try {
+      const activeAllocs = await db
+        .select({ allocation: schema.inputSourceAllocations, game: schema.gameSchedules })
+        .from(schema.inputSourceAllocations)
+        .innerJoin(
+          schema.gameSchedules,
+          eq(schema.inputSourceAllocations.gameScheduleId, schema.gameSchedules.id),
+        )
+        .where(eq(schema.inputSourceAllocations.status, 'active'))
+        .all();
+
+      // Dedup vs the cable-box pass (which keys on team names).
+      const seenKeys = new Set(liveGames.map((g) => `${g.homeTeam}|${g.awayTeam}`));
+
+      for (const { allocation, game } of activeAllocs) {
+        const dedupKey = `${game.homeTeamName}|${game.awayTeamName}`;
+        if (seenKeys.has(dedupKey)) continue;
+
+        // Skip bartender-manual games with no real ESPN event to resolve.
+        if (!game.espnEventId || game.espnEventId.startsWith('bartender-')) continue;
+
+        const espnMapping = mapLeagueToESPN(game.league || '');
+        if (!espnMapping) continue;
+
+        try {
+          const espnGames = await espnScoreboardAPI.getTodaysGames(espnMapping.sport, espnMapping.league);
+          const matchedGame =
+            espnGames.find((eg: any) => eg.id === game.espnEventId) ||
+            matchGameByTeams(espnGames, game.homeTeamName, game.awayTeamName);
+          if (!matchedGame) continue;
+
+          seenKeys.add(dedupKey);
+          liveGames.push({
+            gameId: `alloc-${allocation.id}`,
+            espnGameId: matchedGame.id || game.espnEventId,
+            homeTeam: game.homeTeamName,
+            awayTeam: game.awayTeamName,
+            league: game.league || '',
+            status: matchedGame.status.type.shortDetail,
+            homeScore: matchedGame.homeTeam.score ?? null,
+            awayScore: matchedGame.awayTeam.score ?? null,
+            timeRemaining: matchedGame.status.displayClock || null,
+            quarter: matchedGame.status.period ? `P${matchedGame.status.period}` : null,
+            isLive: espnScoreboardAPI.isLive(matchedGame),
+            scheduledStart: game.scheduledStart || 0,
+            channel: allocation.channelNumber || null,
+            inputSource: allocation.inputSourceId,
+            inputLabel: null,
+            isAutoScheduled: true,
+          });
+        } catch (error: any) {
+          logger.debug(`[LIVE-STATUS] Failed to resolve ESPN live status for allocation ${allocation.id}:`, error.message);
+        }
+      }
+    } catch (allocErr: any) {
+      logger.warn('[LIVE-STATUS] active-allocation live-status pass failed (non-fatal):', allocErr.message);
+    }
+
     return NextResponse.json({
       success: true,
       games: liveGames,
