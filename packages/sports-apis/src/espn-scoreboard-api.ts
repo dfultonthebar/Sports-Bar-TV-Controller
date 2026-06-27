@@ -356,6 +356,42 @@ class ESPNScoreboardAPIService {
       const homeTeam = competition?.competitors?.find((c: any) => c.homeAway === 'home');
       const awayTeam = competition?.competitors?.find((c: any) => c.homeAway === 'away');
 
+      // v2.82.58 — Tennis broadcast extraction (ADDITIVE, tennis-only).
+      // Team sports (MLB/NBA/NHL/NFL/soccer/golf/racing) put their single
+      // match under top-level `event.competitions[0]` with a populated
+      // `broadcasts` array. ESPN's tennis scoreboard is structured
+      // differently: `event.competitions` is EMPTY and the individual
+      // matches live under `event.groupings[].competitions[]`, each with its
+      // own (often populated) `broadcasts`. Because `competition` above is
+      // undefined for tennis, `competition?.broadcasts` was always empty, so
+      // every tennis tournament row stored broadcast_networks=[] and became
+      // unschedulable. Here we aggregate the UNION of all per-match broadcast
+      // names across the tournament's groupings into a single synthetic
+      // broadcasts entry on the tournament row — ONLY when the top-level
+      // competition has no broadcasts of its own. Team sports never have
+      // `groupings`, so this branch never runs for them and their parsing is
+      // byte-identical to before. Verified 2026-06-27: Wimbledon aggregates
+      // to ["ESPN+","ESPN Unlmtd"]; untelevised tournaments stay [].
+      let aggregatedBroadcasts: Array<{ market: string; names: string[] }> | undefined;
+      const topLevelBroadcasts = competition?.broadcasts;
+      const hasTopLevelBroadcasts =
+        Array.isArray(topLevelBroadcasts) && topLevelBroadcasts.length > 0;
+      if (!hasTopLevelBroadcasts && Array.isArray(event.groupings) && event.groupings.length > 0) {
+        const names = new Set<string>();
+        for (const grouping of event.groupings) {
+          for (const match of grouping?.competitions ?? []) {
+            for (const b of match?.broadcasts ?? []) {
+              for (const n of b?.names ?? []) {
+                if (n) names.add(n);
+              }
+            }
+          }
+        }
+        if (names.size > 0) {
+          aggregatedBroadcasts = [{ market: 'national', names: [...names] }];
+        }
+      }
+
       return {
         id: event.id,
         uid: event.uid,
@@ -414,7 +450,7 @@ class ESPNScoreboardAPIService {
         broadcasts: competition?.broadcasts?.map((b: any) => ({
           market: b.market || 'national',
           names: b.names || [],
-        })),
+        })) ?? aggregatedBroadcasts,
 
         venue: competition?.venue ? {
           fullName: competition.venue.fullName,
