@@ -998,7 +998,10 @@ class SchedulerService {
       const TUNE_LEAD_MINUTES = Number(process.env.TUNE_LEAD_MINUTES);
       const EARLY_BUFFER_SECONDS =
         (Number.isFinite(TUNE_LEAD_MINUTES) && TUNE_LEAD_MINUTES >= 0 ? TUNE_LEAD_MINUTES : 5) * 60;
-      const MAX_DELAY_SECONDS = 1800; // 30 minutes max delay for live game protection
+      // v2.82.52 — the old MAX_DELAY_SECONDS (30-min) force-override was removed.
+      // It cut CONFIRMED-live games off their TVs as soon as the NEXT game ran
+      // 30min late. Live-game protection is now state-based: see the
+      // confirmedLive / outputsOverlap / assumedLiveButStale logic below.
 
       const dueAllocations = pendingAllocations.filter(
         (r) => ((r.allocation.allocatedAt || 0) - EARLY_BUFFER_SECONDS) <= nowUnix
@@ -1110,9 +1113,44 @@ class SchedulerService {
           // v2.31.8 — pass the per-tick live-status snapshot to avoid N loopback fetches.
           const currentGameStatus = await this.checkCurrentGameStatus(inputSource.id, tickLiveData);
           const timePastScheduled = nowUnix - (allocation.allocatedAt || 0);
-          const forceOverride = timePastScheduled >= MAX_DELAY_SECONDS;
 
-          if (currentGameStatus.gameInProgress && !forceOverride) {
+          // v2.82.52 — HARD RULE: never switch a TV off a CONFIRMED in-progress
+          // game. The old `forceOverride = timePastScheduled >= 30min` cut a
+          // genuinely-live game off as soon as the NEXT game ran 30min late
+          // (the Brewers extra-innings bug). Restructure:
+          //   • ESPN-confirmed live  → HOLD indefinitely (next game waits).
+          //   • only-assumed live (no ESPN confirmation) → keep a safety valve,
+          //     but base it on THIS game's own state (large margin past its
+          //     estimated end ⇒ live data stale), NOT the next game's lateness.
+          //   • no output overlap → no conflict; tune freely (the next game
+          //     isn't stealing any TV the live game is using).
+          const nextOutputIds: number[] = (() => {
+            try { return JSON.parse(allocation.tvOutputIds || '[]'); } catch { return []; }
+          })();
+          const liveOutputIds = currentGameStatus.activeOutputIds || [];
+          const outputsOverlap =
+            nextOutputIds.length === 0 || // unknown next-outputs → be safe, treat as overlap
+            liveOutputIds.length === 0 ||  // unknown live-outputs → be safe, treat as overlap
+            nextOutputIds.some((o) => liveOutputIds.includes(o));
+
+          // Safety valve applies ONLY to the unconfirmable (assumed-live) case,
+          // and is gated on the CURRENT game's estimated end + a large margin.
+          const STALE_ASSUMED_MARGIN_SECONDS = 3 * 3600;
+          const liveEstEnd = (game as any).estimatedEnd || 0; // current allocation's own game
+          const assumedLiveButStale =
+            !currentGameStatus.confirmedLive &&
+            liveEstEnd > 0 &&
+            nowUnix > liveEstEnd + STALE_ASSUMED_MARGIN_SECONDS;
+
+          // forceOverride is now allowed ONLY when the live game is NOT
+          // ESPN-confirmed AND its own data looks stale. A confirmed-live game
+          // can NEVER be force-overridden.
+          const forceOverride = !currentGameStatus.confirmedLive && assumedLiveButStale;
+
+          // No conflict if the next game's TVs don't overlap the live game's.
+          if (currentGameStatus.gameInProgress && !outputsOverlap) {
+            logger.info(`[SCHEDULER] ▶️ Tuning ${game.homeTeamName} — no TV overlap with in-progress ${currentGameStatus.gameDescription}; no conflict`);
+          } else if (currentGameStatus.gameInProgress && !forceOverride) {
             await schedulerLogger.info(
               'scheduler-service',
               'tune',
@@ -1136,7 +1174,10 @@ class SchedulerService {
           }
 
           if (currentGameStatus.gameInProgress && forceOverride) {
-            logger.info(`[SCHEDULER] ⚠️ Force-tuning after ${MAX_DELAY_SECONDS / 60}min delay - overriding active game: ${currentGameStatus.gameDescription}`);
+            // Only reachable when the live game is NOT ESPN-confirmed and is 3h+
+            // past its own estimated end (live data presumed stale). A
+            // confirmed-live game never sets forceOverride, so this can't cut one off.
+            logger.warn(`[SCHEDULER] ⚠️ Force-tuning over assumed-but-unconfirmed game (3h+ past its estimated end, live data presumed stale): ${currentGameStatus.gameDescription}`);
           }
 
           logger.info(`[SCHEDULER] ✅ Ready to execute tune - no game in progress or game has ended`);
@@ -1623,6 +1664,13 @@ class SchedulerService {
     gameInProgress: boolean;
     gameDescription?: string;
     status?: string;
+    // v2.82.52 — true ONLY when ESPN positively confirms in-progress (incl.
+    // extra innings / OT). Distinct from gameInProgress, which is also true for
+    // the 'assumed_in_progress' wall-clock fallback when ESPN can't confirm.
+    // The caller's safety-valve override must NEVER fire on a confirmedLive game.
+    confirmedLive?: boolean;
+    activeAllocationId?: string;
+    activeOutputIds?: number[];
   }> {
     try {
       const activeAlloc = await db.select({
@@ -1644,6 +1692,14 @@ class SchedulerService {
 
       const { game } = activeAlloc;
       const gameDescription = `${game.awayTeamName} @ ${game.homeTeamName}`;
+
+      // v2.82.52 — capture the live game's claimed outputs so the caller can
+      // tell whether a NEXT game would actually steal a TV from it.
+      let activeOutputIds: number[] = [];
+      try {
+        activeOutputIds = JSON.parse(activeAlloc.allocation.tvOutputIds || '[]');
+      } catch { /* malformed → treat as no known outputs */ }
+      const activeAllocationId = activeAlloc.allocation.id;
 
       // Check ESPN API for live game status
       if (game.espnEventId && !game.espnEventId.startsWith('bartender-')) {
@@ -1668,6 +1724,7 @@ class SchedulerService {
                 const isInProgress = liveGame.isLive === true ||
                   status.includes('in progress') ||
                   status.includes('halftime') ||
+                  status.includes('inning') || // v2.82.52 — MLB incl. extra innings
                   status.includes('1st') ||
                   status.includes('2nd') ||
                   status.includes('3rd') ||
@@ -1700,8 +1757,11 @@ class SchedulerService {
                 if (isInProgress) {
                   return {
                     gameInProgress: true,
+                    confirmedLive: true, // ESPN positively confirms in-progress
                     gameDescription,
-                    status: liveGame.status || liveGame.timeRemaining
+                    status: liveGame.status || liveGame.timeRemaining,
+                    activeAllocationId,
+                    activeOutputIds,
                   };
                 }
               }
@@ -1737,8 +1797,11 @@ class SchedulerService {
       if (scheduledStart > 0 && now > scheduledStart && now < (estimatedEnd || scheduledStart + 4 * 3600)) {
         return {
           gameInProgress: true,
+          confirmedLive: false, // wall-clock assumption only — ESPN did not confirm
           gameDescription,
-          status: 'assumed_in_progress'
+          status: 'assumed_in_progress',
+          activeAllocationId,
+          activeOutputIds,
         };
       }
 
