@@ -82,7 +82,16 @@ const STANDARD_ALIASES = [
   // These aliases also help the cable/directv preset fallback path recognize
   // streaming-origin broadcast strings; the primary streaming resolution path
   // uses STREAMING_STATION_MAP in network-channel-resolver.ts.
-  { standardName: 'PrimeVideo', aliases: ['Prime Video', 'Amazon Prime Video', 'Amazon Prime', 'PRIME VIDEO', 'Amazon'] },
+  // v2.82.58 — 'Prime' added so the PrimeVideo bundle links to the directv
+  // ChannelPreset named "Prime" (ch 9549). Without a member that normalizes
+  // to PRIME, "Prime Video" broadcast strings resolved to the Fire TV app
+  // but NOT to DirecTV 9549. This mirrors how AppleTVPlus links to the
+  // "AppleTV+" preset (ch 9528). 'Prime' only resolves to the directv-only
+  // 9549 preset — no cable preset normalizes to PRIME, so streaming-exclusive
+  // Prime Video games stay cable-dark and remain protected by the v2.82.56
+  // RSN-override guard. Union-merge upsert (seedStationAliases) propagates
+  // this to existing installs on next restart.
+  { standardName: 'PrimeVideo', aliases: ['Prime Video', 'Amazon Prime Video', 'Amazon Prime', 'PRIME VIDEO', 'Amazon', 'Prime'] },
   { standardName: 'AppleTVPlus', aliases: ['Apple TV', 'Apple TV+', 'AppleTV+', 'Apple TV Plus', 'APPLE TV+', 'APPLE TV'] },
   { standardName: 'ParamountPlus', aliases: ['Paramount+', 'Paramount Plus', 'PARAMOUNT+', 'P+'] },
   { standardName: 'Peacock', aliases: ['Peacock', 'PEACOCK', 'Peacock Premium', 'Peacock TV'] },
