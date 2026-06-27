@@ -204,12 +204,20 @@ run_b() {
 
   # 3. New schema tables must exist if schema diff added any.
   # Extract `export const X = sqliteTable('Y', ...)` from diff additions.
-  local new_tables
-  new_tables=$(git diff "$PRE_MERGE_SHA"..HEAD -- '*/schema.ts' 2>/dev/null \
-    | grep -E '^\+export const \w+ = sqliteTable' \
-    | grep -oE "sqliteTable\('[^']+'" \
-    | grep -oE "'[^']+'" \
-    | tr -d "'")
+  # Guard PRE_MERGE_SHA: the script runs under `set -u`, and auto-update.sh now
+  # passes it through (it was previously an un-exported shell var the child never
+  # saw — which silently skipped this check AND tripped an unbound-variable error).
+  # If it's still absent for any reason, skip the diff check cleanly instead of crashing.
+  local new_tables=""
+  if [ -n "${PRE_MERGE_SHA:-}" ]; then
+    new_tables=$(git diff "${PRE_MERGE_SHA}"..HEAD -- '*/schema.ts' 2>/dev/null \
+      | grep -E '^\+export const \w+ = sqliteTable' \
+      | grep -oE "sqliteTable\('[^']+'" \
+      | grep -oE "'[^']+'" \
+      | tr -d "'")
+  else
+    diag "PRE_MERGE_SHA not provided — skipping schema-diff new-table check (verify-install schema_completeness layer still covers it)"
+  fi
   local existing_tables
   existing_tables=$(sqlite3 "$DB_PATH" ".tables" 2>/dev/null | tr -s ' ' '\n')
   local missing=""
