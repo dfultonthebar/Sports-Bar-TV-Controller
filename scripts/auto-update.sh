@@ -549,8 +549,14 @@ trap cleanup_on_error EXIT
 hermes_shadow_review() {
   local label=$1 prompt_file=$2 real_decision=$3
   [ -x "$REPO_ROOT/scripts/checkpoint-hermes.sh" ] || return 0
-  # Skip the T4 round-trip entirely where no remote model is configured.
-  [ -n "${OLLAMA_REMOTE_BASE:-}" ] || return 0
+  # Run on the shared T4 (OLLAMA_REMOTE_BASE) if configured, else the box's OWN
+  # local Ollama — checkpoint-hermes.sh falls back to localhost:11434 by design,
+  # and every fleet box has llama3.1:8b locally. Skip ONLY if no Ollama is
+  # reachable at all, so the shadow stays advisory + non-fatal and never delays a
+  # real install. (Was gated on OLLAMA_REMOTE_BASE, which is now unset fleet-wide
+  # since AI Suggest moved to each box's local Iris — that produced 0 shadow data.)
+  local _shadow_ollama="${OLLAMA_REMOTE_BASE:-http://localhost:11434}"
+  curl -sf --max-time 4 "${_shadow_ollama}/api/tags" >/dev/null 2>&1 || return 0
 
   local shadow_out hermes_verdict real_verdict agree="n/a"
   shadow_out=$(timeout 150 bash "$REPO_ROOT/scripts/checkpoint-hermes.sh" "$label" "$prompt_file" 2>/dev/null | head -1 || true)
