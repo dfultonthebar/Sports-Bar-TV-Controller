@@ -744,7 +744,7 @@ export const tvInputControlSchema = z.object({
  * TV pairing schema (Samsung)
  */
 export const tvPairSchema = z.object({
-  timeout: z.number().int().min(5000).max(60000).optional().default(30000)
+  timeout: z.number().int().min(5000).max(120000).optional().default(30000)
 })
 
 /**

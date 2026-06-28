@@ -35,6 +35,20 @@ is the archive.
 
 ---
 
+## v2.83.0 — LG TV pairing (webOS) added to the app (2026-06-28)
+
+**Branch landed:** main. Adds in-app pairing for **LG (webOS) network TVs**, which previously had NO working pairing path: the `/api/tv-control/[deviceId]/pair` route was Samsung-only, and `LGTVClient.register()` resolved on the intermediate prompt-ack *before* the user accepted, so it never captured/persisted a `clientKey`. Without a clientKey the app cannot power-OFF/toggle an LG TV (power-ON via Wake-on-LAN already works without pairing).
+
+**What changed (pure code, no migration):**
+- `packages/tv-network-control` — new `LGTVClient.pair(timeoutMs)`: connects without a key (triggers the on-screen "Allow this device to connect?" prompt) and waits for the real `registered` frame to capture the clientKey.
+- `apps/web/.../tv-control/[deviceId]/pair/route.ts` — branches Samsung→`authToken` / LG→`clientKey`.
+- `TVNetworkDiscovery.tsx` — "Unpaired" badge + "Pair TV" button now appear for LG (gated on `!clientKey`); pair timeout raised to 60s.
+- `tvPairSchema` timeout max 60s→120s.
+
+**Required Manual Step:** NONE. After update, LG TVs show a "Pair TV" button in Device Config → TV Network; the operator clicks it, accepts the prompt on the TV with the remote, and the clientKey saves. No env/DB/seed changes. (Power-ON works regardless; pairing only enables app-driven power-OFF/toggle.)
+
+---
+
 ## v2.82.1 — FLEET-FREEZE FIX: stop location boxes pushing TODO_LIST.md (2026-06-21)
 
 **Branch landed:** main. **This is the root-cause fix for the fleet auto-update freeze** (boxes stuck ~v2.73.8; v2.76–2.81 never propagated).
