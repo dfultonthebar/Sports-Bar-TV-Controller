@@ -467,7 +467,12 @@ registerAuditedTool(
       'Create a REVIEWABLE maintenance/work TODO on the System Admin → Todos list (tagged source ' +
       '"ai-chat"). Use this when you spot something that needs fixing or following up. This is the ONLY ' +
       'write this gateway permits, and it only adds a todo for a human to review — it never touches ' +
-      'hardware. Deduped by title so repeats collapse into one open item.',
+      'hardware. Deduped by title so repeats collapse into one open item. ' +
+      'IMPORTANT: describe the SYMPTOM and point to the canonical runbook — do NOT draft destructive shell ' +
+      'commands (git clean -f / rm -r / git reset --hard / git push --force / origin-master); the endpoint ' +
+      'strips them anyway. Do NOT file fleet-update "recovery" todos for a box that is merely behind on ' +
+      'version — that is normal and the nightly auto-update resolves it; only flag a box as stuck if ' +
+      '.git/rebase-* exists AND its health endpoint is not 200.',
     // `as any`: TS2589 (MCP SDK + zod v4), same as the other arg tools.
     inputSchema: {
       title: z.string().min(1).max(200).describe('Short todo title'),
