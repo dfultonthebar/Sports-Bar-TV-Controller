@@ -46,6 +46,20 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-06-28 — v2.83.0 — LG TV pairing (webOS) in-app
+
+**Risk:** GO — additive feature, no schema/env/migration. The new code path only fires when an operator clicks the new "Pair TV" button for an LG TV; existing Samsung pairing and all power/routing paths are unchanged.
+
+**What changed:** new `LGTVClient.pair()` (webOS PROMPT pairing — waits for the real `registered` accept frame, captures clientKey); `/api/tv-control/[deviceId]/pair` now handles LG (saves clientKey) in addition to Samsung (authToken); `TVNetworkDiscovery.tsx` shows "Unpaired" badge + "Pair TV" button for LG; pair timeout 60s; `tvPairSchema` max 120s.
+
+**What could break at a location:** Nothing passive. The pair route was Samsung-only, so adding an LG branch can't affect Samsung/Roku/other brands. The UI button only appears for LG TVs lacking a clientKey. Power-ON (WoL) untouched.
+
+**Manual steps required:** None. Locations with LG TVs can now pair them from Device Config → TV Network (click Pair, accept on the TV with the remote).
+
+**Rollback:** revert the v2.83.0 commit; LG TVs simply lose the in-app pair button. No state to undo.
+
+**Affected files:** `packages/tv-network-control/src/clients/lg-client.ts`, `apps/web/src/app/api/tv-control/[deviceId]/pair/route.ts`, `apps/web/src/components/tv-network/TVNetworkDiscovery.tsx`, `packages/validation/src/schemas.ts`.
+
 ### 2026-05-28 — v2.55.6–v2.55.9 — ISO hardware-prereqs + triple-$ password + PXE netboot fix
 
 **Risk:** GO — **zero runtime impact for installed fleet boxes.** Every change in this batch is ISO-build / new-NUC-provisioning side. No app code, no schema, no PM2 service touched.

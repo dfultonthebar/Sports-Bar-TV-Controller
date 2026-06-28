@@ -26,6 +26,7 @@ interface NetworkTVDevice {
   port: number
   macAddress?: string
   authToken?: string | null
+  clientKey?: string | null
   status: string
   lastSeen: string
   supportsPower: boolean
@@ -229,7 +230,7 @@ export default function TVNetworkDiscovery() {
       const response = await fetch(`/api/tv-control/${deviceId}/pair`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ timeout: 30000 })
+        body: JSON.stringify({ timeout: 60000 })
       })
 
       const data = await response.json()
@@ -417,7 +418,7 @@ export default function TVNetworkDiscovery() {
                 />
               </div>
               <p className="text-xs text-blue-400 mt-2">
-                Supported: Roku (8060), Samsung (8001)
+                Supported: Roku (8060), Samsung (8001), LG (3001)
               </p>
             </div>
           </div>
@@ -459,7 +460,7 @@ export default function TVNetworkDiscovery() {
                       </Badge>
                     </div>
                     <div className="flex items-center gap-1">
-                      {device.brand.toLowerCase() === 'samsung' && !device.authToken && (
+                      {((device.brand.toLowerCase() === 'samsung' && !device.authToken) || (device.brand.toLowerCase() === 'lg' && !device.clientKey)) && (
                         <Badge variant="outline" className="bg-yellow-900/30 text-yellow-300 border-yellow-700 text-xs">
                           Unpaired
                         </Badge>
@@ -505,7 +506,7 @@ export default function TVNetworkDiscovery() {
                   </div>
 
                   {/* Pair Button for Samsung without token */}
-                  {device.brand.toLowerCase() === 'samsung' && !device.authToken && (
+                  {((device.brand.toLowerCase() === 'samsung' && !device.authToken) || (device.brand.toLowerCase() === 'lg' && !device.clientKey)) && (
                     <div className="mb-3">
                       <Button
                         onClick={() => pairDevice(device.id)}
