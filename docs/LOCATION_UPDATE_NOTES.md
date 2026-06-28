@@ -46,6 +46,20 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-06-28 — v2.83.1 — maintenance-todo destructive-command guard
+
+**Risk:** GO — defensive hardening, no schema/env/migration. Adds input-sanitization to an existing endpoint + tightens an MCP tool description.
+
+**What changed:** `/api/maintenance-todo` now strips destructive shell commands (git clean -dxf / rm -r / git reset --hard / git push --force / origin-master / rebase --onto) from auto-filed todo descriptions, replacing the code block with a safety notice. The `create_maintenance_todo` MCP tool description discourages drafting them + over-filing fleet-recovery todos for boxes merely behind on version.
+
+**What could break at a location:** Nothing — it only sanitizes free-text todo descriptions; legitimate todos are unaffected (the guard triggers only on destructive patterns). No change to hardware, scheduling, or update behavior.
+
+**Manual steps required:** None.
+
+**Rollback:** revert the v2.83.1 commit; auto-filed todos go back to storing raw (possibly destructive) text.
+
+**Affected files:** `apps/web/src/app/api/maintenance-todo/route.ts`, `packages/mcp/src/server.ts`.
+
 ### 2026-06-28 — v2.83.0 — LG TV pairing (webOS) in-app
 
 **Risk:** GO — additive feature, no schema/env/migration. The new code path only fires when an operator clicks the new "Pair TV" button for an LG TV; existing Samsung pairing and all power/routing paths are unchanged.

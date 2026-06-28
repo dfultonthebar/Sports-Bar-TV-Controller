@@ -25,6 +25,38 @@ export const dynamic = 'force-dynamic'
 
 const PRIORITIES = new Set(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'])
 
+// Destructive-command guard. Auto-filed "remediation" is LLM-drafted free text;
+// it has shown up containing commands that would WIPE a location's data
+// (`git clean -f` removes untracked tv-layout/device JSON/.env/production.db) or
+// operate on a branch that doesn't exist here (the repo uses `main`, not
+// `master`). We must never store runnable-looking destructive steps as if they
+// were vetted remediation. Detect these patterns, strip the code blocks, and
+// replace them with a safe pointer — the symptom prose is kept so the operator
+// still sees that the alert fired.
+const DESTRUCTIVE_PATTERNS: { re: RegExp; what: string }[] = [
+  { re: /git\s+clean\s+-[a-z]*f/i, what: 'git clean -f (wipes untracked location data/.env/db)' },
+  { re: /\brm\s+-[a-z]*r/i, what: 'rm -r (recursive delete)' },
+  { re: /rm\s+[^\n|&;]*\.git\//i, what: 'rm of .git internals' },
+  { re: /git\s+reset\s+--hard/i, what: 'git reset --hard (discards commits/work)' },
+  { re: /git\s+push\s+(?:--force|-f)\b/i, what: 'git push --force' },
+  { re: /origin\/master\b|stale_master/i, what: 'origin/master reference (repo uses main, not master)' },
+  { re: /git\s+rebase\b[^\n]*--onto/i, what: 'git rebase --onto (manual history surgery)' },
+]
+
+function guardRemediation(text: string): { clean: string; flagged: string[] } {
+  const flagged = DESTRUCTIVE_PATTERNS.filter((p) => p.re.test(text)).map((p) => p.what)
+  if (flagged.length === 0) return { clean: text, flagged }
+  const stripped = text.replace(/```[\s\S]*?```/g, '[code block removed by maintenance-todo guard — see note]')
+  const notice =
+    `\n\n⚠️ DESTRUCTIVE REMEDIATION REMOVED by the maintenance-todo guard. ` +
+    `The auto-drafted text contained: ${flagged.join('; ')}. NEVER run these on a location box — ` +
+    `git clean -f / rm -r / reset --hard wipe uncommitted location data, .env, and production.db, and ` +
+    `this repo uses 'main', not 'master'. A box merely behind on version is NOT stuck (the nightly ` +
+    `auto-update resolves that). Genuine recovery: confirm .git/rebase-* exists AND health != 200 first, ` +
+    `then follow scripts/auto-update.sh + the documented runbook (CLAUDE.md Gotcha #11).`
+  return { clean: stripped + notice, flagged }
+}
+
 export async function POST(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.DEFAULT)
   if (!rateLimit.allowed) return rateLimit.response
@@ -51,9 +83,11 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const description =
-      String(body?.description || '').slice(0, 2000) +
-      `\n\n(auto-filed via /api/maintenance-todo, source=${source})`
+    const { clean: guardedDescription, flagged } = guardRemediation(String(body?.description || '').slice(0, 2000))
+    if (flagged.length) {
+      logger.warn(`[MAINTENANCE-TODO] stripped destructive remediation from '${title}': ${flagged.join('; ')}`)
+    }
+    const description = guardedDescription + `\n\n(auto-filed via /api/maintenance-todo, source=${source})`
 
     const todo = await create('todos', {
       title,

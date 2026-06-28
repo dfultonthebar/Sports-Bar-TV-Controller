@@ -35,6 +35,18 @@ is the archive.
 
 ---
 
+## v2.83.1 — maintenance-todo destructive-command guard (2026-06-28)
+
+**Branch landed:** main. Hardens `/api/maintenance-todo` (the chokepoint all auto-filed todos pass through). The AI-chat fleet monitor was filing "recovery needed" todos whose LLM-drafted remediation contained **destructive commands** (`git clean -dxf` wipes a location's uncommitted data/.env/production.db; `git reset --hard`; `origin/master` refs — this repo uses `main`). They sat in the todo list looking like vetted remediation.
+
+**What changed (pure code, no migration):**
+- `maintenance-todo/route.ts` — `guardRemediation()` scans the description for destructive patterns (git clean -f, rm -r, reset --hard, push --force, origin/master, rebase --onto), strips fenced code blocks, and replaces them with a ⚠️ notice (keeps the symptom prose). Logs `[MAINTENANCE-TODO] stripped destructive remediation`.
+- `packages/mcp/src/server.ts` — `create_maintenance_todo` tool description now tells agents not to draft destructive commands and not to file "recovery" todos for boxes merely behind on version (normal — nightly auto-update resolves it); only when `.git/rebase-*` exists AND health != 200.
+
+**Required Manual Step:** NONE. Verified live on Holmgren — a test POST with `git clean -dxf` + `origin/master` was stored with the code block removed and the safety notice appended. (The MCP tool-description change takes effect wherever the MCP server is rebuilt/restarted.)
+
+---
+
 ## v2.83.0 — LG TV pairing (webOS) added to the app (2026-06-28)
 
 **Branch landed:** main. Adds in-app pairing for **LG (webOS) network TVs**, which previously had NO working pairing path: the `/api/tv-control/[deviceId]/pair` route was Samsung-only, and `LGTVClient.register()` resolved on the intermediate prompt-ack *before* the user accepted, so it never captured/persisted a `clientKey`. Without a clientKey the app cannot power-OFF/toggle an LG TV (power-ON via Wake-on-LAN already works without pairing).
