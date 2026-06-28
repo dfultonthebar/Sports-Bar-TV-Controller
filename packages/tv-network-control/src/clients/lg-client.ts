@@ -84,6 +84,65 @@ export class LGTVClient extends BaseTVClient {
     }
   }
 
+  /**
+   * Pair with the TV (webOS PROMPT pairing). Connects WITHOUT a client-key,
+   * which makes the TV display the "Allow this device to connect?" dialog,
+   * then waits for the user to accept on-screen and returns the captured key.
+   *
+   * Must wait for the `registered` frame specifically: the TV first sends an
+   * intermediate `{type:'response', payload:{pairingType:'PROMPT'}}` ack
+   * (prompt shown) that does NOT carry the key. Resolving on that ack was the
+   * bug that prevented LG pairing from ever persisting a clientKey — so this
+   * deliberately does NOT reuse register()/sendAndWait().
+   */
+  async pair(timeoutMs = 60000): Promise<string> {
+    const WS = getWebSocket()
+    return new Promise<string>((resolve, reject) => {
+      let settled = false
+      let timer: any
+      const ws = new WS(`wss://${this.config.ipAddress}:${this.config.port || 3001}`, {
+        rejectUnauthorized: false,
+        handshakeTimeout: 6000,
+      })
+      const finish = (err: Error | null, key?: string) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        try { ws.close() } catch (_) {}
+        if (err) reject(err)
+        else resolve(key as string)
+      }
+      timer = setTimeout(
+        () => finish(new Error('Pairing timed out — the Allow-device prompt was not accepted on the TV')),
+        timeoutMs
+      )
+      ws.on('open', () => {
+        ws.send(JSON.stringify({
+          type: 'register',
+          id: 'reg_0',
+          payload: {
+            forcePairing: false,
+            pairingType: 'PROMPT',
+            manifest: {
+              manifestVersion: 1,
+              permissions: ['CONTROL_POWER', 'CONTROL_INPUT_TV', 'CONTROL_AUDIO', 'READ_POWER_STATE'],
+            },
+          },
+        }))
+      })
+      ws.on('message', (data: any) => {
+        let msg: any
+        try { msg = JSON.parse(data.toString()) } catch (_) { return }
+        // Only the `registered` frame (sent AFTER the user accepts) carries the key.
+        if (msg.type === 'registered' && msg.payload?.['client-key']) {
+          this.clientKey = msg.payload['client-key']
+          finish(null, this.clientKey)
+        }
+      })
+      ws.on('error', (e: Error) => finish(e))
+    })
+  }
+
   async powerOn(): Promise<CommandResult> {
     // LG TVs in standby may not accept WebSocket connections
     // Wake-on-LAN is the reliable way to power on
