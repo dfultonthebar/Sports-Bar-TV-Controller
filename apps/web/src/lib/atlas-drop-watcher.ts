@@ -236,7 +236,30 @@ async function pollOnce() {
                   AND zone_number = ${atlasZone}
                   AND created_at >= ${now - CORRELATION_WINDOW_SEC}
               `)
-              const explained = (corr[0]?.cnt ?? 0) > 0 ? 1 : 0
+              let explained = (corr[0]?.cnt ?? 0) > 0 ? 1 : 0
+
+              // v2.86.0: the daily 04:00 morning-reset deliberately sets each
+              // configured Atlas zone to its manager-chosen default level. If
+              // that default is lower than the zone's prior gain it looks like
+              // a drop. The morning-reset writes a SchedulerLog marker
+              // (component='morning-reset', operation='audio-default-reset',
+              // metadata {processorId, atlasZone}) just BEFORE issuing the gain
+              // change; honor it within a generous window so the intentional
+              // set is logged EXPLAINED and never files a false "audio dropped"
+              // todo. Window comfortably covers the 30s poll cadence + the
+              // reset's per-zone pacing.
+              if (!explained) {
+                const MR_WINDOW_SEC = 5 * 60
+                const mr = await db.all<{ cnt: number }>(sql`
+                  SELECT COUNT(*) AS cnt FROM SchedulerLog
+                  WHERE component = 'morning-reset'
+                    AND operation = 'audio-default-reset'
+                    AND createdAt >= ${now - MR_WINDOW_SEC}
+                    AND json_extract(metadata, '$.processorId') = ${p.id}
+                    AND json_extract(metadata, '$.atlasZone') = ${atlasZone}
+                `)
+                if ((mr[0]?.cnt ?? 0) > 0) explained = 1
+              }
 
               await db.run(sql`
                 INSERT INTO atlas_drop_events
