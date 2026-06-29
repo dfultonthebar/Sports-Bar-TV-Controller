@@ -1965,12 +1965,20 @@ if [ "$CAUTION_MODE" -eq 1 ]; then
   FINAL_MSG="completed with CAUTION flags from Claude Code (see log)"
 fi
 
-history_update_result "$FINAL_RESULT" "$FINAL_MSG"
-state_update "$FINAL_RESULT" "$FINAL_MSG"
-write_summary_json "$FINAL_RESULT" "$FINAL_MSG"
+# v2.84.2 — post-push bookkeeping MUST be non-fatal. By this point the merge is
+# pushed AND verify-install passed — the update is GOOD. Previously a non-zero
+# return from any of these record-keeping calls (e.g. a transient sqlite/DB write
+# returning exit 5) propagated to the script exit, the EXIT trap saw non-zero at
+# CURRENT_STEP=finalize, and it ROLLED BACK an already-pushed, verified-healthy
+# update (Lime Kiln, v2.84.0 roll 2026-06-29). Never let bookkeeping undo a good
+# update: swallow failures here and log them; the rollback path is for REAL
+# failures before this point, not for a summary-write hiccup after success.
+history_update_result "$FINAL_RESULT" "$FINAL_MSG" || log "[FINALIZE] history_update_result failed (non-fatal) — update already pushed+verified, NOT rolling back"
+state_update "$FINAL_RESULT" "$FINAL_MSG" || log "[FINALIZE] state_update failed (non-fatal) — update already pushed+verified"
+write_summary_json "$FINAL_RESULT" "$FINAL_MSG" || log "[FINALIZE] write_summary_json failed (non-fatal) — update already pushed+verified"
 
 DURATION=$(( $(date +%s) - RUN_STARTED_EPOCH ))
 log "SUCCESS: updated $BRANCH from $PRE_MERGE_SHA to $POST_MERGE_SHA in ${DURATION}s"
 log "Log file: $LOG_FILE"
-update_last_attempt_sidecar "success"
+update_last_attempt_sidecar "success" || log "[FINALIZE] sidecar update failed (non-fatal)"
 exit 0

@@ -204,7 +204,7 @@ class AutoReallocator {
       //
       // Query: completed rows with a freed_at but no revert_attempted_at.
       // For each, run revertTVsToDefaults (which internally skips if
-      // another game starts on the same input within 30 min). Then
+      // another game starts on the same input within 15 min). Then
       // mark revert_attempted_at = now so the sweep doesn't re-scan
       // on next tick regardless of whether the revert fired or was
       // skipped. Audit logs in revertTVsToDefaults still fire so
@@ -248,7 +248,7 @@ class AutoReallocator {
             );
           }
           // Mark attempted whether or not the revert actually routed —
-          // a skip (another game in 30 min) is still a successful pass.
+          // a skip (another game in 15 min) is still a successful pass.
           await db
             .update(schema.inputSourceAllocations)
             .set({ revertAttemptedAt: now })
@@ -454,7 +454,7 @@ class AutoReallocator {
    * After a game ends, revert assigned TV outputs to their default sources
    * and tune the cable box back to its default channel.
    *
-   * Skips revert if another game is starting on the same input source within 30 minutes.
+   * Skips revert if another game is starting on the same input source within 15 minutes.
    */
   private async revertTVsToDefaults(
     allocation: any,
@@ -482,9 +482,13 @@ class AutoReallocator {
 
     try {
       const now = Math.floor(Date.now() / 1000);
-      const thirtyMinutesFromNow = now + 30 * 60;
+      // v2.84.1 — operator rule: once a schedule ends, if NOTHING is scheduled
+      // for that box within the next 15 minutes, revert to defaults (channel +
+      // TV routing). Was 30 min; tightened to 15 so idle boxes return to their
+      // default channel/input sooner after a game ends.
+      const revertSkipHorizon = now + 15 * 60;
 
-      // Step 1: Check if there's another game coming up on the same input source within 30 minutes
+      // Step 1: Check if there's another game coming up on the same input source within 15 minutes
       const upcomingAllocations = await db
         .select({
           allocation: schema.inputSourceAllocations,
@@ -506,24 +510,24 @@ class AutoReallocator {
         );
 
       const hasUpcomingGame = upcomingAllocations.some(({ game: upcomingGame }) => {
-        return upcomingGame.scheduledStart <= thirtyMinutesFromNow && upcomingGame.scheduledStart >= now;
+        return upcomingGame.scheduledStart <= revertSkipHorizon && upcomingGame.scheduledStart >= now;
       });
 
       if (hasUpcomingGame) {
         await schedulerLogger.info(
           'auto-reallocator',
           'revert',
-          `Skipped revert for ${inputSource.name} — another game starts within 30 min`,
+          `Skipped revert for ${inputSource.name} — another game starts within 15 min`,
           cid,
           {
             inputSourceId: inputSource.id,
             allocationId: allocation.id,
             gameId: game.id,
-            metadata: { ...baseMeta(), reason: 'upcoming_game_within_30min' },
+            metadata: { ...baseMeta(), reason: 'upcoming_game_within_15min' },
           }
         );
         logger.info(
-          `[AUTO-REALLOC] Game ended for ${game.awayTeamName} @ ${game.homeTeamName}, but another game starts within 30 min on ${inputSource.name} — skipping revert`
+          `[AUTO-REALLOC] Game ended for ${game.awayTeamName} @ ${game.homeTeamName}, but another game starts within 15 min on ${inputSource.name} — skipping revert`
         );
         return;
       }
