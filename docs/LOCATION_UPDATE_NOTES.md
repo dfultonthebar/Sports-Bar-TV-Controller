@@ -46,6 +46,23 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-06-28 — v2.83.2 — Hermes shadow Checkpoint C evidence-grounded + hard-fail gate
+
+- **Risk: GO (advisory-only).** Touches only the auto-update Hermes SHADOW
+  reviewer (`scripts/checkpoint-hermes.sh`) + a one-line `export` in
+  `auto-update.sh`. The shadow is advisory and NEVER gates an update — zero
+  behavior change to the real GO/CAUTION/STOP path. No schema, no deps, no env.
+- **What:** Shadow analysis (61 datapoints, all 5 boxes) showed Checkpoint C's
+  shadow was judging blind (no evidence injected into the tool-less model's
+  prompt) and rubber-stamping GO — it missed the only 2 real post-install
+  failures on record (luckys 2026-06-27, `real=STOP/hermes=GO`). Now LABEL=C
+  gathers the same evidence `run_c()` uses (health code, verify-install status,
+  epoch-filtered fresh crash lines) and deterministically STOPs on any hard-fail
+  before consulting the LLM (which is only asked the GO-vs-CAUTION holistic
+  call). Inversion is now structurally impossible.
+- **Operator action:** none. Each box's next auto-update exercises the new path
+  and logs cleaner shadow data to `hermes-shadow/checkpoint-shadow.jsonl`.
+
 ### 2026-06-28 — v2.83.1 — maintenance-todo destructive-command guard
 
 **Risk:** GO — defensive hardening, no schema/env/migration. Adds input-sanitization to an existing endpoint + tightens an MCP tool description.

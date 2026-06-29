@@ -116,6 +116,89 @@ ${GH_PKG:-(no changes)}"
   if [ -n "$RAG_CONTEXT" ]; then
     USER_CONTENT="${USER_CONTENT}"$'\n\n'"=== RELEVANT DOCS (gotchas, retrieved) ==="$'\n'"${RAG_CONTEXT}"
   fi
+elif [ "$LABEL" = "C" ]; then
+  # Checkpoint C is POST-INSTALL verification — the LAST gate before the update
+  # is declared good. The stock checkpoint-c.txt is written for an AGENTIC
+  # reviewer with bash tools ("cat the run log, curl health, read PM2 logs") AND
+  # tells it to "default to GO / when in doubt GO". The tool-less shadow model
+  # handed that prompt can NEVER observe a STOP condition, so it rubber-stamps
+  # GO — it waved through the only 2 genuine post-install failures on record
+  # (luckys 2026-06-27, both real=STOP / hermes=GO). Fix mirrors the LABEL=A
+  # pattern: gather the SAME evidence the deterministic run_c() judges on
+  # (verify-install status, live health code, fresh post-restart crash lines)
+  # and hand the model a concrete, non-agentic judge task with a STRICT verify
+  # posture (GO only on positive PASS markers; STOP on a failure actually
+  # present in the evidence; CAUTION on missing/mixed signal — never default GO).
+  C_HEALTH="$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "${LOCAL_API}/api/system/health" 2>/dev/null || echo '000')"
+  C_VERIFY="unknown"
+  if [ -n "${VERIFY_INSTALL_JSON:-}" ]; then
+    if printf '%s' "$VERIFY_INSTALL_JSON" | grep -q '"status":"FAIL"'; then C_VERIFY="FAIL"
+    elif printf '%s' "$VERIFY_INSTALL_JSON" | grep -q '"status":"PASS"'; then C_VERIFY="PASS"; fi
+  else
+    C_LOG="$(ls -t /home/ubuntu/sports-bar-data/update-logs/auto-update-*.log 2>/dev/null | head -1)"
+    if [ -n "$C_LOG" ]; then
+      if grep -q '"status":"FAIL"' "$C_LOG" 2>/dev/null; then C_VERIFY="FAIL"
+      elif grep -q '"status":"PASS"' "$C_LOG" 2>/dev/null; then C_VERIFY="PASS"; fi
+    fi
+  fi
+  # Epoch-filter the crash scan EXACTLY like the deterministic run_c() does, so
+  # shadow and real agree on what counts as "fresh". Without this, hours-old
+  # benign lines (e.g. the chat-API/RAG-race 'SyntaxError: Unexpected end of
+  # JSON input') in the 150-line window get flagged as post-restart crashes and
+  # cause false CAUTIONs (the same false-positive run_c fixed at v2.50.14).
+  C_RESTART_EPOCH="${PM2_RESTART_EPOCH:-$(date +%s -d '5 minutes ago' 2>/dev/null || echo 0)}"
+  C_CRASH="$(pm2 logs sports-bar-tv-controller --lines 150 --nostream 2>/dev/null \
+    | grep -iE '(unhandledRejection|Cannot find module|EADDRINUSE|SyntaxError|FATAL)' \
+    | grep -ivE 'non-fatal' \
+    | awk -v re="$C_RESTART_EPOCH" '
+        {
+          match($0, /[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}/)
+          if (RLENGTH > 0) {
+            ts = substr($0, RSTART, RLENGTH)
+            cmd = "date +%s -d \"" ts "\" 2>/dev/null"
+            cmd | getline epoch; close(cmd)
+            if (epoch + 0 >= re + 0) print
+          } else { print }
+        }' \
+    | head -5)"
+  # Deterministic hard-fail gate — decide the UNAMBIGUOUS cases here, exactly
+  # like the real checkpoint-deterministic.sh run_c() does, and only consult the
+  # LLM for the subtle GO-vs-CAUTION holistic judgment on the all-hard-signals-
+  # pass path. Rationale: (1) llama3.1:8b is unreliable at emitting STOP when
+  # even one other signal looks healthy — it hedged to CAUTION on verify=FAIL +
+  # health=200 across reworded prompts (Gotcha #12 class). (2) This mirrors how
+  # a PROMOTED Hermes would actually run (deterministic-first, AI-for-ambiguous),
+  # so the shadow stays a faithful stand-in. (3) It GUARANTEES the shadow catches
+  # the luckys-type post-install failure (real=STOP) instead of rubber-stamping
+  # GO — the exact inversion this fix exists to close. emit exits 0 (shadow never
+  # fails its caller).
+  if [ "$C_HEALTH" != "200" ]; then
+    emit "STOP /api/system/health returned ${C_HEALTH} after restart"
+  fi
+  if [ "$C_VERIFY" = "FAIL" ]; then
+    emit "STOP verify-install.sh reported FAIL"
+  fi
+  if [ -n "$C_CRASH" ]; then
+    emit "STOP fresh crash pattern in PM2 logs since restart"
+  fi
+  USER_CONTENT="You are doing POST-INSTALL verification of the Sports Bar TV Controller after a rebuild + PM2 restart. The unambiguous hard-fail checks (health=200, verify-install not FAIL, no fresh crash) have ALREADY passed deterministically — your job is the subtle holistic call: GO if everything looks clean, CAUTION if a softer signal is off. You will only ever return GO or CAUTION here. You CANNOT run commands — everything you need is already gathered for you.
+
+DECISION RULES (strict verify posture — this is the LAST gate before the update is declared good). Apply them TOP-DOWN; the first matching rule wins:
+1. STOP — UNCONDITIONAL, overrides every other signal — if ANY of these is true: verify-install status = FAIL, OR health HTTP code is anything other than 200 (000/500/503/etc), OR a fresh crash / stack-trace line is present below. A FAIL or a non-200 is a hard failure even if the OTHER signals look healthy (e.g. verify=FAIL with health=200 is STILL a STOP — the deterministic layer already rolled back; FAIL is authoritative). Do NOT soften a FAIL or a non-200 to CAUTION because another signal looks fine.
+2. GO — only if you POSITIVELY SEE all three: health = 200, AND verify-install status = PASS, AND no fresh crash lines.
+3. CAUTION — for the remaining mixed/inconclusive cases: a signal is missing or 'unknown' (e.g. health 200 + verify 'unknown'), a 'degraded' note, or a lone warn. Absence of a PASS marker is a CAUTION, NOT a GO — never default to GO on missing evidence.
+
+=== LIVE HEALTH ENDPOINT (/api/system/health HTTP code; 200 = healthy) ===
+${C_HEALTH}
+
+=== VERIFY-INSTALL STATUS (deterministic 6-layer check; PASS / FAIL / unknown) ===
+${C_VERIFY}
+
+=== FRESH POST-RESTART CRASH LINES (PM2, since restart epoch ${C_RESTART_EPOCH}; empty = none = good) ===
+${C_CRASH:-(none — no crash patterns since restart)}"
+  if [ -n "$RAG_CONTEXT" ]; then
+    USER_CONTENT="${USER_CONTENT}"$'\n\n'"=== RELEVANT DOCS (gotchas, retrieved) ==="$'\n'"${RAG_CONTEXT}"
+  fi
 else
   USER_CONTENT="CHECKPOINT: ${LABEL}"$'\n\n'"=== CHECKPOINT PROMPT / EVIDENCE ==="$'\n'"${PROMPT_BODY}"
   if [ -n "$RAG_CONTEXT" ]; then
