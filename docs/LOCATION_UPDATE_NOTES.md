@@ -46,6 +46,14 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-06-29 — v2.84.0–v2.84.2 — AI Suggest Fire TV grounding, schedule-end revert tighten, auto-update finalize fix
+
+- **Risk: GO.** Scheduler/code + one shell fix. No schema/deps/env.
+- **v2.84.0 — AI Suggest Fire TV grounding + collision repair** (`ai-suggest/route.ts`): a game only routes to a Fire TV if the game's streaming app is INSTALLED on that box (reads per-box `DeviceSubscription`); colliding/invalid picks get reassigned to an idle compatible input instead of hard-rejected. Fixes the all-rejected empty-slate bug (Greenville 06-28). **Depends on each box's `DeviceSubscription` being populated** (auto-refreshed since v2.83.3 — verified non-empty on all 5 boxes).
+- **v2.84.1 — schedule-end revert window 30min→15min** (`auto-reallocator.ts`): when a game ends and nothing's scheduled for that box within 15 min, it reverts to defaults (TV routing + default channel; cable AND DirecTV via `default_sources.cableBoxDefaults`). Confirmed-live games never reverted (v2.82.52). Per-location: needs `default_sources.cableBoxDefaults` configured per box.
+- **v2.84.2 — auto-update finalize fix** (`scripts/auto-update.sh`): post-push bookkeeping (`history_update_result`/`state_update`/`write_summary_json`) is now NON-FATAL. A transient exit there was rolling back an already-pushed, verify-passed update (Lime Kiln spurious rollback, v2.84.0 roll). Self-applies after this lands (the running script still pre-dates the fix on THIS roll, so a spurious rollback may still occur once more per box → re-trigger clears it).
+- **Operator action:** none.
+
 ### 2026-06-28 — v2.83.6 — security: patch undici + form-data HIGH CVEs (overrides)
 
 - **Risk: GO.** Dependency override only — no source/schema/env change, no native
