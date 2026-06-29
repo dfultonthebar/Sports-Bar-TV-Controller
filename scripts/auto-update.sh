@@ -1677,6 +1677,12 @@ log "verify-install.sh output: $(cat "$VERIFY_JSON" 2>/dev/null | head -20)"
 # embedding inside another JSON document.
 if [ -f "$VERIFY_JSON" ]; then
   VERIFY_INSTALL_JSON=$(cat "$VERIFY_JSON" | tr -d '\n' | tr -s ' ')
+  # Exported so the Hermes SHADOW reviewer (checkpoint-hermes.sh, a child bash)
+  # can inject the deterministic verify-install status into its Checkpoint C
+  # judge prompt — otherwise the tool-less shadow model judges the post-install
+  # state blind and rubber-stamps GO (it waved through the 2 genuine luckys
+  # 2026-06-27 install failures). Mirrors PM2_RESTART_EPOCH being exported above.
+  export VERIFY_INSTALL_JSON
 fi
 
 if [ "$VERIFY_EXIT" -ne 0 ]; then

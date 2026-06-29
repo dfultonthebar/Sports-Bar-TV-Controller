@@ -35,6 +35,38 @@ is the archive.
 
 ---
 
+## v2.83.2 — Hermes shadow Checkpoint C: evidence-grounded + hard-fail gate (2026-06-28)
+
+**Required manual steps:** NONE. Advisory-only change to the auto-update Hermes
+SHADOW reviewer (`scripts/checkpoint-hermes.sh`) — it does not gate any update.
+Auto-update carries it; no per-location action.
+
+**What changed / why:** Shadow-data analysis (61 datapoints across all 5 fleet
+boxes) found the Hermes shadow's Checkpoint C was judging the post-install state
+**blind**. The stock `checkpoint-c.txt` is written for an *agentic* reviewer
+("cat the run log, curl health, read PM2 logs") and says "default to GO"; the
+tool-less shadow model got that prompt with **no injected evidence**, so it
+rubber-stamped GO — it waved through the only 2 genuine post-install failures on
+record (luckys 2026-06-27, `real=STOP / hermes=GO`, the dangerous inversion).
+
+Fix mirrors the existing LABEL=A evidence-injection pattern, plus a deterministic
+hard-fail gate (the LLM hedges to CAUTION on a clear `verify=FAIL` whenever
+health=200 — Gotcha #12 class):
+- `checkpoint-hermes.sh` LABEL=C now gathers the SAME evidence `run_c()` judges on
+  — live `/api/system/health` code, `verify-install` status, epoch-filtered fresh
+  PM2 crash lines — and **deterministically emits STOP** on any hard-fail
+  (non-200 health, verify FAIL, fresh crash) before consulting the model. The LLM
+  is only asked the subtle GO-vs-CAUTION call on the all-hard-signals-pass path.
+- `auto-update.sh` now `export`s `VERIFY_INSTALL_JSON` so the shadow subprocess
+  can read it (mirrors `PM2_RESTART_EPOCH`).
+
+Net: the `real=STOP / hermes=GO` inversion at Checkpoint C is now structurally
+impossible, and the shadow is a faithful stand-in for a promoted Hermes
+(deterministic-first, AI-for-ambiguous — same hybrid as the real checkpoint).
+Verified locally GO/CAUTION/STOP across all three cases.
+
+---
+
 ## v2.83.1 — maintenance-todo destructive-command guard (2026-06-28)
 
 **Branch landed:** main. Hardens `/api/maintenance-todo` (the chokepoint all auto-filed todos pass through). The AI-chat fleet monitor was filing "recovery needed" todos whose LLM-drafted remediation contained **destructive commands** (`git clean -dxf` wipes a location's uncommitted data/.env/production.db; `git reset --hard`; `origin/master` refs — this repo uses `main`). They sat in the todo list looking like vetted remediation.
