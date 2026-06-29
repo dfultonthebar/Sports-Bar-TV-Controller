@@ -139,6 +139,25 @@ export async function register() {
     }
 
     try {
+      // Fire TV subscription auto-refresh: keep each Fire TV box's installed-app
+      // list (its scheduler "preset list" in DeviceSubscription) current. Nothing
+      // re-polled these before v2.83.3 — Holmgren's went stale from 2026-04-25
+      // until a manual refresh, with one box left empty after a swap. Initial
+      // scan 2 min after boot (let ADB/devices settle), then every 12h. A box
+      // that's off just errors that one row and preserves its last-good list.
+      const { refreshAllFireTVSubscriptions } = await import('./lib/firetv-subscription-refresh')
+      registerTimeout(() => {
+        refreshAllFireTVSubscriptions('boot').catch(e => logger.warn('[FIRETV-SUBS] initial refresh failed:', e))
+      }, 120_000)
+      registerInterval(() => {
+        refreshAllFireTVSubscriptions('interval').catch(e => logger.warn('[FIRETV-SUBS] periodic refresh failed:', e))
+      }, 12 * 60 * 60_000)
+      logger.info('[INSTRUMENTATION] Fire TV subscription auto-refresh scheduled (2min + every 12h)')
+    } catch (error) {
+      logger.error('[INSTRUMENTATION] Failed to schedule Fire TV subscription refresh:', error)
+    }
+
+    try {
       // Import auto-reallocator worker
       const { autoReallocatorWorker } = await import('./lib/scheduling/auto-reallocator-worker')
 
