@@ -42,6 +42,18 @@ interface CableBoxDefault {
   channelName?: string
 }
 
+interface ZoneLevelDefault {
+  processorId: string
+  zoneNumber: number   // DB 0-based AudioZone.zoneNumber
+  zoneName: string
+  level: number        // 0-100 percent
+}
+
+interface AudioDefaultsConfig {
+  zoneLevels?: ZoneLevelDefault[]
+  audioRouting?: Record<string, number>  // audio-matrix outputNum -> default matrix input
+}
+
 interface DefaultSourcesConfig {
   globalDefault?: SourceConfig
   roomDefaults?: Record<string, SourceConfig>
@@ -49,6 +61,14 @@ interface DefaultSourcesConfig {
   cableBoxDefaults?: Record<string, CableBoxDefault> // inputNumber -> default channel
   defaultAudioSource?: number
   defaultAudioSourceName?: string
+  audioDefaults?: AudioDefaultsConfig
+}
+
+interface AudioZoneInfo {
+  processorId: string
+  processorName: string
+  zoneNumber: number   // DB 0-based
+  zoneName: string
 }
 
 interface MatrixInput {
@@ -65,6 +85,7 @@ interface MatrixOutput {
   channelNumber: number
   label: string
   isActive: boolean
+  isSchedulingEnabled?: boolean
   tvGroupId?: string | null
 }
 
@@ -95,6 +116,7 @@ function DefaultSourceSettings() {
   const [hasChanges, setHasChanges] = useState(false)
   const [channelPresets, setChannelPresets] = useState<Array<{ channelNumber: number; name: string; deviceType: string }>>([])
   const [audioSources, setAudioSources] = useState<Array<{ index: number; name: string }>>([])
+  const [audioZones, setAudioZones] = useState<AudioZoneInfo[]>([])
 
   // --- Data Loading ---
 
@@ -134,20 +156,45 @@ function DefaultSourceSettings() {
         setChannelPresets(allPresets)
       }
 
-      // Load Atlas audio sources — fetch processor IP from database
+      // Load Atlas audio sources + zones — fetch processors from database.
+      // Atlas only for now; processorId is carried per zone so dbx/BSS can be
+      // added later without a data-model change.
       try {
         const processorRes = await fetch('/api/audio-processor')
         const processorData = await processorRes.json()
-        if (processorData.processors?.length > 0) {
-          const processorIp = processorData.processors[0].ipAddress
+        const procs = (processorData.processors || []).filter(
+          (p: any) => (p.processorType || 'atlas') === 'atlas',
+        )
+        if (procs.length > 0) {
+          const processorIp = procs[0].ipAddress
           const audioRes = await fetch(`/api/atlas/sources?processorIp=${encodeURIComponent(processorIp)}`)
           if (audioRes.ok) {
             const audioData = await audioRes.json()
             setAudioSources(audioData.sources || [])
           }
+
+          // Enumerate each Atlas processor's zones for the per-zone level UI.
+          const zoneLists = await Promise.all(
+            procs.map(async (p: any) => {
+              try {
+                const zr = await fetch(`/api/audio-processor/zones?processorId=${encodeURIComponent(p.id)}`)
+                if (!zr.ok) return [] as AudioZoneInfo[]
+                const zd = await zr.json()
+                return (zd.zones || []).map((z: any) => ({
+                  processorId: p.id,
+                  processorName: p.name,
+                  zoneNumber: z.zoneNumber,
+                  zoneName: z.name,
+                })) as AudioZoneInfo[]
+              } catch {
+                return [] as AudioZoneInfo[]
+              }
+            }),
+          )
+          setAudioZones(zoneLists.flat())
         }
       } catch (audioErr) {
-        console.warn('Could not load Atlas audio sources:', audioErr)
+        console.warn('Could not load Atlas audio sources/zones:', audioErr)
       }
 
       setHasChanges(false)
@@ -239,6 +286,56 @@ function DefaultSourceSettings() {
         if (source) outputDefaults[key] = source
       }
       return { ...prev, outputDefaults }
+    })
+    setHasChanges(true)
+    setSuccess(null)
+  }
+
+  // --- Audio Defaults updates (v2.86.0) ---
+
+  function getZoneLevel(processorId: string, zoneNumber: number): number | undefined {
+    return config.audioDefaults?.zoneLevels?.find(
+      (z) => z.processorId === processorId && z.zoneNumber === zoneNumber,
+    )?.level
+  }
+
+  function updateZoneLevel(
+    processorId: string,
+    zoneNumber: number,
+    zoneName: string,
+    level: number | undefined,
+  ) {
+    setConfig((prev) => {
+      const audioDefaults = { ...(prev.audioDefaults || {}) }
+      const zoneLevels = (audioDefaults.zoneLevels || []).filter(
+        (z) => !(z.processorId === processorId && z.zoneNumber === zoneNumber),
+      )
+      if (level !== undefined && !Number.isNaN(level)) {
+        const clamped = Math.max(0, Math.min(100, Math.round(level)))
+        zoneLevels.push({ processorId, zoneNumber, zoneName, level: clamped })
+      }
+      audioDefaults.zoneLevels = zoneLevels
+      return { ...prev, audioDefaults }
+    })
+    setHasChanges(true)
+    setSuccess(null)
+  }
+
+  function getAudioRouting(outputNum: number): number | undefined {
+    return config.audioDefaults?.audioRouting?.[String(outputNum)]
+  }
+
+  function updateAudioRouting(outputNum: number, inputNum: number | undefined) {
+    setConfig((prev) => {
+      const audioDefaults = { ...(prev.audioDefaults || {}) }
+      const audioRouting = { ...(audioDefaults.audioRouting || {}) }
+      if (inputNum === undefined || Number.isNaN(inputNum)) {
+        delete audioRouting[String(outputNum)]
+      } else {
+        audioRouting[String(outputNum)] = inputNum
+      }
+      audioDefaults.audioRouting = audioRouting
+      return { ...prev, audioDefaults }
     })
     setHasChanges(true)
     setSuccess(null)
@@ -650,6 +747,162 @@ function DefaultSourceSettings() {
           )}
         </div>
       </div>
+
+      {/* Audio Defaults (v2.86.0) — applied by the 4 AM morning reset */}
+      {(() => {
+        const audioOutputs = outputs
+          .filter((o) => o.isActive && o.isSchedulingEnabled === false)
+          .sort((a, b) => a.channelNumber - b.channelNumber)
+        if (audioOutputs.length === 0 && audioZones.length === 0) return null
+
+        return (
+          <div className="rounded-lg border border-amber-700/40 p-6 space-y-6">
+            <div>
+              <h4 className="text-base font-semibold text-white flex items-center gap-2">
+                <Volume2 className="h-5 w-5 text-amber-400" />
+                Audio Defaults
+              </h4>
+              <p className="text-sm text-slate-400 mt-1">
+                The 4 AM morning reset applies these alongside the channel &amp; routing
+                defaults — what the audio outputs carry and how loud each zone starts the day.
+              </p>
+            </div>
+
+            {/* Audio output routing */}
+            {audioOutputs.length > 0 && (
+              <div>
+                <h5 className="text-sm font-semibold text-slate-300 mb-3">
+                  Audio Output Source
+                </h5>
+                <p className="text-sm text-slate-400 mb-4">
+                  Which input the audio-matrix outputs carry by default (e.g. the house-music
+                  / Atmosphere feed).
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {audioOutputs.map((out) => {
+                    const current = getAudioRouting(out.channelNumber)
+                    return (
+                      <div key={out.id} className="bg-slate-800/50 rounded-lg p-4">
+                        <span className="text-sm font-semibold text-white block mb-2">
+                          {out.label}{' '}
+                          <span className="text-slate-500 font-mono">#{out.channelNumber}</span>
+                        </span>
+                        <select
+                          onClick={(e) => e.stopPropagation()}
+                          onTouchStart={(e) => e.stopPropagation()}
+                          onMouseDown={(e) => e.stopPropagation()}
+                          value={current !== undefined ? String(current) : ''}
+                          onChange={(e) => {
+                            const val = e.target.value
+                            updateAudioRouting(out.channelNumber, val ? parseInt(val, 10) : undefined)
+                          }}
+                          className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-3 text-base text-white min-h-[48px]"
+                        >
+                          <option value="">No default source</option>
+                          {inputs.map((input) => (
+                            <option key={input.channelNumber} value={String(input.channelNumber)}>
+                              Input {input.channelNumber} — {input.label} ({input.deviceType})
+                            </option>
+                          ))}
+                        </select>
+                        {current !== undefined && (
+                          <p className="text-sm text-amber-400/70 mt-1">
+                            Default: Input {current} — {getInputLabel(current)}
+                          </p>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Per-zone default levels */}
+            {audioZones.length > 0 && (
+              <div>
+                <h5 className="text-sm font-semibold text-slate-300 mb-3">
+                  Zone Default Levels
+                </h5>
+                <p className="text-sm text-slate-400 mb-4">
+                  The volume each audio zone resets to every morning. Leave unset to leave a
+                  zone untouched.
+                </p>
+                <div className="space-y-3">
+                  {audioZones.map((zone) => {
+                    const level = getZoneLevel(zone.processorId, zone.zoneNumber)
+                    const isSet = level !== undefined
+                    return (
+                      <div
+                        key={`${zone.processorId}:${zone.zoneNumber}`}
+                        className="bg-slate-800/50 rounded-lg p-4 flex items-center gap-4 flex-wrap"
+                      >
+                        <div className="w-44 shrink-0">
+                          <span className="text-sm font-semibold text-white block">
+                            {zone.zoneName}
+                          </span>
+                          <span className="text-xs text-slate-500">{zone.processorName}</span>
+                        </div>
+                        <div className="flex-1 min-w-[180px] flex items-center gap-3">
+                          <input
+                            type="range"
+                            min={0}
+                            max={100}
+                            step={1}
+                            value={isSet ? level : 0}
+                            onChange={(e) =>
+                              updateZoneLevel(
+                                zone.processorId,
+                                zone.zoneNumber,
+                                zone.zoneName,
+                                parseInt(e.target.value, 10),
+                              )
+                            }
+                            className="flex-1 h-3 accent-amber-500 cursor-pointer"
+                          />
+                          <input
+                            type="number"
+                            min={0}
+                            max={100}
+                            value={isSet ? level : ''}
+                            placeholder="—"
+                            onChange={(e) => {
+                              const v = e.target.value
+                              updateZoneLevel(
+                                zone.processorId,
+                                zone.zoneNumber,
+                                zone.zoneName,
+                                v === '' ? undefined : parseInt(v, 10),
+                              )
+                            }}
+                            className="w-20 bg-slate-900 border border-slate-600 rounded-lg px-3 py-3 text-base text-white text-center min-h-[48px]"
+                          />
+                          <span className="text-sm text-slate-400 w-6">%</span>
+                          {isSet && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                updateZoneLevel(
+                                  zone.processorId,
+                                  zone.zoneNumber,
+                                  zone.zoneName,
+                                  undefined,
+                                )
+                              }
+                              className="text-xs text-slate-400 hover:text-red-400 px-3 py-2 min-h-[44px]"
+                            >
+                              Clear
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        )
+      })()}
 
       {/* Global Default — Which source goes on TVs */}
       <div className="rounded-lg border border-slate-700 p-6">
