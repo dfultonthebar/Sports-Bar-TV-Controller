@@ -35,6 +35,24 @@ is the archive.
 
 ---
 
+## v2.88.0 — bartender-remote (:3002) connection tracking + new-WAN-IP Telegram alert (2026-06-29)
+
+**Required manual step (OPTIONAL, per-box):** to ACTIVATE 3002 connection
+tracking on a box, run once: `bash scripts/install-3002-tracking.sh`
+(idempotent). It adds a dedicated nginx access log for the :3002 server block
+and a per-minute cron (`conn-track-3002-enrich.sh`) that writes a durable
+MAC-enriched audit log + Telegram-alerts the first time a NEW internet (WAN)
+IP connects. **Holmgren is already activated** (done live when :3002 was
+opened to the WAN — Gotcha #20 exception, operator-accepted). Other boxes
+keep :3002 firewalled to LAN/Tailscale, so activation there is purely for
+LAN audit — optional.
+
+**Verification:** `scripts/who-hit-3002.sh` (summary), `--wan` (internet only),
+`--raw` (per-request). Telegram alerts need `TELEGRAM_BOT_TOKEN` +
+`TELEGRAM_CHAT_ID` in `.env` (already present fleet-wide). MAC is LAN-only —
+WAN clients show `mac=-` (a MAC can't survive a router hop). Audit log:
+`/home/ubuntu/sports-bar-data/logs/bartender-3002-connections.log`.
+
 ## v2.83.6 — security: patch undici + form-data HIGH CVEs via overrides (2026-06-28)
 
 **Required manual steps:** NONE. The override propagates through `npm ci` on the

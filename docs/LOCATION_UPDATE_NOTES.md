@@ -46,6 +46,15 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-06-29 — v2.88.0 — bartender-remote (:3002) connection tracking + new-WAN-IP Telegram alert
+
+- **Risk: GO.** Purely additive ops tooling. No schema, no deps, no env, no app code. New `scripts/` only + doc entries.
+- **What changed:** `scripts/install-3002-tracking.sh` (idempotent activator), `scripts/conn-track-3002-enrich.sh` (per-minute durable MAC-enriched audit log of :3002 connections + Telegram alert on first sighting of a NEW WAN IP), `scripts/who-hit-3002.sh` (viewer: `--wan`/`--today`/`--raw`).
+- **What could break:** nothing at the app level — these scripts don't run unless a box runs the activator. The activator only touches nginx logging (adds an `access_log` line) + a crontab entry; both idempotent and reversible.
+- **Context:** built when Holmgren's :3002 was opened to the WAN (Gotcha #20 exception, operator-accepted — the bartender remote is unauthenticated, so this is the audit/alert trail for it). Holmgren is already activated. Other boxes stay firewalled; activation there is optional LAN audit only.
+- **Manual step:** OPTIONAL — `bash scripts/install-3002-tracking.sh` to turn it on per box. Telegram alerts use existing `.env` `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID`.
+- **Affected files:** `scripts/{install-3002-tracking,conn-track-3002-enrich,who-hit-3002}.sh`, `docs/VERSION_SETUP_GUIDE.md`, `docs/LOCATION_UPDATE_NOTES.md`, `package.json`.
+
 ### 2026-06-29 — v2.84.3 / v2.85.0 / v2.86.0 — luckys hub-name fix, 4 AM morning-reset, default audio levels
 
 - **Risk: GO.** Scheduler feature + verify-install fix. No schema/deps/env.
