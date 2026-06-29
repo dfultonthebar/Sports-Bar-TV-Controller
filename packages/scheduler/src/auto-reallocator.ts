@@ -22,11 +22,24 @@ interface CableBoxDefault {
   channelName?: string
 }
 
+interface ZoneLevelDefault {
+  processorId: string
+  zoneNumber: number   // DB 0-based AudioZone.zoneNumber
+  zoneName: string
+  level: number        // 0-100 percent
+}
+
+interface AudioDefaultsConfig {
+  zoneLevels?: ZoneLevelDefault[]
+  audioRouting?: Record<string, number>  // audio-matrix outputNum -> default matrix input
+}
+
 interface DefaultSourcesConfig {
   globalDefault?: DefaultSourceConfig
   roomDefaults?: Record<string, DefaultSourceConfig>
   outputDefaults?: Record<string, DefaultSourceConfig>
   cableBoxDefaults?: Record<string, CableBoxDefault>
+  audioDefaults?: AudioDefaultsConfig
 }
 
 /**
@@ -48,14 +61,25 @@ export interface MorningResetStats {
   boxesSkippedLive: number;
   boxesUnresolved: number;       // cableBoxDefaults key matched no IR/DirecTV device
   boxesFailed: number;
+  // v2.86.0 — AUDIO pass counters
+  audioOutputsConsidered: number;
+  audioOutputsRouted: number;    // routed (or, in dryRun, WOULD route)
+  audioOutputsFailed: number;
+  zonesConsidered: number;
+  zonesSet: number;              // set (or, in dryRun, WOULD set)
+  zonesSkipped: number;          // non-Atlas processor (not wired yet)
+  zonesFailed: number;
   errors: number;
   plan: Array<{
-    kind: 'route' | 'tune';
+    kind: 'route' | 'tune' | 'audio-route' | 'zone-level';
     output?: number;
     inputNumber?: number;
     matrixInput?: number;
     deviceType?: string;
     deviceId?: string;
+    processorId?: string;
+    zoneNumber?: number;         // 1-based Atlas zone (for zone-level plan rows)
+    level?: number;
     channelNumber?: string;
     label?: string;
     skipped?: string;
@@ -1333,6 +1357,13 @@ class AutoReallocator {
       boxesSkippedLive: 0,
       boxesUnresolved: 0,
       boxesFailed: 0,
+      audioOutputsConsidered: 0,
+      audioOutputsRouted: 0,
+      audioOutputsFailed: 0,
+      zonesConsidered: 0,
+      zonesSet: 0,
+      zonesSkipped: 0,
+      zonesFailed: 0,
       errors: 0,
       plan: [],
     };
@@ -1643,16 +1674,170 @@ class AutoReallocator {
         }
       }
 
+      // Step 4.5 (v2.86.0): AUDIO defaults pass. After the video side is back
+      // to defaults, put the audio side back too:
+      //   (a) route the audio-matrix outputs (isSchedulingEnabled=false) to
+      //       their configured default audio source via /api/matrix/route, and
+      //   (b) set each configured Atlas zone to its default level via
+      //       /api/audio-processor/control (action='volume'), which routes
+      //       through executeAtlasCommand → getAtlasClient (the shared
+      //       singleton, CLAUDE.md Gotcha #10 — never `new AtlasTCPClient`).
+      // Drop-watcher coordination: before each real zone-level set we write a
+      // SchedulerLog marker (operation='audio-default-reset', metadata
+      // {processorId, atlasZone}); atlas-drop-watcher honors it so a deliberate
+      // lower default level is logged EXPLAINED and never files a false "audio
+      // dropped" todo.
+      const audioDefaults = defaults.audioDefaults || {};
+
+      // (a) Audio-matrix output routing.
+      const audioRouting = audioDefaults.audioRouting || {};
+      for (const [outKey, inputNum] of Object.entries(audioRouting)) {
+        const outputNumber = Number(outKey);
+        if (!Number.isFinite(outputNumber) || !Number.isFinite(inputNum)) continue;
+        stats.audioOutputsConsidered++;
+
+        if (protectedOutputs.has(outputNumber)) {
+          stats.plan.push({ kind: 'audio-route', output: outputNumber, inputNumber: inputNum, skipped: 'confirmed_live' });
+          logger.info(`${tag} Skipping audio output ${outputNumber} — confirmed-live game`);
+          continue;
+        }
+
+        stats.plan.push({ kind: 'audio-route', output: outputNumber, inputNumber: inputNum });
+
+        if (dryRun) {
+          stats.audioOutputsRouted++;
+          logger.info(`${tag} WOULD route audio output ${outputNumber} → input ${inputNum}`);
+          continue;
+        }
+
+        try {
+          const routeResponse = await fetch(`http://127.0.0.1:${API_PORT}/api/matrix/route`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ input: inputNum, output: outputNumber, source: 'morning-reset' }),
+          });
+          const routeHw = await parseHardwareResult(routeResponse);
+          if (routeHw.ok) {
+            stats.audioOutputsRouted++;
+            await schedulerLogger.info(
+              'morning-reset',
+              'daily-default-reset',
+              `Reset audio output ${outputNumber} to default input ${inputNum}`,
+              cid,
+              { metadata: { trigger, audioOutput: outputNumber, defaultInputNumber: inputNum } },
+            );
+            logger.info(`${tag} Reset audio output ${outputNumber} → input ${inputNum}`);
+          } else {
+            stats.audioOutputsFailed++;
+            await schedulerLogger.warn(
+              'morning-reset',
+              'daily-default-reset',
+              `Failed to reset audio output ${outputNumber}: ${routeHw.body?.error || routeResponse.statusText}`,
+              cid,
+              { metadata: { trigger, audioOutput: outputNumber, httpStatus: routeResponse.status } },
+            );
+            logger.warn(`${tag} Failed to reset audio output ${outputNumber}: ${routeHw.body?.error || routeResponse.statusText}`);
+          }
+        } catch (audioRouteErr: any) {
+          stats.audioOutputsFailed++;
+          stats.errors++;
+          logger.error(`${tag} Error routing audio output ${outputNumber}:`, { error: audioRouteErr.message });
+        }
+      }
+
+      // (b) Atlas zone default levels.
+      const zoneLevels = audioDefaults.zoneLevels || [];
+      if (zoneLevels.length > 0) {
+        // Resolve processor types once so we only drive Atlas for now (the
+        // data model carries processorId so dbx/BSS can be added later by
+        // relaxing this guard + handling their value scale).
+        let procTypeById = new Map<string, string>();
+        try {
+          const procRows = await db.select().from(schema.audioProcessors).all();
+          for (const pr of procRows) procTypeById.set(pr.id, pr.processorType || 'atlas');
+        } catch (procErr: any) {
+          logger.warn(`${tag} Could not load audio processors for zone-level reset (non-fatal):`, { error: procErr.message });
+        }
+
+        for (const zl of zoneLevels) {
+          if (!zl || !zl.processorId || !Number.isFinite(zl.level)) continue;
+          stats.zonesConsidered++;
+
+          const procType = procTypeById.get(zl.processorId);
+          if (procType && procType !== 'atlas') {
+            stats.zonesSkipped++;
+            stats.plan.push({ kind: 'zone-level', processorId: zl.processorId, zoneNumber: zl.zoneNumber + 1, level: zl.level, label: zl.zoneName, skipped: 'non_atlas_processor' });
+            logger.info(`${tag} Skipping zone "${zl.zoneName}" — processor type "${procType}" not wired for zone-level reset yet`);
+            continue;
+          }
+
+          // Atlas control API is 1-based; drop-watcher keys its marker on the
+          // 1-based Atlas zone too.
+          const atlasZone = zl.zoneNumber + 1;
+          stats.plan.push({ kind: 'zone-level', processorId: zl.processorId, zoneNumber: atlasZone, level: zl.level, label: zl.zoneName });
+
+          if (dryRun) {
+            stats.zonesSet++;
+            logger.info(`${tag} WOULD set zone "${zl.zoneName}" (Atlas zone ${atlasZone}) → ${zl.level}%`);
+            continue;
+          }
+
+          // Drop-watcher coordination marker — written BEFORE the gain change
+          // so it is present when the watcher's next 30s poll detects the drop.
+          await schedulerLogger.info(
+            'morning-reset',
+            'audio-default-reset',
+            `Set zone "${zl.zoneName}" (Atlas zone ${atlasZone}) to default level ${zl.level}%`,
+            cid,
+            { metadata: { trigger, processorId: zl.processorId, atlasZone, zoneName: zl.zoneName, level: zl.level } },
+          );
+
+          try {
+            const ctrlResponse = await fetch(`http://127.0.0.1:${API_PORT}/api/audio-processor/control`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                processorId: zl.processorId,
+                command: { action: 'volume', zone: atlasZone, value: zl.level },
+              }),
+            });
+            const ctrlHw = await parseHardwareResult(ctrlResponse);
+            if (ctrlHw.ok) {
+              stats.zonesSet++;
+              logger.info(`${tag} Set zone "${zl.zoneName}" (Atlas zone ${atlasZone}) → ${zl.level}%`);
+            } else {
+              stats.zonesFailed++;
+              await schedulerLogger.warn(
+                'morning-reset',
+                'daily-default-reset',
+                `Failed to set zone "${zl.zoneName}" (Atlas zone ${atlasZone}) to ${zl.level}%: ${ctrlHw.body?.error || ctrlResponse.statusText}`,
+                cid,
+                { metadata: { trigger, processorId: zl.processorId, atlasZone, httpStatus: ctrlResponse.status } },
+              );
+              logger.warn(`${tag} Failed to set zone "${zl.zoneName}" (Atlas zone ${atlasZone}): ${ctrlHw.body?.error || ctrlResponse.statusText}`);
+            }
+          } catch (zoneErr: any) {
+            stats.zonesFailed++;
+            stats.errors++;
+            logger.error(`${tag} Error setting zone "${zl.zoneName}" (Atlas zone ${atlasZone}):`, { error: zoneErr.message });
+          }
+
+          // Small delay between Atlas writes to avoid overrunning the shared
+          // command channel.
+          await new Promise((resolve) => setTimeout(resolve, 250));
+        }
+      }
+
       // Step 5: Summary row to SchedulerLog so the operator can confirm it ran.
       await schedulerLogger.info(
         'morning-reset',
         'daily-default-reset',
-        `Morning reset complete (trigger=${trigger}, dryRun=${dryRun}) — ${stats.outputsReverted} output(s) ${dryRun ? 'would be ' : ''}reverted, ${stats.boxesTuned} box(es) ${dryRun ? 'would be ' : ''}tuned, ${stats.outputsSkippedLive} output(s) + ${stats.boxesSkippedLive} box(es) held for live games`,
+        `Morning reset complete (trigger=${trigger}, dryRun=${dryRun}) — ${stats.outputsReverted} output(s) ${dryRun ? 'would be ' : ''}reverted, ${stats.boxesTuned} box(es) ${dryRun ? 'would be ' : ''}tuned, ${stats.audioOutputsRouted} audio output(s) ${dryRun ? 'would be ' : ''}routed, ${stats.zonesSet} zone level(s) ${dryRun ? 'would be ' : ''}set, ${stats.outputsSkippedLive} output(s) + ${stats.boxesSkippedLive} box(es) held for live games`,
         cid,
         { metadata: { ...stats, plan: undefined } },
       );
       logger.info(
-        `${tag} Complete — outputs reverted=${stats.outputsReverted}/${stats.outputsConsidered}, boxes tuned=${stats.boxesTuned}/${stats.boxesConsidered}, live-held outputs=${stats.outputsSkippedLive} boxes=${stats.boxesSkippedLive}, no-default outputs=${stats.outputsSkippedNoDefault}, unresolved boxes=${stats.boxesUnresolved}`,
+        `${tag} Complete — outputs reverted=${stats.outputsReverted}/${stats.outputsConsidered}, boxes tuned=${stats.boxesTuned}/${stats.boxesConsidered}, audio outputs routed=${stats.audioOutputsRouted}/${stats.audioOutputsConsidered}, zone levels set=${stats.zonesSet}/${stats.zonesConsidered} (skipped non-atlas=${stats.zonesSkipped}, failed=${stats.zonesFailed}), live-held outputs=${stats.outputsSkippedLive} boxes=${stats.boxesSkippedLive}, no-default outputs=${stats.outputsSkippedNoDefault}, unresolved boxes=${stats.boxesUnresolved}`,
       );
 
       return stats;
