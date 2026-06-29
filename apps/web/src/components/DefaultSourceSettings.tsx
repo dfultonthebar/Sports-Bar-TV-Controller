@@ -49,8 +49,16 @@ interface ZoneLevelDefault {
   level: number        // 0-100 percent
 }
 
+interface GroupLevelDefault {
+  processorId: string
+  groupNumber: number  // DB 0-based AudioGroup.groupNumber
+  groupName: string
+  level: number        // 0-100 percent
+}
+
 interface AudioDefaultsConfig {
   zoneLevels?: ZoneLevelDefault[]
+  groupLevels?: GroupLevelDefault[]
   audioRouting?: Record<string, number>  // audio-matrix outputNum -> default matrix input
 }
 
@@ -69,6 +77,13 @@ interface AudioZoneInfo {
   processorName: string
   zoneNumber: number   // DB 0-based
   zoneName: string
+}
+
+interface AudioGroupInfo {
+  processorId: string
+  processorName: string
+  groupNumber: number  // DB 0-based
+  groupName: string
 }
 
 interface MatrixInput {
@@ -117,6 +132,7 @@ function DefaultSourceSettings() {
   const [channelPresets, setChannelPresets] = useState<Array<{ channelNumber: number; name: string; deviceType: string }>>([])
   const [audioSources, setAudioSources] = useState<Array<{ index: number; name: string }>>([])
   const [audioZones, setAudioZones] = useState<AudioZoneInfo[]>([])
+  const [audioGroups, setAudioGroups] = useState<AudioGroupInfo[]>([])
 
   // --- Data Loading ---
 
@@ -192,9 +208,31 @@ function DefaultSourceSettings() {
             }),
           )
           setAudioZones(zoneLists.flat())
+
+          // Enumerate each Atlas processor's GROUPS for the per-group level UI
+          // (Stoneyard locations manage audio by group). Empty when a location
+          // has no groups configured.
+          const groupLists = await Promise.all(
+            procs.map(async (p: any) => {
+              try {
+                const gr = await fetch(`/api/audio-processor/groups?processorId=${encodeURIComponent(p.id)}`)
+                if (!gr.ok) return [] as AudioGroupInfo[]
+                const gd = await gr.json()
+                return (gd.groups || []).map((g: any) => ({
+                  processorId: p.id,
+                  processorName: p.name,
+                  groupNumber: g.groupNumber,
+                  groupName: g.name,
+                })) as AudioGroupInfo[]
+              } catch {
+                return [] as AudioGroupInfo[]
+              }
+            }),
+          )
+          setAudioGroups(groupLists.flat())
         }
       } catch (audioErr) {
-        console.warn('Could not load Atlas audio sources/zones:', audioErr)
+        console.warn('Could not load Atlas audio sources/zones/groups:', audioErr)
       }
 
       setHasChanges(false)
@@ -315,6 +353,34 @@ function DefaultSourceSettings() {
         zoneLevels.push({ processorId, zoneNumber, zoneName, level: clamped })
       }
       audioDefaults.zoneLevels = zoneLevels
+      return { ...prev, audioDefaults }
+    })
+    setHasChanges(true)
+    setSuccess(null)
+  }
+
+  function getGroupLevel(processorId: string, groupNumber: number): number | undefined {
+    return config.audioDefaults?.groupLevels?.find(
+      (g) => g.processorId === processorId && g.groupNumber === groupNumber,
+    )?.level
+  }
+
+  function updateGroupLevel(
+    processorId: string,
+    groupNumber: number,
+    groupName: string,
+    level: number | undefined,
+  ) {
+    setConfig((prev) => {
+      const audioDefaults = { ...(prev.audioDefaults || {}) }
+      const groupLevels = (audioDefaults.groupLevels || []).filter(
+        (g) => !(g.processorId === processorId && g.groupNumber === groupNumber),
+      )
+      if (level !== undefined && !Number.isNaN(level)) {
+        const clamped = Math.max(0, Math.min(100, Math.round(level)))
+        groupLevels.push({ processorId, groupNumber, groupName, level: clamped })
+      }
+      audioDefaults.groupLevels = groupLevels
       return { ...prev, audioDefaults }
     })
     setHasChanges(true)
@@ -753,7 +819,7 @@ function DefaultSourceSettings() {
         const audioOutputs = outputs
           .filter((o) => o.isActive && o.isSchedulingEnabled === false)
           .sort((a, b) => a.channelNumber - b.channelNumber)
-        if (audioOutputs.length === 0 && audioZones.length === 0) return null
+        if (audioOutputs.length === 0 && audioZones.length === 0 && audioGroups.length === 0) return null
 
         return (
           <div className="rounded-lg border border-amber-700/40 p-6 space-y-6">
@@ -885,6 +951,90 @@ function DefaultSourceSettings() {
                                   zone.processorId,
                                   zone.zoneNumber,
                                   zone.zoneName,
+                                  undefined,
+                                )
+                              }
+                              className="text-xs text-slate-400 hover:text-red-400 px-3 py-2 min-h-[44px]"
+                            >
+                              Clear
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Per-group default levels (Stoneyard manages audio by group) */}
+            {audioGroups.length > 0 && (
+              <div>
+                <h5 className="text-sm font-semibold text-slate-300 mb-3">
+                  Group Default Levels
+                </h5>
+                <p className="text-sm text-slate-400 mb-4">
+                  The volume each audio group resets to every morning. Leave unset to leave a
+                  group untouched. Muted groups stay muted — the reset only sets the level.
+                </p>
+                <div className="space-y-3">
+                  {audioGroups.map((group) => {
+                    const level = getGroupLevel(group.processorId, group.groupNumber)
+                    const isSet = level !== undefined
+                    return (
+                      <div
+                        key={`${group.processorId}:g${group.groupNumber}`}
+                        className="bg-slate-800/50 rounded-lg p-4 flex items-center gap-4 flex-wrap"
+                      >
+                        <div className="w-44 shrink-0">
+                          <span className="text-sm font-semibold text-white block">
+                            {group.groupName}
+                          </span>
+                          <span className="text-xs text-slate-500">{group.processorName}</span>
+                        </div>
+                        <div className="flex-1 min-w-[180px] flex items-center gap-3">
+                          <input
+                            type="range"
+                            min={0}
+                            max={100}
+                            step={1}
+                            value={isSet ? level : 0}
+                            onChange={(e) =>
+                              updateGroupLevel(
+                                group.processorId,
+                                group.groupNumber,
+                                group.groupName,
+                                parseInt(e.target.value, 10),
+                              )
+                            }
+                            className="flex-1 h-3 accent-amber-500 cursor-pointer"
+                          />
+                          <input
+                            type="number"
+                            min={0}
+                            max={100}
+                            value={isSet ? level : ''}
+                            placeholder="—"
+                            onChange={(e) => {
+                              const v = e.target.value
+                              updateGroupLevel(
+                                group.processorId,
+                                group.groupNumber,
+                                group.groupName,
+                                v === '' ? undefined : parseInt(v, 10),
+                              )
+                            }}
+                            className="w-20 bg-slate-900 border border-slate-600 rounded-lg px-3 py-3 text-base text-white text-center min-h-[48px]"
+                          />
+                          <span className="text-sm text-slate-400 w-6">%</span>
+                          {isSet && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                updateGroupLevel(
+                                  group.processorId,
+                                  group.groupNumber,
+                                  group.groupName,
                                   undefined,
                                 )
                               }

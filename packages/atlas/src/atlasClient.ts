@@ -872,22 +872,25 @@ export class AtlasTCPClient {
   }
 
   /**
-   * Set group volume
+   * Set group volume. Mirrors setZoneVolume: GroupGain_<n> is a SEPARATE
+   * Atlas parameter from GroupMute_<n> (setGroupMute), so a volume-set never
+   * changes the group's mute state.
    * @param groupIndex Group index (0-based)
-   * @param gainDb Gain in dB (-80 to 0)
+   * @param gainDb Gain in dB (-80 to 0) or percentage if usePct is true
+   * @param usePct Use percentage format (0-100) instead of dB
    */
-  async setGroupVolume(groupIndex: number, gainDb: number): Promise<AtlasResponse> {
+  async setGroupVolume(groupIndex: number, gainDb: number, usePct: boolean = true): Promise<AtlasResponse> {
     try {
       const param = `GroupGain_${groupIndex}`
-      atlasLogger.info('GROUP', `Setting group ${groupIndex} volume to ${gainDb}dB`, {
+      atlasLogger.info('GROUP', `Setting group ${groupIndex} volume to ${gainDb}${usePct ? '%' : 'dB'}`, {
         ipAddress: this.config.ipAddress
       })
-      
+
       const response = await this.sendCommand({
         method: 'set',
         param,
         value: gainDb,
-        format: 'val'
+        format: usePct ? 'pct' : 'val'
       })
 
       return { success: true, data: response }
