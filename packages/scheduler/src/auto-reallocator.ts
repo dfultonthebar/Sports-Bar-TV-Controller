@@ -80,6 +80,7 @@ export interface MorningResetStats {
     processorId?: string;
     zoneNumber?: number;         // 1-based Atlas zone (for zone-level plan rows)
     level?: number;
+    muted?: boolean;             // current mute state the reset preserves (zone-level rows)
     channelNumber?: string;
     label?: string;
     skipped?: string;
@@ -1774,22 +1775,49 @@ class AutoReallocator {
           // Atlas control API is 1-based; drop-watcher keys its marker on the
           // 1-based Atlas zone too.
           const atlasZone = zl.zoneNumber + 1;
-          stats.plan.push({ kind: 'zone-level', processorId: zl.processorId, zoneNumber: atlasZone, level: zl.level, label: zl.zoneName });
+
+          // Operator rule (v2.86.2): the bar is CLOSED at 4 AM — the reset sets
+          // the level UNDER the current mute state and NEVER unmutes. The
+          // bartender unmutes at open. setZoneVolume writes ZoneGain_<n> only,
+          // a separate Atlas parameter from ZoneMute_<n>, so the volume command
+          // provably cannot unmute a zone (verified in atlasClient.setZoneVolume
+          // / setZoneMute — independent params). We therefore only READ the
+          // current mute state (from the DB cache the drop-watcher refreshes
+          // every 30s) to LOG the preserved decision; the control call below is
+          // volume-only and issues no mute/unmute. A muted zone stays muted.
+          let wasMuted: boolean | null = null;
+          try {
+            const zoneRow = await db.select().from(schema.audioZones)
+              .where(and(
+                eq(schema.audioZones.processorId, zl.processorId),
+                eq(schema.audioZones.zoneNumber, zl.zoneNumber),
+              ))
+              .limit(1).get();
+            if (zoneRow) wasMuted = !!zoneRow.muted;
+          } catch (muteErr: any) {
+            logger.warn(`${tag} Could not read mute state for zone "${zl.zoneName}" (non-fatal; level set only):`, { error: muteErr.message });
+          }
+          const muteNote = wasMuted === null
+            ? 'mute unknown — level only, no unmute'
+            : (wasMuted ? 'muted → kept muted, level only (no unmute)' : 'unmuted → level only');
+
+          stats.plan.push({ kind: 'zone-level', processorId: zl.processorId, zoneNumber: atlasZone, level: zl.level, label: zl.zoneName, muted: wasMuted ?? undefined });
 
           if (dryRun) {
             stats.zonesSet++;
-            logger.info(`${tag} WOULD set zone "${zl.zoneName}" (Atlas zone ${atlasZone}) → ${zl.level}%`);
+            logger.info(`${tag} WOULD set zone "${zl.zoneName}" (Atlas zone ${atlasZone}) → ${zl.level}% (${muteNote})`);
             continue;
           }
 
           // Drop-watcher coordination marker — written BEFORE the gain change
           // so it is present when the watcher's next 30s poll detects the drop.
+          // Records the preserved-mute decision so SchedulerLog shows it.
           await schedulerLogger.info(
             'morning-reset',
             'audio-default-reset',
-            `Set zone "${zl.zoneName}" (Atlas zone ${atlasZone}) to default level ${zl.level}%`,
+            `Set zone "${zl.zoneName}" (Atlas zone ${atlasZone}) to default level ${zl.level}% (${muteNote})`,
             cid,
-            { metadata: { trigger, processorId: zl.processorId, atlasZone, zoneName: zl.zoneName, level: zl.level } },
+            { metadata: { trigger, processorId: zl.processorId, atlasZone, zoneName: zl.zoneName, level: zl.level, wasMuted } },
           );
 
           try {
