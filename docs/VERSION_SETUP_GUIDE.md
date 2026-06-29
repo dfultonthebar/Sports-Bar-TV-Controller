@@ -35,6 +35,31 @@ is the archive.
 
 ---
 
+## v2.83.6 — security: patch undici + form-data HIGH CVEs via overrides (2026-06-28)
+
+**Required manual steps:** NONE. The override propagates through `npm ci` on the
+next auto-update (no native rebuild — both are pure-JS transitive deps).
+
+Closed all 3 HIGH npm vulns the freshness sweep found, the SAFE way — pinned
+patched versions via a root `package.json` `overrides` block instead of
+`npm audit fix` (which is guarded since v2.55.13 because its resolutions
+downgrade next/drizzle-kit/next-auth and break auth):
+
+- **undici** `^7.28.0` (was 7.26.0, transitive via cheerio→rag-server) — clears 2
+  HIGH: TLS cert-validation bypass via SOCKS5 ProxyAgent + Set-Cookie header
+  injection (plus several moderate undici CVEs). Stays in cheerio's `^7.19.0`
+  range — no major bump.
+- **form-data** `^4.0.6` (was 4.0.5) — clears 1 HIGH: CRLF injection via unescaped
+  multipart field names. In-major patch.
+
+Result: **0 HIGH / 0 CRITICAL** (was 3 HIGH). The 5 remaining moderates are the
+intentionally-left next-auth/uuid/postcss chain (v2.55.13 — unfixable without
+breaking PIN auth). Verified: build 29/29, health/login/fleet-status all 200, no
+dep-related crashes. The `overrides` approach is now the established pattern for
+patching transitive vulns here — extend that block, never `npm audit fix --force`.
+
+---
+
 ## v2.83.5 — fleet-status "behind vs stuck" + broader LG pairing token (2026-06-28)
 
 **Required manual steps:** OPTIONAL — re-pair LG TVs to capture their model (see #2).
