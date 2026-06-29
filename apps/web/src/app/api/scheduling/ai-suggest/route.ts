@@ -503,6 +503,34 @@ async function loadInputSources() {
     bookingsByInput.set(a.inputSourceId, list)
   }
 
+  // v2.83.x — Per-box installed-app set from the DeviceSubscription table
+  // (operator's refreshed source of truth — one row per Fire TV deviceId,
+  // `subscriptions` JSON). Union this into each Fire TV input's
+  // availableNetworks so the Fire TV grounding gate (canAirGame in the parser)
+  // sees the FULL set of apps actually installed/logged-in on that exact box.
+  // Keyed by deviceId because input_sources.device_id == DeviceSubscription.deviceId.
+  const installedAppsByDeviceId = new Map<string, string[]>()
+  try {
+    const subRows = await db
+      .select({ deviceId: schema.deviceSubscriptions.deviceId, subscriptions: schema.deviceSubscriptions.subscriptions })
+      .from(schema.deviceSubscriptions)
+      .where(eq(schema.deviceSubscriptions.deviceType, 'firetv'))
+      .all()
+    for (const r of subRows) {
+      try {
+        const subs = JSON.parse(r.subscriptions || '[]')
+        const names: string[] = []
+        for (const sub of Array.isArray(subs) ? subs : []) {
+          if (sub?.name) names.push(String(sub.name))
+          if (sub?.packageName) names.push(String(sub.packageName))
+        }
+        if (names.length) installedAppsByDeviceId.set(r.deviceId, names)
+      } catch { /* skip malformed subscriptions JSON */ }
+    }
+  } catch (err: any) {
+    logger.warn(`[AI-SUGGEST] Could not load DeviceSubscription installed apps (proceeding with input_sources.availableNetworks only): ${err.message}`)
+  }
+
   return sources.map(s => {
     const bookings = bookingsByInput.get(s.id) || []
     // Sort by allocatedAt so "upcoming" order is stable
@@ -520,15 +548,26 @@ async function loadInputSources() {
       currentChannel: s.currentChannel,
       priorityRank: s.priorityRank,
       availableNetworks: (() => {
-        try { return JSON.parse(s.availableNetworks) }
+        let nets: string[] = []
+        try { nets = JSON.parse(s.availableNetworks) }
         catch (err: any) {
           // v2.32.3 — log instead of swallow. A malformed availableNetworks
           // JSON in the DB silently filters every streaming game off this
           // input — the operator never sees why the box stopped getting
           // recommendations.
           logger.warn(`[AI-SUGGEST] Bad availableNetworks JSON on input ${s.id} (${s.name}): ${err.message}`)
-          return []
+          nets = []
         }
+        // v2.83.x — union the operator-refreshed DeviceSubscription installed-app
+        // list for this box (Fire TV inputs) so the grounding gate sees every app
+        // actually installed there, even ones missing from available_networks.
+        const installed = s.deviceId ? installedAppsByDeviceId.get(s.deviceId) : undefined
+        if (installed && installed.length) {
+          const merged = new Set<string>(Array.isArray(nets) ? nets : [])
+          for (const a of installed) merged.add(a)
+          return Array.from(merged)
+        }
+        return Array.isArray(nets) ? nets : []
       })(),
       bookings: bookings.map(b => ({
         startUnix: b.allocatedAt,
@@ -904,6 +943,71 @@ function parseOllamaResponse(
     }
     const inputHasApp = (src: any, appLower: string): boolean =>
       !!src && (appsByInputId.get(src.id)?.has(appLower) ?? false)
+
+    // v2.83.x — Fire TV grounding + greedy repair.
+    // appMatches: fuzzy app-name compare so a catalog app label ("Prime Video",
+    // "Apple TV") matches a box's installed-app entry ("Amazon Prime Video",
+    // "Apple TV+"). Exact first, then substring either direction.
+    const appMatches = (src: any, appName: string): boolean => {
+      const want = (appName || '').toLowerCase().trim()
+      if (want.length < 3) return false
+      const set = appsByInputId.get(src.id)
+      if (!set || set.size === 0) return false
+      if (set.has(want)) return true
+      for (const have of set) {
+        if (have.length >= 3 && (have.includes(want) || want.includes(have))) return true
+      }
+      return false
+    }
+    // canAirGame: can THIS input physically tune THIS game right now?
+    //   cable   → game has a cable channel that resolved to a preset
+    //   directv → game has a directv channel
+    //   firetv  → catalog-locked input (Scout proved it) OR the game's streaming
+    //             app is installed/logged-in on that box (DeviceSubscription-
+    //             enriched availableNetworks). A cable/sat game (no streamingApp)
+    //             is therefore NEVER airable on a Fire TV — which is exactly the
+    //             no_route bug the grounding repair below fixes.
+    const canAirGame = (src: any, g: GameListing): boolean => {
+      if (!src) return false
+      if (g.firetvInputId && src.id === g.firetvInputId) return true
+      if (src.type === 'cable') return !!g.channelNumber
+      if (src.type === 'directv' || src.type === 'satellite') return !!g.directvChannel
+      if (src.type === 'firetv') return appMatches(src, g.streamingApp || '')
+      return false
+    }
+    const gameStartUnixOf = (g: GameListing) => Math.floor(new Date(g.time).getTime() / 1000)
+    const hasBookingOverlap = (src: any, g: GameListing): boolean => {
+      if (!Array.isArray(src?.bookings) || src.bookings.length === 0) return false
+      const gs = gameStartUnixOf(g)
+      const ge = gs + 3 * 60 * 60
+      return src.bookings.some((b: any) => gs < b.endUnix && ge > b.startUnix)
+    }
+    // Pick the best FREE input that can actually air this game. `isFree` lets the
+    // caller layer in batch-claim/cap constraints. Rank: locked catalog input
+    // first, then cable (spread-before-stack rule 5), then directv, then firetv.
+    const pickCompatibleInput = (
+      g: GameListing,
+      isFree: (src: any) => boolean,
+      excludeId?: string,
+    ): any => {
+      const cands = inputSources.filter((src: any) =>
+        canAirGame(src, g) && src.id !== excludeId && isFree(src),
+      )
+      if (cands.length === 0) return null
+      const rank = (src: any) => {
+        if (g.firetvInputId && src.id === g.firetvInputId) return 0
+        if (src.type === 'cable') return 1
+        if (src.type === 'directv' || src.type === 'satellite') return 2
+        return 3
+      }
+      cands.sort((a: any, b: any) =>
+        rank(a) - rank(b)
+        || (a.priorityRank ?? 50) - (b.priorityRank ?? 50)
+        || String(a.name).localeCompare(String(b.name)),
+      )
+      return cands[0]
+    }
+
     const resolveInput = (suggestedId: string, suggestedName: string) => {
       if (!suggestedId && !suggestedName) return null
       // 1. Exact id match
@@ -1033,6 +1137,42 @@ function parseOllamaResponse(
         }
       }
 
+      // v2.83.x — FIRE TV GROUNDING + GREEDY REPAIR (the no_route fix).
+      // The resolved input must be able to physically air this game. The LLM
+      // routinely assigns a cable/sat game to a Fire TV (no streaming app on
+      // that game → no_route) or names a Fire TV that lacks the game's app.
+      // Rather than hard-reject (which produced all-rejected empty slates),
+      // reassign the game to a compatible IDLE input (cable/directv box, or
+      // another Fire TV that has the app). Only reject if nothing can air it.
+      // Catalog-locked Fire TV games pass canAirGame on their locked input, so
+      // this only repairs genuinely-misrouted picks.
+      if (!canAirGame(input, game)) {
+        const repaired = pickCompatibleInput(
+          game,
+          (cand: any) => !cand.currentlyAllocated && !hasBookingOverlap(cand, game),
+          input?.id,
+        )
+        if (repaired) {
+          logger.info(
+            `[AI-SUGGEST] Grounding repair: "${game.title}" — ${input?.name || '?'} (${input?.type}) can't air it; reassigned to ${repaired.name} (${repaired.type})`,
+          )
+          input = repaired
+        } else {
+          const need = [
+            game.channelNumber ? `cable ${game.channelNumber}` : '',
+            game.directvChannel ? `directv ${game.directvChannel}` : '',
+            game.streamingApp ? `app ${game.streamingApp}` : '',
+          ].filter(Boolean).join(' / ') || 'no resolvable route'
+          rejections.push({
+            gameId: `game-${gameIdx}`,
+            suggestedInput: input?.name || s.suggestedInput || '?',
+            reason: 'no_route',
+            detail: `No idle input can air ${game.title} (needs ${need}); ${input?.name || '?'} is ${input?.type}`,
+          })
+          continue
+        }
+      }
+
       // CRITICAL: Don't trust the LLM's channel number — it hallucinates.
       // Use the server-side resolved identifier based on the input type:
       //   cable  → cable channel number
@@ -1047,36 +1187,10 @@ function parseOllamaResponse(
       if (isFiretv) {
         appName = game.streamingApp || ''
         channelNumberStr = appName // display value carries the app name
-
-        // For catalog-sourced streaming games (firetvInputId set), the
-        // walker already proved the app launches on THIS Fire TV — skip the
-        // per-box reroute. For LLM-picked Fire TVs (legacy path, no longer
-        // exercised in v2.32.100 since fetchUpcomingGames stopped emitting
-        // streaming routes — but kept defensively in case a path re-emerges):
-        // verify the app is actually on the input and reroute if not.
-        if (!game.firetvInputId && appName) {
-          const appLower = appName.toLowerCase().trim()
-          if (!inputHasApp(input, appLower)) {
-            const firetvCandidates = inputSources.filter(
-              (src: any) => src.type === 'firetv' && inputHasApp(src, appLower) && !src.currentlyAllocated
-            )
-            const fallback = firetvCandidates[0]
-            if (fallback) {
-              logger.info(
-                `[AI-SUGGEST] Rerouted firetv game "${game.title}" — LLM picked ${input?.name || '?'} (no ${appName}); using ${fallback.name} instead`
-              )
-              resolvedInput = fallback
-            } else {
-              rejections.push({
-                gameId: `game-${gameIdx}`,
-                suggestedInput: input?.name || s.suggestedInput || '?',
-                reason: 'wrong_firetv_app',
-                detail: `${appName} is not installed/logged-in on any free Fire TV input`,
-              })
-              continue
-            }
-          }
-        }
+        // v2.83.x — the per-box app gate + reroute that lived here is now done
+        // upstream by the canAirGame grounding repair (which runs for ALL input
+        // types, not just firetv). By this point `input` is guaranteed to be a
+        // Fire TV that can air this game's app.
       } else if (isDirectv) {
         channelNumberStr = game.directvChannel || game.channelNumber || ''
       } else {
@@ -1116,7 +1230,13 @@ function parseOllamaResponse(
         // captured. The apply path forwards it to bartender-schedule, which
         // writes inputSourceAllocations.deep_link, which scheduler-service
         // reads at tune time so the Fire TV opens directly to the game.
-        deepLink: isFiretv ? (game.deepLink || undefined) : undefined,
+        // v2.83.x — the deepLink is device-specific (captured on the locked box).
+        // Only keep it when the suggestion still lands on that exact input; if a
+        // collision/grounding repair moved the game to a different Fire TV, drop
+        // it so the apply path launches the app fresh instead of a stale deeplink.
+        deepLink: (isFiretv && game.firetvInputId && resolvedInput?.id === game.firetvInputId)
+          ? (game.deepLink || undefined)
+          : undefined,
         suggestedInput: resolvedInput?.name || s.suggestedInput || 'Unknown',
         suggestedInputId: resolvedInput?.id || '',
         suggestedDeviceId: resolvedInput?.deviceId || '',
@@ -1186,9 +1306,6 @@ function parseOllamaResponse(
       if (ar !== br) return ar - br
       return b.confidence - a.confidence
     })
-
-    const cableInputsAll = inputSources.filter((src: any) => src.type === 'cable')
-    const directvInputsAll = inputSources.filter((src: any) => src.type === 'directv' || src.type === 'satellite')
 
     // Build a map of inputId -> bookings for collision checks below.
     const bookingsByInputId = new Map<string, Array<{ startUnix: number; endUnix: number; gameLabel: string }>>()
@@ -1268,31 +1385,39 @@ function parseOllamaResponse(
       let inBatchHit = claims.find(c => gameStartUnix < c.end && gameEndUnix > c.start)
 
       if (inBatchHit) {
-        // Try to reroute to an idle same-class input. Tie-break cable > directv
-        // when both have an idle option (rule #5: spread before stack on DTV).
-        const sameClass = sug.suggestedDeviceType === 'directv'
-          ? directvInputsAll
-          : sug.suggestedDeviceType === 'cable'
-            ? cableInputsAll
-            : []
-        const reroute = sameClass.find((src: any) => {
+        // v2.83.x — Reroute via pickCompatibleInput so the candidate is gated by
+        // canAirGame (a Fire TV collision can now spread to ANOTHER Fire TV that
+        // has the game's app — previously firetv had no same-class reroute and
+        // ALWAYS rejected, producing the in_batch_collision empty-slate symptom).
+        // Restrict to the SAME device type as the resolved suggestion so the
+        // already-resolved channelNumber/app stays valid (pass 2 doesn't recompute it).
+        const sameTypeAndFree = (src: any): boolean => {
           if (src.id === sug.suggestedInputId) return false
+          const sameType = sug.suggestedDeviceType === 'directv'
+            ? (src.type === 'directv' || src.type === 'satellite')
+            : src.type === sug.suggestedDeviceType
+          if (!sameType) return false
           const otherClaims = inBatchClaims.get(src.id) || []
-          const overlap = otherClaims.find(c => gameStartUnix < c.end && gameEndUnix > c.start)
-          if (overlap) return false
-          // Also respect existing bookings on the candidate input.
+          if (otherClaims.find(c => gameStartUnix < c.end && gameEndUnix > c.start)) return false
           const otherBookings = bookingsByInputId.get(src.id) || []
-          const bookingHit = otherBookings.find(b => gameStartUnix >= b.startUnix && gameStartUnix < b.endUnix)
-          if (bookingHit) return false
-          // And the per-input cap of 2 must not already be hit on the candidate.
+          if (otherBookings.find(b => gameStartUnix >= b.startUnix && gameStartUnix < b.endUnix)) return false
           if ((inputAssignmentCount.get(src.id) || 0) >= 2) return false
           return true
-        })
+        }
+        const reroute = origGame
+          ? pickCompatibleInput(origGame, sameTypeAndFree, sug.suggestedInputId)
+          : null
 
         if (reroute) {
           logger.info(
             `[AI-SUGGEST] Spread reroute: ${sug.awayTeam} @ ${sug.homeTeam} ${sug.suggestedInput} → ${reroute.name} (in-batch collision avoided)`,
           )
+          // If a catalog Fire TV game spread to a DIFFERENT Fire TV, the
+          // captured deepLink is for the original box — drop it so apply
+          // launches the app fresh instead of replaying a stale deeplink.
+          if (sug.suggestedDeviceType === 'firetv' && origGame?.firetvInputId && reroute.id !== origGame.firetvInputId) {
+            sug.deepLink = undefined
+          }
           sug.suggestedInput = reroute.name
           sug.suggestedInputId = reroute.id
           sug.suggestedDeviceId = reroute.deviceId || ''
