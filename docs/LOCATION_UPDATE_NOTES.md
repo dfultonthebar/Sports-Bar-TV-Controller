@@ -46,6 +46,17 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-06-28 — v2.83.6 — security: patch undici + form-data HIGH CVEs (overrides)
+
+- **Risk: GO.** Dependency override only — no source/schema/env change, no native
+  rebuild (both pure-JS transitive deps). Propagates via `npm ci` on auto-update.
+- **What:** root `package.json` `overrides` pins undici `^7.28.0` + form-data
+  `^4.0.6`, clearing all 3 HIGH npm vulns (undici TLS-bypass + Set-Cookie
+  injection; form-data CRLF injection). Done via overrides because
+  `npm audit fix` is guarded (would downgrade next/drizzle-kit/next-auth). Now
+  0 HIGH / 0 CRITICAL; 5 moderates intentionally left (v2.55.13 auth chain).
+- **Operator action:** none. Verified build 29/29 + health/login 200.
+
 ### 2026-06-28 — v2.83.5 — fleet-status "behind vs stuck" + broader LG pairing token
 
 - **Risk: GO.** Two self-contained code changes, no schema/deps/env.
