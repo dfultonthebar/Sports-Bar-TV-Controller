@@ -46,6 +46,25 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-06-28 — v2.83.5 — fleet-status "behind vs stuck" + broader LG pairing token
+
+- **Risk: GO.** Two self-contained code changes, no schema/deps/env.
+- **Fleet-status:** `/api/fleet/status` no longer flags a location `stuck` on
+  version distance alone — `stuck` now needs a real failure signal (verify-install
+  failed, or behind + no successful auto-update heartbeat in 72h). A behind box
+  with a fresh heartbeat reads `warning — catching up`. Kills the false-alarm
+  class that auto-filed the BOUNDPOND/GRAPES recovery todo.
+- **LG pairing:** broader webOS manifest (standard lgtv2 perm set) so pairing can
+  read the TV's model/serial/firmware (old 4-perm token → 401). Model saved to
+  `NetworkTVDevice.model`. **Optional:** re-pair existing LG TVs once to capture
+  model; old token still controls them.
+- **Operator action:** none required. Re-pair LG TVs only if you want model info.
+
+### 2026-06-28 — v2.83.4 — bartender docs: "which fix?" router + wireless-mic RF-banner refresh
+
+- **Risk: GO. Docs-only** (docs/bartender-help/). No code/schema/deps. New
+  fixing-wrong-tv-input.md router + MIC_NOT_WORKING.md RF-banner/clean-freq note.
+
 ### 2026-06-28 — v2.83.3 — auto-update lock-leak fix + Fire TV preset-list auto-refresh
 
 - **Risk: GO.** One shell fix in `scripts/auto-update.sh` + one additive

@@ -6,6 +6,29 @@
 import { BaseTVClient } from './base-client'
 import { CommandResult, TVDeviceConfig } from '../types'
 
+// Broad webOS pairing manifest. The original 4-permission set
+// (CONTROL_POWER/INPUT/AUDIO + READ_POWER_STATE) was enough to power/route a TV
+// but caused `ssap://system/getSystemInfo` to return 401 — so model / serial /
+// firmware reads failed (operator asked to "do a broader token" so pairing can
+// capture the TV model). This is the standard community lgtv2 permission set
+// used by Home Assistant / openHAB integrations; it adds the READ_* scopes that
+// unlock system-info + input/app reads. Over-requesting is harmless — the TV
+// shows the same one-time "Allow device" prompt regardless of list length.
+// NOTE: broadening the manifest changes what's granted, so a TV paired under the
+// old 4-perm token must be RE-PAIRED to gain the new read scopes (its stored
+// clientKey still works for control, just not the new reads).
+const LG_PERMISSIONS = [
+  'LAUNCH', 'LAUNCH_WEBAPP', 'APP_TO_APP', 'CLOSE', 'TEST_OPEN', 'TEST_PROTECTED',
+  'CONTROL_AUDIO', 'CONTROL_DISPLAY', 'CONTROL_INPUT_JOYSTICK',
+  'CONTROL_INPUT_MEDIA_RECORDING', 'CONTROL_INPUT_MEDIA_PLAYBACK', 'CONTROL_INPUT_TV',
+  'CONTROL_POWER', 'READ_APP_STATUS', 'READ_CURRENT_CHANNEL', 'READ_INPUT_DEVICE_LIST',
+  'READ_NETWORK_STATE', 'READ_RUNNING_APPS', 'READ_TV_CHANNEL_LIST',
+  'WRITE_NOTIFICATION_TOAST', 'READ_POWER_STATE', 'READ_COUNTRY_INFO', 'READ_SETTINGS',
+  'CONTROL_TV_SCREEN', 'CONTROL_TV_STANBY', 'CONTROL_FAVORITE_GROUP', 'CONTROL_USER_INFO',
+  'CONTROL_TIMER_INFO', 'STB_INTERNAL_CONNECTION', 'READ_TV_CURRENT_TIME',
+  'READ_TVS_INFORMATION', 'CONTROL_TV_POWER', 'CONTROL_WOL',
+]
+
 // WebSocket imported dynamically to avoid bundling issues
 let WebSocket: any
 
@@ -62,7 +85,7 @@ export class LGTVClient extends BaseTVClient {
           pairingType: 'PROMPT',
           manifest: {
             manifestVersion: 1,
-            permissions: ['CONTROL_POWER', 'CONTROL_INPUT_TV', 'CONTROL_AUDIO', 'READ_POWER_STATE'],
+            permissions: LG_PERMISSIONS,
           },
         }
 
@@ -125,7 +148,7 @@ export class LGTVClient extends BaseTVClient {
             pairingType: 'PROMPT',
             manifest: {
               manifestVersion: 1,
-              permissions: ['CONTROL_POWER', 'CONTROL_INPUT_TV', 'CONTROL_AUDIO', 'READ_POWER_STATE'],
+              permissions: LG_PERMISSIONS,
             },
           },
         }))
