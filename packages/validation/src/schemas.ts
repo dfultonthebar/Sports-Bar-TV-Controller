@@ -402,8 +402,9 @@ export const irCommandSendSchema = z.object({
 export const audioControlSchema = z.object({
   processorId: z.string().uuid(),
   command: z.object({
-    action: z.enum(['volume', 'mute', 'unmute', 'source', 'scene', 'message', 'combine', 'output-volume']),
+    action: z.enum(['volume', 'mute', 'unmute', 'source', 'scene', 'message', 'combine', 'output-volume', 'group-volume']),
     zone: z.number().int().min(1).max(16).optional(),
+    group: z.number().int().min(1).max(16).optional(),
     value: z.union([z.string(), z.number(), z.boolean()]).optional(),
     zones: z.array(z.number().int().min(1).max(16)).optional(),
     sceneId: z.number().int().optional(),
