@@ -35,6 +35,37 @@ is the archive.
 
 ---
 
+## v2.83.3 — auto-update lock-leak fix + Fire TV preset-list auto-refresh (2026-06-28)
+
+**Required manual steps:** NONE. Both changes activate automatically (the lock
+fix on the next auto-update run; the Fire TV refresh on the next PM2 start).
+
+**1. auto-update.sh lock-leak fix (the important one).** `scripts/auto-update.sh`
+leaked `/tmp/sports-bar-auto-update.lock` on a clean SUCCESS: it closed the flock
+FD but left the lock FILE on disk. When `pm2 restart` respawns the pm2 God daemon
+mid-update, the daemon inherits our open FD 200 and keeps the old inode
+flock-held after we exit — so the next timer-fired run's `flock -n` fails on that
+inode and the orphan-sweep (which greps for a live `auto-update.sh`, not pm2)
+misclassifies it. Result: the fleet sits stale for hours until an operator
+manually `rm`s the lock (this is what stranded all 5 boxes at the 2026-06-28
+13:32 roll). Fix: a new `_release_lock()` helper now removes the lock FILE on
+every exit path (both EXIT traps), forcing the next run to create a fresh inode.
+**If you find a box stuck not updating, the stopgap is still `rm -rf
+/tmp/sports-bar-auto-update.lock*` + re-trigger — but after v2.83.3 lands it
+should stop recurring.**
+
+**2. Fire TV preset-list auto-refresh.** Each Fire TV box's scheduler "preset
+list" is its installed-app list in `DeviceSubscription` (the firetv scheduler
+path picks a `streamingAppId` from it). Nothing re-polled these, so they went
+months stale (Holmgren's were last scanned 2026-04-25; one box sat empty after a
+swap). New `apps/web/src/lib/firetv-subscription-refresh.ts` +
+`instrumentation.ts` wiring re-scans all Fire TV boxes over ADB at boot+2min then
+every 12h. Failure-isolated: a box that's off marks only its own row
+pollStatus=error and preserves its last-good app list. No action needed — verify
+in `/device-config` or `SELECT deviceName, lastPolled FROM DeviceSubscription`.
+
+---
+
 ## v2.83.2 — Hermes shadow Checkpoint C: evidence-grounded + hard-fail gate (2026-06-28)
 
 **Required manual steps:** NONE. Advisory-only change to the auto-update Hermes
