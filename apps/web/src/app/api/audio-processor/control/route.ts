@@ -14,8 +14,9 @@ import { validateRequestBody, validateQueryParams, validatePathParams, Validatio
 import { HARDWARE_CONFIG } from '@/lib/hardware-config'
 
 interface ControlCommand {
-  action: 'volume' | 'mute' | 'source' | 'scene' | 'message' | 'combine' | 'output-volume'
+  action: 'volume' | 'mute' | 'source' | 'scene' | 'message' | 'combine' | 'output-volume' | 'group-volume'
   zone?: number
+  group?: number  // for group-volume action (1-based; Atlas index = group - 1)
   value?: string | number | boolean
   zones?: number[]  // for room combine
   sceneId?: number
@@ -104,6 +105,9 @@ export async function POST(request: NextRequest) {
         break
       case 'output-volume':
         result = await setZoneOutputVolume(processor, command.zone!, command.outputIndex!, command.value as number, command.parameterName)
+        break
+      case 'group-volume':
+        result = await setGroupVolumeAtlas(processor, command.group!, command.value as number)
         break
       case 'mute':
         result = await setZoneMute(processor, command.zone!, command.value as boolean)
@@ -388,6 +392,40 @@ async function setZoneOutputVolume(processor: any, zone: number, outputIndex: nu
     timestamp: new Date(), 
     atlasResponse: result 
   }
+}
+
+/**
+ * Set group volume (Atlas GROUP, mirrors setZoneVolume for zones).
+ * Writes GroupGain_<n> only — a SEPARATE Atlas param from GroupMute_<n> — so
+ * a volume-set never changes the group's mute state.
+ * @param processor Audio processor details
+ * @param group Group number (1-based from UI/API)
+ * @param volume Volume percentage (0-100)
+ */
+async function setGroupVolumeAtlas(processor: any, group: number, volume: number): Promise<any> {
+  // Group numbers are 1-based in API, 0-based in Atlas protocol
+  const groupIndex = group - 1
+
+  atlasLogger.info('GROUP_VOLUME', `Setting group ${group} volume to ${volume}%`, {
+    ipAddress: processor.ipAddress,
+    tcpPort: processor.tcpPort,
+    group,
+    groupIndex,
+    volume
+  })
+
+  const result = await executeAtlasCommand(
+    { ipAddress: processor.ipAddress, tcpPort: processor.tcpPort || HARDWARE_CONFIG.atlas.tcpPort },
+    async (client) => await client.setGroupVolume(groupIndex, volume, true)
+  )
+
+  if (!result.success) {
+    atlasLogger.error('GROUP_VOLUME', 'Failed to set group volume', { error: result.error, group, volume })
+    throw new Error(result.error || 'Failed to set group volume')
+  }
+
+  atlasLogger.info('GROUP_VOLUME', 'Successfully set group volume', { group, volume, atlasResponse: result })
+  return { group, volume, timestamp: new Date(), atlasResponse: result }
 }
 
 /**
