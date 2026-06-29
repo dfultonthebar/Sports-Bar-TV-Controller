@@ -32,6 +32,7 @@ export type SchedulerComponent =
   | 'override-digest'
   | 'failure-sweep'
   | 'ai-suggest'
+  | 'morning-reset'
 
 export type SchedulerOperation =
   | 'tune'
@@ -57,6 +58,7 @@ export type SchedulerOperation =
   | 'cluster'
   | 'add'
   | 'remove'
+  | 'daily-default-reset'
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error'
 
