@@ -46,6 +46,25 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-06-28 — v2.83.3 — auto-update lock-leak fix + Fire TV preset-list auto-refresh
+
+- **Risk: GO.** One shell fix in `scripts/auto-update.sh` + one additive
+  background job in the web app. No schema, no deps, no env, no API contract
+  change.
+- **Lock-leak fix:** auto-update left `/tmp/sports-bar-auto-update.lock` on disk
+  after a clean SUCCESS; the pm2 daemon (respawned during restart) inherits the
+  flock FD and keeps the old inode locked, so the next run's `flock -n` fails and
+  the box silently stops updating (what froze all 5 boxes at the 13:32 roll).
+  New `_release_lock()` removes the lock FILE on every exit path → next run gets
+  a fresh inode. **Self-healing once landed; manual stopgap is still
+  `rm -rf /tmp/sports-bar-auto-update.lock*` + re-trigger.**
+- **Fire TV refresh:** new `firetv-subscription-refresh.ts` re-scans each Fire TV
+  box's installed-app list (its scheduler preset list in `DeviceSubscription`) at
+  boot+2min then every 12h. Failure-isolated (a box that's off keeps its
+  last-good list). Fixes lists going months stale.
+- **Operator action:** none. Lock fix applies on next auto-update; refresh starts
+  on next PM2 boot.
+
 ### 2026-06-28 — v2.83.2 — Hermes shadow Checkpoint C evidence-grounded + hard-fail gate
 
 - **Risk: GO (advisory-only).** Touches only the auto-update Hermes SHADOW
