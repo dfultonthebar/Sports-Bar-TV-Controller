@@ -467,11 +467,27 @@ PY
 # ---------------------------------------------------------------------------
 # Cleanup trap — runs on every exit, success or fail
 # ---------------------------------------------------------------------------
+# v2.83.3 — release the lock fully: drop the PID file, CLOSE our flock FD, AND
+# remove the lock FILE itself. The file-removal is the fix for a silent
+# fleet-freeze: on a clean SUCCESS the old code closed FD 200 (releasing the
+# advisory lock) but left /tmp/sports-bar-auto-update.lock on disk. During the
+# update we run `pm2 restart`, and when pm2 respawns its God daemon that daemon
+# INHERITS our still-open FD 200 — so the old inode stays flock-held by the
+# daemon after we exit. The next timer-fired run's `flock -n` then fails on that
+# inode and the orphan-sweep (which greps for a live `auto-update.sh`, not pm2)
+# misclassifies it → the run aborts and the fleet sits stale for hours until an
+# operator manually `rm`s the lock. Removing the path here forces the next run's
+# `exec 200>"$LOCK_FILE"` to create a FRESH inode and flock THAT; the daemon's
+# stale hold on the now-unlinked old inode becomes harmless.
+_release_lock() {
+  rm -f "$PID_FILE" 2>/dev/null || true
+  exec 200>&- 2>/dev/null || true
+  rm -f "$LOCK_FILE" 2>/dev/null || true
+}
 cleanup_on_error() {
   local exit_code=$?
   if [ "$exit_code" -eq 0 ]; then
-    rm -f "$PID_FILE" 2>/dev/null || true
-    exec 200>&- 2>/dev/null || true
+    _release_lock
     return
   fi
   log "Trap fired: exit code=$exit_code, step=$CURRENT_STEP"
@@ -497,8 +513,7 @@ cleanup_on_error() {
       state_update "fail" "Aborted at $CURRENT_STEP"
       write_summary_json "fail" "Aborted at $CURRENT_STEP before state change"
       # v2.52.3: no rollback children to inherit FD 200 → safe to release now
-      rm -f "$PID_FILE" 2>/dev/null || true
-      exec 200>&- 2>/dev/null || true
+      _release_lock
       return
       ;;
   esac
@@ -509,8 +524,7 @@ cleanup_on_error() {
     [ -n "$HISTORY_ID" ] && history_update_result "fail" "CRITICAL: no rollback tag"
     write_summary_json "fail" "CRITICAL: no rollback tag, step=$CURRENT_STEP"
     # v2.52.3: no rollback ran → safe to release
-    rm -f "$PID_FILE" 2>/dev/null || true
-    exec 200>&- 2>/dev/null || true
+    _release_lock
     return
   fi
 
@@ -528,14 +542,12 @@ cleanup_on_error() {
     write_summary_json "fail" "Rollback failed at step: $CURRENT_STEP (rollback exit $rc)"
     # v2.52.3: still release lock+PID before exit 99 — rollback already
     # finished, no children to inherit FD 200.
-    rm -f "$PID_FILE" 2>/dev/null || true
-    exec 200>&- 2>/dev/null || true
+    _release_lock
     exit 99
   fi
   # v2.52.3: NOW it is safe to release the lock — rollback children have
   # finished, any FD 200 inheritors have exited.
-  rm -f "$PID_FILE" 2>/dev/null || true
-  exec 200>&- 2>/dev/null || true
+  _release_lock
 }
 trap cleanup_on_error EXIT
 
@@ -1638,7 +1650,9 @@ if [ "${PIPESTATUS[0]}" -ne 0 ]; then
     # ALL signals — a SIGTERM between the trap clear and the exit would
     # skip cleanup entirely. Replace with an explicit cleanup-only trap
     # that still runs PID+FD release but skips rollback.
-    trap 'rm -f "$PID_FILE" 2>/dev/null || true; exec 200>&- 2>/dev/null || true' EXIT
+    # v2.83.3: route through _release_lock so this path also removes the lock
+    # FILE (not just PID+FD) — same fleet-freeze fix as the main trap.
+    trap '_release_lock' EXIT
     exit 2
   fi
 fi
