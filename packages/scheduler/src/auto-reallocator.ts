@@ -29,8 +29,16 @@ interface ZoneLevelDefault {
   level: number        // 0-100 percent
 }
 
+interface GroupLevelDefault {
+  processorId: string
+  groupNumber: number  // DB 0-based AudioGroup.groupNumber
+  groupName: string
+  level: number        // 0-100 percent
+}
+
 interface AudioDefaultsConfig {
   zoneLevels?: ZoneLevelDefault[]
+  groupLevels?: GroupLevelDefault[]
   audioRouting?: Record<string, number>  // audio-matrix outputNum -> default matrix input
 }
 
@@ -69,9 +77,14 @@ export interface MorningResetStats {
   zonesSet: number;              // set (or, in dryRun, WOULD set)
   zonesSkipped: number;          // non-Atlas processor (not wired yet)
   zonesFailed: number;
+  // v2.87.0 — per-GROUP level counters (Stoneyard: audio managed by group)
+  groupsConsidered: number;
+  groupsSet: number;             // set (or, in dryRun, WOULD set)
+  groupsSkipped: number;         // non-Atlas processor (not wired yet)
+  groupsFailed: number;
   errors: number;
   plan: Array<{
-    kind: 'route' | 'tune' | 'audio-route' | 'zone-level';
+    kind: 'route' | 'tune' | 'audio-route' | 'zone-level' | 'group-level';
     output?: number;
     inputNumber?: number;
     matrixInput?: number;
@@ -79,8 +92,9 @@ export interface MorningResetStats {
     deviceId?: string;
     processorId?: string;
     zoneNumber?: number;         // 1-based Atlas zone (for zone-level plan rows)
+    groupNumber?: number;        // 1-based Atlas group (for group-level plan rows)
     level?: number;
-    muted?: boolean;             // current mute state the reset preserves (zone-level rows)
+    muted?: boolean;             // current mute state the reset preserves (zone/group-level rows)
     channelNumber?: string;
     label?: string;
     skipped?: string;
@@ -1365,6 +1379,10 @@ class AutoReallocator {
       zonesSet: 0,
       zonesSkipped: 0,
       zonesFailed: 0,
+      groupsConsidered: 0,
+      groupsSet: 0,
+      groupsSkipped: 0,
+      groupsFailed: 0,
       errors: 0,
       plan: [],
     };
@@ -1856,16 +1874,121 @@ class AutoReallocator {
         }
       }
 
+      // (c) Atlas GROUP default levels (v2.87.0). Stoneyard locations manage
+      // audio by GROUP rather than individual zone. Mirrors the zone pass
+      // exactly, including the mute-preservation rule: read the group's
+      // current mute, set the level UNDER it, NEVER unmute (the bar is closed
+      // at 4 AM). setGroupVolume writes GroupGain_<n> only — separate from
+      // GroupMute_<n> — so the level command provably cannot unmute. Groups
+      // are NOT drop-watched (atlas-drop-watcher polls ZoneGain_<n> only), so
+      // no drop-watcher marker is required for groups; we still write an
+      // audio-default-reset SchedulerLog row per group for the audit trail.
+      const groupLevels = audioDefaults.groupLevels || [];
+      if (groupLevels.length > 0) {
+        let procTypeById = new Map<string, string>();
+        try {
+          const procRows = await db.select().from(schema.audioProcessors).all();
+          for (const pr of procRows) procTypeById.set(pr.id, pr.processorType || 'atlas');
+        } catch (procErr: any) {
+          logger.warn(`${tag} Could not load audio processors for group-level reset (non-fatal):`, { error: procErr.message });
+        }
+
+        for (const gl of groupLevels) {
+          if (!gl || !gl.processorId || !Number.isFinite(gl.level)) continue;
+          stats.groupsConsidered++;
+
+          const procType = procTypeById.get(gl.processorId);
+          if (procType && procType !== 'atlas') {
+            stats.groupsSkipped++;
+            stats.plan.push({ kind: 'group-level', processorId: gl.processorId, groupNumber: gl.groupNumber + 1, level: gl.level, label: gl.groupName, skipped: 'non_atlas_processor' });
+            logger.info(`${tag} Skipping group "${gl.groupName}" — processor type "${procType}" not wired for group-level reset yet`);
+            continue;
+          }
+
+          // Atlas control API is 1-based; DB groupNumber is 0-based.
+          const atlasGroup = gl.groupNumber + 1;
+
+          // Mute preservation (same rule as zones) — read current mute purely
+          // to LOG the preserved decision; the control call below is
+          // volume-only and issues no mute/unmute. A muted group stays muted.
+          let wasMuted: boolean | null = null;
+          try {
+            const groupRow = await db.select().from(schema.audioGroups)
+              .where(and(
+                eq(schema.audioGroups.processorId, gl.processorId),
+                eq(schema.audioGroups.groupNumber, gl.groupNumber),
+              ))
+              .limit(1).get();
+            if (groupRow) wasMuted = !!groupRow.muted;
+          } catch (muteErr: any) {
+            logger.warn(`${tag} Could not read mute state for group "${gl.groupName}" (non-fatal; level set only):`, { error: muteErr.message });
+          }
+          const muteNote = wasMuted === null
+            ? 'mute unknown — level only, no unmute'
+            : (wasMuted ? 'muted → kept muted, level only (no unmute)' : 'unmuted → level only');
+
+          stats.plan.push({ kind: 'group-level', processorId: gl.processorId, groupNumber: atlasGroup, level: gl.level, label: gl.groupName, muted: wasMuted ?? undefined });
+
+          if (dryRun) {
+            stats.groupsSet++;
+            logger.info(`${tag} WOULD set group "${gl.groupName}" (Atlas group ${atlasGroup}) → ${gl.level}% (${muteNote})`);
+            continue;
+          }
+
+          // Audit row (groups are not drop-watched, so this is informational,
+          // not a drop-watcher suppression marker).
+          await schedulerLogger.info(
+            'morning-reset',
+            'audio-default-reset',
+            `Set group "${gl.groupName}" (Atlas group ${atlasGroup}) to default level ${gl.level}% (${muteNote})`,
+            cid,
+            { metadata: { trigger, processorId: gl.processorId, atlasGroup, groupName: gl.groupName, level: gl.level, wasMuted } },
+          );
+
+          try {
+            const ctrlResponse = await fetch(`http://127.0.0.1:${API_PORT}/api/audio-processor/control`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                processorId: gl.processorId,
+                command: { action: 'group-volume', group: atlasGroup, value: gl.level },
+              }),
+            });
+            const ctrlHw = await parseHardwareResult(ctrlResponse);
+            if (ctrlHw.ok) {
+              stats.groupsSet++;
+              logger.info(`${tag} Set group "${gl.groupName}" (Atlas group ${atlasGroup}) → ${gl.level}% (${muteNote})`);
+            } else {
+              stats.groupsFailed++;
+              await schedulerLogger.warn(
+                'morning-reset',
+                'daily-default-reset',
+                `Failed to set group "${gl.groupName}" (Atlas group ${atlasGroup}) to ${gl.level}%: ${ctrlHw.body?.error || ctrlResponse.statusText}`,
+                cid,
+                { metadata: { trigger, processorId: gl.processorId, atlasGroup, httpStatus: ctrlResponse.status } },
+              );
+              logger.warn(`${tag} Failed to set group "${gl.groupName}" (Atlas group ${atlasGroup}): ${ctrlHw.body?.error || ctrlResponse.statusText}`);
+            }
+          } catch (groupErr: any) {
+            stats.groupsFailed++;
+            stats.errors++;
+            logger.error(`${tag} Error setting group "${gl.groupName}" (Atlas group ${atlasGroup}):`, { error: groupErr.message });
+          }
+
+          await new Promise((resolve) => setTimeout(resolve, 250));
+        }
+      }
+
       // Step 5: Summary row to SchedulerLog so the operator can confirm it ran.
       await schedulerLogger.info(
         'morning-reset',
         'daily-default-reset',
-        `Morning reset complete (trigger=${trigger}, dryRun=${dryRun}) — ${stats.outputsReverted} output(s) ${dryRun ? 'would be ' : ''}reverted, ${stats.boxesTuned} box(es) ${dryRun ? 'would be ' : ''}tuned, ${stats.audioOutputsRouted} audio output(s) ${dryRun ? 'would be ' : ''}routed, ${stats.zonesSet} zone level(s) ${dryRun ? 'would be ' : ''}set, ${stats.outputsSkippedLive} output(s) + ${stats.boxesSkippedLive} box(es) held for live games`,
+        `Morning reset complete (trigger=${trigger}, dryRun=${dryRun}) — ${stats.outputsReverted} output(s) ${dryRun ? 'would be ' : ''}reverted, ${stats.boxesTuned} box(es) ${dryRun ? 'would be ' : ''}tuned, ${stats.audioOutputsRouted} audio output(s) ${dryRun ? 'would be ' : ''}routed, ${stats.zonesSet} zone level(s) ${dryRun ? 'would be ' : ''}set, ${stats.groupsSet} group level(s) ${dryRun ? 'would be ' : ''}set, ${stats.outputsSkippedLive} output(s) + ${stats.boxesSkippedLive} box(es) held for live games`,
         cid,
         { metadata: { ...stats, plan: undefined } },
       );
       logger.info(
-        `${tag} Complete — outputs reverted=${stats.outputsReverted}/${stats.outputsConsidered}, boxes tuned=${stats.boxesTuned}/${stats.boxesConsidered}, audio outputs routed=${stats.audioOutputsRouted}/${stats.audioOutputsConsidered}, zone levels set=${stats.zonesSet}/${stats.zonesConsidered} (skipped non-atlas=${stats.zonesSkipped}, failed=${stats.zonesFailed}), live-held outputs=${stats.outputsSkippedLive} boxes=${stats.boxesSkippedLive}, no-default outputs=${stats.outputsSkippedNoDefault}, unresolved boxes=${stats.boxesUnresolved}`,
+        `${tag} Complete — outputs reverted=${stats.outputsReverted}/${stats.outputsConsidered}, boxes tuned=${stats.boxesTuned}/${stats.boxesConsidered}, audio outputs routed=${stats.audioOutputsRouted}/${stats.audioOutputsConsidered}, zone levels set=${stats.zonesSet}/${stats.zonesConsidered} (skipped non-atlas=${stats.zonesSkipped}, failed=${stats.zonesFailed}), group levels set=${stats.groupsSet}/${stats.groupsConsidered} (skipped non-atlas=${stats.groupsSkipped}, failed=${stats.groupsFailed}), live-held outputs=${stats.outputsSkippedLive} boxes=${stats.boxesSkippedLive}, no-default outputs=${stats.outputsSkippedNoDefault}, unresolved boxes=${stats.boxesUnresolved}`,
       );
 
       return stats;

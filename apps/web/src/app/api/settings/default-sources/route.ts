@@ -51,8 +51,18 @@ const zoneLevelDefaultSchema = z.object({
   level: z.number().int().min(0).max(100),
 })
 
+// Per-Atlas-GROUP default level (v2.87.0). Stoneyard locations manage audio
+// by GROUP rather than individual zone. Mirrors zoneLevels exactly.
+const groupLevelDefaultSchema = z.object({
+  processorId: z.string(),
+  groupNumber: z.number().int().min(0), // DB 0-based AudioGroup.groupNumber
+  groupName: z.string(),
+  level: z.number().int().min(0).max(100),
+})
+
 const audioDefaultsSchema = z.object({
   zoneLevels: z.array(zoneLevelDefaultSchema).optional(),
+  groupLevels: z.array(groupLevelDefaultSchema).optional(),
   audioRouting: z.record(z.string(), z.number().int().min(1)).optional(),
 })
 
@@ -86,8 +96,16 @@ interface ZoneLevelDefault {
   level: number
 }
 
+interface GroupLevelDefault {
+  processorId: string
+  groupNumber: number
+  groupName: string
+  level: number
+}
+
 interface AudioDefaultsConfig {
   zoneLevels?: ZoneLevelDefault[]
+  groupLevels?: GroupLevelDefault[]
   audioRouting?: Record<string, number>
 }
 
