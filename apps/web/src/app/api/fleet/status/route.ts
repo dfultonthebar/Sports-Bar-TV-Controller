@@ -177,37 +177,10 @@ async function buildLocationEntry(branch: string, mainVersion: string | null): P
   const ageHours = lastTs > 0 ? (now - lastTs) / 3600 : Infinity
   const vBehind = versionsBehind(version, mainVersion)
 
-  let staleness: FleetLocation['staleness'] = 'healthy'
-  let stalenessReason = 'current with main'
-
-  if (lastTs === 0) {
-    staleness = 'unknown'
-    stalenessReason = 'no commits found on branch'
-  } else if (vBehind === null) {
-    staleness = 'unknown'
-    stalenessReason = 'could not parse version'
-  } else if (vBehind >= 100 || vBehind >= 5 || ageHours > 72) {
-    // Major-version drift OR 5+ minor bumps behind OR 3+ days stale
-    staleness = 'stuck'
-    const parts: string[] = []
-    if (vBehind >= 100) parts.push('major version behind')
-    else if (vBehind >= 5) parts.push(`${vBehind} minor versions behind main`)
-    if (ageHours > 72) parts.push(`last commit ${Math.floor(ageHours / 24)}d ago`)
-    stalenessReason = parts.join(', ') || `stuck at v${version}`
-  } else if (vBehind >= 1 || ageHours > 48) {
-    staleness = 'warning'
-    const parts: string[] = []
-    if (vBehind >= 1) parts.push(`${vBehind} version${vBehind === 1 ? '' : 's'} behind main (v${mainVersion})`)
-    if (ageHours > 48) parts.push(`last commit ${Math.floor(ageHours)}h ago`)
-    stalenessReason = parts.join(', ') || 'behind main'
-  } else if (version && mainVersion && version === mainVersion && commitsBehind > 0) {
-    // Version matches, but some cherry-pick SHA drift — informational only, still healthy.
-    stalenessReason = `current with main (cherry-pick SHA drift, ${commitsBehind} commits)`
-  } else if (version && mainVersion && version === mainVersion) {
-    stalenessReason = 'current with main'
-  }
-
-  // Parse heartbeat file (v2.25.2+) if present
+  // Parse heartbeat file (v2.25.2+) BEFORE classifying — the heartbeat
+  // (.auto-update-last-success.json, pushed to git on every successful run) is
+  // what lets us tell "behind but auto-update is working" from "auto-update is
+  // actually broken". The classification below depends on it.
   let heartbeat: FleetLocation['heartbeat'] = null
   if (heartbeatRaw) {
     try {
@@ -225,6 +198,80 @@ async function buildLocationEntry(branch: string, mainVersion: string | null): P
         osKernel: typeof os.kernel === 'string' && os.kernel !== 'unknown' ? os.kernel : null,
       }
     } catch { /* ignore malformed */ }
+  }
+
+  // Staleness classification (v2.83.5 — "behind" is NOT "stuck").
+  //
+  // The old logic flagged 'stuck' on version distance alone (>=5 minor behind,
+  // or 3+ days since last commit). That cried wolf: a box can be several
+  // versions behind yet perfectly healthy — it just hasn't run the newest
+  // update yet, or we caught it mid-roll. That false alarm (BOUNDPOND/GRAPES,
+  // 2026-06-28) sent us chasing boxes that were fine and auto-filed a recovery
+  // todo with dangerous drafted commands.
+  //
+  // New rule: 'stuck' requires a REAL failure signal, not just distance:
+  //   - the last auto-update's verify-install FAILED or was partial, OR
+  //   - the box is behind AND has had NO successful auto-update heartbeat in
+  //     STUCK_HEARTBEAT_HOURS (the timer is firing but never completing — the
+  //     exact shape of the v2.83.3 lock-leak freeze).
+  // Version distance with a FRESH success heartbeat → 'warning' (catching up),
+  // never 'stuck'. PRIMARY signal stays version drift (cherry-pick SHAs make
+  // commitsBehind unreliable); the heartbeat is the corroborating health check.
+  const STUCK_HEARTBEAT_HOURS = 72
+  const hbAgeHours =
+    heartbeat && heartbeat.successAtUnix > 0 ? (now - heartbeat.successAtUnix) / 3600 : Infinity
+  const hbPhrase = Number.isFinite(hbAgeHours)
+    ? `no successful auto-update in ${Math.floor(hbAgeHours / 24)}d`
+    : 'no auto-update heartbeat on record'
+  const verifyFailed =
+    !!heartbeat &&
+    ((!!heartbeat.verifyInstallStatus && heartbeat.verifyInstallStatus.toUpperCase() !== 'PASS') ||
+      (heartbeat.verifyInstallPassed != null &&
+        heartbeat.verifyInstallTotal != null &&
+        heartbeat.verifyInstallPassed < heartbeat.verifyInstallTotal))
+  const notUpdating = hbAgeHours > STUCK_HEARTBEAT_HOURS
+
+  let staleness: FleetLocation['staleness'] = 'healthy'
+  let stalenessReason = 'current with main'
+
+  if (lastTs === 0) {
+    staleness = 'unknown'
+    stalenessReason = 'no commits found on branch'
+  } else if (vBehind === null) {
+    staleness = 'unknown'
+    stalenessReason = 'could not parse version'
+  } else if (verifyFailed) {
+    // Hard failure signal — the last update's verify-install did not pass.
+    staleness = 'stuck'
+    stalenessReason =
+      `auto-update verify-install ${heartbeat!.verifyInstallStatus ?? 'incomplete'}` +
+      (heartbeat!.verifyInstallPassed != null && heartbeat!.verifyInstallTotal != null
+        ? ` (${heartbeat!.verifyInstallPassed}/${heartbeat!.verifyInstallTotal})`
+        : '')
+  } else if (vBehind >= 1 && notUpdating) {
+    // Behind AND no successful auto-update for days → genuinely stuck.
+    staleness = 'stuck'
+    const dist = vBehind >= 100 ? 'major version behind' : `${vBehind} version${vBehind === 1 ? '' : 's'} behind`
+    stalenessReason = `${dist} + ${hbPhrase}`
+  } else if (vBehind >= 1) {
+    // Behind but the heartbeat is fresh — updates ARE working, just catching up.
+    staleness = 'warning'
+    const dist =
+      vBehind >= 100
+        ? 'major version behind main'
+        : `${vBehind} version${vBehind === 1 ? '' : 's'} behind main (v${mainVersion})`
+    stalenessReason = `${dist} — auto-update healthy, catching up`
+  } else if (notUpdating && ageHours > 72) {
+    // On the latest version, but the branch hasn't moved AND no recent
+    // successful update. Not 'stuck' (it's current) but worth a flag — the
+    // timer may have quietly stopped.
+    staleness = 'warning'
+    stalenessReason = `on latest version but ${hbPhrase}`
+  } else if (version && mainVersion && version === mainVersion && commitsBehind > 0) {
+    // Version matches, but some cherry-pick SHA drift — informational only, still healthy.
+    stalenessReason = `current with main (cherry-pick SHA drift, ${commitsBehind} commits)`
+  } else if (version && mainVersion && version === mainVersion) {
+    stalenessReason = 'current with main'
   }
 
   return {
