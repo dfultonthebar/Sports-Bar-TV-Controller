@@ -46,6 +46,14 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-06-29 — v2.84.3 / v2.85.0 / v2.86.0 — luckys hub-name fix, 4 AM morning-reset, default audio levels
+
+- **Risk: GO.** Scheduler feature + verify-install fix. No schema/deps/env.
+- **v2.84.3** — `verify-install.sh` `hub_agent_registered` derives the expected hub agent slug from the **git branch** (`location/<slug>`) instead of the typo-prone free-text `LOCATION_NAME` → fixes the false `WARN: no agent for lucky1313` (luckys registers as `agent-luckys-1313`); robust for all locations.
+- **v2.85.0 — daily 4 AM (CT) morning-reset to defaults.** In-app scheduler job on every box: at ~04:00 CT it reverts every video TV output to its default input + tunes every cable/DirecTV box to its default channel (reads `SystemSettings.default_sources`; live-game protected; once-per-day guarded). Manual trigger: `POST /api/scheduling/morning-reset {dryRun}`. **Per-location dep:** only resets outputs/boxes with a configured default — a location with empty `default_sources` is a safe no-op. **Audio-matrix outputs are EXCLUDED** (set `isSchedulingEnabled=0`) so the video pass never routes audio to a video input. Greenville/Appleton currently have no video *routing* defaults → channels-only until their managers set routing in the Schedule-tab defaults UI.
+- **v2.86.0 — default audio levels + source** in the SAME Schedule-tab defaults UI (`DefaultSourceSettings`): per-Atlas-zone 0–100% level + per-audio-output default source. The morning-reset's audio pass (Step 4.5) applies them via the shared Atlas client (`getAtlasClient`, Gotcha #10); the atlas-drop-watcher honors a `morning-reset` marker so deliberate 4 AM level-sets log EXPLAINED, never a false drop alert. **No-op until a manager sets values** (ships with none). Atlas-only for now (dbx/BSS extensible).
+- **Operator action:** none required. Managers populate per-location routing/channel/audio defaults in the Schedule-tab defaults section.
+
 ### 2026-06-29 — v2.84.0–v2.84.2 — AI Suggest Fire TV grounding, schedule-end revert tighten, auto-update finalize fix
 
 - **Risk: GO.** Scheduler/code + one shell fix. No schema/deps/env.
