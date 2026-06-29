@@ -26,6 +26,7 @@ Before you change anything, glance at these three things. They tell you which se
    Tap the **Audio** tab. Look for a small panel that says something like "Wireless Mics" or shows a battery icon for the mic.
    - You see the mic listed with a battery icon = our system can talk to it. The problem is on the mic or the volume.
    - You see "no receiver configured" or nothing at all = that's normal at some locations, skip this step.
+   - **You see a colored warning banner about "RF interference" or "wireless interference"** (usually cyan/blue, near the top of the Audio tab) = the system has already detected something jamming the mic frequency. The mic problem is interference — **jump straight to section 5.** (If the banner also says "SDR-confirmed," the system is doubly sure.)
 
 OK. Now work the sections below in order.
 
@@ -181,6 +182,14 @@ Listen to the mic. Does it sound like one of these?
 - Works fine for 5 seconds, then dies for 5 seconds, then comes back = interference.
 
 If yes, do the steps below. If the mic just sounds quiet or muffled, this isn't the right section — go back to section 3 (volume).
+
+**Check the iPad first — the system may have already found the problem.** On the
+Audio tab, if there's a colored "RF interference" banner, the system detected the
+interference on its own. Some locations also have a **"Suggest a Clean Frequency"**
+button in the Wireless Mics panel — tap it and it'll tell you a clean channel to
+move to. If you see that button, use it: it's faster than the manual Group Scan
+below, and then you just do the IR Sync (section 4) to push the new channel to the
+mic. If there's no such button at your location, do the manual Group Scan:
 
 ### What to do
 
