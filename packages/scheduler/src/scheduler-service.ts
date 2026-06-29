@@ -17,6 +17,7 @@ import { runBananasIngestion } from './bananas-ingestion'
 import { runTicketmasterIngestion } from './ticketmaster-ingestion'
 import { verifyAndRetryRoute, persistVerifyState } from './route-verify'
 import { reportSchedulerToFlywheel } from './flywheel-report'
+import { autoReallocator } from './auto-reallocator'
 
 // Get API port from environment or default to 3001
 const API_PORT = process.env.PORT || 3001
@@ -48,6 +49,10 @@ class SchedulerService {
   private hasDelayedGames = false;
   private lastCleanup: Date | null = null;
   private lastWeeklySummary: Date | null = null;
+  // v2.85.0 — guards the daily 04:00 CT morning-reset so it fires once per day,
+  // not on every poll tick during the 04:00 window. Holds the date-key
+  // (YYYY-M-D in venue tz) of the last day the reset ran.
+  private lastMorningReset: Date | null = null;
   private executingSchedules = new Set<string>();
 
   // v2.31.8 — Hardware/config caches. These rows essentially never change
@@ -134,6 +139,16 @@ class SchedulerService {
     this.registerPoll('runFiretvAppSync', () => this.runFiretvAppSync(), 300000, 60000);
     this.registerPoll('maybeRunCatalogWalk', () => this.maybeRunCatalogWalk(), 300000, 300000);
     this.registerPoll('pollFiretvCurrentApp', () => this.pollFiretvCurrentApp(), 60000, 45000);
+
+    // v2.85.0 — daily 04:00 CT "morning reset to defaults". Polls every
+    // minute and fires once when the venue-local clock is in the 04:00-04:04
+    // window, guarded by lastMorningReset so it runs exactly once per day (not
+    // every minute of that window). Calls autoReallocator.resetAllToDefaults()
+    // which routes every configured output to its default input and tunes every
+    // cable/DirecTV box to its default channel — respecting live-game
+    // protection. Initial delay 120s so it never races first-boot load.
+    this.registerPoll('maybeRunMorningReset', () => { void this.maybeRunMorningReset(); }, 60000, 120000);
+    logger.info('[SCHEDULER] Registered daily 04:00 CT morning-reset job (full revert-to-defaults)');
 
     // #349 Wave 3.7/Hermes — daily contention roll-up. Files ONE operator TODO
     // per ISO week ("N games had no screen") from distribution-engine 'drop'
@@ -448,6 +463,64 @@ class SchedulerService {
   public async triggerCatalogWalkNow() {
     this.lastCatalogWalk = new Date();
     return runFiretvCatalogWalk();
+  }
+
+  /**
+   * v2.85.0 — Decide whether to run the daily 04:00 CT morning reset and
+   * execute if so. Polled every minute. Fires once when the venue-local clock
+   * is in the 04:00-04:04 window (the ±poll-jitter tolerance), guarded by
+   * lastMorningReset (date-key in venue tz) so it runs exactly ONCE per day
+   * rather than every minute of that window. The reset itself (full
+   * revert-to-defaults across all outputs/boxes) lives in
+   * autoReallocator.resetAllToDefaults() and respects live-game protection.
+   */
+  private async maybeRunMorningReset() {
+    const now = new Date();
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: VENUE_TIMEZONE,
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', hour12: false,
+    }).formatToParts(now);
+    const getPart = (t: string) => parts.find((p) => p.type === t)?.value || '0';
+    const localHour = parseInt(getPart('hour'), 10);
+    const localMinute = parseInt(getPart('minute'), 10);
+    const dayKey = `${getPart('year')}-${getPart('month')}-${getPart('day')}`;
+
+    // Only inside the 04:00-04:04 CT window.
+    if (localHour !== 4 || localMinute >= 5) return;
+
+    // Once-per-day guard: compare against the venue-tz date-key of the last run.
+    const lastKey = this.lastMorningReset
+      ? new Intl.DateTimeFormat('en-US', {
+          timeZone: VENUE_TIMEZONE, year: 'numeric', month: '2-digit', day: '2-digit',
+        }).formatToParts(this.lastMorningReset)
+          .reduce((acc: Record<string, string>, p) => { acc[p.type] = p.value; return acc; }, {})
+      : null;
+    const lastDayKey = lastKey ? `${lastKey.year}-${lastKey.month}-${lastKey.day}` : null;
+    if (lastDayKey === dayKey) return;
+
+    this.lastMorningReset = now;
+    logger.info(`[SCHEDULER] ⏰ Triggering daily 04:00 CT morning reset (full revert-to-defaults)`);
+    try {
+      await autoReallocator.resetAllToDefaults({ trigger: 'daily-4am' });
+    } catch (error: any) {
+      logger.error('[SCHEDULER] Morning reset failed:', { error: error.message });
+    }
+  }
+
+  /**
+   * v2.85.0 — Manual trigger for the morning reset. Used by
+   * POST /api/scheduling/morning-reset so the operator can force a
+   * full revert-to-defaults on demand, or verify resolution via dryRun
+   * without issuing any hardware command. Always runs (no time-window /
+   * once-per-day guard); does NOT update lastMorningReset so it can't
+   * suppress the scheduled 4 AM run.
+   */
+  public async triggerMorningResetNow(opts: { dryRun?: boolean } = {}) {
+    return autoReallocator.resetAllToDefaults({
+      dryRun: opts.dryRun === true,
+      trigger: opts.dryRun ? 'manual-dry-run' : 'manual',
+    });
   }
 
   /**
