@@ -46,6 +46,100 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-06-28 — v2.83.6 — security: patch undici + form-data HIGH CVEs (overrides)
+
+- **Risk: GO.** Dependency override only — no source/schema/env change, no native
+  rebuild (both pure-JS transitive deps). Propagates via `npm ci` on auto-update.
+- **What:** root `package.json` `overrides` pins undici `^7.28.0` + form-data
+  `^4.0.6`, clearing all 3 HIGH npm vulns (undici TLS-bypass + Set-Cookie
+  injection; form-data CRLF injection). Done via overrides because
+  `npm audit fix` is guarded (would downgrade next/drizzle-kit/next-auth). Now
+  0 HIGH / 0 CRITICAL; 5 moderates intentionally left (v2.55.13 auth chain).
+- **Operator action:** none. Verified build 29/29 + health/login 200.
+
+### 2026-06-28 — v2.83.5 — fleet-status "behind vs stuck" + broader LG pairing token
+
+- **Risk: GO.** Two self-contained code changes, no schema/deps/env.
+- **Fleet-status:** `/api/fleet/status` no longer flags a location `stuck` on
+  version distance alone — `stuck` now needs a real failure signal (verify-install
+  failed, or behind + no successful auto-update heartbeat in 72h). A behind box
+  with a fresh heartbeat reads `warning — catching up`. Kills the false-alarm
+  class that auto-filed the BOUNDPOND/GRAPES recovery todo.
+- **LG pairing:** broader webOS manifest (standard lgtv2 perm set) so pairing can
+  read the TV's model/serial/firmware (old 4-perm token → 401). Model saved to
+  `NetworkTVDevice.model`. **Optional:** re-pair existing LG TVs once to capture
+  model; old token still controls them.
+- **Operator action:** none required. Re-pair LG TVs only if you want model info.
+
+### 2026-06-28 — v2.83.4 — bartender docs: "which fix?" router + wireless-mic RF-banner refresh
+
+- **Risk: GO. Docs-only** (docs/bartender-help/). No code/schema/deps. New
+  fixing-wrong-tv-input.md router + MIC_NOT_WORKING.md RF-banner/clean-freq note.
+
+### 2026-06-28 — v2.83.3 — auto-update lock-leak fix + Fire TV preset-list auto-refresh
+
+- **Risk: GO.** One shell fix in `scripts/auto-update.sh` + one additive
+  background job in the web app. No schema, no deps, no env, no API contract
+  change.
+- **Lock-leak fix:** auto-update left `/tmp/sports-bar-auto-update.lock` on disk
+  after a clean SUCCESS; the pm2 daemon (respawned during restart) inherits the
+  flock FD and keeps the old inode locked, so the next run's `flock -n` fails and
+  the box silently stops updating (what froze all 5 boxes at the 13:32 roll).
+  New `_release_lock()` removes the lock FILE on every exit path → next run gets
+  a fresh inode. **Self-healing once landed; manual stopgap is still
+  `rm -rf /tmp/sports-bar-auto-update.lock*` + re-trigger.**
+- **Fire TV refresh:** new `firetv-subscription-refresh.ts` re-scans each Fire TV
+  box's installed-app list (its scheduler preset list in `DeviceSubscription`) at
+  boot+2min then every 12h. Failure-isolated (a box that's off keeps its
+  last-good list). Fixes lists going months stale.
+- **Operator action:** none. Lock fix applies on next auto-update; refresh starts
+  on next PM2 boot.
+
+### 2026-06-28 — v2.83.2 — Hermes shadow Checkpoint C evidence-grounded + hard-fail gate
+
+- **Risk: GO (advisory-only).** Touches only the auto-update Hermes SHADOW
+  reviewer (`scripts/checkpoint-hermes.sh`) + a one-line `export` in
+  `auto-update.sh`. The shadow is advisory and NEVER gates an update — zero
+  behavior change to the real GO/CAUTION/STOP path. No schema, no deps, no env.
+- **What:** Shadow analysis (61 datapoints, all 5 boxes) showed Checkpoint C's
+  shadow was judging blind (no evidence injected into the tool-less model's
+  prompt) and rubber-stamping GO — it missed the only 2 real post-install
+  failures on record (luckys 2026-06-27, `real=STOP/hermes=GO`). Now LABEL=C
+  gathers the same evidence `run_c()` uses (health code, verify-install status,
+  epoch-filtered fresh crash lines) and deterministically STOPs on any hard-fail
+  before consulting the LLM (which is only asked the GO-vs-CAUTION holistic
+  call). Inversion is now structurally impossible.
+- **Operator action:** none. Each box's next auto-update exercises the new path
+  and logs cleaner shadow data to `hermes-shadow/checkpoint-shadow.jsonl`.
+
+### 2026-06-28 — v2.83.1 — maintenance-todo destructive-command guard
+
+**Risk:** GO — defensive hardening, no schema/env/migration. Adds input-sanitization to an existing endpoint + tightens an MCP tool description.
+
+**What changed:** `/api/maintenance-todo` now strips destructive shell commands (git clean -dxf / rm -r / git reset --hard / git push --force / origin-master / rebase --onto) from auto-filed todo descriptions, replacing the code block with a safety notice. The `create_maintenance_todo` MCP tool description discourages drafting them + over-filing fleet-recovery todos for boxes merely behind on version.
+
+**What could break at a location:** Nothing — it only sanitizes free-text todo descriptions; legitimate todos are unaffected (the guard triggers only on destructive patterns). No change to hardware, scheduling, or update behavior.
+
+**Manual steps required:** None.
+
+**Rollback:** revert the v2.83.1 commit; auto-filed todos go back to storing raw (possibly destructive) text.
+
+**Affected files:** `apps/web/src/app/api/maintenance-todo/route.ts`, `packages/mcp/src/server.ts`.
+
+### 2026-06-28 — v2.83.0 — LG TV pairing (webOS) in-app
+
+**Risk:** GO — additive feature, no schema/env/migration. The new code path only fires when an operator clicks the new "Pair TV" button for an LG TV; existing Samsung pairing and all power/routing paths are unchanged.
+
+**What changed:** new `LGTVClient.pair()` (webOS PROMPT pairing — waits for the real `registered` accept frame, captures clientKey); `/api/tv-control/[deviceId]/pair` now handles LG (saves clientKey) in addition to Samsung (authToken); `TVNetworkDiscovery.tsx` shows "Unpaired" badge + "Pair TV" button for LG; pair timeout 60s; `tvPairSchema` max 120s.
+
+**What could break at a location:** Nothing passive. The pair route was Samsung-only, so adding an LG branch can't affect Samsung/Roku/other brands. The UI button only appears for LG TVs lacking a clientKey. Power-ON (WoL) untouched.
+
+**Manual steps required:** None. Locations with LG TVs can now pair them from Device Config → TV Network (click Pair, accept on the TV with the remote).
+
+**Rollback:** revert the v2.83.0 commit; LG TVs simply lose the in-app pair button. No state to undo.
+
+**Affected files:** `packages/tv-network-control/src/clients/lg-client.ts`, `apps/web/src/app/api/tv-control/[deviceId]/pair/route.ts`, `apps/web/src/components/tv-network/TVNetworkDiscovery.tsx`, `packages/validation/src/schemas.ts`.
+
 ### 2026-05-28 — v2.55.6–v2.55.9 — ISO hardware-prereqs + triple-$ password + PXE netboot fix
 
 **Risk:** GO — **zero runtime impact for installed fleet boxes.** Every change in this batch is ISO-build / new-NUC-provisioning side. No app code, no schema, no PM2 service touched.

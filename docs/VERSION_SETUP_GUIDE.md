@@ -35,6 +35,153 @@ is the archive.
 
 ---
 
+## v2.83.6 — security: patch undici + form-data HIGH CVEs via overrides (2026-06-28)
+
+**Required manual steps:** NONE. The override propagates through `npm ci` on the
+next auto-update (no native rebuild — both are pure-JS transitive deps).
+
+Closed all 3 HIGH npm vulns the freshness sweep found, the SAFE way — pinned
+patched versions via a root `package.json` `overrides` block instead of
+`npm audit fix` (which is guarded since v2.55.13 because its resolutions
+downgrade next/drizzle-kit/next-auth and break auth):
+
+- **undici** `^7.28.0` (was 7.26.0, transitive via cheerio→rag-server) — clears 2
+  HIGH: TLS cert-validation bypass via SOCKS5 ProxyAgent + Set-Cookie header
+  injection (plus several moderate undici CVEs). Stays in cheerio's `^7.19.0`
+  range — no major bump.
+- **form-data** `^4.0.6` (was 4.0.5) — clears 1 HIGH: CRLF injection via unescaped
+  multipart field names. In-major patch.
+
+Result: **0 HIGH / 0 CRITICAL** (was 3 HIGH). The 5 remaining moderates are the
+intentionally-left next-auth/uuid/postcss chain (v2.55.13 — unfixable without
+breaking PIN auth). Verified: build 29/29, health/login/fleet-status all 200, no
+dep-related crashes. The `overrides` approach is now the established pattern for
+patching transitive vulns here — extend that block, never `npm audit fix --force`.
+
+---
+
+## v2.83.5 — fleet-status "behind vs stuck" + broader LG pairing token (2026-06-28)
+
+**Required manual steps:** OPTIONAL — re-pair LG TVs to capture their model (see #2).
+
+**1. Fleet-status no longer cries wolf.** `/api/fleet/status` classified a location
+as `stuck` on version distance alone (≥5 minor behind, or 3+ days since last
+commit). A box can be several versions behind yet perfectly healthy — it just
+hasn't run the newest update, or we caught it mid-roll. That false alarm
+(BOUNDPOND/GRAPES, 2026-06-28) sent us chasing fine boxes and auto-filed a
+recovery todo with dangerous drafted commands. Now `stuck` requires a REAL
+failure signal: the last auto-update's verify-install FAILED/partial, OR the box
+is behind AND has had no successful auto-update heartbeat in 72h (the lock-leak
+freeze shape). Behind + fresh heartbeat → `warning` (catching up), never `stuck`.
+No action needed; the dashboard just stops false-alarming.
+
+**2. Broader LG (webOS) pairing token → captures TV model.** The LG pairing
+manifest requested only 4 control permissions, so `getSystemInfo` returned 401
+and we never learned a TV's model/serial/firmware (operator asked to "do a
+broader token"). The manifest now uses the standard community lgtv2 permission
+set (adds READ_* scopes). On a successful pair, the route reads system info and
+saves the **model** to `NetworkTVDevice.model` (serial + firmware are logged).
+**To capture model on already-paired LG TVs, re-pair them once** (Device Config →
+TVs → Pair) — the old token still controls them, it just lacks the read scopes.
+Over-requesting is harmless: the TV shows the same one-time "Allow device" prompt.
+
+**Deferred (reported, not shipped):** the freshness sweep found 2 HIGH npm vulns
+(undici TLS-bypass, transitive). `npm audit fix` is intentionally guarded
+(v2.55.13) because its resolutions downgrade next/drizzle-kit/next-auth. Fixing
+undici needs a deliberate `overrides` entry — a dedicated security PR, not a
+fleet-roll-coupled change. Filed as a todo.
+
+---
+
+## v2.83.3 — auto-update lock-leak fix + Fire TV preset-list auto-refresh (2026-06-28)
+
+**Required manual steps:** NONE. Both changes activate automatically (the lock
+fix on the next auto-update run; the Fire TV refresh on the next PM2 start).
+
+**1. auto-update.sh lock-leak fix (the important one).** `scripts/auto-update.sh`
+leaked `/tmp/sports-bar-auto-update.lock` on a clean SUCCESS: it closed the flock
+FD but left the lock FILE on disk. When `pm2 restart` respawns the pm2 God daemon
+mid-update, the daemon inherits our open FD 200 and keeps the old inode
+flock-held after we exit — so the next timer-fired run's `flock -n` fails on that
+inode and the orphan-sweep (which greps for a live `auto-update.sh`, not pm2)
+misclassifies it. Result: the fleet sits stale for hours until an operator
+manually `rm`s the lock (this is what stranded all 5 boxes at the 2026-06-28
+13:32 roll). Fix: a new `_release_lock()` helper now removes the lock FILE on
+every exit path (both EXIT traps), forcing the next run to create a fresh inode.
+**If you find a box stuck not updating, the stopgap is still `rm -rf
+/tmp/sports-bar-auto-update.lock*` + re-trigger — but after v2.83.3 lands it
+should stop recurring.**
+
+**2. Fire TV preset-list auto-refresh.** Each Fire TV box's scheduler "preset
+list" is its installed-app list in `DeviceSubscription` (the firetv scheduler
+path picks a `streamingAppId` from it). Nothing re-polled these, so they went
+months stale (Holmgren's were last scanned 2026-04-25; one box sat empty after a
+swap). New `apps/web/src/lib/firetv-subscription-refresh.ts` +
+`instrumentation.ts` wiring re-scans all Fire TV boxes over ADB at boot+2min then
+every 12h. Failure-isolated: a box that's off marks only its own row
+pollStatus=error and preserves its last-good app list. No action needed — verify
+in `/device-config` or `SELECT deviceName, lastPolled FROM DeviceSubscription`.
+
+---
+
+## v2.83.2 — Hermes shadow Checkpoint C: evidence-grounded + hard-fail gate (2026-06-28)
+
+**Required manual steps:** NONE. Advisory-only change to the auto-update Hermes
+SHADOW reviewer (`scripts/checkpoint-hermes.sh`) — it does not gate any update.
+Auto-update carries it; no per-location action.
+
+**What changed / why:** Shadow-data analysis (61 datapoints across all 5 fleet
+boxes) found the Hermes shadow's Checkpoint C was judging the post-install state
+**blind**. The stock `checkpoint-c.txt` is written for an *agentic* reviewer
+("cat the run log, curl health, read PM2 logs") and says "default to GO"; the
+tool-less shadow model got that prompt with **no injected evidence**, so it
+rubber-stamped GO — it waved through the only 2 genuine post-install failures on
+record (luckys 2026-06-27, `real=STOP / hermes=GO`, the dangerous inversion).
+
+Fix mirrors the existing LABEL=A evidence-injection pattern, plus a deterministic
+hard-fail gate (the LLM hedges to CAUTION on a clear `verify=FAIL` whenever
+health=200 — Gotcha #12 class):
+- `checkpoint-hermes.sh` LABEL=C now gathers the SAME evidence `run_c()` judges on
+  — live `/api/system/health` code, `verify-install` status, epoch-filtered fresh
+  PM2 crash lines — and **deterministically emits STOP** on any hard-fail
+  (non-200 health, verify FAIL, fresh crash) before consulting the model. The LLM
+  is only asked the subtle GO-vs-CAUTION call on the all-hard-signals-pass path.
+- `auto-update.sh` now `export`s `VERIFY_INSTALL_JSON` so the shadow subprocess
+  can read it (mirrors `PM2_RESTART_EPOCH`).
+
+Net: the `real=STOP / hermes=GO` inversion at Checkpoint C is now structurally
+impossible, and the shadow is a faithful stand-in for a promoted Hermes
+(deterministic-first, AI-for-ambiguous — same hybrid as the real checkpoint).
+Verified locally GO/CAUTION/STOP across all three cases.
+
+---
+
+## v2.83.1 — maintenance-todo destructive-command guard (2026-06-28)
+
+**Branch landed:** main. Hardens `/api/maintenance-todo` (the chokepoint all auto-filed todos pass through). The AI-chat fleet monitor was filing "recovery needed" todos whose LLM-drafted remediation contained **destructive commands** (`git clean -dxf` wipes a location's uncommitted data/.env/production.db; `git reset --hard`; `origin/master` refs — this repo uses `main`). They sat in the todo list looking like vetted remediation.
+
+**What changed (pure code, no migration):**
+- `maintenance-todo/route.ts` — `guardRemediation()` scans the description for destructive patterns (git clean -f, rm -r, reset --hard, push --force, origin/master, rebase --onto), strips fenced code blocks, and replaces them with a ⚠️ notice (keeps the symptom prose). Logs `[MAINTENANCE-TODO] stripped destructive remediation`.
+- `packages/mcp/src/server.ts` — `create_maintenance_todo` tool description now tells agents not to draft destructive commands and not to file "recovery" todos for boxes merely behind on version (normal — nightly auto-update resolves it); only when `.git/rebase-*` exists AND health != 200.
+
+**Required Manual Step:** NONE. Verified live on Holmgren — a test POST with `git clean -dxf` + `origin/master` was stored with the code block removed and the safety notice appended. (The MCP tool-description change takes effect wherever the MCP server is rebuilt/restarted.)
+
+---
+
+## v2.83.0 — LG TV pairing (webOS) added to the app (2026-06-28)
+
+**Branch landed:** main. Adds in-app pairing for **LG (webOS) network TVs**, which previously had NO working pairing path: the `/api/tv-control/[deviceId]/pair` route was Samsung-only, and `LGTVClient.register()` resolved on the intermediate prompt-ack *before* the user accepted, so it never captured/persisted a `clientKey`. Without a clientKey the app cannot power-OFF/toggle an LG TV (power-ON via Wake-on-LAN already works without pairing).
+
+**What changed (pure code, no migration):**
+- `packages/tv-network-control` — new `LGTVClient.pair(timeoutMs)`: connects without a key (triggers the on-screen "Allow this device to connect?" prompt) and waits for the real `registered` frame to capture the clientKey.
+- `apps/web/.../tv-control/[deviceId]/pair/route.ts` — branches Samsung→`authToken` / LG→`clientKey`.
+- `TVNetworkDiscovery.tsx` — "Unpaired" badge + "Pair TV" button now appear for LG (gated on `!clientKey`); pair timeout raised to 60s.
+- `tvPairSchema` timeout max 60s→120s.
+
+**Required Manual Step:** NONE. After update, LG TVs show a "Pair TV" button in Device Config → TV Network; the operator clicks it, accepts the prompt on the TV with the remote, and the clientKey saves. No env/DB/seed changes. (Power-ON works regardless; pairing only enables app-driven power-OFF/toggle.)
+
+---
+
 ## v2.82.1 — FLEET-FREEZE FIX: stop location boxes pushing TODO_LIST.md (2026-06-21)
 
 **Branch landed:** main. **This is the root-cause fix for the fleet auto-update freeze** (boxes stuck ~v2.73.8; v2.76–2.81 never propagated).

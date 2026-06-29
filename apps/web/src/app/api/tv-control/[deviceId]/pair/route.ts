@@ -6,13 +6,14 @@ import { logger } from '@sports-bar/logger'
 import { db } from '@/db'
 import { schema } from '@/db'
 import { eq } from 'drizzle-orm'
-import { SamsungTVClient, TVBrand } from '@sports-bar/tv-network-control'
+import { SamsungTVClient, LGTVClient, TVBrand } from '@sports-bar/tv-network-control'
 
 /**
- * TV Pairing API (Samsung only)
+ * TV Pairing API (Samsung + LG)
  *
- * Initiates pairing flow — connects without token, waits for TV popup approval,
- * saves returned auth token to database.
+ * Initiates pairing flow — connects without a token/key, waits for the TV
+ * popup approval, and saves the returned credential to the database:
+ * Samsung -> authToken, LG (webOS) -> clientKey.
  */
 
 export async function POST(
@@ -46,13 +47,84 @@ export async function POST(
 
     const device = devices[0]
 
-    if (device.brand.toLowerCase() !== 'samsung') {
+    const brand = device.brand.toLowerCase()
+    if (brand !== 'samsung' && brand !== 'lg') {
       return NextResponse.json(
-        { success: false, error: 'Pairing is only supported for Samsung TVs' },
+        { success: false, error: 'Pairing is supported for Samsung and LG TVs only' },
         { status: 400 }
       )
     }
 
+    // Mark pairing in progress (both brands)
+    await db.update(schema.networkTVDevices)
+      .set({ status: 'pairing', updatedAt: new Date().toISOString() })
+      .where(eq(schema.networkTVDevices.id, deviceId))
+
+    // LG WebOS — connecting without a clientKey triggers the on-screen
+    // "Allow this device to connect?" prompt; pair() waits for the user to
+    // accept and returns the captured clientKey.
+    if (brand === 'lg') {
+      const lg = new LGTVClient({
+        ipAddress: device.ipAddress,
+        port: device.port || 3001,
+        brand: TVBrand.LG,
+        macAddress: device.macAddress,
+        clientKey: device.clientKey || undefined,
+      })
+      try {
+        const clientKey = await lg.pair(timeout)
+
+        // Now that we hold a broad-permission token (v2.83.5 manifest), read the
+        // TV's system info — model / serial / firmware. This is exactly what the
+        // old 4-permission token couldn't do (getSystemInfo → 401). Best-effort:
+        // never fail the pairing over it. Persist the model (the only column we
+        // have on NetworkTVDevice); log serial+firmware for the operator.
+        let model: string | undefined
+        try {
+          const info = await lg.getDeviceInfo()
+          model = info.model || undefined
+          if (info.model || info.serialNumber || info.softwareVersion) {
+            logger.info(
+              `[TV-CONTROL] LG ${deviceId} system info: model=${info.model ?? '?'} serial=${info.serialNumber ?? '?'} fw=${info.softwareVersion ?? '?'}`,
+            )
+          }
+        } catch (infoErr: any) {
+          logger.debug(`[TV-CONTROL] LG ${deviceId} getDeviceInfo skipped: ${infoErr?.message || infoErr}`)
+        }
+
+        await db.update(schema.networkTVDevices)
+          .set({
+            clientKey,
+            ...(model ? { model } : {}),
+            status: 'online',
+            lastSeen: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          })
+          .where(eq(schema.networkTVDevices.id, deviceId))
+
+        logger.info(`[TV-CONTROL] LG pairing successful for device ${deviceId}${model ? ` (model ${model})` : ''}`)
+
+        return NextResponse.json({
+          success: true,
+          message: model ? `Pairing successful — clientKey saved (model ${model})` : 'Pairing successful — clientKey saved',
+          deviceId,
+          model,
+        })
+      } catch (pairError: any) {
+        await db.update(schema.networkTVDevices)
+          .set({ status: 'online', updatedAt: new Date().toISOString() })
+          .where(eq(schema.networkTVDevices.id, deviceId))
+
+        return NextResponse.json(
+          { success: false, error: pairError.message || 'Pairing failed' },
+          { status: 408 }
+        )
+      } finally {
+        lg.disconnect()
+      }
+    }
+
+    // Samsung — pairing captures an authToken.
     const client = new SamsungTVClient({
       ipAddress: device.ipAddress,
       port: device.port,
@@ -61,11 +133,6 @@ export async function POST(
     })
 
     try {
-      // Update status to pairing
-      await db.update(schema.networkTVDevices)
-        .set({ status: 'pairing', updatedAt: new Date().toISOString() })
-        .where(eq(schema.networkTVDevices.id, deviceId))
-
       const token = await client.pair(timeout)
 
       // Save token to database
