@@ -1153,9 +1153,22 @@ check_hub_agent_registered() {
         loc_name=$(grep -E '^LOCATION_NAME=' "$env_file" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'")
         loc_id=$(grep -E '^LOCATION_ID=' "$env_file" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'")
     fi
-    # LOCATION_NAME is the human label ("Holmgren"); LOCATION_ID is a UUID (useless
-    # for slug matching). Prefer the name, fall back to hostname.
-    local raw="${loc_name:-$(hostname)}"
+    # Slug source priority: the git branch (location/<slug>) is the CANONICAL
+    # per-location identifier the hub agent is named after (agent-<slug>), so it's
+    # the robust key to match on. LOCATION_NAME is a free-text human label that can
+    # drift away from the convention — luckys' LOCATION_NAME="Lucky1313" lost the
+    # apostrophe-s, normalizing to "lucky1313", which no longer matched the hub's
+    # agent-luckys-1313 ("luckys1313") under the fuzzy substring test (the 's' sits
+    # mid-string so neither contains the other). Deriving from the branch
+    # (location/lucky-s-1313 -> "luckys1313") matches exactly and keeps every other
+    # box matching too. Fall back to LOCATION_NAME then hostname for main/Holmgren
+    # (no location branch) and any box checked out off a location branch.
+    local branch_slug="" git_branch=""
+    git_branch=$(git -C /home/ubuntu/Sports-Bar-TV-Controller rev-parse --abbrev-ref HEAD 2>/dev/null)
+    case "$git_branch" in
+        location/*) branch_slug="${git_branch#location/}" ;;
+    esac
+    local raw="${branch_slug:-${loc_name:-$(hostname)}}"
     local slug
     slug=$(echo "$raw" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-//; s/-$//')
 
