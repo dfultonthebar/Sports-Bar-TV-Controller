@@ -35,6 +35,39 @@ is the archive.
 
 ---
 
+## v2.83.5 — fleet-status "behind vs stuck" + broader LG pairing token (2026-06-28)
+
+**Required manual steps:** OPTIONAL — re-pair LG TVs to capture their model (see #2).
+
+**1. Fleet-status no longer cries wolf.** `/api/fleet/status` classified a location
+as `stuck` on version distance alone (≥5 minor behind, or 3+ days since last
+commit). A box can be several versions behind yet perfectly healthy — it just
+hasn't run the newest update, or we caught it mid-roll. That false alarm
+(BOUNDPOND/GRAPES, 2026-06-28) sent us chasing fine boxes and auto-filed a
+recovery todo with dangerous drafted commands. Now `stuck` requires a REAL
+failure signal: the last auto-update's verify-install FAILED/partial, OR the box
+is behind AND has had no successful auto-update heartbeat in 72h (the lock-leak
+freeze shape). Behind + fresh heartbeat → `warning` (catching up), never `stuck`.
+No action needed; the dashboard just stops false-alarming.
+
+**2. Broader LG (webOS) pairing token → captures TV model.** The LG pairing
+manifest requested only 4 control permissions, so `getSystemInfo` returned 401
+and we never learned a TV's model/serial/firmware (operator asked to "do a
+broader token"). The manifest now uses the standard community lgtv2 permission
+set (adds READ_* scopes). On a successful pair, the route reads system info and
+saves the **model** to `NetworkTVDevice.model` (serial + firmware are logged).
+**To capture model on already-paired LG TVs, re-pair them once** (Device Config →
+TVs → Pair) — the old token still controls them, it just lacks the read scopes.
+Over-requesting is harmless: the TV shows the same one-time "Allow device" prompt.
+
+**Deferred (reported, not shipped):** the freshness sweep found 2 HIGH npm vulns
+(undici TLS-bypass, transitive). `npm audit fix` is intentionally guarded
+(v2.55.13) because its resolutions downgrade next/drizzle-kit/next-auth. Fixing
+undici needs a deliberate `overrides` entry — a dedicated security PR, not a
+fleet-roll-coupled change. Filed as a todo.
+
+---
+
 ## v2.83.3 — auto-update lock-leak fix + Fire TV preset-list auto-refresh (2026-06-28)
 
 **Required manual steps:** NONE. Both changes activate automatically (the lock

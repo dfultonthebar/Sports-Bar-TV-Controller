@@ -133,10 +133,11 @@ Work down this list — most issues are one of the first two:
 1. **Tap it again.** Commands occasionally don't land the first time. A second tap fixes
    most things.
 2. **Give it 10 seconds.** The TV and boxes are real hardware; they're not instant.
-3. **Wrong channel on a TV?** → [Wrong channel on a TV](WRONG_CHANNEL_ON_TV.md)
-4. **A TV is black / off / on the wrong input?** → [Power & network TVs](POWER_AND_NETWORK_TVS.md)
-5. **The remote itself won't load or respond?** → [Remote isn't working](remote-isnt-working.md)
-6. **Audio or music problem?** → [Music or audio problem](MUSIC_OR_AUDIO_PROBLEM.md)
+3. **A TV is "wrong" but not sure how?** → [Which fix do I need?](fixing-wrong-tv-input.md) (sorts channel vs. source vs. power in 10 seconds)
+4. **Wrong channel on a TV?** → [Wrong channel on a TV](WRONG_CHANNEL_ON_TV.md)
+5. **A TV is black / off / on the wrong input?** → [Power & network TVs](POWER_AND_NETWORK_TVS.md)
+6. **The remote itself won't load or respond?** → [Remote isn't working](remote-isnt-working.md)
+7. **Audio or music problem?** → [Music or audio problem](MUSIC_OR_AUDIO_PROBLEM.md)
 
 You will **not** make anything worse by trying. If you're truly stuck, take a photo of
 the screen and text your manager — that's exactly the right move.

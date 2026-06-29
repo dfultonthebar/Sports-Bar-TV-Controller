@@ -74,21 +74,41 @@ export async function POST(
       try {
         const clientKey = await lg.pair(timeout)
 
+        // Now that we hold a broad-permission token (v2.83.5 manifest), read the
+        // TV's system info — model / serial / firmware. This is exactly what the
+        // old 4-permission token couldn't do (getSystemInfo → 401). Best-effort:
+        // never fail the pairing over it. Persist the model (the only column we
+        // have on NetworkTVDevice); log serial+firmware for the operator.
+        let model: string | undefined
+        try {
+          const info = await lg.getDeviceInfo()
+          model = info.model || undefined
+          if (info.model || info.serialNumber || info.softwareVersion) {
+            logger.info(
+              `[TV-CONTROL] LG ${deviceId} system info: model=${info.model ?? '?'} serial=${info.serialNumber ?? '?'} fw=${info.softwareVersion ?? '?'}`,
+            )
+          }
+        } catch (infoErr: any) {
+          logger.debug(`[TV-CONTROL] LG ${deviceId} getDeviceInfo skipped: ${infoErr?.message || infoErr}`)
+        }
+
         await db.update(schema.networkTVDevices)
           .set({
             clientKey,
+            ...(model ? { model } : {}),
             status: 'online',
             lastSeen: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
           })
           .where(eq(schema.networkTVDevices.id, deviceId))
 
-        logger.info(`[TV-CONTROL] LG pairing successful for device ${deviceId}`)
+        logger.info(`[TV-CONTROL] LG pairing successful for device ${deviceId}${model ? ` (model ${model})` : ''}`)
 
         return NextResponse.json({
           success: true,
-          message: 'Pairing successful — clientKey saved',
+          message: model ? `Pairing successful — clientKey saved (model ${model})` : 'Pairing successful — clientKey saved',
           deviceId,
+          model,
         })
       } catch (pairError: any) {
         await db.update(schema.networkTVDevices)
