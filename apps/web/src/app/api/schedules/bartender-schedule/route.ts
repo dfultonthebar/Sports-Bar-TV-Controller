@@ -100,6 +100,20 @@ export async function POST(request: NextRequest) {
     if (inputSourceId) {
       // Use provided input source
       inputSource = await db.select().from(schema.inputSources).where(eq(schema.inputSources.id, inputSourceId)).get()
+      // Guard (v2.90.1): never schedule onto a source the operator marked DOWN
+      // (is_active=0) — even from a stale AI-Suggest plan generated before it was
+      // disabled. The candidate/suggest paths (ai-suggest:461, smart-input-
+      // allocator) already filter is_active, but this apply path binds by id with
+      // no guard, so a pre-disable suggestion could still commit to a dead box.
+      if (inputSource && inputSource.isActive === false) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `"${inputSource.name}" is marked down (out of service) and can't be scheduled. Mark it Available again, or pick another source.`,
+          },
+          { status: 409 },
+        )
+      }
     } else if (deviceId) {
       // Find input source by device ID
       inputSource = await db.select().from(schema.inputSources).where(eq(schema.inputSources.deviceId, deviceId)).get()
