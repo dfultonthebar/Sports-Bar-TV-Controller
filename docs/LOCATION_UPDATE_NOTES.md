@@ -46,6 +46,14 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-06-29 — v2.89.1 — scheduler adoption nudge in shift-brief + "How to Schedule a Game" how-to
+
+- **Risk: GO.** Purely additive. New bartender-help doc + a conditional shift-brief bullet. No schema, no deps, no env.
+- **What changed:** (1) `docs/bartender-help/HOW_TO_SCHEDULE_A_GAME.md` — plain-language one-pager for crews not using the scheduler. (2) `shift-brief/route.ts` adds `schedulingTip` — a server-built (Gotcha #12) verbatim bullet that **only appears when a box has scheduled ZERO games in the last 7 days AND has games tonight**. Self-limiting: vanishes once they schedule anything, so it's silent at active boxes (Holmgren) and nudges dormant ones (Graystone/luckys/Appleton). Mirrored to `fallbackBrief`.
+- **What could break:** nothing — the tip is null at any box that's scheduling. The query is one indexed count on `input_source_allocations`.
+- **Why:** usage audit showed only Holmgren (38/7d) + Greenville (1) actively schedule; Graystone/luckys/Appleton are configured but unused (0 AI Suggest ever). This drives adoption without a deploy-per-location.
+- **Affected files:** `apps/web/src/app/api/ai/shift-brief/route.ts`, `docs/bartender-help/HOW_TO_SCHEDULE_A_GAME.md`, `docs/LOCATION_UPDATE_NOTES.md`, `package.json`.
+
 ### 2026-06-29 — v2.89.0 — AI Suggest `primary` solver mode (Wave 2 canary, default OFF)
 
 - **Risk: GO.** Implements the stubbed `primary` mode of `AI_SUGGEST_SOLVER`. Flag **defaults to `off`** → zero behavior change for any box that doesn't opt in. `off`/`shadow` paths are byte-identical to before.
