@@ -46,6 +46,16 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-06-30 — v2.89.5 — FIX: bartender remote silently muted Atlas groups (dB sent as percent) — Stoneyard no-audio root cause
+
+- **Risk: GO (one-line bugfix).** `apps/web/src/app/api/atlas/groups/route.ts` only. Affects group-based audio (Stoneyards); Holmgren uses zones, unaffected.
+- **Root cause of the Appleton/Greenville "no audio":** the bartender remote's group slider (`AtlasGroupsControl.tsx`) is clamped to −80…0 **dB** and sends that dB value with `action: 'setGain'`. The `/api/atlas/groups` POST handler called `client.setGroupVolume(idx, value)` — and `setGroupVolume` defaults `usePct=true`, so the dB value (e.g. −74) was sent to the Atlas as a **percent** (`format:'pct'`). The Atlas clamps an out-of-range percent to its floor → `GroupGain_N` slammed to **−80 dB (silent)**. So every bartender volume nudge was *muting* the group, not setting it — which is why Main Bar was found parked at −80.
+- **Not a firmware/DSP/hardware fault.** Confirmed live: operator controls the Atlas fine from its own admin UI; gains read back correctly in dB via `/api/atlas/groups` GET; watched `GroupGain_0` track admin-page moves −80→−40 in real time. The Atlas was always healthy.
+- **Fix:** `setGain` now calls `setGroupVolume(groupIndexNum, valueNum, false)` → sends dB as `'val'`, matching the slider and the admin UI.
+- **Index note:** the group index is correct as-is — `/api/atlas/groups` is 0-based (Main Bar = `GroupGain_0` = index 0) and the POST passes it straight through (no `-1`). The `-1` only exists in the *other* endpoint `/api/audio-processor/control` (1-based), which the remote does NOT use.
+- **Verify on the remote:** move a group slider — the room volume should track it (and NOT drop to silent). Re-test at Greenville after it updates.
+- **Affected files:** `apps/web/src/app/api/atlas/groups/route.ts`, `docs/LOCATION_UPDATE_NOTES.md`, `package.json`.
+
 ### 2026-06-30 — v2.89.4 — FIX: bartender remote deselects Output N video source on tab switch
 
 - **Risk: GO (bugfix).** Self-contained, additive (sessionStorage persist/restore). Affects the Video tab only.
