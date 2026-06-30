@@ -251,7 +251,7 @@ export default function BartenderRemoteAudioPanel({
                         processorIp={processorIp}
                         showOutputs={outputMetersEnabled}
                         showInputs={inputMetersEnabled}
-                        showGroups={false}
+                        showGroups={outputMetersEnabled}
                         compact={false}
                       />
                     ) : (

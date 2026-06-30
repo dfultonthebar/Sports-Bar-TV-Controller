@@ -10,7 +10,10 @@ interface VersionInfo {
 }
 
 const POLL_INTERVAL_MS = 60_000
-const IDLE_AUTO_RELOAD_MS = 2 * 60_000
+// Shortened from 2 min: a bar iPad sits idle between taps, and the prior 2-min
+// window rarely elapsed before the next interaction bumped it. 45s lets the
+// reload fire during a normal lull once an update is detected.
+const IDLE_AUTO_RELOAD_MS = 45_000
 
 export default function UpdateAvailableBanner() {
   const [updateAvailable, setUpdateAvailable] = useState(false)
@@ -48,9 +51,26 @@ export default function UpdateAvailableBanner() {
 
     check()
     const t = setInterval(check, POLL_INTERVAL_MS)
+
+    // CRITICAL for the bar iPad: Safari suspends background-tab timers when the
+    // tab is hidden or the device is locked, so the setInterval above almost
+    // never fires while the remote sits idle behind the bar — an update that
+    // landed while it slept is never detected. Re-check the instant the tab is
+    // foregrounded / woken / restored from the back-forward cache so the update
+    // is caught the moment a bartender picks the iPad back up.
+    const onWake = () => {
+      if (document.visibilityState === 'visible') check()
+    }
+    document.addEventListener('visibilitychange', onWake)
+    window.addEventListener('focus', onWake)
+    window.addEventListener('pageshow', onWake)
+
     return () => {
       cancelled = true
       clearInterval(t)
+      document.removeEventListener('visibilitychange', onWake)
+      window.removeEventListener('focus', onWake)
+      window.removeEventListener('pageshow', onWake)
     }
   }, [updateAvailable])
 

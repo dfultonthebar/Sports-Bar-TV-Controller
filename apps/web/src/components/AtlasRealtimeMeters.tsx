@@ -30,6 +30,19 @@ export default function AtlasRealtimeMeters({
   const timeSinceUpdate = Date.now() - timestamp
   const isStale = timeSinceUpdate > 1000 // More than 1 second old
 
+  // Hide unconfigured/placeholder-named entries (e.g. "Group 6", "Zone 5",
+  // "Source 3") — only the ones the operator actually named are real.
+  const isPlaceholderName = (n: string) =>
+    /^(group|zone|source|input|output) ?\d+$/i.test((n || '').trim())
+  const fOutputs = outputs.filter(m => !isPlaceholderName(m.name))
+  const fInputs = inputs.filter(m => !isPlaceholderName(m.name))
+  const fGroups = groups.filter(m => !isPlaceholderName(m.name))
+  // Groups XOR zones: a group-based location (real groups configured, e.g. the
+  // Stoneyards' Bar Group/Gaming Group/Dance Floor) shows its GROUP meters, not
+  // the underlying per-zone outputs. A zone-based location (no real groups)
+  // shows its zone outputs.
+  const groupBased = fGroups.length > 0
+
   return (
     <div className="space-y-4">
       {/* Connection Status */}
@@ -56,14 +69,14 @@ export default function AtlasRealtimeMeters({
       </div>
 
       {/* Output Meters (Zones) */}
-      {showOutputs && outputs.length > 0 && (
+      {showOutputs && !groupBased && fOutputs.length > 0 && (
         <div className="space-y-2">
           <h4 className="text-sm font-medium text-slate-300 flex items-center gap-2">
             <Volume2 className="w-4 h-4" />
             Zone Output Levels
           </h4>
           <div className={compact ? "grid grid-cols-4 gap-2" : "space-y-1"}>
-            {outputs.map((meter, i) => (
+            {fOutputs.map((meter, i) => (
               <MeterBar
                 key={`output-${i}`}
                 name={meter.name}
@@ -77,14 +90,14 @@ export default function AtlasRealtimeMeters({
       )}
 
       {/* Input Meters (Sources) */}
-      {showInputs && inputs.length > 0 && (
+      {showInputs && fInputs.length > 0 && (
         <div className="space-y-2">
           <h4 className="text-sm font-medium text-slate-300 flex items-center gap-2">
             <Activity className="w-4 h-4" />
             Source Input Levels
           </h4>
           <div className={compact ? "grid grid-cols-4 gap-2" : "space-y-1"}>
-            {inputs.map((meter, i) => (
+            {fInputs.map((meter, i) => (
               <MeterBar
                 key={`input-${i}`}
                 name={meter.name}
@@ -97,11 +110,11 @@ export default function AtlasRealtimeMeters({
       )}
 
       {/* Group Meters */}
-      {showGroups && groups.length > 0 && (
+      {showGroups && fGroups.length > 0 && (
         <div className="space-y-2">
           <h4 className="text-sm font-medium text-slate-300">Group Levels</h4>
           <div className={compact ? "grid grid-cols-4 gap-2" : "space-y-1"}>
-            {groups.map((meter, i) => (
+            {fGroups.map((meter, i) => (
               <MeterBar
                 key={`group-${i}`}
                 name={meter.name}

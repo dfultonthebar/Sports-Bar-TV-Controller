@@ -162,7 +162,10 @@ export default function AtlasGroupsControl({
     )
   }
 
-  const activeGroups = groups.filter(g => g.isActive)
+  // Hide unconfigured/placeholder-named groups (e.g. "Group 6") — only show
+  // groups the operator actually named.
+  const isPlaceholderName = (n: string) => /^(group|zone|source) ?\d+$/i.test((n || '').trim())
+  const activeGroups = groups.filter(g => g.isActive && !isPlaceholderName(g.name))
 
   return (
     <div className="space-y-3">
@@ -190,11 +193,11 @@ export default function AtlasGroupsControl({
       )}
 
       {/* Inactive groups */}
-      {groups.filter(g => !g.isActive).length > 0 && (
+      {groups.filter(g => !g.isActive && !isPlaceholderName(g.name)).length > 0 && (
         <div className="pt-3 border-t border-slate-700/50">
           <h4 className="text-xs text-slate-500 uppercase tracking-wider font-medium mb-2">Inactive</h4>
           <div className="grid grid-cols-2 gap-2">
-            {groups.filter(g => !g.isActive).map((group) => (
+            {groups.filter(g => !g.isActive && !isPlaceholderName(g.name)).map((group) => (
               <button
                 key={group.index}
                 onClick={() => handleGroupAction(group.index, 'setActive', true)}
