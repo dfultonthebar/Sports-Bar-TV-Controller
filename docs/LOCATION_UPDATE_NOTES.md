@@ -46,6 +46,117 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-06-30 — v2.90.2 — FIX: bartender-remote "update available" auto-refresh never fired on the bar iPad
+
+- **Risk: GO (one component).** `UpdateAvailableBanner.tsx` only.
+- **Why:** the remote already had an `UpdateAvailableBanner` that polls `/api/version` and reloads — but it relied solely on a 60s `setInterval`, which **Safari suspends when the tab is backgrounded or the iPad is locked**. A bar iPad sits idle behind the bar, so the timer almost never ran → updates were never detected → the iPad kept running a stale bundle (the root cause of today's "did the fix land?" confusion across the meter/tab/Source-Status fixes).
+- **Fix:** re-check the version the instant the tab is foregrounded — added `visibilitychange` / `focus` / `pageshow` listeners that call the version check on wake. Also shortened idle auto-reload from 2 min → 45s so it fires during a normal lull once an update is detected.
+- **Bootstrapping note:** the iPad still needs ONE manual refresh to load this fix; after that, future updates auto-detect on wake.
+- **Affected files:** `apps/web/src/components/UpdateAvailableBanner.tsx`, `docs/LOCATION_UPDATE_NOTES.md`, `package.json`.
+
+### 2026-06-30 — v2.90.1 — HARDENING: apply path now rejects scheduling onto a downed source
+
+- **Risk: GO (one guard).** `apps/web/src/app/api/schedules/bartender-schedule/route.ts` only.
+- **Why:** the candidate/suggest paths (`ai-suggest/route.ts:461`, `smart-input-allocator`) correctly filter `is_active`, but the **apply** path (`bartender-schedule` line ~102) bound the input source by id with **no `is_active` guard**. So a stale AI-Suggest plan generated *before* a box was marked down could still commit an allocation onto the dead box. Surfaced at Greenville: Cable 1 was correctly disabled (`is_active=0`) yet stale suggestions kept proposing TV 1 → Cable 1; regenerating AI Suggest drops it, but the apply path was the remaining hole.
+- **Fix:** after resolving the input source by id, return **409** if `inputSource.isActive === false` with a clear message ("…is marked down… Mark it Available again, or pick another source.").
+- **Operator note:** when you mark a box Down, **regenerate AI Suggest** so live suggestions exclude it; this guard is the backstop for stale plans.
+- **Affected files:** `apps/web/src/app/api/schedules/bartender-schedule/route.ts`, `docs/LOCATION_UPDATE_NOTES.md`, `package.json`.
+
+### 2026-06-30 — v2.90.0 — FEATURE: bartender-remote "Source Status" toggle (mark a box down → AI Suggest skips it)
+
+- **Risk: GO (additive feature).** New component + new PATCH method; no existing behavior changed.
+- **Why:** when a cable/DirecTV/Fire TV box is broken, the operator needs a no-SSH way to stop the auto-scheduler from routing games to it. Greenville's Cable 1 was down 2026-06-30 and there was no UI to exclude it.
+- **What:** new collapsible **"Source Status"** panel at the top of the bartender remote's **Video tab** (`SourceAvailabilityPanel.tsx`, SafeBoundary-wrapped). Lists every input source with an **Available / Down** toggle. Toggling **Down** sets `input_sources.is_active = 0` → AI Suggest + the whole scheduler (distribution engine, conflict detector, smart allocator, Fire TV sync) skip it. Flipping back to **Available** re-enables it. **Manual matrix routing is unaffected** (that uses `MatrixInput`, not `input_sources`), so bartenders keep manual control/visibility of a down box.
+- **API:** new `PATCH /api/scheduling/input-sources` `{id, isActive}` — lightweight toggle (no full upsert body). Under `/api/scheduling/` which is already nginx-allow-listed on :3002, so it works on the remote with no proxy change.
+- **Greenville Cable 1:** already set `is_active=0` directly during the 2026-06-30 outage; this panel is how it's managed going forward (and re-enabled when fixed).
+- **Verify on the remote:** Video tab → "Source Status" → toggle a box Down then Available; confirm the `N down` badge updates. Down boxes get skipped by AI Suggest's next run.
+- **Affected files:** `apps/web/src/components/SourceAvailabilityPanel.tsx` (new), `apps/web/src/app/remote/page.tsx`, `apps/web/src/app/api/scheduling/input-sources/route.ts`, `docs/LOCATION_UPDATE_NOTES.md`, `package.json`.
+
+### 2026-06-30 — v2.89.6 — FIX: no output meters on the bartender remote at group-based locations (Stoneyards)
+
+- **Risk: GO (one-line UI fix).** `BartenderRemoteAudioPanel.tsx` only. Safe for all locations (meters self-guard with `.length > 0`).
+- **Bug:** the bartender Audio-tab meters showed nothing at the Stoneyards. `BartenderRemoteAudioPanel` passed `showGroups={false}` and `showOutputs={outputMetersEnabled}` to `AtlasRealtimeMeters`, but `showOutputs` renders **zone** meters (`ZoneMeter_N`). The Stoneyards are **group-based** (no zones) → zone outputs are empty AND group meters were suppressed → blank. Same zone-vs-group split as the v2.89.5 gain bug. The data pipeline was fine — the SSE stream (`/api/atlas/meters/stream`) and `useAtlasMetersSSE` already carry `groups`; only the panel suppressed them.
+- **Fix:** `showGroups={outputMetersEnabled}` — at group-based locations the group meters ARE the output meters, gated by the same output-meters toggle. `AtlasRealtimeMeters` guards each section with `.length > 0`, so zone-based locations (empty `groups`) render nothing extra.
+- **Verify on the remote:** open Audio tab → expand meters → group level meters (Main Bar/Dining/Outside) should now show live levels with a source playing.
+- **Note:** this was a pre-existing gap (meters never worked at group-based locations), not a regression. If meters still don't appear after this, the live UDP subscription (port 3131) is the next suspect — plumbing checked OK (app listens on 3131, ufw allows 10.0.0.0/8).
+- **Affected files:** `apps/web/src/components/BartenderRemoteAudioPanel.tsx`, `docs/LOCATION_UPDATE_NOTES.md`, `package.json`.
+
+### 2026-06-30 — v2.89.5 — FIX: bartender remote silently muted Atlas groups (dB sent as percent) — Stoneyard no-audio root cause
+
+- **Risk: GO (one-line bugfix).** `apps/web/src/app/api/atlas/groups/route.ts` only. Affects group-based audio (Stoneyards); Holmgren uses zones, unaffected.
+- **Root cause of the Appleton/Greenville "no audio":** the bartender remote's group slider (`AtlasGroupsControl.tsx`) is clamped to −80…0 **dB** and sends that dB value with `action: 'setGain'`. The `/api/atlas/groups` POST handler called `client.setGroupVolume(idx, value)` — and `setGroupVolume` defaults `usePct=true`, so the dB value (e.g. −74) was sent to the Atlas as a **percent** (`format:'pct'`). The Atlas clamps an out-of-range percent to its floor → `GroupGain_N` slammed to **−80 dB (silent)**. So every bartender volume nudge was *muting* the group, not setting it — which is why Main Bar was found parked at −80.
+- **Not a firmware/DSP/hardware fault.** Confirmed live: operator controls the Atlas fine from its own admin UI; gains read back correctly in dB via `/api/atlas/groups` GET; watched `GroupGain_0` track admin-page moves −80→−40 in real time. The Atlas was always healthy.
+- **Fix:** `setGain` now calls `setGroupVolume(groupIndexNum, valueNum, false)` → sends dB as `'val'`, matching the slider and the admin UI.
+- **Index note:** the group index is correct as-is — `/api/atlas/groups` is 0-based (Main Bar = `GroupGain_0` = index 0) and the POST passes it straight through (no `-1`). The `-1` only exists in the *other* endpoint `/api/audio-processor/control` (1-based), which the remote does NOT use.
+- **Verify on the remote:** move a group slider — the room volume should track it (and NOT drop to silent). Re-test at Greenville after it updates.
+- **Affected files:** `apps/web/src/app/api/atlas/groups/route.ts`, `docs/LOCATION_UPDATE_NOTES.md`, `package.json`.
+
+### 2026-06-30 — v2.89.4 — FIX: bartender remote deselects Output N video source on tab switch
+
+- **Risk: GO (bugfix).** Self-contained, additive (sessionStorage persist/restore). Affects the Video tab only.
+- **Bug:** the Video tab is conditionally rendered (`{activeTab === 'video' && <InteractiveBartenderLayout/>}`), so leaving the tab UNMOUNTS the component and its `selectedZone` local state resets to null → switching tabs deselects the output you'd selected ("Output 1 video source deselects"). Reported at both Stoneyards (Appleton + Greenville) 2026-06-30. Was filed as a TODO months-perceived but **never actually fixed** (git: only `17aa3816` added a TODO entry, no fix commit).
+- **Fix:** `InteractiveBartenderLayout` now persists `selectedZone` (by `outputNumber`) to sessionStorage and restores it on remount — selection survives tab switches. Cleared automatically after a route is applied (existing behavior).
+- **Verify on the remote:** select a TV/output on the Video tab, switch to another tab and back — the output stays selected.
+- **Affected files:** `apps/web/src/components/InteractiveBartenderLayout.tsx`, `docs/LOCATION_UPDATE_NOTES.md`, `package.json`.
+
+### 2026-06-30 — v2.89.3 — FIX: audio control 500'd at slug-id processor locations (Appleton no-audio)
+
+- **Risk: GO (bugfix).** One-line validation relax. Affects audio-control endpoint only.
+- **Bug:** `audioControlSchema.processorId` was `z.string().uuid()`, but `AudioProcessor.id` is a **slug** at JSON-seeded locations (e.g. `"atlas-stoneyard"` at the Stoneyards) vs a UUID at others (Holmgren). The strict `.uuid()` made EVERY audio-control command (volume/mute/source/group-volume) fail validation → 500 → **no audio control at slug-id locations.** Surfaced as the Appleton no-audio incident 2026-06-30 (compounded by Appleton being 2 versions behind + an Atlas control-port wedge needing a power-cycle).
+- **Fix:** `processorId: z.string().min(1)` — accepts both slug and UUID ids; the processor lookup still validates existence.
+- **Affected locations:** any with a slug audio-processor id (Greenville/Appleton Stoneyards most likely). Holmgren (UUID) was unaffected.
+- **Affected files:** `packages/validation/src/schemas.ts`, `docs/LOCATION_UPDATE_NOTES.md`, `package.json`.
+
+### 2026-06-30 — v2.89.2 — DirecTV channel-health scan engine (monthly, Hermes-driven)
+
+- **Risk: GO.** New read-only ops script, no app code. `scripts/scan-directv-channels.py`.
+- **What:** reliable DirecTV preset audit — reads a box's directv presets + DirecTVDevice IPs, probes each channel **distributed one-per-receiver across all receivers** (DirecTV SHEF times out under concurrent load → a naive parallel scan false-flags valid channels as dead; this is the lesson from the 2026-06-30 Graystone cleanup). Reports COLLISIONS (DB-level, reliable) + CONFIRMED-DEAD (clean "Channel does not exist" only; HTTPError/timeout = inconclusive, never flagged). No-op on boxes without DirecTV. READ-ONLY (reports, never edits).
+- **Scheduling:** a **Hermes monthly cron** (CT212) SSHes to each fleet box and runs it; output delivered by Hermes. Operator wanted Hermes to own the recurring scan.
+- **Context:** built after a one-off cleanup found Graystone (only box w/ DirecTV) had 16 preset collisions + a defunct channel; monthly scan catches future drift. Manual run: `python3 scripts/scan-directv-channels.py` on any box.
+- **Affected files:** `scripts/scan-directv-channels.py`, `docs/LOCATION_UPDATE_NOTES.md`, `package.json`.
+
+### 2026-06-29 — v2.89.1 — scheduler adoption nudge in shift-brief + "How to Schedule a Game" how-to
+
+- **Risk: GO.** Purely additive. New bartender-help doc + a conditional shift-brief bullet. No schema, no deps, no env.
+- **What changed:** (1) `docs/bartender-help/HOW_TO_SCHEDULE_A_GAME.md` — plain-language one-pager for crews not using the scheduler. (2) `shift-brief/route.ts` adds `schedulingTip` — a server-built (Gotcha #12) verbatim bullet that **only appears when a box has scheduled ZERO games in the last 7 days AND has games tonight**. Self-limiting: vanishes once they schedule anything, so it's silent at active boxes (Holmgren) and nudges dormant ones (Graystone/luckys/Appleton). Mirrored to `fallbackBrief`.
+- **What could break:** nothing — the tip is null at any box that's scheduling. The query is one indexed count on `input_source_allocations`.
+- **Why:** usage audit showed only Holmgren (38/7d) + Greenville (1) actively schedule; Graystone/luckys/Appleton are configured but unused (0 AI Suggest ever). This drives adoption without a deploy-per-location.
+- **Affected files:** `apps/web/src/app/api/ai/shift-brief/route.ts`, `docs/bartender-help/HOW_TO_SCHEDULE_A_GAME.md`, `docs/LOCATION_UPDATE_NOTES.md`, `package.json`.
+
+### 2026-06-29 — v2.89.0 — AI Suggest `primary` solver mode (Wave 2 canary, default OFF)
+
+- **Risk: GO.** Implements the stubbed `primary` mode of `AI_SUGGEST_SOLVER`. Flag **defaults to `off`** → zero behavior change for any box that doesn't opt in. `off`/`shadow` paths are byte-identical to before.
+- **What changed:** `primary` = hybrid — the deterministic DistributionEngine produces cable/directv suggestions (the bartender-visible picks), the LLM still runs for Fire TV/streaming coverage + uncovered games, engine wins on shared games. Engine-vs-LLM shadow diff keeps logging during `primary`. `ai-suggest-solver-shadow.ts` refactored (engine-plan core extracted to a shared helper + new exported `computeEngineSuggestions`); `ai-suggest/route.ts` gained the primary merge block + fires the shadow diff for `primary` too.
+- **What could break:** nothing unless a box sets `AI_SUGGEST_SOLVER=primary`. The primary block is try/catch-guarded → falls back to LLM-only on any engine error.
+- **Canary:** Holmgren is running `primary` (its gitignored `.env` only — NOT propagated). Evaluate via override-learn acceptance over ~1 week before considering a fleet flip.
+- **Manual step:** none. To opt a box in: `.env` `AI_SUGGEST_SOLVER=primary` + `pm2 delete && pm2 start ecosystem.config.js` (Gotcha #2). Rollback: set `shadow`, delete+start.
+- **Affected files:** `apps/web/src/app/api/scheduling/ai-suggest/route.ts`, `apps/web/src/lib/scheduling/ai-suggest-solver-shadow.ts`, `docs/VERSION_SETUP_GUIDE.md`, `docs/LOCATION_UPDATE_NOTES.md`, `package.json`.
+
+### 2026-06-29 — v2.88.0 — bartender-remote (:3002) connection tracking + new-WAN-IP Telegram alert
+
+- **Risk: GO.** Purely additive ops tooling. No schema, no deps, no env, no app code. New `scripts/` only + doc entries.
+- **What changed:** `scripts/install-3002-tracking.sh` (idempotent activator), `scripts/conn-track-3002-enrich.sh` (per-minute durable MAC-enriched audit log of :3002 connections + Telegram alert on first sighting of a NEW WAN IP), `scripts/who-hit-3002.sh` (viewer: `--wan`/`--today`/`--raw`).
+- **What could break:** nothing at the app level — these scripts don't run unless a box runs the activator. The activator only touches nginx logging (adds an `access_log` line) + a crontab entry; both idempotent and reversible.
+- **Context:** built when Holmgren's :3002 was opened to the WAN (Gotcha #20 exception, operator-accepted — the bartender remote is unauthenticated, so this is the audit/alert trail for it). Holmgren is already activated. Other boxes stay firewalled; activation there is optional LAN audit only.
+- **Manual step:** OPTIONAL — `bash scripts/install-3002-tracking.sh` to turn it on per box. Telegram alerts use existing `.env` `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID`.
+- **Affected files:** `scripts/{install-3002-tracking,conn-track-3002-enrich,who-hit-3002}.sh`, `docs/VERSION_SETUP_GUIDE.md`, `docs/LOCATION_UPDATE_NOTES.md`, `package.json`.
+
+### 2026-06-29 — v2.84.3 / v2.85.0 / v2.86.0 — luckys hub-name fix, 4 AM morning-reset, default audio levels
+
+- **Risk: GO.** Scheduler feature + verify-install fix. No schema/deps/env.
+- **v2.84.3** — `verify-install.sh` `hub_agent_registered` derives the expected hub agent slug from the **git branch** (`location/<slug>`) instead of the typo-prone free-text `LOCATION_NAME` → fixes the false `WARN: no agent for lucky1313` (luckys registers as `agent-luckys-1313`); robust for all locations.
+- **v2.85.0 — daily 4 AM (CT) morning-reset to defaults.** In-app scheduler job on every box: at ~04:00 CT it reverts every video TV output to its default input + tunes every cable/DirecTV box to its default channel (reads `SystemSettings.default_sources`; live-game protected; once-per-day guarded). Manual trigger: `POST /api/scheduling/morning-reset {dryRun}`. **Per-location dep:** only resets outputs/boxes with a configured default — a location with empty `default_sources` is a safe no-op. **Audio-matrix outputs are EXCLUDED** (set `isSchedulingEnabled=0`) so the video pass never routes audio to a video input. Greenville/Appleton currently have no video *routing* defaults → channels-only until their managers set routing in the Schedule-tab defaults UI.
+- **v2.86.0 — default audio levels + source** in the SAME Schedule-tab defaults UI (`DefaultSourceSettings`): per-Atlas-zone 0–100% level + per-audio-output default source. The morning-reset's audio pass (Step 4.5) applies them via the shared Atlas client (`getAtlasClient`, Gotcha #10); the atlas-drop-watcher honors a `morning-reset` marker so deliberate 4 AM level-sets log EXPLAINED, never a false drop alert. **No-op until a manager sets values** (ships with none). Atlas-only for now (dbx/BSS extensible).
+- **Operator action:** none required. Managers populate per-location routing/channel/audio defaults in the Schedule-tab defaults section.
+
+### 2026-06-29 — v2.84.0–v2.84.2 — AI Suggest Fire TV grounding, schedule-end revert tighten, auto-update finalize fix
+
+- **Risk: GO.** Scheduler/code + one shell fix. No schema/deps/env.
+- **v2.84.0 — AI Suggest Fire TV grounding + collision repair** (`ai-suggest/route.ts`): a game only routes to a Fire TV if the game's streaming app is INSTALLED on that box (reads per-box `DeviceSubscription`); colliding/invalid picks get reassigned to an idle compatible input instead of hard-rejected. Fixes the all-rejected empty-slate bug (Greenville 06-28). **Depends on each box's `DeviceSubscription` being populated** (auto-refreshed since v2.83.3 — verified non-empty on all 5 boxes).
+- **v2.84.1 — schedule-end revert window 30min→15min** (`auto-reallocator.ts`): when a game ends and nothing's scheduled for that box within 15 min, it reverts to defaults (TV routing + default channel; cable AND DirecTV via `default_sources.cableBoxDefaults`). Confirmed-live games never reverted (v2.82.52). Per-location: needs `default_sources.cableBoxDefaults` configured per box.
+- **v2.84.2 — auto-update finalize fix** (`scripts/auto-update.sh`): post-push bookkeeping (`history_update_result`/`state_update`/`write_summary_json`) is now NON-FATAL. A transient exit there was rolling back an already-pushed, verify-passed update (Lime Kiln spurious rollback, v2.84.0 roll). Self-applies after this lands (the running script still pre-dates the fix on THIS roll, so a spurious rollback may still occur once more per box → re-trigger clears it).
+- **Operator action:** none.
+
 ### 2026-06-28 — v2.83.6 — security: patch undici + form-data HIGH CVEs (overrides)
 
 - **Risk: GO.** Dependency override only — no source/schema/env change, no native

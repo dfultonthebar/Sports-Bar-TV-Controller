@@ -400,10 +400,16 @@ export const irCommandSendSchema = z.object({
  * Audio control schema
  */
 export const audioControlSchema = z.object({
-  processorId: z.string().uuid(),
+  // AudioProcessor.id is NOT always a UUID — locations seeded from JSON use
+  // slug ids (e.g. "atlas-stoneyard" at the Stoneyards), while others have
+  // UUIDs (Holmgren). Forcing .uuid() here silently 500'd ALL audio control
+  // at slug-id locations (Appleton no-audio incident 2026-06-30). Accept any
+  // non-empty id; the processor lookup validates existence.
+  processorId: z.string().min(1),
   command: z.object({
-    action: z.enum(['volume', 'mute', 'unmute', 'source', 'scene', 'message', 'combine', 'output-volume']),
+    action: z.enum(['volume', 'mute', 'unmute', 'source', 'scene', 'message', 'combine', 'output-volume', 'group-volume']),
     zone: z.number().int().min(1).max(16).optional(),
+    group: z.number().int().min(1).max(16).optional(),
     value: z.union([z.string(), z.number(), z.boolean()]).optional(),
     zones: z.array(z.number().int().min(1).max(16)).optional(),
     sceneId: z.number().int().optional(),

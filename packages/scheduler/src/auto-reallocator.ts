@@ -22,11 +22,83 @@ interface CableBoxDefault {
   channelName?: string
 }
 
+interface ZoneLevelDefault {
+  processorId: string
+  zoneNumber: number   // DB 0-based AudioZone.zoneNumber
+  zoneName: string
+  level: number        // 0-100 percent
+}
+
+interface GroupLevelDefault {
+  processorId: string
+  groupNumber: number  // DB 0-based AudioGroup.groupNumber
+  groupName: string
+  level: number        // 0-100 percent
+}
+
+interface AudioDefaultsConfig {
+  zoneLevels?: ZoneLevelDefault[]
+  groupLevels?: GroupLevelDefault[]
+  audioRouting?: Record<string, number>  // audio-matrix outputNum -> default matrix input
+}
+
 interface DefaultSourcesConfig {
   globalDefault?: DefaultSourceConfig
   roomDefaults?: Record<string, DefaultSourceConfig>
   outputDefaults?: Record<string, DefaultSourceConfig>
   cableBoxDefaults?: Record<string, CableBoxDefault>
+  audioDefaults?: AudioDefaultsConfig
+}
+
+/**
+ * v2.85.0 — Result of a full-location "reset to defaults" pass (the 4 AM
+ * morning reset, or a manual trigger). When dryRun is true, the `*Reverted`
+ * / `*Tuned` counters reflect what WOULD be done (no hardware command was
+ * issued) and `plan` enumerates every resolved action.
+ */
+export interface MorningResetStats {
+  dryRun: boolean;
+  trigger: string;
+  outputsConsidered: number;
+  outputsReverted: number;       // routed (or, in dryRun, WOULD route)
+  outputsSkippedNoDefault: number;
+  outputsSkippedLive: number;    // skipped — confirmed-live game on this output
+  outputsFailed: number;
+  boxesConsidered: number;
+  boxesTuned: number;            // tuned (or, in dryRun, WOULD tune)
+  boxesSkippedLive: number;
+  boxesUnresolved: number;       // cableBoxDefaults key matched no IR/DirecTV device
+  boxesFailed: number;
+  // v2.86.0 — AUDIO pass counters
+  audioOutputsConsidered: number;
+  audioOutputsRouted: number;    // routed (or, in dryRun, WOULD route)
+  audioOutputsFailed: number;
+  zonesConsidered: number;
+  zonesSet: number;              // set (or, in dryRun, WOULD set)
+  zonesSkipped: number;          // non-Atlas processor (not wired yet)
+  zonesFailed: number;
+  // v2.87.0 — per-GROUP level counters (Stoneyard: audio managed by group)
+  groupsConsidered: number;
+  groupsSet: number;             // set (or, in dryRun, WOULD set)
+  groupsSkipped: number;         // non-Atlas processor (not wired yet)
+  groupsFailed: number;
+  errors: number;
+  plan: Array<{
+    kind: 'route' | 'tune' | 'audio-route' | 'zone-level' | 'group-level';
+    output?: number;
+    inputNumber?: number;
+    matrixInput?: number;
+    deviceType?: string;
+    deviceId?: string;
+    processorId?: string;
+    zoneNumber?: number;         // 1-based Atlas zone (for zone-level plan rows)
+    groupNumber?: number;        // 1-based Atlas group (for group-level plan rows)
+    level?: number;
+    muted?: boolean;             // current mute state the reset preserves (zone/group-level rows)
+    channelNumber?: string;
+    label?: string;
+    skipped?: string;
+  }>;
 }
 
 interface ReallocationStats {
@@ -204,7 +276,7 @@ class AutoReallocator {
       //
       // Query: completed rows with a freed_at but no revert_attempted_at.
       // For each, run revertTVsToDefaults (which internally skips if
-      // another game starts on the same input within 30 min). Then
+      // another game starts on the same input within 15 min). Then
       // mark revert_attempted_at = now so the sweep doesn't re-scan
       // on next tick regardless of whether the revert fired or was
       // skipped. Audit logs in revertTVsToDefaults still fire so
@@ -248,7 +320,7 @@ class AutoReallocator {
             );
           }
           // Mark attempted whether or not the revert actually routed —
-          // a skip (another game in 30 min) is still a successful pass.
+          // a skip (another game in 15 min) is still a successful pass.
           await db
             .update(schema.inputSourceAllocations)
             .set({ revertAttemptedAt: now })
@@ -454,7 +526,7 @@ class AutoReallocator {
    * After a game ends, revert assigned TV outputs to their default sources
    * and tune the cable box back to its default channel.
    *
-   * Skips revert if another game is starting on the same input source within 30 minutes.
+   * Skips revert if another game is starting on the same input source within 15 minutes.
    */
   private async revertTVsToDefaults(
     allocation: any,
@@ -482,9 +554,13 @@ class AutoReallocator {
 
     try {
       const now = Math.floor(Date.now() / 1000);
-      const thirtyMinutesFromNow = now + 30 * 60;
+      // v2.84.1 — operator rule: once a schedule ends, if NOTHING is scheduled
+      // for that box within the next 15 minutes, revert to defaults (channel +
+      // TV routing). Was 30 min; tightened to 15 so idle boxes return to their
+      // default channel/input sooner after a game ends.
+      const revertSkipHorizon = now + 15 * 60;
 
-      // Step 1: Check if there's another game coming up on the same input source within 30 minutes
+      // Step 1: Check if there's another game coming up on the same input source within 15 minutes
       const upcomingAllocations = await db
         .select({
           allocation: schema.inputSourceAllocations,
@@ -506,24 +582,24 @@ class AutoReallocator {
         );
 
       const hasUpcomingGame = upcomingAllocations.some(({ game: upcomingGame }) => {
-        return upcomingGame.scheduledStart <= thirtyMinutesFromNow && upcomingGame.scheduledStart >= now;
+        return upcomingGame.scheduledStart <= revertSkipHorizon && upcomingGame.scheduledStart >= now;
       });
 
       if (hasUpcomingGame) {
         await schedulerLogger.info(
           'auto-reallocator',
           'revert',
-          `Skipped revert for ${inputSource.name} — another game starts within 30 min`,
+          `Skipped revert for ${inputSource.name} — another game starts within 15 min`,
           cid,
           {
             inputSourceId: inputSource.id,
             allocationId: allocation.id,
             gameId: game.id,
-            metadata: { ...baseMeta(), reason: 'upcoming_game_within_30min' },
+            metadata: { ...baseMeta(), reason: 'upcoming_game_within_15min' },
           }
         );
         logger.info(
-          `[AUTO-REALLOC] Game ended for ${game.awayTeamName} @ ${game.homeTeamName}, but another game starts within 30 min on ${inputSource.name} — skipping revert`
+          `[AUTO-REALLOC] Game ended for ${game.awayTeamName} @ ${game.homeTeamName}, but another game starts within 15 min on ${inputSource.name} — skipping revert`
         );
         return;
       }
@@ -1246,6 +1322,690 @@ class AutoReallocator {
           },
         },
       );
+    }
+  }
+
+  /**
+   * v2.85.0 — FULL-LOCATION reset to defaults.
+   *
+   * Unconditional sibling of the per-game revertTVsToDefaults(): instead of
+   * reverting the one allocation that just ended, this walks EVERY configured
+   * matrix output and EVERY cable/DirecTV box and puts the whole location back
+   * to its known-good default state. Used by the daily 04:00 CT "morning reset"
+   * job and by the POST /api/scheduling/morning-reset manual trigger.
+   *
+   * Reuses the exact same primitives as revertTVsToDefaults:
+   *   • default resolution from SystemSettings.default_sources
+   *     (outputDefaults → roomDefaults → globalDefault for routing;
+   *      cableBoxDefaults keyed by matrix-input for box tuning),
+   *   • POST /api/matrix/route to route an output to its default input,
+   *   • POST /api/channel-presets/tune to tune a box to its default channel,
+   *   • parseHardwareResult to enforce the {success:true} contract.
+   *
+   * Live-game protection (v2.82.52): any output currently showing an
+   * ESPN-confirmed in-progress game is NOT re-routed, and the box feeding that
+   * game is NOT re-tuned. Moot at 4 AM (nothing live) but preserved so the
+   * manual trigger is safe to run mid-day. TV power state is irrelevant —
+   * matrix routing + box tuning work whether the TV is on or off; we never
+   * power TVs on (staff do that at open).
+   *
+   * dryRun=true resolves and logs every action WITHOUT issuing any hardware
+   * command (used to verify resolution off-hours without disrupting live TVs).
+   */
+  async resetAllToDefaults(
+    opts: { dryRun?: boolean; trigger?: string; correlationId?: string } = {},
+  ): Promise<MorningResetStats> {
+    const dryRun = opts.dryRun === true;
+    const trigger = opts.trigger || 'scheduled';
+    const cid = opts.correlationId || schedulerLogger.generateCorrelationId();
+
+    const stats: MorningResetStats = {
+      dryRun,
+      trigger,
+      outputsConsidered: 0,
+      outputsReverted: 0,
+      outputsSkippedNoDefault: 0,
+      outputsSkippedLive: 0,
+      outputsFailed: 0,
+      boxesConsidered: 0,
+      boxesTuned: 0,
+      boxesSkippedLive: 0,
+      boxesUnresolved: 0,
+      boxesFailed: 0,
+      audioOutputsConsidered: 0,
+      audioOutputsRouted: 0,
+      audioOutputsFailed: 0,
+      zonesConsidered: 0,
+      zonesSet: 0,
+      zonesSkipped: 0,
+      zonesFailed: 0,
+      groupsConsidered: 0,
+      groupsSet: 0,
+      groupsSkipped: 0,
+      groupsFailed: 0,
+      errors: 0,
+      plan: [],
+    };
+
+    const tag = dryRun ? '[MORNING-RESET][DRY-RUN]' : '[MORNING-RESET]';
+
+    await schedulerLogger.info(
+      'morning-reset',
+      'daily-default-reset',
+      `Morning reset starting (trigger=${trigger}, dryRun=${dryRun})`,
+      cid,
+      { metadata: { trigger, dryRun } },
+    );
+    logger.info(`${tag} Starting full-location reset to defaults (trigger=${trigger})`);
+
+    try {
+      // Step 1: Load default source configuration (same source as the per-game revert)
+      let defaults: DefaultSourcesConfig | null = null;
+      try {
+        const response = await fetch(`http://127.0.0.1:${API_PORT}/api/settings/default-sources`);
+        if (response.ok) {
+          const data = await response.json();
+          defaults = data.defaults as DefaultSourcesConfig;
+        }
+      } catch (fetchError: any) {
+        stats.errors++;
+        await schedulerLogger.warn(
+          'morning-reset',
+          'daily-default-reset',
+          `Could not reach default-sources API — aborting morning reset`,
+          cid,
+          { metadata: { trigger, error: fetchError.message } },
+        );
+        logger.warn(`${tag} Could not reach default-sources API — aborting:`, { error: fetchError.message });
+        return stats;
+      }
+
+      if (!defaults) {
+        await schedulerLogger.info(
+          'morning-reset',
+          'daily-default-reset',
+          `No default_sources configured for this location — morning reset is a no-op`,
+          cid,
+          { metadata: { trigger } },
+        );
+        logger.info(`${tag} No default_sources configured — nothing to reset (no-op)`);
+        return stats;
+      }
+
+      // Step 2: Live-game protection. Build the set of outputs (and box matrix
+      // inputs) feeding an ESPN-CONFIRMED in-progress game; these are never
+      // touched. Mirrors the per-game path's confirmed-live gate.
+      const protectedOutputs = new Set<number>();
+      const protectedMatrixInputs = new Set<number>();
+      try {
+        let liveData: any = null;
+        try {
+          const espnResp = await fetch(`http://127.0.0.1:${API_PORT}/api/scheduling/live-status`);
+          if (espnResp.ok) liveData = await espnResp.json();
+        } catch (liveErr: any) {
+          logger.warn(`${tag} live-status fetch failed (non-fatal):`, { error: liveErr.message });
+        }
+
+        const activeAllocations = await db
+          .select({
+            allocation: schema.inputSourceAllocations,
+            game: schema.gameSchedules,
+            inputSource: schema.inputSources,
+          })
+          .from(schema.inputSourceAllocations)
+          .innerJoin(
+            schema.gameSchedules,
+            eq(schema.inputSourceAllocations.gameScheduleId, schema.gameSchedules.id),
+          )
+          .innerJoin(
+            schema.inputSources,
+            eq(schema.inputSourceAllocations.inputSourceId, schema.inputSources.id),
+          )
+          .where(eq(schema.inputSourceAllocations.status, 'active'))
+          .all();
+
+        for (const { allocation, game, inputSource } of activeAllocations) {
+          if (!this.isGameConfirmedLive(game, liveData)) continue;
+          // Protect this game's outputs
+          try {
+            const ids: number[] = JSON.parse(allocation.tvOutputIds || '[]');
+            ids.forEach((o) => protectedOutputs.add(o));
+          } catch { /* malformed → no output protection from this row */ }
+          // Protect the matrix input feeding this game (so we don't retune its box)
+          try {
+            if (inputSource.deviceId) {
+              if (inputSource.type === 'cable') {
+                const ir = await db.select().from(schema.irDevices)
+                  .where(eq(schema.irDevices.id, inputSource.deviceId)).limit(1).get();
+                if (ir?.matrixInput != null) protectedMatrixInputs.add(ir.matrixInput);
+              } else if (inputSource.type === 'directv') {
+                const dtv = await db.select().from(schema.direcTVDevices)
+                  .where(eq(schema.direcTVDevices.id, inputSource.deviceId)).limit(1).get();
+                if (dtv?.inputChannel != null) protectedMatrixInputs.add(dtv.inputChannel);
+              }
+            }
+          } catch { /* non-fatal protection resolution */ }
+        }
+
+        if (protectedOutputs.size > 0 || protectedMatrixInputs.size > 0) {
+          logger.info(`${tag} Live-game protection: ${protectedOutputs.size} output(s) + ${protectedMatrixInputs.size} box input(s) held`);
+        }
+      } catch (protErr: any) {
+        // Non-fatal: if protection resolution fails we proceed WITHOUT
+        // protection only at 4 AM (nothing live). To stay safe for mid-day
+        // manual runs, a protection-query failure is logged but we continue;
+        // the confirmed-live set is simply empty.
+        logger.warn(`${tag} Live-game protection resolution failed (non-fatal):`, { error: protErr.message });
+      }
+
+      // Step 3: Route every configured matrix output back to its default input.
+      const activeConfig = await db
+        .select()
+        .from(schema.matrixConfigurations)
+        .where(eq(schema.matrixConfigurations.isActive, true))
+        .limit(1)
+        .get();
+
+      if (activeConfig) {
+        const allOutputs = await db
+          .select()
+          .from(schema.matrixOutputs)
+          .where(eq(schema.matrixOutputs.configId, activeConfig.id))
+          .all();
+
+        for (const output of allOutputs) {
+          // Skip audio-only / disabled outputs (Holmgren 37-40 are audio-only;
+          // isSchedulingEnabled=false marks them).
+          if (!output.isActive || !output.isSchedulingEnabled) continue;
+
+          const outputNumber = output.channelNumber;
+          const tvGroupId = output.tvGroupId || null;
+          const outputLabel = output.label || `Output ${outputNumber}`;
+          stats.outputsConsidered++;
+
+          // Resolve default: outputDefaults > roomDefaults > globalDefault
+          const outputKey = String(outputNumber);
+          let defaultSource: DefaultSourceConfig | null = null;
+          if (defaults.outputDefaults && defaults.outputDefaults[outputKey]) {
+            defaultSource = defaults.outputDefaults[outputKey];
+          } else if (tvGroupId && defaults.roomDefaults && defaults.roomDefaults[tvGroupId]) {
+            defaultSource = defaults.roomDefaults[tvGroupId];
+          } else if (defaults.globalDefault) {
+            defaultSource = defaults.globalDefault;
+          }
+
+          if (!defaultSource) {
+            stats.outputsSkippedNoDefault++;
+            stats.plan.push({ kind: 'route', output: outputNumber, label: outputLabel, skipped: 'no_default' });
+            continue;
+          }
+
+          if (protectedOutputs.has(outputNumber)) {
+            stats.outputsSkippedLive++;
+            stats.plan.push({ kind: 'route', output: outputNumber, inputNumber: defaultSource.inputNumber, label: outputLabel, skipped: 'confirmed_live' });
+            logger.info(`${tag} Skipping output ${outputNumber} (${outputLabel}) — confirmed-live game`);
+            continue;
+          }
+
+          stats.plan.push({ kind: 'route', output: outputNumber, inputNumber: defaultSource.inputNumber, label: outputLabel });
+
+          if (dryRun) {
+            stats.outputsReverted++;
+            logger.info(`${tag} WOULD route output ${outputNumber} (${outputLabel}) → input ${defaultSource.inputNumber}${defaultSource.inputLabel ? ' (' + defaultSource.inputLabel + ')' : ''}`);
+            continue;
+          }
+
+          try {
+            const routeResponse = await fetch(`http://127.0.0.1:${API_PORT}/api/matrix/route`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                input: defaultSource.inputNumber,
+                output: outputNumber,
+                source: 'morning-reset',
+              }),
+            });
+            const routeHw = await parseHardwareResult(routeResponse);
+            if (routeHw.ok) {
+              stats.outputsReverted++;
+              await schedulerLogger.info(
+                'morning-reset',
+                'daily-default-reset',
+                `Reset output ${outputNumber} (${outputLabel}) to default input ${defaultSource.inputNumber}`,
+                cid,
+                { metadata: { trigger, outputNumber, outputLabel, defaultInputNumber: defaultSource.inputNumber } },
+              );
+              logger.info(`${tag} Reset output ${outputNumber} (${outputLabel}) → input ${defaultSource.inputNumber}`);
+            } else {
+              stats.outputsFailed++;
+              await schedulerLogger.warn(
+                'morning-reset',
+                'daily-default-reset',
+                `Failed to reset output ${outputNumber} (${outputLabel}): ${routeHw.body?.error || routeResponse.statusText}`,
+                cid,
+                { metadata: { trigger, outputNumber, outputLabel, httpStatus: routeResponse.status } },
+              );
+              logger.warn(`${tag} Failed to reset output ${outputNumber} (${outputLabel}): ${routeHw.body?.error || routeResponse.statusText}`);
+            }
+          } catch (routeError: any) {
+            stats.outputsFailed++;
+            stats.errors++;
+            logger.error(`${tag} Error routing output ${outputNumber} (${outputLabel}):`, { error: routeError.message });
+          }
+        }
+      } else {
+        logger.warn(`${tag} No active matrix configuration found — skipping output routing`);
+      }
+
+      // Step 4: Tune every configured cable / DirecTV box back to its default
+      // channel. cableBoxDefaults is keyed by matrix input number (unique
+      // across box types). Resolve each key to an IR device (cable) or a
+      // DirecTV device, then issue the type-specific tune payload — exactly the
+      // payload shape the per-game revert builds.
+      const cableBoxDefaults = defaults.cableBoxDefaults || {};
+      for (const [cableKey, def] of Object.entries(cableBoxDefaults)) {
+        if (!def || !def.channelNumber) continue;
+        const matrixInput = Number(cableKey);
+        if (!Number.isFinite(matrixInput)) continue;
+        stats.boxesConsidered++;
+
+        if (protectedMatrixInputs.has(matrixInput)) {
+          stats.boxesSkippedLive++;
+          stats.plan.push({ kind: 'tune', matrixInput, channelNumber: def.channelNumber, skipped: 'confirmed_live' });
+          logger.info(`${tag} Skipping box on input ${matrixInput} — confirmed-live game`);
+          continue;
+        }
+
+        // Resolve the device feeding this matrix input. Cable first (IR via
+        // Global Cache), then DirecTV (IP control).
+        let deviceType: 'cable' | 'directv' | null = null;
+        let deviceId: string | null = null;
+        try {
+          const ir = await db.select().from(schema.irDevices)
+            .where(eq(schema.irDevices.matrixInput, matrixInput)).limit(1).get();
+          if (ir) {
+            deviceType = 'cable';
+            deviceId = ir.id;
+          } else {
+            const dtv = await db.select().from(schema.direcTVDevices)
+              .where(eq(schema.direcTVDevices.inputChannel, matrixInput)).limit(1).get();
+            if (dtv) {
+              deviceType = 'directv';
+              deviceId = dtv.id;
+            }
+          }
+        } catch (resolveErr: any) {
+          logger.warn(`${tag} Error resolving device for matrix input ${matrixInput}:`, { error: resolveErr.message });
+        }
+
+        if (!deviceType || !deviceId) {
+          stats.boxesUnresolved++;
+          stats.plan.push({ kind: 'tune', matrixInput, channelNumber: def.channelNumber, skipped: 'no_device_for_input' });
+          logger.warn(`${tag} No cable/DirecTV device found for matrix input ${matrixInput} — cannot tune (default ch ${def.channelNumber})`);
+          continue;
+        }
+
+        const label = def.channelName ? `${def.channelNumber} (${def.channelName})` : def.channelNumber;
+        stats.plan.push({ kind: 'tune', matrixInput, deviceType, deviceId, channelNumber: def.channelNumber, label });
+
+        if (dryRun) {
+          stats.boxesTuned++;
+          logger.info(`${tag} WOULD tune ${deviceType} box (input ${matrixInput}, device ${deviceId}) → ch ${label}`);
+          continue;
+        }
+
+        const tunePayload: Record<string, any> = deviceType === 'cable'
+          ? { channelNumber: def.channelNumber, deviceType: 'cable', cableBoxId: deviceId, presetId: 'default' }
+          : { channelNumber: def.channelNumber, deviceType: 'directv', directTVId: deviceId, presetId: 'default' };
+
+        try {
+          const tuneResponse = await fetch(`http://127.0.0.1:${API_PORT}/api/channel-presets/tune`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(tunePayload),
+          });
+          const tuneHw = await parseHardwareResult(tuneResponse);
+          if (tuneHw.ok) {
+            stats.boxesTuned++;
+            await schedulerLogger.info(
+              'morning-reset',
+              'daily-default-reset',
+              `Tuned ${deviceType} box (input ${matrixInput}) back to default channel ${label}`,
+              cid,
+              { channelNumber: def.channelNumber, deviceType, deviceId, metadata: { trigger, matrixInput } },
+            );
+            logger.info(`${tag} Tuned ${deviceType} box (input ${matrixInput}) → ch ${label}`);
+          } else {
+            stats.boxesFailed++;
+            await schedulerLogger.warn(
+              'morning-reset',
+              'daily-default-reset',
+              `Failed to tune ${deviceType} box (input ${matrixInput}) to default channel: ${tuneHw.body?.error || tuneResponse.statusText}`,
+              cid,
+              { channelNumber: def.channelNumber, deviceType, deviceId, metadata: { trigger, matrixInput, httpStatus: tuneResponse.status } },
+            );
+            logger.warn(`${tag} Failed to tune ${deviceType} box (input ${matrixInput}): ${tuneHw.body?.error || tuneResponse.statusText}`);
+          }
+        } catch (tuneError: any) {
+          stats.boxesFailed++;
+          stats.errors++;
+          logger.error(`${tag} Error tuning ${deviceType} box (input ${matrixInput}):`, { error: tuneError.message });
+        }
+      }
+
+      // Step 4.5 (v2.86.0): AUDIO defaults pass. After the video side is back
+      // to defaults, put the audio side back too:
+      //   (a) route the audio-matrix outputs (isSchedulingEnabled=false) to
+      //       their configured default audio source via /api/matrix/route, and
+      //   (b) set each configured Atlas zone to its default level via
+      //       /api/audio-processor/control (action='volume'), which routes
+      //       through executeAtlasCommand → getAtlasClient (the shared
+      //       singleton, CLAUDE.md Gotcha #10 — never `new AtlasTCPClient`).
+      // Drop-watcher coordination: before each real zone-level set we write a
+      // SchedulerLog marker (operation='audio-default-reset', metadata
+      // {processorId, atlasZone}); atlas-drop-watcher honors it so a deliberate
+      // lower default level is logged EXPLAINED and never files a false "audio
+      // dropped" todo.
+      const audioDefaults = defaults.audioDefaults || {};
+
+      // (a) Audio-matrix output routing.
+      const audioRouting = audioDefaults.audioRouting || {};
+      for (const [outKey, inputNum] of Object.entries(audioRouting)) {
+        const outputNumber = Number(outKey);
+        if (!Number.isFinite(outputNumber) || !Number.isFinite(inputNum)) continue;
+        stats.audioOutputsConsidered++;
+
+        if (protectedOutputs.has(outputNumber)) {
+          stats.plan.push({ kind: 'audio-route', output: outputNumber, inputNumber: inputNum, skipped: 'confirmed_live' });
+          logger.info(`${tag} Skipping audio output ${outputNumber} — confirmed-live game`);
+          continue;
+        }
+
+        stats.plan.push({ kind: 'audio-route', output: outputNumber, inputNumber: inputNum });
+
+        if (dryRun) {
+          stats.audioOutputsRouted++;
+          logger.info(`${tag} WOULD route audio output ${outputNumber} → input ${inputNum}`);
+          continue;
+        }
+
+        try {
+          const routeResponse = await fetch(`http://127.0.0.1:${API_PORT}/api/matrix/route`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ input: inputNum, output: outputNumber, source: 'morning-reset' }),
+          });
+          const routeHw = await parseHardwareResult(routeResponse);
+          if (routeHw.ok) {
+            stats.audioOutputsRouted++;
+            await schedulerLogger.info(
+              'morning-reset',
+              'daily-default-reset',
+              `Reset audio output ${outputNumber} to default input ${inputNum}`,
+              cid,
+              { metadata: { trigger, audioOutput: outputNumber, defaultInputNumber: inputNum } },
+            );
+            logger.info(`${tag} Reset audio output ${outputNumber} → input ${inputNum}`);
+          } else {
+            stats.audioOutputsFailed++;
+            await schedulerLogger.warn(
+              'morning-reset',
+              'daily-default-reset',
+              `Failed to reset audio output ${outputNumber}: ${routeHw.body?.error || routeResponse.statusText}`,
+              cid,
+              { metadata: { trigger, audioOutput: outputNumber, httpStatus: routeResponse.status } },
+            );
+            logger.warn(`${tag} Failed to reset audio output ${outputNumber}: ${routeHw.body?.error || routeResponse.statusText}`);
+          }
+        } catch (audioRouteErr: any) {
+          stats.audioOutputsFailed++;
+          stats.errors++;
+          logger.error(`${tag} Error routing audio output ${outputNumber}:`, { error: audioRouteErr.message });
+        }
+      }
+
+      // (b) Atlas zone default levels.
+      const zoneLevels = audioDefaults.zoneLevels || [];
+      if (zoneLevels.length > 0) {
+        // Resolve processor types once so we only drive Atlas for now (the
+        // data model carries processorId so dbx/BSS can be added later by
+        // relaxing this guard + handling their value scale).
+        let procTypeById = new Map<string, string>();
+        try {
+          const procRows = await db.select().from(schema.audioProcessors).all();
+          for (const pr of procRows) procTypeById.set(pr.id, pr.processorType || 'atlas');
+        } catch (procErr: any) {
+          logger.warn(`${tag} Could not load audio processors for zone-level reset (non-fatal):`, { error: procErr.message });
+        }
+
+        for (const zl of zoneLevels) {
+          if (!zl || !zl.processorId || !Number.isFinite(zl.level)) continue;
+          stats.zonesConsidered++;
+
+          const procType = procTypeById.get(zl.processorId);
+          if (procType && procType !== 'atlas') {
+            stats.zonesSkipped++;
+            stats.plan.push({ kind: 'zone-level', processorId: zl.processorId, zoneNumber: zl.zoneNumber + 1, level: zl.level, label: zl.zoneName, skipped: 'non_atlas_processor' });
+            logger.info(`${tag} Skipping zone "${zl.zoneName}" — processor type "${procType}" not wired for zone-level reset yet`);
+            continue;
+          }
+
+          // Atlas control API is 1-based; drop-watcher keys its marker on the
+          // 1-based Atlas zone too.
+          const atlasZone = zl.zoneNumber + 1;
+
+          // Operator rule (v2.86.2): the bar is CLOSED at 4 AM — the reset sets
+          // the level UNDER the current mute state and NEVER unmutes. The
+          // bartender unmutes at open. setZoneVolume writes ZoneGain_<n> only,
+          // a separate Atlas parameter from ZoneMute_<n>, so the volume command
+          // provably cannot unmute a zone (verified in atlasClient.setZoneVolume
+          // / setZoneMute — independent params). We therefore only READ the
+          // current mute state (from the DB cache the drop-watcher refreshes
+          // every 30s) to LOG the preserved decision; the control call below is
+          // volume-only and issues no mute/unmute. A muted zone stays muted.
+          let wasMuted: boolean | null = null;
+          try {
+            const zoneRow = await db.select().from(schema.audioZones)
+              .where(and(
+                eq(schema.audioZones.processorId, zl.processorId),
+                eq(schema.audioZones.zoneNumber, zl.zoneNumber),
+              ))
+              .limit(1).get();
+            if (zoneRow) wasMuted = !!zoneRow.muted;
+          } catch (muteErr: any) {
+            logger.warn(`${tag} Could not read mute state for zone "${zl.zoneName}" (non-fatal; level set only):`, { error: muteErr.message });
+          }
+          const muteNote = wasMuted === null
+            ? 'mute unknown — level only, no unmute'
+            : (wasMuted ? 'muted → kept muted, level only (no unmute)' : 'unmuted → level only');
+
+          stats.plan.push({ kind: 'zone-level', processorId: zl.processorId, zoneNumber: atlasZone, level: zl.level, label: zl.zoneName, muted: wasMuted ?? undefined });
+
+          if (dryRun) {
+            stats.zonesSet++;
+            logger.info(`${tag} WOULD set zone "${zl.zoneName}" (Atlas zone ${atlasZone}) → ${zl.level}% (${muteNote})`);
+            continue;
+          }
+
+          // Drop-watcher coordination marker — written BEFORE the gain change
+          // so it is present when the watcher's next 30s poll detects the drop.
+          // Records the preserved-mute decision so SchedulerLog shows it.
+          await schedulerLogger.info(
+            'morning-reset',
+            'audio-default-reset',
+            `Set zone "${zl.zoneName}" (Atlas zone ${atlasZone}) to default level ${zl.level}% (${muteNote})`,
+            cid,
+            { metadata: { trigger, processorId: zl.processorId, atlasZone, zoneName: zl.zoneName, level: zl.level, wasMuted } },
+          );
+
+          try {
+            const ctrlResponse = await fetch(`http://127.0.0.1:${API_PORT}/api/audio-processor/control`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                processorId: zl.processorId,
+                command: { action: 'volume', zone: atlasZone, value: zl.level },
+              }),
+            });
+            const ctrlHw = await parseHardwareResult(ctrlResponse);
+            if (ctrlHw.ok) {
+              stats.zonesSet++;
+              logger.info(`${tag} Set zone "${zl.zoneName}" (Atlas zone ${atlasZone}) → ${zl.level}%`);
+            } else {
+              stats.zonesFailed++;
+              await schedulerLogger.warn(
+                'morning-reset',
+                'daily-default-reset',
+                `Failed to set zone "${zl.zoneName}" (Atlas zone ${atlasZone}) to ${zl.level}%: ${ctrlHw.body?.error || ctrlResponse.statusText}`,
+                cid,
+                { metadata: { trigger, processorId: zl.processorId, atlasZone, httpStatus: ctrlResponse.status } },
+              );
+              logger.warn(`${tag} Failed to set zone "${zl.zoneName}" (Atlas zone ${atlasZone}): ${ctrlHw.body?.error || ctrlResponse.statusText}`);
+            }
+          } catch (zoneErr: any) {
+            stats.zonesFailed++;
+            stats.errors++;
+            logger.error(`${tag} Error setting zone "${zl.zoneName}" (Atlas zone ${atlasZone}):`, { error: zoneErr.message });
+          }
+
+          // Small delay between Atlas writes to avoid overrunning the shared
+          // command channel.
+          await new Promise((resolve) => setTimeout(resolve, 250));
+        }
+      }
+
+      // (c) Atlas GROUP default levels (v2.87.0). Stoneyard locations manage
+      // audio by GROUP rather than individual zone. Mirrors the zone pass
+      // exactly, including the mute-preservation rule: read the group's
+      // current mute, set the level UNDER it, NEVER unmute (the bar is closed
+      // at 4 AM). setGroupVolume writes GroupGain_<n> only — separate from
+      // GroupMute_<n> — so the level command provably cannot unmute. Groups
+      // are NOT drop-watched (atlas-drop-watcher polls ZoneGain_<n> only), so
+      // no drop-watcher marker is required for groups; we still write an
+      // audio-default-reset SchedulerLog row per group for the audit trail.
+      const groupLevels = audioDefaults.groupLevels || [];
+      if (groupLevels.length > 0) {
+        let procTypeById = new Map<string, string>();
+        try {
+          const procRows = await db.select().from(schema.audioProcessors).all();
+          for (const pr of procRows) procTypeById.set(pr.id, pr.processorType || 'atlas');
+        } catch (procErr: any) {
+          logger.warn(`${tag} Could not load audio processors for group-level reset (non-fatal):`, { error: procErr.message });
+        }
+
+        for (const gl of groupLevels) {
+          if (!gl || !gl.processorId || !Number.isFinite(gl.level)) continue;
+          stats.groupsConsidered++;
+
+          const procType = procTypeById.get(gl.processorId);
+          if (procType && procType !== 'atlas') {
+            stats.groupsSkipped++;
+            stats.plan.push({ kind: 'group-level', processorId: gl.processorId, groupNumber: gl.groupNumber + 1, level: gl.level, label: gl.groupName, skipped: 'non_atlas_processor' });
+            logger.info(`${tag} Skipping group "${gl.groupName}" — processor type "${procType}" not wired for group-level reset yet`);
+            continue;
+          }
+
+          // Atlas control API is 1-based; DB groupNumber is 0-based.
+          const atlasGroup = gl.groupNumber + 1;
+
+          // Mute preservation (same rule as zones) — read current mute purely
+          // to LOG the preserved decision; the control call below is
+          // volume-only and issues no mute/unmute. A muted group stays muted.
+          let wasMuted: boolean | null = null;
+          try {
+            const groupRow = await db.select().from(schema.audioGroups)
+              .where(and(
+                eq(schema.audioGroups.processorId, gl.processorId),
+                eq(schema.audioGroups.groupNumber, gl.groupNumber),
+              ))
+              .limit(1).get();
+            if (groupRow) wasMuted = !!groupRow.muted;
+          } catch (muteErr: any) {
+            logger.warn(`${tag} Could not read mute state for group "${gl.groupName}" (non-fatal; level set only):`, { error: muteErr.message });
+          }
+          const muteNote = wasMuted === null
+            ? 'mute unknown — level only, no unmute'
+            : (wasMuted ? 'muted → kept muted, level only (no unmute)' : 'unmuted → level only');
+
+          stats.plan.push({ kind: 'group-level', processorId: gl.processorId, groupNumber: atlasGroup, level: gl.level, label: gl.groupName, muted: wasMuted ?? undefined });
+
+          if (dryRun) {
+            stats.groupsSet++;
+            logger.info(`${tag} WOULD set group "${gl.groupName}" (Atlas group ${atlasGroup}) → ${gl.level}% (${muteNote})`);
+            continue;
+          }
+
+          // Audit row (groups are not drop-watched, so this is informational,
+          // not a drop-watcher suppression marker).
+          await schedulerLogger.info(
+            'morning-reset',
+            'audio-default-reset',
+            `Set group "${gl.groupName}" (Atlas group ${atlasGroup}) to default level ${gl.level}% (${muteNote})`,
+            cid,
+            { metadata: { trigger, processorId: gl.processorId, atlasGroup, groupName: gl.groupName, level: gl.level, wasMuted } },
+          );
+
+          try {
+            const ctrlResponse = await fetch(`http://127.0.0.1:${API_PORT}/api/audio-processor/control`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                processorId: gl.processorId,
+                command: { action: 'group-volume', group: atlasGroup, value: gl.level },
+              }),
+            });
+            const ctrlHw = await parseHardwareResult(ctrlResponse);
+            if (ctrlHw.ok) {
+              stats.groupsSet++;
+              logger.info(`${tag} Set group "${gl.groupName}" (Atlas group ${atlasGroup}) → ${gl.level}% (${muteNote})`);
+            } else {
+              stats.groupsFailed++;
+              await schedulerLogger.warn(
+                'morning-reset',
+                'daily-default-reset',
+                `Failed to set group "${gl.groupName}" (Atlas group ${atlasGroup}) to ${gl.level}%: ${ctrlHw.body?.error || ctrlResponse.statusText}`,
+                cid,
+                { metadata: { trigger, processorId: gl.processorId, atlasGroup, httpStatus: ctrlResponse.status } },
+              );
+              logger.warn(`${tag} Failed to set group "${gl.groupName}" (Atlas group ${atlasGroup}): ${ctrlHw.body?.error || ctrlResponse.statusText}`);
+            }
+          } catch (groupErr: any) {
+            stats.groupsFailed++;
+            stats.errors++;
+            logger.error(`${tag} Error setting group "${gl.groupName}" (Atlas group ${atlasGroup}):`, { error: groupErr.message });
+          }
+
+          await new Promise((resolve) => setTimeout(resolve, 250));
+        }
+      }
+
+      // Step 5: Summary row to SchedulerLog so the operator can confirm it ran.
+      await schedulerLogger.info(
+        'morning-reset',
+        'daily-default-reset',
+        `Morning reset complete (trigger=${trigger}, dryRun=${dryRun}) — ${stats.outputsReverted} output(s) ${dryRun ? 'would be ' : ''}reverted, ${stats.boxesTuned} box(es) ${dryRun ? 'would be ' : ''}tuned, ${stats.audioOutputsRouted} audio output(s) ${dryRun ? 'would be ' : ''}routed, ${stats.zonesSet} zone level(s) ${dryRun ? 'would be ' : ''}set, ${stats.groupsSet} group level(s) ${dryRun ? 'would be ' : ''}set, ${stats.outputsSkippedLive} output(s) + ${stats.boxesSkippedLive} box(es) held for live games`,
+        cid,
+        { metadata: { ...stats, plan: undefined } },
+      );
+      logger.info(
+        `${tag} Complete — outputs reverted=${stats.outputsReverted}/${stats.outputsConsidered}, boxes tuned=${stats.boxesTuned}/${stats.boxesConsidered}, audio outputs routed=${stats.audioOutputsRouted}/${stats.audioOutputsConsidered}, zone levels set=${stats.zonesSet}/${stats.zonesConsidered} (skipped non-atlas=${stats.zonesSkipped}, failed=${stats.zonesFailed}), group levels set=${stats.groupsSet}/${stats.groupsConsidered} (skipped non-atlas=${stats.groupsSkipped}, failed=${stats.groupsFailed}), live-held outputs=${stats.outputsSkippedLive} boxes=${stats.boxesSkippedLive}, no-default outputs=${stats.outputsSkippedNoDefault}, unresolved boxes=${stats.boxesUnresolved}`,
+      );
+
+      return stats;
+    } catch (error: any) {
+      stats.errors++;
+      try {
+        await schedulerLogger.error(
+          'morning-reset',
+          'daily-default-reset',
+          `Morning reset failed`,
+          cid,
+          error,
+          { metadata: { trigger, dryRun } },
+        );
+      } catch { /* swallow secondary logging failure */ }
+      logger.error(`${tag} Morning reset failed:`, { error: error.message });
+      return stats;
     }
   }
 

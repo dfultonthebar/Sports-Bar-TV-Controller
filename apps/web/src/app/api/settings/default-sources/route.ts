@@ -36,6 +36,36 @@ const cableBoxDefaultSchema = z.object({
   channelName: z.string().optional(),
 })
 
+// --- Audio defaults (v2.86.0) ---
+// Manager-set audio defaults applied by the daily 04:00 morning reset:
+//   • zoneLevels  — per Atlas zone, the default gain (0-100%) at open.
+//   • audioRouting — per audio-matrix output (isSchedulingEnabled=false),
+//                    the matrix input it should carry by default (e.g.
+//                    the house-music / Atmosphere feed).
+// processorId scopes each zone so this extends cleanly to dbx/BSS later;
+// only Atlas is wired into the reset for now.
+const zoneLevelDefaultSchema = z.object({
+  processorId: z.string(),
+  zoneNumber: z.number().int().min(0), // DB 0-based AudioZone.zoneNumber
+  zoneName: z.string(),
+  level: z.number().int().min(0).max(100),
+})
+
+// Per-Atlas-GROUP default level (v2.87.0). Stoneyard locations manage audio
+// by GROUP rather than individual zone. Mirrors zoneLevels exactly.
+const groupLevelDefaultSchema = z.object({
+  processorId: z.string(),
+  groupNumber: z.number().int().min(0), // DB 0-based AudioGroup.groupNumber
+  groupName: z.string(),
+  level: z.number().int().min(0).max(100),
+})
+
+const audioDefaultsSchema = z.object({
+  zoneLevels: z.array(zoneLevelDefaultSchema).optional(),
+  groupLevels: z.array(groupLevelDefaultSchema).optional(),
+  audioRouting: z.record(z.string(), z.number().int().min(1)).optional(),
+})
+
 const defaultSourcesSchema = z.object({
   globalDefault: sourceConfigSchema.optional(),
   roomDefaults: z.record(z.string(), sourceConfigSchema).optional(),
@@ -43,6 +73,7 @@ const defaultSourcesSchema = z.object({
   cableBoxDefaults: z.record(z.string(), cableBoxDefaultSchema).optional(),
   defaultAudioSource: z.number().int().min(0).optional(),
   defaultAudioSourceName: z.string().optional(),
+  audioDefaults: audioDefaultsSchema.optional(),
 })
 
 // --- Default empty config ---
@@ -58,11 +89,34 @@ interface CableBoxDefault {
   channelName?: string
 }
 
+interface ZoneLevelDefault {
+  processorId: string
+  zoneNumber: number
+  zoneName: string
+  level: number
+}
+
+interface GroupLevelDefault {
+  processorId: string
+  groupNumber: number
+  groupName: string
+  level: number
+}
+
+interface AudioDefaultsConfig {
+  zoneLevels?: ZoneLevelDefault[]
+  groupLevels?: GroupLevelDefault[]
+  audioRouting?: Record<string, number>
+}
+
 interface DefaultSourcesConfig {
   globalDefault?: SourceConfig
   roomDefaults?: Record<string, SourceConfig>
   outputDefaults?: Record<string, SourceConfig>
   cableBoxDefaults?: Record<string, CableBoxDefault>
+  defaultAudioSource?: number
+  defaultAudioSourceName?: string
+  audioDefaults?: AudioDefaultsConfig
 }
 
 const EMPTY_DEFAULTS: DefaultSourcesConfig = {
