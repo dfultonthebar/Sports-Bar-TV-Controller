@@ -46,6 +46,14 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-06-30 — v2.89.2 — DirecTV channel-health scan engine (monthly, Hermes-driven)
+
+- **Risk: GO.** New read-only ops script, no app code. `scripts/scan-directv-channels.py`.
+- **What:** reliable DirecTV preset audit — reads a box's directv presets + DirecTVDevice IPs, probes each channel **distributed one-per-receiver across all receivers** (DirecTV SHEF times out under concurrent load → a naive parallel scan false-flags valid channels as dead; this is the lesson from the 2026-06-30 Graystone cleanup). Reports COLLISIONS (DB-level, reliable) + CONFIRMED-DEAD (clean "Channel does not exist" only; HTTPError/timeout = inconclusive, never flagged). No-op on boxes without DirecTV. READ-ONLY (reports, never edits).
+- **Scheduling:** a **Hermes monthly cron** (CT212) SSHes to each fleet box and runs it; output delivered by Hermes. Operator wanted Hermes to own the recurring scan.
+- **Context:** built after a one-off cleanup found Graystone (only box w/ DirecTV) had 16 preset collisions + a defunct channel; monthly scan catches future drift. Manual run: `python3 scripts/scan-directv-channels.py` on any box.
+- **Affected files:** `scripts/scan-directv-channels.py`, `docs/LOCATION_UPDATE_NOTES.md`, `package.json`.
+
 ### 2026-06-29 — v2.89.1 — scheduler adoption nudge in shift-brief + "How to Schedule a Game" how-to
 
 - **Risk: GO.** Purely additive. New bartender-help doc + a conditional shift-brief bullet. No schema, no deps, no env.
