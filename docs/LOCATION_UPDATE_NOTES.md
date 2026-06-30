@@ -46,6 +46,15 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-06-30 — v2.89.6 — FIX: no output meters on the bartender remote at group-based locations (Stoneyards)
+
+- **Risk: GO (one-line UI fix).** `BartenderRemoteAudioPanel.tsx` only. Safe for all locations (meters self-guard with `.length > 0`).
+- **Bug:** the bartender Audio-tab meters showed nothing at the Stoneyards. `BartenderRemoteAudioPanel` passed `showGroups={false}` and `showOutputs={outputMetersEnabled}` to `AtlasRealtimeMeters`, but `showOutputs` renders **zone** meters (`ZoneMeter_N`). The Stoneyards are **group-based** (no zones) → zone outputs are empty AND group meters were suppressed → blank. Same zone-vs-group split as the v2.89.5 gain bug. The data pipeline was fine — the SSE stream (`/api/atlas/meters/stream`) and `useAtlasMetersSSE` already carry `groups`; only the panel suppressed them.
+- **Fix:** `showGroups={outputMetersEnabled}` — at group-based locations the group meters ARE the output meters, gated by the same output-meters toggle. `AtlasRealtimeMeters` guards each section with `.length > 0`, so zone-based locations (empty `groups`) render nothing extra.
+- **Verify on the remote:** open Audio tab → expand meters → group level meters (Main Bar/Dining/Outside) should now show live levels with a source playing.
+- **Note:** this was a pre-existing gap (meters never worked at group-based locations), not a regression. If meters still don't appear after this, the live UDP subscription (port 3131) is the next suspect — plumbing checked OK (app listens on 3131, ufw allows 10.0.0.0/8).
+- **Affected files:** `apps/web/src/components/BartenderRemoteAudioPanel.tsx`, `docs/LOCATION_UPDATE_NOTES.md`, `package.json`.
+
 ### 2026-06-30 — v2.89.5 — FIX: bartender remote silently muted Atlas groups (dB sent as percent) — Stoneyard no-audio root cause
 
 - **Risk: GO (one-line bugfix).** `apps/web/src/app/api/atlas/groups/route.ts` only. Affects group-based audio (Stoneyards); Holmgren uses zones, unaffected.
