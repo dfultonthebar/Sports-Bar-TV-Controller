@@ -819,7 +819,14 @@ function DefaultSourceSettings() {
         const audioOutputs = outputs
           .filter((o) => o.isActive && o.isSchedulingEnabled === false)
           .sort((a, b) => a.channelNumber - b.channelNumber)
-        if (audioOutputs.length === 0 && audioZones.length === 0 && audioGroups.length === 0) return null
+        // Hide placeholder-named zones/groups ("Group 6", "Zone 5") and show only
+        // the location's control model: a group-based location (real groups, e.g.
+        // the Stoneyards' Bar/Gaming/Dance Floor) shows GROUP defaults, not zones.
+        const isPlaceholderName = (n: string) => /^(group|zone|source) ?\d+$/i.test((n || '').trim())
+        const fZones = audioZones.filter((z) => !isPlaceholderName(z.zoneName))
+        const fGroups = audioGroups.filter((g) => !isPlaceholderName(g.groupName))
+        const groupBased = fGroups.length > 0
+        if (audioOutputs.length === 0 && fZones.length === 0 && fGroups.length === 0) return null
 
         return (
           <div className="rounded-lg border border-amber-700/40 p-6 space-y-6">
@@ -883,8 +890,8 @@ function DefaultSourceSettings() {
               </div>
             )}
 
-            {/* Per-zone default levels */}
-            {audioZones.length > 0 && (
+            {/* Per-zone default levels — hidden at group-based locations */}
+            {!groupBased && fZones.length > 0 && (
               <div>
                 <h5 className="text-sm font-semibold text-slate-300 mb-3">
                   Zone Default Levels
@@ -894,7 +901,7 @@ function DefaultSourceSettings() {
                   zone untouched.
                 </p>
                 <div className="space-y-3">
-                  {audioZones.map((zone) => {
+                  {fZones.map((zone) => {
                     const level = getZoneLevel(zone.processorId, zone.zoneNumber)
                     const isSet = level !== undefined
                     return (
@@ -968,7 +975,7 @@ function DefaultSourceSettings() {
             )}
 
             {/* Per-group default levels (Stoneyard manages audio by group) */}
-            {audioGroups.length > 0 && (
+            {fGroups.length > 0 && (
               <div>
                 <h5 className="text-sm font-semibold text-slate-300 mb-3">
                   Group Default Levels
@@ -978,7 +985,7 @@ function DefaultSourceSettings() {
                   group untouched. Muted groups stay muted — the reset only sets the level.
                 </p>
                 <div className="space-y-3">
-                  {audioGroups.map((group) => {
+                  {fGroups.map((group) => {
                     const level = getGroupLevel(group.processorId, group.groupNumber)
                     const isSet = level !== undefined
                     return (
