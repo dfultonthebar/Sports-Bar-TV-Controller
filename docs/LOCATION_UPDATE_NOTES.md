@@ -46,6 +46,16 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-06-30 — v2.90.0 — FEATURE: bartender-remote "Source Status" toggle (mark a box down → AI Suggest skips it)
+
+- **Risk: GO (additive feature).** New component + new PATCH method; no existing behavior changed.
+- **Why:** when a cable/DirecTV/Fire TV box is broken, the operator needs a no-SSH way to stop the auto-scheduler from routing games to it. Greenville's Cable 1 was down 2026-06-30 and there was no UI to exclude it.
+- **What:** new collapsible **"Source Status"** panel at the top of the bartender remote's **Video tab** (`SourceAvailabilityPanel.tsx`, SafeBoundary-wrapped). Lists every input source with an **Available / Down** toggle. Toggling **Down** sets `input_sources.is_active = 0` → AI Suggest + the whole scheduler (distribution engine, conflict detector, smart allocator, Fire TV sync) skip it. Flipping back to **Available** re-enables it. **Manual matrix routing is unaffected** (that uses `MatrixInput`, not `input_sources`), so bartenders keep manual control/visibility of a down box.
+- **API:** new `PATCH /api/scheduling/input-sources` `{id, isActive}` — lightweight toggle (no full upsert body). Under `/api/scheduling/` which is already nginx-allow-listed on :3002, so it works on the remote with no proxy change.
+- **Greenville Cable 1:** already set `is_active=0` directly during the 2026-06-30 outage; this panel is how it's managed going forward (and re-enabled when fixed).
+- **Verify on the remote:** Video tab → "Source Status" → toggle a box Down then Available; confirm the `N down` badge updates. Down boxes get skipped by AI Suggest's next run.
+- **Affected files:** `apps/web/src/components/SourceAvailabilityPanel.tsx` (new), `apps/web/src/app/remote/page.tsx`, `apps/web/src/app/api/scheduling/input-sources/route.ts`, `docs/LOCATION_UPDATE_NOTES.md`, `package.json`.
+
 ### 2026-06-30 — v2.89.6 — FIX: no output meters on the bartender remote at group-based locations (Stoneyards)
 
 - **Risk: GO (one-line UI fix).** `BartenderRemoteAudioPanel.tsx` only. Safe for all locations (meters self-guard with `.length > 0`).

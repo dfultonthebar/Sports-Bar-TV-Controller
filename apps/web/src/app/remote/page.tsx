@@ -33,6 +33,8 @@ import RecoveryConfirmationPopup from '@/components/RecoveryConfirmationPopup'
 import { CommercialLightingRemote } from '@/components/commercial-lighting'
 import AtmosphereControl from '@/components/AtmosphereControl'
 import ShiftBriefTile from '@/components/ai/ShiftBriefTile'
+import SourceAvailabilityPanel from '@/components/SourceAvailabilityPanel'
+import SafeBoundary from '@/components/SafeBoundary'
 
 import { logger } from '@sports-bar/logger'
 interface MatrixInput {
@@ -850,6 +852,9 @@ export default function BartenderRemotePage() {
         {activeTab === 'video' && (
           <div className="w-full mx-auto space-y-4 px-1">
             <ShiftBriefTile />
+            <SafeBoundary label="SourceStatus">
+              <SourceAvailabilityPanel />
+            </SafeBoundary>
             <InteractiveBartenderLayout
               layout={tvLayout}
               onInputSelect={routeInputToOutput}
