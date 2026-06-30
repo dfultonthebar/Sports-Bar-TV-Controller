@@ -126,17 +126,6 @@ ALTERNATIVES: used RTX 3090 24GB (~$700-900) only if Hermes moves to a different
 - **Updated**: 6/19/2026, 1:09:48 PM
 - **Completed**: 6/19/2026, 1:09:48 PM
 
-### Post-fan-PSU: run the deferred q8_0 KV verdict-drift baseline with trading (Path-1)
-
-- **ID**: `a06a59e4-b125-44cd-bcaa-00b47f55f6c7`
-- **Priority**: low
-- **Status**: PLANNED
-- **Category**: infra
-- **Description**: 2026-06-23: q8_0 KV cache went live on the shared T4 (CT212 ollama.service kvcache.conf) WITHOUT a clean f16 verdict-drift baseline. Operator+trading accepted Path-2 INTERIM: keep q8_0, trading monitors drift via grounding-sentinel + grounding<->realized-P&L (low risk: validator barely exercised, 0 buys since 6/18). DEFERRED clean measurement until the T4 fan PSU lands (f16 KV is bigger -> would overheat the unpowered-fan card + slow the off-hours deriver). WHEN FAN PSU IS INSTALLED: ping trading-Claude on the agent-bus -> revert OLLAMA_KV_CACHE_TYPE=f16 + restart ollama OFF-HOURS -> ping when f16 live -> trading captures f16_64k baseline at RTH -> re-flip q8_0 + post Q8_0_LIVE marker -> trading watcher --compare (default KEEP f16 unless q8 proven no-verdict-flip + conf-drift <=1.0). Ref: trading GOTCHAS 189/190/191.
-- **Tags**: t4, q8-kv, trading, hermes, validator
-- **Created**: 6/23/2026, 3:47:49 AM
-- **Updated**: 6/22/2026, 10:47:49 PM
-
 ### Atlas: 3 zone-gain drops VERIFIED REAL (not firmware artifacts) — on-site investigation needed
 
 - **ID**: `93f20110-9691-42db-bd36-eb9709e4e5c7`
@@ -682,6 +671,18 @@ Ready-to-run staggered+verified reboot script at /tmp/deploy-fleet-reboot.sh (re
 - **Created**: 6/18/2026, 6:21:47 PM
 - **Updated**: 6/19/2026, 1:09:48 PM
 - **Completed**: 6/19/2026, 1:09:48 PM
+
+### Post-fan-PSU: run the deferred q8_0 KV verdict-drift baseline with trading (Path-1)
+
+- **ID**: `a06a59e4-b125-44cd-bcaa-00b47f55f6c7`
+- **Priority**: low
+- **Status**: COMPLETE
+- **Category**: infra
+- **Description**: CLOSED OBSOLETE 2026-06-29: trading NACKed (bus id 657) - q8_0-vs-f16 comparison impossible on 16GB T4 (f16 KV wont fit at live 32K), q8_0 is load-bearing + already proven clean (grounding 0.99). No baseline to capture. ACK#hermes-q8kv-1 sent.
+- **Tags**: t4, q8-kv, trading, hermes, validator
+- **Created**: 6/23/2026, 3:47:49 AM
+- **Updated**: 6/29/2026, 8:53:14 PM
+- **Completed**: 6/29/2026, 8:53:14 PM
 
 ### Lime Kiln — quiet SDR-WATCHER (no RTL-SDR dongle) WARN every 5 min
 
@@ -1443,7 +1444,7 @@ FIXED v2.82.25: 10.11.3.48 is the Atmosphere TV (off by schedule). The rising-ed
 ---
 
 **Total TODOs**: 116
-- Planned: 17
+- Planned: 16
 - In Progress: 10
 - Testing: 5
-- Complete: 71
+- Complete: 72
