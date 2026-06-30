@@ -191,7 +191,13 @@ export async function POST(request: NextRequest) {
           break
 
         case 'setGain':
-          result = await client.setGroupVolume(groupIndexNum, valueNum)
+          // value is a dB gain (the UI slider is clamped -80..0 dB), so send it
+          // as 'val' (dB), NOT 'pct'. setGroupVolume defaults usePct=true; without
+          // the explicit `false` the dB value (e.g. -74) was sent as a PERCENT,
+          // which the Atlas clamps to its floor -> the group slams to -80 (silent).
+          // This silently muted groups from the bartender remote at group-based
+          // locations (Stoneyards). v2.89.5 fix.
+          result = await client.setGroupVolume(groupIndexNum, valueNum, false)
           break
 
         case 'setMute':
