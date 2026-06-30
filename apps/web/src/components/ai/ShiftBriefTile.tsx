@@ -59,7 +59,31 @@ export default function ShiftBriefTile() {
     setDismissed(true)
   }
 
-  if (dismissed) return null
+  function handleRestore() {
+    try { localStorage.removeItem(DISMISS_KEY) } catch {}
+    setDismissed(false)
+    setExpanded(true)
+    if (!brief) loadBrief(false)
+  }
+
+  // When dismissed, collapse to a small tappable pill instead of vanishing
+  // entirely — otherwise the brief is unrecoverable for 4h (DISMISS_TTL_MS)
+  // with no affordance to bring it back, which reads to bartenders as "the
+  // shift brief is missing/broken."
+  if (dismissed) {
+    return (
+      <button
+        onClick={handleRestore}
+        className="flex items-center gap-2 rounded-lg border border-purple-500/30 bg-purple-900/10 px-3 py-2 mb-3 text-sm text-slate-300 hover:bg-purple-900/20"
+        title="Show shift brief"
+        aria-label="Show shift brief"
+      >
+        <Sparkles className="h-4 w-4 text-purple-300 shrink-0" />
+        <span>Shift Brief</span>
+        <ChevronDown className="h-4 w-4" />
+      </button>
+    )
+  }
 
   return (
     <div className="rounded-lg border border-purple-500/30 bg-linear-to-r from-purple-900/20 to-blue-900/20 p-4 mb-3">

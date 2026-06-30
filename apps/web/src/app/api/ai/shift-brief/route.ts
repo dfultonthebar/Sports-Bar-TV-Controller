@@ -130,6 +130,21 @@ async function gatherShiftContext() {
     .where(eq(schema.inputSourceAllocations.status, 'active'))
     .all()
 
+  // v2.89.1 — adoption nudge. If this box hasn't scheduled ANY game in the
+  // last 7 days but games ARE available tonight, surface a one-time tip
+  // pointing bartenders at AI Suggest. Self-limiting: it disappears the
+  // moment they schedule anything, so it stays quiet at active locations
+  // (Holmgren schedules daily) and only nudges dormant boxes (Graystone,
+  // luckys, Appleton). Server-built verbatim per Gotcha #12.
+  const recentAllocs = await db.select({ id: schema.inputSourceAllocations.id })
+    .from(schema.inputSourceAllocations)
+    .where(gte(schema.inputSourceAllocations.createdAt, nowUnix - 7 * 24 * 3600))
+    .all()
+  const schedulingTip =
+    recentAllocs.length === 0 && upcomingGames.length > 0
+      ? `Tip: you can auto-schedule tonight's ${upcomingGames.length} game${upcomingGames.length === 1 ? '' : 's'} instead of changing channels by hand — open the Schedule tab and tap AI Suggest. It picks which game goes on which TVs (home teams first) and tunes them at game time. Full how-to: "How to Schedule a Game" in bartender help.`
+      : null
+
   // v2.32.2 — Filter the failure clusters that get into the brief.
   // failure-sweep buckets ALL recurring scheduler-log failures, but
   // AI Suggest rejections (wrong_firetv_app, no_route, in_batch_collision,
@@ -509,6 +524,8 @@ async function gatherShiftContext() {
     atlasPriorityRecap,
     // v2.53.14 — last 24h Atlas drop recap (conditional — null when no drops)
     atlasDropRecap,
+    // v2.89.1 — scheduler adoption nudge (null unless this box is dormant)
+    schedulingTip,
   }
 }
 
@@ -689,6 +706,10 @@ ${ctx.pendingResyncBullet
   ? `Pending mic resync bullet — PRE-WRITTEN, include EXACTLY as shown as its own bullet near the top of the brief. This is a HIGH-PRIORITY operational alert — the bartender MUST see it. Do NOT rephrase, do NOT shorten:\n- ${ctx.pendingResyncBullet}`
   : ''}
 
+${ctx.schedulingTip
+  ? `Scheduling tip bullet — PRE-WRITTEN, include EXACTLY as shown as its own bullet near the END of the brief, do not rephrase, do not add a label. Only appears when this location hasn't scheduled any games recently:\n- ${ctx.schedulingTip}`
+  : ''}
+
 Neighborhood-event heads-up bullets — these are PRE-WRITTEN and you
 MUST include each one in the brief EXACTLY AS WRITTEN, on its own line,
 no rewording, no day-of-week swapping ("Friday" stays "Friday", do
@@ -781,6 +802,10 @@ function fallbackBrief(ctx: any): string {
   // Conditional in the same way: only fires when real drops happened.
   if (ctx.atlasDropRecap) {
     lines.push(ctx.atlasDropRecap)
+  }
+  // v2.89.1 — scheduler adoption nudge on the degraded path too (mirror parity).
+  if (ctx.schedulingTip) {
+    lines.push(ctx.schedulingTip)
   }
   return lines.join('\n')
 }
