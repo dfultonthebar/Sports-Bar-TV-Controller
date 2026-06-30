@@ -46,6 +46,32 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-06-30 — v2.90.2 — FIX: bartender-remote "update available" auto-refresh never fired on the bar iPad
+
+- **Risk: GO (one component).** `UpdateAvailableBanner.tsx` only.
+- **Why:** the remote already had an `UpdateAvailableBanner` that polls `/api/version` and reloads — but it relied solely on a 60s `setInterval`, which **Safari suspends when the tab is backgrounded or the iPad is locked**. A bar iPad sits idle behind the bar, so the timer almost never ran → updates were never detected → the iPad kept running a stale bundle (the root cause of today's "did the fix land?" confusion across the meter/tab/Source-Status fixes).
+- **Fix:** re-check the version the instant the tab is foregrounded — added `visibilitychange` / `focus` / `pageshow` listeners that call the version check on wake. Also shortened idle auto-reload from 2 min → 45s so it fires during a normal lull once an update is detected.
+- **Bootstrapping note:** the iPad still needs ONE manual refresh to load this fix; after that, future updates auto-detect on wake.
+- **Affected files:** `apps/web/src/components/UpdateAvailableBanner.tsx`, `docs/LOCATION_UPDATE_NOTES.md`, `package.json`.
+
+### 2026-06-30 — v2.90.1 — HARDENING: apply path now rejects scheduling onto a downed source
+
+- **Risk: GO (one guard).** `apps/web/src/app/api/schedules/bartender-schedule/route.ts` only.
+- **Why:** the candidate/suggest paths (`ai-suggest/route.ts:461`, `smart-input-allocator`) correctly filter `is_active`, but the **apply** path (`bartender-schedule` line ~102) bound the input source by id with **no `is_active` guard**. So a stale AI-Suggest plan generated *before* a box was marked down could still commit an allocation onto the dead box. Surfaced at Greenville: Cable 1 was correctly disabled (`is_active=0`) yet stale suggestions kept proposing TV 1 → Cable 1; regenerating AI Suggest drops it, but the apply path was the remaining hole.
+- **Fix:** after resolving the input source by id, return **409** if `inputSource.isActive === false` with a clear message ("…is marked down… Mark it Available again, or pick another source.").
+- **Operator note:** when you mark a box Down, **regenerate AI Suggest** so live suggestions exclude it; this guard is the backstop for stale plans.
+- **Affected files:** `apps/web/src/app/api/schedules/bartender-schedule/route.ts`, `docs/LOCATION_UPDATE_NOTES.md`, `package.json`.
+
+### 2026-06-30 — v2.90.0 — FEATURE: bartender-remote "Source Status" toggle (mark a box down → AI Suggest skips it)
+
+- **Risk: GO (additive feature).** New component + new PATCH method; no existing behavior changed.
+- **Why:** when a cable/DirecTV/Fire TV box is broken, the operator needs a no-SSH way to stop the auto-scheduler from routing games to it. Greenville's Cable 1 was down 2026-06-30 and there was no UI to exclude it.
+- **What:** new collapsible **"Source Status"** panel at the top of the bartender remote's **Video tab** (`SourceAvailabilityPanel.tsx`, SafeBoundary-wrapped). Lists every input source with an **Available / Down** toggle. Toggling **Down** sets `input_sources.is_active = 0` → AI Suggest + the whole scheduler (distribution engine, conflict detector, smart allocator, Fire TV sync) skip it. Flipping back to **Available** re-enables it. **Manual matrix routing is unaffected** (that uses `MatrixInput`, not `input_sources`), so bartenders keep manual control/visibility of a down box.
+- **API:** new `PATCH /api/scheduling/input-sources` `{id, isActive}` — lightweight toggle (no full upsert body). Under `/api/scheduling/` which is already nginx-allow-listed on :3002, so it works on the remote with no proxy change.
+- **Greenville Cable 1:** already set `is_active=0` directly during the 2026-06-30 outage; this panel is how it's managed going forward (and re-enabled when fixed).
+- **Verify on the remote:** Video tab → "Source Status" → toggle a box Down then Available; confirm the `N down` badge updates. Down boxes get skipped by AI Suggest's next run.
+- **Affected files:** `apps/web/src/components/SourceAvailabilityPanel.tsx` (new), `apps/web/src/app/remote/page.tsx`, `apps/web/src/app/api/scheduling/input-sources/route.ts`, `docs/LOCATION_UPDATE_NOTES.md`, `package.json`.
+
 ### 2026-06-30 — v2.89.6 — FIX: no output meters on the bartender remote at group-based locations (Stoneyards)
 
 - **Risk: GO (one-line UI fix).** `BartenderRemoteAudioPanel.tsx` only. Safe for all locations (meters self-guard with `.length > 0`).

@@ -35,6 +35,37 @@ export async function GET(request: NextRequest) {
   }
 }
 
+// PATCH - lightweight toggle of a source's scheduling availability (is_active).
+// Powers the bartender-remote "Source Status" toggle: mark a box DOWN so AI
+// Suggest + the scheduler skip it, without re-sending the whole upsert body.
+// Manual matrix routing is unaffected (that uses MatrixInput, not input_sources).
+export async function PATCH(request: NextRequest) {
+  const rateLimit = await withRateLimit(request, RateLimitConfigs.DEFAULT);
+  if (!rateLimit.allowed) return rateLimit.response;
+
+  const bodyValidation = await validateRequestBody(
+    request,
+    z.object({ id: z.string().min(1), isActive: z.boolean() })
+  );
+  if (isValidationError(bodyValidation)) return bodyValidation.error;
+  const { id, isActive } = bodyValidation.data;
+
+  try {
+    await db
+      .update(schema.inputSources)
+      .set({ isActive })
+      .where(eq(schema.inputSources.id, id));
+    logger.api.response('PATCH', '/api/scheduling/input-sources', 200, { id, isActive });
+    return NextResponse.json({ success: true, id, isActive });
+  } catch (error: any) {
+    logger.api.error('PATCH', '/api/scheduling/input-sources', error);
+    return NextResponse.json(
+      { success: false, error: 'Failed to update input source', details: error.message },
+      { status: 500 }
+    );
+  }
+}
+
 // POST - Create new input source
 export async function POST(request: NextRequest) {
   const rateLimit = await withRateLimit(request, RateLimitConfigs.DEFAULT);
