@@ -46,6 +46,14 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-06-30 — v2.90.1 — HARDENING: apply path now rejects scheduling onto a downed source
+
+- **Risk: GO (one guard).** `apps/web/src/app/api/schedules/bartender-schedule/route.ts` only.
+- **Why:** the candidate/suggest paths (`ai-suggest/route.ts:461`, `smart-input-allocator`) correctly filter `is_active`, but the **apply** path (`bartender-schedule` line ~102) bound the input source by id with **no `is_active` guard**. So a stale AI-Suggest plan generated *before* a box was marked down could still commit an allocation onto the dead box. Surfaced at Greenville: Cable 1 was correctly disabled (`is_active=0`) yet stale suggestions kept proposing TV 1 → Cable 1; regenerating AI Suggest drops it, but the apply path was the remaining hole.
+- **Fix:** after resolving the input source by id, return **409** if `inputSource.isActive === false` with a clear message ("…is marked down… Mark it Available again, or pick another source.").
+- **Operator note:** when you mark a box Down, **regenerate AI Suggest** so live suggestions exclude it; this guard is the backstop for stale plans.
+- **Affected files:** `apps/web/src/app/api/schedules/bartender-schedule/route.ts`, `docs/LOCATION_UPDATE_NOTES.md`, `package.json`.
+
 ### 2026-06-30 — v2.90.0 — FEATURE: bartender-remote "Source Status" toggle (mark a box down → AI Suggest skips it)
 
 - **Risk: GO (additive feature).** New component + new PATCH method; no existing behavior changed.
