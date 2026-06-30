@@ -23,7 +23,7 @@ import {
   newSchedulingRequestId,
 } from '@/lib/scheduling-logger'
 import { logLlmPerf } from '@/lib/llm-perf-logger'
-import { runAiSuggestSolverShadow } from '@/lib/scheduling/ai-suggest-solver-shadow'
+import { runAiSuggestSolverShadow, computeEngineSuggestions } from '@/lib/scheduling/ai-suggest-solver-shadow'
 import { resolveChannelsForGame } from '@/lib/network-channel-resolver'
 
 // AI Suggest runs Ollama with a longer prompt (up to 12 diverse suggestions)
@@ -1760,7 +1760,54 @@ export async function GET(request: NextRequest) {
     logger.info(`[AI-SUGGEST] Ollama raw response (${ollamaResponse.length} chars): ${ollamaResponse.slice(0, 2000)}`)
 
     // 4. Parse response into structured suggestions
-    const { suggestions, rejections, prePadByGameId } = parseOllamaResponse(ollamaResponse, filteredGames, inputSources, homeTeamRules, tvOutputs.length)
+    let { suggestions, rejections, prePadByGameId } = parseOllamaResponse(ollamaResponse, filteredGames, inputSources, homeTeamRules, tvOutputs.length)
+
+    // Capture the PRE-merge LLM list so the shadow engine-vs-LLM daily diff keeps
+    // populating during the primary canary (it must compare against what the LLM
+    // alone produced, not the merged output).
+    const llmSuggestionsForShadow = suggestions
+
+    // Wave 2 PRIMARY (canary): the deterministic DistributionEngine OWNS cable/directv.
+    // For every game the engine actually placed, its assignment becomes the suggestion
+    // and the LLM's version of that same game is dropped. The LLM still covers everything
+    // the engine doesn't model — all Fire TV/streaming games, plus any cable/directv game
+    // the engine couldn't fit. HYBRID by design (the engine has no streaming model). On
+    // ANY error, fall back to LLM-only — never throw into the request path.
+    if (AI_SUGGEST_SOLVER === 'primary') {
+      try {
+        const gameKey = (home: any, away: any): string =>
+          `${String(away || '').toLowerCase().trim()}@${String(home || '').toLowerCase().trim()}`
+        const engResults = await computeEngineSuggestions({ filteredGames, inputSources, tvOutputs })
+        const engineSuggestions: AISuggestion[] = engResults.map((e) => ({
+          gameId: e.gameId || '',
+          homeTeam: e.homeTeam || 'Unknown',
+          awayTeam: e.awayTeam || 'Unknown',
+          league: e.league || 'Unknown',
+          startTime: e.startTime || new Date().toISOString(),
+          channelNumber: e.channelNumber,
+          channelName: e.channelName,
+          suggestedInput: e.sourceName || 'Unknown',
+          suggestedInputId: e.sourceId || '',
+          suggestedDeviceId: e.deviceId || '',
+          suggestedDeviceType: e.deviceType,
+          suggestedOutputs: e.suggestedOutputs,
+          confidence: 0.9,
+          // Server-built reasoning (Gotcha #12 — never route deterministic text through the LLM).
+          reasoning:
+            `${e.awayTeam} @ ${e.homeTeam}` +
+            (e.league && e.league !== 'Unknown' ? ` · ${e.league}` : '') +
+            ` — deterministic engine → ${e.channelName || e.sourceName || 'input'}` +
+            (e.channelNumber ? ` (ch ${e.channelNumber})` : '') +
+            `, ${e.suggestedOutputs.length} TV(s)`,
+        }))
+        const engineKeys = new Set(engineSuggestions.map((e) => gameKey(e.homeTeam, e.awayTeam)))
+        const llmKept = llmSuggestionsForShadow.filter((s) => !engineKeys.has(gameKey(s.homeTeam, s.awayTeam)))
+        suggestions = [...engineSuggestions, ...llmKept]
+        logger.info(`[AI-SUGGEST] PRIMARY merge: engine produced ${engineSuggestions.length}, kept ${llmKept.length} LLM, merged total ${suggestions.length}`)
+      } catch (primaryErr: any) {
+        logger.warn(`[AI-SUGGEST] PRIMARY merge failed — falling back to LLM-only: ${primaryErr?.message || primaryErr}`)
+      }
+    }
 
     // v2.27.1: Persist rejection telemetry so operators can see WHY the LLM
     // dropped suggestions (zero outputs, in-batch collision, existing booking,
@@ -1846,8 +1893,10 @@ export async function GET(request: NextRequest) {
     // Wave 2 SHADOW: after building the response, run the deterministic engine
     // in the background and log a diff vs the LLM plan. setTimeout(0) defers it
     // past this return so it never adds latency; the runner never throws.
-    if (AI_SUGGEST_SOLVER === 'shadow') {
-      const shadowArgs = { requestId: aiReqId, filteredGames, inputSources, tvOutputs, llmSuggestions: suggestions, prePadByGameId }
+    if (AI_SUGGEST_SOLVER === 'shadow' || AI_SUGGEST_SOLVER === 'primary') {
+      // Always diff against the PRE-merge LLM list so the engine-vs-LLM daily log
+      // stays meaningful during the primary canary.
+      const shadowArgs = { requestId: aiReqId, filteredGames, inputSources, tvOutputs, llmSuggestions: llmSuggestionsForShadow, prePadByGameId }
       setTimeout(() => { void runAiSuggestSolverShadow(shadowArgs) }, 0)
     }
 

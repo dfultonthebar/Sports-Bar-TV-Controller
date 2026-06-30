@@ -46,6 +46,40 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-06-30 — v2.89.2 — DirecTV channel-health scan engine (monthly, Hermes-driven)
+
+- **Risk: GO.** New read-only ops script, no app code. `scripts/scan-directv-channels.py`.
+- **What:** reliable DirecTV preset audit — reads a box's directv presets + DirecTVDevice IPs, probes each channel **distributed one-per-receiver across all receivers** (DirecTV SHEF times out under concurrent load → a naive parallel scan false-flags valid channels as dead; this is the lesson from the 2026-06-30 Graystone cleanup). Reports COLLISIONS (DB-level, reliable) + CONFIRMED-DEAD (clean "Channel does not exist" only; HTTPError/timeout = inconclusive, never flagged). No-op on boxes without DirecTV. READ-ONLY (reports, never edits).
+- **Scheduling:** a **Hermes monthly cron** (CT212) SSHes to each fleet box and runs it; output delivered by Hermes. Operator wanted Hermes to own the recurring scan.
+- **Context:** built after a one-off cleanup found Graystone (only box w/ DirecTV) had 16 preset collisions + a defunct channel; monthly scan catches future drift. Manual run: `python3 scripts/scan-directv-channels.py` on any box.
+- **Affected files:** `scripts/scan-directv-channels.py`, `docs/LOCATION_UPDATE_NOTES.md`, `package.json`.
+
+### 2026-06-29 — v2.89.1 — scheduler adoption nudge in shift-brief + "How to Schedule a Game" how-to
+
+- **Risk: GO.** Purely additive. New bartender-help doc + a conditional shift-brief bullet. No schema, no deps, no env.
+- **What changed:** (1) `docs/bartender-help/HOW_TO_SCHEDULE_A_GAME.md` — plain-language one-pager for crews not using the scheduler. (2) `shift-brief/route.ts` adds `schedulingTip` — a server-built (Gotcha #12) verbatim bullet that **only appears when a box has scheduled ZERO games in the last 7 days AND has games tonight**. Self-limiting: vanishes once they schedule anything, so it's silent at active boxes (Holmgren) and nudges dormant ones (Graystone/luckys/Appleton). Mirrored to `fallbackBrief`.
+- **What could break:** nothing — the tip is null at any box that's scheduling. The query is one indexed count on `input_source_allocations`.
+- **Why:** usage audit showed only Holmgren (38/7d) + Greenville (1) actively schedule; Graystone/luckys/Appleton are configured but unused (0 AI Suggest ever). This drives adoption without a deploy-per-location.
+- **Affected files:** `apps/web/src/app/api/ai/shift-brief/route.ts`, `docs/bartender-help/HOW_TO_SCHEDULE_A_GAME.md`, `docs/LOCATION_UPDATE_NOTES.md`, `package.json`.
+
+### 2026-06-29 — v2.89.0 — AI Suggest `primary` solver mode (Wave 2 canary, default OFF)
+
+- **Risk: GO.** Implements the stubbed `primary` mode of `AI_SUGGEST_SOLVER`. Flag **defaults to `off`** → zero behavior change for any box that doesn't opt in. `off`/`shadow` paths are byte-identical to before.
+- **What changed:** `primary` = hybrid — the deterministic DistributionEngine produces cable/directv suggestions (the bartender-visible picks), the LLM still runs for Fire TV/streaming coverage + uncovered games, engine wins on shared games. Engine-vs-LLM shadow diff keeps logging during `primary`. `ai-suggest-solver-shadow.ts` refactored (engine-plan core extracted to a shared helper + new exported `computeEngineSuggestions`); `ai-suggest/route.ts` gained the primary merge block + fires the shadow diff for `primary` too.
+- **What could break:** nothing unless a box sets `AI_SUGGEST_SOLVER=primary`. The primary block is try/catch-guarded → falls back to LLM-only on any engine error.
+- **Canary:** Holmgren is running `primary` (its gitignored `.env` only — NOT propagated). Evaluate via override-learn acceptance over ~1 week before considering a fleet flip.
+- **Manual step:** none. To opt a box in: `.env` `AI_SUGGEST_SOLVER=primary` + `pm2 delete && pm2 start ecosystem.config.js` (Gotcha #2). Rollback: set `shadow`, delete+start.
+- **Affected files:** `apps/web/src/app/api/scheduling/ai-suggest/route.ts`, `apps/web/src/lib/scheduling/ai-suggest-solver-shadow.ts`, `docs/VERSION_SETUP_GUIDE.md`, `docs/LOCATION_UPDATE_NOTES.md`, `package.json`.
+
+### 2026-06-29 — v2.88.0 — bartender-remote (:3002) connection tracking + new-WAN-IP Telegram alert
+
+- **Risk: GO.** Purely additive ops tooling. No schema, no deps, no env, no app code. New `scripts/` only + doc entries.
+- **What changed:** `scripts/install-3002-tracking.sh` (idempotent activator), `scripts/conn-track-3002-enrich.sh` (per-minute durable MAC-enriched audit log of :3002 connections + Telegram alert on first sighting of a NEW WAN IP), `scripts/who-hit-3002.sh` (viewer: `--wan`/`--today`/`--raw`).
+- **What could break:** nothing at the app level — these scripts don't run unless a box runs the activator. The activator only touches nginx logging (adds an `access_log` line) + a crontab entry; both idempotent and reversible.
+- **Context:** built when Holmgren's :3002 was opened to the WAN (Gotcha #20 exception, operator-accepted — the bartender remote is unauthenticated, so this is the audit/alert trail for it). Holmgren is already activated. Other boxes stay firewalled; activation there is optional LAN audit only.
+- **Manual step:** OPTIONAL — `bash scripts/install-3002-tracking.sh` to turn it on per box. Telegram alerts use existing `.env` `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID`.
+- **Affected files:** `scripts/{install-3002-tracking,conn-track-3002-enrich,who-hit-3002}.sh`, `docs/VERSION_SETUP_GUIDE.md`, `docs/LOCATION_UPDATE_NOTES.md`, `package.json`.
+
 ### 2026-06-29 — v2.84.3 / v2.85.0 / v2.86.0 — luckys hub-name fix, 4 AM morning-reset, default audio levels
 
 - **Risk: GO.** Scheduler feature + verify-install fix. No schema/deps/env.
