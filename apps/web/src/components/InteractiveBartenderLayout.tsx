@@ -94,6 +94,31 @@ export default function InteractiveBartenderLayout({
   networkTVs = []
 }: Props) {
   const [selectedZone, setSelectedZone] = useState<Zone | null>(null)
+
+  // v2.89.4 — persist the selected zone across tab switches. The parent
+  // UNMOUNTS this whole component when the bartender leaves the Video tab
+  // ({activeTab === 'video' && <InteractiveBartenderLayout/>}), so selectedZone
+  // reset to null on every tab switch → "Output N video source deselects when I
+  // switch tabs" (filed 2026-06-30, never actually fixed). Save the current
+  // selection (by outputNumber) and restore it on remount.
+  useEffect(() => {
+    try {
+      if (selectedZone) sessionStorage.setItem('bartenderSelectedOutput', String(selectedZone.outputNumber))
+      else sessionStorage.removeItem('bartenderSelectedOutput')
+    } catch { /* sessionStorage unavailable — non-fatal */ }
+  }, [selectedZone])
+
+  useEffect(() => {
+    if (selectedZone || !layout.zones?.length) return
+    let saved: string | null = null
+    try { saved = sessionStorage.getItem('bartenderSelectedOutput') } catch { /* ignore */ }
+    if (!saved) return
+    const z = layout.zones.find(zz => zz.outputNumber === Number(saved))
+    if (z) setSelectedZone(z)
+    // restore-on-remount only; intentionally not keyed on selectedZone
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layout.zones])
+
   const [multiViewCardId, setMultiViewCardId] = useState<string | null>(null)
   const [multiViewMode, setMultiViewMode] = useState<number>(0)
   const [multiViewLoading, setMultiViewLoading] = useState(false)

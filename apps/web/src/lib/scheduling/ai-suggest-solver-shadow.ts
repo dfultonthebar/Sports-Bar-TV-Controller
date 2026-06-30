@@ -60,70 +60,171 @@ function jaccard(a: number[], b: number[]): number {
   return union === 0 ? 1 : inter / union
 }
 
+/** Engine assignment for one game, shaped so the route can build an AISuggestion. */
+export interface EngineSuggestion {
+  gameId: string
+  homeTeam: string
+  awayTeam: string
+  league: string
+  startTime: string
+  /** resolved input_sources identity (mapped back from the matrix channel) */
+  sourceId: string
+  sourceName: string
+  deviceId: string
+  deviceType: 'cable' | 'directv'
+  channelNumber: string
+  channelName: string
+  suggestedOutputs: number[]
+  minTVsMet: boolean
+}
+
+interface EnginePlanContext {
+  skipped: boolean           // true when there are no cable/directv games to place
+  plan: { games: any[] }
+  channelToSource: Map<number, any>  // matrix channel → the input_sources row that resolved to it
+  nameToChannel: Map<string, number> // input_sources.name → channel (#3 comparison)
+  allowedInputs: number[]
+  unresolvedInputs: number
+}
+
+/**
+ * Shared engine-plan core used by BOTH the shadow diff runner and the primary
+ * canary (computeEngineSuggestions). Builds engineGames, resolves input identity
+ * robustly (audit #1), and runs the DistributionEngine. Pure computation — no
+ * logging, no side effects — so callers can layer their own behavior on top.
+ */
+async function computeEnginePlan(inp: {
+  filteredGames: any[]; inputSources: any[]; tvOutputs: any[]
+}): Promise<EnginePlanContext> {
+  const { filteredGames, inputSources, tvOutputs } = inp
+  const empty: EnginePlanContext = {
+    skipped: true, plan: { games: [] }, channelToSource: new Map(),
+    nameToChannel: new Map(), allowedInputs: [], unresolvedInputs: 0,
+  }
+
+  // cable/directv slice only — the engine doesn't model streaming inputs.
+  const cableDirectvGames = filteredGames.filter(g => g.channelNumber || g.directvChannel)
+  if (cableDirectvGames.length === 0) return empty
+
+  const engineGames: GameInfo[] = cableDirectvGames.map(g => ({
+    id: g.id,
+    homeTeam: g.homeTeam,
+    awayTeam: g.awayTeam,
+    league: g.league,
+    startTime: g.startTime || new Date().toISOString(),
+    cableChannel: g.channelNumber || undefined,
+    directvChannel: g.directvChannel || undefined,
+    channelName: g.channelName || undefined,
+  }))
+
+  // --- #1: resolve input identity the way the engine does (MatrixInput.channelNumber) ---
+  // input_sources.matrixInputId is unreliable (channelNumber at some sites, a UUID
+  // FK to MatrixInput.id at others, NULL on fresh installs). Build both lookups and
+  // resolve each cable/directv source to its matrix channel number.
+  const matrixRows = await db.select().from(schema.matrixInputs)
+  const channelById = new Map<string, number>()
+  const validChannels = new Set<number>()
+  for (const mi of matrixRows as any[]) {
+    const ch = Number(mi.channelNumber)
+    if (Number.isFinite(ch)) {
+      validChannels.add(ch)
+      if (mi.id != null) channelById.set(String(mi.id), ch)
+    }
+  }
+  const resolveChannel = (s: any): number | null => {
+    const raw = s?.matrixInputId
+    if (raw == null || raw === '') return null
+    if (channelById.has(String(raw))) return channelById.get(String(raw))!   // UUID FK lineage
+    const n = Number(raw)
+    if (Number.isFinite(n) && validChannels.has(n)) return n                 // direct-channelNumber lineage
+    return null
+  }
+
+  const nameToChannel = new Map<string, number>() // input_sources.name → channel (#3 comparison)
+  const channelToSource = new Map<number, any>()  // matrix channel → input_sources row (primary mapping)
+  const allowedInputsArr: number[] = []
+  let unresolvedInputs = 0
+  for (const s of inputSources) {
+    if (s.type !== 'cable' && s.type !== 'directv' && s.type !== 'satellite') continue
+    const ch = resolveChannel(s)
+    if (ch == null) { unresolvedInputs++; continue }
+    allowedInputsArr.push(ch)
+    if (s.name) nameToChannel.set(norm(s.name), ch)
+    if (!channelToSource.has(ch)) channelToSource.set(ch, s)
+  }
+  const allowedInputs = [...new Set(allowedInputsArr)]
+
+  const allowedOutputs = tvOutputs
+    .map(o => Number(o.channelNumber))
+    .filter(n => Number.isFinite(n))
+
+  const plan = await getDistributionEngine().createDistributionPlan(engineGames, {
+    allowedInputs: allowedInputs.length ? allowedInputs : undefined,
+    allowedOutputs: allowedOutputs.length ? allowedOutputs : undefined,
+  })
+
+  return { skipped: false, plan, channelToSource, nameToChannel, allowedInputs, unresolvedInputs }
+}
+
+/**
+ * PRIMARY canary: produce the engine's cable/directv suggestions. For every game
+ * the engine actually placed (assignments.length > 0) and whose input maps back to
+ * a real input_sources row, return an EngineSuggestion carrying everything the route
+ * needs to build an AISuggestion. Games the engine did NOT place are left to the LLM.
+ */
+export async function computeEngineSuggestions(inp: {
+  filteredGames: any[]; inputSources: any[]; tvOutputs: any[]
+}): Promise<EngineSuggestion[]> {
+  const ctx = await computeEnginePlan(inp)
+  if (ctx.skipped) return []
+
+  const out: EngineSuggestion[] = []
+  for (const ga of ctx.plan.games as any[]) {
+    if (!ga.assignments || ga.assignments.length === 0) continue
+    const inputCh = ga.assignments[0]?.inputNumber
+    if (inputCh == null) continue
+    const src = ctx.channelToSource.get(Number(inputCh))
+    if (!src) continue   // engine placed it on a channel we can't map to a source — leave to LLM
+
+    const deviceType: 'cable' | 'directv' =
+      (src.type === 'directv' || src.type === 'satellite') ? 'directv' : 'cable'
+    const channelNumber = deviceType === 'directv'
+      ? (ga.game.directvChannel || ga.game.cableChannel || ga.game.channelNumber || '')
+      : (ga.game.cableChannel || ga.game.directvChannel || ga.game.channelNumber || '')
+    const st = ga.game.startTime
+    const startTime = typeof st === 'string'
+      ? st
+      : (st instanceof Date ? st.toISOString() : new Date().toISOString())
+
+    out.push({
+      gameId: String(ga.game.id || ''),
+      homeTeam: ga.game.homeTeam,
+      awayTeam: ga.game.awayTeam,
+      league: ga.game.league || '',
+      startTime,
+      sourceId: src.id,
+      sourceName: src.name,
+      deviceId: src.deviceId,
+      deviceType,
+      channelNumber: String(channelNumber || ''),
+      channelName: ga.game.channelName || '',
+      suggestedOutputs: ga.assignments.map((a: any) => a.outputNumber),
+      minTVsMet: !!ga.minTVsMet,
+    })
+  }
+  return out
+}
+
 export async function runAiSuggestSolverShadow(inp: ShadowInputs): Promise<void> {
   try {
     const { requestId, filteredGames, inputSources, tvOutputs, llmSuggestions, prePadByGameId } = inp
 
-    // cable/directv slice only — the engine doesn't model streaming inputs.
-    const cableDirectvGames = filteredGames.filter(g => g.channelNumber || g.directvChannel)
-    if (cableDirectvGames.length === 0) {
+    const ctx = await computeEnginePlan({ filteredGames, inputSources, tvOutputs })
+    if (ctx.skipped) {
       logger.info(`[AI-SUGGEST-SOLVER:SHADOW ${requestId}] no cable/directv games — skipped`)
       return
     }
-
-    const engineGames: GameInfo[] = cableDirectvGames.map(g => ({
-      id: g.id,
-      homeTeam: g.homeTeam,
-      awayTeam: g.awayTeam,
-      league: g.league,
-      startTime: g.startTime || new Date().toISOString(),
-      cableChannel: g.channelNumber || undefined,
-      directvChannel: g.directvChannel || undefined,
-    }))
-
-    // --- #1: resolve input identity the way the engine does (MatrixInput.channelNumber) ---
-    // input_sources.matrixInputId is unreliable (channelNumber at some sites, a UUID
-    // FK to MatrixInput.id at others, NULL on fresh installs). Build both lookups and
-    // resolve each cable/directv source to its matrix channel number.
-    const matrixRows = await db.select().from(schema.matrixInputs)
-    const channelById = new Map<string, number>()
-    const validChannels = new Set<number>()
-    for (const mi of matrixRows as any[]) {
-      const ch = Number(mi.channelNumber)
-      if (Number.isFinite(ch)) {
-        validChannels.add(ch)
-        if (mi.id != null) channelById.set(String(mi.id), ch)
-      }
-    }
-    const resolveChannel = (s: any): number | null => {
-      const raw = s?.matrixInputId
-      if (raw == null || raw === '') return null
-      if (channelById.has(String(raw))) return channelById.get(String(raw))!   // UUID FK lineage
-      const n = Number(raw)
-      if (Number.isFinite(n) && validChannels.has(n)) return n                 // direct-channelNumber lineage
-      return null
-    }
-
-    const nameToChannel = new Map<string, number>() // input_sources.name → channel (#3 comparison)
-    const allowedInputsArr: number[] = []
-    let unresolvedInputs = 0
-    for (const s of inputSources) {
-      if (s.type !== 'cable' && s.type !== 'directv' && s.type !== 'satellite') continue
-      const ch = resolveChannel(s)
-      if (ch == null) { unresolvedInputs++; continue }
-      allowedInputsArr.push(ch)
-      if (s.name) nameToChannel.set(norm(s.name), ch)
-    }
-    const allowedInputs = [...new Set(allowedInputsArr)]
-
-    const allowedOutputs = tvOutputs
-      .map(o => Number(o.channelNumber))
-      .filter(n => Number.isFinite(n))
-
-    const plan = await getDistributionEngine().createDistributionPlan(engineGames, {
-      allowedInputs: allowedInputs.length ? allowedInputs : undefined,
-      allowedOutputs: allowedOutputs.length ? allowedOutputs : undefined,
-    })
+    const { plan, nameToChannel, allowedInputs, unresolvedInputs } = ctx
 
     // Index the LLM suggestions by game content key (gameIndex → filteredGames).
     // #2: use the PRE-PAD organic outputs (home-team padding mutated the post-pad

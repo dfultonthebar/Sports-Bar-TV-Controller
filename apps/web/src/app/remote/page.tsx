@@ -33,6 +33,8 @@ import RecoveryConfirmationPopup from '@/components/RecoveryConfirmationPopup'
 import { CommercialLightingRemote } from '@/components/commercial-lighting'
 import AtmosphereControl from '@/components/AtmosphereControl'
 import ShiftBriefTile from '@/components/ai/ShiftBriefTile'
+import SourceAvailabilityPanel from '@/components/SourceAvailabilityPanel'
+import SafeBoundary from '@/components/SafeBoundary'
 
 import { logger } from '@sports-bar/logger'
 interface MatrixInput {
@@ -1257,7 +1259,10 @@ export default function BartenderRemotePage() {
         )}
 
         {activeTab === 'schedule' && (
-          <div className="max-w-7xl mx-auto pt-4">
+          <div className="max-w-7xl mx-auto pt-4 space-y-4">
+            <SafeBoundary label="SourceStatus">
+              <SourceAvailabilityPanel />
+            </SafeBoundary>
             <ScheduledGamesPanel />
             {/* Override-learn recommendations — live summary of which teams */}
             {/* bartenders have been correcting, with one-tap Apply buttons. */}

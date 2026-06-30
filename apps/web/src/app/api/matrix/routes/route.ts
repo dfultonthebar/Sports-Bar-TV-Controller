@@ -43,10 +43,15 @@ import { queryWolfpackRouteState } from '@sports-bar/wolfpack'
  */
 
 type CachedState = {
-  routes: Array<{ inputNum: number; outputNum: number; isActive: true; source?: 'db-fallback' }>
+  routes: Array<{ inputNum: number; outputNum: number; isActive: true; source?: 'db-fallback' | 'db-recent' }>
   expiry: number
   source: 'hardware'
 }
+
+// How long after an app-applied route (POST /api/matrix/route, which sets
+// MatrixRoute.updatedAt) the DB row is treated as authoritative over the live
+// o2ox read. See the "Recency override" block in GET() for the full rationale.
+const DB_RECENCY_WINDOW_MS = 120_000
 
 // Module-level cache. Single-instance Node process, no cluster, so a plain
 // Map is fine. Keyed by chassis IP so if the operator ever runs two active
@@ -171,21 +176,75 @@ export async function GET(request: NextRequest) {
       // so the UI can show a subtle indicator if desired. Keep the live
       // value where present — DB lags by one POST cycle so the live
       // query is more authoritative when it has data.
+      // Seed the output→route map with the live values, then reconcile against
+      // the MatrixRoute DB table in two ways below.
       const liveOutputs = new Set(liveRoutes.map(r => r.outputNum))
+      const byOutput = new Map<number, { inputNum: number; outputNum: number; isActive: true; source?: 'db-fallback' | 'db-recent' }>()
+      for (const r of liveRoutes) byOutput.set(r.outputNum, r)
+
       const dbRows = await db.select()
         .from(schema.matrixRoutes)
         .where(eq(schema.matrixRoutes.isActive, true))
         .all()
-      const fallbacks: Array<{ inputNum: number; outputNum: number; isActive: true; source: 'db-fallback' }> = []
-      for (const row of dbRows) {
-        if (liveOutputs.has(row.outputNum)) continue
-        if (row.outputNum < 1 || row.outputNum > (activeConfig.outputCount || 36)) continue
-        fallbacks.push({ inputNum: row.inputNum, outputNum: row.outputNum, isActive: true, source: 'db-fallback' })
-      }
-      const routes = [...liveRoutes, ...fallbacks].sort((a, b) => a.outputNum - b.outputNum)
 
-      if (fallbacks.length > 0) {
-        logger.info(`[api/matrix/routes] Wolf Pack returned sentinel for ${fallbacks.length} output(s); filled from MatrixRoute DB: ${fallbacks.map(f => `out${f.outputNum}=in${f.inputNum}`).join(', ')}`)
+      // v2.89.x — Recency override (Stoneyard Greenville FM36 output-1 bug).
+      //
+      // Symptom: route output 1 to Cable 1 on the Routing tab, switch it to
+      // Atmosphere on the Video tab, reopen the Routing tab → it shows Cable 1
+      // again. The physical TV is correct (verified on the Wolf Pack's own web
+      // UI); only the app DISPLAY reverts. A 90s raw-log capture during the
+      // symptom showed ZERO matrix WRITE commands — nothing physically
+      // re-routes; it's purely an unreliable READ feeding the display.
+      //
+      // Root cause: this Greenville FM36's firmware returns an unreliable o2ox
+      // value for output 1 — either the 0xFFFF (65535) session-init sentinel
+      // (normalized to -1 and dropped, then back-filled from a possibly-stale
+      // DB row) OR a stale REAL value (e.g. the old Cable-1 input). Either way
+      // the live read overwrites the operator's just-applied route on the next
+      // tab switch / poll. Holmgren's firmware doesn't exhibit this.
+      //
+      // Fix: when an output was routed THROUGH THIS APP within the last
+      // DB_RECENCY_WINDOW_MS, the MatrixRoute DB row is authoritative and WINS
+      // over the live read. POST /api/matrix/route writes the DB row (with
+      // updatedAt = now) only AFTER routeMatrix() succeeds against the
+      // hardware, so a recently-updated row == the exact route we just
+      // commanded == the intended physical state. A live read that disagrees
+      // inside that window is the firmware settling/sentinel artifact, not a
+      // real out-of-band change, so trusting the DB cannot show a wrong value.
+      //
+      // This is location-agnostic and safe for Holmgren: its live read already
+      // agrees with the DB it just wrote, so the override is a no-op there. The
+      // ONLY behavior change is for the ~2 minutes after an app route, during
+      // which a stale/sentinel read can no longer clobber the display. After
+      // the window the live read is authoritative again (so genuine front-panel
+      // changes still surface within ~2 min, same as before).
+      let recentOverrides = 0
+      let fallbacks = 0
+      for (const row of dbRows) {
+        if (row.outputNum < 1 || row.outputNum > (activeConfig.outputCount || 36)) continue
+
+        const updatedMs = row.updatedAt ? Date.parse(row.updatedAt as any) : NaN
+        const isRecent = Number.isFinite(updatedMs) && (now - updatedMs) <= DB_RECENCY_WINDOW_MS
+
+        if (isRecent) {
+          // Just-applied via the app — DB wins over the (possibly stale/sentinel)
+          // live read for this output.
+          const existing = byOutput.get(row.outputNum)
+          if (!existing || existing.inputNum !== row.inputNum) recentOverrides++
+          byOutput.set(row.outputNum, { inputNum: row.inputNum, outputNum: row.outputNum, isActive: true, source: 'db-recent' })
+        } else if (!liveOutputs.has(row.outputNum)) {
+          // Existing v2.28.1 behavior: the live read dropped this output (65535
+          // sentinel filtered out), so back-fill its last-known value from DB.
+          byOutput.set(row.outputNum, { inputNum: row.inputNum, outputNum: row.outputNum, isActive: true, source: 'db-fallback' })
+          fallbacks++
+        }
+      }
+      const routes = [...byOutput.values()].sort((a, b) => a.outputNum - b.outputNum)
+
+      if (recentOverrides > 0 || fallbacks > 0) {
+        const overridden = routes.filter(r => r.source === 'db-recent').map(r => `out${r.outputNum}=in${r.inputNum}`)
+        const filled = routes.filter(r => r.source === 'db-fallback').map(r => `out${r.outputNum}=in${r.inputNum}`)
+        logger.info(`[api/matrix/routes] Reconciled live read with MatrixRoute DB — recent-override(${recentOverrides}): ${overridden.join(', ') || 'none'}; sentinel-fill(${fallbacks}): ${filled.join(', ') || 'none'}`)
       }
 
       cache.set(activeConfig.ipAddress, {
@@ -198,7 +257,8 @@ export async function GET(request: NextRequest) {
         success: true,
         source: 'hardware',
         routes,
-        fallbackCount: fallbacks.length,
+        fallbackCount: fallbacks,
+        recentOverrideCount: recentOverrides,
       })
     } catch (hwError: any) {
       logger.warn(`[api/matrix/routes] hardware query failed, falling back to DB cache: ${hwError?.message ?? hwError}`)
