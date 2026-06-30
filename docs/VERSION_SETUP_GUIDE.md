@@ -35,6 +35,28 @@ is the archive.
 
 ---
 
+## v2.89.0 — AI Suggest `primary` solver mode (Wave 2 canary) (2026-06-29)
+
+**Required manual step:** NONE for the fleet. The `AI_SUGGEST_SOLVER` env flag
+**defaults to `off`** — fleet behavior is unchanged. This release only *implements*
+the previously-stubbed `primary` mode.
+
+**What `primary` does (hybrid):** the deterministic DistributionEngine produces
+the **cable/directv** suggestions the bartender sees; the LLM still runs and
+covers **Fire TV/streaming** games (engine doesn't model those) + any game the
+engine couldn't place. Engine wins on shared games. The engine-vs-LLM shadow
+diff keeps logging during `primary` so comparison data still accrues.
+
+**Canary:** Holmgren only, via `.env` `AI_SUGGEST_SOLVER=primary` (gitignored —
+NOT a fleet change). To flip any box: set `AI_SUGGEST_SOLVER=primary` in `.env`
++ `pm2 delete && pm2 start ecosystem.config.js` (Gotcha #2 — ecosystem already
+forwards the var). Rollback = set back to `shadow`, delete+start.
+
+**Verification:** trigger `GET /api/scheduling/ai-suggest?forceRefresh=true`;
+engine picks carry `reasoning` containing "deterministic engine" and
+`confidence: 0.9`. Evaluate the canary via override-learn acceptance (SchedulerLog
+`component='override-learn'`) over ~1 week before any fleet flip.
+
 ## v2.88.0 — bartender-remote (:3002) connection tracking + new-WAN-IP Telegram alert (2026-06-29)
 
 **Required manual step (OPTIONAL, per-box):** to ACTIVATE 3002 connection

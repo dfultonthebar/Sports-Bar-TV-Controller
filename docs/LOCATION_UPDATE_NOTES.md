@@ -46,6 +46,15 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-06-29 — v2.89.0 — AI Suggest `primary` solver mode (Wave 2 canary, default OFF)
+
+- **Risk: GO.** Implements the stubbed `primary` mode of `AI_SUGGEST_SOLVER`. Flag **defaults to `off`** → zero behavior change for any box that doesn't opt in. `off`/`shadow` paths are byte-identical to before.
+- **What changed:** `primary` = hybrid — the deterministic DistributionEngine produces cable/directv suggestions (the bartender-visible picks), the LLM still runs for Fire TV/streaming coverage + uncovered games, engine wins on shared games. Engine-vs-LLM shadow diff keeps logging during `primary`. `ai-suggest-solver-shadow.ts` refactored (engine-plan core extracted to a shared helper + new exported `computeEngineSuggestions`); `ai-suggest/route.ts` gained the primary merge block + fires the shadow diff for `primary` too.
+- **What could break:** nothing unless a box sets `AI_SUGGEST_SOLVER=primary`. The primary block is try/catch-guarded → falls back to LLM-only on any engine error.
+- **Canary:** Holmgren is running `primary` (its gitignored `.env` only — NOT propagated). Evaluate via override-learn acceptance over ~1 week before considering a fleet flip.
+- **Manual step:** none. To opt a box in: `.env` `AI_SUGGEST_SOLVER=primary` + `pm2 delete && pm2 start ecosystem.config.js` (Gotcha #2). Rollback: set `shadow`, delete+start.
+- **Affected files:** `apps/web/src/app/api/scheduling/ai-suggest/route.ts`, `apps/web/src/lib/scheduling/ai-suggest-solver-shadow.ts`, `docs/VERSION_SETUP_GUIDE.md`, `docs/LOCATION_UPDATE_NOTES.md`, `package.json`.
+
 ### 2026-06-29 — v2.88.0 — bartender-remote (:3002) connection tracking + new-WAN-IP Telegram alert
 
 - **Risk: GO.** Purely additive ops tooling. No schema, no deps, no env, no app code. New `scripts/` only + doc entries.
