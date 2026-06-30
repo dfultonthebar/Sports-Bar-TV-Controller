@@ -46,6 +46,14 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-06-30 — v2.89.3 — FIX: audio control 500'd at slug-id processor locations (Appleton no-audio)
+
+- **Risk: GO (bugfix).** One-line validation relax. Affects audio-control endpoint only.
+- **Bug:** `audioControlSchema.processorId` was `z.string().uuid()`, but `AudioProcessor.id` is a **slug** at JSON-seeded locations (e.g. `"atlas-stoneyard"` at the Stoneyards) vs a UUID at others (Holmgren). The strict `.uuid()` made EVERY audio-control command (volume/mute/source/group-volume) fail validation → 500 → **no audio control at slug-id locations.** Surfaced as the Appleton no-audio incident 2026-06-30 (compounded by Appleton being 2 versions behind + an Atlas control-port wedge needing a power-cycle).
+- **Fix:** `processorId: z.string().min(1)` — accepts both slug and UUID ids; the processor lookup still validates existence.
+- **Affected locations:** any with a slug audio-processor id (Greenville/Appleton Stoneyards most likely). Holmgren (UUID) was unaffected.
+- **Affected files:** `packages/validation/src/schemas.ts`, `docs/LOCATION_UPDATE_NOTES.md`, `package.json`.
+
 ### 2026-06-30 — v2.89.2 — DirecTV channel-health scan engine (monthly, Hermes-driven)
 
 - **Risk: GO.** New read-only ops script, no app code. `scripts/scan-directv-channels.py`.
