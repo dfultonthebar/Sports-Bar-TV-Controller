@@ -46,6 +46,14 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-06-30 — v2.90.2 — FIX: bartender-remote "update available" auto-refresh never fired on the bar iPad
+
+- **Risk: GO (one component).** `UpdateAvailableBanner.tsx` only.
+- **Why:** the remote already had an `UpdateAvailableBanner` that polls `/api/version` and reloads — but it relied solely on a 60s `setInterval`, which **Safari suspends when the tab is backgrounded or the iPad is locked**. A bar iPad sits idle behind the bar, so the timer almost never ran → updates were never detected → the iPad kept running a stale bundle (the root cause of today's "did the fix land?" confusion across the meter/tab/Source-Status fixes).
+- **Fix:** re-check the version the instant the tab is foregrounded — added `visibilitychange` / `focus` / `pageshow` listeners that call the version check on wake. Also shortened idle auto-reload from 2 min → 45s so it fires during a normal lull once an update is detected.
+- **Bootstrapping note:** the iPad still needs ONE manual refresh to load this fix; after that, future updates auto-detect on wake.
+- **Affected files:** `apps/web/src/components/UpdateAvailableBanner.tsx`, `docs/LOCATION_UPDATE_NOTES.md`, `package.json`.
+
 ### 2026-06-30 — v2.90.1 — HARDENING: apply path now rejects scheduling onto a downed source
 
 - **Risk: GO (one guard).** `apps/web/src/app/api/schedules/bartender-schedule/route.ts` only.
