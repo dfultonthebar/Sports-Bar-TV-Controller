@@ -852,9 +852,6 @@ export default function BartenderRemotePage() {
         {activeTab === 'video' && (
           <div className="w-full mx-auto space-y-4 px-1">
             <ShiftBriefTile />
-            <SafeBoundary label="SourceStatus">
-              <SourceAvailabilityPanel />
-            </SafeBoundary>
             <InteractiveBartenderLayout
               layout={tvLayout}
               onInputSelect={routeInputToOutput}
@@ -1262,7 +1259,10 @@ export default function BartenderRemotePage() {
         )}
 
         {activeTab === 'schedule' && (
-          <div className="max-w-7xl mx-auto pt-4">
+          <div className="max-w-7xl mx-auto pt-4 space-y-4">
+            <SafeBoundary label="SourceStatus">
+              <SourceAvailabilityPanel />
+            </SafeBoundary>
             <ScheduledGamesPanel />
             {/* Override-learn recommendations — live summary of which teams */}
             {/* bartenders have been correcting, with one-tap Apply buttons. */}
