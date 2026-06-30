@@ -46,6 +46,14 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-06-30 — v2.89.4 — FIX: bartender remote deselects Output N video source on tab switch
+
+- **Risk: GO (bugfix).** Self-contained, additive (sessionStorage persist/restore). Affects the Video tab only.
+- **Bug:** the Video tab is conditionally rendered (`{activeTab === 'video' && <InteractiveBartenderLayout/>}`), so leaving the tab UNMOUNTS the component and its `selectedZone` local state resets to null → switching tabs deselects the output you'd selected ("Output 1 video source deselects"). Reported at both Stoneyards (Appleton + Greenville) 2026-06-30. Was filed as a TODO months-perceived but **never actually fixed** (git: only `17aa3816` added a TODO entry, no fix commit).
+- **Fix:** `InteractiveBartenderLayout` now persists `selectedZone` (by `outputNumber`) to sessionStorage and restores it on remount — selection survives tab switches. Cleared automatically after a route is applied (existing behavior).
+- **Verify on the remote:** select a TV/output on the Video tab, switch to another tab and back — the output stays selected.
+- **Affected files:** `apps/web/src/components/InteractiveBartenderLayout.tsx`, `docs/LOCATION_UPDATE_NOTES.md`, `package.json`.
+
 ### 2026-06-30 — v2.89.3 — FIX: audio control 500'd at slug-id processor locations (Appleton no-audio)
 
 - **Risk: GO (bugfix).** One-line validation relax. Affects audio-control endpoint only.
