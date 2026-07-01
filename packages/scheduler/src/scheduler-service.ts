@@ -63,11 +63,6 @@ class SchedulerService {
   private cachedVavaDevices: any[] | null = null;
   private cachedAudioProcessor: any | null = null;
   private cachedMatrixConfig: any | null = null; // Wave 3c: active Wolf Pack config for route read-back (per-tick cache)
-  // Per-location Wolf Pack audio-feed output numbers (MatrixOutput.audioOutput='audio',
-  // ordered by channelNumber). Atlas source index N is fed by the Nth entry. These
-  // differ per location (Greenville 33-36, Holmgren 37-40), so they MUST be derived
-  // from the DB, never hardcoded. Cached because the wiring never changes at runtime.
-  private cachedAudioFeedOutputs: number[] | null = null;
 
   /**
    * v2.31.8 — Register a polling job. Replaces the boilerplate triplet
@@ -666,7 +661,6 @@ class SchedulerService {
     this.cachedVavaDevices = null;
     this.cachedAudioProcessor = null;
     this.cachedMatrixConfig = null;
-    this.cachedAudioFeedOutputs = null;
 
     this.isRunning = false;
 
@@ -726,40 +720,31 @@ class SchedulerService {
         return;
       }
 
-      // Per-location audio-feed outputs, derived + cached. Ordered by channel
-      // number so index 0 = "Matrix Audio 1" = Atlas source 0, etc.
-      if (!this.cachedAudioFeedOutputs) {
-        const feedRows = await db.select({ ch: schema.matrixOutputs.channelNumber })
-          .from(schema.matrixOutputs)
-          .where(eq(schema.matrixOutputs.audioOutput, 'audio'))
-          .orderBy(schema.matrixOutputs.channelNumber)
-          .all();
-        this.cachedAudioFeedOutputs = feedRows.map(r => r.ch).filter(c => Number.isFinite(c));
-      }
-      const feeds = this.cachedAudioFeedOutputs;
-      const feedOutput = feeds[audioSourceIndex];
-      if (feedOutput == null) {
-        logger.warn(`[SCHEDULER] 🔊 No audio-feed output for source index ${audioSourceIndex} (feeds=[${feeds.join(',')}]) — zones will listen but game audio not routed. Check MatrixOutput.audioOutput flags.`);
-        return;
-      }
-
-      const fr = await fetch(`http://127.0.0.1:${API_PORT}/api/matrix/route`, {
+      // Delegate the source-index → audio-feed-output derivation + routing to the
+      // shared /api/matrix/audio-feed-route endpoint. That endpoint is the SINGLE
+      // source of truth (also used by the manual "apply now" button), so the two
+      // paths can never drift — the drift between two audio apply paths is what
+      // caused this bug. Feed outputs are derived per-location from
+      // MatrixOutput.audioOutput there, never hardcoded.
+      const fr = await fetch(`http://127.0.0.1:${API_PORT}/api/matrix/audio-feed-route`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ input: matrixInput, output: feedOutput }),
+        body: JSON.stringify({ input: matrixInput, audioSourceIndex }),
       });
-      const frHw = await parseHardwareResult(fr);
-      if (frHw.ok) {
-        logger.info(`[SCHEDULER] 🔊 Routed input ${matrixInput} → audio-feed output ${feedOutput} (Atlas source ${audioSourceIndex})`);
+      const frBody = await fr.json().catch(() => ({} as any));
+      if (fr.ok && frBody?.success) {
+        logger.info(`[SCHEDULER] 🔊 Routed input ${matrixInput} → audio-feed output ${frBody.feedOutput} (Atlas source ${audioSourceIndex})`);
         await schedulerLogger.info(
           'scheduler-service',
           'tune',
-          `Audio feed routed: input ${matrixInput} → output ${feedOutput} (Atlas source ${audioSourceIndex})`,
+          `Audio feed routed: input ${matrixInput} → output ${frBody.feedOutput} (Atlas source ${audioSourceIndex})`,
           correlationId,
-          { gameId: game?.id, inputSourceId: inputSource?.id, allocationId: allocation?.id, metadata: { matrixInput, feedOutput, audioSourceIndex } },
+          { gameId: game?.id, inputSourceId: inputSource?.id, allocationId: allocation?.id, metadata: { matrixInput, feedOutput: frBody.feedOutput, audioSourceIndex } },
         );
+      } else if (frBody?.skipped) {
+        logger.warn(`[SCHEDULER] 🔊 No audio-feed output for source index ${audioSourceIndex} (feeds=[${(frBody.availableFeeds || []).join(',')}]) — zones will listen but game audio not routed. Check MatrixOutput.audioOutput flags.`);
       } else {
-        logger.error(`[SCHEDULER] ❌ Failed to route audio feed input ${matrixInput} → output ${feedOutput}: ${frHw.error}`);
+        logger.error(`[SCHEDULER] ❌ Failed to route audio feed input ${matrixInput} → source ${audioSourceIndex}: ${frBody?.error || fr.status}`);
       }
     } catch (err: any) {
       logger.error(`[SCHEDULER] ❌ Error routing audio feed:`, { error: err?.message || err });
