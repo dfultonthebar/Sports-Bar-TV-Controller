@@ -1,5 +1,29 @@
 # Automated Daily Update System Plan
 
+> **⚠ HISTORICAL — SUPERSEDED (2026-07-01).** This is the original v2 design doc
+> (target version 2.6.0) and is kept for historical record, not as an
+> operations reference. Two load-bearing claims below are now WRONG in current
+> production (`scripts/auto-update.sh`, currently on v2.93.0+):
+>
+> 1. **"ANTHROPIC_API_KEY is now required" / Claude Code CLI as the sole
+>    active monitor (Section 5) — NO LONGER TRUE.** Since v2.73.0,
+>    `run_checkpoint()` is a 4-tier cascade: deterministic checks first, then
+>    **local Ollama (llama3.1:8b) is PRIMARY**, with cloud Claude (API key or
+>    CLI) only as a FALLBACK when local AI can't decide. This was the direct
+>    fix for the Anthropic-credit-outage fleet freeze this doc's design
+>    enabled. A box with no `ANTHROPIC_API_KEY` and no Claude CLI subscription
+>    still self-updates fine as long as its local Ollama is reachable — see
+>    `auto-update.sh:615-717` for the actual cascade.
+> 2. **Verify-install layer count / specific checkpoint names** in this doc
+>    are stale — the current `scripts/verify-install.sh` has grown to many
+>    more layers (schema completeness, matrix config, linger, timer
+>    freshness, hub-agent registration, etc.). Read that script's own
+>    `--json` output for the current, authoritative layer list.
+>
+> For the current trigger/rollout workflow, see `docs/FLEET_TRIGGER_RUNBOOK.md`.
+> For the current checkpoint architecture, read `scripts/auto-update.sh`
+> directly (`run_checkpoint()`) rather than Section 5 below.
+
 **Status:** v2 — post Plan-review corrections applied. Approved by user. No code changes yet.
 **Target version:** 2.6.0 (channel resolver consolidation takes 2.5.0 and ships first)
 **Scope:** Build a safe, automated 2:30am daily update mechanism that each location's server runs against its own location branch, with **Claude Code CLI as an active monitor throughout the update** (not just a post-check), complete rollback-on-failure handling, and a redesigned Sync tab UI for monitoring and manual control.
