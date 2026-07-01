@@ -34,7 +34,13 @@ export async function POST(request: NextRequest) {
     // source='manual_schedule'. Previously rejected by the enum, so EVERY
     // routing call from that path returned HTTP 400 and silently failed with
     // tvsControlled=0 — the TV never changed, with zero diagnostic.
-    source: z.enum(['bartender', 'ai_scheduler', 'manual', 'manual_schedule', 'system', 'auto-reallocator']).optional().default('bartender'),
+    // 'audio-feed' added (v2.93.0) — /api/matrix/audio-feed-route relays a
+    // game's input into the per-location Wolf Pack "Matrix Audio" output via
+    // this endpoint with source='audio-feed'. Was NOT in the enum, so EVERY
+    // audio-feed relay 400'd before reaching routeMatrix() — the v2.91.x
+    // scheduled-game audio never actually routed (same silent-400 failure the
+    // 'manual_schedule' note above describes).
+    source: z.enum(['bartender', 'ai_scheduler', 'manual', 'manual_schedule', 'system', 'auto-reallocator', 'audio-feed']).optional().default('bartender'),
     bartenderId: z.string().optional(),
   })
 
