@@ -519,6 +519,23 @@ export default function ScheduledGamesPanel() {
 
           // Switch Atlas audio groups to the game audio source
           if (game.audioSourceIndex != null && game.audioZoneIds && game.audioZoneIds.length > 0) {
+            // First get the game's audio physically onto the chosen Atlas source
+            // by routing its Wolf Pack input into the per-location audio-feed
+            // output. Same shared endpoint the scheduler uses (derives the output
+            // from MatrixOutput.audioOutput) so the two paths can't drift — that
+            // drift was the "video switched, audio didn't" bug (Greenville
+            // Brewers, 2026-06-30). Pointing the groups at the source below is
+            // useless if nothing routed the game into that feed.
+            const audioInputMatch = game.inputLabel.match(/(\d+)/)
+            const audioMatrixInput = audioInputMatch ? parseInt(audioInputMatch[1], 10) : null
+            if (audioMatrixInput) {
+              await fetch('/api/matrix/audio-feed-route', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ input: audioMatrixInput, audioSourceIndex: game.audioSourceIndex }),
+              }).catch(() => {})
+            }
+
             if (!atlasProcessorIp) {
               logger.warn('[SCHEDULED-GAMES] Atlas processor IP not loaded, skipping audio group switch')
             } else {
