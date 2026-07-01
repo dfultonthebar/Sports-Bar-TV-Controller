@@ -1,6 +1,7 @@
 import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
-import { getRollout, updateRollout } from '@/lib/repo'
+import { getRollout } from '@/lib/repo'
+import { finalizeRollout } from '@/lib/rollout-engine'
 
 export const dynamic = 'force-dynamic'
 
@@ -20,6 +21,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const rollout = getRollout(id)
   if (!rollout) return NextResponse.json({ error: 'not found' }, { status: 404 })
 
-  const updated = updateRollout(id, { status: 'aborted' })
+  const updated = finalizeRollout(id, { status: 'aborted' })
   return NextResponse.json({ ok: true, rollout: updated })
 }

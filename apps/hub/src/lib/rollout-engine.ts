@@ -19,6 +19,7 @@ import {
   findUpdateEventSince,
   latestHealth,
 } from './repo'
+import { reportToFlywheel } from './flywheel'
 
 export type RolloutStatus =
   | 'pending'
@@ -31,6 +32,57 @@ export type RolloutStatus =
   | 'aborted'
 
 const TERMINAL: RolloutStatus[] = ['canary_failed', 'converged', 'partial_failure', 'aborted']
+
+/**
+ * Build the labeled OUTCOME summary (target version, per-box result,
+ * converged/failed, remediation-relevant notes) and fire it at the
+ * fleet-ops-log flywheel — this is the whole of P3.1 ("route rollout
+ * outcomes into Honcho"). Server-built exact text, no LLM in the loop
+ * (CLAUDE.md Gotcha #12: factual/structured content should be server-built,
+ * not LLM-composed). Called once per rollout, at the moment it reaches a
+ * terminal status, from finalizeRollout below.
+ */
+function buildOutcomeSummary(
+  rollout: NonNullable<ReturnType<typeof getRollout>>,
+  boxes: ReturnType<typeof getRolloutBoxes>,
+): string {
+  const lines = [
+    `ROLLOUT OUTCOME v${rollout.targetVersion} — ${rollout.status}`,
+    `canary: ${rollout.canaryLocationId} (soak ${rollout.minSoakMinutes}min)`,
+  ]
+  if (rollout.status === 'canary_failed') {
+    lines.push('canary failed to reach the target version — wave was never triggered')
+  } else if (boxes.length > 0) {
+    const byState: Record<string, string[]> = {}
+    for (const b of boxes) {
+      const key = b.state
+      ;(byState[key] ??= []).push(b.note ? `${b.locationId} (${b.note})` : b.locationId)
+    }
+    for (const [state, ids] of Object.entries(byState)) {
+      lines.push(`  ${state}: ${ids.join(', ')}`)
+    }
+  }
+  lines.push(`started ${new Date(rollout.createdAt).toISOString()} by ${rollout.createdBy || 'unknown'}`)
+  return lines.join('\n')
+}
+
+/** Set a rollout's status; if that status is terminal, capture the outcome to
+ * the flywheel exactly once (gated on outcomeCapturedAt still being null so a
+ * re-tick or double-abort never re-posts the same rollout). */
+export function finalizeRollout(rolloutId: string, patch: Partial<Parameters<typeof updateRollout>[1]>) {
+  const before = getRollout(rolloutId)
+  const status = (patch.status as RolloutStatus | undefined) ?? (before?.status as RolloutStatus)
+  const shouldCapture = TERMINAL.includes(status) && before?.outcomeCapturedAt == null
+  const updated = updateRollout(rolloutId, {
+    ...patch,
+    ...(shouldCapture ? { outcomeCapturedAt: Date.now() } : {}),
+  })
+  if (shouldCapture && updated) {
+    const boxes = getRolloutBoxes(rolloutId)
+    reportToFlywheel('fleet-rollout', buildOutcomeSummary(updated, boxes))
+  }
+  return updated
+}
 
 /** Map a fleet_update_events.result onto a rollout_boxes / canary outcome. */
 function isFailureResult(result: string): boolean {
@@ -127,7 +179,7 @@ export function tick(rolloutId: string) {
         return updateRollout(rolloutId, { status: 'canary_soaking', canarySuccessAt: ev.occurredAt })
       }
       if (isFailureResult(ev.result)) {
-        return updateRollout(rolloutId, { status: 'canary_failed' })
+        return finalizeRollout(rolloutId, { status: 'canary_failed' })
       }
       // 'skipped' — canary's own auto-update no-op'd (e.g. cron disabled). Leave
       // in canary_triggered; an operator needs to notice and re-trigger by hand.
@@ -152,7 +204,7 @@ export function tick(rolloutId: string) {
     const allResolved = fresh.every((b) => b.state !== 'pending' && b.state !== 'triggered')
     if (allResolved) {
       const anyFailed = fresh.some((b) => b.state === 'rolled_back' || b.state === 'failed' || b.state === 'timeout')
-      return updateRollout(rolloutId, { status: anyFailed ? 'partial_failure' : 'converged' })
+      return finalizeRollout(rolloutId, { status: anyFailed ? 'partial_failure' : 'converged' })
     }
     return getRollout(rolloutId)!
   }

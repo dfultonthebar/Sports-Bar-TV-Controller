@@ -35,6 +35,33 @@ is the archive.
 
 ---
 
+## v2.95.2 — Rollout outcomes captured to the fleet-ops flywheel (2026-07-01)
+
+**Required manual step:** NONE for fleet locations — this only touches
+`apps/hub` (the SBCC central hub, CT211), which is not part of `auto-update.sh`
+and not git-deployed (build-and-copy per `reference_sbcc_hub_deploy` memory).
+
+**What changed:** `rollouts` gets a new `outcome_captured_at` column
+(`apps/hub/drizzle/0003_rollout-outcome-captured.sql`). When a rollout reaches
+a terminal status (`converged`/`partial_failure`/`canary_failed`/`aborted`),
+`finalizeRollout()` in `apps/hub/src/lib/rollout-engine.ts` now fires a
+server-built (not LLM-composed — Gotcha #12) labeled OUTCOME summary to the
+Honcho `fleet-ops-log` session via the new `apps/hub/src/lib/flywheel.ts`
+(same `reportToFlywheel` pattern as `apps/web/src/lib/flywheel.ts`), gated so
+each rollout is captured exactly once. This completes P3.1 of the fleet-update
+redesign — rollout history is now part of the fleet-ops-LLM training corpus
+without any Hermes/T4 dependency.
+
+**Hub deploy step (when actually shipping to CT211):** apply the additive
+column via the surgical `better-sqlite3` recipe in `reference_sbcc_hub_deploy`
+memory (idempotent — check `PRAGMA table_info(rollouts)` first), then ship the
+rebuilt standalone bundle. Not yet deployed as of this entry — pending operator
+go-ahead (auto-mode classifier held the raw-SQL-over-SSH step for confirmation).
+
+**Verification:** `GET /api/rollout` shows `outcomeCapturedAt` on any rollout
+that has reached a terminal state; `GET /api/honcho` (or the `/honcho` page)
+shows a `peer: 'fleet-rollout'` entry for it.
+
 ## v2.89.0 — AI Suggest `primary` solver mode (Wave 2 canary) (2026-06-29)
 
 **Required manual step:** NONE for the fleet. The `AI_SUGGEST_SOLVER` env flag

@@ -1,8 +1,8 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { createRollout, listLocations, getRollout, updateRollout } from '@/lib/repo'
-import { ackAction as ackRolloutAction } from '@/lib/rollout-engine'
+import { createRollout, listLocations, getRollout } from '@/lib/repo'
+import { ackAction as ackRolloutAction, finalizeRollout } from '@/lib/rollout-engine'
 
 export async function startRollout(formData: FormData) {
   const targetVersion = String(formData.get('targetVersion') || '').trim()
@@ -34,6 +34,6 @@ export async function ackRollout(rolloutId: string, role: 'canary' | 'wave') {
 
 export async function abortRollout(rolloutId: string) {
   if (!getRollout(rolloutId)) return
-  updateRollout(rolloutId, { status: 'aborted' })
+  finalizeRollout(rolloutId, { status: 'aborted' })
   revalidatePath('/rollout')
 }

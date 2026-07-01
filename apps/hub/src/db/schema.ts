@@ -167,6 +167,11 @@ export const rollouts = sqliteTable('rollouts', {
   createdBy: text('created_by'),
   createdAt: integer('created_at').notNull(),
   updatedAt: integer('updated_at').notNull(),
+  // Set once a Hermes agent turn has emitted this rollout's labeled OUTCOME
+  // summary (captured to Honcho as part of that conversation — see
+  // POST /api/rollout/[id]/mark-outcome-captured). Null means: reached a
+  // terminal status but the learning-flywheel capture hasn't happened yet.
+  outcomeCapturedAt: integer('outcome_captured_at'),
 })
 
 /** One row per non-canary location tracked by a rollout. */
