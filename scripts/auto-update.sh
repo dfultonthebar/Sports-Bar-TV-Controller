@@ -1412,8 +1412,37 @@ if [ "$MERGE_EXIT" -ne 0 ]; then
 
   # Any STILL-remaining conflict = unexpected file, human required
   if git status --porcelain | grep -qE "$CONFLICT_RE"; then
+    CONFLICT_FILES=$(git status --porcelain | grep -E "$CONFLICT_RE")
     log "Unexpected merge conflict on non-whitelisted files (not covered by OURS/THEIRS/prefix fallback):"
-    git status --porcelain | grep -E "$CONFLICT_RE" | tee -a "$LOG_FILE"
+    echo "$CONFLICT_FILES" | tee -a "$LOG_FILE"
+
+    # v2.94.x — this used to be a SILENT freeze: exit 3 below stops the merge
+    # with no rollback (nothing to roll back — the box is exactly on its old
+    # commit), so the box just sits behind forever until an operator happens
+    # to notice via a manual fleet-status check. Surface it the same way any
+    # other app error does: append to the box's OWN error log
+    # (apps/web/logs/system-errors.log). This is a PULL-based path already
+    # wired end-to-end — /api/system/status reads this file, the hub-agent
+    # collector already polls that endpoint every ~60s and forwards to the
+    # hub's error_events table + /errors dashboard. No new auth/plumbing
+    # needed; this just gives auto-update.sh's conflict freeze the same
+    # visibility every other app error already has.
+    mkdir -p "$REPO_ROOT/apps/web/logs" 2>/dev/null
+    python3 -c '
+import json, sys, datetime
+files = sys.argv[1]
+line = json.dumps({
+    "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+    "level": "error",
+    "source": "auto-update",
+    "message": "auto-update merge conflict on non-whitelisted file(s) — box frozen on old version, needs operator resolution",
+    "details": {"conflictFiles": files.strip().split("\n"), "runId": sys.argv[2]},
+})
+with open(sys.argv[3], "a") as f:
+    f.write(line + "\n")
+' "$CONFLICT_FILES" "$(basename "$LOG_FILE" .log)" "$REPO_ROOT/apps/web/logs/system-errors.log" 2>&1 | tee -a "$LOG_FILE" \
+      || log "WARN: could not append conflict-freeze error entry (non-fatal, log-only signal lost)"
+
     git merge --abort 2>/dev/null || true
     fail "merge conflict on non-whitelisted file" 3
   fi
