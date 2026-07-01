@@ -43,6 +43,10 @@ export default function Home() {
           maintenance chat →
         </a>
         {' · '}
+        <a href="/rollout" style={{ color: '#38bdf8' }}>
+          rollout →
+        </a>
+        {' · '}
         <a href="/honcho" style={{ color: '#38bdf8' }}>
           AI ops →
         </a>
