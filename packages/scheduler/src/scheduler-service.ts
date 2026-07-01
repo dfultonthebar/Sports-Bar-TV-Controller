@@ -63,6 +63,11 @@ class SchedulerService {
   private cachedVavaDevices: any[] | null = null;
   private cachedAudioProcessor: any | null = null;
   private cachedMatrixConfig: any | null = null; // Wave 3c: active Wolf Pack config for route read-back (per-tick cache)
+  // Per-location Wolf Pack audio-feed output numbers (MatrixOutput.audioOutput='audio',
+  // ordered by channelNumber). Atlas source index N is fed by the Nth entry. These
+  // differ per location (Greenville 33-36, Holmgren 37-40), so they MUST be derived
+  // from the DB, never hardcoded. Cached because the wiring never changes at runtime.
+  private cachedAudioFeedOutputs: number[] | null = null;
 
   /**
    * v2.31.8 — Register a polling job. Replaces the boilerplate triplet
@@ -661,6 +666,7 @@ class SchedulerService {
     this.cachedVavaDevices = null;
     this.cachedAudioProcessor = null;
     this.cachedMatrixConfig = null;
+    this.cachedAudioFeedOutputs = null;
 
     this.isRunning = false;
 
@@ -675,6 +681,89 @@ class SchedulerService {
     await schedulerLogger.stop();
 
     logger.debug('Scheduler service stopped');
+  }
+
+  /**
+   * Route a scheduled game's Wolf Pack input into the audio-feed output that
+   * feeds the chosen Atlas source, so the zones (which we point at that source
+   * separately) actually HEAR the game.
+   *
+   * Why this exists: setting an Atlas zone's source only tells the zone which
+   * Atlas INPUT to listen to. It does NOT get the game's audio onto that input.
+   * The audio reaches the Atlas over dedicated Wolf Pack "Matrix Audio" outputs
+   * (Greenville 33-36, Holmgren 37-40 — bigger matrix). Atlas source index N is
+   * fed by the Nth such output. Prior to this, scheduling a game with audio set
+   * the zones to source N but never routed the game into feed-output N, so the
+   * zones listened to a stale/silent feed (Stoneyard Greenville Brewers,
+   * 2026-06-30 — video switched, audio didn't). Feed outputs are derived from
+   * MatrixOutput.audioOutput='audio' per-location; NEVER hardcode them.
+   *
+   * Advisory: logs and returns on any problem, never throws into the tune path.
+   */
+  private async routeGameAudioFeed(
+    inputSource: any,
+    audioSourceIndex: number,
+    correlationId: string,
+    game: any,
+    allocation: any,
+  ): Promise<void> {
+    try {
+      // Resolve the game's physical Wolf Pack input channel (same UUID→channel
+      // resolution + bare-integer fallback the video-routing block uses).
+      let matrixInput = NaN;
+      if (inputSource?.matrixInputId) {
+        const row = await db.select({ channelNumber: schema.matrixInputs.channelNumber })
+          .from(schema.matrixInputs)
+          .where(eq(schema.matrixInputs.id, inputSource.matrixInputId))
+          .limit(1).all();
+        matrixInput = row[0]?.channelNumber ?? NaN;
+        if (isNaN(matrixInput) && /^\d+$/.test(String(inputSource.matrixInputId))) {
+          matrixInput = Number(inputSource.matrixInputId);
+        }
+      }
+      if (isNaN(matrixInput)) {
+        logger.warn(`[SCHEDULER] 🔊 Audio-feed routing skipped — could not resolve matrix input for source "${inputSource?.name}"`);
+        return;
+      }
+
+      // Per-location audio-feed outputs, derived + cached. Ordered by channel
+      // number so index 0 = "Matrix Audio 1" = Atlas source 0, etc.
+      if (!this.cachedAudioFeedOutputs) {
+        const feedRows = await db.select({ ch: schema.matrixOutputs.channelNumber })
+          .from(schema.matrixOutputs)
+          .where(eq(schema.matrixOutputs.audioOutput, 'audio'))
+          .orderBy(schema.matrixOutputs.channelNumber)
+          .all();
+        this.cachedAudioFeedOutputs = feedRows.map(r => r.ch).filter(c => Number.isFinite(c));
+      }
+      const feeds = this.cachedAudioFeedOutputs;
+      const feedOutput = feeds[audioSourceIndex];
+      if (feedOutput == null) {
+        logger.warn(`[SCHEDULER] 🔊 No audio-feed output for source index ${audioSourceIndex} (feeds=[${feeds.join(',')}]) — zones will listen but game audio not routed. Check MatrixOutput.audioOutput flags.`);
+        return;
+      }
+
+      const fr = await fetch(`http://127.0.0.1:${API_PORT}/api/matrix/route`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ input: matrixInput, output: feedOutput }),
+      });
+      const frHw = await parseHardwareResult(fr);
+      if (frHw.ok) {
+        logger.info(`[SCHEDULER] 🔊 Routed input ${matrixInput} → audio-feed output ${feedOutput} (Atlas source ${audioSourceIndex})`);
+        await schedulerLogger.info(
+          'scheduler-service',
+          'tune',
+          `Audio feed routed: input ${matrixInput} → output ${feedOutput} (Atlas source ${audioSourceIndex})`,
+          correlationId,
+          { gameId: game?.id, inputSourceId: inputSource?.id, allocationId: allocation?.id, metadata: { matrixInput, feedOutput, audioSourceIndex } },
+        );
+      } else {
+        logger.error(`[SCHEDULER] ❌ Failed to route audio feed input ${matrixInput} → output ${feedOutput}: ${frHw.error}`);
+      }
+    } catch (err: any) {
+      logger.error(`[SCHEDULER] ❌ Error routing audio feed:`, { error: err?.message || err });
+    }
   }
 
   /**
@@ -1537,6 +1626,13 @@ class SchedulerService {
             // Switch audio zones if audio source is configured
             if (allocation.audioSourceIndex != null && allocation.audioZoneIds) {
               try {
+                // Get the game's audio physically onto the Atlas source FIRST by
+                // routing its Wolf Pack input into the per-location audio-feed
+                // output. Pointing the zones at the source (below) is useless if
+                // nothing routed the game into that feed. (Greenville Brewers,
+                // 2026-06-30: zones followed, audio didn't — feed never routed.)
+                await this.routeGameAudioFeed(inputSource, allocation.audioSourceIndex, correlationId, game, allocation);
+
                 const audioZones: number[] = JSON.parse(allocation.audioZoneIds);
                 if (audioZones.length > 0) {
                   // v2.31.8 — Cache the audio processor lookup. It's a single
