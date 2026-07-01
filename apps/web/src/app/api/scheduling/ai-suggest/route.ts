@@ -137,23 +137,43 @@ interface AISuggestion {
 // directv candidates — streaming-only games are skipped here and may be
 // picked up by the catalog path, which carries deepLink for autoplay.
 
-async function fetchUpcomingGames(): Promise<GameListing[]> {
-  try {
-    const nowUnix = Math.floor(Date.now() / 1000)
-    const twelveHoursLater = nowUnix + 12 * 60 * 60
+// Compute the game-selection window for a given day offset (0 = today).
+// Today keeps the original now→+12h window (preserves existing behavior +
+// quality). A future day is that whole calendar day in server-local time —
+// the fleet runs America/Chicago, so local midnight boundaries are correct.
+// This is what makes per-day AI Suggest possible without dumping multiple
+// days of games into one LLM prompt (the ≤8-game cap still applies per call).
+function computeDayWindow(dayOffset: number): { startUnix: number; endUnix: number; isToday: boolean; label: string } {
+  const nowUnix = Math.floor(Date.now() / 1000)
+  if (!dayOffset || dayOffset <= 0) {
+    return { startUnix: nowUnix, endUnix: nowUnix + 12 * 60 * 60, isToday: true, label: 'today' }
+  }
+  const start = new Date()
+  start.setHours(0, 0, 0, 0)
+  start.setDate(start.getDate() + dayOffset)
+  const end = new Date(start)
+  end.setHours(23, 59, 59, 999)
+  const label = dayOffset === 1
+    ? 'tomorrow'
+    : start.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
+  return { startUnix: Math.floor(start.getTime() / 1000), endUnix: Math.floor(end.getTime() / 1000), isToday: false, label }
+}
 
-    // v2.32.0 — include in-progress games whose start is in the past so
-    // long broadcasts (NFL Draft Day 1, Sunday Night Football's 4-hour
+async function fetchUpcomingGames(windowStart: number, windowEnd: number, isToday: boolean): Promise<GameListing[]> {
+  try {
+    // v2.32.0 — for TODAY, include in-progress games whose start is in the past
+    // so long broadcasts (NFL Draft Day 1, Sunday Night Football's 4-hour
     // window, etc) stay visible after kickoff. v2.32.62 — tightened: only
-    // include past-start in-progress games when estimated_end is still in
-    // the future. ESPN sync doesn't reliably mark old games 'completed' —
-    // 72 zombies stuck in_progress past their end at Holmgren today,
-    // including the NFL Draft from 11 days ago, surfaced as AI Suggest
-    // candidates. Now they don't.
+    // include past-start in-progress games when estimated_end is still in the
+    // future (ESPN sync leaves zombies stuck in_progress). For a FUTURE day,
+    // games can't be in progress yet, so just take that day's scheduled games.
+    const startClause = isToday
+      ? sql`(${schema.gameSchedules.scheduledStart} >= ${windowStart} OR (${schema.gameSchedules.status} = 'in_progress' AND ${schema.gameSchedules.estimatedEnd} > ${windowStart}))`
+      : sql`${schema.gameSchedules.scheduledStart} >= ${windowStart}`
     const rows = await db.select().from(schema.gameSchedules).where(
       and(
-        sql`(${schema.gameSchedules.scheduledStart} >= ${nowUnix} OR (${schema.gameSchedules.status} = 'in_progress' AND ${schema.gameSchedules.estimatedEnd} > ${nowUnix}))`,
-        sql`${schema.gameSchedules.scheduledStart} <= ${twelveHoursLater}`,
+        startClause,
+        sql`${schema.gameSchedules.scheduledStart} <= ${windowEnd}`,
         sql`${schema.gameSchedules.status} != 'completed'`,
       )
     )
@@ -278,11 +298,12 @@ async function fetchUpcomingGames(): Promise<GameListing[]> {
 // Cable/satellite candidates are unchanged (fetchUpcomingGames above).
 async function fetchStreamingCatalogCandidates(
   firetvInputs: Array<{ id: string; deviceId: string | null; name: string }>,
+  windowStart: number,
+  windowEnd: number,
 ): Promise<GameListing[]> {
   if (firetvInputs.length === 0) return []
   try {
     const nowSec = Math.floor(Date.now() / 1000)
-    const windowEnd = nowSec + 12 * 60 * 60
     const STALE_LIVE_SECONDS = 4 * 60 * 60 // see channel-guide STALE_LIVE_SECONDS — same intent
     const candidates: GameListing[] = []
     let totalRows = 0
@@ -335,7 +356,7 @@ async function fetchStreamingCatalogCandidates(
             skippedNoTimeAnchor++
             continue
           }
-          if (row.startTime < nowSec - 30 * 60 || row.startTime > windowEnd) {
+          if (row.startTime < windowStart - 30 * 60 || row.startTime > windowEnd) {
             skippedOutOfWindow++
             continue
           }
@@ -1563,10 +1584,15 @@ export async function GET(request: NextRequest) {
     request,
     z.object({
       forceRefresh: z.coerce.boolean().optional(),
+      // Per-day planning: 0 = today (now→+12h), 1 = tomorrow, … up to 6 days out.
+      // Each day is suggested on its own so the ≤8-game LLM cap still holds.
+      dayOffset: z.coerce.number().int().min(0).max(6).optional(),
     })
   )
 
   if (!queryValidation.success) return queryValidation.error
+  const { dayOffset: reqDayOffset } = queryValidation.data
+  const dayWindow = computeDayWindow(reqDayOffset ?? 0)
 
   // v2.55.42 — scheduling-logger instrumentation (closes the AI half of the
   // dedicated-log coverage). Manual path was wired in v2.55.38; this adds
@@ -1608,8 +1634,8 @@ export async function GET(request: NextRequest) {
       .filter((s: any) => s.type === 'firetv')
       .map((s: any) => ({ id: s.id, deviceId: s.deviceId, name: s.name }))
     const [cableSatGames, streamingGames] = await Promise.all([
-      fetchUpcomingGames(),
-      fetchStreamingCatalogCandidates(firetvInputs),
+      fetchUpcomingGames(dayWindow.startUnix, dayWindow.endUnix, dayWindow.isToday),
+      fetchStreamingCatalogCandidates(firetvInputs, dayWindow.startUnix, dayWindow.endUnix),
     ])
     const games = [...cableSatGames, ...streamingGames]
 
@@ -1664,8 +1690,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({
         success: true,
         suggestions: [],
+        day: dayWindow.label,
+        dayOffset: reqDayOffset ?? 0,
         analyzedAt: new Date().toISOString(),
-        message: 'No upcoming games found in the sports guide.',
+        message: `No games found for ${dayWindow.label}.`,
       })
     }
 
@@ -1903,6 +1931,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       suggestions,
+      day: dayWindow.label,
+      dayOffset: reqDayOffset ?? 0,
       analyzedAt: new Date().toISOString(),
       meta: {
         gamesFound: games.length,

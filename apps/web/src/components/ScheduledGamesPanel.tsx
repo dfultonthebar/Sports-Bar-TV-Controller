@@ -234,6 +234,10 @@ export default function ScheduledGamesPanel() {
   })
   const [suggestLoading, setSuggestLoading] = useState(false)
   const [suggestError, setSuggestError] = useState<string | null>(null)
+  // Per-day AI Suggest: 0 = today, 1 = tomorrow, … up to 6 days out. Each day is
+  // suggested separately so the LLM never sees more than one day of games at once.
+  const [suggestDayOffset, setSuggestDayOffset] = useState(0)
+  const [suggestDayLabel, setSuggestDayLabel] = useState<string | null>(null)
   const [approvingId, setApprovingId] = useState<string | null>(null)
   // v2.33.30 — Persist approvedIds + skippedIds to localStorage so they
   // survive mode-switch / page navigation. Operator caught 2026-05-11:
@@ -590,7 +594,8 @@ export default function ScheduledGamesPanel() {
   // AI Suggest — fetch suggestions
   // -----------------------------------------------------------------------
 
-  const fetchSuggestions = useCallback(async () => {
+  const fetchSuggestions = useCallback(async (offsetArg?: number) => {
+    const offset = typeof offsetArg === 'number' ? offsetArg : suggestDayOffset
     setSuggestLoading(true)
     setSuggestError(null)
     setSuggestions([])
@@ -606,7 +611,7 @@ export default function ScheduledGamesPanel() {
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), 300_000)
     try {
-      const res = await fetch('/api/scheduling/ai-suggest', { signal: controller.signal })
+      const res = await fetch(`/api/scheduling/ai-suggest?dayOffset=${offset}`, { signal: controller.signal })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
         throw new Error(data.error || `Request failed (${res.status})`)
@@ -616,6 +621,10 @@ export default function ScheduledGamesPanel() {
         throw new Error(data.error || 'Failed to get suggestions')
       }
       setSuggestions(data.suggestions || [])
+      setSuggestDayLabel(data.day || null)
+      if ((data.suggestions || []).length === 0 && data.message) {
+        setSuggestError(data.message)
+      }
     } catch (err: any) {
       logger.error('[AI-SUGGEST] Failed to fetch suggestions:', err)
       const msg = err?.name === 'AbortError'
@@ -626,7 +635,7 @@ export default function ScheduledGamesPanel() {
       clearTimeout(timeoutId)
       setSuggestLoading(false)
     }
-  }, [])
+  }, [suggestDayOffset])
 
   // -----------------------------------------------------------------------
   // AI Suggest — approve a single suggestion
@@ -1330,6 +1339,32 @@ export default function ScheduledGamesPanel() {
       {/* ================================================================= */}
       {mode === 'ai-suggest' && (
         <div className="space-y-4">
+          {/* Day selector — plan more than one day at a time. Each day is a
+              separate AI Suggest run so the LLM never sees >1 day of games. */}
+          <div className="flex items-center gap-2 overflow-x-auto pb-1">
+            {Array.from({ length: 7 }, (_, n) => {
+              const d = new Date()
+              d.setDate(d.getDate() + n)
+              const label = n === 0
+                ? 'Today'
+                : n === 1
+                  ? 'Tomorrow'
+                  : d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+              const active = suggestDayOffset === n
+              return (
+                <button
+                  key={n}
+                  type="button"
+                  disabled={suggestLoading}
+                  onClick={() => { setSuggestDayOffset(n); fetchSuggestions(n) }}
+                  className={`shrink-0 rounded-lg py-2 px-3 text-sm font-medium transition-colors disabled:opacity-50 ${active ? 'bg-purple-600 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}
+                >
+                  {label}
+                </button>
+              )
+            })}
+          </div>
+
           {/* Get Suggestions button */}
           {suggestions.length === 0 && !suggestLoading && (
             <div className="flex flex-col items-center justify-center py-10">
@@ -1381,7 +1416,7 @@ export default function ScheduledGamesPanel() {
 
               <div className="flex items-center justify-between">
                 <p className="text-sm text-slate-400">
-                  {suggestions.length} suggestion{suggestions.length !== 1 ? 's' : ''} found
+                  {suggestions.length} suggestion{suggestions.length !== 1 ? 's' : ''} found{suggestDayLabel ? ` for ${suggestDayLabel}` : ''}
                 </p>
                 <button
                   type="button"
