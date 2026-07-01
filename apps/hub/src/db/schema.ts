@@ -136,6 +136,56 @@ export const fleetTarget = sqliteTable('fleet_target', {
 })
 
 /**
+ * Staged rollout state machine (Phase 2 of the fleet-update redesign).
+ *
+ * IMPORTANT — the hub has NO SSH access to the fleet or to Hermes/CT212
+ * (verified 2026-07-01: key auth rejected both hops). This is intentional —
+ * the hub stays a read-only telemetry sink, consistent with its existing
+ * design. So this state machine does NOT execute anything itself. It:
+ *   1. Tracks desired state (which locations, what target, canary-first).
+ *   2. Detects PROGRESS purely from telemetry it already receives
+ *      (fleet_update_events + health_snapshots — zero new plumbing).
+ *   3. Exposes an explicit "next action" (e.g. "trigger canary on leg-lamp")
+ *      that an external executor — Hermes (has working fleet SSH via
+ *      fleet-deploy.sh) or an operator by hand — performs, then reports back
+ *      via ackAction. This makes the dashboard useful immediately even
+ *      before any Hermes-side automation polls it.
+ */
+export const rollouts = sqliteTable('rollouts', {
+  id: text('id').primaryKey(),
+  targetVersion: text('target_version').notNull(),
+  targetSha: text('target_sha'),
+  canaryLocationId: text('canary_location_id').notNull(),
+  minSoakMinutes: integer('min_soak_minutes').notNull().default(30),
+  // pending -> canary_triggered -> canary_soaking -> waving -> converged
+  //                             \-> canary_failed              \-> partial_failure
+  // aborted reachable from any non-terminal state via POST /abort.
+  status: text('status').notNull().default('pending'),
+  canaryTriggeredAt: integer('canary_triggered_at'),
+  canarySuccessAt: integer('canary_success_at'), // when it reported target-version success — soak clock starts here
+  waveTriggeredAt: integer('wave_triggered_at'),
+  createdBy: text('created_by'),
+  createdAt: integer('created_at').notNull(),
+  updatedAt: integer('updated_at').notNull(),
+})
+
+/** One row per non-canary location tracked by a rollout. */
+export const rolloutBoxes = sqliteTable(
+  'rollout_boxes',
+  {
+    id: text('id').primaryKey(),
+    rolloutId: text('rollout_id').notNull(),
+    locationId: text('location_id').notNull(),
+    // pending -> triggered -> success | rolled_back | failed | timeout
+    state: text('state').notNull().default('pending'),
+    triggeredAt: integer('triggered_at'),
+    resolvedAt: integer('resolved_at'),
+    note: text('note'),
+  },
+  (t) => [index('rollout_boxes_rollout').on(t.rolloutId)],
+)
+
+/**
  * Central ESPN game-data cache (Feature B1). The hub runs the 26-league ESPN
  * sync ONCE and stores each league's raw ESPNGame[] as JSON here; locations pull
  * from `/api/game-data/espn` and run their existing syncLeague() over the games,

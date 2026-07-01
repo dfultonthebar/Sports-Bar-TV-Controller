@@ -15,6 +15,13 @@
       "when": 1782929066882,
       "tag": "0001_fleet-target-and-health-version",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1782931116269,
+      "tag": "0002_rollout-state-machine",
+      "breakpoints": true
     }
   ]
 }
