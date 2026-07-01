@@ -146,9 +146,20 @@ export async function GET(request: NextRequest) {
       const offset = activeConfig.outputOffset || 0
       // queryWolfpackRouteState normalizes the Wolf Pack 65535 firmware
       // sentinel to -1. Drop those positions from the live result.
+      //
+      // v2.93.0 — o2ox array INDEX 0 is a firmware HANDSHAKE slot, not a real
+      // route. Probed live 2026-06-30 on BOTH Greenville's FM36 AND Holmgren's
+      // 48-port chassis: index 0 deterministically oscillates 65535 ↔ 0 on every
+      // single poll while indices 1..N stay rock-stable and correct. When it
+      // reads 0 the app used to render inputNum 1 = "Cable 1" — THE "TV 1 keeps
+      // switching to Cable 1" bug. The value NEVER reflects output 1's real
+      // source, so we force index 0 to the -1 "no data" marker here; the
+      // MatrixRoute DB reconcile below then always supplies output 1's real
+      // (commanded) source. There is no per-output read command in the firmware
+      // to work around this, so DB-sourcing output 1 is the only correct path.
       const liveRoutes = routingArray
         .map((input0Based, output0Based) => ({
-          inputNum: input0Based + 1,
+          inputNum: output0Based === 0 ? -1 : input0Based + 1,
           outputNum: output0Based + 1 - offset,
           isActive: true as const,
         }))
