@@ -58,6 +58,7 @@ export function insertHealth(locationId: string, ts: number, p: HealthPayload) {
       devicesOnline: p.devicesOnline,
       devicesTotal: p.devicesTotal,
       errorRate: p.errorRate,
+      version: p.version ?? null,
       rawPayload: JSON.stringify(p.raw ?? null),
     })
     .run()
@@ -172,6 +173,24 @@ export const latestHealth = (id: string) => latestOf(schema.healthSnapshots, sch
 export const latestMetrics = (id: string) => latestOf(schema.metricsSnapshots, schema.metricsSnapshots.locationId, id)
 export const latestScheduler = (id: string) =>
   latestOf(schema.schedulerSnapshots, schema.schedulerSnapshots.locationId, id)
+
+/** The single pinned fleet target (row id 1), or null if never set. */
+export function getFleetTarget() {
+  return db.select().from(schema.fleetTarget).where(eq(schema.fleetTarget.id, 1)).get()
+}
+
+/** Pin the desired fleet version. Upserts the singleton row. */
+export function setFleetTarget(targetVersion: string, targetSha: string | null, setBy: string) {
+  const now = Date.now()
+  db.insert(schema.fleetTarget)
+    .values({ id: 1, targetVersion, targetSha, setBy, setAt: now })
+    .onConflictDoUpdate({
+      target: schema.fleetTarget.id,
+      set: { targetVersion, targetSha, setBy, setAt: now },
+    })
+    .run()
+  return getFleetTarget()
+}
 
 /** Open error feed across the fleet, newest first. */
 export function recentErrors(sinceMs: number, locationId?: string) {

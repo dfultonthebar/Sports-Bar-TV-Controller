@@ -30,6 +30,10 @@ export const healthSnapshots = sqliteTable(
     devicesOnline: integer('devices_online'),
     devicesTotal: integer('devices_total'),
     errorRate: real('error_rate'),
+    // App version reported by /api/health (HealthPayload.version). Was only
+    // buried in rawPayload JSON — promoted to a real column so the fleet
+    // target/drift view can query "actual vs target" per location cheaply.
+    version: text('version'),
     rawPayload: text('raw_payload'), // JSON
   },
   (t) => [index('health_loc_ts').on(t.locationId, t.ts)],
@@ -113,6 +117,23 @@ export const fleetUpdateEvents = sqliteTable(
     uniqueIndex('update_dedup').on(t.locationId, t.runId),
   ],
 )
+
+/**
+ * Desired fleet version — the missing "target" half of drift detection.
+ * `health_snapshots.version` is the ACTUAL version each box last reported;
+ * this single-row table is the DESIRED version an operator/rollout pinned.
+ * The hub overview diffs actual vs target per location. Superseded in scope
+ * (not storage) once the P2 rollout controller lands — `rollouts` will carry
+ * its own target_version per rollout, but this table remains the simple
+ * always-current "what SHOULD every box be on" pin for the plain drift view.
+ */
+export const fleetTarget = sqliteTable('fleet_target', {
+  id: integer('id').primaryKey(), // always row 1 — singleton
+  targetVersion: text('target_version').notNull(),
+  targetSha: text('target_sha'),
+  setBy: text('set_by'), // operator/script identity, freeform
+  setAt: integer('set_at').notNull(), // unix ms
+})
 
 /**
  * Central ESPN game-data cache (Feature B1). The hub runs the 26-league ESPN
