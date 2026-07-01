@@ -796,6 +796,50 @@ if [ -x "$REPO_ROOT/scripts/ensure-server-actions-key.sh" ]; then
   fi
 fi
 
+# 0c. Self-heal preflight (v2.94.x) — idempotently re-apply the CLAUDE.md
+# Gotcha #11 environment hardening (linger, node symlinks, ollama perms) on
+# EVERY update run, not just at fresh-install time. Before this, drift (e.g.
+# linger silently disabled, ollama perms regressing) stayed broken until an
+# operator noticed a stale timer or a verify-install WARN and fixed it by
+# hand. Best-effort only: enforce-gotcha11-hardening.sh requires root, and
+# auto-update.sh runs as the unprivileged ubuntu user under a USER-level
+# systemd timer, so this only actually applies anything if passwordless sudo
+# is configured for it. `sudo -n` fails FAST (no password prompt) instead of
+# hanging an unattended nightly run when it isn't — never fatal either way.
+if [ -x "$REPO_ROOT/scripts/enforce-gotcha11-hardening.sh" ]; then
+  if sudo -n bash "$REPO_ROOT/scripts/enforce-gotcha11-hardening.sh" 2>&1 | tee -a "$LOG_FILE"; then
+    log "Gotcha #11 self-heal preflight: applied/confirmed"
+  else
+    log "WARN: Gotcha #11 self-heal preflight skipped or failed (no passwordless sudo configured, or a real hardening failure above) — continuing; verify-install's linger/ollama-perms layers still catch drift"
+  fi
+fi
+
+# 0d. Low-RAM box self-heal (v2.94.x) — evict THIS box's own LOCAL Ollama
+# models (its Iris iGPU llama3.1:8b instance — completely separate from any
+# shared GPU elsewhere in the fleet-ops stack, always safe to touch from a
+# box's own auto-update.sh) and cap the Node build heap BEFORE the build
+# phase, so a RAM-tight box (Graystone, 15GB, has hit exit 137 mid-`turbo
+# build`) doesn't OOM. fleet-deploy.sh applies this same fix via a hardcoded
+# per-hostname check when manually triggering the fleet; doing it here by
+# actual RAM size means any box repairs itself on every run, including the
+# unattended nightly cron, without needing a hostname added to a list.
+MEM_TOTAL_KB=$(awk '/^MemTotal:/{print $2}' /proc/meminfo 2>/dev/null || echo 0)
+if [ "$MEM_TOTAL_KB" -gt 0 ] && [ "$MEM_TOTAL_KB" -lt $((20*1024*1024)) ]; then
+  log "Low-RAM box detected (total ${MEM_TOTAL_KB}KB < 20GB) — evicting local Ollama models + capping build heap"
+  for m in $(curl -s -m5 http://127.0.0.1:11434/api/ps 2>/dev/null | python3 -c '
+import sys, json
+try:
+    print("\n".join(x["name"] for x in json.load(sys.stdin).get("models", [])))
+except Exception:
+    pass
+' 2>/dev/null); do
+    curl -s -m8 http://127.0.0.1:11434/api/generate -d "{\"model\":\"$m\",\"keep_alive\":0}" >/dev/null 2>&1 \
+      && log "  evicted local Ollama model: $m"
+  done
+  export NODE_OPTIONS="--max-old-space-size=2048"
+  log "NODE_OPTIONS=--max-old-space-size=2048 exported for the build phase"
+fi
+
 # 0. Confirm we're in a clean git repo on a location branch
 cd "$REPO_ROOT" || fail "cannot cd to $REPO_ROOT" 2
 BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
