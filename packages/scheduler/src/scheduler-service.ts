@@ -678,6 +678,80 @@ class SchedulerService {
   }
 
   /**
+   * Route a scheduled game's Wolf Pack input into the audio-feed output that
+   * feeds the chosen Atlas source, so the zones (which we point at that source
+   * separately) actually HEAR the game.
+   *
+   * Why this exists: setting an Atlas zone's source only tells the zone which
+   * Atlas INPUT to listen to. It does NOT get the game's audio onto that input.
+   * The audio reaches the Atlas over dedicated Wolf Pack "Matrix Audio" outputs
+   * (Greenville 33-36, Holmgren 37-40 — bigger matrix). Atlas source index N is
+   * fed by the Nth such output. Prior to this, scheduling a game with audio set
+   * the zones to source N but never routed the game into feed-output N, so the
+   * zones listened to a stale/silent feed (Stoneyard Greenville Brewers,
+   * 2026-06-30 — video switched, audio didn't). Feed outputs are derived from
+   * MatrixOutput.audioOutput='audio' per-location; NEVER hardcode them.
+   *
+   * Advisory: logs and returns on any problem, never throws into the tune path.
+   */
+  private async routeGameAudioFeed(
+    inputSource: any,
+    audioSourceIndex: number,
+    correlationId: string,
+    game: any,
+    allocation: any,
+  ): Promise<void> {
+    try {
+      // Resolve the game's physical Wolf Pack input channel (same UUID→channel
+      // resolution + bare-integer fallback the video-routing block uses).
+      let matrixInput = NaN;
+      if (inputSource?.matrixInputId) {
+        const row = await db.select({ channelNumber: schema.matrixInputs.channelNumber })
+          .from(schema.matrixInputs)
+          .where(eq(schema.matrixInputs.id, inputSource.matrixInputId))
+          .limit(1).all();
+        matrixInput = row[0]?.channelNumber ?? NaN;
+        if (isNaN(matrixInput) && /^\d+$/.test(String(inputSource.matrixInputId))) {
+          matrixInput = Number(inputSource.matrixInputId);
+        }
+      }
+      if (isNaN(matrixInput)) {
+        logger.warn(`[SCHEDULER] 🔊 Audio-feed routing skipped — could not resolve matrix input for source "${inputSource?.name}"`);
+        return;
+      }
+
+      // Delegate the source-index → audio-feed-output derivation + routing to the
+      // shared /api/matrix/audio-feed-route endpoint. That endpoint is the SINGLE
+      // source of truth (also used by the manual "apply now" button), so the two
+      // paths can never drift — the drift between two audio apply paths is what
+      // caused this bug. Feed outputs are derived per-location from
+      // MatrixOutput.audioOutput there, never hardcoded.
+      const fr = await fetch(`http://127.0.0.1:${API_PORT}/api/matrix/audio-feed-route`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ input: matrixInput, audioSourceIndex }),
+      });
+      const frBody = await fr.json().catch(() => ({} as any));
+      if (fr.ok && frBody?.success) {
+        logger.info(`[SCHEDULER] 🔊 Routed input ${matrixInput} → audio-feed output ${frBody.feedOutput} (Atlas source ${audioSourceIndex})`);
+        await schedulerLogger.info(
+          'scheduler-service',
+          'tune',
+          `Audio feed routed: input ${matrixInput} → output ${frBody.feedOutput} (Atlas source ${audioSourceIndex})`,
+          correlationId,
+          { gameId: game?.id, inputSourceId: inputSource?.id, allocationId: allocation?.id, metadata: { matrixInput, feedOutput: frBody.feedOutput, audioSourceIndex } },
+        );
+      } else if (frBody?.skipped) {
+        logger.warn(`[SCHEDULER] 🔊 No audio-feed output for source index ${audioSourceIndex} (feeds=[${(frBody.availableFeeds || []).join(',')}]) — zones will listen but game audio not routed. Check MatrixOutput.audioOutput flags.`);
+      } else {
+        logger.error(`[SCHEDULER] ❌ Failed to route audio feed input ${matrixInput} → source ${audioSourceIndex}: ${frBody?.error || fr.status}`);
+      }
+    } catch (err: any) {
+      logger.error(`[SCHEDULER] ❌ Error routing audio feed:`, { error: err?.message || err });
+    }
+  }
+
+  /**
    * Check for schedules that need to be executed and execute them
    */
   private async checkAndExecuteSchedules() {
@@ -1537,6 +1611,13 @@ class SchedulerService {
             // Switch audio zones if audio source is configured
             if (allocation.audioSourceIndex != null && allocation.audioZoneIds) {
               try {
+                // Get the game's audio physically onto the Atlas source FIRST by
+                // routing its Wolf Pack input into the per-location audio-feed
+                // output. Pointing the zones at the source (below) is useless if
+                // nothing routed the game into that feed. (Greenville Brewers,
+                // 2026-06-30: zones followed, audio didn't — feed never routed.)
+                await this.routeGameAudioFeed(inputSource, allocation.audioSourceIndex, correlationId, game, allocation);
+
                 const audioZones: number[] = JSON.parse(allocation.audioZoneIds);
                 if (audioZones.length > 0) {
                   // v2.31.8 — Cache the audio processor lookup. It's a single
