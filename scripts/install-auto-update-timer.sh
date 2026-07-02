@@ -174,9 +174,19 @@ WorkingDirectory=$REPO_ROOT
 # in systemd's own session, so the re-exec is a no-op guarded by the
 # AUTO_UPDATE_DETACHED env flag.
 ExecStart=/usr/bin/env AUTO_UPDATE_DETACHED=1 $AUTO_UPDATE_SCRIPT --triggered-by=cron
-# Longer timeout than the default 90s — a full run with Claude
-# checkpoints + npm ci + build can take 5+ minutes.
-TimeoutStartSec=15min
+# BUGFIX (2026-07-01): was 15min, which only budgeted for "checkpoints +
+# npm ci + build can take 5+ minutes" — it never accounted for the
+# cron-jitter sleep auto-update.sh:132-155 added in v2.32.47 (0-1800s /
+# up to 30min, BEFORE any work starts, specifically for cron-triggered
+# runs). Any run whose random jitter rolled past ~900s got silently
+# SIGTERM'd by systemd mid-sleep, before a single log line was written —
+# a ~50% failure chance on every cron-triggered run, confirmed live
+# across the whole fleet (5 of 6 remote boxes stuck for multiple nights
+# running, incl. one location at 3+ consecutive failed nights). 45min
+# covers the full 30min jitter ceiling plus a generous buffer for even a
+# slow AI-escalated checkpoint + build (observed real runs: 3-4.4min of
+# actual work after jitter).
+TimeoutStartSec=45min
 # Keep journal entries per run
 StandardOutput=journal
 StandardError=journal
