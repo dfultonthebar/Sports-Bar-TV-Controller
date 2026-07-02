@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
   try {
     const cameras = await db.select()
       .from(schema.obsbotCameras)
-      .where(eq(schema.obsbotCameras.isActive, true))
+      .where(eq(schema.obsbotCameras.isActive, 1))
       .all()
 
     return NextResponse.json({ success: true, cameras })
