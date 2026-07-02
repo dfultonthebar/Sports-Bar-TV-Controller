@@ -46,6 +46,14 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-07-01 — v2.95.3 — FIX: Checkpoint B false-STOP on hub-only schema changes (rolled back a real leg-lamp update)
+
+- **Risk: GO (one deterministic check, narrows scope only).** `scripts/checkpoint-deterministic.sh` only.
+- **Why:** the new-table existence check (`git diff PRE..HEAD -- '*/schema.ts'`) matched **`apps/hub/src/db/schema.ts`** too — the SBCC central hub's own schema, which deploys to its own separate database on a different server (CT211's `hub.db`) and is NEVER applied to a fleet box's `production.db`. When the P1.3/P2.1 hub tables (`fleet_target`, `rollouts`, `rollout_boxes`) landed in the same diff window as an unrelated push, every fleet box's next auto-update hit Checkpoint B, saw those hub-only table names, correctly found them missing from `production.db` (they were never supposed to be there), and STOPped — triggering a full rollback of an otherwise-clean update. Confirmed live: leg-lamp's canary attempt at v2.95.2 built successfully, then rolled back cleanly at Checkpoint B with exactly this message.
+- **Fix:** scoped the `git diff` pathspec to `apps/web/src/db/schema.ts` and `packages/database/src/schema.ts` only — the two files that actually govern what should exist in a fleet box's `production.db`. Verified locally: the same diff range now reports zero new tables (down from 3 false positives).
+- **No location action needed.** Purely a Checkpoint B safety-check fix; doesn't touch any table or migration.
+- **Affected files:** `scripts/checkpoint-deterministic.sh`, `docs/LOCATION_UPDATE_NOTES.md`, `package.json`.
+
 ### 2026-06-30 — v2.90.2 — FIX: bartender-remote "update available" auto-refresh never fired on the bar iPad
 
 - **Risk: GO (one component).** `UpdateAvailableBanner.tsx` only.

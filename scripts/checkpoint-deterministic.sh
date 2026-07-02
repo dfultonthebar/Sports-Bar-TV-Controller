@@ -208,9 +208,18 @@ run_b() {
   # passes it through (it was previously an un-exported shell var the child never
   # saw — which silently skipped this check AND tripped an unbound-variable error).
   # If it's still absent for any reason, skip the diff check cleanly instead of crashing.
+  #
+  # BUGFIX (2026-07-01): the glob was `'*/schema.ts'`, which also matches
+  # apps/hub/src/db/schema.ts — the SBCC central hub's OWN schema, deployed
+  # to its own separate database (hub.db on CT211), never applied to a
+  # fleet box's production.db. A hub-only migration (e.g. the P1.3/P2.1
+  # fleet_target/rollouts tables) landing in the SAME auto-update diff
+  # window as unrelated app changes made this check false-positive STOP on
+  # every fleet box, rolling back a legitimate, unrelated update. Scope to
+  # the two files that actually govern a fleet box's production.db.
   local new_tables=""
   if [ -n "${PRE_MERGE_SHA:-}" ]; then
-    new_tables=$(git diff "${PRE_MERGE_SHA}"..HEAD -- '*/schema.ts' 2>/dev/null \
+    new_tables=$(git diff "${PRE_MERGE_SHA}"..HEAD -- 'apps/web/src/db/schema.ts' 'packages/database/src/schema.ts' 2>/dev/null \
       | grep -E '^\+export const \w+ = sqliteTable' \
       | grep -oE "sqliteTable\('[^']+'" \
       | grep -oE "'[^']+'" \
