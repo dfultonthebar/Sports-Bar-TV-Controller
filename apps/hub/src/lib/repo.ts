@@ -58,6 +58,7 @@ export function insertHealth(locationId: string, ts: number, p: HealthPayload) {
       devicesOnline: p.devicesOnline,
       devicesTotal: p.devicesTotal,
       errorRate: p.errorRate,
+      version: p.version ?? null,
       rawPayload: JSON.stringify(p.raw ?? null),
     })
     .run()
@@ -118,32 +119,46 @@ export function insertErrors(locationId: string, events: ErrorEvent[]): number {
   return inserted
 }
 
-/** Insert fleet auto-update outcomes (kind:'update'). Dedups on (location, runId). */
+/**
+ * Insert fleet auto-update outcomes (kind:'update'). Upserts on (location, runId).
+ *
+ * BUGFIX (2026-07-01): was `.onConflictDoNothing()` — if the hub-agent's poll
+ * ever landed mid-run (a real bug in the box-side parser, now fixed
+ * separately: see apps/web/src/lib/auto-update/log-parser.ts's `terminal`
+ * flag), the FIRST, premature snapshot for a runId became permanent; a
+ * later, correct poll for the same runId was silently dropped. Confirmed
+ * live: leg-lamp's real SUCCESS got recorded here as a fabricated 35s
+ * 'rollback'. Upserting means a later poll can still correct an earlier
+ * wrong snapshot — defense in depth even with the box-side fix in place.
+ */
 export function insertFleetUpdate(locationId: string, events: UpdateEvent[]): number {
   const now = Date.now()
   let inserted = 0
   for (const e of events) {
+    const values = {
+      locationId,
+      runId: e.runId,
+      occurredAt: e.occurredAt,
+      receivedAt: now,
+      result: e.result,
+      fromVersion: e.fromVersion ?? null,
+      toVersion: e.toVersion ?? null,
+      fromSha: e.fromSha ?? null,
+      toSha: e.toSha ?? null,
+      durationSecs: e.durationSecs ?? null,
+      rollbackTag: e.rollbackTag ?? null,
+      conflictPaths: e.conflictPaths ? JSON.stringify(e.conflictPaths) : null,
+      triggeredBy: e.triggeredBy ?? null,
+      errorMessage: e.errorMessage ?? null,
+      rawPayload: JSON.stringify(e.raw ?? null),
+    }
     const res = db
       .insert(schema.fleetUpdateEvents)
-      .values({
-        id: randomUUID(),
-        locationId,
-        runId: e.runId,
-        occurredAt: e.occurredAt,
-        receivedAt: now,
-        result: e.result,
-        fromVersion: e.fromVersion ?? null,
-        toVersion: e.toVersion ?? null,
-        fromSha: e.fromSha ?? null,
-        toSha: e.toSha ?? null,
-        durationSecs: e.durationSecs ?? null,
-        rollbackTag: e.rollbackTag ?? null,
-        conflictPaths: e.conflictPaths ? JSON.stringify(e.conflictPaths) : null,
-        triggeredBy: e.triggeredBy ?? null,
-        errorMessage: e.errorMessage ?? null,
-        rawPayload: JSON.stringify(e.raw ?? null),
+      .values({ id: randomUUID(), ...values })
+      .onConflictDoUpdate({
+        target: [schema.fleetUpdateEvents.locationId, schema.fleetUpdateEvents.runId],
+        set: values,
       })
-      .onConflictDoNothing()
       .run()
     inserted += res.changes
   }
@@ -172,6 +187,100 @@ export const latestHealth = (id: string) => latestOf(schema.healthSnapshots, sch
 export const latestMetrics = (id: string) => latestOf(schema.metricsSnapshots, schema.metricsSnapshots.locationId, id)
 export const latestScheduler = (id: string) =>
   latestOf(schema.schedulerSnapshots, schema.schedulerSnapshots.locationId, id)
+
+/** The single pinned fleet target (row id 1), or null if never set. */
+export function getFleetTarget() {
+  return db.select().from(schema.fleetTarget).where(eq(schema.fleetTarget.id, 1)).get()
+}
+
+/** Pin the desired fleet version. Upserts the singleton row. */
+export function setFleetTarget(targetVersion: string, targetSha: string | null, setBy: string) {
+  const now = Date.now()
+  db.insert(schema.fleetTarget)
+    .values({ id: 1, targetVersion, targetSha, setBy, setAt: now })
+    .onConflictDoUpdate({
+      target: schema.fleetTarget.id,
+      set: { targetVersion, targetSha, setBy, setAt: now },
+    })
+    .run()
+  return getFleetTarget()
+}
+
+// ---------------------------------------------------------------------------
+// Rollout state machine (Phase 2). See the schema.ts doc comment on
+// `rollouts` for why this tracks/detects rather than executes.
+// ---------------------------------------------------------------------------
+
+export function createRollout(input: {
+  targetVersion: string
+  targetSha?: string | null
+  canaryLocationId: string
+  minSoakMinutes?: number
+  createdBy?: string
+  waveLocationIds: string[]
+}) {
+  const now = Date.now()
+  const id = randomUUID()
+  db.insert(schema.rollouts)
+    .values({
+      id,
+      targetVersion: input.targetVersion,
+      targetSha: input.targetSha ?? null,
+      canaryLocationId: input.canaryLocationId,
+      minSoakMinutes: input.minSoakMinutes ?? 30,
+      status: 'pending',
+      createdBy: input.createdBy ?? null,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .run()
+  for (const locationId of input.waveLocationIds) {
+    db.insert(schema.rolloutBoxes)
+      .values({ id: randomUUID(), rolloutId: id, locationId, state: 'pending' })
+      .run()
+  }
+  return getRollout(id)
+}
+
+export function getRollout(id: string) {
+  return db.select().from(schema.rollouts).where(eq(schema.rollouts.id, id)).get()
+}
+
+export function listRollouts(limit = 20) {
+  return db.select().from(schema.rollouts).orderBy(desc(schema.rollouts.createdAt)).limit(limit).all()
+}
+
+export function getRolloutBoxes(rolloutId: string) {
+  return db.select().from(schema.rolloutBoxes).where(eq(schema.rolloutBoxes.rolloutId, rolloutId)).all()
+}
+
+export function updateRollout(id: string, patch: Partial<typeof schema.rollouts.$inferInsert>) {
+  db.update(schema.rollouts)
+    .set({ ...patch, updatedAt: Date.now() })
+    .where(eq(schema.rollouts.id, id))
+    .run()
+  return getRollout(id)
+}
+
+export function updateRolloutBox(id: string, patch: Partial<typeof schema.rolloutBoxes.$inferInsert>) {
+  db.update(schema.rolloutBoxes).set(patch).where(eq(schema.rolloutBoxes.id, id)).run()
+}
+
+/** Most recent fleet_update_events row for a location at/after `sinceMs` reporting `toVersion`. */
+export function findUpdateEventSince(locationId: string, sinceMs: number, toVersion: string) {
+  return db
+    .select()
+    .from(schema.fleetUpdateEvents)
+    .where(
+      and(
+        eq(schema.fleetUpdateEvents.locationId, locationId),
+        gte(schema.fleetUpdateEvents.occurredAt, sinceMs),
+        eq(schema.fleetUpdateEvents.toVersion, toVersion),
+      ),
+    )
+    .orderBy(desc(schema.fleetUpdateEvents.occurredAt))
+    .get()
+}
 
 /** Open error feed across the fleet, newest first. */
 export function recentErrors(sinceMs: number, locationId?: string) {
