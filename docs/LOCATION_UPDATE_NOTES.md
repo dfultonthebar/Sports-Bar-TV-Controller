@@ -46,6 +46,13 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-07-02 — v2.96.1 — FIX: /api/obsbot/cameras crashed comparing isActive to a JS boolean
+
+- **Risk: GO (1-line fix, no schema/behavior change beyond correcting the crash).** `apps/web/src/app/api/obsbot/cameras/route.ts`.
+- **Why:** `ObsbotCamera.isActive` is a plain `integer` column (not drizzle's `{mode:'boolean'}`), but the GET route's query compared it with `eq(schema.obsbotCameras.isActive, true)` — a raw JS boolean. better-sqlite3 can only bind numbers/strings/bigints/buffers/null, so every call threw `SQLite3 can only bind numbers, strings, bigints, buffers, and null`. Surfaced immediately during live verification at Lime Kiln right after v2.96.0 shipped — the bartender remote's Camera tab would never have appeared for anyone.
+- **Fix:** compare against `1` (matching the column's own `.default(1)` declaration) instead of `true`.
+- **Affected files:** `apps/web/src/app/api/obsbot/cameras/route.ts`, `docs/LOCATION_UPDATE_NOTES.md`, `package.json`.
+
 ### 2026-07-02 — v2.96.0 — FEATURE: OBSBOT Tail 2 PTZ camera support (bartender remote)
 
 - **Risk: GO (additive — new table, new package, new routes, new UI entry; existing tabs/behavior unchanged).** New `ObsbotCamera` table (`packages/database/src/schema.ts`), new `packages/obsbot/` (VISCA-over-UDP control), new `/api/obsbot/*` routes, new `ObsbotCameraPanel.tsx` gated behind a per-location existence check (mirrors the existing DJ Mode enabled/disabled pattern) so locations without a camera see nothing new at all.
