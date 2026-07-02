@@ -30,6 +30,10 @@ export const healthSnapshots = sqliteTable(
     devicesOnline: integer('devices_online'),
     devicesTotal: integer('devices_total'),
     errorRate: real('error_rate'),
+    // App version reported by /api/health (HealthPayload.version). Was only
+    // buried in rawPayload JSON — promoted to a real column so the fleet
+    // target/drift view can query "actual vs target" per location cheaply.
+    version: text('version'),
     rawPayload: text('raw_payload'), // JSON
   },
   (t) => [index('health_loc_ts').on(t.locationId, t.ts)],
@@ -112,6 +116,78 @@ export const fleetUpdateEvents = sqliteTable(
     // idempotency: same run reported twice (agent restart) collapses.
     uniqueIndex('update_dedup').on(t.locationId, t.runId),
   ],
+)
+
+/**
+ * Desired fleet version — the missing "target" half of drift detection.
+ * `health_snapshots.version` is the ACTUAL version each box last reported;
+ * this single-row table is the DESIRED version an operator/rollout pinned.
+ * The hub overview diffs actual vs target per location. Superseded in scope
+ * (not storage) once the P2 rollout controller lands — `rollouts` will carry
+ * its own target_version per rollout, but this table remains the simple
+ * always-current "what SHOULD every box be on" pin for the plain drift view.
+ */
+export const fleetTarget = sqliteTable('fleet_target', {
+  id: integer('id').primaryKey(), // always row 1 — singleton
+  targetVersion: text('target_version').notNull(),
+  targetSha: text('target_sha'),
+  setBy: text('set_by'), // operator/script identity, freeform
+  setAt: integer('set_at').notNull(), // unix ms
+})
+
+/**
+ * Staged rollout state machine (Phase 2 of the fleet-update redesign).
+ *
+ * IMPORTANT — the hub has NO SSH access to the fleet or to Hermes/CT212
+ * (verified 2026-07-01: key auth rejected both hops). This is intentional —
+ * the hub stays a read-only telemetry sink, consistent with its existing
+ * design. So this state machine does NOT execute anything itself. It:
+ *   1. Tracks desired state (which locations, what target, canary-first).
+ *   2. Detects PROGRESS purely from telemetry it already receives
+ *      (fleet_update_events + health_snapshots — zero new plumbing).
+ *   3. Exposes an explicit "next action" (e.g. "trigger canary on leg-lamp")
+ *      that an external executor — Hermes (has working fleet SSH via
+ *      fleet-deploy.sh) or an operator by hand — performs, then reports back
+ *      via ackAction. This makes the dashboard useful immediately even
+ *      before any Hermes-side automation polls it.
+ */
+export const rollouts = sqliteTable('rollouts', {
+  id: text('id').primaryKey(),
+  targetVersion: text('target_version').notNull(),
+  targetSha: text('target_sha'),
+  canaryLocationId: text('canary_location_id').notNull(),
+  minSoakMinutes: integer('min_soak_minutes').notNull().default(30),
+  // pending -> canary_triggered -> canary_soaking -> waving -> converged
+  //                             \-> canary_failed              \-> partial_failure
+  // aborted reachable from any non-terminal state via POST /abort.
+  status: text('status').notNull().default('pending'),
+  canaryTriggeredAt: integer('canary_triggered_at'),
+  canarySuccessAt: integer('canary_success_at'), // when it reported target-version success — soak clock starts here
+  waveTriggeredAt: integer('wave_triggered_at'),
+  createdBy: text('created_by'),
+  createdAt: integer('created_at').notNull(),
+  updatedAt: integer('updated_at').notNull(),
+  // Set once a Hermes agent turn has emitted this rollout's labeled OUTCOME
+  // summary (captured to Honcho as part of that conversation — see
+  // POST /api/rollout/[id]/mark-outcome-captured). Null means: reached a
+  // terminal status but the learning-flywheel capture hasn't happened yet.
+  outcomeCapturedAt: integer('outcome_captured_at'),
+})
+
+/** One row per non-canary location tracked by a rollout. */
+export const rolloutBoxes = sqliteTable(
+  'rollout_boxes',
+  {
+    id: text('id').primaryKey(),
+    rolloutId: text('rollout_id').notNull(),
+    locationId: text('location_id').notNull(),
+    // pending -> triggered -> success | rolled_back | failed | timeout
+    state: text('state').notNull().default('pending'),
+    triggeredAt: integer('triggered_at'),
+    resolvedAt: integer('resolved_at'),
+    note: text('note'),
+  },
+  (t) => [index('rollout_boxes_rollout').on(t.rolloutId)],
 )
 
 /**

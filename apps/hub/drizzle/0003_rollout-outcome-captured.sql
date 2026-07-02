@@ -1,0 +1,1 @@
+ALTER TABLE `rollouts` ADD `outcome_captured_at` integer;

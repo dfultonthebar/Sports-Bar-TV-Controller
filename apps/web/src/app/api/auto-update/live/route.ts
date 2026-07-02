@@ -8,10 +8,19 @@
  * Connection lifecycle:
  *   - on connect, sends the current content as one batched event
  *   - then polls fstat every 1s; when size grows, reads delta + sends
- *   - when no growth for 5s AND the log contains a terminal marker
- *     (SUCCESS:, FAIL at step, ROLLED BACK), sends a 'done' event then
- *     closes
+ *   - when no growth for 5s AND the log contains a terminal marker,
+ *     sends a 'done' event then closes
  *   - on the client disconnecting, the polling loop exits via ReadableStream cancel
+ *
+ * BUGFIX (2026-07-01): the old terminal-marker check treated bare "FAIL at
+ * step" as terminal and looked for a literal "ROLLED BACK" that never
+ * actually appears in a real log (only in a code comment) — see
+ * apps/web/src/lib/auto-update/log-parser.ts's TERMINAL_FAIL_RE for the
+ * full writeup. "FAIL at step" is just the START of the EXIT trap's
+ * resolution; rollback.sh can keep appending for 1-2+ minutes afterward.
+ * Combined with the "no growth for 5s" gate this rarely fired in practice,
+ * but it's the same class of bug that silently corrupted the hub's fleet
+ * telemetry — fixed here too with the same accurate marker set.
  */
 import { NextRequest } from 'next/server'
 import * as fs from 'fs'
@@ -29,8 +38,11 @@ function findLatestLog(): string | null {
   return files[0] ? path.join(LOG_DIR, files[0].name) : null
 }
 
+const TERMINAL_MARKER_RE =
+  /SUCCESS: updated|Failure happened before any on-disk change\. No rollback needed\.|CRITICAL: no rollback tag set|Rollback succeeded\.|CRITICAL: rollback itself failed/
+
 function containsTerminalMarker(text: string): boolean {
-  return /SUCCESS: updated|FAIL at step|ROLLED BACK/.test(text)
+  return TERMINAL_MARKER_RE.test(text)
 }
 
 export async function GET(request: NextRequest) {
