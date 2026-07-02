@@ -46,6 +46,14 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-07-02 — v2.95.8 — FIX: audio processor "Test Connection" always said IP address required
+
+- **Risk: GO (2 files, no schema/build changes).** `apps/web/src/components/AudioProcessorManager.tsx`, `apps/web/src/app/api/audio-processor/test-connection/route.ts`.
+- **Why:** the "Test Connection" button in Device Config → Audio Processors sent only `{processorId}` to the test endpoint, omitting the processor's own `ipAddress`/`port` even though both were already in scope (displayed right next to the button). The route hard-requires `ipAddress` in the request body and never fell back to the DB row it looks up anyway (just for `processorType`), so every test always failed with "IP address is required" regardless of the processor's actual configured IP or online status. Surfaced live at Lime Kiln on the Atlas AZM8.
+- **Fix:** frontend now sends `ipAddress`/`port` in the request; backend also falls back to the looked-up DB row's `ipAddress`/`port` when the request omits them (defense in depth). Also fixed a second, related bug in the same flow: the frontend checked `data.success`, but the route returns `connected`/`error`/`message` and never `success` — so even with the IP fixed, results would still always read as "Connection failed." Now checks `data.connected`.
+- **Verify:** Device Config → Audio Processors → "Test Connection" on any configured processor now reports the real connection state.
+- **Affected files:** `apps/web/src/components/AudioProcessorManager.tsx`, `apps/web/src/app/api/audio-processor/test-connection/route.ts`, `docs/LOCATION_UPDATE_NOTES.md`, `package.json`.
+
 ### 2026-07-02 — v2.95.6 — FIX: self-update re-exec called log() before it was defined
 
 - **Risk: GO (pure reorder, no logic change).** `scripts/auto-update.sh` only.

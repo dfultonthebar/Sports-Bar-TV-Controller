@@ -159,7 +159,32 @@ export async function POST(request: NextRequest) {
   logger.api.request('POST', '/api/audio-processor/test-connection')
 
   try {
-    const { processorId, ipAddress, port, username, password, autoDetectCredentials } = bodyValidation.data
+    let { ipAddress, port } = bodyValidation.data
+    const { processorId, username, password, autoDetectCredentials } = bodyValidation.data
+
+    // Sanitize processorId
+    const sanitizedProcessorId = sanitizeProcessorId(processorId)
+
+    // Check processor type - route to appropriate test. If we have a
+    // processorId, look up the processor row. BUGFIX: this lookup previously
+    // only read processorType, discarding the row's own ipAddress/port —
+    // callers that already know the processorId (e.g. a "Test Connection"
+    // button rendering the processor's own IP right next to it) shouldn't
+    // have to re-send ipAddress separately. Fall back to the DB row's values
+    // when the request body omits them.
+    let processorType = 'atlas'
+    if (sanitizedProcessorId) {
+      try {
+        const proc = await import('@/lib/db-helpers').then(m => m.findUnique('audioProcessors', eq(schema.audioProcessors.id, sanitizedProcessorId)))
+        if (proc) {
+          processorType = proc.processorType || 'atlas'
+          ipAddress = ipAddress || proc.ipAddress
+          port = port || proc.port
+        }
+      } catch {
+        // Fall through to atlas
+      }
+    }
 
     if (!ipAddress) {
       return NextResponse.json(
@@ -182,23 +207,6 @@ export async function POST(request: NextRequest) {
         message: error.message,
         suggestion: 'Please check the IP address format. It should be in the format: 192.168.1.100'
       }, { status: 400 })
-    }
-
-    // Sanitize processorId
-    const sanitizedProcessorId = sanitizeProcessorId(processorId)
-
-    // Check processor type - route to appropriate test
-    // If we have a processorId, look up the processor type
-    let processorType = 'atlas'
-    if (sanitizedProcessorId) {
-      try {
-        const proc = await import('@/lib/db-helpers').then(m => m.findUnique('audioProcessors', eq(schema.audioProcessors.id, sanitizedProcessorId)))
-        if (proc) {
-          processorType = proc.processorType || 'atlas'
-        }
-      } catch {
-        // Fall through to atlas
-      }
     }
 
     // dbx ZonePRO uses TCP on port 3804, not HTTP
