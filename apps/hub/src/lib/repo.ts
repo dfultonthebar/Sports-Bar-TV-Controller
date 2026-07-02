@@ -119,32 +119,46 @@ export function insertErrors(locationId: string, events: ErrorEvent[]): number {
   return inserted
 }
 
-/** Insert fleet auto-update outcomes (kind:'update'). Dedups on (location, runId). */
+/**
+ * Insert fleet auto-update outcomes (kind:'update'). Upserts on (location, runId).
+ *
+ * BUGFIX (2026-07-01): was `.onConflictDoNothing()` — if the hub-agent's poll
+ * ever landed mid-run (a real bug in the box-side parser, now fixed
+ * separately: see apps/web/src/lib/auto-update/log-parser.ts's `terminal`
+ * flag), the FIRST, premature snapshot for a runId became permanent; a
+ * later, correct poll for the same runId was silently dropped. Confirmed
+ * live: leg-lamp's real SUCCESS got recorded here as a fabricated 35s
+ * 'rollback'. Upserting means a later poll can still correct an earlier
+ * wrong snapshot — defense in depth even with the box-side fix in place.
+ */
 export function insertFleetUpdate(locationId: string, events: UpdateEvent[]): number {
   const now = Date.now()
   let inserted = 0
   for (const e of events) {
+    const values = {
+      locationId,
+      runId: e.runId,
+      occurredAt: e.occurredAt,
+      receivedAt: now,
+      result: e.result,
+      fromVersion: e.fromVersion ?? null,
+      toVersion: e.toVersion ?? null,
+      fromSha: e.fromSha ?? null,
+      toSha: e.toSha ?? null,
+      durationSecs: e.durationSecs ?? null,
+      rollbackTag: e.rollbackTag ?? null,
+      conflictPaths: e.conflictPaths ? JSON.stringify(e.conflictPaths) : null,
+      triggeredBy: e.triggeredBy ?? null,
+      errorMessage: e.errorMessage ?? null,
+      rawPayload: JSON.stringify(e.raw ?? null),
+    }
     const res = db
       .insert(schema.fleetUpdateEvents)
-      .values({
-        id: randomUUID(),
-        locationId,
-        runId: e.runId,
-        occurredAt: e.occurredAt,
-        receivedAt: now,
-        result: e.result,
-        fromVersion: e.fromVersion ?? null,
-        toVersion: e.toVersion ?? null,
-        fromSha: e.fromSha ?? null,
-        toSha: e.toSha ?? null,
-        durationSecs: e.durationSecs ?? null,
-        rollbackTag: e.rollbackTag ?? null,
-        conflictPaths: e.conflictPaths ? JSON.stringify(e.conflictPaths) : null,
-        triggeredBy: e.triggeredBy ?? null,
-        errorMessage: e.errorMessage ?? null,
-        rawPayload: JSON.stringify(e.raw ?? null),
+      .values({ id: randomUUID(), ...values })
+      .onConflictDoUpdate({
+        target: [schema.fleetUpdateEvents.locationId, schema.fleetUpdateEvents.runId],
+        set: values,
       })
-      .onConflictDoNothing()
       .run()
     inserted += res.changes
   }
