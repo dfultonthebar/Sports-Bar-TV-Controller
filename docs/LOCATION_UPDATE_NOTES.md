@@ -46,6 +46,22 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-07-02 — v2.95.6 — FIX: self-update re-exec called log() before it was defined
+
+- **Risk: GO (pure reorder, no logic change).** `scripts/auto-update.sh` only.
+- **Why:** the self-update re-exec RESTORE handler (fires whenever a merge includes changes to `scripts/auto-update.sh` itself — common on a large multi-version catch-up merge) called `log(...)` at line 123, but the `log()` function wasn't defined until line 163 — 40 lines later. Every self-update re-exec printed `line 123: log: command not found` to stderr. Non-fatal on its own (no `set -e`), but confirmed live on graystone during today's v2.95.5 fleet-wide verification: a large catch-up merge took the self-update re-exec path, combined with a slow build on low-RAM hardware, and the whole run exceeded even the newly-fixed 45min systemd timeout (see v2.95.5 below) — leaving a stale lock file (cleared manually) even though the deployment itself had already succeeded.
+- **Fix:** moved the `log()` definition and its `mkdir -p "$LOG_DIR" "$BACKUP_DIR"` dependency up, ahead of the self-update re-exec handler, so `log()` is always available regardless of which code path needs it first.
+- **No location action needed.** Purely a script-ordering fix.
+- **Affected files:** `scripts/auto-update.sh`, `docs/LOCATION_UPDATE_NOTES.md`, `package.json`.
+
+### 2026-07-01 — v2.95.5 — FIX: systemd TimeoutStartSec too short for cron jitter (fleet-wide stall)
+
+- **Risk: GO (systemd config only, doesn't touch auto-update.sh's own logic).** `scripts/install-auto-update-timer.sh`.
+- **Why:** `sports-bar-autoupdate.service`'s `TimeoutStartSec=15min` predates the 0-30min cron-jitter sleep (v2.32.47) that runs BEFORE any cron-triggered run does real work. Any run whose jitter rolled past ~15min got silently SIGTERM'd mid-sleep, before a single log line was written. Confirmed live: 5 of 6 remote fleet boxes stuck on v2.93.0 for one or more consecutive nights purely from this (lime-kiln: 3+ nights) — not a real merge/build issue on any of them.
+- **Fix:** raised to 45min (covers the full jitter ceiling + real observed work time). Verified live across the whole fleet: all 7 boxes cron-triggered for real, including two that rolled jitter past 1700-2000s (would have been killed under the old timeout) — all completed cleanly.
+- **Required manual step at every EXISTING location** — see the full `VERSION_SETUP_GUIDE.md` v2.95.5 entry for the exact one-line systemd patch command. New installs get this automatically.
+- **Affected files:** `scripts/install-auto-update-timer.sh`, `docs/VERSION_SETUP_GUIDE.md`, `docs/LOCATION_UPDATE_NOTES.md`, `package.json`.
+
 ### 2026-07-01 — v2.95.4 — FIX: auto-update.sh outcomes could look "finished" (and get misclassified) while still mid-run
 
 - **Risk: GO (parsing/telemetry only, no behavior change to auto-update.sh itself).** `apps/web/src/lib/auto-update/log-parser.ts`, `apps/web/src/app/api/auto-update/live/route.ts`.
