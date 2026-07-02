@@ -804,6 +804,28 @@ export const irDevices = sqliteTable('IRDevice', {
   globalCacheDeviceIdIdx: index('IRDevice_globalCacheDeviceId_idx').on(table.globalCacheDeviceId),
 }))
 
+// OBSBOT Tail 2 PTZ camera — see docs/OBSBOT_TAIL_2_PLAN.md. Control via
+// VISCA-over-UDP (packages/obsbot), video via RTSP->MediaMTX->LL-HLS.
+// Per-location: zero, one, or many rows; the bartender remote's Camera tab
+// only appears when a location has at least one active row.
+export const obsbotCameras = sqliteTable('ObsbotCamera', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  name: text('name').notNull(),
+  ipAddress: text('ipAddress').notNull(),
+  viscaPort: integer('viscaPort').notNull().default(52381),
+  rtspPort: integer('rtspPort').notNull().default(8554),
+  rtspPath: text('rtspPath').notNull().default('/live'),
+  mediamtxPath: text('mediamtxPath'), // e.g. "limekiln-cam1" — set once MediaMTX is configured
+  status: text('status').notNull().default('offline'),
+  lastSeenAt: text('lastSeenAt'),
+  presets: text('presets'), // JSON: {"1": {pan, tilt, zoom, label}, ...}
+  isActive: integer('isActive').notNull().default(1),
+  createdAt: timestamp('createdAt').notNull().default(timestampNow()),
+  updatedAt: timestamp('updatedAt').notNull().default(timestampNow()),
+}, (table) => ({
+  ipAddressIdx: index('ObsbotCamera_ipAddress_idx').on(table.ipAddress),
+}))
+
 // IR Command Model
 export const irCommands = sqliteTable('IRCommand', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),

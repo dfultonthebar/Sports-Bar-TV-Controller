@@ -96,6 +96,7 @@
     "@sports-bar/layout-detection": "*",
     "@sports-bar/logger": "*",
     "@sports-bar/memory-bank": "*",
+    "@sports-bar/obsbot": "*",
     "@sports-bar/ollama-client": "*",
     "@sports-bar/rag-server": "*",
     "@sports-bar/rate-limiting": "*",

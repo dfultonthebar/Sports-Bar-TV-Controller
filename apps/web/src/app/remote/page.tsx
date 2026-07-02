@@ -17,7 +17,8 @@ import {
   Loader2,
   Clock,
   MoreHorizontal,
-  X
+  X,
+  Camera
 } from 'lucide-react'
 import EnhancedChannelGuideBartenderRemote from '@/components/EnhancedChannelGuideBartenderRemote'
 import BartenderMusicControl from '@/components/BartenderMusicControl'
@@ -35,6 +36,7 @@ import AtmosphereControl from '@/components/AtmosphereControl'
 import ShiftBriefTile from '@/components/ai/ShiftBriefTile'
 import SourceAvailabilityPanel from '@/components/SourceAvailabilityPanel'
 import SafeBoundary from '@/components/SafeBoundary'
+import ObsbotCameraPanel from '@/components/ObsbotCameraPanel'
 
 import { logger } from '@sports-bar/logger'
 interface MatrixInput {
@@ -163,8 +165,13 @@ export default function BartenderRemotePage() {
   const [djControlsEnabled, setDjControlsEnabled] = useState(false)
   const lightingEnabled = dmxLightingEnabled || commercialLightingEnabled
 
+  // Camera tab visibility — only true when this location has at least one
+  // ObsbotCamera row (see fetchCameraAvailability below). Locations without
+  // a camera never see the tab at all, same gating as djControlsEnabled.
+  const [cameraAvailable, setCameraAvailable] = useState(false)
+
   // Tab state
-  const [activeTab, setActiveTab] = useState<'video' | 'audio' | 'power' | 'guide' | 'music' | 'remote' | 'routing' | 'dj' | 'lighting' | 'schedule'>('video')
+  const [activeTab, setActiveTab] = useState<'video' | 'audio' | 'power' | 'guide' | 'music' | 'remote' | 'routing' | 'dj' | 'lighting' | 'schedule' | 'camera'>('video')
   // "More" overflow sheet for admin tabs (Schedule, DJ) — Direction B keeps
   // the core + ambient + emergency (Power) tabs always visible; tapping
   // admin items auto-closes the sheet.
@@ -202,6 +209,17 @@ export default function BartenderRemotePage() {
     }
   }, [])
 
+  // Fetch camera availability — locations with no ObsbotCamera row never see the tab
+  const fetchCameraAvailability = useCallback(async () => {
+    try {
+      const response = await fetch('/api/obsbot/cameras')
+      const result = await response.json()
+      setCameraAvailable(!!(result.success && Array.isArray(result.cameras) && result.cameras.length > 0))
+    } catch (error) {
+      logger.error('Failed to fetch camera availability:', error)
+    }
+  }, [])
+
   // Update system time every second - only runs on client after hydration
   useEffect(() => {
     const formatTime = () => new Date().toLocaleTimeString('en-US', {
@@ -230,6 +248,7 @@ export default function BartenderRemotePage() {
     loadTVLayout()
     loadAudioProcessor()
     fetchLightingSettings()
+    fetchCameraAvailability()
     // Also fetch matrix data on initial load
     fetchMatrixData()
     loadCurrentChannels()
@@ -248,7 +267,7 @@ export default function BartenderRemotePage() {
     return () => {
       clearInterval(statusInterval)
     }
-  }, [fetchLightingSettings])
+  }, [fetchLightingSettings, fetchCameraAvailability])
 
   // Poll TV status every 30 seconds while on the Power tab
   useEffect(() => {
@@ -1251,6 +1270,14 @@ export default function BartenderRemotePage() {
           </div>
         )}
 
+        {activeTab === 'camera' && cameraAvailable && (
+          <div className="max-w-7xl mx-auto pt-4">
+            <SafeBoundary>
+              <ObsbotCameraPanel />
+            </SafeBoundary>
+          </div>
+        )}
+
         {activeTab === 'lighting' && lightingEnabled && (
           <div className="max-w-7xl mx-auto pt-4 space-y-4">
             {commercialLightingEnabled && <CommercialLightingRemote />}
@@ -1491,6 +1518,25 @@ export default function BartenderRemotePage() {
                     <span className="text-xs opacity-70">Enable in Admin → Bartender Remote Settings</span>
                   </div>
                 </div>
+              )}
+              {cameraAvailable && (
+                <button
+                  onClick={() => {
+                    setActiveTab('camera')
+                    setMoreOpen(false)
+                  }}
+                  className={`flex-1 min-w-[140px] min-h-[64px] flex items-center gap-3 px-4 py-3 rounded-xl border border-slate-700 transition-all ${
+                    activeTab === 'camera'
+                      ? 'ring-1 ring-sky-400/50 bg-sky-500/20 text-sky-300'
+                      : 'bg-slate-800/50 text-slate-300 hover:bg-slate-800 hover:text-slate-100'
+                  }`}
+                >
+                  <Camera className="h-5 w-5 flex-shrink-0" />
+                  <div className="flex flex-col items-start">
+                    <span className="text-sm font-semibold">Camera</span>
+                    <span className="text-xs opacity-70">Live view + PTZ</span>
+                  </div>
+                </button>
               )}
             </div>
           </div>

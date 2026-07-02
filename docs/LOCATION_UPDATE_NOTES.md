@@ -46,6 +46,15 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-07-02 — v2.96.0 — FEATURE: OBSBOT Tail 2 PTZ camera support (bartender remote)
+
+- **Risk: GO (additive — new table, new package, new routes, new UI entry; existing tabs/behavior unchanged).** New `ObsbotCamera` table (`packages/database/src/schema.ts`), new `packages/obsbot/` (VISCA-over-UDP control), new `/api/obsbot/*` routes, new `ObsbotCameraPanel.tsx` gated behind a per-location existence check (mirrors the existing DJ Mode enabled/disabled pattern) so locations without a camera see nothing new at all.
+- **What:** live LL-HLS video preview + PTZ/zoom/home/preset control for an OBSBOT Tail 2 camera, in a new "Camera" entry under the bartender remote's More sheet. Control is VISCA-over-UDP (Sony-standard opcodes only — AI tracking/OBSBOT extensions are out of scope, gated on a vendor command sheet we don't have). Video is RTSP → MediaMTX (new systemd `--user` sidecar, mirrors `sports-bar-error-watch.service`) → LL-HLS, played natively by iPad Safari.
+- **First install: Lime Kiln** (`192.168.5.103`). Following the plan in `docs/OBSBOT_TAIL_2_PLAN.md` (Phases 1-3; Phase 4 AI-tracking and Phase 5 mDNS discovery explicitly deferred).
+- **Required manual steps for a NEW camera at any location** — see the full `VERSION_SETUP_GUIDE.md` v2.96.0 entry: (1) enable RTSP in the camera's own web UI (`Settings → Stream`), (2) run `scripts/setup-mediamtx.sh <path-name> <camera-ip>`, (3) re-run `scripts/setup-bartender-nginx.sh` to pick up the new `/api/obsbot/*` allow-list entries, (4) insert one `ObsbotCamera` row (no general admin CRUD UI yet — direct SQL insert, same pattern used for the Wolf Pack matrix setup at this location).
+- **No action needed at locations without a camera** — the migration is additive-only and the UI stays fully hidden.
+- **Affected files:** `packages/database/src/schema.ts`, `drizzle/0010_add_obsbot_camera.sql`, `packages/obsbot/**`, `apps/web/src/app/api/obsbot/**`, `apps/web/src/lib/obsbot/get-camera.ts`, `apps/web/src/components/ObsbotCameraPanel.tsx`, `apps/web/src/app/remote/page.tsx`, `scripts/setup-mediamtx.sh` (new), `scripts/setup-bartender-nginx.sh`, `docs/LOCATION_UPDATE_NOTES.md`, `docs/VERSION_SETUP_GUIDE.md`, `package.json`.
+
 ### 2026-07-02 — v2.95.8 — FIX: audio processor "Test Connection" always said IP address required
 
 - **Risk: GO (2 files, no schema/build changes).** `apps/web/src/components/AudioProcessorManager.tsx`, `apps/web/src/app/api/audio-processor/test-connection/route.ts`.
