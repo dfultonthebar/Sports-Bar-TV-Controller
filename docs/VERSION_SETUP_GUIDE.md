@@ -35,6 +35,28 @@ is the archive.
 
 ---
 
+## v2.95.5 — systemd TimeoutStartSec too short for cron jitter (2026-07-01)
+
+**Required manual step — YES, at every EXISTING location (not new installs, those get it automatically from `install-auto-update-timer.sh`).**
+
+**What's wrong:** `sports-bar-autoupdate.service`'s `TimeoutStartSec=15min` was never raised when v2.32.47 added a 0-30min random jitter sleep BEFORE any cron-triggered run does real work. Any run whose jitter rolls past ~15min gets silently SIGTERM'd by systemd mid-sleep — zero log output, looks like nothing happened. Confirmed live 2026-07-01: 5 of 6 remote fleet boxes stuck on v2.93.0 for one or more consecutive nights (lime-kiln: 3+ nights, Jun 28/30/Jul 1) purely from this — not a real merge/build/conflict issue on any of them.
+
+**Because this is what's BLOCKING updates, the affected boxes cannot self-heal via the normal git-pull auto-update flow — the fix must be applied directly, once, per location:**
+
+```bash
+sed -i 's/^TimeoutStartSec=15min/TimeoutStartSec=45min/' ~/.config/systemd/user/sports-bar-autoupdate.service
+systemctl --user daemon-reload
+systemctl --user cat sports-bar-autoupdate.service | grep TimeoutStartSec   # verify: should show 45min
+```
+
+Run this on EVERY existing location (including Holmgren, which manages its own timer locally). `scripts/install-auto-update-timer.sh` is fixed for any FUTURE fresh install/re-run, but won't touch a box unless that script is re-run — a normal `git pull` alone does not regenerate an already-installed systemd unit file (it lives outside the repo, at `~/.config/systemd/user/`, not tracked by git).
+
+**Verification:** `systemctl --user list-timers sports-bar-autoupdate.timer` shows the next scheduled fire; after that fire (or a manual `systemctl --user start sports-bar-autoupdate.service`), a NEW `auto-update-*.log` file should appear under `sports-bar-data/update-logs/` even if that night's jitter rolled past 15 minutes — the old failure mode produced zero log output at all, so any log file (pass, caution, or a real merge/build failure) proves the timeout fix worked.
+
+**Affected files:** `scripts/install-auto-update-timer.sh`, `docs/VERSION_SETUP_GUIDE.md`, `package.json`. Live fix applied out-of-band to each box's `~/.config/systemd/user/sports-bar-autoupdate.service` — not a git-tracked change.
+
+---
+
 ## v2.95.2 — Rollout outcomes captured to the fleet-ops flywheel (2026-07-01)
 
 **Required manual step:** NONE for fleet locations — this only touches
