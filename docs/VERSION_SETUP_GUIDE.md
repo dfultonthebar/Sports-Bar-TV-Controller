@@ -41,26 +41,32 @@ is the archive.
 
 **Per-camera setup** (first done at Lime Kiln, `192.168.5.103`):
 
-1. **Enable RTSP on the camera itself** — its own web UI (`Settings → Stream → enable RTSP`), NOT something this app can do remotely. Confirms the stream URL is `rtsp://<camera-ip>:8554/live`. VISCA control (port 52381/UDP) works without this step; only video needs it.
-2. **Install/configure MediaMTX** (one-time per box, safe to re-run to add a second camera):
+1. **Enable RTSP on the camera itself** — its own web UI (`Settings → Stream → enable RTSP`), NOT something this app can do remotely. VISCA control (port 52381/UDP) works without this step; only video needs it.
+2. **Verify the actual RTSP port/path — do NOT trust OBSBOT's documented `8554`/`/live` default.** Confirmed live at Lime Kiln (2026-07-02): the real unit served on the RTSP-standard port **`554`** at path **`/stream1`** (server banner: "Remo RTSP Streaming Media Server/1.0.0") — `8554`/`/live` connection-refused entirely. Probe before configuring:
    ```bash
-   bash scripts/setup-mediamtx.sh <mediamtx-path-name> <camera-ip> [rtsp-port] [rtsp-path]
-   # e.g.: bash scripts/setup-mediamtx.sh limekiln-cam1 192.168.5.103
+   for p in 554 8554; do timeout 3 bash -c "echo > /dev/tcp/<camera-ip>/$p" 2>&1 && echo "port $p open"; done
+   # Then DESCRIBE-probe candidate paths on whichever port is open — /live, /stream1, /stream, / —
+   # a real RTSP server replies "200 OK" for the right path, "400 Bad Request" for a wrong one.
    ```
-   Installs the MediaMTX binary to `~/.local/bin` (no root), writes `~/.config/mediamtx/mediamtx.yml`, and registers a `systemd --user` unit (`mediamtx.service`, mirrors `sports-bar-error-watch.service`). Requires `loginctl enable-linger ubuntu` already set (Gotcha #11) — the script checks and warns if not.
-3. **Re-run the bartender nginx setup** so the new `/api/obsbot/*` control routes aren't 403'd from the iPad (Gotcha: new `/api/*` routes need the allow-list):
+3. **Install/configure MediaMTX** (one-time per box, safe to re-run to add a second camera):
+   ```bash
+   bash scripts/setup-mediamtx.sh <mediamtx-path-name> <camera-ip> <rtsp-port> <rtsp-path>
+   # e.g. (Lime Kiln's real values): bash scripts/setup-mediamtx.sh limekiln-cam1 192.168.5.103 554 /stream1
+   ```
+   Installs the MediaMTX binary to `~/.local/bin` (no root), writes `~/.config/mediamtx/mediamtx.yml` (now includes `rtspTransport: tcp` by default — UDP transport hit "RTP packet too big" + massive packet loss on Lime Kiln's 4K stream; TCP has no such datagram-size ceiling), and registers a `systemd --user` unit (`mediamtx.service`, mirrors `sports-bar-error-watch.service`). Requires `loginctl enable-linger ubuntu` already set (Gotcha #11) — the script checks and warns if not.
+4. **Re-run the bartender nginx setup** so the new `/api/obsbot/*` control routes aren't 403'd from the iPad (Gotcha: new `/api/*` routes need the allow-list):
    ```bash
    sudo bash scripts/setup-bartender-nginx.sh
    ```
-4. **Insert the `ObsbotCamera` DB row** — no admin CRUD UI yet (deliberately deferred, see `docs/OBSBOT_TAIL_2_PLAN.md`), direct SQL:
+5. **Insert the `ObsbotCamera` DB row** — no admin CRUD UI yet (deliberately deferred, see `docs/OBSBOT_TAIL_2_PLAN.md`), direct SQL using the port/path confirmed in step 2 (NOT the vendor-documented 8554/`/live` defaults):
    ```sql
    INSERT INTO ObsbotCamera (id, name, ipAddress, viscaPort, rtspPort, rtspPath, mediamtxPath, isActive)
-   VALUES (lower(hex(randomblob(16))), 'OBS Tail 2', '<camera-ip>', 52381, 8554, '/live', '<mediamtx-path-name>', 1);
+   VALUES (lower(hex(randomblob(16))), 'OBS Tail 2', '<camera-ip>', 52381, <confirmed-rtsp-port>, '<confirmed-rtsp-path>', '<mediamtx-path-name>', 1);
    ```
 
 **Verification:**
 - VISCA control: `curl -X POST http://localhost:3001/api/obsbot/cameras/<id>/test` → `{"success":true,"connected":true}`.
-- Video: `curl -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8888/<mediamtx-path-name>/` → `200` (MediaMTX's own HTTP server; the actual stream only pulls from the camera on-demand once a viewer connects — RTSP must be enabled per step 1 or the pull will fail silently until it is).
+- Video (must hit `index.m3u8` directly — the bare path serves MediaMTX's own HTML player instead and won't trigger the on-demand pull): `curl -s -L -c /tmp/c -b /tmp/c http://127.0.0.1:8888/<mediamtx-path-name>/index.m3u8` → a real `#EXTM3U` playlist with a `RESOLUTION=...` line. Check `journalctl --user -u mediamtx.service -n 20` for `stream is available and online` — `RTP packets are too big`/heavy packet loss means `rtspTransport: tcp` didn't take (verify it's in `mediamtx.yml` and the unit was restarted).
 - Bartender remote: `/remote` → More → Camera should appear (hidden entirely at any location without a row) → video plays, PTZ/zoom/home/presets move the physical camera.
 
 **Architecture note:** MediaMTX's LL-HLS output (port 8888) is reached **directly** by the iPad over the LAN, not proxied through the port-3002 nginx instance — there's no existing precedent for that nginx config fronting a non-Next.js backend, and fleet `ufw` already allows broad RFC1918/LAN traffic (Gotcha #20), so no firewall change is needed. Only the `/api/obsbot/*` control routes go through :3002.

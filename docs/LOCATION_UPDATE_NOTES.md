@@ -46,6 +46,14 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-07-02 — v2.96.2 — DOCS: OBSBOT setup guide corrected with real Lime Kiln RTSP port/path + TCP transport fix
+
+- **Risk: GO (docs + setup-script comments only, no application code changed).** `docs/VERSION_SETUP_GUIDE.md`, `scripts/setup-mediamtx.sh`.
+- **Why:** while live-debugging Lime Kiln's actual camera (per the operator's "i enabled rstp" / "i am not seeing video" reports), the v2.96.0 setup guide's assumed RTSP defaults (port `8554`, path `/live`, taken from OBSBOT's own documentation) turned out to be wrong for this real unit — it served on the RTSP-standard port `554` at path `/stream1` instead (confirmed via a real RTSP OPTIONS/DESCRIBE probe; server banner "Remo RTSP Streaming Media Server/1.0.0"). Separately, once the correct port/path connected, MediaMTX's default UDP RTSP transport dropped a large fraction of packets on the camera's 4K stream ("RTP packet too big to be read with UDP") — fixed by forcing `rtspTransport: tcp` in the generated `mediamtx.yml`.
+- **Fix:** `VERSION_SETUP_GUIDE.md`'s v2.96.0 entry now has an explicit "probe before trusting the vendor default" step with a bash recipe, and its DB-insert example no longer hardcodes `8554`/`/live` as if universal. `setup-mediamtx.sh` now always writes `rtspTransport: tcp` into both the new-file and append code paths, with an inline comment explaining why.
+- **No location action needed for existing installs** — this is documentation catching up to what was already fixed live at Lime Kiln (its `ObsbotCamera` row and `mediamtx.yml` already have the correct values). Only relevant for the NEXT camera installed at a new location, who should follow the corrected steps.
+- **Affected files:** `docs/VERSION_SETUP_GUIDE.md`, `scripts/setup-mediamtx.sh`, `docs/LOCATION_UPDATE_NOTES.md`, `package.json`.
+
 ### 2026-07-02 — v2.96.1 — FIX: /api/obsbot/cameras crashed comparing isActive to a JS boolean
 
 - **Risk: GO (1-line fix, no schema/behavior change beyond correcting the crash).** `apps/web/src/app/api/obsbot/cameras/route.ts`.

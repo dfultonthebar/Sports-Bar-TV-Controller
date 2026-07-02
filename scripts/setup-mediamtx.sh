@@ -7,8 +7,17 @@
 # style — Type=simple, Restart=always, journal logging).
 #
 # MediaMTX bridges the camera's RTSP source to LL-HLS the bartender iPad's
-# Safari plays natively: Tail 2 (rtsp://<ip>:8554/live) -> MediaMTX ->
+# Safari plays natively: Tail 2 (rtsp://<ip>:PORT/PATH) -> MediaMTX ->
 # LL-HLS (:8888/<path>/index.m3u8).
+#
+# PORT/PATH DEFAULTS ARE UNRELIABLE — VERIFY PER CAMERA. OBSBOT's own docs
+# say rtsp://<ip>:8554/live, but the first real unit (Lime Kiln, 2026-07-02,
+# server banner "Remo RTSP Streaming Media Server/1.0.0") actually served on
+# the RTSP-standard port 554 at path /stream1 — 8554/live connection-refused
+# entirely. Probe before trusting the defaults below:
+#   for p in 554 8554; do nc -zv <camera-ip> $p; done
+#   printf 'DESCRIBE rtsp://<ip>:<port>/<path> RTSP/1.0\r\nCSeq: 1\r\n\r\n' | nc <camera-ip> <port>
+#   (loop candidate paths — /live, /stream1, /stream, / — watch for "200 OK" vs "400 Bad Request")
 #
 # No root required — installs to $HOME/.local/bin and runs as a --user
 # systemd unit under the ubuntu account, same as the error-watch/auto-update
@@ -20,7 +29,7 @@
 #
 # Usage:
 #   bash scripts/setup-mediamtx.sh <camera-name> <camera-rtsp-ip> [rtsp-port] [rtsp-path]
-#   bash scripts/setup-mediamtx.sh limekiln-cam1 192.168.5.103
+#   bash scripts/setup-mediamtx.sh limekiln-cam1 192.168.5.103 554 /stream1
 #
 set -euo pipefail
 
@@ -82,6 +91,11 @@ paths:
   ${CAMERA_PATH}:
     source: rtsp://${CAMERA_IP}:${RTSP_PORT}${RTSP_PATH}
     sourceOnDemand: yes
+    # TCP transport avoids "RTP packet too big for UDP" + massive packet
+    # loss seen live on a 4K stream (Lime Kiln, 2026-07-02) — UDP RTP
+    # datagrams have a hard size ceiling a high-bitrate H.264 stream
+    # routinely exceeds. TCP-interleaved has no such limit.
+    rtspTransport: tcp
 EOF
   log "✓ wrote new $CONFIG_FILE"
 else
@@ -92,6 +106,11 @@ else
   ${CAMERA_PATH}:
     source: rtsp://${CAMERA_IP}:${RTSP_PORT}${RTSP_PATH}
     sourceOnDemand: yes
+    # TCP transport avoids "RTP packet too big for UDP" + massive packet
+    # loss seen live on a 4K stream (Lime Kiln, 2026-07-02) — UDP RTP
+    # datagrams have a hard size ceiling a high-bitrate H.264 stream
+    # routinely exceeds. TCP-interleaved has no such limit.
+    rtspTransport: tcp
 EOF
     log "✓ appended path '$CAMERA_PATH' to existing $CONFIG_FILE"
   fi
