@@ -219,8 +219,14 @@ export async function collectUpdates(base: string, sinceMs: number): Promise<Upd
   const r = await fetchJson(`${base}/api/auto-update/runs?limit=50`)
   const runs: any[] = Array.isArray(r.body?.runs) ? r.body.runs : []
   for (const run of runs) {
-    // skip still-running rows: no finish timestamp and no terminal result yet
-    if (run.finishedUnix == null && run.finalResult === 'unknown') continue
+    // Skip still-running rows. BUGFIX (2026-07-01): the old check
+    // (`finishedUnix == null && finalResult === 'unknown'`) was a poor
+    // proxy — finishedUnix used to be set unconditionally from whatever
+    // line was last at parse time, so it was almost never null even for
+    // an in-progress run. Rely on the parser's own authoritative `terminal`
+    // flag instead (set only on a genuine success/rollback-resolution
+    // marker — see log-parser.ts's TERMINAL_FAIL_RE writeup).
+    if (!run.terminal) continue
     const finishedUnix = run.finishedUnix ?? run.startedUnix
     if (!finishedUnix) continue
     const occurredAt = finishedUnix * 1000
