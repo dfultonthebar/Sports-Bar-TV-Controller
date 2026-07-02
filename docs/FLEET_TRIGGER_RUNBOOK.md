@@ -1,14 +1,14 @@
 # Fleet Trigger Runbook — propagating a release to all locations
 
-**Purpose:** push a release on `origin/main` out to all `location/*` boxes RIGHT NOW instead of waiting for each box's auto-update cron to fire on its own (which can be 6+ hours apart per heartbeat history).
+**Purpose:** push a release on `origin/main` out to all `location/*` boxes RIGHT NOW instead of waiting for each box's auto-update cron to fire on its own (which can be hours apart per heartbeat history).
 
 ---
 
 ## How the fleet is laid out
 
-Each location runs its own Sports-Bar-TV-Controller install on its own LAN. They share `origin/main` via GitHub but otherwise can't see each other directly. Every host EXCEPT the location's own LAN is unreachable on bar Wi-Fi.
+Each location runs its own Sports-Bar-TV-Controller install on its own LAN. They share `origin/main` via GitHub but otherwise can't see each other directly.
 
-**Tailscale ties them together.** Every fleet host is on the Tailscale tailnet. From any one host (e.g. Holmgren `hw-sports-bar-tv-controller`), you can curl/SSH any other.
+**Tailscale ties them together.** Every fleet host is on the Tailscale tailnet. From any one host (e.g. Holmgren `hw-sports-bar-tv-controller`), you can SSH any other.
 
 | Location | Tailscale name | Tailscale IP |
 |---|---|---|
@@ -17,163 +17,96 @@ Each location runs its own Sports-Bar-TV-Controller install on its own LAN. They
 | Stoneyard Appleton | `stoneyard-appleton` | 100.107.223.47 |
 | Stoneyard Greenville | `greenville-stoneyard` | 100.112.255.60 |
 | Leg Lamp | `leglamp-tvcontroller` | 100.101.200.82 |
-| Holmgren Way | `hw-sports-bar-tv-controller` | 100.117.155.98 |
+| Lime Kiln | `lime-kiln-sports-bar-controller` | 100.89.6.80 |
+| Holmgren Way (dev box, excluded from fan-out) | `hw-sports-bar-tv-controller` | 100.117.155.98 |
 
 `tailscale status` on any fleet host shows the live list.
 
 ---
 
-## Two trigger methods
+## SECURITY: SSH is keys-only, password auth is disabled
 
-### Method A — Tailscale `sshpass` SSH from Holmgren (the verified working pattern)
+**Do not use `sshpass` or any password-based SSH against the fleet.** Following a 2026-06-22 cryptominer compromise via a leaked shared SSH password (full IOCs: memory `project_security_incident_graystone_xmrig`), every box was hardened:
 
-**This is what works from Claude Code. Use this one.** All other ssh paths get blocked by the harness; this specific pattern has a wildcard allow-rule in `.claude/settings.local.json`: `"Bash(SSHPASS='6809233DjD$$$' sshpass *)"`.
+- `PasswordAuthentication no` on all 7 boxes — **keys only.**
+- The leaked password was **rotated 2026-06-23** and no longer works anywhere, on top of being disabled. Any doc, script, or memory still referencing the old plaintext password is describing a dead credential — ignore it.
+- ufw active fleet-wide, default-deny, Tailscale/LAN only.
 
-The fleet hosts are accessed by their Tailscale-magic-DNS hostnames (NOT raw IPs — the IPs DO work but key-based ssh to them is blocked; only sshpass-with-env-var to hostnames is approved):
+Use the `holmgren-claude-fleet` SSH key (present in every box's `authorized_keys`) for key-based SSH.
 
-| Location branch | Tailscale hostname |
-|---|---|
-| location/graystone | graystone-tvcontroller |
-| location/lucky-s-1313 | luckys1313 |
-| location/stoneyard-appleton | stoneyard-appleton |
-| location/stoneyard-greenville | greenville-stoneyard |
-| location/leg-lamp | leglamp-tvcontroller |
-| location/holmgren-way | (this host — skip in fan-out) |
+---
 
-Verified working command (used 2026-05-09 to roll out v2.33.1 in ~3 minutes total):
+## Canonical method — `fleet-deploy.sh` (CT212 / Hermes box)
+
+**This is the recommended trigger.** Lives at `~/.hermes/scripts/fleet-deploy.sh` on the Hermes box (Tailscale `hermes`, 100.70.56.34). It encodes three hard-won fixes so you don't have to remember them:
+
+1. **cd-prefix.** SSH lands in `/home/ubuntu` (home), NOT the repo — the remote payload must `cd /home/ubuntu/Sports-Bar-TV-Controller` before running `auto-update.sh`, or it fails "No such file or directory" and silently no-ops.
+2. **No pgrep pre-check.** `auto-update.sh` has its own internal `flock`-based lock — pre-checking with `pgrep -f auto-update.sh` self-matches the triggering SSH command and produces a false "already running," skipping the trigger. Fire unconditionally and let the internal lock dedupe.
+3. **Graystone (15 GB RAM) Ollama-evict.** The smallest fleet box risks OOM (exit 137) mid-build; the script evicts its local Ollama models and caps the Node heap (`--max-old-space-size=2048`) before building there.
+
+It then polls each box's `http://127.0.0.1:3001/api/version` until all report the target version (or times out), printing a convergence table.
 
 ```bash
-mkdir -p /tmp/fleet-rollout
-SSHPASS='6809233DjD$$$'
-export SSHPASS
+# From CT212 (or wherever the script lives):
+bash ~/.hermes/scripts/fleet-deploy.sh                # auto-resolves target from GitHub raw main, triggers + polls to convergence
+TARGET=2.93.0 bash ~/.hermes/scripts/fleet-deploy.sh   # pin an explicit target version
+TRIGGER_ONLY=1 bash ~/.hermes/scripts/fleet-deploy.sh  # fire the trigger, skip the convergence poll
+VERIFY_ONLY=1 bash ~/.hermes/scripts/fleet-deploy.sh   # read-only: poll current versions, don't trigger anything
+```
 
-for host in graystone-tvcontroller luckys1313 stoneyard-appleton greenville-stoneyard leglamp-tvcontroller; do
-  ( sshpass -e ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 ubuntu@$host \
-      'bash /home/ubuntu/Sports-Bar-TV-Controller/scripts/auto-update.sh --triggered-by=manual_cli' \
-    > /tmp/fleet-rollout/$host.log 2>&1
-    echo "$host EXIT=$?" >> /tmp/fleet-rollout/exit-codes.txt
-  ) &
+Exit 0 = converged, 2 = timeout (check the straggler manually), 1 = setup error. It excludes Holmgren (the local dev box) and never needs a password — keys-only SSH.
+
+---
+
+## Manual fallback — direct SSH fan-out
+
+If you're not on CT212 and need to trigger by hand (key-based SSH from any fleet-tailnet host with the right key installed):
+
+```bash
+REPO=/home/ubuntu/Sports-Bar-TV-Controller
+for host in graystone-tvcontroller luckys1313 stoneyard-appleton greenville-stoneyard leglamp-tvcontroller lime-kiln-sports-bar-controller; do
+  ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 ubuntu@$host \
+    "cd $REPO && nohup bash scripts/auto-update.sh --triggered-by=manual_cli > /home/ubuntu/sports-bar-data/update-logs/manual-\$(date +%s).log 2>&1 &" \
+    &
 done
 wait
 ```
 
-**Important quirk:** `auto-update.sh` uses `setsid --fork` to spawn the actual update as a fully-detached daemon. The SSH command returns exit 0 within ~1 second even though the update is just starting. **The empty stdout/stderr in the log files is normal** — don't interpret it as failure. Wait ~150 seconds, then verify each host:
+**The `cd $REPO &&` prefix is mandatory** — this is the #1 way manual triggers silently fail (see fix #1 above). `auto-update.sh` detaches itself (`setsid -f`) so the SSH command returns almost immediately; that's expected, not a failure signal.
+
+### Verifying the rollout landed
+
+Wait ~2-4 minutes (longer for Graystone), then poll each box directly:
 
 ```bash
-SSHPASS='6809233DjD$$$' && export SSHPASS
-for host in graystone-tvcontroller luckys1313 stoneyard-appleton greenville-stoneyard leglamp-tvcontroller; do
-  result=$(sshpass -e ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 ubuntu@$host \
-    'cat /home/ubuntu/sports-bar-data/.auto-update-last-success.json 2>/dev/null | python3 -c "import json,sys; d=json.load(sys.stdin); v=d[\"verifyInstall\"]; print(d[\"version\"], v[\"status\"], f\"{v[\"passed\"]}/{v[\"total\"]}\", d[\"successAt\"])"' 2>&1)
-  echo "  $host: $result"
+for ip in 100.93.130.14 100.77.85.89 100.107.223.47 100.112.255.60 100.101.200.82 100.89.6.80; do
+  ver=$(curl -s -m 5 "http://$ip:3001/api/version" | grep -oE '"version":"[^"]+"')
+  echo "  $ip → $ver"
 done
 ```
 
-Expect each to return: `<new-version> PASS 7/7 <iso-timestamp>`. If a host returns the OLD version + an OLD timestamp, that host's update failed silently — check `pm2 logs` on it specifically. If verify status is FAIL, auto-update.sh has already rolled back the merge (you can re-trigger after fixing the underlying issue).
+If a box is on the old version after ~5 minutes, check `/home/ubuntu/sports-bar-data/update-logs/` on that box for the failure — `verify-install.sh --json` runs many layers (not a fixed count; read its own output for the current set) and any non-zero exit triggers an automatic rollback via `rollback.sh`.
 
-**SSHPASS env var:** the actual password is in `.claude/settings.local.json` under the approved Bash rules. Don't paste it into commit messages, GitHub issues, or anywhere else that gets pushed publicly. The wildcard rule is `Bash(SSHPASS='6809233DjD$$$' sshpass *)` — it covers any sshpass-using command with that env var.
+---
 
-**Each host's `auto-update.sh` runs locally** with its own `LOCATION_PATHS_OURS` resolver — protects per-location data files (channel-presets, directv-devices, .env). Wall-clock ~90-120s per host, all 5 in parallel so total ~2-3 min.
+## Central visibility — the SBCC hub
 
-### Method B — Tailscale HTTP curl to each location's run-now API (NOT VERIFIED FROM CLAUDE CODE)
-
-Every location runs Next.js on port 3001 over Tailscale. The endpoint `POST /api/system/auto-update/run-now` spawns the same `auto-update.sh` via `setsid --fork`.
-
-**Auth required:** ADMIN session cookie or API key (see `apps/web/src/lib/auth.ts` → `requireAuth(_, 'ADMIN', ...)`). Each location's admin PIN is set during bootstrap.
-
-```bash
-# Auth flow per host:
-# 1. POST /api/auth/login with admin PIN → get session cookie
-# 2. POST /api/system/auto-update/run-now with that cookie
-for ip in 100.93.130.14 100.77.85.89 100.107.223.47 100.112.255.60 100.101.200.82; do
-  cookie=$(mktemp)
-  curl -s -c "$cookie" -X POST "http://$ip:3001/api/auth/login" \
-    -H "Content-Type: application/json" \
-    -d '{"pin":"<admin-pin>"}' >/dev/null
-  ( curl -s -b "$cookie" -X POST "http://$ip:3001/api/system/auto-update/run-now" \
-    > /tmp/fleet-runnow-$ip.json 2>&1 ) &
-done
-wait
-```
-
-**Pros:** no SSH password required; works from any host with Tailscale.
-**Cons:** the harness blocked the curl-to-:3001-run-now path with "multi-site shared-infrastructure action" in 2026-05-09 testing. Until that gate is opened (or each location's run-now endpoint accepts an unauth-able token signature), Method A is the only verified path from Claude Code.
-
-### Method B — Tailscale HTTP curl to each location's run-now API
-
-Every location runs Next.js on port 3001 over Tailscale (verified — `curl http://100.93.130.14:3001/api/health` returns `healthy` from any other fleet host). The endpoint `POST /api/system/auto-update/run-now` spawns the same `auto-update.sh` via `setsid --fork`.
-
-**Auth required:** ADMIN session cookie or API key (see `apps/web/src/lib/auth.ts` → `requireAuth(_, 'ADMIN', ...)`). Each location's admin PIN is set during bootstrap (default per CLAUDE.md `bootstrap-new-location.sh` is `7819`, but verify before assuming).
-
-```bash
-# Auth flow per host:
-# 1. POST /api/auth/login with admin PIN → get session cookie
-# 2. POST /api/system/auto-update/run-now with that cookie
-for ip in 100.93.130.14 100.77.85.89 100.107.223.47 100.112.255.60 100.101.200.82; do
-  cookie=$(mktemp)
-  curl -s -c "$cookie" -X POST "http://$ip:3001/api/auth/login" \
-    -H "Content-Type: application/json" \
-    -d '{"pin":"<admin-pin>"}' >/dev/null
-  ( curl -s -b "$cookie" -X POST "http://$ip:3001/api/system/auto-update/run-now" \
-    > /tmp/fleet-runnow-$ip.json 2>&1 ) &
-done
-wait
-```
-
-**Pros:** no SSH key required; works from any host with Tailscale; same effect as Method A.
-**Cons:** more code, depends on login endpoint shape. Same harness gate as Method A from Claude Code (auto-update endpoints are also classified as multi-site shared-infrastructure actions).
+The hub (Tailscale `hub-1`, 100.124.165.26:3010) ingests version + health + update-outcome from every location's `hub-agent` collector. Check `http://100.124.165.26:3010/` for a live overview, including a pinned fleet-target vs actual-version drift indicator (`fleet_target` table, `POST /api/fleet-target {targetVersion}` to pin — see `apps/hub/src/app/api/fleet-target/route.ts`).
 
 ---
 
 ## When to use this runbook
 
-- You shipped a release to `origin/main` and don't want to wait 6+ hours for the cron herd.
+- You shipped a release to `origin/main` and don't want to wait for the cron herd.
 - An emergency fix — security patch, breaking-bug rollback, etc.
-- Multi-location feature where staggered rollout would split the user-visible behavior across the fleet.
+- Multi-location feature where staggered rollout would split user-visible behavior across the fleet.
 
-**When NOT to use this runbook:**
+**When NOT to use:**
 - Routine commits — let the cron handle them. Fleet trigger should be intentional, not a default.
-- A change you're not 100% sure about — let it land at one location first, observe for an hour, then trigger the rest.
-
----
-
-## How to verify the rollout landed
-
-Wait ~3 min after the trigger (each box's auto-update takes ~90-120s + verify), then:
-
-```bash
-# From any fleet host:
-for ip in 100.93.130.14 100.77.85.89 100.107.223.47 100.112.255.60 100.101.200.82; do
-  ver=$(curl -s -m 5 "http://$ip:3001/api/health" | jq -r '.version' 2>/dev/null)
-  echo "  $ip → v$ver"
-done
-
-# Or via the fleet-status API on any host (read-only, no auth):
-curl -s "http://localhost:3001/api/fleet/status?refresh=1" | jq '.locations[] | {branch, version, versionsBehind, lastCommitDate}'
-```
-
-All 6 should show the version you just shipped. If one is still on the previous version, SSH/curl to it specifically and check `/home/ubuntu/sports-bar-data/update-logs/auto-update-*.log` for the failure.
+- A change you're not 100% sure about — let it land at one location first, observe for an hour, then trigger the rest. (The per-box canary bless/soak gate in `auto-update.sh` also protects against this — non-canary boxes won't merge a commit until the canary branch blesses it.)
 
 ---
 
 ## Permissions note (Claude Code)
 
-Both methods get blocked from Claude Code by default — the harness classifies cross-host production actions as needing explicit authorization. To enable:
-
-```json
-// ~/.claude/settings.json or project settings
-"permissions": {
-  "allow": [
-    "Bash(ssh ubuntu@100.*:*)",
-    "Bash(curl http://100.*:3001*)"
-  ]
-}
-```
-
-Or trigger interactively from the user prompt with the `!` prefix (runs as the user, not the agent).
-
----
-
-## Tested runs
-
-- **2026-05-08 — v2.32.82 fleet-wide.** Parallel SSH from Holmgren. All 5 boxes landed in 105s with sidecars populated. No Anthropic API rate-limit collisions (single-host coordinated trigger, not cron herd).
-- **2026-05-09 — v2.33.1 fleet-wide.** Used the Method A `sshpass -e` pattern from this runbook. Triggered at 00:36:08, all 5 reported `PASS 7/7` verify-install + sidecar updated by 00:38:02. Wall-clock 1m 54s. Confirmed the exit-0-from-ssh-while-update-still-runs quirk (auto-update.sh's `setsid --fork` design — empty log files at trigger time are not a failure signal). Fleet now uniformly at v2.33.1 across all 6 boxes.
+Cross-host SSH triggers may be classified as needing explicit authorization by the harness. Confirm scope with the operator before triggering a fleet-wide rollout; the `fleet-deploy.sh` script itself requires no new permission beyond the SSH the harness already grants for the fleet.

@@ -46,6 +46,23 @@ decision log, not a permanent archive. Git history is the archive.
 
 ## Current entries
 
+### 2026-07-01 — v2.95.4 — FIX: auto-update.sh outcomes could look "finished" (and get misclassified) while still mid-run
+
+- **Risk: GO (parsing/telemetry only, no behavior change to auto-update.sh itself).** `apps/web/src/lib/auto-update/log-parser.ts`, `apps/web/src/app/api/auto-update/live/route.ts`.
+- **Why:** `parseLogFile()` set a run's `finishedUnix`/`finishedAt` from **whatever the last log line happened to be at parse time** — not from an actual completion marker. So a run only 35 seconds into a 4+ minute build looked exactly like a "finished" run to any caller checking `finishedUnix != null`. Combined with the fact that `auto-update.sh` tags a rollback-safety-net early in *every* run (success or not), a poll landing in that narrow early window classified the run as `'rollback'` before it ever reached its real outcome. Confirmed live: leg-lamp's real v2.95.3 canary succeeded cleanly (`SUCCESS: updated ... in 229s`), but the SBCC hub's fleet telemetry recorded that exact run as a fabricated 35-second `'rollback'` — because the hub also dedups inserts on `(location, runId)`, so the wrong early snapshot became permanent and the correct later poll was silently dropped (see the separate hub-side fix below).
+- **Fix:** added a `terminal: boolean` field, set ONLY when a genuine terminal marker is seen — `SUCCESS: updated`, or one of the 4 lines `cleanup_on_error()` (the EXIT trap) logs as its own final action (`Rollback succeeded.`, `CRITICAL: rollback itself failed`, `CRITICAL: no rollback tag set`, or `Failure happened before any on-disk change. No rollback needed.`). `finishedUnix`/`finishedAt`/`totalDurationMs` are now gated on `terminal`. `packages/hub-agent/src/collect.ts`'s skip-guard now checks `!run.terminal` instead of the old unreliable proxy. Also fixed the same class of bug in `/api/auto-update/live`'s SSE stream (it treated bare `FAIL at step` as terminal and looked for a literal `ROLLED BACK` string that never actually appears in a real log).
+- **Companion hub-side fix (not part of this app, no location action needed):** `apps/hub/src/lib/repo.ts`'s `insertFleetUpdate()` changed from `.onConflictDoNothing()` to `.onConflictDoUpdate()` on `(location_id, run_id)` — defense in depth so a later correct poll can still fix an earlier wrong snapshot, even if a future edge case slips past the parser fix.
+- **No location action needed.** Purely fixes how run outcomes are read/reported; doesn't change what auto-update.sh does.
+- **Affected files:** `apps/web/src/lib/auto-update/log-parser.ts`, `apps/web/src/app/api/auto-update/live/route.ts`, `packages/hub-agent/src/collect.ts` (hub-only, not deployed via fleet auto-update), `apps/hub/src/lib/repo.ts` (hub-only), `docs/LOCATION_UPDATE_NOTES.md`, `package.json`.
+
+### 2026-07-01 — v2.95.3 — FIX: Checkpoint B false-STOP on hub-only schema changes (rolled back a real leg-lamp update)
+
+- **Risk: GO (one deterministic check, narrows scope only).** `scripts/checkpoint-deterministic.sh` only.
+- **Why:** the new-table existence check (`git diff PRE..HEAD -- '*/schema.ts'`) matched **`apps/hub/src/db/schema.ts`** too — the SBCC central hub's own schema, which deploys to its own separate database on a different server (CT211's `hub.db`) and is NEVER applied to a fleet box's `production.db`. When the P1.3/P2.1 hub tables (`fleet_target`, `rollouts`, `rollout_boxes`) landed in the same diff window as an unrelated push, every fleet box's next auto-update hit Checkpoint B, saw those hub-only table names, correctly found them missing from `production.db` (they were never supposed to be there), and STOPped — triggering a full rollback of an otherwise-clean update. Confirmed live: leg-lamp's canary attempt at v2.95.2 built successfully, then rolled back cleanly at Checkpoint B with exactly this message.
+- **Fix:** scoped the `git diff` pathspec to `apps/web/src/db/schema.ts` and `packages/database/src/schema.ts` only — the two files that actually govern what should exist in a fleet box's `production.db`. Verified locally: the same diff range now reports zero new tables (down from 3 false positives).
+- **No location action needed.** Purely a Checkpoint B safety-check fix; doesn't touch any table or migration.
+- **Affected files:** `scripts/checkpoint-deterministic.sh`, `docs/LOCATION_UPDATE_NOTES.md`, `package.json`.
+
 ### 2026-06-30 — v2.90.2 — FIX: bartender-remote "update available" auto-refresh never fired on the bar iPad
 
 - **Risk: GO (one component).** `UpdateAvailableBanner.tsx` only.

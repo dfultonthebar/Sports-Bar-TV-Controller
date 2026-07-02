@@ -62,6 +62,18 @@ export interface AutoUpdateRun {
   finalResult: 'success' | 'fail' | 'unknown'
   failedStep: string | null
   rollbackTag: string | null
+  // BUGFIX (2026-07-01): true only once a genuine terminal marker has been
+  // seen (success, or one of the 4 cleanup_on_error() resolution lines).
+  // Previously finishedUnix/finishedAt were set unconditionally from
+  // whatever the LAST line happened to be at parse time — meaning a run
+  // still mid-flight (e.g. only 35s into a build that takes 4+ minutes)
+  // looked exactly like a "finished" run to any caller checking
+  // `finishedUnix != null`. auto-update.sh tags a rollback-safety-net
+  // early in EVERY run (success or not), so a hub-agent poll landing in
+  // that narrow window classified the run as 'rollback' before it even
+  // reached its real outcome — and the hub's dedup-on-runId insert made
+  // that wrong snapshot permanent. See feedback_auto_update_terminal_detection memory.
+  terminal: boolean
   logLines: number
   fileSizeBytes: number
 }
@@ -77,6 +89,14 @@ const COMMITS_PENDING_RE = /^Commits pending merge:\s*(\d+)/
 const FAIL_AT_STEP_RE = /^FAIL at step '(\S+)':/
 const ROLLBACK_TAG_RE = /^Rollback tag created:\s*(\S+)/
 const SUCCESS_RE = /^SUCCESS: updated/
+// The 4 lines cleanup_on_error() (the EXIT trap) logs as its OWN final action
+// on any non-zero exit — one of these ALWAYS fires once the trap has fully
+// resolved (including waiting out rollback.sh, which can take 1-2+ minutes
+// after "FAIL at step" first appears). This is what makes "terminal" reliable
+// for the failure path — "FAIL at step" alone is NOT terminal, just the start
+// of the trap's resolution.
+const TERMINAL_FAIL_RE =
+  /^(Failure happened before any on-disk change\. No rollback needed\.|CRITICAL: no rollback tag set|Rollback succeeded\.|CRITICAL: rollback itself failed)/
 
 function tsToUnix(date: string, time: string): number {
   // Interpret as local time (logs use local timezone) by leveraging Date.parse.
@@ -122,6 +142,7 @@ export function parseLogFile(filePath: string): AutoUpdateRun | null {
     finalResult: 'unknown',
     failedStep: null,
     rollbackTag: null,
+    terminal: false,
     logLines: lines.length,
     fileSizeBytes: stat.size,
   }
@@ -237,11 +258,17 @@ export function parseLogFile(filePath: string): AutoUpdateRun | null {
     // Success / fail sentinels
     if (SUCCESS_RE.test(msg)) {
       run.finalResult = 'success'
+      run.terminal = true
     }
     const failMatch = msg.match(FAIL_AT_STEP_RE)
     if (failMatch) {
+      // NOT terminal yet — this is the START of the trap's resolution.
+      // rollback.sh can run for another 1-2+ minutes after this line.
       run.finalResult = 'fail'
       run.failedStep = failMatch[1]
+    }
+    if (TERMINAL_FAIL_RE.test(msg)) {
+      run.terminal = true
     }
   }
 
@@ -253,7 +280,10 @@ export function parseLogFile(filePath: string): AutoUpdateRun | null {
     }
   }
 
-  if (lastTimestamp) {
+  // Only set finish timestamps once we've actually seen a terminal marker —
+  // otherwise a run still mid-flight looks "finished" as of whatever line
+  // happened to be last at parse time (the bug this terminal flag fixes).
+  if (run.terminal && lastTimestamp) {
     run.finishedUnix = lastTimestamp.unix
     run.finishedAt = tsToIso(lastTimestamp.dateStr, lastTimestamp.timeStr)
     run.totalDurationMs = (lastTimestamp.unix - run.startedUnix) * 1000
