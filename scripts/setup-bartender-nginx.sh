@@ -156,6 +156,14 @@ server {
     location /api/settings/default-sources { proxy_pass http://127.0.0.1:3001; proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; }
     location /api/settings/dj-mode         { proxy_pass http://127.0.0.1:3001; proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; }
 
+    # OBSBOT Tail 2 camera control (docs/OBSBOT_TAIL_2_PLAN.md). The video
+    # stream itself is NOT proxied here — it's MediaMTX's own direct-port
+    # LL-HLS endpoint (:8888), reached straight from the LAN since there's
+    # no existing precedent for this nginx instance fronting a non-Next.js
+    # backend. Only the control/status API goes through :3002.
+    location /api/obsbot/cameras   { proxy_pass http://127.0.0.1:3001; proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; }
+    location /api/obsbot/cameras/  { proxy_pass http://127.0.0.1:3001; proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; }
+
     # AI scheduling suggestions — Ollama inference can take 90-120s on iGPU,
     # 200-300s on CPU. Default proxy_read_timeout (60s) returns 504 before
     # the backend finishes. 300s covers both paths.
