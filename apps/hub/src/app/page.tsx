@@ -1,4 +1,4 @@
-import { listLocations, latestHealthByLocation, latestMetricsByLocation, recentErrors } from '@/lib/repo'
+import { listLocations, latestHealthByLocation, latestMetricsByLocation, recentErrors, getFleetTarget } from '@/lib/repo'
 
 export const dynamic = 'force-dynamic'
 
@@ -22,6 +22,13 @@ export default function Home() {
   const health = latestHealthByLocation()
   const metrics = latestMetricsByLocation()
   const errors24h = recentErrors(Date.now() - 24 * 3600_000)
+  const target = getFleetTarget()
+  const driftCount = target
+    ? locations.filter((loc) => {
+        const v = health.get(loc.id)?.version
+        return v && v !== target.targetVersion
+      }).length
+    : 0
 
   return (
     <main style={{ maxWidth: 1100, margin: '0 auto', padding: 24 }}>
@@ -36,9 +43,30 @@ export default function Home() {
           maintenance chat →
         </a>
         {' · '}
+        <a href="/rollout" style={{ color: '#38bdf8' }}>
+          rollout →
+        </a>
+        {' · '}
         <a href="/honcho" style={{ color: '#38bdf8' }}>
           AI ops →
         </a>
+      </p>
+      <p style={{ color: '#94a3b8', marginTop: 0, fontSize: 13 }}>
+        {target ? (
+          <>
+            Target version: <strong style={{ color: '#e2e8f0' }}>{target.targetVersion}</strong>
+            {driftCount > 0 ? (
+              <span style={{ color: '#f59e0b' }}> · {driftCount} box{driftCount === 1 ? '' : 'es'} behind</span>
+            ) : (
+              <span style={{ color: '#22c55e' }}> · fleet converged</span>
+            )}
+            {' · '}set by {target.setBy} {ago(target.setAt)}
+          </>
+        ) : (
+          <span>
+            No fleet target pinned — POST /api/fleet-target {'{ targetVersion }'} to enable drift detection.
+          </span>
+        )}
       </p>
 
       {locations.length === 0 ? (
@@ -52,11 +80,12 @@ export default function Home() {
             const h = health.get(loc.id)
             const m = metrics.get(loc.id)
             const status = h?.overallStatus || 'unknown'
+            const isBehind = !!(target && h?.version && h.version !== target.targetVersion)
             return (
               <a
                 key={loc.id}
                 href={`/locations/${loc.id}`}
-                style={{ textDecoration: 'none', color: 'inherit', display: 'block', border: '1px solid #1e293b', borderRadius: 8, padding: 14, background: '#0f172a' }}
+                style={{ textDecoration: 'none', color: 'inherit', display: 'block', border: isBehind ? '1px solid #f59e0b' : '1px solid #1e293b', borderRadius: 8, padding: 14, background: '#0f172a' }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <strong>{loc.name}</strong>
@@ -64,6 +93,13 @@ export default function Home() {
                 </div>
                 <div style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>
                   {loc.id} · seen {ago(loc.lastSeenAt)}
+                  {h?.version ? (
+                    <>
+                      {' · v'}
+                      {h.version}
+                      {isBehind && <span style={{ color: '#f59e0b' }}> (target v{target?.targetVersion})</span>}
+                    </>
+                  ) : null}
                 </div>
                 <div style={{ fontSize: 13, color: '#cbd5e1' }}>
                   Devices: {h?.devicesOnline ?? '—'}/{h?.devicesTotal ?? '—'}

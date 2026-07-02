@@ -63,10 +63,22 @@ export async function collectHealth(base: string): Promise<HealthPayload> {
     (b.status as OverallStatus) ||
     (r.httpStatus === 200 ? 'healthy' : r.httpStatus === 207 ? 'degraded' : r.httpStatus === 503 ? 'critical' : 'unknown')
   if (!r.httpStatus) overallStatus = 'critical' // unreachable app
+
+  // v2.94 — /api/health's body carries no version field on this build (confirmed live:
+  // keys are status/timestamp/uptime/services/metrics only). The app DOES expose it at
+  // the separate lightweight GET /api/version ({"version","sha","startedAt"}, same one
+  // used throughout fleet deploy verification). Fetch it as a second, best-effort call —
+  // failure here must never affect health/status reporting, only leave version unset.
+  let version: string | undefined = b.version || b?.system?.version
+  if (!version) {
+    const v = await fetchJson(`${base}/api/version`, 5000)
+    if (v.ok && typeof v.body?.version === 'string') version = v.body.version
+  }
+
   return {
     overallStatus,
     httpStatus: r.httpStatus,
-    version: b.version || b?.system?.version,
+    version,
     devicesOnline: pickNum(b, ['metrics.onlineDevices', 'metrics.devicesOnline', 'devicesOnline']),
     devicesTotal: pickNum(b, ['metrics.totalDevices', 'metrics.devicesTotal', 'devicesTotal']),
     errorRate: pickNum(b, ['metrics.errorRate', 'errorRate']),

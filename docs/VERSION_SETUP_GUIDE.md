@@ -35,6 +35,41 @@ is the archive.
 
 ---
 
+## v2.95.2 — Rollout outcomes captured to the fleet-ops flywheel (2026-07-01)
+
+**Required manual step:** NONE for fleet locations — this only touches
+`apps/hub` (the SBCC central hub, CT211), which is not part of `auto-update.sh`
+and not git-deployed (build-and-copy per `reference_sbcc_hub_deploy` memory).
+
+**What changed:** `rollouts` gets a new `outcome_captured_at` column
+(`apps/hub/drizzle/0003_rollout-outcome-captured.sql`). When a rollout reaches
+a terminal status (`converged`/`partial_failure`/`canary_failed`/`aborted`),
+`finalizeRollout()` in `apps/hub/src/lib/rollout-engine.ts` now fires a
+server-built (not LLM-composed — Gotcha #12) labeled OUTCOME summary to the
+Honcho `fleet-ops-log` session via the new `apps/hub/src/lib/flywheel.ts`
+(same `reportToFlywheel` pattern as `apps/web/src/lib/flywheel.ts`), gated so
+each rollout is captured exactly once. This completes P3.1 of the fleet-update
+redesign — rollout history is now part of the fleet-ops-LLM training corpus
+without any Hermes/T4 dependency.
+
+**Hub deploy step (when actually shipping to CT211):** apply the additive
+column via the surgical `better-sqlite3` recipe in `reference_sbcc_hub_deploy`
+memory (idempotent — check `PRAGMA table_info(rollouts)` first), then ship the
+rebuilt standalone bundle via `/root/deploy.sh` on the hub (its own
+`migration.sql` is `CREATE TABLE IF NOT EXISTS` so re-running it is a no-op).
+
+**Deployed 2026-07-01.** Verified end-to-end: created + aborted a throwaway
+rollout via the admin API, confirmed `outcomeCapturedAt` populated on the
+`aborted` transition and the OUTCOME summary landed in Honcho's
+`fleet-ops-log` (peer `fleet-rollout`) — query that session with
+`{"reverse": true}` or you'll see the oldest 50 messages instead of the
+newest (see `feedback_honcho_messages_list_default_oldest_first` memory).
+Smoke-test rows deleted from the live hub DB after verification.
+
+**Verification:** `GET /api/rollout` shows `outcomeCapturedAt` on any rollout
+that has reached a terminal state; `GET /api/honcho` (or the `/honcho` page)
+shows a `peer: 'fleet-rollout'` entry for it.
+
 ## v2.89.0 — AI Suggest `primary` solver mode (Wave 2 canary) (2026-06-29)
 
 **Required manual step:** NONE for the fleet. The `AI_SUGGEST_SOLVER` env flag
