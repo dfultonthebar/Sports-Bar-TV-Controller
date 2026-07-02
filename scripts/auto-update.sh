@@ -106,6 +106,23 @@ for arg in "$@"; do
 done
 
 # ---------------------------------------------------------------------------
+# Setup — moved ahead of the self-update re-exec handler below (BUGFIX
+# 2026-07-01: that handler calls log() on the re-exec'd run, but log()
+# wasn't defined until much later in the file — every self-update re-exec
+# printed "line 123: log: command not found" to stderr. Non-fatal (no
+# set -e), but confirmed live on graystone during a large multi-version
+# catch-up merge that also touched this script. mkdir moved up too since
+# log() appends to $LOG_FILE inside $LOG_DIR.
+# ---------------------------------------------------------------------------
+mkdir -p "$LOG_DIR" "$BACKUP_DIR"
+
+log() {
+  local ts
+  ts=$(date '+%Y-%m-%d %H:%M:%S')
+  echo "[$ts][AUTO-UPDATE] $*" | tee -a "$LOG_FILE"
+}
+
+# ---------------------------------------------------------------------------
 # Self-update re-exec handler: if we were re-exec'd by a prior version of
 # this script after the merge updated us, restore state and skip to where
 # the prior version left off.
@@ -154,17 +171,6 @@ if [ "$TRIGGERED_BY" = "cron" ]; then
   RUN_STARTED_EPOCH="$(date +%s)"
   CRON_JITTER_SECS="$JITTER"
 fi
-
-# ---------------------------------------------------------------------------
-# Setup
-# ---------------------------------------------------------------------------
-mkdir -p "$LOG_DIR" "$BACKUP_DIR"
-
-log() {
-  local ts
-  ts=$(date '+%Y-%m-%d %H:%M:%S')
-  echo "[$ts][AUTO-UPDATE] $*" | tee -a "$LOG_FILE"
-}
 
 # v2.55.33 — Last-attempt sidecar for verify-install Layer 19 freshness check.
 # On NOOP runs (e.g. origin/main already merged) no new log file is created,

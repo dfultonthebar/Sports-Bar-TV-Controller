@@ -358,14 +358,18 @@ export default function AudioProcessorManager() {
       const response = await fetch('/api/audio-processor/test-connection', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ processorId: processor.id })
+        body: JSON.stringify({
+          processorId: processor.id,
+          ipAddress: processor.ipAddress,
+          port: processor.port
+        })
       })
 
       const data = await response.json()
-      if (data.success) {
+      if (data.connected) {
         setMessage({ type: 'success', text: `Connected to ${processor.name}` })
       } else {
-        setMessage({ type: 'error', text: data.error || 'Connection failed' })
+        setMessage({ type: 'error', text: data.error || data.message || 'Connection failed' })
       }
       await fetchProcessors()
     } catch (error: any) {
